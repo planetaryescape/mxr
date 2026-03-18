@@ -2,13 +2,19 @@
 resolver = "2"
 members = [
     "crates/core",
+    "crates/config",
     "crates/store",
     "crates/search",
     "crates/protocol",
     "crates/provider-fake",
+    "crates/provider-gmail",
     "crates/sync",
     "crates/daemon",
     "crates/tui",
+    "crates/reader",
+    "crates/compose",
+    "crates/provider-smtp",
+    "crates/provider-imap",
 ]
 
 [workspace.package]
@@ -24,7 +30,17 @@ mxr-store = { path = "crates/store" }
 mxr-search = { path = "crates/search" }
 mxr-protocol = { path = "crates/protocol" }
 mxr-provider-fake = { path = "crates/provider-fake" }
+mxr-config = { path = "crates/config" }
 mxr-sync = { path = "crates/sync" }
+mxr-provider-gmail = { path = "crates/provider-gmail" }
+mxr-reader = { path = "crates/reader" }
+mxr-compose = { path = "crates/compose" }
+mxr-provider-smtp = { path = "crates/provider-smtp" }
+mxr-provider-imap = { path = "crates/provider-imap" }
+
+# IMAP
+async-imap = "0.10"
+async-native-tls = "0.5"
 
 # Async
 tokio = { version = "1", features = ["full"] }
@@ -44,7 +60,7 @@ ratatui = "0.29"
 crossterm = "0.28"
 
 # Types
-uuid = { version = "1", features = ["v7", "serde"] }
+uuid = { version = "1", features = ["v5", "v7", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 bitflags = { version = "2", features = ["serde"] }
 
@@ -65,9 +81,42 @@ bytes = "1"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
 
 # Futures
 futures = "0.3"
 
 # Directories
 dirs = "6"
+
+# Config
+toml = "0.8"
+
+# Gmail/OAuth
+yup-oauth2 = "11"
+reqwest = { version = "0.12", features = ["json"] }
+keyring = { version = "3", features = ["apple-native"] }
+base64 = "0.22"
+mail-parser = "0.9"
+url = "2"
+
+# TUI extras
+nucleo = "0.5"
+unicode-width = "0.2"
+
+# Reader
+html2text = "0.14"
+regex = "1"
+once_cell = "1"
+
+# Compose
+serde_yaml = "0.9"
+comrak = { version = "0.31", default-features = false, features = ["shortcodes"] }
+
+# SMTP
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "hostname", "pool", "smtp-transport"] }
+
+# Testing
+tempfile = "3"
+wiremock = "0.6"
+pretty_assertions = "1"

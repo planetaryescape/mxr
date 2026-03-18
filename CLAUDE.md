@@ -66,6 +66,42 @@ These are strict. Violations should be caught in code review:
 6. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
 7. **`tui` depends only on `core` and `protocol`.** It talks to the daemon via IPC, never directly to providers, store, or search. This enforces the client-server boundary.
 
+## Development Principles
+
+### Test with the real system, not just unit tests
+
+`cargo test` passing means nothing if the real daemon is broken. After implementing any feature:
+1. Start the daemon (`mxr daemon --foreground`)
+2. Test via CLI (`mxr star <id>`, `mxr labels`, `mxr compose --dry-run`)
+3. Only then is it done
+
+Unit tests with FakeProvider catch regressions but miss integration bugs. The label filtering bug shipped with 212 green tests because no test exercised the real sync→store→junction→query path.
+
+### Wire both clients or wire neither
+
+TUI and CLI are both IPC clients of the same daemon. Every `Request` variant in protocol must have both:
+- A TUI action handler (in `app.rs`)
+- A CLI subcommand (in `commands/`)
+
+Wiring one and leaving the other as a stub means half the system is broken. The CLI is also the fastest way to smoke-test daemon features.
+
+### Complete user journeys, not half-flows
+
+A compose flow that opens `$EDITOR` but doesn't send is not a compose flow — it's a dead end. Think through the full journey: action → intermediate steps → result → feedback. If the user has to switch to CLI mid-flow, the TUI integration is broken.
+
+### Integration tests over unit tests with fakes
+
+Tests that cross component boundaries catch the bugs that actually ship:
+- For store/query features: test through the sync engine, not raw store calls
+- For mutations: verify state persists in the store after handler dispatch
+- For multi-step flows (compose → parse → validate → send): test the full chain
+- Test delta sync, not just initial sync — delta sync has different (and more fragile) codepaths
+- When tests pass but the real system is broken, the tests are wrong
+
+### SQLite CASCADE traps
+
+`INSERT OR REPLACE` triggers `ON DELETE CASCADE` on foreign keys. This means re-upserting a parent row (like a label) silently deletes all child rows (like junction table entries). Use `INSERT ... ON CONFLICT UPDATE` instead when the row has dependents.
+
 ## Non-negotiables for Contributors
 
 - Local-first by default

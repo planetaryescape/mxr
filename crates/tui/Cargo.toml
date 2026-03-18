@@ -1,0 +1,18 @@
+[package]
+name = "mxr-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+mxr-protocol = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { version = "0.28", features = ["event-stream"] }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+dirs = { workspace = true }
+chrono = { workspace = true }

@@ -1,0 +1,26 @@
+[package]
+name = "mxr-provider-imap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+async-imap = { workspace = true }
+async-native-tls = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+keyring = { workspace = true }
+uuid = { workspace = true }
+futures = { workspace = true }
+mail-parser = { workspace = true }
+async-std = { version = "1", features = ["default"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+pretty_assertions = { workspace = true }

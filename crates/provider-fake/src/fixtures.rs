@@ -558,6 +558,25 @@ fn push_msg(
         has_attachments,
         size_bytes: body_text.len() as u64 + 500,
         unsubscribe,
+        label_provider_ids: {
+            let mut labels = vec!["INBOX".to_string()];
+            if flags.contains(MessageFlags::SENT) {
+                labels.push("SENT".to_string());
+            }
+            if flags.contains(MessageFlags::STARRED) {
+                labels.push("STARRED".to_string());
+            }
+            if flags.contains(MessageFlags::TRASH) {
+                labels.push("TRASH".to_string());
+            }
+            if flags.contains(MessageFlags::SPAM) {
+                labels.push("SPAM".to_string());
+            }
+            if !flags.contains(MessageFlags::READ) {
+                labels.push("UNREAD".to_string());
+            }
+            labels
+        },
     });
 
     bodies.insert(

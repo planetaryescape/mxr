@@ -72,6 +72,7 @@ mod tests {
             has_attachments: false,
             size_bytes: 1024,
             unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: vec![],
         };
         let json = serde_json::to_string(&env).unwrap();
         let parsed: Envelope = serde_json::from_str(&json).unwrap();

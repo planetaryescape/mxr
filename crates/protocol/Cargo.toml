@@ -11,3 +11,4 @@ serde_json = { workspace = true }
 tokio-util = { workspace = true }
 bytes = { workspace = true }
 thiserror = { workspace = true }
+chrono = { workspace = true }

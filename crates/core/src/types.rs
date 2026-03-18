@@ -33,6 +33,7 @@ pub struct BackendRef {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProviderKind {
     Gmail,
+    Imap,
     Smtp,
     Fake,
 }
@@ -96,6 +97,10 @@ pub struct Envelope {
     pub has_attachments: bool,
     pub size_bytes: u64,
     pub unsubscribe: UnsubscribeMethod,
+    /// Provider-specific label IDs (e.g. "INBOX", "SENT", "Label_123").
+    /// Transient: used during sync to populate the message_labels junction table.
+    #[serde(default)]
+    pub label_provider_ids: Vec<String>,
 }
 
 // -- UnsubscribeMethod --------------------------------------------------------
@@ -210,6 +215,7 @@ pub struct Snoozed {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SyncCursor {
     Gmail { history_id: u64 },
+    GmailBackfill { history_id: u64, page_token: String },
     Imap { uid_validity: u32, uid_next: u32 },
     Initial,
 }

@@ -1,0 +1,15 @@
+[package]
+name = "mxr-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }

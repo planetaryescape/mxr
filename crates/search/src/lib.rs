@@ -1,7 +1,15 @@
+pub mod ast;
 mod index;
+pub mod parser;
+pub mod query_builder;
+mod saved;
 mod schema;
 
+pub use ast::*;
 pub use index::{SearchIndex, SearchResult};
+pub use parser::{parse_query, ParseError};
+pub use query_builder::QueryBuilder;
+pub use saved::SavedSearchService;
 pub use schema::MxrSchema;
 
 #[cfg(test)]
@@ -33,6 +41,7 @@ mod tests {
             has_attachments: false,
             size_bytes: 1000,
             unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: vec![],
         }
     }
 

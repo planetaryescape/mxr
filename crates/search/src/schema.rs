@@ -15,6 +15,8 @@ pub struct MxrSchema {
     pub date: Field,
     pub flags: Field,
     pub has_attachments: Field,
+    pub is_read: Field,
+    pub is_starred: Field,
 }
 
 impl MxrSchema {
@@ -36,6 +38,8 @@ impl MxrSchema {
         let date = builder.add_date_field("date", INDEXED | STORED);
         let flags = builder.add_u64_field("flags", INDEXED);
         let has_attachments = builder.add_bool_field("has_attachments", INDEXED);
+        let is_read = builder.add_bool_field("is_read", INDEXED);
+        let is_starred = builder.add_bool_field("is_starred", INDEXED);
 
         let schema = builder.build();
 
@@ -54,6 +58,8 @@ impl MxrSchema {
             date,
             flags,
             has_attachments,
+            is_read,
+            is_starred,
         }
     }
 }

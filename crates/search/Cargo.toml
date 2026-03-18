@@ -6,7 +6,9 @@ license.workspace = true
 
 [dependencies]
 mxr-core = { workspace = true }
+mxr-store = { workspace = true }
 tantivy = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }

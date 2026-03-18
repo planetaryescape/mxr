@@ -1,11 +1,12 @@
 use crate::schema::MxrSchema;
 use mxr_core::id::MessageId;
+use mxr_core::types::MessageFlags;
 use mxr_core::types::{Envelope, MessageBody};
 use mxr_core::MxrError;
 use std::path::Path;
 use tantivy::{
-    collector::TopDocs, query::QueryParser, schema::Value, Index, IndexReader, IndexWriter,
-    ReloadPolicy, TantivyDocument,
+    collector::TopDocs, query::Query, query::QueryParser, schema::Value, Index, IndexReader,
+    IndexWriter, ReloadPolicy, TantivyDocument,
 };
 
 pub struct SearchIndex {
@@ -24,14 +25,33 @@ pub struct SearchResult {
 }
 
 impl SearchIndex {
+    pub fn schema(&self) -> &MxrSchema {
+        &self.schema
+    }
+
     pub fn open(index_path: &Path) -> Result<Self, MxrError> {
         let schema_def = MxrSchema::build();
-        let index = Index::open_or_create(
-            tantivy::directory::MmapDirectory::open(index_path)
-                .map_err(|e| MxrError::Search(e.to_string()))?,
-            schema_def.schema.clone(),
-        )
-        .map_err(|e| MxrError::Search(e.to_string()))?;
+        let dir = tantivy::directory::MmapDirectory::open(index_path)
+            .map_err(|e| MxrError::Search(e.to_string()))?;
+
+        let index = match Index::open_or_create(dir, schema_def.schema.clone()) {
+            Ok(idx) => idx,
+            Err(e) if e.to_string().contains("schema does not match") => {
+                tracing::warn!("Search index schema mismatch, rebuilding: {e}");
+                // Wipe and recreate
+                if index_path.exists() {
+                    std::fs::remove_dir_all(index_path)
+                        .map_err(|e| MxrError::Search(e.to_string()))?;
+                    std::fs::create_dir_all(index_path)
+                        .map_err(|e| MxrError::Search(e.to_string()))?;
+                }
+                let dir = tantivy::directory::MmapDirectory::open(index_path)
+                    .map_err(|e| MxrError::Search(e.to_string()))?;
+                Index::open_or_create(dir, schema_def.schema.clone())
+                    .map_err(|e| MxrError::Search(e.to_string()))?
+            }
+            Err(e) => return Err(MxrError::Search(e.to_string())),
+        };
 
         let reader = index
             .reader_builder()
@@ -88,6 +108,8 @@ impl SearchIndex {
         doc.add_text(s.snippet, &envelope.snippet);
         doc.add_u64(s.flags, envelope.flags.bits() as u64);
         doc.add_bool(s.has_attachments, envelope.has_attachments);
+        doc.add_bool(s.is_read, envelope.flags.contains(MessageFlags::READ));
+        doc.add_bool(s.is_starred, envelope.flags.contains(MessageFlags::STARRED));
 
         let dt = tantivy::DateTime::from_timestamp_secs(envelope.date.timestamp());
         doc.add_date(s.date, dt);
@@ -120,6 +142,8 @@ impl SearchIndex {
 
         doc.add_u64(s.flags, envelope.flags.bits() as u64);
         doc.add_bool(s.has_attachments, envelope.has_attachments);
+        doc.add_bool(s.is_read, envelope.flags.contains(MessageFlags::READ));
+        doc.add_bool(s.is_starred, envelope.flags.contains(MessageFlags::STARRED));
         let dt = tantivy::DateTime::from_timestamp_secs(envelope.date.timestamp());
         doc.add_date(s.date, dt);
 
@@ -163,6 +187,50 @@ impl SearchIndex {
         let searcher = self.reader.searcher();
         let top_docs = searcher
             .search(&query, &TopDocs::with_limit(limit))
+            .map_err(|e| MxrError::Search(e.to_string()))?;
+
+        let mut results = Vec::with_capacity(top_docs.len());
+        for (score, doc_address) in top_docs {
+            let doc: TantivyDocument = searcher
+                .doc(doc_address)
+                .map_err(|e| MxrError::Search(e.to_string()))?;
+
+            let message_id = doc
+                .get_first(s.message_id)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let account_id = doc
+                .get_first(s.account_id)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let thread_id = doc
+                .get_first(s.thread_id)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            results.push(SearchResult {
+                message_id,
+                account_id,
+                thread_id,
+                score,
+            });
+        }
+
+        Ok(results)
+    }
+
+    pub fn search_ast(
+        &self,
+        query: Box<dyn Query>,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, MxrError> {
+        let s = &self.schema;
+        let searcher = self.reader.searcher();
+        let top_docs = searcher
+            .search(&*query, &TopDocs::with_limit(limit))
             .map_err(|e| MxrError::Search(e.to_string()))?;
 
         let mut results = Vec::with_capacity(top_docs.len());

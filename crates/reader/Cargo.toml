@@ -1,0 +1,16 @@
+[package]
+name = "mxr-reader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+html2text = { workspace = true }
+regex = { workspace = true }
+once_cell = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

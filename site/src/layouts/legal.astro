@@ -1,0 +1,12 @@
+---
+const { frontmatter } = Astro.props;
+---
+<!doctype html>
+<html>
+<head><title>{frontmatter.title} - mxr</title></head>
+<body style="max-width: 800px; margin: 0 auto; padding: 2rem; font-family: system-ui;">
+<h1>{frontmatter.title}</h1>
+<slot />
+<p><a href="/">Back to docs</a></p>
+</body>
+</html>

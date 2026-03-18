@@ -1,0 +1,23 @@
+[package]
+name = "mxr-compose"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+mxr-reader = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+serde_json = { workspace = true }
+comrak = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+dirs = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+pretty_assertions = { workspace = true }

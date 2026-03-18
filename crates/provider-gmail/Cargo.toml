@@ -1,0 +1,28 @@
+[package]
+name = "mxr-provider-gmail"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+mxr-compose = { workspace = true }
+yup-oauth2 = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+url = { workspace = true }
+futures = { workspace = true }
+dirs = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+wiremock = { workspace = true }

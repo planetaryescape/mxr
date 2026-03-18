@@ -1,87 +1,87 @@
 use mxr_core::id::*;
 use mxr_core::types::*;
-use sqlx::Row;
 
 impl super::Store {
     pub async fn get_body(
         &self,
         message_id: &MessageId,
     ) -> Result<Option<MessageBody>, sqlx::Error> {
-        let row = sqlx::query("SELECT * FROM bodies WHERE message_id = ?")
-            .bind(message_id.as_str())
-            .fetch_optional(self.reader())
-            .await?;
+        let mid = message_id.as_str();
+        let row = sqlx::query!(
+            r#"SELECT message_id as "message_id!", text_plain, text_html, fetched_at as "fetched_at!" FROM bodies WHERE message_id = ?"#,
+            mid,
+        )
+        .fetch_optional(self.reader())
+        .await?;
 
         let row = match row {
             Some(r) => r,
             None => return Ok(None),
         };
 
-        let msg_id_str: String = row.get("message_id");
-        let fetched_at_ts: i64 = row.get("fetched_at");
-
-        let attachments_rows = sqlx::query("SELECT * FROM attachments WHERE message_id = ?")
-            .bind(message_id.as_str())
-            .fetch_all(self.reader())
-            .await?;
+        let att_mid = message_id.as_str();
+        let attachments_rows = sqlx::query!(
+            r#"SELECT id as "id!", message_id as "message_id!", filename as "filename!", mime_type as "mime_type!", size_bytes as "size_bytes!", local_path, provider_id as "provider_id!" FROM attachments WHERE message_id = ?"#,
+            att_mid,
+        )
+        .fetch_all(self.reader())
+        .await?;
 
         let attachments: Vec<AttachmentMeta> = attachments_rows
-            .iter()
-            .map(|r| {
-                let id_str: String = r.get("id");
-                let mid_str: String = r.get("message_id");
-                let size: i64 = r.get("size_bytes");
-                let local_path: Option<String> = r.get("local_path");
-                AttachmentMeta {
-                    id: AttachmentId::from_uuid(uuid::Uuid::parse_str(&id_str).unwrap()),
-                    message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&mid_str).unwrap()),
-                    filename: r.get("filename"),
-                    mime_type: r.get("mime_type"),
-                    size_bytes: size as u64,
-                    local_path: local_path.map(std::path::PathBuf::from),
-                    provider_id: r.get("provider_id"),
-                }
+            .into_iter()
+            .map(|r| AttachmentMeta {
+                id: AttachmentId::from_uuid(uuid::Uuid::parse_str(&r.id).unwrap()),
+                message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&r.message_id).unwrap()),
+                filename: r.filename,
+                mime_type: r.mime_type,
+                size_bytes: r.size_bytes as u64,
+                local_path: r.local_path.map(std::path::PathBuf::from),
+                provider_id: r.provider_id,
             })
             .collect();
 
         Ok(Some(MessageBody {
-            message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&msg_id_str).unwrap()),
-            text_plain: row.get("text_plain"),
-            text_html: row.get("text_html"),
+            message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&row.message_id).unwrap()),
+            text_plain: row.text_plain,
+            text_html: row.text_html,
             attachments,
-            fetched_at: chrono::DateTime::from_timestamp(fetched_at_ts, 0).unwrap_or_default(),
+            fetched_at: chrono::DateTime::from_timestamp(row.fetched_at, 0).unwrap_or_default(),
         }))
     }
 
     pub async fn insert_body(&self, body: &MessageBody) -> Result<(), sqlx::Error> {
         let fetched_at = body.fetched_at.timestamp();
+        let mid = body.message_id.as_str();
 
-        sqlx::query(
+        sqlx::query!(
             "INSERT OR REPLACE INTO bodies (message_id, text_plain, text_html, fetched_at) VALUES (?, ?, ?, ?)",
+            mid,
+            body.text_plain,
+            body.text_html,
+            fetched_at,
         )
-        .bind(body.message_id.as_str())
-        .bind(&body.text_plain)
-        .bind(&body.text_html)
-        .bind(fetched_at)
         .execute(self.writer())
         .await?;
 
         for att in &body.attachments {
+            let att_id = att.id.as_str();
+            let att_mid = att.message_id.as_str();
             let local_path = att
                 .local_path
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string());
-            sqlx::query(
+            let size_bytes = att.size_bytes as i64;
+            sqlx::query!(
                 "INSERT OR REPLACE INTO attachments (id, message_id, filename, mime_type, size_bytes, local_path, provider_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?)",
+                att_id,
+                att_mid,
+                att.filename,
+                att.mime_type,
+                size_bytes,
+                local_path,
+                att.provider_id,
             )
-            .bind(att.id.as_str())
-            .bind(att.message_id.as_str())
-            .bind(&att.filename)
-            .bind(&att.mime_type)
-            .bind(att.size_bytes as i64)
-            .bind(&local_path)
-            .bind(&att.provider_id)
             .execute(self.writer())
             .await?;
         }

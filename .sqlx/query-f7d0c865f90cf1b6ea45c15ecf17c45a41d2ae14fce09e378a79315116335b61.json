@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!\", account_id as \"account_id!\", name as \"name!\",\n                      kind as \"kind!\", color, provider_id as \"provider_id!\",\n                      unread_count as \"unread_count!\", total_count as \"total_count!\"\n               FROM labels WHERE account_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "kind!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "color",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "provider_id!",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "unread_count!",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "total_count!",
+        "ordinal": 7,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f7d0c865f90cf1b6ea45c15ecf17c45a41d2ae14fce09e378a79315116335b61"
+}

@@ -1,7 +1,5 @@
 use mxr_core::id::*;
 use mxr_core::types::*;
-use sqlx::Row;
-
 impl super::Store {
     pub async fn upsert_envelope(&self, envelope: &Envelope) -> Result<(), sqlx::Error> {
         let id = envelope.id.as_str();
@@ -15,33 +13,53 @@ impl super::Store {
         let date = envelope.date.timestamp();
         let flags = envelope.flags.bits() as i64;
         let unsub = serde_json::to_string(&envelope.unsubscribe).unwrap();
+        let has_attachments = envelope.has_attachments;
+        let size_bytes = envelope.size_bytes as i64;
 
-        sqlx::query(
-            "INSERT OR REPLACE INTO messages
+        sqlx::query!(
+            "INSERT INTO messages
              (id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
               reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
               subject, date, flags, snippet, has_attachments, size_bytes, unsubscribe_method)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                provider_id = excluded.provider_id,
+                thread_id = excluded.thread_id,
+                message_id_header = excluded.message_id_header,
+                in_reply_to = excluded.in_reply_to,
+                reference_headers = excluded.reference_headers,
+                from_name = excluded.from_name,
+                from_email = excluded.from_email,
+                to_addrs = excluded.to_addrs,
+                cc_addrs = excluded.cc_addrs,
+                bcc_addrs = excluded.bcc_addrs,
+                subject = excluded.subject,
+                date = excluded.date,
+                flags = excluded.flags,
+                snippet = excluded.snippet,
+                has_attachments = excluded.has_attachments,
+                size_bytes = excluded.size_bytes,
+                unsubscribe_method = excluded.unsubscribe_method",
+            id,
+            account_id,
+            envelope.provider_id,
+            thread_id,
+            envelope.message_id_header,
+            envelope.in_reply_to,
+            refs,
+            from_name,
+            envelope.from.email,
+            to_addrs,
+            cc_addrs,
+            bcc_addrs,
+            envelope.subject,
+            date,
+            flags,
+            envelope.snippet,
+            has_attachments,
+            size_bytes,
+            unsub,
         )
-        .bind(&id)
-        .bind(&account_id)
-        .bind(&envelope.provider_id)
-        .bind(&thread_id)
-        .bind(&envelope.message_id_header)
-        .bind(&envelope.in_reply_to)
-        .bind(&refs)
-        .bind(from_name)
-        .bind(&envelope.from.email)
-        .bind(&to_addrs)
-        .bind(&cc_addrs)
-        .bind(&bcc_addrs)
-        .bind(&envelope.subject)
-        .bind(date)
-        .bind(flags)
-        .bind(&envelope.snippet)
-        .bind(envelope.has_attachments)
-        .bind(envelope.size_bytes as i64)
-        .bind(&unsub)
         .execute(self.writer())
         .await?;
 
@@ -49,15 +67,45 @@ impl super::Store {
     }
 
     pub async fn get_envelope(&self, id: &MessageId) -> Result<Option<Envelope>, sqlx::Error> {
-        let row = sqlx::query("SELECT * FROM messages WHERE id = ?")
-            .bind(id.as_str())
-            .fetch_optional(self.reader())
-            .await?;
+        let id_str = id.as_str();
+        let row = sqlx::query!(
+            r#"SELECT
+                id as "id!", account_id as "account_id!", provider_id as "provider_id!",
+                thread_id as "thread_id!", message_id_header, in_reply_to,
+                reference_headers, from_name, from_email as "from_email!",
+                to_addrs as "to_addrs!", cc_addrs as "cc_addrs!", bcc_addrs as "bcc_addrs!",
+                subject as "subject!", date as "date!", flags as "flags!",
+                snippet as "snippet!", has_attachments as "has_attachments!: bool",
+                size_bytes as "size_bytes!", unsubscribe_method
+             FROM messages WHERE id = ?"#,
+            id_str,
+        )
+        .fetch_optional(self.reader())
+        .await?;
 
-        match row {
-            Some(row) => Ok(Some(row_to_envelope(&row))),
-            None => Ok(None),
-        }
+        Ok(row.map(|r| {
+            record_to_envelope(
+                &r.id,
+                &r.account_id,
+                &r.provider_id,
+                &r.thread_id,
+                r.message_id_header.as_deref(),
+                r.in_reply_to.as_deref(),
+                r.reference_headers.as_deref(),
+                r.from_name.as_deref(),
+                &r.from_email,
+                &r.to_addrs,
+                &r.cc_addrs,
+                &r.bcc_addrs,
+                &r.subject,
+                r.date,
+                r.flags,
+                &r.snippet,
+                r.has_attachments,
+                r.size_bytes,
+                r.unsubscribe_method.as_deref(),
+            )
+        }))
     }
 
     pub async fn list_envelopes_by_label(
@@ -66,20 +114,56 @@ impl super::Store {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<Envelope>, sqlx::Error> {
-        let rows = sqlx::query(
-            "SELECT m.* FROM messages m
+        let lid = label_id.as_str();
+        let lim = limit as i64;
+        let off = offset as i64;
+        let rows = sqlx::query!(
+            r#"SELECT
+                m.id as "id!", m.account_id as "account_id!", m.provider_id as "provider_id!",
+                m.thread_id as "thread_id!", m.message_id_header, m.in_reply_to,
+                m.reference_headers, m.from_name, m.from_email as "from_email!",
+                m.to_addrs as "to_addrs!", m.cc_addrs as "cc_addrs!", m.bcc_addrs as "bcc_addrs!",
+                m.subject as "subject!", m.date as "date!", m.flags as "flags!",
+                m.snippet as "snippet!", m.has_attachments as "has_attachments!: bool",
+                m.size_bytes as "size_bytes!", m.unsubscribe_method
+             FROM messages m
              JOIN message_labels ml ON m.id = ml.message_id
              WHERE ml.label_id = ?
              ORDER BY m.date DESC
-             LIMIT ? OFFSET ?",
+             LIMIT ? OFFSET ?"#,
+            lid,
+            lim,
+            off,
         )
-        .bind(label_id.as_str())
-        .bind(limit)
-        .bind(offset)
         .fetch_all(self.reader())
         .await?;
 
-        Ok(rows.iter().map(row_to_envelope).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                record_to_envelope(
+                    &r.id,
+                    &r.account_id,
+                    &r.provider_id,
+                    &r.thread_id,
+                    r.message_id_header.as_deref(),
+                    r.in_reply_to.as_deref(),
+                    r.reference_headers.as_deref(),
+                    r.from_name.as_deref(),
+                    &r.from_email,
+                    &r.to_addrs,
+                    &r.cc_addrs,
+                    &r.bcc_addrs,
+                    &r.subject,
+                    r.date,
+                    r.flags,
+                    &r.snippet,
+                    r.has_attachments,
+                    r.size_bytes,
+                    r.unsubscribe_method.as_deref(),
+                )
+            })
+            .collect())
     }
 
     pub async fn list_envelopes_by_account(
@@ -88,18 +172,85 @@ impl super::Store {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<Envelope>, sqlx::Error> {
-        let rows = sqlx::query(
-            "SELECT * FROM messages WHERE account_id = ? ORDER BY date DESC LIMIT ? OFFSET ?",
+        let aid = account_id.as_str();
+        let lim = limit as i64;
+        let off = offset as i64;
+        let rows = sqlx::query!(
+            r#"SELECT
+                id as "id!", account_id as "account_id!", provider_id as "provider_id!",
+                thread_id as "thread_id!", message_id_header, in_reply_to,
+                reference_headers, from_name, from_email as "from_email!",
+                to_addrs as "to_addrs!", cc_addrs as "cc_addrs!", bcc_addrs as "bcc_addrs!",
+                subject as "subject!", date as "date!", flags as "flags!",
+                snippet as "snippet!", has_attachments as "has_attachments!: bool",
+                size_bytes as "size_bytes!", unsubscribe_method
+             FROM messages WHERE account_id = ? ORDER BY date DESC LIMIT ? OFFSET ?"#,
+            aid,
+            lim,
+            off,
         )
-        .bind(account_id.as_str())
-        .bind(limit)
-        .bind(offset)
         .fetch_all(self.reader())
         .await?;
 
-        Ok(rows.iter().map(row_to_envelope).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                record_to_envelope(
+                    &r.id,
+                    &r.account_id,
+                    &r.provider_id,
+                    &r.thread_id,
+                    r.message_id_header.as_deref(),
+                    r.in_reply_to.as_deref(),
+                    r.reference_headers.as_deref(),
+                    r.from_name.as_deref(),
+                    &r.from_email,
+                    &r.to_addrs,
+                    &r.cc_addrs,
+                    &r.bcc_addrs,
+                    &r.subject,
+                    r.date,
+                    r.flags,
+                    &r.snippet,
+                    r.has_attachments,
+                    r.size_bytes,
+                    r.unsubscribe_method.as_deref(),
+                )
+            })
+            .collect())
     }
 
+    /// List envelopes that don't have a cached body yet, ordered by most recent first.
+    /// Uses a LEFT JOIN to efficiently find messages missing from the bodies table.
+    pub async fn list_envelopes_without_bodies(
+        &self,
+        account_id: &AccountId,
+        limit: u32,
+    ) -> Result<Vec<Envelope>, sqlx::Error> {
+        let aid = account_id.as_str();
+        let lim = limit as i64;
+        let rows = sqlx::query_as::<_, EnvelopeRow>(
+            r#"SELECT
+                m.id, m.account_id, m.provider_id, m.thread_id,
+                m.message_id_header, m.in_reply_to, m.reference_headers,
+                m.from_name, m.from_email, m.to_addrs, m.cc_addrs, m.bcc_addrs,
+                m.subject, m.date, m.flags, m.snippet,
+                m.has_attachments, m.size_bytes, m.unsubscribe_method
+             FROM messages m
+             LEFT JOIN bodies b ON m.id = b.message_id
+             WHERE m.account_id = ? AND b.message_id IS NULL
+             ORDER BY m.date DESC
+             LIMIT ?"#,
+        )
+        .bind(aid)
+        .bind(lim)
+        .fetch_all(self.reader())
+        .await?;
+
+        Ok(rows.into_iter().map(|r| r.into_envelope()).collect())
+    }
+
+    // Dynamic SQL -- kept as runtime query due to variable IN clause
     pub async fn delete_messages_by_provider_ids(
         &self,
         account_id: &AccountId,
@@ -126,20 +277,56 @@ impl super::Store {
         message_id: &MessageId,
         label_ids: &[LabelId],
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM message_labels WHERE message_id = ?")
-            .bind(message_id.as_str())
+        let mid = message_id.as_str();
+        sqlx::query!("DELETE FROM message_labels WHERE message_id = ?", mid)
             .execute(self.writer())
             .await?;
 
         for label_id in label_ids {
-            sqlx::query("INSERT INTO message_labels (message_id, label_id) VALUES (?, ?)")
-                .bind(message_id.as_str())
-                .bind(label_id.as_str())
-                .execute(self.writer())
-                .await?;
+            let mid = message_id.as_str();
+            let lid = label_id.as_str();
+            sqlx::query!(
+                "INSERT INTO message_labels (message_id, label_id) VALUES (?, ?)",
+                mid,
+                lid,
+            )
+            .execute(self.writer())
+            .await?;
         }
 
         Ok(())
+    }
+
+    pub async fn get_message_id_by_provider_id(
+        &self,
+        account_id: &AccountId,
+        provider_id: &str,
+    ) -> Result<Option<MessageId>, sqlx::Error> {
+        let aid = account_id.as_str();
+        let row = sqlx::query!(
+            r#"SELECT id as "id!" FROM messages WHERE account_id = ? AND provider_id = ?"#,
+            aid,
+            provider_id,
+        )
+        .fetch_optional(self.reader())
+        .await?;
+
+        Ok(row.map(|r| MessageId::from_uuid(uuid::Uuid::parse_str(&r.id).unwrap())))
+    }
+
+    pub async fn count_messages_by_account(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<u32, sqlx::Error> {
+        let aid = account_id.as_str();
+        let row = sqlx::query!(
+            r#"SELECT COUNT(*) as "cnt!: i64" FROM messages WHERE account_id = ?"#,
+            aid,
+        )
+        .fetch_one(self.reader())
+        .await?;
+
+        Ok(row.cnt as u32)
     }
 
     pub async fn update_flags(
@@ -147,56 +334,270 @@ impl super::Store {
         message_id: &MessageId,
         flags: MessageFlags,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query("UPDATE messages SET flags = ? WHERE id = ?")
-            .bind(flags.bits() as i64)
-            .bind(message_id.as_str())
+        let mid = message_id.as_str();
+        let flags_val = flags.bits() as i64;
+        sqlx::query!("UPDATE messages SET flags = ? WHERE id = ?", flags_val, mid)
             .execute(self.writer())
             .await?;
         Ok(())
     }
+
+    /// Set the read flag on a message.
+    pub async fn set_read(&self, message_id: &MessageId, read: bool) -> Result<(), sqlx::Error> {
+        let mid = message_id.as_str();
+        let row = sqlx::query!(
+            r#"SELECT flags as "flags!" FROM messages WHERE id = ?"#,
+            mid,
+        )
+        .fetch_optional(self.reader())
+        .await?;
+
+        if let Some(r) = row {
+            let mut flags = MessageFlags::from_bits_truncate(r.flags as u32);
+            if read {
+                flags.insert(MessageFlags::READ);
+            } else {
+                flags.remove(MessageFlags::READ);
+            }
+            let flags_val = flags.bits() as i64;
+            sqlx::query!("UPDATE messages SET flags = ? WHERE id = ?", flags_val, mid)
+                .execute(self.writer())
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Set the starred flag on a message.
+    pub async fn set_starred(
+        &self,
+        message_id: &MessageId,
+        starred: bool,
+    ) -> Result<(), sqlx::Error> {
+        let mid = message_id.as_str();
+        let row = sqlx::query!(
+            r#"SELECT flags as "flags!" FROM messages WHERE id = ?"#,
+            mid,
+        )
+        .fetch_optional(self.reader())
+        .await?;
+
+        if let Some(r) = row {
+            let mut flags = MessageFlags::from_bits_truncate(r.flags as u32);
+            if starred {
+                flags.insert(MessageFlags::STARRED);
+            } else {
+                flags.remove(MessageFlags::STARRED);
+            }
+            let flags_val = flags.bits() as i64;
+            sqlx::query!("UPDATE messages SET flags = ? WHERE id = ?", flags_val, mid)
+                .execute(self.writer())
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Get the provider_id for a message.
+    pub async fn get_provider_id(
+        &self,
+        message_id: &MessageId,
+    ) -> Result<Option<String>, sqlx::Error> {
+        let mid = message_id.as_str();
+        let row = sqlx::query!(
+            r#"SELECT provider_id as "provider_id!" FROM messages WHERE id = ?"#,
+            mid,
+        )
+        .fetch_optional(self.reader())
+        .await?;
+        Ok(row.map(|r| r.provider_id))
+    }
+
+    /// Get the label IDs for a message.
+    pub async fn get_message_label_ids(
+        &self,
+        message_id: &MessageId,
+    ) -> Result<Vec<LabelId>, sqlx::Error> {
+        let mid = message_id.as_str();
+        let rows = sqlx::query!(
+            r#"SELECT label_id as "label_id!" FROM message_labels WHERE message_id = ?"#,
+            mid,
+        )
+        .fetch_all(self.reader())
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| LabelId::from_uuid(uuid::Uuid::parse_str(&r.label_id).unwrap()))
+            .collect())
+    }
+
+    /// Add a label to a message.
+    pub async fn add_message_label(
+        &self,
+        message_id: &MessageId,
+        label_id: &LabelId,
+    ) -> Result<(), sqlx::Error> {
+        let mid = message_id.as_str();
+        let lid = label_id.as_str();
+        sqlx::query!(
+            "INSERT OR IGNORE INTO message_labels (message_id, label_id) VALUES (?, ?)",
+            mid,
+            lid,
+        )
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Remove a label from a message.
+    pub async fn remove_message_label(
+        &self,
+        message_id: &MessageId,
+        label_id: &LabelId,
+    ) -> Result<(), sqlx::Error> {
+        let mid = message_id.as_str();
+        let lid = label_id.as_str();
+        sqlx::query!(
+            "DELETE FROM message_labels WHERE message_id = ? AND label_id = ?",
+            mid,
+            lid,
+        )
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Count total rows in the message_labels junction table.
+    pub async fn count_message_labels(&self) -> Result<u32, sqlx::Error> {
+        let row = sqlx::query!(
+            r#"SELECT COUNT(*) as "cnt!: i64" FROM message_labels"#,
+        )
+        .fetch_one(self.reader())
+        .await?;
+        Ok(row.cnt as u32)
+    }
+
+    /// Mark a message as trashed (update flags).
+    pub async fn move_to_trash(&self, message_id: &MessageId) -> Result<(), sqlx::Error> {
+        let mid = message_id.as_str();
+        let row = sqlx::query!(
+            r#"SELECT flags as "flags!" FROM messages WHERE id = ?"#,
+            mid,
+        )
+        .fetch_optional(self.reader())
+        .await?;
+
+        if let Some(r) = row {
+            let mut flags = MessageFlags::from_bits_truncate(r.flags as u32);
+            flags.insert(MessageFlags::TRASH);
+            let flags_val = flags.bits() as i64;
+            sqlx::query!("UPDATE messages SET flags = ? WHERE id = ?", flags_val, mid)
+                .execute(self.writer())
+                .await?;
+        }
+        Ok(())
+    }
 }
 
-fn row_to_envelope(row: &sqlx::sqlite::SqliteRow) -> Envelope {
-    let id_str: String = row.get("id");
-    let account_id_str: String = row.get("account_id");
-    let thread_id_str: String = row.get("thread_id");
-    let from_name: Option<String> = row.get("from_name");
-    let from_email: String = row.get("from_email");
-    let to_json: String = row.get("to_addrs");
-    let cc_json: String = row.get("cc_addrs");
-    let bcc_json: String = row.get("bcc_addrs");
-    let refs_json: Option<String> = row.get("reference_headers");
-    let date_ts: i64 = row.get("date");
-    let flags_bits: i64 = row.get("flags");
-    let has_attachments: bool = row.get("has_attachments");
-    let size_bytes: i64 = row.get("size_bytes");
-    let unsub_json: Option<String> = row.get("unsubscribe_method");
+/// Row type for runtime (non-macro) sqlx queries returning envelope data.
+#[derive(sqlx::FromRow)]
+struct EnvelopeRow {
+    id: String,
+    account_id: String,
+    provider_id: String,
+    thread_id: String,
+    message_id_header: Option<String>,
+    in_reply_to: Option<String>,
+    reference_headers: Option<String>,
+    from_name: Option<String>,
+    from_email: String,
+    to_addrs: String,
+    cc_addrs: String,
+    bcc_addrs: String,
+    subject: String,
+    date: i64,
+    flags: i64,
+    snippet: String,
+    has_attachments: bool,
+    size_bytes: i64,
+    unsubscribe_method: Option<String>,
+}
 
+impl EnvelopeRow {
+    fn into_envelope(self) -> Envelope {
+        record_to_envelope(
+            &self.id,
+            &self.account_id,
+            &self.provider_id,
+            &self.thread_id,
+            self.message_id_header.as_deref(),
+            self.in_reply_to.as_deref(),
+            self.reference_headers.as_deref(),
+            self.from_name.as_deref(),
+            &self.from_email,
+            &self.to_addrs,
+            &self.cc_addrs,
+            &self.bcc_addrs,
+            &self.subject,
+            self.date,
+            self.flags,
+            &self.snippet,
+            self.has_attachments,
+            self.size_bytes,
+            self.unsubscribe_method.as_deref(),
+        )
+    }
+}
+
+/// Shared helper to convert individual field values into an Envelope.
+/// Used by both message.rs and thread.rs queries since the `query!` macro
+/// returns different anonymous types for each call site.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn record_to_envelope(
+    id: &str,
+    account_id: &str,
+    provider_id: &str,
+    thread_id: &str,
+    message_id_header: Option<&str>,
+    in_reply_to: Option<&str>,
+    reference_headers: Option<&str>,
+    from_name: Option<&str>,
+    from_email: &str,
+    to_addrs: &str,
+    cc_addrs: &str,
+    bcc_addrs: &str,
+    subject: &str,
+    date: i64,
+    flags: i64,
+    snippet: &str,
+    has_attachments: bool,
+    size_bytes: i64,
+    unsubscribe_method: Option<&str>,
+) -> Envelope {
     Envelope {
-        id: MessageId::from_uuid(uuid::Uuid::parse_str(&id_str).unwrap()),
-        account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&account_id_str).unwrap()),
-        provider_id: row.get("provider_id"),
-        thread_id: ThreadId::from_uuid(uuid::Uuid::parse_str(&thread_id_str).unwrap()),
-        message_id_header: row.get("message_id_header"),
-        in_reply_to: row.get("in_reply_to"),
-        references: refs_json
-            .map(|r| serde_json::from_str(&r).unwrap_or_default())
+        id: MessageId::from_uuid(uuid::Uuid::parse_str(id).unwrap()),
+        account_id: AccountId::from_uuid(uuid::Uuid::parse_str(account_id).unwrap()),
+        provider_id: provider_id.to_string(),
+        thread_id: ThreadId::from_uuid(uuid::Uuid::parse_str(thread_id).unwrap()),
+        message_id_header: message_id_header.map(|s| s.to_string()),
+        in_reply_to: in_reply_to.map(|s| s.to_string()),
+        references: reference_headers
+            .map(|r| serde_json::from_str(r).unwrap_or_default())
             .unwrap_or_default(),
         from: Address {
-            name: from_name,
-            email: from_email,
+            name: from_name.map(|s| s.to_string()),
+            email: from_email.to_string(),
         },
-        to: serde_json::from_str(&to_json).unwrap_or_default(),
-        cc: serde_json::from_str(&cc_json).unwrap_or_default(),
-        bcc: serde_json::from_str(&bcc_json).unwrap_or_default(),
-        subject: row.get("subject"),
-        date: chrono::DateTime::from_timestamp(date_ts, 0).unwrap_or_default(),
-        flags: MessageFlags::from_bits_truncate(flags_bits as u32),
-        snippet: row.get("snippet"),
+        to: serde_json::from_str(to_addrs).unwrap_or_default(),
+        cc: serde_json::from_str(cc_addrs).unwrap_or_default(),
+        bcc: serde_json::from_str(bcc_addrs).unwrap_or_default(),
+        subject: subject.to_string(),
+        date: chrono::DateTime::from_timestamp(date, 0).unwrap_or_default(),
+        flags: MessageFlags::from_bits_truncate(flags as u32),
+        snippet: snippet.to_string(),
         has_attachments,
         size_bytes: size_bytes as u64,
-        unsubscribe: unsub_json
-            .map(|u| serde_json::from_str(&u).unwrap_or(UnsubscribeMethod::None))
+        unsubscribe: unsubscribe_method
+            .map(|u| serde_json::from_str(u).unwrap_or(UnsubscribeMethod::None))
             .unwrap_or(UnsubscribeMethod::None),
+        label_provider_ids: vec![],
     }
 }

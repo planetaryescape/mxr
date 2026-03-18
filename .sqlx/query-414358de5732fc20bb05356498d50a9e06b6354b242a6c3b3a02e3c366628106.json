@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE labels SET\n                total_count = (SELECT COUNT(*) FROM message_labels WHERE label_id = labels.id),\n                unread_count = (SELECT COUNT(*) FROM message_labels ml\n                    JOIN messages m ON m.id = ml.message_id\n                    WHERE ml.label_id = labels.id AND (m.flags & 1) = 0)\n            WHERE account_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "414358de5732fc20bb05356498d50a9e06b6354b242a6c3b3a02e3c366628106"
+}

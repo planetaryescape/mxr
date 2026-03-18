@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!\", account_id as \"account_id!\", in_reply_to,\n                      to_addrs as \"to_addrs!\", cc_addrs as \"cc_addrs!\", bcc_addrs as \"bcc_addrs!\",\n                      subject as \"subject!\", body_markdown as \"body_markdown!\",\n                      attachments as \"attachments!\", created_at as \"created_at!\", updated_at as \"updated_at!\"\n               FROM drafts WHERE account_id = ? ORDER BY updated_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "in_reply_to",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "to_addrs!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "cc_addrs!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "bcc_addrs!",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "subject!",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "body_markdown!",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "attachments!",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 9,
+        "type_info": "Integer"
+      },
+      {
+        "name": "updated_at!",
+        "ordinal": 10,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2bcad53e1ae11e7121ed672af136915b9f9c6c5303f9035d1eba56cbbe5c4886"
+}

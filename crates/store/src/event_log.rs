@@ -24,21 +24,22 @@ impl super::Store {
     ) -> Result<(), sqlx::Error> {
         let now = chrono::Utc::now().timestamp();
         let aid = account_id.map(|a| a.as_str());
-        sqlx::query(
+        sqlx::query!(
             "INSERT INTO event_log (timestamp, level, category, account_id, summary, details)
              VALUES (?, ?, ?, ?, ?, ?)",
+            now,
+            level,
+            category,
+            aid,
+            summary,
+            details,
         )
-        .bind(now)
-        .bind(level)
-        .bind(category)
-        .bind(&aid)
-        .bind(summary)
-        .bind(details)
         .execute(self.writer())
         .await?;
         Ok(())
     }
 
+    // Dynamic SQL — kept as runtime query since the WHERE clause is conditionally built
     pub async fn list_events(
         &self,
         limit: u32,

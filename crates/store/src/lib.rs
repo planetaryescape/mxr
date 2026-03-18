@@ -60,6 +60,7 @@ mod tests {
             has_attachments: false,
             size_bytes: 1024,
             unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: vec![],
         }
     }
 
@@ -326,6 +327,93 @@ mod tests {
 
         let sync_events = store.list_events(10, None, Some("sync")).await.unwrap();
         assert_eq!(sync_events.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn get_message_id_by_provider_id() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let env = test_envelope(&account.id);
+        store.upsert_envelope(&env).await.unwrap();
+
+        let found = store
+            .get_message_id_by_provider_id(&account.id, &env.provider_id)
+            .await
+            .unwrap();
+        assert_eq!(found, Some(env.id.clone()));
+
+        let not_found = store
+            .get_message_id_by_provider_id(&account.id, "nonexistent")
+            .await
+            .unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[tokio::test]
+    async fn recalculate_label_counts() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let label = Label {
+            id: LabelId::new(),
+            account_id: account.id.clone(),
+            name: "Inbox".to_string(),
+            kind: LabelKind::System,
+            color: None,
+            provider_id: "INBOX".to_string(),
+            unread_count: 0,
+            total_count: 0,
+        };
+        store.upsert_label(&label).await.unwrap();
+
+        // Insert 3 messages: 2 read, 1 unread
+        for i in 0..3 {
+            let mut env = test_envelope(&account.id);
+            env.provider_id = format!("fake-label-{}", i);
+            if i < 2 {
+                env.flags = MessageFlags::READ;
+            } else {
+                env.flags = MessageFlags::empty();
+            }
+            store.upsert_envelope(&env).await.unwrap();
+            store
+                .set_message_labels(&env.id, &[label.id.clone()])
+                .await
+                .unwrap();
+        }
+
+        store.recalculate_label_counts(&account.id).await.unwrap();
+
+        let labels = store.list_labels_by_account(&account.id).await.unwrap();
+        assert_eq!(labels[0].total_count, 3);
+        assert_eq!(labels[0].unread_count, 1);
+    }
+
+    #[tokio::test]
+    async fn get_saved_search_by_name() {
+        let store = Store::in_memory().await.unwrap();
+
+        let search = SavedSearch {
+            id: SavedSearchId::new(),
+            account_id: None,
+            name: "Unread".to_string(),
+            query: "is:unread".to_string(),
+            sort: SortOrder::DateDesc,
+            icon: None,
+            position: 0,
+            created_at: chrono::Utc::now(),
+        };
+        store.insert_saved_search(&search).await.unwrap();
+
+        let found = store.get_saved_search_by_name("Unread").await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().query, "is:unread");
+
+        let not_found = store.get_saved_search_by_name("Nonexistent").await.unwrap();
+        assert!(not_found.is_none());
     }
 
     #[tokio::test]

@@ -14,3 +14,6 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 mxr-provider-fake = { workspace = true }
+async-trait = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }

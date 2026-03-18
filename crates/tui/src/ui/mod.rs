@@ -1,3 +1,8 @@
+pub mod command_palette;
+pub mod hint_bar;
+pub mod label_picker;
 pub mod mail_list;
+pub mod message_view;
+pub mod search_bar;
 pub mod sidebar;
 pub mod status_bar;

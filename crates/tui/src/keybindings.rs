@@ -1,0 +1,457 @@
+use crate::action::Action;
+use crossterm::event::{KeyCode, KeyModifiers};
+use serde::Deserialize;
+use std::collections::HashMap;
+
+/// Parsed keybinding configuration.
+#[derive(Debug, Clone)]
+pub struct KeybindingConfig {
+    pub mail_list: HashMap<KeyBinding, String>,
+    pub message_view: HashMap<KeyBinding, String>,
+    pub thread_view: HashMap<KeyBinding, String>,
+}
+
+/// A single key or key combination.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KeyBinding {
+    pub keys: Vec<KeyPress>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KeyPress {
+    pub code: KeyCode,
+    pub modifiers: KeyModifiers,
+}
+
+/// View context for resolving keybindings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewContext {
+    MailList,
+    MessageView,
+    ThreadView,
+}
+
+/// Parse a key string like "Ctrl-p", "gg", "G", "/", "Enter" into a KeyBinding.
+pub fn parse_key_string(s: &str) -> Result<KeyBinding, String> {
+    let mut keys = Vec::new();
+
+    if let Some(rest) = s.strip_prefix("Ctrl-") {
+        let ch = rest.chars().next().ok_or("Missing char after Ctrl-")?;
+        keys.push(KeyPress {
+            code: KeyCode::Char(ch),
+            modifiers: KeyModifiers::CONTROL,
+        });
+    } else if s == "Enter" {
+        keys.push(KeyPress {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::NONE,
+        });
+    } else if s == "Escape" || s == "Esc" {
+        keys.push(KeyPress {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+        });
+    } else if s == "Tab" {
+        keys.push(KeyPress {
+            code: KeyCode::Tab,
+            modifiers: KeyModifiers::NONE,
+        });
+    } else {
+        for ch in s.chars() {
+            let modifiers = if ch.is_uppercase() {
+                KeyModifiers::SHIFT
+            } else {
+                KeyModifiers::NONE
+            };
+            keys.push(KeyPress {
+                code: KeyCode::Char(ch),
+                modifiers,
+            });
+        }
+    }
+
+    Ok(KeyBinding { keys })
+}
+
+/// Resolve a key sequence to an action name.
+pub fn resolve_action(
+    config: &KeybindingConfig,
+    context: ViewContext,
+    key_sequence: &[KeyPress],
+) -> Option<String> {
+    let map = match context {
+        ViewContext::MailList => &config.mail_list,
+        ViewContext::MessageView => &config.message_view,
+        ViewContext::ThreadView => &config.thread_view,
+    };
+
+    let binding = KeyBinding {
+        keys: key_sequence.to_vec(),
+    };
+    map.get(&binding).cloned()
+}
+
+/// Map action name strings to Action enum variants.
+pub fn action_from_name(name: &str) -> Option<Action> {
+    match name {
+        // Navigation (vim-native)
+        "move_down" | "scroll_down" | "next_message" => Some(Action::MoveDown),
+        "move_up" | "scroll_up" | "prev_message" => Some(Action::MoveUp),
+        "jump_top" => Some(Action::JumpTop),
+        "jump_bottom" => Some(Action::JumpBottom),
+        "page_down" => Some(Action::PageDown),
+        "page_up" => Some(Action::PageUp),
+        "visible_top" => Some(Action::ViewportTop),
+        "visible_middle" => Some(Action::ViewportMiddle),
+        "visible_bottom" => Some(Action::ViewportBottom),
+        "center_current" => Some(Action::CenterCurrent),
+        "search" => Some(Action::OpenSearch),
+        "next_search_result" => Some(Action::NextSearchResult),
+        "prev_search_result" => Some(Action::PrevSearchResult),
+        "open" => Some(Action::OpenSelected),
+        "quit_view" => Some(Action::QuitView),
+        "help" => Some(Action::Help),
+        // Email actions (Gmail-native A005)
+        "compose" => Some(Action::Compose),
+        "reply" => Some(Action::Reply),
+        "reply_all" => Some(Action::ReplyAll),
+        "forward" => Some(Action::Forward),
+        "archive" => Some(Action::Archive),
+        "trash" => Some(Action::Trash),
+        "spam" => Some(Action::Spam),
+        "star" => Some(Action::Star),
+        "mark_read" => Some(Action::MarkRead),
+        "mark_unread" => Some(Action::MarkUnread),
+        "apply_label" => Some(Action::ApplyLabel),
+        "move_to_label" => Some(Action::MoveToLabel),
+        "toggle_select" => Some(Action::ToggleSelect),
+        // mxr-specific
+        "unsubscribe" => Some(Action::Unsubscribe),
+        "snooze" => Some(Action::Snooze),
+        "open_in_browser" => Some(Action::OpenInBrowser),
+        "toggle_reader_mode" => Some(Action::ToggleReaderMode),
+        "export_thread" => Some(Action::ExportThread),
+        "command_palette" => Some(Action::OpenCommandPalette),
+        "switch_panes" => Some(Action::SwitchPane),
+        "toggle_fullscreen" => Some(Action::ToggleFullscreen),
+        "visual_line_mode" => Some(Action::VisualLineMode),
+        "attachment_list" => Some(Action::AttachmentList),
+        "sync" => Some(Action::SyncNow),
+        // Go-to navigation (A005)
+        "go_inbox" => Some(Action::GoToInbox),
+        "go_starred" => Some(Action::GoToStarred),
+        "go_sent" => Some(Action::GoToSent),
+        "go_drafts" => Some(Action::GoToDrafts),
+        "go_all_mail" => Some(Action::GoToAllMail),
+        "go_label" => Some(Action::GoToLabel),
+        _ => None,
+    }
+}
+
+/// Format a keybinding for display.
+pub fn format_keybinding(kb: &KeyBinding) -> String {
+    kb.keys
+        .iter()
+        .map(|kp| {
+            let mut s = String::new();
+            if kp.modifiers.contains(KeyModifiers::CONTROL) {
+                s.push_str("Ctrl-");
+            }
+            match kp.code {
+                KeyCode::Char(c) => s.push(c),
+                KeyCode::Enter => s.push_str("Enter"),
+                KeyCode::Esc => s.push_str("Esc"),
+                KeyCode::Tab => s.push_str("Tab"),
+                _ => s.push('?'),
+            }
+            s
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+/// Raw TOML structure for keys.toml
+#[derive(Debug, Deserialize)]
+pub struct KeysToml {
+    #[serde(default)]
+    pub mail_list: HashMap<String, String>,
+    #[serde(default)]
+    pub message_view: HashMap<String, String>,
+    #[serde(default)]
+    pub thread_view: HashMap<String, String>,
+}
+
+/// Load keybinding config from keys.toml, falling back to defaults.
+pub fn load_keybindings(config_dir: &std::path::Path) -> KeybindingConfig {
+    let keys_path = config_dir.join("keys.toml");
+    let user_config = if keys_path.exists() {
+        std::fs::read_to_string(&keys_path)
+            .ok()
+            .and_then(|s| toml::from_str::<KeysToml>(&s).ok())
+    } else {
+        None
+    };
+
+    let mut config = default_keybindings();
+
+    if let Some(user) = user_config {
+        for (key, action) in &user.mail_list {
+            if let Ok(kb) = parse_key_string(key) {
+                config.mail_list.insert(kb, action.clone());
+            }
+        }
+        for (key, action) in &user.message_view {
+            if let Ok(kb) = parse_key_string(key) {
+                config.message_view.insert(kb, action.clone());
+            }
+        }
+        for (key, action) in &user.thread_view {
+            if let Ok(kb) = parse_key_string(key) {
+                config.thread_view.insert(kb, action.clone());
+            }
+        }
+    }
+
+    config
+}
+
+pub fn default_keybindings() -> KeybindingConfig {
+    let mut mail_list = HashMap::new();
+    let mut message_view = HashMap::new();
+    let mut thread_view = HashMap::new();
+
+    // Mail list defaults — Gmail-native scheme (A005)
+    let ml_defaults = [
+        // Navigation (vim-native)
+        ("j", "move_down"),
+        ("k", "move_up"),
+        ("gg", "jump_top"),
+        ("G", "jump_bottom"),
+        ("Ctrl-d", "page_down"),
+        ("Ctrl-u", "page_up"),
+        ("H", "visible_top"),
+        ("M", "visible_middle"),
+        ("L", "visible_bottom"),
+        ("zz", "center_current"),
+        ("/", "search"),
+        ("n", "next_search_result"),
+        ("N", "prev_search_result"),
+        ("Enter", "open"),
+        ("o", "open"),
+        ("q", "quit_view"),
+        ("?", "help"),
+        // Email actions (Gmail-native A005)
+        ("c", "compose"),
+        ("r", "reply"),
+        ("a", "reply_all"),
+        ("f", "forward"),
+        ("e", "archive"),
+        ("#", "trash"),
+        ("!", "spam"),
+        ("s", "star"),
+        ("I", "mark_read"),
+        ("U", "mark_unread"),
+        ("l", "apply_label"),
+        ("v", "move_to_label"),
+        ("x", "toggle_select"),
+        // mxr-specific
+        ("D", "unsubscribe"),
+        ("Z", "snooze"),
+        ("O", "open_in_browser"),
+        ("R", "toggle_reader_mode"),
+        ("E", "export_thread"),
+        ("V", "visual_line_mode"),
+        ("Ctrl-p", "command_palette"),
+        ("Tab", "switch_panes"),
+        ("F", "toggle_fullscreen"),
+        // Gmail go-to (A005)
+        ("gi", "go_inbox"),
+        ("gs", "go_starred"),
+        ("gt", "go_sent"),
+        ("gd", "go_drafts"),
+        ("ga", "go_all_mail"),
+        ("gl", "go_label"),
+    ];
+    for (key, action) in ml_defaults {
+        if let Ok(kb) = parse_key_string(key) {
+            mail_list.insert(kb, action.to_string());
+        }
+    }
+
+    // Message view defaults
+    let mv_defaults = [
+        ("j", "scroll_down"),
+        ("k", "scroll_up"),
+        ("R", "toggle_reader_mode"),
+        ("O", "open_in_browser"),
+        ("A", "attachment_list"),
+        ("r", "reply"),
+        ("a", "reply_all"),
+        ("f", "forward"),
+        ("e", "archive"),
+        ("#", "trash"),
+        ("!", "spam"),
+        ("s", "star"),
+        ("I", "mark_read"),
+        ("U", "mark_unread"),
+        ("D", "unsubscribe"),
+    ];
+    for (key, action) in mv_defaults {
+        if let Ok(kb) = parse_key_string(key) {
+            message_view.insert(kb, action.to_string());
+        }
+    }
+
+    // Thread view defaults
+    let tv_defaults = [
+        ("j", "next_message"),
+        ("k", "prev_message"),
+        ("r", "reply"),
+        ("a", "reply_all"),
+        ("f", "forward"),
+        ("R", "toggle_reader_mode"),
+        ("E", "export_thread"),
+        ("O", "open_in_browser"),
+        ("e", "archive"),
+        ("#", "trash"),
+        ("!", "spam"),
+        ("s", "star"),
+        ("I", "mark_read"),
+        ("U", "mark_unread"),
+        ("D", "unsubscribe"),
+    ];
+    for (key, action) in tv_defaults {
+        if let Ok(kb) = parse_key_string(key) {
+            thread_view.insert(kb, action.to_string());
+        }
+    }
+
+    KeybindingConfig {
+        mail_list,
+        message_view,
+        thread_view,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_key_string_single_char() {
+        let kb = parse_key_string("j").unwrap();
+        assert_eq!(kb.keys.len(), 1);
+        assert_eq!(kb.keys[0].code, KeyCode::Char('j'));
+        assert_eq!(kb.keys[0].modifiers, KeyModifiers::NONE);
+    }
+
+    #[test]
+    fn parse_key_string_ctrl_p() {
+        let kb = parse_key_string("Ctrl-p").unwrap();
+        assert_eq!(kb.keys.len(), 1);
+        assert_eq!(kb.keys[0].code, KeyCode::Char('p'));
+        assert_eq!(kb.keys[0].modifiers, KeyModifiers::CONTROL);
+    }
+
+    #[test]
+    fn parse_key_string_gg() {
+        let kb = parse_key_string("gg").unwrap();
+        assert_eq!(kb.keys.len(), 2);
+        assert_eq!(kb.keys[0].code, KeyCode::Char('g'));
+        assert_eq!(kb.keys[1].code, KeyCode::Char('g'));
+    }
+
+    #[test]
+    fn parse_key_string_enter() {
+        let kb = parse_key_string("Enter").unwrap();
+        assert_eq!(kb.keys.len(), 1);
+        assert_eq!(kb.keys[0].code, KeyCode::Enter);
+    }
+
+    #[test]
+    fn parse_key_string_shift() {
+        let kb = parse_key_string("G").unwrap();
+        assert_eq!(kb.keys.len(), 1);
+        assert_eq!(kb.keys[0].code, KeyCode::Char('G'));
+        assert_eq!(kb.keys[0].modifiers, KeyModifiers::SHIFT);
+    }
+
+    #[test]
+    fn default_keybindings_contain_gmail_native() {
+        let config = default_keybindings();
+
+        // Check that key actions are present
+        let actions: Vec<&str> = config.mail_list.values().map(|s| s.as_str()).collect();
+        assert!(actions.contains(&"compose"));
+        assert!(actions.contains(&"reply"));
+        assert!(actions.contains(&"reply_all"));
+        assert!(actions.contains(&"archive"));
+        assert!(actions.contains(&"trash"));
+        assert!(actions.contains(&"spam"));
+        assert!(actions.contains(&"star"));
+        assert!(actions.contains(&"mark_read"));
+        assert!(actions.contains(&"mark_unread"));
+        assert!(actions.contains(&"toggle_select"));
+        assert!(actions.contains(&"unsubscribe"));
+        assert!(actions.contains(&"snooze"));
+        assert!(actions.contains(&"visual_line_mode"));
+    }
+
+    #[test]
+    fn action_from_name_coverage() {
+        // Test that all important actions are mapped
+        assert!(action_from_name("compose").is_some());
+        assert!(action_from_name("reply").is_some());
+        assert!(action_from_name("reply_all").is_some());
+        assert!(action_from_name("forward").is_some());
+        assert!(action_from_name("archive").is_some());
+        assert!(action_from_name("trash").is_some());
+        assert!(action_from_name("spam").is_some());
+        assert!(action_from_name("star").is_some());
+        assert!(action_from_name("mark_read").is_some());
+        assert!(action_from_name("mark_unread").is_some());
+        assert!(action_from_name("unsubscribe").is_some());
+        assert!(action_from_name("snooze").is_some());
+        assert!(action_from_name("toggle_reader_mode").is_some());
+        assert!(action_from_name("toggle_select").is_some());
+        assert!(action_from_name("visual_line_mode").is_some());
+        assert!(action_from_name("go_inbox").is_some());
+        assert!(action_from_name("go_starred").is_some());
+        assert!(action_from_name("nonexistent").is_none());
+    }
+
+    #[test]
+    fn resolve_action_finds_match() {
+        let config = default_keybindings();
+        let j = KeyPress {
+            code: KeyCode::Char('j'),
+            modifiers: KeyModifiers::NONE,
+        };
+        let result = resolve_action(&config, ViewContext::MailList, &[j]);
+        assert_eq!(result, Some("move_down".to_string()));
+    }
+
+    #[test]
+    fn format_keybinding_basic() {
+        let kb = parse_key_string("Ctrl-p").unwrap();
+        assert_eq!(format_keybinding(&kb), "Ctrl-p");
+    }
+
+    #[test]
+    fn user_override_replaces_default() {
+        let mut config = default_keybindings();
+
+        // Override 'j' to do something different
+        let j_key = parse_key_string("j").unwrap();
+        config
+            .mail_list
+            .insert(j_key.clone(), "page_down".to_string());
+
+        let j_press = KeyPress {
+            code: KeyCode::Char('j'),
+            modifiers: KeyModifiers::NONE,
+        };
+        let result = resolve_action(&config, ViewContext::MailList, &[j_press]);
+        assert_eq!(result, Some("page_down".to_string()));
+    }
+}

@@ -153,7 +153,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Request::ListEnvelopes {
                         label_id: Some(label_id),
                         account_id: None,
-                        limit: 500,
+                        limit: 5000,
                         offset: 0,
                     },
                 )
@@ -188,6 +188,49 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        // Handle thread export
+        if let Some(thread_id) = app.pending_export_thread.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::GetThread { thread_id }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Thread { thread, messages },
+                    }) => {
+                        // Format as markdown
+                        let mut md = format!("# {}\n\n", thread.subject);
+                        for msg in &messages {
+                            md.push_str(&format!(
+                                "## From: {} <{}>\n**Date:** {}\n\n",
+                                msg.from.name.as_deref().unwrap_or(""),
+                                msg.from.email,
+                                msg.date.format("%Y-%m-%d %H:%M"),
+                            ));
+                            md.push_str(&format!("{}\n\n---\n\n", msg.snippet));
+                        }
+                        // Write to temp file
+                        let sanitized: String = thread
+                            .subject
+                            .chars()
+                            .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
+                            .take(50)
+                            .collect();
+                        let filename = format!("mxr-export-{}.md", sanitized.trim().replace(' ', "-"));
+                        let path = std::env::temp_dir().join(&filename);
+                        match std::fs::write(&path, &md) {
+                            Ok(()) => Ok(format!("Exported to {}", path.display())),
+                            Err(e) => Err(MxrError::Ipc(format!("Write failed: {e}"))),
+                        }
+                    }
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::ExportResult(result));
+            });
+        }
+
         // Handle compose actions
         if let Some(compose_action) = app.pending_compose.take() {
             let bg = bg.clone();
@@ -214,7 +257,8 @@ pub async fn run() -> anyhow::Result<()> {
                             if app.viewing_envelope.as_ref().map(|e| &e.id) == Some(&msg_id) {
                                 app.raw_body = body.text_plain.clone().or(body.text_html.clone());
                                 app.reader_mode = false;
-                                app.message_body = body.text_plain.or(body.text_html);
+                                app.message_body = body.text_plain.clone().or(body.text_html.clone());
+                                app.viewing_body = Some(body);
                             }
                         }
                         AsyncResult::Body(msg_id, Err(e)) => {
@@ -406,6 +450,12 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ComposeReady(Err(e)) => {
                             app.status_message = Some(format!("Compose error: {e}"));
                         }
+                        AsyncResult::ExportResult(Ok(msg)) => {
+                            app.status_message = Some(msg);
+                        }
+                        AsyncResult::ExportResult(Err(e)) => {
+                            app.status_message = Some(format!("Export failed: {e}"));
+                        }
                     }
                 }
             }
@@ -429,6 +479,7 @@ enum AsyncResult {
     LabelEnvelopes(Result<Vec<mxr_core::Envelope>, MxrError>),
     MutationResult(Result<app::MutationEffect, MxrError>),
     ComposeReady(Result<ComposeReadyData, MxrError>),
+    ExportResult(Result<String, MxrError>),
 }
 
 struct ComposeReadyData {

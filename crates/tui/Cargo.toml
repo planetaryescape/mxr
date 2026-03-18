@@ -6,7 +6,9 @@ license.workspace = true
 
 [dependencies]
 mxr-core = { workspace = true }
+mxr-compose = { workspace = true }
 mxr-protocol = { workspace = true }
+mxr-reader = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { version = "0.28", features = ["event-stream"] }
 tokio = { workspace = true }
@@ -16,3 +18,6 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 dirs = { workspace = true }
 chrono = { workspace = true }
+unicode-width = { workspace = true }
+toml = { workspace = true }
+serde = { workspace = true }

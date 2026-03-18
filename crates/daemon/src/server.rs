@@ -20,14 +20,40 @@ pub async fn run_daemon() -> anyhow::Result<()> {
     let listener = UnixListener::bind(&sock_path)?;
     tracing::info!("Daemon listening on {}", sock_path.display());
 
-    // Initial sync with FakeProvider
+    // Reindex search if empty but DB has messages
     {
-        let count = state
-            .sync_engine
-            .sync_account(state.provider.as_ref())
-            .await?;
-        tracing::info!("Initial sync complete: {} messages", count);
+        let search = state.search.lock().await;
+        let test_results = search.search("*", 1);
+        let index_empty = test_results.map(|r| r.is_empty()).unwrap_or(true);
+        drop(search);
+
+        if index_empty {
+            let accounts = state.store.list_accounts().await.unwrap_or_default();
+            for account in &accounts {
+                let envelopes = state
+                    .store
+                    .list_envelopes_by_account(&account.id, 10000, 0)
+                    .await
+                    .unwrap_or_default();
+                if !envelopes.is_empty() {
+                    tracing::info!(
+                        "Reindexing {} existing messages for {}",
+                        envelopes.len(),
+                        account.email
+                    );
+                    let mut search = state.search.lock().await;
+                    for env in &envelopes {
+                        let _ = search.index_envelope(env);
+                    }
+                    let _ = search.commit();
+                }
+            }
+        }
     }
+
+    // All syncing happens in the background sync_loop — no blocking initial sync.
+    // The daemon starts accepting clients immediately. The sync_loop detects
+    // Initial/GmailBackfill cursors and handles them with no startup delay.
 
     // Spawn background loops
     let sync_state = state.clone();
@@ -88,6 +114,8 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    eprint!("Starting daemon...");
+
     let exe = std::env::current_exe()?;
     std::process::Command::new(exe)
         .arg("daemon")
@@ -96,12 +124,27 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
         .stderr(std::process::Stdio::null())
         .spawn()?;
 
-    for i in 0..20 {
+    for i in 0..40 {
         tokio::time::sleep(std::time::Duration::from_millis(100 * (i + 1))).await;
         if tokio::net::UnixStream::connect(&sock_path).await.is_ok() {
+            eprintln!(" ready.");
             return Ok(());
         }
     }
 
-    anyhow::bail!("Failed to start daemon")
+    eprintln!(" failed.");
+    let log_path = AppState::data_dir().join("logs/mxr.log");
+    if log_path.exists() {
+        if let Ok(contents) = std::fs::read_to_string(&log_path) {
+            let last_lines: Vec<&str> = contents.lines().rev().take(5).collect();
+            eprintln!("Recent daemon logs:");
+            for line in last_lines.into_iter().rev() {
+                eprintln!("  {line}");
+            }
+        }
+    }
+    anyhow::bail!(
+        "Failed to start daemon. Check logs at {}",
+        log_path.display()
+    )
 }

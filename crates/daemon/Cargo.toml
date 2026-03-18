@@ -10,12 +10,19 @@ path = "src/main.rs"
 
 [dependencies]
 mxr-core = { workspace = true }
+mxr-config = { workspace = true }
 mxr-store = { workspace = true }
 mxr-search = { workspace = true }
 mxr-protocol = { workspace = true }
 mxr-provider-fake = { workspace = true }
+mxr-provider-gmail = { workspace = true }
 mxr-sync = { workspace = true }
+mxr-compose = { workspace = true }
+mxr-reader = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
 mxr-tui = { path = "../tui" }
+chrono = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -24,6 +31,7 @@ serde_json = { workspace = true }
 tokio-util = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true }
+clap_complete = { workspace = true }
 dirs = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }

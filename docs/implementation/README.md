@@ -6,10 +6,11 @@ Phased implementation plans for building mxr. Each document is designed to be co
 
 1. Read the [blueprint](../blueprint/) first for requirements and design rationale
 2. Read the [addendum](../blueprint/16-addendum.md) for post-blueprint amendments (A001-A008)
-3. Implement phases in order (each phase depends on the previous)
-4. Within each phase, follow the step ordering (dependency-driven)
-5. Use the "Definition of Done" section to verify each phase before moving on
-6. Refer to [decision log](../blueprint/15-decision-log.md) when making implementation choices — do not re-debate settled decisions
+3. Read the [release pipeline](../blueprint/17-release-pipeline.md) for CI/CD, publishing, and release automation (D066-D071)
+4. Implement phases in order (each phase depends on the previous)
+5. Within each phase, follow the step ordering (dependency-driven)
+6. Use the "Definition of Done" section to verify each phase before moving on
+7. Refer to [decision log](../blueprint/15-decision-log.md) when making implementation choices — do not re-debate settled decisions
 
 ## Document Index
 
@@ -20,7 +21,7 @@ Phased implementation plans for building mxr. Each document is designed to be co
 | 02 | [Phase 1](02-phase-1.md) | 1 | Gmail read-only + search: Gmail adapter, real sync, query parser, TUI enhancements, config. Includes A004 read CLIs (cat/thread/headers/count/saved), A005 g-prefix navigation, A006 basic status/logs. |
 | 03 | [Phase 2](03-phase-2.md) | 2 | Compose + mutations + reader mode + IMAP. Includes A001 inline compose, A002 markdown rendering, A004 full mutation CLIs + batch --search, A005 Gmail-native keybindings, A007 basic batch ops (x/V select), A008 IMAP first-party adapter. |
 | 04 | [Phase 3](04-phase-3.md) | 3 | Export + rules + polish. Includes A004 remaining CLIs (labels/notify/events), A006 full observability (logs/status/events/doctor --check), A007 advanced batch (pattern select/vim counts). |
-| 05 | [Phase 4](05-phase-4.md) | 4 | Community + release: adapter kit (validates against both Gmail + IMAP), binary releases, install methods, docs site with full CLI/keybinding/observability reference. |
+| 05 | [Phase 4](05-phase-4.md) | 4 | Community + release: adapter kit (validates against both Gmail + IMAP), binary releases (musl static + cross-compilation), crates.io workspace publishing, changelog (git-cliff), Homebrew auto-update, install methods, docs site with full CLI/keybinding/observability reference. Integrates release pipeline addendum (D066-D071). |
 
 ## Addendum Feature Distribution
 
@@ -36,6 +37,7 @@ Every addendum feature (A001-A008) mapped to its implementation phase:
 | A006 | Daemon observability | Phase 0 (tracing init + event_log table), Phase 1 (basic status), Phase 3 (full logs/events/doctor) |
 | A007 | TUI batch operations | Phase 2 (x toggle + V visual + basic batch), Phase 3 (pattern select + vim counts) |
 | A008 | IMAP first-party | Phase 2 (adapter + JWZ threading) |
+| A009 | Bug reporting (`mxr bug-report`) | Phase 4 (sanitizer, report generator, CLI subcommand, log retention/pruning) |
 
 ## Key Decisions Encoded
 
@@ -52,6 +54,15 @@ These decisions are settled (see [decision log](../blueprint/15-decision-log.md)
 - IMAP is first-party, not community (D048, overrides D015)
 - Every TUI action has a CLI equivalent (D026)
 - Auto-format detection: TTY → table, piped → json (D032)
+- Semver + conventional commits + git-cliff for changelogs (D066)
+- Cross-compilation: `cross` for Linux musl, native for macOS (D067)
+- Workspace publish via `cargo-workspaces` (D068)
+- Homebrew tap with auto-update on release (D069)
+- No Windows builds in v1 (D070)
+- cargo-binstall compatibility via naming convention (D071)
+- `mxr bug-report` single diagnostic capture command (D072)
+- Automatic log sanitization with opt-out (D073)
+- Log retention: 90 days, 250 MB max text logs (D074)
 
 ## Phase Dependencies
 

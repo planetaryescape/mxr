@@ -773,50 +773,48 @@ By submitting a PR, you agree to license your contribution under these terms.
 
 ### Issue Templates
 
-`.github/ISSUE_TEMPLATE/bug_report.yml`:
+`.github/ISSUE_TEMPLATE/bug_report.yml` (updated per A009 to integrate with `mxr bug-report`):
 ```yaml
 name: Bug Report
 description: Report a bug in mxr
-labels: ["bug"]
+labels: [bug]
 body:
-  - type: input
-    id: version
-    attributes:
-      label: mxr version
-      description: "Output of `mxr --version`"
-    validations:
-      required: true
-  - type: input
-    id: os
-    attributes:
-      label: Operating System
-      placeholder: "e.g., macOS 14.2, Ubuntu 24.04, Arch Linux"
-    validations:
-      required: true
   - type: textarea
-    id: steps
+    id: report
+    attributes:
+      label: Bug Report
+      description: |
+        Paste the output of `mxr bug-report --stdout` below,
+        or describe the issue manually.
+      placeholder: |
+        Run `mxr bug-report --stdout` and paste the output here,
+        or describe the bug manually.
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
     attributes:
       label: Steps to Reproduce
-      description: Minimal steps to reproduce the behavior
+      description: How can we reproduce this?
     validations:
       required: true
+
   - type: textarea
-    id: expected
+    id: additional
     attributes:
-      label: Expected Behavior
+      label: Additional Context
+      description: Screenshots, additional logs, related issues, etc.
     validations:
-      required: true
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual Behavior
-    validations:
-      required: true
-  - type: textarea
-    id: logs
-    attributes:
-      label: Logs / Screenshots
-      description: "Relevant output from `mxr doctor` or daemon logs"
+      required: false
 ```
 
 `.github/ISSUE_TEMPLATE/feature_request.yml`:
@@ -879,92 +877,452 @@ body:
       description: "Delta sync strategy, auth mechanism, known limitations"
 ```
 
+### `mxr bug-report` Command (A009, D072-D074)
+
+A single command that generates a sanitized diagnostic bundle ready to paste into a GitHub issue. Builds on top of the logging infrastructure from A006 (Phase 0/3) and the `mxr doctor`/`mxr status`/`mxr logs` commands from Phase 3.
+
+#### 2.1 BugReportSanitizer
+
+`crates/cli/src/bug_report.rs` (or `crates/daemon/src/commands/bug_report.rs` if executed daemon-side):
+
+```rust
+use regex::Regex;
+
+pub struct BugReportSanitizer;
+
+impl BugReportSanitizer {
+    /// Sanitize text by redacting sensitive information.
+    /// Errs on the side of over-redacting (D073).
+    pub fn sanitize(text: &str) -> String {
+        let text = Self::redact_emails(text);
+        let text = Self::redact_tokens(&text);
+        let text = Self::redact_passwords(&text);
+        let text = Self::redact_api_keys(&text);
+        let text = Self::redact_subjects(&text);
+        let text = Self::redact_bodies(&text);
+        let text = Self::redact_ips(&text);
+        Self::anonymize_paths(&text)
+    }
+
+    fn redact_emails(text: &str) -> String {
+        let re = Regex::new(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}").unwrap();
+        re.replace_all(text, "[REDACTED_EMAIL]").into_owned()
+    }
+
+    fn redact_tokens(text: &str) -> String {
+        // Match common token patterns: Bearer tokens, OAuth tokens, etc.
+        let re = Regex::new(r"(?i)(bearer|token|oauth|access_token|refresh_token)\s*[=:]\s*\S+").unwrap();
+        re.replace_all(text, "$1=[REDACTED]").into_owned()
+    }
+
+    fn redact_passwords(text: &str) -> String {
+        let re = Regex::new(r"(?i)(password|password_ref|secret)\s*[=:]\s*\S+").unwrap();
+        re.replace_all(text, "$1=[REDACTED]").into_owned()
+    }
+
+    fn redact_api_keys(text: &str) -> String {
+        let re = Regex::new(r"(?i)(api_key|apikey|client_secret)\s*[=:]\s*\S+").unwrap();
+        re.replace_all(text, "$1=[REDACTED]").into_owned()
+    }
+
+    fn redact_subjects(text: &str) -> String {
+        let re = Regex::new(r"(?i)subject\s*[=:]\s*.*").unwrap();
+        re.replace_all(text, "subject=[REDACTED_SUBJECT]").into_owned()
+    }
+
+    fn redact_bodies(text: &str) -> String {
+        let re = Regex::new(r"(?i)body\s*[=:]\s*.*").unwrap();
+        re.replace_all(text, "body=[REDACTED_BODY]").into_owned()
+    }
+
+    fn redact_ips(text: &str) -> String {
+        let re = Regex::new(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b").unwrap();
+        re.replace_all(text, "[REDACTED_IP]").into_owned()
+    }
+
+    fn anonymize_paths(text: &str) -> String {
+        // Replace absolute home paths with ~/
+        if let Some(home) = std::env::var("HOME").ok() {
+            text.replace(&home, "~")
+        } else {
+            text.to_string()
+        }
+    }
+}
+```
+
+#### 2.2 Report Generator
+
+The report generator collects data from multiple sources and assembles the markdown report:
+
+```rust
+pub struct BugReportGenerator {
+    daemon_client: Option<DaemonClient>,
+}
+
+impl BugReportGenerator {
+    pub async fn generate(&self, opts: &BugReportOpts) -> Result<String> {
+        let mut report = String::new();
+
+        report.push_str("# mxr Bug Report\n\n");
+
+        // System info (always available, no daemon needed)
+        report.push_str(&self.system_info());
+
+        // Config summary (read from config file, sanitized)
+        report.push_str(&self.config_summary()?);
+
+        // Daemon-dependent sections (gracefully degrade if daemon not running)
+        if let Some(client) = &self.daemon_client {
+            report.push_str(&self.daemon_status(client).await?);
+            report.push_str(&self.account_health(client).await?);
+            report.push_str(&self.sync_history(client).await?);
+            report.push_str(&self.recent_errors(client).await?);
+        } else {
+            report.push_str("\n## Daemon Status\nDaemon not running.\n");
+        }
+
+        // Recent logs (read directly from log file)
+        let log_lines = match (opts.full_logs, opts.verbose) {
+            (true, _) => usize::MAX,
+            (_, true) => 500,
+            _ => 100,
+        };
+        report.push_str(&self.recent_logs(log_lines, opts.since.as_deref())?);
+
+        // User sections
+        report.push_str("\n## User Description\n[Please describe the bug here]\n\n");
+        report.push_str("## Steps to Reproduce\n[Please describe how to reproduce]\n\n");
+        report.push_str("## Expected Behavior\n[What did you expect to happen?]\n\n");
+        report.push_str("## Actual Behavior\n[What actually happened?]\n");
+
+        // Sanitize unless explicitly opted out
+        if !opts.no_sanitize {
+            Ok(BugReportSanitizer::sanitize(&report))
+        } else {
+            Ok(report)
+        }
+    }
+
+    fn system_info(&self) -> String {
+        format!(
+            "## System\n\
+             - mxr version: {version} (built {build_date}, commit {commit})\n\
+             - OS: {os}\n\
+             - Architecture: {arch}\n\
+             - Terminal: {term}\n\
+             - Shell: {shell}\n\
+             - $EDITOR: {editor}\n\
+             - Rust: {rust}\n\n",
+            version = env!("CARGO_PKG_VERSION"),
+            build_date = option_env!("MXR_BUILD_DATE").unwrap_or("unknown"),
+            commit = option_env!("MXR_BUILD_COMMIT").unwrap_or("unknown"),
+            os = Self::detect_os(),
+            arch = std::env::consts::ARCH,
+            term = std::env::var("TERM").unwrap_or_else(|_| "unknown".into()),
+            shell = std::env::var("SHELL").unwrap_or_else(|_| "unknown".into()),
+            editor = std::env::var("EDITOR").unwrap_or_else(|_| "not set".into()),
+            rust = Self::detect_rust_version(),
+        )
+    }
+}
+```
+
+#### 2.3 CLI Subcommand
+
+Add `bug-report` as a clap subcommand:
+
+```rust
+/// Generate a sanitized diagnostic bundle for bug reports
+#[derive(Parser)]
+pub struct BugReportOpts {
+    /// Open report in $EDITOR for review before sharing
+    #[arg(long)]
+    edit: bool,
+
+    /// Print report to stdout (for piping)
+    #[arg(long)]
+    stdout: bool,
+
+    /// Copy report to clipboard
+    #[arg(long)]
+    clipboard: bool,
+
+    /// Open GitHub issue with report pre-filled
+    #[arg(long)]
+    github: bool,
+
+    /// Save report to specific path
+    #[arg(long)]
+    output: Option<PathBuf>,
+
+    /// Include debug-level logs (last 500 lines instead of 100)
+    #[arg(long)]
+    verbose: bool,
+
+    /// Include ALL logs from today
+    #[arg(long)]
+    full_logs: bool,
+
+    /// Skip sanitization (warned about risks)
+    #[arg(long)]
+    no_sanitize: bool,
+
+    /// Only include logs from the given duration (e.g., "2h", "30m")
+    #[arg(long)]
+    since: Option<String>,
+}
+```
+
+#### 2.4 `--github` Flag Implementation
+
+```rust
+fn open_github_issue(report: &str) -> Result<()> {
+    let encoded = urlencoding::encode(report);
+    let url = format!(
+        "https://github.com/planetaryescape/mxr/issues/new?template=bug_report.yml&body={}",
+        encoded
+    );
+
+    // URL length limit (~8000 chars for most browsers)
+    if url.len() > 8000 {
+        let path = save_to_temp(report)?;
+        eprintln!("Report too large for URL pre-fill.");
+        eprintln!("Report saved to: {}", path.display());
+        eprintln!("Please paste it into the issue.");
+        // Open issue page without pre-fill
+        opener::open("https://github.com/planetaryescape/mxr/issues/new?template=bug_report.yml")?;
+    } else {
+        opener::open(&url)?;
+    }
+    Ok(())
+}
+```
+
+#### 2.5 `--clipboard` Flag Implementation
+
+```rust
+fn copy_to_clipboard(text: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::{Command, Stdio};
+        let mut child = Command::new("pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()?;
+        child.stdin.as_mut().unwrap().write_all(text.as_bytes())?;
+        child.wait()?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // Try xclip first, fall back to xsel
+        use std::process::{Command, Stdio};
+        let result = Command::new("xclip")
+            .args(["-selection", "clipboard"])
+            .stdin(Stdio::piped())
+            .spawn();
+        match result {
+            Ok(mut child) => {
+                child.stdin.as_mut().unwrap().write_all(text.as_bytes())?;
+                child.wait()?;
+            }
+            Err(_) => {
+                let mut child = Command::new("xsel")
+                    .arg("--clipboard")
+                    .stdin(Stdio::piped())
+                    .spawn()?;
+                child.stdin.as_mut().unwrap().write_all(text.as_bytes())?;
+                child.wait()?;
+            }
+        }
+    }
+    Ok(())
+}
+```
+
+#### 2.6 Log Retention and Pruning
+
+The daemon runs a daily cleanup job (or on startup) that prunes old rows per D074:
+
+```rust
+/// Prune old log entries based on retention config.
+/// Called on daemon startup and daily by the background scheduler.
+pub async fn prune_logs(pool: &SqlitePool, retention_days: u32) -> Result<()> {
+    let cutoff = Utc::now() - chrono::Duration::days(retention_days as i64);
+    let cutoff_ts = cutoff.timestamp();
+
+    sqlx::query("DELETE FROM event_log WHERE timestamp < ?")
+        .bind(cutoff_ts)
+        .execute(pool)
+        .await?;
+
+    sqlx::query("DELETE FROM sync_log WHERE started_at < ?")
+        .bind(cutoff_ts)
+        .execute(pool)
+        .await?;
+
+    sqlx::query("DELETE FROM ai_usage WHERE timestamp < ?")
+        .bind(cutoff_ts)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+```
+
+`mxr logs --purge` CLI flags:
+
+```rust
+/// Purge log entries
+#[derive(Parser)]
+pub struct LogsPurgeOpts {
+    /// Delete logs older than retention period
+    #[arg(long)]
+    purge: bool,
+
+    /// Delete logs before specific date (YYYY-MM-DD)
+    #[arg(long)]
+    before: Option<String>,
+
+    /// Delete ALL logs (requires confirmation)
+    #[arg(long)]
+    all: bool,
+}
+```
+
+`mxr doctor --store-stats` extends the existing doctor command to report log disk usage:
+- Text log file sizes (current + rotated)
+- event_log row count and approximate size
+- sync_log row count
+- Total log disk usage
+
 ---
 
 ## Step 3: Binary Releases
 
 ### 3.1 Release Workflow
 
+Uses `musl` for Linux targets to produce fully static binaries (no glibc dependency — runs on any Linux distro). Uses `cross` for containerized cross-compilation on Linux. Native compilation for macOS targets on macOS runners (D067).
+
+Binary naming: `mxr-v{version}-{target}.tar.gz` — follows cargo-binstall convention for free compatibility (D071).
+
+Each archive contains: `mxr` binary, `LICENSE-MIT`, `LICENSE-APACHE`, `README.md`.
+
 `.github/workflows/release.yml`:
 ```yaml
-name: Release
-
+name: Release binaries
 on:
   push:
-    tags:
-      - "v*"
+    tags: ['v*']
 
 permissions:
   contents: write
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            artifact: mxr-linux-x86_64
-          - target: aarch64-unknown-linux-gnu
+            archive: mxr-linux-x86_64.tar.gz
+          - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
-            artifact: mxr-linux-aarch64
+            archive: mxr-linux-aarch64.tar.gz
           - target: x86_64-apple-darwin
             os: macos-latest
-            artifact: mxr-macos-x86_64
+            archive: mxr-macos-x86_64.tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
-            artifact: mxr-macos-aarch64
-
-    runs-on: ${{ matrix.os }}
+            archive: mxr-macos-aarch64.tar.gz
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools (Linux aarch64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+      # For Linux cross-compilation
+      - name: Install cross-compilation tools
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          sudo apt-get install -y musl-tools
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
 
-      - name: Install cargo-zigbuild
-        if: contains(matrix.target, 'linux')
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # Build with cross for Linux targets (handles cross-compilation toolchains)
+      - name: Install cross
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo install cross
+
+      - name: Build (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: cross build --release --target ${{ matrix.target }} --all-features
+
+      - name: Build (macOS)
+        if: matrix.os == 'macos-latest'
+        run: cargo build --release --target ${{ matrix.target }} --all-features
+
+      - name: Package
         run: |
-          pip3 install ziglang
-          cargo install cargo-zigbuild
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          ARCHIVE="mxr-v${VERSION}-${{ matrix.archive }}"
+          mkdir -p release
+          cp target/${{ matrix.target }}/release/mxr release/
+          cp LICENSE-MIT LICENSE-APACHE README.md release/
+          cd release
+          tar czf "../${ARCHIVE}" *
+          cd ..
+          echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
-      - name: Build (Linux via zigbuild)
-        if: contains(matrix.target, 'linux')
-        run: cargo zigbuild --release --target ${{ matrix.target }}
-
-      - name: Build (macOS native)
-        if: contains(matrix.target, 'apple')
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Package binary
+      - name: Generate SHA256 checksum
         run: |
-          mkdir -p dist
-          cp target/${{ matrix.target }}/release/mxr dist/${{ matrix.artifact }}
-          cd dist
-          shasum -a 256 ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
-          tar czf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
-          shasum -a 256 ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
+          sha256sum "${{ env.ARCHIVE }}" > "${{ env.ARCHIVE }}.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/
+          name: ${{ matrix.target }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+
+  publish-crates:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify version matches tag
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match Cargo.toml version ($CARGO_VERSION)"
+            exit 1
+          fi
+
+      - name: Install cargo-workspaces
+        run: cargo install cargo-workspaces
+
+      - name: Publish all crates
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo workspaces publish --from-git --yes
 
   release:
-    needs: build
+    name: Create GitHub Release
+    needs: [build, publish-crates]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -972,68 +1330,335 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts/
+          path: artifacts
+          merge-multiple: true
 
-      - name: Create GitHub Release
+      - name: Generate changelog for this release
+        id: changelog
+        run: |
+          # Get commits since last tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD")
+          else
+            CHANGES=$(git log --pretty=format:"- %s (%h)")
+          fi
+          echo "changes<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          files: |
-            artifacts/**/*.tar.gz
-            artifacts/**/*.sha256
+          files: artifacts/*
+          generate_release_notes: false
+          body: |
+            ## Installation
+
+            **Cargo (from source):**
+            ```bash
+            cargo install mxr
+            # With AI features:
+            cargo install mxr --features ai
+            ```
+
+            **Pre-built binaries:**
+            Download the appropriate binary for your platform below, extract, and place `mxr` in your `$PATH`.
+
+            **Homebrew (macOS/Linux):**
+            ```bash
+            brew install mxr
+            ```
+
+            **cargo-binstall (pre-built, no compile):**
+            ```bash
+            cargo binstall mxr
+            ```
+
+            ## Checksums
+            SHA256 checksums are provided alongside each binary. Verify with:
+            ```bash
+            sha256sum -c mxr-v*.sha256
+            ```
+
+            ## What's changed
+            ${{ steps.changelog.outputs.changes }}
+
+  update-homebrew:
+    name: Update Homebrew formula
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew formula
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: mxr
+          homebrew-tap: planetaryescape/homebrew-mxr
+          download-url: https://github.com/planetaryescape/mxr/releases/download/${{ github.ref_name }}/mxr-${{ github.ref_name }}-macos-aarch64.tar.gz
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+  deploy-docs:
+    name: Deploy docs site
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - working-directory: site
+        run: npm ci
+      - working-directory: site
+        run: npm run build
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: mxr-docs
+          directory: site/dist
 ```
 
+### Required GitHub Secrets
+
+| Secret | Purpose |
+|---|---|
+| `CARGO_REGISTRY_TOKEN` | crates.io API token for publishing |
+| `HOMEBREW_TAP_TOKEN` | GitHub PAT with push access to the homebrew-tap repo |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare Pages deployment |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier |
+
 ### 3.2 CI Workflow (existing, updated)
+
+Every pull request runs these checks. All must pass before merge. Jobs are split for clear failure diagnosis.
 
 `.github/workflows/ci.yml`:
 ```yaml
 name: CI
-
 on:
-  push:
-    branches: [main]
   pull_request:
+  push:
     branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
 
 jobs:
-  check:
+  fmt:
+    name: Formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Format check
-        run: cargo fmt --check
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --all-features
 
-      - name: Clippy
-        run: cargo clippy -- -D warnings
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --all-features
 
-      - name: Tests
-        run: cargo test
+  # Verify sqlx compile-time checked queries
+  sqlx-check:
+    name: SQLx Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo sqlx prepare --check --workspace
 
-      - name: Build
-        run: cargo build
+  # Docs site build check
+  docs:
+    name: Docs Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - working-directory: site
+        run: npm ci
+      - working-directory: site
+        run: npm run build
+
+  # Privacy/terms sync check
+  policy-sync:
+    name: Policy Sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check privacy policy sync
+        run: diff PRIVACY.md site/src/pages/privacy.md
+      - name: Check terms sync
+        run: diff TERMS.md site/src/pages/terms.md
+
+  # Optional: enforce conventional commit messages
+  commit-lint:
+    name: Commit Message Lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v5
+        with:
+          configFile: .commitlintrc.yml
 ```
 
-### 3.3 Versioning
+### 3.3 Versioning (D066)
 
-- Follow SemVer strictly
+Semantic versioning with conventional commits for automated changelog generation.
+
+- **PATCH** (0.1.0 → 0.1.1): Bug fixes, dependency updates, docs fixes. No new features. No breaking changes.
+- **MINOR** (0.1.1 → 0.2.0): New features, non-breaking additions. New CLI commands, new config options, new keybindings.
+- **MAJOR** (0.x → 1.0.0): Breaking changes to CLI interface, config format, IPC protocol, or provider trait API. Pre-1.0, minor versions can include breaking changes (standard Rust convention).
 - Tag format: `v{major}.{minor}.{patch}` (e.g., `v0.1.0`)
 - Initial public release: `v0.1.0` (not 1.0 — signals API may still evolve)
 - `mxr-core` version tracks independently from the main binary (it has its own semver commitments for adapter authors)
-- Use `cargo-release` or manual tag push:
-  ```bash
-  # Update version in Cargo.toml files
-  # Commit: "release: v0.1.0"
-  git tag v0.1.0
-  git push origin v0.1.0
-  ```
+
+### 3.4 Commit Convention
+
+Use conventional commits for clean changelog generation:
+
+```
+feat: add IMAP adapter
+fix: handle expired OAuth token gracefully
+docs: add search syntax reference
+refactor: simplify sync engine delta tracking
+perf: batch Tantivy index commits
+ci: add aarch64 Linux build target
+chore: update dependencies
+```
+
+Document in `CONTRIBUTING.md` and enforce with commit-lint in CI (see 3.2).
+
+### 3.5 Changelog Generation (git-cliff)
+
+`git-cliff` generates changelogs from conventional commits. Rust-native tool.
+
+`cliff.toml`:
+```toml
+[changelog]
+header = "# Changelog\n\n"
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})\
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+commit_parsers = [
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Bug Fixes" },
+    { message = "^doc", group = "Documentation" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Refactoring" },
+    { message = "^ci", group = "CI" },
+    { message = "^chore", skip = true },
+    { message = "^style", skip = true },
+]
+```
+
+### 3.6 Crates.io Workspace Publishing (D068)
+
+Crates must be published in dependency order (leaf crates first). Use `cargo-workspaces` which resolves the dependency graph automatically and waits for crates.io index propagation.
+
+Publish order (for reference — `cargo-workspaces` handles this automatically):
+
+```
+1. mxr-core           # No internal dependencies
+2. mxr-protocol       # Depends on: core
+3. mxr-store          # Depends on: core
+4. mxr-search         # Depends on: core
+5. mxr-reader         # Depends on: core
+6. mxr-provider-fake  # Depends on: core
+7. mxr-provider-gmail # Depends on: core
+8. mxr-provider-imap  # Depends on: core
+9. mxr-provider-smtp  # Depends on: core
+10. mxr-compose       # Depends on: core, store
+11. mxr-rules         # Depends on: core, store
+12. mxr-export        # Depends on: core, store, reader
+13. mxr-sync          # Depends on: core, store, search
+14. mxr-ai            # Depends on: core (behind feature flag)
+15. mxr-daemon        # Depends on: most crates
+16. mxr-tui           # Depends on: core, protocol
+17. mxr-cli           # Depends on: core, protocol (the binary crate)
+```
+
+Why publish individual crates: `mxr-core` is the stable API for community adapters. Individual crates let users depend on just what they need. Rust ecosystem convention.
+
+### 3.7 Complete Release Flow (End to End)
+
+```
+1. Developer finishes work, merges to main
+2. CI runs on main: fmt, clippy, test, build, sqlx-check, docs build, policy sync
+3. Developer updates version in Cargo.toml
+4. Developer runs: git cliff --output CHANGELOG.md
+5. Developer commits: git commit -m "chore: release v0.1.0"
+6. Developer tags: git tag v0.1.0
+7. Developer pushes: git push origin main v0.1.0
+8. Tag triggers release pipeline:
+   a. Verify tag version matches Cargo.toml version
+   b. Build cross-compiled binaries (4 targets)
+   c. Generate SHA256 checksums
+   d. Publish crates to crates.io (dependency order via cargo-workspaces)
+   e. Create GitHub Release with binaries, checksums, and changelog
+   f. Update Homebrew formula (auto-PR to tap repo)
+   g. Deploy docs site to Cloudflare Pages
+9. Done. Users can now:
+   - cargo install mxr
+   - cargo binstall mxr
+   - brew install mxr
+   - Download binary from GitHub Releases
+```
+
+### 3.8 Pre-release Checklist (manual, before tagging)
+
+1. Update version in root `Cargo.toml` (workspace version)
+2. Run `git cliff --output CHANGELOG.md`
+3. Verify CI is green on main
+4. Commit version bump + changelog
+5. Tag and push
 
 ---
 
@@ -1112,12 +1737,19 @@ brew tap planetaryescape/tap
 brew install mxr
 ```
 
-**Automation**: Add a step to the release workflow that updates the Homebrew formula SHA256 values after binaries are uploaded. Use a GitHub Action that:
-1. Downloads the release artifacts
-2. Computes SHA256 for each
-3. Opens a PR against `homebrew-tap` with updated SHA256 values
+**Automation**: The release workflow (3.1) includes an `update-homebrew` job that uses `mislav/bump-homebrew-formula-action` to automatically create a PR on the tap repo with updated URLs and SHA256 checksums whenever a new release is published (D069).
 
-### 4.3 AUR Package
+### 4.3 cargo-binstall (D071)
+
+Zero extra work. If GitHub Release assets follow the naming pattern `{name}-v{version}-{target}.tar.gz` (which ours do), cargo-binstall installs pre-built binaries automatically:
+
+```bash
+cargo binstall mxr
+```
+
+This gives users a fast install path without the 5+ minute compile time of `cargo install mxr`, and requires no infrastructure beyond what the release workflow already builds.
+
+### 4.4 AUR Package
 
 `PKGBUILD` (hosted in AUR or a separate `mxr-aur` repo):
 ```bash
@@ -1154,7 +1786,19 @@ package() {
 
 There is also a binary variant (`mxr-bin`) that downloads pre-built binaries instead of compiling from source.
 
-### 4.4 Nix Package
+### 4.4.1 Packaging Directory Structure
+
+```
+packaging/
+├── aur/
+│   ├── mxr-bin/PKGBUILD       # Pre-built binary
+│   └── mxr/PKGBUILD           # Build from source
+├── homebrew/
+│   └── mxr.rb                  # Formula template
+└── deb/                         # Future: .deb package
+```
+
+### 4.5 Nix Package
 
 `flake.nix` at project root:
 ```nix
@@ -1226,7 +1870,7 @@ nix profile install github:planetaryescape/mxr
 nix develop github:planetaryescape/mxr
 ```
 
-### 4.5 Install Script
+### 4.6 Install Script
 
 `install.sh` (hosted at project root, served from GitHub raw URL or docs site):
 ```bash
@@ -1749,6 +2393,7 @@ Before announcing, verify ALL of the following:
 - [ ] GitHub releases page has binaries with checksums
 - [ ] `mxr --version` shows correct version
 - [ ] `mxr doctor` passes all checks
+- [ ] `mxr bug-report --stdout` generates sanitized report without errors
 - [ ] License files present (LICENSE-MIT, LICENSE-APACHE)
 - [ ] Demo GIF is current and looks good
 - [ ] Blog post is reviewed
@@ -1762,13 +2407,16 @@ Phase 4 is complete when ALL of the following are true:
 
 1. **Adapter kit**: Conformance test suite exists in `mxr-provider-fake`. FakeProvider AND IMAP adapter both pass all conformance tests (validating the suite against two genuinely different protocols). Fixture data module exports canonical test messages/threads/labels. Adapter skeleton in `examples/adapter-skeleton/` compiles and shows structure. Adapter development guide covers all topics listed in Step 1.7, referencing IMAP as a second real-world reference implementation alongside FakeProvider.
 2. **mxr-core published**: `mxr-core` is on crates.io with stable provider traits. `#[non_exhaustive]` on extensible types. Public API audited.
-3. **CONTRIBUTING.md**: Complete with dev setup, code style, how-to sections, non-negotiable principles, PR guidelines. Issue templates created for bug reports, feature requests, and adapter proposals.
-4. **Binary releases**: GitHub Actions release workflow runs on tag push. Produces binaries for Linux x86_64, Linux aarch64, macOS x86_64, macOS aarch64. SHA256 checksums generated. GitHub Release created with binaries attached.
-5. **Install methods**: `cargo install mxr` works. Homebrew formula in `planetaryescape/homebrew-tap` installs correctly. AUR PKGBUILD builds and installs. Nix flake builds and runs. Install script works on macOS and Linux.
-6. **Documentation site**: mdBook site builds from `docs/book/`. Deployed to GitHub Pages via CI. Contains: installation, getting started, user guide, configuration reference (incl. `[logging]` section), keybinding reference (vim+Gmail hierarchy explained per A005), search syntax, rules syntax, complete CLI reference (all commands from A004), observability & monitoring guide (`mxr logs`/`status`/`events` per A006), adapter development guide, FAQ. Search works.
-7. **README**: Project description, differentiation table, screenshots/GIFs, quick start, install methods, feature highlights, CLI scriptability examples (from A004), links to docs, license, contributing link.
-8. **Announcement ready**: Blog post drafted. Demo GIF created. Launch checklist passed. Target channels identified.
-9. **CI passes**: All workflows green — `ci.yml` (fmt, clippy, test, build), `release.yml` (binary builds), `docs.yml` (mdBook deploy).
+3. **CONTRIBUTING.md**: Complete with dev setup, code style, how-to sections, non-negotiable principles, PR guidelines. Issue templates created for bug reports (integrated with `mxr bug-report`), feature requests, and adapter proposals.
+4. **Bug reporting (A009)**: `mxr bug-report` generates sanitized diagnostic bundle (system info, config, account health, sync history, errors, logs). Auto-sanitization redacts emails, tokens, passwords, API keys, subjects, bodies (D073). `--github` opens pre-filled issue. `--clipboard`/`--stdout`/`--edit` output modes work. Log retention defaults configured (D074). `mxr logs --purge` works. `mxr doctor --store-stats` reports log disk usage.
+5. **Binary releases**: GitHub Actions release workflow runs on tag push. Produces static musl binaries for Linux x86_64, Linux aarch64, and native macOS x86_64, macOS aarch64. SHA256 checksums generated. GitHub Release created with binaries, checksums, and changelog. Homebrew formula auto-updated via PR. Docs site deployed on release.
+6. **Install methods**: `cargo install mxr` works. `cargo binstall mxr` installs pre-built binary. Homebrew formula in `planetaryescape/homebrew-mxr` installs correctly with auto-update on release. AUR PKGBUILD builds and installs. Nix flake builds and runs. Install script works on macOS and Linux.
+7. **Crates.io publishing**: All workspace crates publish in dependency order via `cargo-workspaces`. Version verification ensures tag matches Cargo.toml. `CARGO_REGISTRY_TOKEN` secret configured.
+8. **Changelog**: `cliff.toml` configured. `git-cliff` generates grouped changelog from conventional commits. Commit-lint enforced in CI.
+9. **Documentation site**: mdBook site builds from `docs/book/`. Deployed to GitHub Pages via CI and on release to Cloudflare Pages. Contains: installation, getting started, user guide, configuration reference (incl. `[logging]` section), keybinding reference (vim+Gmail hierarchy explained per A005), search syntax, rules syntax, complete CLI reference (all commands from A004), observability & monitoring guide (`mxr logs`/`status`/`events` per A006), adapter development guide, FAQ. Search works.
+10. **README**: Project description, differentiation table, screenshots/GIFs, quick start, install methods, feature highlights, CLI scriptability examples (from A004), links to docs, license, contributing link.
+11. **Announcement ready**: Blog post drafted. Demo GIF created. Launch checklist passed. Target channels identified.
+12. **CI passes**: All workflows green — `ci.yml` (fmt, clippy, test, build, sqlx-check, docs build, policy sync, commit lint), `release.yml` (binary builds, crates.io publish, GitHub Release, Homebrew update, docs deploy), `docs.yml` (mdBook deploy). All required GitHub secrets configured.
 
 ### User Acceptance Test
 
@@ -1812,12 +2460,18 @@ Files created or modified in this phase:
 | `examples/adapter-skeleton/Cargo.toml` | Create | Out-of-tree adapter template |
 | `examples/adapter-skeleton/src/lib.rs` | Create | Skeleton adapter implementation with todo!() stubs |
 | `CONTRIBUTING.md` | Create | Full contributor guide |
-| `.github/ISSUE_TEMPLATE/bug_report.yml` | Create | Bug report template |
+| `.github/ISSUE_TEMPLATE/bug_report.yml` | Create | Bug report template (updated for `mxr bug-report` integration, A009) |
+| `crates/cli/src/bug_report.rs` | Create | Bug report generator, sanitizer, CLI subcommand (A009, D072-D073) |
 | `.github/ISSUE_TEMPLATE/feature_request.yml` | Create | Feature request template |
 | `.github/ISSUE_TEMPLATE/adapter_proposal.yml` | Create | Adapter proposal template |
-| `.github/workflows/release.yml` | Create | Binary release workflow (4 targets) |
-| `.github/workflows/ci.yml` | Modify | Ensure fmt + clippy + test + build |
+| `.github/workflows/release.yml` | Create | Full release pipeline: musl binaries (4 targets), crates.io publish, GitHub Release, Homebrew update, docs deploy |
+| `.github/workflows/ci.yml` | Modify | Comprehensive CI: fmt, clippy, test (multi-OS), build, sqlx-check, docs build, policy sync, commit lint |
 | `.github/workflows/docs.yml` | Create | mdBook deploy to GitHub Pages |
+| `cliff.toml` | Create | git-cliff configuration for changelog generation |
+| `.commitlintrc.yml` | Create | Conventional commit message lint config |
+| `packaging/aur/mxr/PKGBUILD` | Create | AUR package (build from source) |
+| `packaging/aur/mxr-bin/PKGBUILD` | Create | AUR package (pre-built binary) |
+| `packaging/homebrew/mxr.rb` | Create | Homebrew formula template |
 | `docs/book/book.toml` | Create | mdBook configuration |
 | `docs/book/src/SUMMARY.md` | Create | Documentation table of contents |
 | `docs/book/src/reference/observability.md` | Create | Observability & monitoring guide (A006) |

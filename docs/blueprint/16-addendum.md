@@ -686,6 +686,22 @@ use_tls = true
 
 ---
 
+## A009: Bug reporting and log management
+
+**Affects**: 09-cli.md, 12-config.md, 13-open-source.md
+
+**What was missing**: The blueprint defined logging infrastructure (A006) and issue templates, but no automated diagnostic capture. Users hitting bugs had to manually gather version info, logs, config, sync history, and daemon status — too much friction for good bug reports.
+
+**The rule**: `mxr bug-report` generates a single sanitized diagnostic bundle containing system info, config (redacted), account health, sync history, recent errors, and recent logs. Auto-sanitization removes email addresses, tokens, passwords, API keys, subjects, and body content by default (D073). Users can review before sharing. `--github` opens a pre-filled issue. Log retention defaults to 90 days / 250 MB (D074), with `mxr logs --purge` for manual cleanup.
+
+**Full specification**: See [18-bug-reporting.md](18-bug-reporting.md).
+
+### Decision records
+
+**D072**: `mxr bug-report` as single diagnostic capture command. **D073**: Automatic log sanitization with opt-out. **D074**: Log retention defaults (90 days, 250 MB max for text logs).
+
+---
+
 ## End of addendum
 
-Any future refinements should be appended below as A009, A010, etc. following the same format.
+Any future refinements should be appended below as A010, A011, etc. following the same format.

@@ -4037,52 +4037,52 @@ impl Store {
 
 All of the following must be true:
 
-- [ ] `mxr accounts add gmail` — interactive flow completes, tokens stored, config written
-- [ ] `mxr sync` — syncs real Gmail messages into SQLite and Tantivy
-- [ ] `mxr sync --account NAME` — syncs a specific account
-- [ ] Delta sync works: second sync uses `history.list`, is fast (seconds, not minutes)
-- [ ] Messages appear in TUI with real data from Gmail
-- [ ] Opening a message fetches and displays the body (lazy hydration)
-- [ ] `mxr search "from:alice"` — returns results from CLI
-- [ ] `mxr search "subject:invoice is:unread after:2026-01-01"` — compound query works
-- [ ] `mxr search --save "name" "query"` — creates saved search
-- [ ] `mxr search --saved "name"` — executes saved search
-- [ ] `/` in TUI opens search input, results appear in message list (A005)
-- [ ] `n`/`N` navigate to next/prev search result in TUI (A005)
-- [ ] `gi`/`gs`/`gt`/`gd` navigate to inbox/starred/sent/drafts via multi-key state machine (A005)
-- [ ] `Ctrl-p` opens command palette with fuzzy matching (A005)
-- [ ] Saved searches appear in sidebar and command palette
-- [ ] Sidebar shows labels with unread counts
-- [ ] Status bar shows per-account sync status: "personal: synced 2m ago", "work: syncing (47/200)..." (A006)
-- [ ] Three-pane layout works (sidebar + list + message view)
-- [ ] `mxr cat MESSAGE_ID` — prints message body text (A004)
-- [ ] `mxr cat MESSAGE_ID --raw` — prints body without processing (A004)
-- [ ] `mxr cat MESSAGE_ID --format json` — outputs structured JSON (A004)
-- [ ] `mxr thread THREAD_ID` — prints full thread chronologically (A004)
-- [ ] `mxr headers MESSAGE_ID` — prints raw email headers (A004)
-- [ ] `mxr count "query"` — prints count of matching messages (A004)
-- [ ] `mxr saved` — lists saved searches (A004)
-- [ ] `mxr saved add "name" "query"` — creates saved search (A004)
-- [ ] `mxr saved delete "name"` — deletes saved search (A004)
-- [ ] `mxr saved run "name"` — executes saved search (A004)
-- [ ] `mxr accounts show NAME` — shows account details (A004)
-- [ ] `mxr accounts reauth NAME` — re-authenticates account (A004)
-- [ ] `mxr accounts test NAME` — tests connectivity (A004)
-- [ ] `mxr status` — shows daemon health, account sync status, unread counts (A006)
-- [ ] `mxr sync --status` — shows per-account sync status from sync_log (A006)
-- [ ] `mxr sync --history` — shows recent sync log entries (A006)
-- [ ] `mxr logs --no-follow` — prints recent daemon logs (A006)
-- [ ] `mxr config` shows resolved config
-- [ ] `mxr config path` — prints config file path (A004)
-- [ ] `mxr version` — prints version, build info, data dir (A004)
-- [ ] `mxr doctor` runs diagnostics (config, auth, db, index)
-- [ ] `mxr labels` lists labels with counts
-- [ ] Auto-format detection: TTY outputs table, piped outputs JSON (A004)
-- [ ] Config.toml is parsed and values are used by daemon
-- [ ] `cargo sqlx prepare --check` passes in CI
-- [ ] `cargo test --workspace` passes
-- [ ] `cargo clippy --workspace -- -D warnings` passes
-- [ ] No mutations (archive, trash, star) — this is read-only
+- [x] `mxr accounts add gmail` — interactive flow completes, tokens stored, config written
+- [x] `mxr sync` — syncs real Gmail messages into SQLite and Tantivy
+- [x] `mxr sync --account NAME` — syncs a specific account
+- [x] Delta sync works: second sync uses `history.list`, is fast (seconds, not minutes)
+- [x] Messages appear in TUI with real data from Gmail
+- [x] Opening a message fetches and displays the body (lazy hydration)
+- [x] `mxr search "from:alice"` — returns results from CLI
+- [x] `mxr search "subject:invoice is:unread after:2026-01-01"` — compound query works
+- [ ] `mxr search --save "name" "query"` — creates saved search (via `mxr saved add` instead)
+- [ ] `mxr search --saved "name"` — executes saved search (via `mxr saved run` instead)
+- [x] `/` in TUI opens search input, results appear in message list (A005)
+- [ ] `n`/`N` navigate to next/prev search result in TUI (A005) — stubbed
+- [x] `gi`/`gs`/`gt`/`gd` navigate to inbox/starred/sent/drafts via multi-key state machine (A005)
+- [x] `Ctrl-p` opens command palette with fuzzy matching (A005)
+- [x] Saved searches appear in sidebar and command palette
+- [x] Sidebar shows labels with unread counts
+- [x] Status bar shows per-account sync status: "personal: synced 2m ago", "work: syncing (47/200)..." (A006)
+- [x] Three-pane layout works (sidebar + list + message view)
+- [x] `mxr cat MESSAGE_ID` — prints message body text (A004)
+- [x] `mxr cat MESSAGE_ID --raw` — prints body without processing (A004)
+- [x] `mxr cat MESSAGE_ID --format json` — outputs structured JSON (A004)
+- [x] `mxr thread THREAD_ID` — prints full thread chronologically (A004)
+- [x] `mxr headers MESSAGE_ID` — prints raw email headers (A004)
+- [x] `mxr count "query"` — prints count of matching messages (A004)
+- [x] `mxr saved` — lists saved searches (A004)
+- [x] `mxr saved add "name" "query"` — creates saved search (A004)
+- [x] `mxr saved delete "name"` — deletes saved search (A004)
+- [x] `mxr saved run "name"` — executes saved search (A004)
+- [x] `mxr accounts show NAME` — shows account details (A004)
+- [ ] `mxr accounts reauth NAME` — re-authenticates account (A004) — stubbed
+- [ ] `mxr accounts test NAME` — tests connectivity (A004) — stubbed
+- [x] `mxr status` — shows daemon health, account sync status, unread counts (A006)
+- [x] `mxr sync --status` — shows per-account sync status from sync_log (A006)
+- [x] `mxr sync --history` — shows recent sync log entries (A006)
+- [x] `mxr logs --no-follow` — prints recent daemon logs (A006)
+- [x] `mxr config` shows resolved config
+- [x] `mxr config path` — prints config file path (A004)
+- [x] `mxr version` — prints version, build info, data dir (A004)
+- [x] `mxr doctor` runs diagnostics (config, auth, db, index)
+- [x] `mxr labels` lists labels with counts
+- [x] Auto-format detection: TTY outputs table, piped outputs JSON (A004)
+- [x] Config.toml is parsed and values are used by daemon
+- [x] `cargo sqlx prepare --check` passes in CI
+- [x] `cargo test --workspace` passes (125 tests)
+- [x] `cargo clippy --workspace -- -D warnings` passes
+- [x] No mutations (archive, trash, star) — this is read-only
 
 ---
 

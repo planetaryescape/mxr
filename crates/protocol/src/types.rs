@@ -94,6 +94,10 @@ pub enum Request {
     SendDraft {
         draft: Draft,
     },
+    /// Save draft to the mail server (e.g. Gmail Drafts folder).
+    SaveDraftToServer {
+        draft: Draft,
+    },
     ListDrafts,
 
     GetStatus,
@@ -165,7 +169,7 @@ pub enum Response {
 #[allow(clippy::large_enum_variant)]
 pub enum ResponseData {
     Envelopes {
-        envelopes: Vec<Envelope>,
+        messages: Vec<SyncedMessage>,
     },
     Envelope {
         envelope: Envelope,
@@ -247,10 +251,6 @@ pub enum DaemonEvent {
     },
     LabelCountsUpdated {
         counts: Vec<LabelCount>,
-    },
-    BodiesPrefetched {
-        account_id: AccountId,
-        count: u32,
     },
 }
 

@@ -42,55 +42,93 @@ impl SyncEngine {
         let batch = provider.sync_messages(&cursor).await?;
         let synced_count = batch.upserted.len() as u32;
 
-        // Apply upserts
-        {
-            let mut search = self.search.lock().await;
-            for envelope in &batch.upserted {
-                self.store
-                    .upsert_envelope(envelope)
+        // Apply upserts — store envelope + body, index with body text
+        for synced in &batch.upserted {
+            // Store envelope
+            self.store
+                .upsert_envelope(&synced.envelope)
+                .await
+                .map_err(|e| MxrError::Store(e.to_string()))?;
+
+            // Store body (eagerly fetched during sync)
+            self.store
+                .insert_body(&synced.body)
+                .await
+                .map_err(|e| MxrError::Store(e.to_string()))?;
+
+            // Populate message_labels junction table
+            if !synced.envelope.label_provider_ids.is_empty() {
+                let label_ids = self
+                    .store
+                    .find_labels_by_provider_ids(account_id, &synced.envelope.label_provider_ids)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
-                search.index_envelope(envelope)?;
-
-                // Populate message_labels junction table
-                if !envelope.label_provider_ids.is_empty() {
-                    let label_ids = self
-                        .store
-                        .find_labels_by_provider_ids(account_id, &envelope.label_provider_ids)
+                if !label_ids.is_empty() {
+                    self.store
+                        .set_message_labels(&synced.envelope.id, &label_ids)
                         .await
                         .map_err(|e| MxrError::Store(e.to_string()))?;
-                    tracing::debug!(
-                        message_id = %envelope.id,
-                        provider_label_count = envelope.label_provider_ids.len(),
-                        resolved_label_count = label_ids.len(),
-                        "resolved provider label IDs to internal label IDs"
-                    );
-                    if !label_ids.is_empty() {
-                        self.store
-                            .set_message_labels(&envelope.id, &label_ids)
-                            .await
-                            .map_err(|e| MxrError::Store(e.to_string()))?;
-                    }
                 }
             }
 
-            if !batch.deleted_provider_ids.is_empty() {
-                self.store
-                    .delete_messages_by_provider_ids(account_id, &batch.deleted_provider_ids)
-                    .await
-                    .map_err(|e| MxrError::Store(e.to_string()))?;
+            // Search index — index with body text for immediate full-text search
+            {
+                let mut search = self.search.lock().await;
+                search.index_body(&synced.envelope, &synced.body)?;
             }
-
-            search.commit()?;
         }
 
-        // Recalculate label counts — skip during backfill (will run after backfill completes)
-        if !matches!(batch.next_cursor, SyncCursor::GmailBackfill { .. }) {
+        // Deletions (store-only, no search lock)
+        if !batch.deleted_provider_ids.is_empty() {
             self.store
-                .recalculate_label_counts(account_id)
+                .delete_messages_by_provider_ids(account_id, &batch.deleted_provider_ids)
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
         }
+
+        // Apply label changes from delta sync (previously dead code)
+        for change in &batch.label_changes {
+            if let Ok(Some(message_id)) = self
+                .store
+                .get_message_id_by_provider_id(account_id, &change.provider_message_id)
+                .await
+            {
+                if !change.added_labels.is_empty() {
+                    if let Ok(add_ids) = self
+                        .store
+                        .find_labels_by_provider_ids(account_id, &change.added_labels)
+                        .await
+                    {
+                        for lid in &add_ids {
+                            let _ = self.store.add_message_label(&message_id, lid).await;
+                        }
+                    }
+                }
+                if !change.removed_labels.is_empty() {
+                    if let Ok(rm_ids) = self
+                        .store
+                        .find_labels_by_provider_ids(account_id, &change.removed_labels)
+                        .await
+                    {
+                        for lid in &rm_ids {
+                            let _ = self.store.remove_message_label(&message_id, lid).await;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Commit search index
+        {
+            let mut search = self.search.lock().await;
+            search.commit()?;
+        }
+
+        // Recalculate label counts every batch (including during backfill)
+        self.store
+            .recalculate_label_counts(account_id)
+            .await
+            .map_err(|e| MxrError::Store(e.to_string()))?;
 
         // Update cursor
         tracing::info!(next_cursor = ?batch.next_cursor, "sync_account: saving cursor");
@@ -127,101 +165,13 @@ impl SyncEngine {
         Ok(synced_count)
     }
 
-    pub async fn fetch_body(
-        &self,
-        provider: &dyn MailSyncProvider,
-        message_id: &MessageId,
-    ) -> Result<MessageBody, MxrError> {
-        // Check cache
-        if let Some(body) = self
-            .store
+    /// Read body from store. Bodies are always available after sync.
+    pub async fn get_body(&self, message_id: &MessageId) -> Result<MessageBody, MxrError> {
+        self.store
             .get_body(message_id)
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?
-        {
-            return Ok(body);
-        }
-
-        // Cache miss: fetch from provider
-        let envelope = self
-            .store
-            .get_envelope(message_id)
-            .await
-            .map_err(|e| MxrError::Store(e.to_string()))?
-            .ok_or_else(|| MxrError::NotFound(format!("Message {}", message_id)))?;
-
-        let body = provider.fetch_body(&envelope.provider_id).await?;
-
-        // Cache in store
-        self.store
-            .insert_body(&body)
-            .await
-            .map_err(|e| MxrError::Store(e.to_string()))?;
-
-        // Update search index with body text
-        {
-            let mut search = self.search.lock().await;
-            search.index_body(&envelope, &body)?;
-            search.commit()?;
-        }
-
-        Ok(body)
-    }
-
-    /// Pre-fetch bodies for messages that don't have cached bodies yet.
-    /// Fetches up to `batch_size` bodies, newest first, with a small delay
-    /// between fetches to avoid rate limiting. Returns count of bodies fetched.
-    /// Stops early on rate limit errors.
-    pub async fn prefetch_bodies(
-        &self,
-        provider: &dyn MailSyncProvider,
-        account_id: &AccountId,
-        batch_size: u32,
-    ) -> Result<u32, MxrError> {
-        let envelopes = self
-            .store
-            .list_envelopes_without_bodies(account_id, batch_size)
-            .await
-            .map_err(|e| MxrError::Store(e.to_string()))?;
-
-        if envelopes.is_empty() {
-            return Ok(0);
-        }
-
-        tracing::debug!(
-            unfetched = envelopes.len(),
-            "starting body prefetch batch"
-        );
-
-        let mut fetched = 0u32;
-        for env in &envelopes {
-            match self.fetch_body(provider, &env.id).await {
-                Ok(_) => {
-                    fetched += 1;
-                    if fetched % 10 == 0 {
-                        tracing::info!("Pre-fetched {fetched} bodies");
-                    }
-                }
-                Err(e) => {
-                    if e.to_string().contains("Rate limited") {
-                        tracing::info!(
-                            "Body prefetch paused (rate limited), {fetched} fetched this batch"
-                        );
-                        return Ok(fetched);
-                    }
-                    tracing::debug!("Body prefetch failed for {}: {e}", env.id);
-                }
-            }
-
-            // Small delay between fetches to avoid rate limits
-            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-        }
-
-        if fetched > 0 {
-            tracing::info!("Body prefetch batch complete: {fetched} bodies cached");
-        }
-
-        Ok(fetched)
+            .ok_or_else(|| MxrError::NotFound(format!("Body for message {}", message_id)))
     }
 
     pub async fn check_snoozes(&self) -> Result<Vec<MessageId>, MxrError> {

@@ -47,9 +47,6 @@ mod tests {
         async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
             Err(MxrError::Provider("simulated sync error".into()))
         }
-        async fn fetch_body(&self, _id: &str) -> Result<MessageBody, MxrError> {
-            Err(MxrError::Provider("simulated fetch error".into()))
-        }
         async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
             Err(MxrError::Provider("simulated attachment error".into()))
         }
@@ -86,6 +83,314 @@ mod tests {
         }
     }
 
+    /// Provider that returns label_changes on delta sync for testing the label change code path.
+    struct DeltaLabelProvider {
+        account_id: AccountId,
+        messages: Vec<SyncedMessage>,
+        labels: Vec<Label>,
+        label_changes: Vec<LabelChange>,
+    }
+
+    impl DeltaLabelProvider {
+        fn new(
+            account_id: AccountId,
+            messages: Vec<Envelope>,
+            labels: Vec<Label>,
+            label_changes: Vec<LabelChange>,
+        ) -> Self {
+            let messages = messages
+                .into_iter()
+                .map(|env| SyncedMessage {
+                    body: make_empty_body(&env.id),
+                    envelope: env,
+                })
+                .collect();
+            Self {
+                account_id,
+                messages,
+                labels,
+                label_changes,
+            }
+        }
+    }
+
+    fn make_empty_body(message_id: &MessageId) -> MessageBody {
+        MessageBody {
+            message_id: message_id.clone(),
+            text_plain: Some("test body".to_string()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for DeltaLabelProvider {
+        fn name(&self) -> &str {
+            "delta-label"
+        }
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities {
+                labels: true,
+                server_search: false,
+                delta_sync: true,
+                push: false,
+                batch_operations: false,
+            }
+        }
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(self.labels.clone())
+        }
+        async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            match cursor {
+                SyncCursor::Initial => Ok(SyncBatch {
+                    upserted: self.messages.clone(),
+                    deleted_provider_ids: vec![],
+                    label_changes: vec![],
+                    next_cursor: SyncCursor::Gmail { history_id: 100 },
+                }),
+                _ => Ok(SyncBatch {
+                    upserted: vec![],
+                    deleted_provider_ids: vec![],
+                    label_changes: self.label_changes.clone(),
+                    next_cursor: SyncCursor::Gmail { history_id: 200 },
+                }),
+            }
+        }
+        async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+        async fn modify_labels(
+            &self,
+            _id: &str,
+            _add: &[String],
+            _rm: &[String],
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn trash(&self, _id: &str) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn set_read(&self, _id: &str, _read: bool) -> Result<(), MxrError> {
+            Ok(())
+        }
+        async fn set_starred(&self, _id: &str, _starred: bool) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
+    fn make_test_label(account_id: &AccountId, name: &str, provider_id: &str) -> Label {
+        Label {
+            id: LabelId::new(),
+            account_id: account_id.clone(),
+            name: name.to_string(),
+            kind: LabelKind::System,
+            color: None,
+            provider_id: provider_id.to_string(),
+            unread_count: 0,
+            total_count: 0,
+        }
+    }
+
+    fn make_test_envelope(
+        account_id: &AccountId,
+        provider_id: &str,
+        label_provider_ids: Vec<String>,
+    ) -> Envelope {
+        Envelope {
+            id: MessageId::new(),
+            account_id: account_id.clone(),
+            provider_id: provider_id.to_string(),
+            thread_id: ThreadId::new(),
+            message_id_header: None,
+            in_reply_to: None,
+            references: vec![],
+            from: mxr_core::Address {
+                name: Some("Test".to_string()),
+                email: "test@example.com".to_string(),
+            },
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Test message".to_string(),
+            date: chrono::Utc::now(),
+            flags: MessageFlags::empty(),
+            snippet: "Test snippet".to_string(),
+            has_attachments: false,
+            size_bytes: 1000,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids,
+        }
+    }
+
+    #[tokio::test]
+    async fn delta_sync_applies_label_additions() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let engine = SyncEngine::new(store.clone(), search.clone());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        let inbox = make_test_label(&account_id, "Inbox", "INBOX");
+        let starred = make_test_label(&account_id, "Starred", "STARRED");
+        let labels = vec![inbox.clone(), starred.clone()];
+
+        let msg = make_test_envelope(&account_id, "prov-msg-1", vec!["INBOX".to_string()]);
+        let msg_provider_id = msg.provider_id.clone();
+
+        let provider = DeltaLabelProvider::new(
+            account_id.clone(),
+            vec![msg],
+            labels,
+            vec![LabelChange {
+                provider_message_id: msg_provider_id.clone(),
+                added_labels: vec!["STARRED".to_string()],
+                removed_labels: vec![],
+            }],
+        );
+
+        // Initial sync
+        engine.sync_account(&provider).await.unwrap();
+
+        // Verify msg has INBOX label
+        let msg_id = store
+            .get_message_id_by_provider_id(&account_id, &msg_provider_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let labels_before = store.get_message_label_ids(&msg_id).await.unwrap();
+        assert!(labels_before.iter().any(|l| *l == inbox.id));
+        assert!(!labels_before.iter().any(|l| *l == starred.id));
+
+        // Delta sync — adds STARRED label
+        engine.sync_account(&provider).await.unwrap();
+
+        let labels_after = store.get_message_label_ids(&msg_id).await.unwrap();
+        assert!(
+            labels_after.iter().any(|l| *l == inbox.id),
+            "INBOX should still be present"
+        );
+        assert!(
+            labels_after.iter().any(|l| *l == starred.id),
+            "STARRED should be added by delta"
+        );
+    }
+
+    #[tokio::test]
+    async fn delta_sync_applies_label_removals() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let engine = SyncEngine::new(store.clone(), search.clone());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        let inbox = make_test_label(&account_id, "Inbox", "INBOX");
+        let starred = make_test_label(&account_id, "Starred", "STARRED");
+        let labels = vec![inbox.clone(), starred.clone()];
+
+        let msg = make_test_envelope(
+            &account_id,
+            "prov-msg-2",
+            vec!["INBOX".to_string(), "STARRED".to_string()],
+        );
+        let msg_provider_id = msg.provider_id.clone();
+
+        let provider = DeltaLabelProvider::new(
+            account_id.clone(),
+            vec![msg],
+            labels,
+            vec![LabelChange {
+                provider_message_id: msg_provider_id.clone(),
+                added_labels: vec![],
+                removed_labels: vec!["STARRED".to_string()],
+            }],
+        );
+
+        // Initial sync
+        engine.sync_account(&provider).await.unwrap();
+
+        let msg_id = store
+            .get_message_id_by_provider_id(&account_id, &msg_provider_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let labels_before = store.get_message_label_ids(&msg_id).await.unwrap();
+        assert!(
+            labels_before.iter().any(|l| *l == starred.id),
+            "STARRED should be present after initial sync"
+        );
+
+        // Delta sync — removes STARRED
+        engine.sync_account(&provider).await.unwrap();
+
+        let labels_after = store.get_message_label_ids(&msg_id).await.unwrap();
+        assert!(
+            labels_after.iter().any(|l| *l == inbox.id),
+            "INBOX should remain"
+        );
+        assert!(
+            !labels_after.iter().any(|l| *l == starred.id),
+            "STARRED should be removed by delta"
+        );
+    }
+
+    #[tokio::test]
+    async fn delta_sync_handles_unknown_provider_message() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let engine = SyncEngine::new(store.clone(), search.clone());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        let inbox = make_test_label(&account_id, "Inbox", "INBOX");
+        let labels = vec![inbox.clone()];
+
+        let msg = make_test_envelope(&account_id, "prov-msg-3", vec!["INBOX".to_string()]);
+
+        let provider = DeltaLabelProvider::new(
+            account_id.clone(),
+            vec![msg],
+            labels,
+            vec![LabelChange {
+                // This provider_message_id doesn't exist in our store
+                provider_message_id: "nonexistent-msg".to_string(),
+                added_labels: vec!["INBOX".to_string()],
+                removed_labels: vec![],
+            }],
+        );
+
+        // Initial sync
+        engine.sync_account(&provider).await.unwrap();
+
+        // Delta sync — should not crash on unknown message
+        let result = engine.sync_account(&provider).await;
+        assert!(
+            result.is_ok(),
+            "Delta sync should gracefully skip unknown messages"
+        );
+    }
+
     #[tokio::test]
     async fn sync_populates_store_and_search() {
         let store = Arc::new(Store::in_memory().await.unwrap());
@@ -115,7 +420,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn body_caching() {
+    async fn bodies_stored_eagerly_during_sync() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
         let engine = SyncEngine::new(store.clone(), search.clone());
@@ -136,12 +441,12 @@ mod tests {
             .unwrap();
         let msg_id = &envelopes[0].id;
 
-        // First fetch — from provider
-        let body = engine.fetch_body(&provider, msg_id).await.unwrap();
+        // Body should already be in store — fetched eagerly during sync
+        let body = engine.get_body(msg_id).await.unwrap();
         assert!(body.text_plain.is_some());
 
-        // Second fetch — from cache (should still work)
-        let body2 = engine.fetch_body(&provider, msg_id).await.unwrap();
+        // Second read — same result
+        let body2 = engine.get_body(msg_id).await.unwrap();
         assert_eq!(body.text_plain, body2.text_plain);
     }
 
@@ -585,15 +890,13 @@ mod tests {
         ];
         for (name, expected_pid) in &expected_mappings {
             let label = labels.iter().find(|l| l.name == *name);
-            assert!(
-                label.is_some(),
-                "Label '{}' should exist after sync",
-                name
-            );
+            assert!(label.is_some(), "Label '{}' should exist after sync", name);
             assert_eq!(
-                label.unwrap().provider_id, *expected_pid,
+                label.unwrap().provider_id,
+                *expected_pid,
                 "Label '{}' should have provider_id '{}'",
-                name, expected_pid
+                name,
+                expected_pid
             );
         }
 
@@ -822,7 +1125,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn body_cache_returns_same_content() {
+    async fn body_available_after_sync() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
         let engine = SyncEngine::new(store.clone(), search.clone());
@@ -842,25 +1145,25 @@ mod tests {
             .unwrap();
         let msg_id = &envelopes[0].id;
 
-        // First fetch — cache miss, fetches from provider
-        let body1 = engine.fetch_body(&provider, msg_id).await.unwrap();
+        // Body already available — stored eagerly during sync
+        let body1 = engine.get_body(msg_id).await.unwrap();
         assert!(body1.text_plain.is_some(), "Body should have text_plain");
 
-        // Second fetch — cache hit
-        let body2 = engine.fetch_body(&provider, msg_id).await.unwrap();
+        // Second read — same result from store
+        let body2 = engine.get_body(msg_id).await.unwrap();
 
         assert_eq!(
             body1.text_plain, body2.text_plain,
-            "Cached body text_plain should match original"
+            "Body text_plain should be consistent"
         );
         assert_eq!(
             body1.text_html, body2.text_html,
-            "Cached body text_html should match original"
+            "Body text_html should be consistent"
         );
         assert_eq!(
             body1.attachments.len(),
             body2.attachments.len(),
-            "Cached body attachments count should match original"
+            "Body attachments count should be consistent"
         );
     }
 

@@ -17,7 +17,6 @@ pub trait MailSyncProvider: Send + Sync {
     async fn sync_labels(&self) -> Result<Vec<Label>>;
     async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch>;
 
-    async fn fetch_body(&self, provider_message_id: &str) -> Result<MessageBody>;
     async fn fetch_attachment(
         &self,
         provider_message_id: &str,
@@ -46,4 +45,10 @@ pub trait MailSyncProvider: Send + Sync {
 pub trait MailSendProvider: Send + Sync {
     fn name(&self) -> &str;
     async fn send(&self, draft: &Draft, from: &Address) -> Result<SendReceipt>;
+
+    /// Save a draft to the mail server. Returns the server-side draft ID if supported.
+    /// Default: returns Ok(None) (provider doesn't support server drafts).
+    async fn save_draft(&self, _draft: &Draft, _from: &Address) -> Result<Option<String>> {
+        Ok(None)
+    }
 }

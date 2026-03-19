@@ -220,9 +220,19 @@ pub enum SyncCursor {
     Initial,
 }
 
+// -- SyncedMessage ------------------------------------------------------------
+
+/// A message with both envelope and body, returned by sync.
+/// Bodies are always fetched eagerly during sync — no lazy hydration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncedMessage {
+    pub envelope: Envelope,
+    pub body: MessageBody,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncBatch {
-    pub upserted: Vec<Envelope>,
+    pub upserted: Vec<SyncedMessage>,
     pub deleted_provider_ids: Vec<String>,
     pub label_changes: Vec<LabelChange>,
     pub next_cursor: SyncCursor,

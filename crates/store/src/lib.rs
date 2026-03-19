@@ -417,6 +417,101 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn saved_search_crud() {
+        let store = Store::in_memory().await.unwrap();
+
+        let s1 = SavedSearch {
+            id: SavedSearchId::new(),
+            account_id: None,
+            name: "Unread".to_string(),
+            query: "is:unread".to_string(),
+            sort: SortOrder::DateDesc,
+            icon: None,
+            position: 0,
+            created_at: chrono::Utc::now(),
+        };
+        let s2 = SavedSearch {
+            id: SavedSearchId::new(),
+            account_id: None,
+            name: "Starred".to_string(),
+            query: "is:starred".to_string(),
+            sort: SortOrder::DateDesc,
+            icon: Some("star".to_string()),
+            position: 1,
+            created_at: chrono::Utc::now(),
+        };
+
+        store.insert_saved_search(&s1).await.unwrap();
+        store.insert_saved_search(&s2).await.unwrap();
+
+        // List returns both, ordered by position
+        let all = store.list_saved_searches().await.unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].name, "Unread");
+        assert_eq!(all[1].name, "Starred");
+
+        // Get by name
+        let found = store.get_saved_search_by_name("Starred").await.unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().query, "is:starred");
+
+        // Delete
+        store.delete_saved_search(&s1.id).await.unwrap();
+        let remaining = store.list_saved_searches().await.unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].name, "Starred");
+
+        // Delete by name
+        let deleted = store.delete_saved_search_by_name("Starred").await.unwrap();
+        assert!(deleted);
+        let empty = store.list_saved_searches().await.unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_contacts_ordered_by_frequency() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        // Insert 3 messages from alice, 2 from bob, 1 from carol
+        for i in 0..3 {
+            let mut env = test_envelope(&account.id);
+            env.provider_id = format!("fake-alice-{}", i);
+            env.from = Address {
+                name: Some("Alice".to_string()),
+                email: "alice@example.com".to_string(),
+            };
+            store.upsert_envelope(&env).await.unwrap();
+        }
+        for i in 0..2 {
+            let mut env = test_envelope(&account.id);
+            env.provider_id = format!("fake-bob-{}", i);
+            env.from = Address {
+                name: Some("Bob".to_string()),
+                email: "bob@example.com".to_string(),
+            };
+            store.upsert_envelope(&env).await.unwrap();
+        }
+        {
+            let mut env = test_envelope(&account.id);
+            env.provider_id = "fake-carol-0".to_string();
+            env.from = Address {
+                name: Some("Carol".to_string()),
+                email: "carol@example.com".to_string(),
+            };
+            store.upsert_envelope(&env).await.unwrap();
+        }
+
+        let contacts = store.list_contacts(10).await.unwrap();
+        assert_eq!(contacts.len(), 3);
+        // Ordered by frequency: alice (3), bob (2), carol (1)
+        assert_eq!(contacts[0].1, "alice@example.com");
+        assert_eq!(contacts[1].1, "bob@example.com");
+        assert_eq!(contacts[2].1, "carol@example.com");
+    }
+
+    #[tokio::test]
     async fn sync_cursor_persistence() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();

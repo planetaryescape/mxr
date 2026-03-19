@@ -220,36 +220,6 @@ impl super::Store {
             .collect())
     }
 
-    /// List envelopes that don't have a cached body yet, ordered by most recent first.
-    /// Uses a LEFT JOIN to efficiently find messages missing from the bodies table.
-    pub async fn list_envelopes_without_bodies(
-        &self,
-        account_id: &AccountId,
-        limit: u32,
-    ) -> Result<Vec<Envelope>, sqlx::Error> {
-        let aid = account_id.as_str();
-        let lim = limit as i64;
-        let rows = sqlx::query_as::<_, EnvelopeRow>(
-            r#"SELECT
-                m.id, m.account_id, m.provider_id, m.thread_id,
-                m.message_id_header, m.in_reply_to, m.reference_headers,
-                m.from_name, m.from_email, m.to_addrs, m.cc_addrs, m.bcc_addrs,
-                m.subject, m.date, m.flags, m.snippet,
-                m.has_attachments, m.size_bytes, m.unsubscribe_method
-             FROM messages m
-             LEFT JOIN bodies b ON m.id = b.message_id
-             WHERE m.account_id = ? AND b.message_id IS NULL
-             ORDER BY m.date DESC
-             LIMIT ?"#,
-        )
-        .bind(aid)
-        .bind(lim)
-        .fetch_all(self.reader())
-        .await?;
-
-        Ok(rows.into_iter().map(|r| r.into_envelope()).collect())
-    }
-
     // Dynamic SQL -- kept as runtime query due to variable IN clause
     pub async fn delete_messages_by_provider_ids(
         &self,
@@ -467,11 +437,9 @@ impl super::Store {
 
     /// Count total rows in the message_labels junction table.
     pub async fn count_message_labels(&self) -> Result<u32, sqlx::Error> {
-        let row = sqlx::query!(
-            r#"SELECT COUNT(*) as "cnt!: i64" FROM message_labels"#,
-        )
-        .fetch_one(self.reader())
-        .await?;
+        let row = sqlx::query!(r#"SELECT COUNT(*) as "cnt!: i64" FROM message_labels"#,)
+            .fetch_one(self.reader())
+            .await?;
         Ok(row.cnt as u32)
     }
 
@@ -495,55 +463,24 @@ impl super::Store {
         }
         Ok(())
     }
-}
 
-/// Row type for runtime (non-macro) sqlx queries returning envelope data.
-#[derive(sqlx::FromRow)]
-struct EnvelopeRow {
-    id: String,
-    account_id: String,
-    provider_id: String,
-    thread_id: String,
-    message_id_header: Option<String>,
-    in_reply_to: Option<String>,
-    reference_headers: Option<String>,
-    from_name: Option<String>,
-    from_email: String,
-    to_addrs: String,
-    cc_addrs: String,
-    bcc_addrs: String,
-    subject: String,
-    date: i64,
-    flags: i64,
-    snippet: String,
-    has_attachments: bool,
-    size_bytes: i64,
-    unsubscribe_method: Option<String>,
-}
-
-impl EnvelopeRow {
-    fn into_envelope(self) -> Envelope {
-        record_to_envelope(
-            &self.id,
-            &self.account_id,
-            &self.provider_id,
-            &self.thread_id,
-            self.message_id_header.as_deref(),
-            self.in_reply_to.as_deref(),
-            self.reference_headers.as_deref(),
-            self.from_name.as_deref(),
-            &self.from_email,
-            &self.to_addrs,
-            &self.cc_addrs,
-            &self.bcc_addrs,
-            &self.subject,
-            self.date,
-            self.flags,
-            &self.snippet,
-            self.has_attachments,
-            self.size_bytes,
-            self.unsubscribe_method.as_deref(),
+    /// Get distinct contacts (name + email) from message senders, ordered by frequency.
+    pub async fn list_contacts(&self, limit: u32) -> Result<Vec<(String, String)>, sqlx::Error> {
+        let lim = limit as i64;
+        let rows = sqlx::query_as::<_, (String, String)>(
+            r#"SELECT
+                COALESCE(from_name, '') as name,
+                from_email as email
+             FROM messages
+             WHERE from_email != ''
+             GROUP BY from_email
+             ORDER BY COUNT(*) DESC
+             LIMIT ?"#,
         )
+        .bind(lim)
+        .fetch_all(self.reader())
+        .await?;
+        Ok(rows)
     }
 }
 

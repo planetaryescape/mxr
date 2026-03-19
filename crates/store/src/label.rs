@@ -13,6 +13,9 @@ impl super::Store {
         let unread_count = label.unread_count as i64;
         let total_count = label.total_count as i64;
 
+        // On conflict, do NOT overwrite counts — those are managed by
+        // recalculate_label_counts() from the junction table. Only update
+        // metadata (name, kind, color, provider_id).
         sqlx::query!(
             "INSERT INTO labels (id, account_id, name, kind, color, provider_id, unread_count, total_count)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -20,9 +23,7 @@ impl super::Store {
                 name = excluded.name,
                 kind = excluded.kind,
                 color = excluded.color,
-                provider_id = excluded.provider_id,
-                unread_count = excluded.unread_count,
-                total_count = excluded.total_count",
+                provider_id = excluded.provider_id",
             id,
             account_id,
             label.name,

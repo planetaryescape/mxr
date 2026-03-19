@@ -19,6 +19,24 @@ mod tests {
     use mxr_core::types::*;
 
     fn make_envelope(subject: &str, snippet: &str, from_name: &str) -> Envelope {
+        make_envelope_full(
+            subject,
+            snippet,
+            from_name,
+            "test@example.com",
+            MessageFlags::READ,
+            false,
+        )
+    }
+
+    fn make_envelope_full(
+        subject: &str,
+        snippet: &str,
+        from_name: &str,
+        from_email: &str,
+        flags: MessageFlags,
+        has_attachments: bool,
+    ) -> Envelope {
         Envelope {
             id: MessageId::new(),
             account_id: AccountId::new(),
@@ -29,16 +47,16 @@ mod tests {
             references: vec![],
             from: Address {
                 name: Some(from_name.to_string()),
-                email: "test@example.com".to_string(),
+                email: from_email.to_string(),
             },
             to: vec![],
             cc: vec![],
             bcc: vec![],
             subject: subject.to_string(),
             date: chrono::Utc::now(),
-            flags: MessageFlags::READ,
+            flags,
             snippet: snippet.to_string(),
-            has_attachments: false,
+            has_attachments,
             size_bytes: 1000,
             unsubscribe: UnsubscribeMethod::None,
             label_provider_ids: vec![],
@@ -147,5 +165,129 @@ mod tests {
         let idx = SearchIndex::in_memory().unwrap();
         let results = idx.search("nonexistent", 10).unwrap();
         assert!(results.is_empty());
+    }
+
+    // -- E2E: parse → build → search integration tests --
+
+    fn build_e2e_index() -> (SearchIndex, Vec<Envelope>) {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let envelopes = vec![
+            make_envelope_full(
+                "Deployment plan for v2",
+                "Rolling out to prod",
+                "Alice",
+                "alice@example.com",
+                MessageFlags::empty(), // unread
+                false,
+            ),
+            make_envelope_full(
+                "Invoice #2847",
+                "Payment due next week",
+                "Bob",
+                "bob@example.com",
+                MessageFlags::READ | MessageFlags::STARRED,
+                true, // has attachment
+            ),
+            make_envelope_full(
+                "Team standup notes",
+                "Sprint review action items",
+                "Carol",
+                "carol@example.com",
+                MessageFlags::READ,
+                false,
+            ),
+            make_envelope_full(
+                "CI pipeline failures",
+                "Build broken on main",
+                "Alice",
+                "alice@example.com",
+                MessageFlags::empty(), // unread
+                true,                  // has attachment
+            ),
+        ];
+        for env in &envelopes {
+            idx.index_envelope(env).unwrap();
+        }
+        idx.commit().unwrap();
+        (idx, envelopes)
+    }
+
+    fn e2e_search(idx: &SearchIndex, query_str: &str) -> Vec<String> {
+        let ast = parser::parse_query(query_str).unwrap();
+        let schema = MxrSchema::build();
+        let qb = QueryBuilder::new(&schema);
+        let query = qb.build(&ast);
+        idx.search_ast(query, 10)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.message_id)
+            .collect()
+    }
+
+    #[test]
+    fn e2e_parse_build_search_text() {
+        let (idx, envelopes) = build_e2e_index();
+        let results = e2e_search(&idx, "deployment");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0], envelopes[0].id.as_str());
+    }
+
+    #[test]
+    fn e2e_parse_build_search_field() {
+        let (idx, envelopes) = build_e2e_index();
+        let results = e2e_search(&idx, "from:alice@example.com");
+        assert_eq!(results.len(), 2);
+        let alice_ids: Vec<String> = vec![
+            envelopes[0].id.as_str().to_string(),
+            envelopes[3].id.as_str().to_string(),
+        ];
+        for id in &results {
+            assert!(alice_ids.contains(id));
+        }
+    }
+
+    #[test]
+    fn e2e_parse_build_search_compound() {
+        let (idx, envelopes) = build_e2e_index();
+        // from:alice AND is:unread — both alice messages are unread
+        let results = e2e_search(&idx, "from:alice@example.com is:unread");
+        assert_eq!(results.len(), 2);
+        let alice_ids: Vec<String> = vec![
+            envelopes[0].id.as_str().to_string(),
+            envelopes[3].id.as_str().to_string(),
+        ];
+        for id in &results {
+            assert!(alice_ids.contains(id));
+        }
+    }
+
+    #[test]
+    fn e2e_parse_build_search_negation() {
+        let (idx, _envelopes) = build_e2e_index();
+        // -is:read = unread messages (alice's two)
+        let results = e2e_search(&idx, "-is:read");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn e2e_filter_has_attachment() {
+        let (idx, envelopes) = build_e2e_index();
+        let results = e2e_search(&idx, "has:attachment");
+        assert_eq!(results.len(), 2);
+        let attachment_ids: Vec<String> = vec![
+            envelopes[1].id.as_str().to_string(),
+            envelopes[3].id.as_str().to_string(),
+        ];
+        for id in &results {
+            assert!(attachment_ids.contains(id));
+        }
+    }
+
+    #[test]
+    fn e2e_filter_starred() {
+        let (idx, envelopes) = build_e2e_index();
+        let results = e2e_search(&idx, "is:starred");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0], envelopes[1].id.as_str());
     }
 }

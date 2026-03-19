@@ -113,7 +113,10 @@ async fn main() -> anyhow::Result<()> {
             dry_run,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::compose(to, cc, bcc, subject, body, body_stdin, attach, from, yes, dry_run).await?;
+            commands::mutations::compose(
+                to, cc, bcc, subject, body, body_stdin, attach, from, yes, dry_run,
+            )
+            .await?;
         }
         Some(Command::Reply {
             message_id,

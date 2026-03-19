@@ -57,23 +57,15 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                     token_ref,
                 }) => {
                     let secret = client_secret.as_deref().unwrap_or("");
-                    let mut auth = GmailAuth::new(
-                        client_id.clone(),
-                        secret.to_string(),
-                        token_ref.clone(),
-                    );
+                    let mut auth =
+                        GmailAuth::new(client_id.clone(), secret.to_string(), token_ref.clone());
                     match auth.load_existing().await {
                         Ok(()) => {
-                            let gmail_client =
-                                mxr_provider_gmail::client::GmailClient::new(auth);
+                            let gmail_client = mxr_provider_gmail::client::GmailClient::new(auth);
                             match gmail_client.list_labels().await {
                                 Ok(resp) => {
-                                    let count =
-                                        resp.labels.map(|l| l.len()).unwrap_or(0);
-                                    println!(
-                                        "Connected to '{}': {} labels found",
-                                        name, count
-                                    );
+                                    let count = resp.labels.map(|l| l.len()).unwrap_or(0);
+                                    println!("Connected to '{}': {} labels found", name, count);
                                 }
                                 Err(e) => {
                                     println!("Connection failed for '{}': {}", name, e);

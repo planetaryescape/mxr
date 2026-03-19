@@ -23,10 +23,7 @@ async fn resolve_message_ids(
         (Some(id), _) => Ok(vec![parse_message_id(&id)?]),
         (None, Some(query)) => {
             let resp = client
-                .request(Request::Search {
-                    query,
-                    limit: 1000,
-                })
+                .request(Request::Search { query, limit: 1000 })
                 .await?;
             match resp {
                 Response::Ok {
@@ -86,11 +83,7 @@ fn parse_snooze_until(until: &str) -> anyhow::Result<chrono::DateTime<Utc>> {
     Ok(dt)
 }
 
-fn next_weekday(
-    now: chrono::DateTime<Utc>,
-    target: Weekday,
-    hour: u32,
-) -> chrono::DateTime<Utc> {
+fn next_weekday(now: chrono::DateTime<Utc>, target: Weekday, hour: u32) -> chrono::DateTime<Utc> {
     let current = now.weekday().num_days_from_monday();
     let target_day = target.num_days_from_monday();
     let days_ahead = if target_day <= current {
@@ -408,11 +401,7 @@ pub async fn move_msg(
         anyhow::bail!("No messages matched");
     }
     if dry_run {
-        println!(
-            "Would move {} message(s) to '{}'",
-            ids.len(),
-            target_label
-        );
+        println!("Would move {} message(s) to '{}'", ids.len(), target_label);
         return Ok(());
     }
     let resp = client
@@ -471,7 +460,11 @@ pub async fn snooze(
             _ => anyhow::bail!("Unexpected response"),
         }
     }
-    println!("Snoozed {} message(s) until {}", ids.len(), wake_at.to_rfc3339());
+    println!(
+        "Snoozed {} message(s) until {}",
+        ids.len(),
+        wake_at.to_rfc3339()
+    );
     Ok(())
 }
 
@@ -511,9 +504,7 @@ pub async fn unsnooze(message_id: Option<String>, all: bool) -> anyhow::Result<(
     } else {
         let id_str = message_id.ok_or_else(|| anyhow::anyhow!("Provide a message ID or --all"))?;
         let id = parse_message_id(&id_str)?;
-        let resp = client
-            .request(Request::Unsnooze { message_id: id })
-            .await?;
+        let resp = client.request(Request::Unsnooze { message_id: id }).await?;
         match resp {
             Response::Ok {
                 data: ResponseData::Ack,
@@ -535,7 +526,10 @@ pub async fn snoozed() -> anyhow::Result<()> {
             if snoozed.is_empty() {
                 println!("No snoozed messages");
             } else {
-                println!("{:<38} {:<25} {:<25}", "MESSAGE ID", "SNOOZED AT", "WAKE AT");
+                println!(
+                    "{:<38} {:<25} {:<25}",
+                    "MESSAGE ID", "SNOOZED AT", "WAKE AT"
+                );
                 println!("{}", "-".repeat(88));
                 for s in &snoozed {
                     println!(
@@ -579,10 +573,7 @@ pub async fn compose(
         let resp = client.request(Request::GetStatus).await?;
         match resp {
             Response::Ok {
-                data:
-                    ResponseData::Status {
-                        accounts, ..
-                    },
+                data: ResponseData::Status { accounts, .. },
             } => accounts
                 .first()
                 .cloned()
@@ -913,9 +904,7 @@ pub async fn open_in_browser(message_id: String) -> anyhow::Result<()> {
 pub async fn attachments_list(message_id: String) -> anyhow::Result<()> {
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
-    let resp = client
-        .request(Request::GetBody { message_id: id })
-        .await?;
+    let resp = client.request(Request::GetBody { message_id: id }).await?;
     match resp {
         Response::Ok {
             data: ResponseData::Body { body },

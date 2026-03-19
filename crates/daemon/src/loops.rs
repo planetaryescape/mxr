@@ -42,10 +42,30 @@ pub async fn sync_loop(state: Arc<AppState>) {
                         }),
                     };
                     let _ = state.event_tx.send(event);
+
+                    // Broadcast updated label counts so TUI sidebar refreshes live
+                    if let Ok(labels) = state
+                        .store
+                        .list_labels_by_account(state.provider.account_id())
+                        .await
+                    {
+                        let counts: Vec<_> = labels
+                            .iter()
+                            .map(|l| LabelCount {
+                                label_id: l.id.clone(),
+                                unread_count: l.unread_count,
+                                total_count: l.total_count,
+                            })
+                            .collect();
+                        let counts_event = IpcMessage {
+                            id: 0,
+                            payload: IpcPayload::Event(DaemonEvent::LabelCountsUpdated { counts }),
+                        };
+                        let _ = state.event_tx.send(counts_event);
+                    }
                 }
 
                 // Fast-cycle during backfill: re-sync after 2s instead of full interval
-                // Skip body prefetch during backfill — it contends for the search lock
                 if let Ok(Some(cursor)) = state
                     .store
                     .get_sync_cursor(state.provider.account_id())
@@ -57,14 +77,6 @@ pub async fn sync_loop(state: Arc<AppState>) {
                         skip_sleep = true;
                         continue;
                     }
-                }
-
-                // Body prefetch — only after backfill is complete
-                {
-                    let prefetch_state = state.clone();
-                    tokio::spawn(async move {
-                        prefetch_bodies_batch(prefetch_state).await;
-                    });
                 }
             }
             Err(e) => {
@@ -93,34 +105,6 @@ pub async fn sync_loop(state: Arc<AppState>) {
                 let _ = state.event_tx.send(event);
             }
         }
-    }
-}
-
-/// Fetch a batch of uncached bodies in the background.
-/// Runs as a spawned task after each sync cycle — non-blocking to the sync loop.
-async fn prefetch_bodies_batch(state: Arc<AppState>) {
-    let account_id = state.provider.account_id();
-    const BATCH_SIZE: u32 = 50;
-
-    match state
-        .sync_engine
-        .prefetch_bodies(state.provider.as_ref(), account_id, BATCH_SIZE)
-        .await
-    {
-        Ok(count) if count > 0 => {
-            let event = IpcMessage {
-                id: 0,
-                payload: IpcPayload::Event(DaemonEvent::BodiesPrefetched {
-                    account_id: account_id.clone(),
-                    count,
-                }),
-            };
-            let _ = state.event_tx.send(event);
-        }
-        Err(e) => {
-            tracing::debug!("Body prefetch batch error: {e}");
-        }
-        _ => {}
     }
 }
 

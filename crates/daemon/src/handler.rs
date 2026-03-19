@@ -45,8 +45,31 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                         by_label = label_id.is_some(),
                         "listed envelopes"
                     );
+                    // Pair each envelope with its body text for instant display.
+                    // Only include text_plain (not HTML/attachments) to keep
+                    // the IPC payload small for large mailboxes.
+                    let mut messages = Vec::with_capacity(envelopes.len());
+                    for env in envelopes {
+                        let body = match state.store.get_body(&env.id).await {
+                            Ok(Some(full)) => mxr_core::types::MessageBody {
+                                message_id: full.message_id,
+                                text_plain: full.text_plain,
+                                text_html: None,
+                                attachments: vec![],
+                                fetched_at: full.fetched_at,
+                            },
+                            _ => mxr_core::types::MessageBody {
+                                message_id: env.id.clone(),
+                                text_plain: None,
+                                text_html: None,
+                                attachments: vec![],
+                                fetched_at: chrono::Utc::now(),
+                            },
+                        };
+                        messages.push(mxr_core::types::SyncedMessage { envelope: env, body });
+                    }
                     Response::Ok {
-                        data: ResponseData::Envelopes { envelopes },
+                        data: ResponseData::Envelopes { messages },
                     }
                 }
                 Err(e) => Response::Error {
@@ -68,11 +91,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         },
 
         Request::GetBody { message_id } => {
-            match state
-                .sync_engine
-                .fetch_body(state.provider.as_ref(), message_id)
-                .await
-            {
+            match state.sync_engine.get_body(message_id).await {
                 Ok(body) => Response::Ok {
                     data: ResponseData::Body { body },
                 },
@@ -421,9 +440,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                         Ok(())
                     }
                     MutationCommand::Star { starred, .. } => {
-                        if let Err(e) =
-                            state.provider.set_starred(provider_id, *starred).await
-                        {
+                        if let Err(e) = state.provider.set_starred(provider_id, *starred).await {
                             return Response::Error {
                                 message: e.to_string(),
                             };
@@ -431,9 +448,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                         state.store.set_starred(msg_id, *starred).await
                     }
                     MutationCommand::SetRead { read, .. } => {
-                        if let Err(e) =
-                            state.provider.set_read(provider_id, *read).await
-                        {
+                        if let Err(e) = state.provider.set_read(provider_id, *read).await {
                             return Response::Error {
                                 message: e.to_string(),
                             };
@@ -441,10 +456,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                         state.store.set_read(msg_id, *read).await
                     }
                     MutationCommand::ModifyLabels { add, remove, .. } => {
-                        if let Err(e) = state
-                            .provider
-                            .modify_labels(provider_id, add, remove)
-                            .await
+                        if let Err(e) = state.provider.modify_labels(provider_id, add, remove).await
                         {
                             return Response::Error {
                                 message: e.to_string(),
@@ -507,16 +519,14 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             }
         }
 
-        Request::Unsnooze { message_id } => {
-            match state.store.remove_snooze(message_id).await {
-                Ok(()) => Response::Ok {
-                    data: ResponseData::Ack,
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
-        }
+        Request::Unsnooze { message_id } => match state.store.remove_snooze(message_id).await {
+            Ok(()) => Response::Ok {
+                data: ResponseData::Ack,
+            },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
 
         Request::ListSnoozed => match state.store.list_snoozed().await {
             Ok(snoozed) => Response::Ok {
@@ -527,20 +537,14 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             },
         },
 
-        Request::ListDrafts => {
-            match state
-                .store
-                .list_drafts(state.provider.account_id())
-                .await
-            {
-                Ok(drafts) => Response::Ok {
-                    data: ResponseData::Drafts { drafts },
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
-        }
+        Request::ListDrafts => match state.store.list_drafts(state.provider.account_id()).await {
+            Ok(drafts) => Response::Ok {
+                data: ResponseData::Drafts { drafts },
+            },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
 
         Request::PrepareReply {
             message_id,
@@ -569,15 +573,8 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                 .map(|a| a.email)
                 .unwrap_or_default();
 
-            let thread_context = match state
-                .sync_engine
-                .fetch_body(state.provider.as_ref(), message_id)
-                .await
-            {
-                Ok(body) => body
-                    .text_plain
-                    .or(body.text_html)
-                    .unwrap_or_default(),
+            let thread_context = match state.sync_engine.get_body(message_id).await {
+                Ok(body) => body.text_plain.or(body.text_html).unwrap_or_default(),
                 Err(_) => String::new(),
             };
 
@@ -593,10 +590,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             };
 
             let context = ReplyContext {
-                in_reply_to: envelope
-                    .message_id_header
-                    .clone()
-                    .unwrap_or_default(),
+                in_reply_to: envelope.message_id_header.clone().unwrap_or_default(),
                 reply_to: envelope.from.email.clone(),
                 cc,
                 subject: envelope.subject.clone(),
@@ -633,15 +627,8 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                 .map(|a| a.email)
                 .unwrap_or_default();
 
-            let forwarded_content = match state
-                .sync_engine
-                .fetch_body(state.provider.as_ref(), message_id)
-                .await
-            {
-                Ok(body) => body
-                    .text_plain
-                    .or(body.text_html)
-                    .unwrap_or_default(),
+            let forwarded_content = match state.sync_engine.get_body(message_id).await {
+                Ok(body) => body.text_plain.or(body.text_html).unwrap_or_default(),
                 Err(_) => String::new(),
             };
 
@@ -685,33 +672,65 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             },
         },
 
-        Request::Unsubscribe { message_id } => {
-            match state.store.get_envelope(message_id).await {
-                Ok(Some(envelope)) => {
-                    let client = reqwest::Client::new();
-                    let result =
-                        crate::unsubscribe::execute_unsubscribe(&envelope.unsubscribe, &client)
-                            .await;
-                    match result {
-                        crate::unsubscribe::UnsubscribeResult::Success(_) => Response::Ok {
+        Request::SaveDraftToServer { draft } => match &state.send_provider {
+            Some(sender) => {
+                let account = state
+                    .store
+                    .get_account(state.provider.account_id())
+                    .await
+                    .ok()
+                    .flatten();
+                let from = mxr_core::types::Address {
+                    name: account.as_ref().map(|a| a.name.clone()),
+                    email: account
+                        .as_ref()
+                        .map(|a| a.email.clone())
+                        .unwrap_or_else(|| "user@example.com".to_string()),
+                };
+                match sender.save_draft(draft, &from).await {
+                    Ok(Some(draft_id)) => {
+                        tracing::info!(draft_id, "Draft saved to server");
+                        Response::Ok {
                             data: ResponseData::Ack,
-                        },
-                        crate::unsubscribe::UnsubscribeResult::Failed(msg) => {
-                            Response::Error { message: msg }
                         }
-                        crate::unsubscribe::UnsubscribeResult::NoMethod => Response::Error {
-                            message: "No unsubscribe method available for this message".to_string(),
-                        },
                     }
+                    Ok(None) => Response::Error {
+                        message: "Provider does not support server-side drafts".to_string(),
+                    },
+                    Err(e) => Response::Error {
+                        message: format!("Failed to save draft: {e}"),
+                    },
                 }
-                Ok(None) => Response::Error {
-                    message: "Message not found".to_string(),
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
             }
-        }
+            None => Response::Error {
+                message: "No send provider configured".to_string(),
+            },
+        },
+
+        Request::Unsubscribe { message_id } => match state.store.get_envelope(message_id).await {
+            Ok(Some(envelope)) => {
+                let client = reqwest::Client::new();
+                let result =
+                    crate::unsubscribe::execute_unsubscribe(&envelope.unsubscribe, &client).await;
+                match result {
+                    crate::unsubscribe::UnsubscribeResult::Success(_) => Response::Ok {
+                        data: ResponseData::Ack,
+                    },
+                    crate::unsubscribe::UnsubscribeResult::Failed(msg) => {
+                        Response::Error { message: msg }
+                    }
+                    crate::unsubscribe::UnsubscribeResult::NoMethod => Response::Error {
+                        message: "No unsubscribe method available for this message".to_string(),
+                    },
+                }
+            }
+            Ok(None) => Response::Error {
+                message: "Message not found".to_string(),
+            },
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
 
         Request::SetFlags { message_id, flags } => {
             match state.store.update_flags(message_id, *flags).await {
@@ -779,9 +798,9 @@ mod tests {
 
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Envelopes { envelopes },
+                data: ResponseData::Envelopes { messages },
             }) => {
-                assert_eq!(envelopes.len(), 55);
+                assert_eq!(messages.len(), 55);
             }
             other => panic!("Expected Envelopes, got {:?}", other),
         }
@@ -829,10 +848,10 @@ mod tests {
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Envelopes { envelopes },
+                data: ResponseData::Envelopes { messages },
             }) => {
                 assert!(
-                    !envelopes.is_empty(),
+                    !messages.is_empty(),
                     "Inbox label should have envelopes, got 0. Inbox label_id={}",
                     inbox.id
                 );
@@ -1013,10 +1032,10 @@ mod tests {
         let resp = handle_request(&state, &envelopes_msg).await;
         let message_id = match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Envelopes { envelopes },
+                data: ResponseData::Envelopes { messages },
             }) => {
-                assert!(!envelopes.is_empty());
-                envelopes[0].id.clone()
+                assert!(!messages.is_empty());
+                messages[0].envelope.id.clone()
             }
             other => panic!("Expected Envelopes, got {:?}", other),
         };
@@ -1063,10 +1082,10 @@ mod tests {
         let resp = handle_request(state, &msg).await;
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Envelopes { envelopes },
+                data: ResponseData::Envelopes { messages },
             }) => {
-                assert!(!envelopes.is_empty());
-                envelopes[0].id.clone()
+                assert!(!messages.is_empty());
+                messages[0].envelope.id.clone()
             }
             other => panic!("Expected Envelopes, got {:?}", other),
         }
@@ -1095,9 +1114,7 @@ mod tests {
         // Verify flag is set
         let get_msg = IpcMessage {
             id: 2,
-            payload: IpcPayload::Request(Request::GetEnvelope {
-                message_id: id,
-            }),
+            payload: IpcPayload::Request(Request::GetEnvelope { message_id: id }),
         };
         let resp = handle_request(&state, &get_msg).await;
         match resp.payload {
@@ -1105,7 +1122,9 @@ mod tests {
                 data: ResponseData::Envelope { envelope },
             }) => {
                 assert!(
-                    envelope.flags.contains(mxr_core::types::MessageFlags::STARRED),
+                    envelope
+                        .flags
+                        .contains(mxr_core::types::MessageFlags::STARRED),
                     "Expected STARRED flag to be set, got {:?}",
                     envelope.flags
                 );
@@ -1136,9 +1155,7 @@ mod tests {
 
         let get_msg = IpcMessage {
             id: 2,
-            payload: IpcPayload::Request(Request::GetEnvelope {
-                message_id: id,
-            }),
+            payload: IpcPayload::Request(Request::GetEnvelope { message_id: id }),
         };
         let resp = handle_request(&state, &get_msg).await;
         match resp.payload {
@@ -1278,9 +1295,7 @@ mod tests {
 
         let msg = IpcMessage {
             id: 2,
-            payload: IpcPayload::Request(Request::PrepareForward {
-                message_id: id,
-            }),
+            payload: IpcPayload::Request(Request::PrepareForward { message_id: id }),
         };
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
@@ -1371,9 +1386,7 @@ mod tests {
         // Unsnooze
         let msg = IpcMessage {
             id: 3,
-            payload: IpcPayload::Request(Request::Unsnooze {
-                message_id: id,
-            }),
+            payload: IpcPayload::Request(Request::Unsnooze { message_id: id }),
         };
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
@@ -1393,7 +1406,11 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::SnoozedMessages { snoozed },
             }) => {
-                assert_eq!(snoozed.len(), 0, "Expected 0 snoozed messages after unsnooze");
+                assert_eq!(
+                    snoozed.len(),
+                    0,
+                    "Expected 0 snoozed messages after unsnooze"
+                );
             }
             other => panic!("Expected SnoozedMessages, got {:?}", other),
         }
@@ -1424,9 +1441,7 @@ mod tests {
         // Verify flags
         let get_msg = IpcMessage {
             id: 2,
-            payload: IpcPayload::Request(Request::GetEnvelope {
-                message_id: id,
-            }),
+            payload: IpcPayload::Request(Request::GetEnvelope { message_id: id }),
         };
         let resp = handle_request(&state, &get_msg).await;
         match resp.payload {
@@ -1451,9 +1466,7 @@ mod tests {
         // The first envelope from FakeProvider fixtures uses UnsubscribeMethod::None
         let msg = IpcMessage {
             id: 1,
-            payload: IpcPayload::Request(Request::Unsubscribe {
-                message_id: id,
-            }),
+            payload: IpcPayload::Request(Request::Unsubscribe { message_id: id }),
         };
         let resp = handle_request(&state, &msg).await;
         match resp.payload {

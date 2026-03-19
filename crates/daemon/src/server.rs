@@ -2,9 +2,10 @@ use crate::handler::handle_request;
 use crate::loops;
 use crate::state::AppState;
 use futures::{SinkExt, StreamExt};
-use mxr_protocol::IpcCodec;
+use mxr_protocol::{IpcCodec, IpcMessage};
 use std::sync::Arc;
 use tokio::net::UnixListener;
+use tokio::sync::mpsc;
 use tokio_util::codec::Framed;
 
 pub async fn run_daemon() -> anyhow::Result<()> {
@@ -73,17 +74,22 @@ pub async fn run_daemon() -> anyhow::Result<()> {
         let mut event_rx = state.event_tx.subscribe();
 
         tokio::spawn(async move {
-            let mut framed = Framed::new(stream, IpcCodec::new());
+            let (mut sink, mut stream) =
+                Framed::new(stream, IpcCodec::new()).split();
+            let (resp_tx, mut resp_rx) = mpsc::unbounded_channel::<IpcMessage>();
 
             loop {
                 tokio::select! {
-                    msg = framed.next() => {
+                    msg = stream.next() => {
                         match msg {
                             Some(Ok(ipc_msg)) => {
-                                let response = handle_request(&state, &ipc_msg).await;
-                                if framed.send(response).await.is_err() {
-                                    break;
-                                }
+                                // Spawn handler as a task — requests run concurrently
+                                let state = state.clone();
+                                let resp_tx = resp_tx.clone();
+                                tokio::spawn(async move {
+                                    let response = handle_request(&state, &ipc_msg).await;
+                                    let _ = resp_tx.send(response);
+                                });
                             }
                             Some(Err(e)) => {
                                 tracing::error!("IPC decode error: {}", e);
@@ -92,9 +98,16 @@ pub async fn run_daemon() -> anyhow::Result<()> {
                             None => break,
                         }
                     }
+                    resp = resp_rx.recv() => {
+                        if let Some(resp_msg) = resp {
+                            if sink.send(resp_msg).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
                     event = event_rx.recv() => {
                         if let Ok(event_msg) = event {
-                            if framed.send(event_msg).await.is_err() {
+                            if sink.send(event_msg).await.is_err() {
                                 break;
                             }
                         }

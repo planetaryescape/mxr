@@ -33,10 +33,8 @@ impl AppState {
         let search = Arc::new(Mutex::new(SearchIndex::open(&index_path)?));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
-        let (provider, send_provider) = match Self::create_provider_from_config(
-            &config, &store,
-        )
-        .await
+        let (provider, send_provider) = match Self::create_provider_from_config(&config, &store)
+            .await
         {
             Ok(p) => p,
             Err(e) => {
@@ -103,9 +101,7 @@ impl AppState {
                 }
 
                 tracing::info!("Using Gmail provider for account '{key}'");
-                let provider = Arc::new(mxr_provider_gmail::GmailProvider::new(
-                    account_id, client,
-                ));
+                let provider = Arc::new(mxr_provider_gmail::GmailProvider::new(account_id, client));
                 // GmailProvider implements both MailSyncProvider and MailSendProvider
                 let send_provider: Arc<dyn MailSendProvider> = provider.clone();
                 return Ok((provider, Some(send_provider)));

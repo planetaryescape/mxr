@@ -36,9 +36,7 @@ pub fn draw(
     let mut system_labels: Vec<&Label> = visible_labels
         .iter()
         .filter(|l| l.kind == LabelKind::System)
-        .filter(|l| {
-            is_primary_system_label(&l.name) || l.total_count > 0 || l.unread_count > 0
-        })
+        .filter(|l| is_primary_system_label(&l.name) || l.total_count > 0 || l.unread_count > 0)
         .copied()
         .collect();
     system_labels.sort_by_key(|l| system_label_order(&l.name));
@@ -60,12 +58,10 @@ pub fn draw(
     }
 
     if has_user_labels {
-        items.push(ListItem::new(
-            Line::from(Span::styled(
-                "  ─────────",
-                Style::default().fg(Color::Rgb(60, 60, 70)),
-            )),
-        ));
+        items.push(ListItem::new(Line::from(Span::styled(
+            "  ─────────",
+            Style::default().fg(Color::Rgb(60, 60, 70)),
+        ))));
     }
 
     for label in &user_labels {
@@ -157,7 +153,13 @@ fn render_label_item<'a>(
     let line = if count_str.is_empty() {
         format!("{}{}", prefix, display_name)
     } else {
-        format!("{}{:<nw$} {}", prefix, display_name, count_str, nw = name_width)
+        format!(
+            "{}{:<nw$} {}",
+            prefix,
+            display_name,
+            count_str,
+            nw = name_width
+        )
     };
 
     let style = if is_active {
@@ -210,7 +212,10 @@ pub fn should_hide_label(name: &str) -> bool {
 }
 
 pub fn is_primary_system_label(name: &str) -> bool {
-    matches!(name, "INBOX" | "STARRED" | "SENT" | "DRAFT" | "SPAM" | "TRASH")
+    matches!(
+        name,
+        "INBOX" | "STARRED" | "SENT" | "DRAFT" | "SPAM" | "TRASH"
+    )
 }
 
 pub fn system_label_order(name: &str) -> usize {

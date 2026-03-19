@@ -15,7 +15,16 @@ pub fn draw(
     active_pane: &ActivePane,
     title: &str,
 ) {
-    draw_with_selection(frame, area, envelopes, selected_index, scroll_offset, active_pane, title, &HashSet::new());
+    draw_with_selection(
+        frame,
+        area,
+        envelopes,
+        selected_index,
+        scroll_offset,
+        active_pane,
+        title,
+        &HashSet::new(),
+    );
 }
 
 pub fn draw_with_selection(

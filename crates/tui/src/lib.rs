@@ -5,12 +5,12 @@ pub mod input;
 pub mod keybindings;
 pub mod ui;
 
-use app::{App, ComposeAction};
+use app::{App, ComposeAction, PendingSend};
 use client::Client;
 use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
 use mxr_core::MxrError;
-use mxr_protocol::{Request, Response, ResponseData, SearchResultItem};
+use mxr_protocol::{DaemonEvent, Request, Response, ResponseData, SearchResultItem};
 use tokio::sync::{mpsc, oneshot};
 
 /// A request sent from the main loop to the background IPC worker.
@@ -21,16 +21,37 @@ struct IpcRequest {
 
 /// Runs a single persistent daemon connection in a background task.
 /// The main loop sends requests via channel — no new connections per operation.
-fn spawn_ipc_worker(socket_path: std::path::PathBuf) -> mpsc::UnboundedSender<IpcRequest> {
+/// Daemon events (SyncCompleted, LabelCountsUpdated, etc.) are forwarded to result_tx.
+fn spawn_ipc_worker(
+    socket_path: std::path::PathBuf,
+    result_tx: mpsc::UnboundedSender<AsyncResult>,
+) -> mpsc::UnboundedSender<IpcRequest> {
     let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
     tokio::spawn(async move {
+        // Create event channel — Client forwards daemon events here
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel::<DaemonEvent>();
         let mut client = match Client::connect(&socket_path).await {
-            Ok(c) => c,
+            Ok(c) => c.with_event_channel(event_tx),
             Err(_) => return,
         };
-        while let Some(req) = rx.recv().await {
-            let result = client.raw_request(req.request).await;
-            let _ = req.reply.send(result);
+
+        loop {
+            tokio::select! {
+                req = rx.recv() => {
+                    match req {
+                        Some(req) => {
+                            let result = client.raw_request(req.request).await;
+                            let _ = req.reply.send(result);
+                        }
+                        None => break,
+                    }
+                }
+                event = event_rx.recv() => {
+                    if let Some(event) = event {
+                        let _ = result_tx.send(AsyncResult::DaemonEvent(event));
+                    }
+                }
+            }
         }
     });
     tx
@@ -60,69 +81,22 @@ pub async fn run() -> anyhow::Result<()> {
     app.load(&mut client).await?;
     app.apply(action::Action::GoToInbox);
 
-    // Background IPC worker for non-blocking operations
-    let bg = spawn_ipc_worker(socket_path);
-
     let mut terminal = ratatui::init();
     let mut events = EventStream::new();
 
     // Channels for async results
     let (result_tx, mut result_rx) = mpsc::unbounded_channel::<AsyncResult>();
 
-    // Debounce body fetches: wait 150ms after last navigation before fetching
-    let mut body_fetch_deadline: Option<(mxr_core::MessageId, tokio::time::Instant)> = None;
+    // Background IPC worker — also forwards daemon events to result_tx
+    let bg = spawn_ipc_worker(socket_path, result_tx.clone());
 
     loop {
         terminal.draw(|frame| app.draw(frame))?;
 
-        // Schedule body fetch with debounce (resets on each navigation)
-        if app.pending_body_fetch {
-            app.pending_body_fetch = false;
-            if let Some(env) = &app.viewing_envelope {
-                body_fetch_deadline = Some((
-                    env.id.clone(),
-                    tokio::time::Instant::now() + std::time::Duration::from_millis(150),
-                ));
-            }
-        }
-
-        // Fire body fetch once debounce deadline passes
-        if let Some((ref msg_id, deadline)) = body_fetch_deadline {
-            if tokio::time::Instant::now() >= deadline {
-                let msg_id = msg_id.clone();
-                body_fetch_deadline = None;
-                let bg = bg.clone();
-                let tx = result_tx.clone();
-                tokio::spawn(async move {
-                    let resp =
-                        ipc_call(&bg, Request::GetBody { message_id: msg_id.clone() }).await;
-                    let body = match resp {
-                        Ok(Response::Ok {
-                            data: ResponseData::Body { body },
-                        }) => Ok(body),
-                        Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                        Err(e) => Err(e),
-                        _ => Err(MxrError::Ipc("unexpected response".into())),
-                    };
-                    let _ = tx.send(AsyncResult::Body(msg_id, body));
-                });
-            }
-        }
-
-        // Factor debounce deadline into timeout
-        let base_timeout = if app.input_pending() {
+        let timeout = if app.input_pending() {
             std::time::Duration::from_millis(500)
         } else {
             std::time::Duration::from_secs(60)
-        };
-        let timeout = match &body_fetch_deadline {
-            Some((_, deadline)) => {
-                let remaining = deadline
-                    .checked_duration_since(tokio::time::Instant::now())
-                    .unwrap_or(std::time::Duration::ZERO);
-                base_timeout.min(remaining)
-            }
-            None => base_timeout,
         };
 
         // Spawn non-blocking search
@@ -158,15 +132,15 @@ pub async fn run() -> anyhow::Result<()> {
                     },
                 )
                 .await;
-                let envelopes = match resp {
+                let result = match resp {
                     Ok(Response::Ok {
-                        data: ResponseData::Envelopes { envelopes },
-                    }) => Ok(envelopes),
+                        data: ResponseData::Envelopes { messages },
+                    }) => Ok(messages),
                     Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::LabelEnvelopes(envelopes));
+                let _ = tx.send(AsyncResult::LabelEnvelopes(result));
             });
         }
 
@@ -216,7 +190,8 @@ pub async fn run() -> anyhow::Result<()> {
                             .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
                             .take(50)
                             .collect();
-                        let filename = format!("mxr-export-{}.md", sanitized.trim().replace(' ', "-"));
+                        let filename =
+                            format!("mxr-export-{}.md", sanitized.trim().replace(' ', "-"));
                         let path = std::env::temp_dir().join(&filename);
                         match std::fs::write(&path, &md) {
                             Ok(()) => Ok(format!("Exported to {}", path.display())),
@@ -252,20 +227,6 @@ pub async fn run() -> anyhow::Result<()> {
             result = result_rx.recv() => {
                 if let Some(msg) = result {
                     match msg {
-                        AsyncResult::Body(msg_id, Ok(body)) => {
-                            // Staleness check: only apply if still viewing this message
-                            if app.viewing_envelope.as_ref().map(|e| &e.id) == Some(&msg_id) {
-                                app.raw_body = body.text_plain.clone().or(body.text_html.clone());
-                                app.reader_mode = false;
-                                app.message_body = body.text_plain.clone().or(body.text_html.clone());
-                                app.viewing_body = Some(body);
-                            }
-                        }
-                        AsyncResult::Body(msg_id, Err(e)) => {
-                            if app.viewing_envelope.as_ref().map(|e| &e.id) == Some(&msg_id) {
-                                app.message_body = Some(format!("Error: {e}"));
-                            }
-                        }
                         AsyncResult::Search(Ok(results)) => {
                             let matched_ids: std::collections::HashSet<_> =
                                 results.iter().map(|r| r.message_id.clone()).collect();
@@ -281,10 +242,32 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Search(Err(_)) => {
                             app.envelopes = app.all_envelopes.clone();
                         }
-                        AsyncResult::LabelEnvelopes(Ok(envelopes)) => {
+                        AsyncResult::LabelEnvelopes(Ok(messages)) => {
+                            // Cache bodies and extract envelopes
+                            for sm in &messages {
+                                app.body_cache.insert(sm.envelope.id.clone(), sm.body.clone());
+                            }
+                            let envelopes: Vec<_> = messages.into_iter().map(|sm| sm.envelope).collect();
+                            // Preserve user's position by tracking selected message ID
+                            let selected_id = app.envelopes.get(app.selected_index).map(|e| e.id.clone());
                             app.envelopes = envelopes;
-                            app.selected_index = 0;
-                            app.scroll_offset = 0;
+                            if let Some(ref id) = selected_id {
+                                if let Some(pos) = app.envelopes.iter().position(|e| &e.id == id) {
+                                    app.selected_index = pos;
+                                    // Keep scroll offset valid
+                                    if app.selected_index < app.scroll_offset {
+                                        app.scroll_offset = app.selected_index;
+                                    } else if app.selected_index >= app.scroll_offset + app.visible_height.max(1) {
+                                        app.scroll_offset = app.selected_index + 1 - app.visible_height.max(1);
+                                    }
+                                } else {
+                                    // Selected message no longer in list (deleted/moved)
+                                    app.selected_index = app.selected_index.min(app.envelopes.len().saturating_sub(1));
+                                }
+                            } else {
+                                app.selected_index = 0;
+                                app.scroll_offset = 0;
+                            }
                         }
                         AsyncResult::LabelEnvelopes(Err(_)) => {
                             app.envelopes = app.all_envelopes.clone();
@@ -353,7 +336,6 @@ pub async fn run() -> anyhow::Result<()> {
                             terminal = ratatui::init();
                             match status {
                                 Ok(s) if s.success() => {
-                                    // Read and parse the draft file, then auto-send
                                     match std::fs::read_to_string(&data.draft_path) {
                                         Ok(content) => {
                                             match mxr_compose::frontmatter::parse_compose_file(
@@ -374,52 +356,15 @@ pub async fn run() -> anyhow::Result<()> {
                                                             msgs.join("; ")
                                                         ));
                                                     } else {
-                                                        // Build Draft and send
-                                                        let parse_addrs =
-                                                            |s: &str| -> Vec<mxr_core::Address> {
-                                                                s.split(',')
-                                                                    .map(|a| a.trim())
-                                                                    .filter(|a| !a.is_empty())
-                                                                    .map(|a| mxr_core::Address {
-                                                                        name: None,
-                                                                        email: a.to_string(),
-                                                                    })
-                                                                    .collect()
-                                                            };
-                                                        let account_id = app
-                                                            .envelopes
-                                                            .first()
-                                                            .or(app.all_envelopes.first())
-                                                            .map(|e| e.account_id.clone())
-                                                            .unwrap_or_else(
-                                                                mxr_core::id::AccountId::new,
-                                                            );
-                                                        let now = chrono::Utc::now();
-                                                        let draft = mxr_core::Draft {
-                                                            id: mxr_core::id::DraftId::new(),
-                                                            account_id,
-                                                            in_reply_to: None,
-                                                            to: parse_addrs(&fm.to),
-                                                            cc: parse_addrs(&fm.cc),
-                                                            bcc: parse_addrs(&fm.bcc),
-                                                            subject: fm.subject,
-                                                            body_markdown: body,
-                                                            attachments: fm
-                                                                .attach
-                                                                .iter()
-                                                                .map(std::path::PathBuf::from)
-                                                                .collect(),
-                                                            created_at: now,
-                                                            updated_at: now,
-                                                        };
-                                                        app.pending_mutation_queue.push((
-                                                            Request::SendDraft { draft },
-                                                            app::MutationEffect::StatusOnly(
-                                                                "Sent!".into(),
-                                                            ),
-                                                        ));
-                                                        app.status_message =
-                                                            Some("Sending...".into());
+                                                        // Store parsed draft for confirmation
+                                                        app.pending_send_confirm = Some(PendingSend {
+                                                            fm,
+                                                            body,
+                                                            draft_path: data.draft_path.clone(),
+                                                        });
+                                                        app.status_message = Some(
+                                                            "[s]end  [d]raft  [e]dit again  [Esc] discard".into(),
+                                                        );
                                                     }
                                                 }
                                                 Err(e) => {
@@ -433,8 +378,6 @@ pub async fn run() -> anyhow::Result<()> {
                                                 Some(format!("Failed to read draft: {e}"));
                                         }
                                     }
-                                    // Clean up draft file
-                                    let _ = std::fs::remove_file(&data.draft_path);
                                 }
                                 Ok(_) => {
                                     // Editor exited abnormally — user probably :q! to discard
@@ -456,6 +399,36 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ExportResult(Err(e)) => {
                             app.status_message = Some(format!("Export failed: {e}"));
                         }
+                        AsyncResult::DaemonEvent(event) => {
+                            match event {
+                                DaemonEvent::SyncCompleted { messages_synced, .. } => {
+                                    // Re-fetch current view's envelopes
+                                    if let Some(label_id) = app.active_label.clone() {
+                                        app.pending_label_fetch = Some(label_id);
+                                    }
+                                    // Label counts are updated in-place via
+                                    // LabelCountsUpdated events — no need to re-fetch
+                                    // the full label list here.
+                                    if messages_synced > 0 {
+                                        app.status_message = Some(format!(
+                                            "Synced {messages_synced} messages"
+                                        ));
+                                    }
+                                }
+                                DaemonEvent::LabelCountsUpdated { counts } => {
+                                    // Update label counts in-place without re-fetching
+                                    for count in &counts {
+                                        if let Some(label) = app.labels.iter_mut().find(
+                                            |l| l.id == count.label_id,
+                                        ) {
+                                            label.unread_count = count.unread_count;
+                                            label.total_count = count.total_count;
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                 }
             }
@@ -474,12 +447,12 @@ pub async fn run() -> anyhow::Result<()> {
 }
 
 enum AsyncResult {
-    Body(mxr_core::MessageId, Result<mxr_core::MessageBody, MxrError>),
     Search(Result<Vec<SearchResultItem>, MxrError>),
-    LabelEnvelopes(Result<Vec<mxr_core::Envelope>, MxrError>),
+    LabelEnvelopes(Result<Vec<mxr_core::types::SyncedMessage>, MxrError>),
     MutationResult(Result<app::MutationEffect, MxrError>),
     ComposeReady(Result<ComposeReadyData, MxrError>),
     ExportResult(Result<String, MxrError>),
+    DaemonEvent(DaemonEvent),
 }
 
 struct ComposeReadyData {
@@ -494,7 +467,16 @@ async fn handle_compose_action(
     let from = get_account_email(bg).await?;
 
     let kind = match action {
+        ComposeAction::EditDraft(path) => {
+            // Re-edit existing draft — skip creating a new file
+            let cursor_line = 1;
+            return Ok(ComposeReadyData {
+                draft_path: path,
+                cursor_line,
+            });
+        }
         ComposeAction::New => mxr_compose::ComposeKind::New,
+        ComposeAction::NewWithTo(to) => mxr_compose::ComposeKind::NewWithTo { to },
         ComposeAction::Reply { message_id } => {
             let resp = ipc_call(
                 bg,
@@ -556,8 +538,8 @@ async fn handle_compose_action(
         }
     };
 
-    let (path, cursor_line) = mxr_compose::create_draft_file(kind, &from)
-        .map_err(|e| MxrError::Ipc(e.to_string()))?;
+    let (path, cursor_line) =
+        mxr_compose::create_draft_file(kind, &from).map_err(|e| MxrError::Ipc(e.to_string()))?;
 
     Ok(ComposeReadyData {
         draft_path: path,
@@ -565,16 +547,11 @@ async fn handle_compose_action(
     })
 }
 
-async fn get_account_email(
-    bg: &mpsc::UnboundedSender<IpcRequest>,
-) -> Result<String, MxrError> {
+async fn get_account_email(bg: &mpsc::UnboundedSender<IpcRequest>) -> Result<String, MxrError> {
     let resp = ipc_call(bg, Request::GetStatus).await?;
     match resp {
         Response::Ok {
-            data:
-                ResponseData::Status {
-                    accounts, ..
-                },
+            data: ResponseData::Status { accounts, .. },
         } => Ok(accounts
             .into_iter()
             .next()
@@ -1023,7 +1000,10 @@ mod tests {
         // Press l (which triggers OpenSelected)
         app.apply(Action::OpenSelected);
         let second_id = app.viewing_envelope.as_ref().unwrap().id.clone();
-        assert_ne!(first_id, second_id, "l should load the new message, not stay on old one");
+        assert_ne!(
+            first_id, second_id,
+            "l should load the new message, not stay on old one"
+        );
         assert_eq!(app.selected_index, 1);
     }
 
@@ -1042,7 +1022,8 @@ mod tests {
         app.apply(Action::MoveDown);
         let preview_id = app.viewing_envelope.as_ref().unwrap().id.clone();
         assert_ne!(first_id, preview_id, "j/k should auto-preview in ThreePane");
-        assert!(app.pending_body_fetch, "should trigger body fetch for preview");
+        // Body should be loaded from cache (or None if not cached in test)
+        // No async fetch needed — bodies are inline with envelopes
     }
 
     #[test]
@@ -1053,8 +1034,11 @@ mod tests {
         // Don't open message — stay in TwoPane
         assert_eq!(app.layout_mode, LayoutMode::TwoPane);
         app.apply(Action::MoveDown);
-        assert!(app.viewing_envelope.is_none(), "j/k should not auto-preview in TwoPane");
-        assert!(!app.pending_body_fetch);
+        assert!(
+            app.viewing_envelope.is_none(),
+            "j/k should not auto-preview in TwoPane"
+        );
+        // No body fetch triggered in TwoPane mode
     }
 
     // --- Back navigation tests ---
@@ -1070,8 +1054,15 @@ mod tests {
         // Esc should move to MailList but keep ThreePane
         app.apply(Action::Back);
         assert_eq!(app.active_pane, ActivePane::MailList);
-        assert_eq!(app.layout_mode, LayoutMode::ThreePane, "Esc in MessageView should keep ThreePane");
-        assert!(app.viewing_envelope.is_some(), "Message should still be visible");
+        assert_eq!(
+            app.layout_mode,
+            LayoutMode::ThreePane,
+            "Esc in MessageView should keep ThreePane"
+        );
+        assert!(
+            app.viewing_envelope.is_some(),
+            "Message should still be visible"
+        );
     }
 
     #[test]
@@ -1080,11 +1071,17 @@ mod tests {
         app.envelopes = make_test_envelopes(5);
         app.all_envelopes = app.envelopes.clone();
         app.labels = make_test_labels();
-        let inbox_id = app.labels.iter().find(|l| l.name == "INBOX").unwrap().id.clone();
+        let inbox_id = app
+            .labels
+            .iter()
+            .find(|l| l.name == "INBOX")
+            .unwrap()
+            .id
+            .clone();
         // Simulate label filter active
         app.active_label = Some(inbox_id);
         app.envelopes = vec![app.envelopes[0].clone()]; // Filtered down
-        // Esc should clear filter
+                                                        // Esc should clear filter
         app.apply(Action::Back);
         assert!(app.active_label.is_none(), "Esc should clear label filter");
         assert_eq!(app.envelopes.len(), 5, "Should restore all envelopes");
@@ -1097,7 +1094,7 @@ mod tests {
         app.all_envelopes = app.envelopes.clone();
         app.apply(Action::OpenSelected); // ThreePane
         app.active_pane = ActivePane::MailList; // Move back
-        // No filter active — Esc should close ThreePane
+                                                // No filter active — Esc should close ThreePane
         app.apply(Action::Back);
         assert_eq!(app.layout_mode, LayoutMode::TwoPane);
     }
@@ -1113,7 +1110,10 @@ mod tests {
         let first_user_idx = ordered.iter().position(|l| l.kind == LabelKind::User);
         let last_system_idx = ordered.iter().rposition(|l| l.kind == LabelKind::System);
         if let (Some(first_user), Some(last_system)) = (first_user_idx, last_system_idx) {
-            assert!(last_system < first_user, "All system labels should come before user labels");
+            assert!(
+                last_system < first_user,
+                "All system labels should come before user labels"
+            );
         }
     }
 
@@ -1122,7 +1122,8 @@ mod tests {
         let mut app = App::new();
         app.labels = make_test_labels();
         let ordered = app.ordered_visible_labels();
-        let system_names: Vec<&str> = ordered.iter()
+        let system_names: Vec<&str> = ordered
+            .iter()
             .filter(|l| l.kind == LabelKind::System)
             .map(|l| l.name.as_str())
             .collect();
@@ -1138,7 +1139,10 @@ mod tests {
         app.labels = make_test_labels();
         let ordered = app.ordered_visible_labels();
         let names: Vec<&str> = ordered.iter().map(|l| l.name.as_str()).collect();
-        assert!(!names.contains(&"CATEGORY_UPDATES"), "Gmail categories should be hidden");
+        assert!(
+            !names.contains(&"CATEGORY_UPDATES"),
+            "Gmail categories should be hidden"
+        );
     }
 
     #[test]
@@ -1148,11 +1152,20 @@ mod tests {
         let ordered = app.ordered_visible_labels();
         let names: Vec<&str> = ordered.iter().map(|l| l.name.as_str()).collect();
         // CHAT has 0 total, 0 unread — should be hidden
-        assert!(!names.contains(&"CHAT"), "Empty non-primary system labels should be hidden");
+        assert!(
+            !names.contains(&"CHAT"),
+            "Empty non-primary system labels should be hidden"
+        );
         // DRAFT has 0 total but is primary — should be shown
-        assert!(names.contains(&"DRAFT"), "Primary system labels shown even if empty");
+        assert!(
+            names.contains(&"DRAFT"),
+            "Primary system labels shown even if empty"
+        );
         // IMPORTANT has 5 total — should be shown (non-primary but non-empty)
-        assert!(names.contains(&"IMPORTANT"), "Non-empty system labels should be shown");
+        assert!(
+            names.contains(&"IMPORTANT"),
+            "Non-empty system labels should be shown"
+        );
     }
 
     #[test]
@@ -1160,7 +1173,8 @@ mod tests {
         let mut app = App::new();
         app.labels = make_test_labels();
         let ordered = app.ordered_visible_labels();
-        let user_names: Vec<&str> = ordered.iter()
+        let user_names: Vec<&str> = ordered
+            .iter()
             .filter(|l| l.kind == LabelKind::User)
             .map(|l| l.name.as_str())
             .collect();
@@ -1177,10 +1191,16 @@ mod tests {
         app.all_envelopes = app.envelopes.clone();
         app.labels = make_test_labels();
         app.apply(Action::GoToInbox);
-        assert!(app.active_label.is_some(), "GoToInbox should set active_label");
+        assert!(
+            app.active_label.is_some(),
+            "GoToInbox should set active_label"
+        );
         let label = app.labels.iter().find(|l| l.name == "INBOX").unwrap();
         assert_eq!(app.active_label.as_ref().unwrap(), &label.id);
-        assert!(app.pending_label_fetch.is_some(), "Should trigger label fetch");
+        assert!(
+            app.pending_label_fetch.is_some(),
+            "Should trigger label fetch"
+        );
     }
 
     #[test]
@@ -1189,7 +1209,13 @@ mod tests {
         app.envelopes = make_test_envelopes(10);
         app.all_envelopes = app.envelopes.clone();
         app.labels = make_test_labels();
-        let inbox_id = app.labels.iter().find(|l| l.name == "INBOX").unwrap().id.clone();
+        let inbox_id = app
+            .labels
+            .iter()
+            .find(|l| l.name == "INBOX")
+            .unwrap()
+            .id
+            .clone();
         app.active_label = Some(inbox_id);
         app.envelopes = vec![app.envelopes[0].clone()]; // Simulate filtered
         app.selected_index = 0;
@@ -1238,7 +1264,9 @@ mod tests {
                 assert!(flags.contains(MessageFlags::STARRED));
                 // Apply effect
                 for e in app.envelopes.iter_mut() {
-                    if e.id == message_id { e.flags = flags; }
+                    if e.id == message_id {
+                        e.flags = flags;
+                    }
                 }
             }
             _ => panic!("Expected UpdateFlags"),
@@ -1277,7 +1305,10 @@ mod tests {
         app.all_envelopes = app.envelopes.clone();
         let title = app.mail_list_title();
         assert!(title.contains("5"), "Title should show message count");
-        assert!(title.contains("Messages"), "Default title should say Messages");
+        assert!(
+            title.contains("Messages"),
+            "Default title should say Messages"
+        );
     }
 
     #[test]
@@ -1286,10 +1317,19 @@ mod tests {
         app.envelopes = make_test_envelopes(5);
         app.all_envelopes = app.envelopes.clone();
         app.labels = make_test_labels();
-        let inbox_id = app.labels.iter().find(|l| l.name == "INBOX").unwrap().id.clone();
+        let inbox_id = app
+            .labels
+            .iter()
+            .find(|l| l.name == "INBOX")
+            .unwrap()
+            .id
+            .clone();
         app.active_label = Some(inbox_id);
         let title = app.mail_list_title();
-        assert!(title.contains("Inbox"), "Title should show humanized label name");
+        assert!(
+            title.contains("Inbox"),
+            "Title should show humanized label name"
+        );
     }
 
     #[test]
@@ -1300,7 +1340,10 @@ mod tests {
         app.search_active = true;
         app.search_bar.query = "deployment".to_string();
         let title = app.mail_list_title();
-        assert!(title.contains("deployment"), "Title should show search query");
+        assert!(
+            title.contains("deployment"),
+            "Title should show search query"
+        );
         assert!(title.contains("Search"), "Title should indicate search");
     }
 

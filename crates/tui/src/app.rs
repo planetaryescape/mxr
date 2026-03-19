@@ -3,6 +3,7 @@ use crate::client::Client;
 use crate::input::InputHandler;
 use crate::ui;
 use crate::ui::command_palette::CommandPalette;
+use crate::ui::compose_picker::ComposePicker;
 use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
 use crate::ui::search_bar::SearchBar;
 use crossterm::event::{KeyCode, KeyModifiers};
@@ -11,7 +12,7 @@ use mxr_core::types::*;
 use mxr_core::MxrError;
 use mxr_protocol::{MutationCommand, Request};
 use ratatui::prelude::*;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
 pub enum MutationEffect {
@@ -24,9 +25,18 @@ pub enum MutationEffect {
     StatusOnly(String),
 }
 
+/// Draft waiting for user confirmation after editor closes.
+pub struct PendingSend {
+    pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
+    pub body: String,
+    pub draft_path: std::path::PathBuf,
+}
+
 #[derive(Debug, Clone)]
 pub enum ComposeAction {
     New,
+    NewWithTo(String),
+    EditDraft(std::path::PathBuf),
     Reply { message_id: MessageId },
     ReplyAll { message_id: MessageId },
     Forward { message_id: MessageId },
@@ -68,7 +78,7 @@ pub struct App {
     pub message_scroll_offset: u16,
     pub last_sync_status: Option<String>,
     pub visible_height: usize,
-    pub pending_body_fetch: bool,
+    pub body_cache: HashMap<MessageId, MessageBody>,
     pub pending_search: Option<String>,
     pub search_active: bool,
     pub sidebar_selected: usize,
@@ -79,10 +89,12 @@ pub struct App {
     pub status_message: Option<String>,
     pub pending_mutation_queue: Vec<(Request, MutationEffect)>,
     pub pending_compose: Option<ComposeAction>,
+    pub pending_send_confirm: Option<PendingSend>,
     pub reader_mode: bool,
     pub raw_body: Option<String>,
     pub viewing_body: Option<MessageBody>,
     pub label_picker: LabelPicker,
+    pub compose_picker: ComposePicker,
     pub selected_set: HashSet<MessageId>,
     pub visual_mode: bool,
     pub visual_anchor: Option<usize>,
@@ -115,7 +127,7 @@ impl App {
             message_scroll_offset: 0,
             last_sync_status: None,
             visible_height: 20,
-            pending_body_fetch: false,
+            body_cache: HashMap::new(),
             pending_search: None,
             search_active: false,
             sidebar_selected: 0,
@@ -126,10 +138,12 @@ impl App {
             status_message: None,
             pending_mutation_queue: Vec::new(),
             pending_compose: None,
+            pending_send_confirm: None,
             reader_mode: false,
             raw_body: None,
             viewing_body: None,
             label_picker: LabelPicker::default(),
+            compose_picker: ComposePicker::default(),
             selected_set: HashSet::new(),
             visual_mode: false,
             visual_anchor: None,
@@ -151,7 +165,11 @@ impl App {
     }
 
     pub async fn load(&mut self, client: &mut Client) -> Result<(), MxrError> {
-        self.envelopes = client.list_envelopes(5000, 0).await?;
+        let messages = client.list_envelopes(5000, 0).await?;
+        for sm in &messages {
+            self.body_cache.insert(sm.envelope.id.clone(), sm.body.clone());
+        }
+        self.envelopes = messages.into_iter().map(|sm| sm.envelope).collect();
         self.all_envelopes = self.envelopes.clone();
         self.labels = client.list_labels().await?;
         self.saved_searches = client.list_saved_searches().await.unwrap_or_default();
@@ -178,6 +196,164 @@ impl App {
                     self.search_bar.on_char(c);
                     // Live filter as you type
                     self.trigger_live_search();
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+
+        // Route keys to send confirmation prompt
+        if self.pending_send_confirm.is_some() {
+            match (key.code, key.modifiers) {
+                (KeyCode::Char('s'), KeyModifiers::NONE) => {
+                    // Send
+                    if let Some(pending) = self.pending_send_confirm.take() {
+                        let parse_addrs = |s: &str| -> Vec<mxr_core::Address> {
+                            s.split(',')
+                                .map(|a| a.trim())
+                                .filter(|a| !a.is_empty())
+                                .map(|a| mxr_core::Address {
+                                    name: None,
+                                    email: a.to_string(),
+                                })
+                                .collect()
+                        };
+                        let account_id = self
+                            .envelopes
+                            .first()
+                            .or(self.all_envelopes.first())
+                            .map(|e| e.account_id.clone())
+                            .unwrap_or_else(mxr_core::id::AccountId::new);
+                        let now = chrono::Utc::now();
+                        let draft = mxr_core::Draft {
+                            id: mxr_core::id::DraftId::new(),
+                            account_id,
+                            in_reply_to: None,
+                            to: parse_addrs(&pending.fm.to),
+                            cc: parse_addrs(&pending.fm.cc),
+                            bcc: parse_addrs(&pending.fm.bcc),
+                            subject: pending.fm.subject,
+                            body_markdown: pending.body,
+                            attachments: pending
+                                .fm
+                                .attach
+                                .iter()
+                                .map(std::path::PathBuf::from)
+                                .collect(),
+                            created_at: now,
+                            updated_at: now,
+                        };
+                        self.pending_mutation_queue.push((
+                            Request::SendDraft { draft },
+                            MutationEffect::StatusOnly("Sent!".into()),
+                        ));
+                        self.status_message = Some("Sending...".into());
+                        let _ = std::fs::remove_file(&pending.draft_path);
+                    }
+                    return None;
+                }
+                (KeyCode::Char('d'), KeyModifiers::NONE) => {
+                    // Save as draft to mail server
+                    if let Some(pending) = self.pending_send_confirm.take() {
+                        let parse_addrs = |s: &str| -> Vec<mxr_core::Address> {
+                            s.split(',')
+                                .map(|a| a.trim())
+                                .filter(|a| !a.is_empty())
+                                .map(|a| mxr_core::Address {
+                                    name: None,
+                                    email: a.to_string(),
+                                })
+                                .collect()
+                        };
+                        let account_id = self
+                            .envelopes
+                            .first()
+                            .or(self.all_envelopes.first())
+                            .map(|e| e.account_id.clone())
+                            .unwrap_or_else(mxr_core::id::AccountId::new);
+                        let now = chrono::Utc::now();
+                        let draft = mxr_core::Draft {
+                            id: mxr_core::id::DraftId::new(),
+                            account_id,
+                            in_reply_to: None,
+                            to: parse_addrs(&pending.fm.to),
+                            cc: parse_addrs(&pending.fm.cc),
+                            bcc: parse_addrs(&pending.fm.bcc),
+                            subject: pending.fm.subject,
+                            body_markdown: pending.body,
+                            attachments: pending
+                                .fm
+                                .attach
+                                .iter()
+                                .map(std::path::PathBuf::from)
+                                .collect(),
+                            created_at: now,
+                            updated_at: now,
+                        };
+                        self.pending_mutation_queue.push((
+                            Request::SaveDraftToServer { draft },
+                            MutationEffect::StatusOnly("Draft saved to server".into()),
+                        ));
+                        self.status_message = Some("Saving draft...".into());
+                        let _ = std::fs::remove_file(&pending.draft_path);
+                    }
+                    return None;
+                }
+                (KeyCode::Char('e'), KeyModifiers::NONE) => {
+                    // Edit again — reopen editor
+                    if let Some(pending) = self.pending_send_confirm.take() {
+                        self.pending_compose = Some(ComposeAction::EditDraft(pending.draft_path));
+                    }
+                    return None;
+                }
+                (KeyCode::Esc, _) => {
+                    // Discard
+                    if let Some(pending) = self.pending_send_confirm.take() {
+                        let _ = std::fs::remove_file(&pending.draft_path);
+                        self.status_message = Some("Discarded".into());
+                    }
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+
+        // Route keys to compose picker when active
+        if self.compose_picker.visible {
+            match (key.code, key.modifiers) {
+                (KeyCode::Enter, _) => {
+                    // Confirm all recipients and trigger compose
+                    let to = self.compose_picker.confirm();
+                    if to.is_empty() {
+                        self.pending_compose = Some(ComposeAction::New);
+                    } else {
+                        self.pending_compose = Some(ComposeAction::NewWithTo(to));
+                    }
+                    return None;
+                }
+                (KeyCode::Tab, _) => {
+                    // Tab adds selected contact to recipients
+                    self.compose_picker.add_recipient();
+                    return None;
+                }
+                (KeyCode::Esc, _) => {
+                    self.compose_picker.close();
+                    return None;
+                }
+                (KeyCode::Backspace, _) => {
+                    self.compose_picker.on_backspace();
+                    return None;
+                }
+                (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
+                    self.compose_picker.select_next();
+                    return None;
+                }
+                (KeyCode::Up, _) | (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
+                    self.compose_picker.select_prev();
+                    return None;
+                }
+                (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                    self.compose_picker.on_char(c);
                     return None;
                 }
                 _ => return None,
@@ -250,6 +426,8 @@ impl App {
                     self.active_pane = ActivePane::MailList;
                     None
                 }
+                // o = open in browser (message already open in pane)
+                (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::OpenInBrowser),
                 _ => self.input.handle_key(key),
             },
             ActivePane::Sidebar => match (key.code, key.modifiers) {
@@ -368,28 +546,25 @@ impl App {
                     self.viewing_envelope = Some(env.clone());
                     self.layout_mode = LayoutMode::ThreePane;
                     self.active_pane = ActivePane::MessageView;
-                    self.message_body = None;
                     self.message_scroll_offset = 0;
-                    self.pending_body_fetch = true;
+                    self.load_body_from_cache(&env.id.clone());
                 }
             }
-            Action::Back => {
-                match self.active_pane {
-                    ActivePane::MessageView => {
-                        self.active_pane = ActivePane::MailList;
-                    }
-                    ActivePane::MailList => {
-                        if self.search_active {
-                            self.apply(Action::CloseSearch);
-                        } else if self.active_label.is_some() {
-                            self.apply(Action::ClearFilter);
-                        } else if self.layout_mode == LayoutMode::ThreePane {
-                            self.apply(Action::CloseMessageView);
-                        }
-                    }
-                    ActivePane::Sidebar => {}
+            Action::Back => match self.active_pane {
+                ActivePane::MessageView => {
+                    self.active_pane = ActivePane::MailList;
                 }
-            }
+                ActivePane::MailList => {
+                    if self.search_active {
+                        self.apply(Action::CloseSearch);
+                    } else if self.active_label.is_some() {
+                        self.apply(Action::ClearFilter);
+                    } else if self.layout_mode == LayoutMode::ThreePane {
+                        self.apply(Action::CloseMessageView);
+                    }
+                }
+                ActivePane::Sidebar => {}
+            },
             Action::QuitView => {
                 self.should_quit = true;
             }
@@ -476,9 +651,8 @@ impl App {
                 if let Some(env) = self.envelopes.get(self.selected_index) {
                     self.viewing_envelope = Some(env.clone());
                     self.layout_mode = LayoutMode::ThreePane;
-                    self.message_body = None;
                     self.message_scroll_offset = 0;
-                    self.pending_body_fetch = true;
+                    self.load_body_from_cache(&env.id.clone());
                 }
             }
             Action::CloseMessageView => {
@@ -508,7 +682,19 @@ impl App {
 
             // Phase 2: Email actions (Gmail-native A005)
             Action::Compose => {
-                self.pending_compose = Some(ComposeAction::New);
+                // Build contacts from known envelopes (senders we've seen)
+                let mut seen = std::collections::HashMap::new();
+                for env in &self.all_envelopes {
+                    seen.entry(env.from.email.clone()).or_insert_with(|| {
+                        crate::ui::compose_picker::Contact {
+                            name: env.from.name.clone().unwrap_or_default(),
+                            email: env.from.email.clone(),
+                        }
+                    });
+                }
+                let mut contacts: Vec<_> = seen.into_values().collect();
+                contacts.sort_by(|a, b| a.email.to_lowercase().cmp(&b.email.to_lowercase()));
+                self.compose_picker.open(contacts);
             }
             Action::Reply => {
                 if let Some(env) = self.context_envelope() {
@@ -536,9 +722,7 @@ impl App {
                 if !ids.is_empty() {
                     let first = ids[0].clone();
                     self.pending_mutation_queue.push((
-                        Request::Mutation(MutationCommand::Archive {
-                            message_ids: ids,
-                        }),
+                        Request::Mutation(MutationCommand::Archive { message_ids: ids }),
                         MutationEffect::RemoveFromList(first),
                     ));
                     self.status_message = Some("Archiving...".into());
@@ -550,9 +734,7 @@ impl App {
                 if !ids.is_empty() {
                     let first = ids[0].clone();
                     self.pending_mutation_queue.push((
-                        Request::Mutation(MutationCommand::Trash {
-                            message_ids: ids,
-                        }),
+                        Request::Mutation(MutationCommand::Trash { message_ids: ids }),
                         MutationEffect::RemoveFromList(first),
                     ));
                     self.status_message = Some("Trashing...".into());
@@ -564,9 +746,7 @@ impl App {
                 if !ids.is_empty() {
                     let first = ids[0].clone();
                     self.pending_mutation_queue.push((
-                        Request::Mutation(MutationCommand::Spam {
-                            message_ids: ids,
-                        }),
+                        Request::Mutation(MutationCommand::Spam { message_ids: ids }),
                         MutationEffect::RemoveFromList(first),
                     ));
                     self.status_message = Some("Marking as spam...".into());
@@ -697,7 +877,8 @@ impl App {
                     }
                 } else {
                     // Open label picker
-                    self.label_picker.open(self.labels.clone(), LabelPickerMode::Apply);
+                    self.label_picker
+                        .open(self.labels.clone(), LabelPickerMode::Apply);
                 }
             }
             Action::MoveToLabel => {
@@ -718,7 +899,8 @@ impl App {
                     }
                 } else {
                     // Open label picker
-                    self.label_picker.open(self.labels.clone(), LabelPickerMode::Move);
+                    self.label_picker
+                        .open(self.labels.clone(), LabelPickerMode::Move);
                 }
             }
             Action::Unsubscribe => {
@@ -757,11 +939,7 @@ impl App {
                     self.reader_mode = !self.reader_mode;
                     if self.reader_mode {
                         let config = mxr_reader::ReaderConfig::default();
-                        let output = mxr_reader::clean(
-                            self.raw_body.as_deref(),
-                            None,
-                            &config,
-                        );
+                        let output = mxr_reader::clean(self.raw_body.as_deref(), None, &config);
                         self.message_body = Some(output.content);
                     } else {
                         self.message_body = self.raw_body.clone();
@@ -865,8 +1043,7 @@ impl App {
                             .enumerate()
                             .map(|(i, a)| format!("{}:{}", i + 1, a.filename))
                             .collect();
-                        self.status_message =
-                            Some(format!("Attachments: {}", list.join(", ")));
+                        self.status_message = Some(format!("Attachments: {}", list.join(", ")));
                     }
                 } else {
                     self.status_message = Some("No message body loaded".into());
@@ -899,16 +1076,22 @@ impl App {
 
     /// Returns the ordered list of visible labels (system first, then user, no separator).
     pub fn ordered_visible_labels(&self) -> Vec<&Label> {
-        let mut system: Vec<&Label> = self.labels.iter()
+        let mut system: Vec<&Label> = self
+            .labels
+            .iter()
             .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
             .filter(|l| l.kind == mxr_core::types::LabelKind::System)
             .filter(|l| {
-                crate::ui::sidebar::is_primary_system_label(&l.name) || l.total_count > 0 || l.unread_count > 0
+                crate::ui::sidebar::is_primary_system_label(&l.name)
+                    || l.total_count > 0
+                    || l.unread_count > 0
             })
             .collect();
         system.sort_by_key(|l| crate::ui::sidebar::system_label_order(&l.name));
 
-        let mut user: Vec<&Label> = self.labels.iter()
+        let mut user: Vec<&Label> = self
+            .labels
+            .iter()
             .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
             .filter(|l| l.kind != mxr_core::types::LabelKind::System)
             .collect();
@@ -1021,7 +1204,11 @@ impl App {
     /// Compute the mail list title based on active filter/search.
     pub fn mail_list_title(&self) -> String {
         if self.search_active {
-            format!("Search: {} ({})", self.search_bar.query, self.envelopes.len())
+            format!(
+                "Search: {} ({})",
+                self.search_bar.query,
+                self.envelopes.len()
+            )
         } else if let Some(ref label_id) = self.active_label {
             if let Some(label) = self.labels.iter().find(|l| &l.id == label_id) {
                 let name = crate::ui::sidebar::humanize_label(&label.name);
@@ -1040,13 +1227,26 @@ impl App {
             if let Some(env) = self.envelopes.get(self.selected_index) {
                 if self.viewing_envelope.as_ref().map(|e| &e.id) != Some(&env.id) {
                     self.viewing_envelope = Some(env.clone());
-                    self.message_body = None;
-                    self.raw_body = None;
-                    self.reader_mode = false;
                     self.message_scroll_offset = 0;
-                    self.pending_body_fetch = true;
+                    self.load_body_from_cache(&env.id.clone());
                 }
             }
+        }
+    }
+
+    /// Load body from cache into display fields. Instant — no IPC.
+    fn load_body_from_cache(&mut self, message_id: &MessageId) {
+        if let Some(body) = self.body_cache.get(message_id) {
+            let text = body.text_plain.clone().or(body.text_html.clone());
+            self.raw_body = text.clone();
+            self.message_body = text;
+            self.viewing_body = Some(body.clone());
+            self.reader_mode = false;
+        } else {
+            self.message_body = None;
+            self.raw_body = None;
+            self.viewing_body = None;
+            self.reader_mode = false;
         }
     }
 
@@ -1219,5 +1419,8 @@ impl App {
 
         // Label picker overlay
         ui::label_picker::draw(frame, area, &self.label_picker);
+
+        // Compose picker overlay
+        ui::compose_picker::draw(frame, area, &self.compose_picker);
     }
 }

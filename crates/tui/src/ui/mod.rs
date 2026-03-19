@@ -1,4 +1,5 @@
 pub mod command_palette;
+pub mod compose_picker;
 pub mod hint_bar;
 pub mod label_picker;
 pub mod mail_list;

@@ -6,11 +6,13 @@ use mxr_protocol::*;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::net::UnixStream;
+use tokio::sync::mpsc;
 use tokio_util::codec::Framed;
 
 pub struct Client {
     framed: Framed<UnixStream, IpcCodec>,
     next_id: AtomicU64,
+    event_tx: Option<mpsc::UnboundedSender<DaemonEvent>>,
 }
 
 impl Client {
@@ -19,7 +21,13 @@ impl Client {
         Ok(Self {
             framed: Framed::new(stream, IpcCodec::new()),
             next_id: AtomicU64::new(1),
+            event_tx: None,
         })
+    }
+
+    pub fn with_event_channel(mut self, tx: mpsc::UnboundedSender<DaemonEvent>) -> Self {
+        self.event_tx = Some(tx);
+        self
     }
 
     pub async fn raw_request(&mut self, req: Request) -> Result<Response, MxrError> {
@@ -39,14 +47,16 @@ impl Client {
 
         loop {
             match self.framed.next().await {
-                Some(Ok(resp_msg)) => {
-                    if resp_msg.id == id {
-                        match resp_msg.payload {
-                            IpcPayload::Response(resp) => return Ok(resp),
-                            _ => continue,
+                Some(Ok(resp_msg)) => match resp_msg.payload {
+                    IpcPayload::Response(resp) if resp_msg.id == id => return Ok(resp),
+                    IpcPayload::Event(event) => {
+                        if let Some(ref tx) = self.event_tx {
+                            let _ = tx.send(event);
                         }
+                        continue;
                     }
-                }
+                    _ => continue,
+                },
                 Some(Err(e)) => return Err(MxrError::Ipc(e.to_string())),
                 None => return Err(MxrError::Ipc("Connection closed".into())),
             }
@@ -57,7 +67,7 @@ impl Client {
         &mut self,
         limit: u32,
         offset: u32,
-    ) -> Result<Vec<Envelope>, MxrError> {
+    ) -> Result<Vec<mxr_core::types::SyncedMessage>, MxrError> {
         let resp = self
             .request(Request::ListEnvelopes {
                 label_id: None,
@@ -69,8 +79,8 @@ impl Client {
 
         match resp {
             Response::Ok {
-                data: ResponseData::Envelopes { envelopes },
-            } => Ok(envelopes),
+                data: ResponseData::Envelopes { messages },
+            } => Ok(messages),
             Response::Error { message } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }

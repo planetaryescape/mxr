@@ -10,6 +10,9 @@ use uuid::Uuid;
 /// The kind of compose action.
 pub enum ComposeKind {
     New,
+    NewWithTo {
+        to: String,
+    },
     Reply {
         in_reply_to: String,
         to: String,
@@ -34,6 +37,18 @@ pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usiz
         ComposeKind::New => {
             let fm = ComposeFrontmatter {
                 to: String::new(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: String::new(),
+                from: from.to_string(),
+                in_reply_to: None,
+                attach: Vec::new(),
+            };
+            (fm, String::new(), None)
+        }
+        ComposeKind::NewWithTo { to } => {
+            let fm = ComposeFrontmatter {
+                to,
                 cc: String::new(),
                 bcc: String::new(),
                 subject: String::new(),
@@ -257,6 +272,24 @@ mod tests {
         let issues = validate_draft(&fm, "body");
         assert!(!issues.iter().any(|i| i.is_error()));
         assert!(issues.iter().any(|i| !i.is_error()));
+    }
+
+    #[test]
+    fn roundtrip_new_with_to() {
+        let (path, _cursor) = create_draft_file(
+            ComposeKind::NewWithTo {
+                to: "alice@example.com".into(),
+            },
+            "me@example.com",
+        )
+        .unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        let (fm, body) = parse_compose_file(&content).unwrap();
+        assert_eq!(fm.from, "me@example.com");
+        assert_eq!(fm.to, "alice@example.com");
+        assert!(fm.subject.is_empty());
+        assert!(body.is_empty());
+        std::fs::remove_file(path).ok();
     }
 
     #[test]

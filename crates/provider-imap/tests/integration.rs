@@ -6,7 +6,7 @@
 use mxr_core::id::AccountId;
 use mxr_core::types::MessageFlags;
 use mxr_provider_imap::config::ImapConfig;
-use mxr_provider_imap::types::{FetchedMessage, ImapAddress, ImapEnvelope};
+use mxr_provider_imap::types::FetchedMessage;
 
 // We need to re-export the mock from the library for integration tests.
 // Since mock is cfg(test) only and integration tests are separate crates,
@@ -136,63 +136,45 @@ fn parse_imap_date_formats() {
 }
 
 #[test]
-fn imap_fetch_to_envelope_end_to_end() {
-    use mxr_provider_imap::parse::imap_fetch_to_envelope;
+fn imap_fetch_to_synced_message_end_to_end() {
+    use mxr_provider_imap::parse::imap_fetch_to_synced_message;
 
     let account_id = AccountId::new();
+    let raw = concat!(
+        "From: Alice Smith <alice@company.com>\r\n",
+        "To: Bob <bob@company.com>, carol@company.com\r\n",
+        "Cc: team@company.com\r\n",
+        "Subject: Project update\r\n",
+        "Date: Wed, 1 Jan 2025 10:00:00 +0000\r\n",
+        "Message-ID: <update-100@company.com>\r\n",
+        "In-Reply-To: <original@company.com>\r\n",
+        "References: <thread-start@company.com> <original@company.com>\r\n",
+        "Content-Type: text/plain\r\n",
+        "\r\n",
+        "Here is the project update.\r\n",
+    );
     let msg = FetchedMessage {
         uid: 100,
         flags: vec!["\\Seen".into(), "\\Flagged".into()],
-        envelope: Some(ImapEnvelope {
-            date: Some("Wed, 1 Jan 2025 10:00:00 +0000".into()),
-            subject: Some("Project update".into()),
-            from: vec![ImapAddress {
-                name: Some("Alice Smith".into()),
-                email: "alice@company.com".into(),
-            }],
-            to: vec![
-                ImapAddress {
-                    name: Some("Bob".into()),
-                    email: "bob@company.com".into(),
-                },
-                ImapAddress {
-                    name: None,
-                    email: "carol@company.com".into(),
-                },
-            ],
-            cc: vec![ImapAddress {
-                name: None,
-                email: "team@company.com".into(),
-            }],
-            bcc: vec![],
-            message_id: Some("<update-100@company.com>".into()),
-            in_reply_to: Some("<original@company.com>".into()),
-        }),
-        body: None,
-        header: Some(
-            b"References: <thread-start@company.com> <original@company.com>\r\n".to_vec(),
-        ),
+        envelope: None,
+        body: Some(raw.as_bytes().to_vec()),
+        header: None,
         size: Some(4096),
     };
 
-    let env = imap_fetch_to_envelope(&msg, "INBOX", &account_id).unwrap();
+    let sm = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
 
-    assert_eq!(env.provider_id, "INBOX:100");
-    assert_eq!(env.subject, "Project update");
-    assert_eq!(env.from.email, "alice@company.com");
-    assert_eq!(env.from.name, Some("Alice Smith".into()));
-    assert_eq!(env.to.len(), 2);
-    assert_eq!(env.cc.len(), 1);
-    assert!(env.flags.contains(MessageFlags::READ));
-    assert!(env.flags.contains(MessageFlags::STARRED));
-    assert_eq!(env.size_bytes, 4096);
-    assert_eq!(
-        env.message_id_header,
-        Some("<update-100@company.com>".into())
-    );
-    assert_eq!(env.in_reply_to, Some("<original@company.com>".into()));
-    assert_eq!(env.references.len(), 2);
-    assert_eq!(env.label_provider_ids, vec!["INBOX"]);
+    assert_eq!(sm.envelope.provider_id, "INBOX:100");
+    assert_eq!(sm.envelope.subject, "Project update");
+    assert_eq!(sm.envelope.from.email, "alice@company.com");
+    assert_eq!(sm.envelope.from.name, Some("Alice Smith".into()));
+    assert_eq!(sm.envelope.to.len(), 2);
+    assert_eq!(sm.envelope.cc.len(), 1);
+    assert!(sm.envelope.flags.contains(MessageFlags::READ));
+    assert!(sm.envelope.flags.contains(MessageFlags::STARRED));
+    assert_eq!(sm.envelope.size_bytes, 4096);
+    assert_eq!(sm.envelope.label_provider_ids, vec!["INBOX"]);
+    assert!(sm.body.text_plain.unwrap().contains("project update"));
 }
 
 #[test]

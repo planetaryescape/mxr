@@ -315,6 +315,33 @@ impl GmailClient {
         Ok(bytes)
     }
 
+    /// Create a draft in Gmail. Returns the draft ID.
+    pub async fn create_draft(&self, raw_base64url: &str) -> Result<String, GmailError> {
+        let url = format!("{}/drafts", self.base_url);
+
+        let body = serde_json::json!({
+            "message": {
+                "raw": raw_base64url
+            }
+        });
+
+        let resp = self
+            .http
+            .post(&url)
+            .header("Authorization", self.auth_header().await?)
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(self.handle_error(resp).await);
+        }
+
+        let json: serde_json::Value = resp.json().await?;
+        let draft_id = json["id"].as_str().unwrap_or("unknown").to_string();
+        Ok(draft_id)
+    }
+
     pub async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError> {
         let url = format!("{}/labels", self.base_url);
 
@@ -489,6 +516,254 @@ mod tests {
             }
             other => panic!("Expected RateLimited, got {other:?}"),
         }
+    }
+
+    impl TestGmailClient {
+        async fn get_message(
+            &self,
+            message_id: &str,
+            format: MessageFormat,
+        ) -> Result<GmailMessage, GmailError> {
+            let url = format!(
+                "{}/messages/{message_id}?format={}",
+                self.base_url,
+                format.as_str()
+            );
+
+            let resp = self
+                .http
+                .get(&url)
+                .header("Authorization", self.auth_header())
+                .send()
+                .await?;
+
+            if !resp.status().is_success() {
+                return Err(self.handle_error(resp).await);
+            }
+
+            Ok(resp.json().await?)
+        }
+
+        async fn list_history(
+            &self,
+            start_history_id: u64,
+            page_token: Option<&str>,
+        ) -> Result<GmailHistoryResponse, GmailError> {
+            let mut url = format!(
+                "{}/history?startHistoryId={start_history_id}",
+                self.base_url
+            );
+            if let Some(pt) = page_token {
+                url.push_str(&format!("&pageToken={pt}"));
+            }
+
+            let resp = self
+                .http
+                .get(&url)
+                .header("Authorization", self.auth_header())
+                .send()
+                .await?;
+
+            if !resp.status().is_success() {
+                return Err(self.handle_error(resp).await);
+            }
+
+            Ok(resp.json().await?)
+        }
+
+        async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError> {
+            let url = format!("{}/labels", self.base_url);
+
+            let resp = self
+                .http
+                .get(&url)
+                .header("Authorization", self.auth_header())
+                .send()
+                .await?;
+
+            if !resp.status().is_success() {
+                return Err(self.handle_error(resp).await);
+            }
+
+            Ok(resp.json().await?)
+        }
+    }
+
+    #[tokio::test]
+    async fn list_messages_single_page() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "messages": [
+                    {"id": "msg1", "threadId": "t1"},
+                    {"id": "msg2", "threadId": "t2"}
+                ],
+                "resultSizeEstimate": 2
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = TestGmailClient::new(server.uri());
+        let resp = client.list_messages(None, None, 10).await.unwrap();
+
+        let msgs = resp.messages.unwrap();
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0].id, "msg1");
+        assert_eq!(msgs[1].id, "msg2");
+        assert!(resp.next_page_token.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_message_metadata() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/messages/msg-123"))
+            .and(query_param("format", "metadata"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg-123",
+                "threadId": "thread-1",
+                "labelIds": ["INBOX", "UNREAD"],
+                "snippet": "Hello world",
+                "historyId": "99999",
+                "internalDate": "1700000000000",
+                "sizeEstimate": 2048,
+                "payload": {
+                    "mimeType": "text/plain",
+                    "headers": [
+                        {"name": "From", "value": "Alice <alice@example.com>"},
+                        {"name": "Subject", "value": "Test"}
+                    ]
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = TestGmailClient::new(server.uri());
+        let msg = client
+            .get_message("msg-123", MessageFormat::Metadata)
+            .await
+            .unwrap();
+
+        assert_eq!(msg.id, "msg-123");
+        assert_eq!(msg.thread_id, "thread-1");
+        assert_eq!(msg.label_ids.as_ref().unwrap().len(), 2);
+        assert_eq!(msg.snippet, Some("Hello world".to_string()));
+        assert_eq!(msg.size_estimate, Some(2048));
+    }
+
+    #[tokio::test]
+    async fn list_history_delta() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/history"))
+            .and(query_param("startHistoryId", "12345"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "history": [
+                    {
+                        "id": "12346",
+                        "messagesAdded": [
+                            {"message": {"id": "new-msg-1", "threadId": "t1"}}
+                        ]
+                    },
+                    {
+                        "id": "12347",
+                        "messagesDeleted": [
+                            {"message": {"id": "old-msg-1", "threadId": "t2"}}
+                        ]
+                    },
+                    {
+                        "id": "12348",
+                        "labelsAdded": [
+                            {
+                                "message": {"id": "msg-3", "threadId": "t3"},
+                                "labelIds": ["STARRED"]
+                            }
+                        ],
+                        "labelsRemoved": [
+                            {
+                                "message": {"id": "msg-3", "threadId": "t3"},
+                                "labelIds": ["UNREAD"]
+                            }
+                        ]
+                    }
+                ],
+                "historyId": "12348"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = TestGmailClient::new(server.uri());
+        let resp = client.list_history(12345, None).await.unwrap();
+
+        let history = resp.history.unwrap();
+        assert_eq!(history.len(), 3);
+
+        // Verify added
+        let added = history[0].messages_added.as_ref().unwrap();
+        assert_eq!(added[0].message.id, "new-msg-1");
+
+        // Verify deleted
+        let deleted = history[1].messages_deleted.as_ref().unwrap();
+        assert_eq!(deleted[0].message.id, "old-msg-1");
+
+        // Verify label changes
+        let labels_added = history[2].labels_added.as_ref().unwrap();
+        assert_eq!(labels_added[0].label_ids.as_ref().unwrap()[0], "STARRED");
+        let labels_removed = history[2].labels_removed.as_ref().unwrap();
+        assert_eq!(labels_removed[0].label_ids.as_ref().unwrap()[0], "UNREAD");
+
+        assert_eq!(resp.history_id, Some("12348".to_string()));
+    }
+
+    #[tokio::test]
+    async fn list_labels_response() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/labels"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "labels": [
+                    {
+                        "id": "INBOX",
+                        "name": "INBOX",
+                        "type": "system",
+                        "messagesTotal": 100,
+                        "messagesUnread": 5
+                    },
+                    {
+                        "id": "Label_1",
+                        "name": "Work",
+                        "type": "user",
+                        "messagesTotal": 42,
+                        "messagesUnread": 3,
+                        "color": {
+                            "textColor": "#000000",
+                            "backgroundColor": "#16a765"
+                        }
+                    }
+                ]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = TestGmailClient::new(server.uri());
+        let resp = client.list_labels().await.unwrap();
+
+        let labels = resp.labels.unwrap();
+        assert_eq!(labels.len(), 2);
+        assert_eq!(labels[0].id, "INBOX");
+        assert_eq!(labels[0].messages_total, Some(100));
+        assert_eq!(labels[0].messages_unread, Some(5));
+        assert_eq!(labels[1].name, "Work");
+        assert!(labels[1].color.is_some());
     }
 
     #[tokio::test]

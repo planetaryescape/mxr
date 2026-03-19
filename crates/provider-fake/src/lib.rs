@@ -92,12 +92,35 @@ impl MailSyncProvider for FakeProvider {
 
     async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
         match cursor {
-            SyncCursor::Initial => Ok(SyncBatch {
-                upserted: self.messages.clone(),
-                deleted_provider_ids: vec![],
-                label_changes: vec![],
-                next_cursor: SyncCursor::Gmail { history_id: 1 },
-            }),
+            SyncCursor::Initial => {
+                let synced = self
+                    .messages
+                    .iter()
+                    .map(|env| {
+                        let body = self
+                            .bodies
+                            .get(&env.provider_id)
+                            .cloned()
+                            .unwrap_or_else(|| MessageBody {
+                                message_id: env.id.clone(),
+                                text_plain: None,
+                                text_html: None,
+                                attachments: vec![],
+                                fetched_at: chrono::Utc::now(),
+                            });
+                        SyncedMessage {
+                            envelope: env.clone(),
+                            body,
+                        }
+                    })
+                    .collect();
+                Ok(SyncBatch {
+                    upserted: synced,
+                    deleted_provider_ids: vec![],
+                    label_changes: vec![],
+                    next_cursor: SyncCursor::Gmail { history_id: 1 },
+                })
+            }
             _ => Ok(SyncBatch {
                 upserted: vec![],
                 deleted_provider_ids: vec![],
@@ -105,13 +128,6 @@ impl MailSyncProvider for FakeProvider {
                 next_cursor: cursor.clone(),
             }),
         }
-    }
-
-    async fn fetch_body(&self, provider_message_id: &str) -> Result<MessageBody, MxrError> {
-        self.bodies
-            .get(provider_message_id)
-            .cloned()
-            .ok_or_else(|| MxrError::NotFound(format!("Body not found: {}", provider_message_id)))
     }
 
     async fn fetch_attachment(
@@ -176,6 +192,14 @@ impl MailSendProvider for FakeProvider {
             sent_at: chrono::Utc::now(),
         })
     }
+
+    async fn save_draft(
+        &self,
+        _draft: &Draft,
+        _from: &Address,
+    ) -> Result<Option<String>, MxrError> {
+        Ok(Some(format!("fake-draft-{}", uuid::Uuid::now_v7())))
+    }
 }
 
 #[cfg(test)]
@@ -220,10 +244,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_initial_returns_all() {
+    async fn sync_initial_returns_all_with_bodies() {
         let provider = FakeProvider::new(AccountId::new());
         let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
         assert_eq!(batch.upserted.len(), 55);
+        // Bodies are eagerly fetched during sync
+        assert!(batch.upserted[0].body.text_plain.is_some());
     }
 
     #[tokio::test]
@@ -234,13 +260,6 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(batch.upserted.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn fetch_body_works() {
-        let provider = FakeProvider::new(AccountId::new());
-        let body = provider.fetch_body("fake-msg-1").await.unwrap();
-        assert!(body.text_plain.is_some());
     }
 
     #[tokio::test]

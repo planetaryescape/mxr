@@ -7,7 +7,7 @@ pub mod types;
 
 use async_trait::async_trait;
 use config::ImapConfig;
-use mxr_core::id::{AccountId, MessageId};
+use mxr_core::id::AccountId;
 use mxr_core::provider::MailSyncProvider;
 use mxr_core::types::*;
 use session::{ImapSessionFactory, RealImapSessionFactory};
@@ -80,30 +80,24 @@ impl ImapProvider {
         }
 
         let fetched = session
-            .uid_fetch(
-                "1:*",
-                "(FLAGS ENVELOPE BODY.PEEK[HEADER] RFC822.SIZE)",
-            )
+            .uid_fetch("1:*", "(FLAGS BODY.PEEK[] RFC822.SIZE)")
             .await
             .map_err(mxr_core::error::MxrError::from)?;
 
-        let mut envelopes = Vec::with_capacity(fetched.len());
+        let mut synced = Vec::with_capacity(fetched.len());
         for msg in &fetched {
-            match parse::imap_fetch_to_envelope(msg, "INBOX", &self.account_id) {
-                Ok(env) => envelopes.push(env),
+            match parse::imap_fetch_to_synced_message(msg, "INBOX", &self.account_id) {
+                Ok(sm) => synced.push(sm),
                 Err(e) => warn!(uid = msg.uid, error = %e, "Failed to parse IMAP message"),
             }
         }
 
         let _ = session.logout().await;
 
-        debug!(
-            "IMAP initial sync complete: {} messages",
-            envelopes.len()
-        );
+        debug!("IMAP initial sync complete: {} messages", synced.len());
 
         Ok(SyncBatch {
-            upserted: envelopes,
+            upserted: synced,
             deleted_provider_ids: vec![],
             label_changes: vec![],
             next_cursor: SyncCursor::Imap {
@@ -162,35 +156,29 @@ impl ImapProvider {
 
         let uid_range = format!("{}:*", old_uid_next);
         let fetched = session
-            .uid_fetch(
-                &uid_range,
-                "(FLAGS ENVELOPE BODY.PEEK[HEADER] RFC822.SIZE)",
-            )
+            .uid_fetch(&uid_range, "(FLAGS BODY.PEEK[] RFC822.SIZE)")
             .await
             .map_err(mxr_core::error::MxrError::from)?;
 
-        let mut envelopes = Vec::with_capacity(fetched.len());
+        let mut synced = Vec::with_capacity(fetched.len());
         for msg in &fetched {
             // IMAP may return the last message with UID < uid_next if using "uid_next:*"
             // and there are no new messages. Filter those out.
             if msg.uid < old_uid_next {
                 continue;
             }
-            match parse::imap_fetch_to_envelope(msg, "INBOX", &self.account_id) {
-                Ok(env) => envelopes.push(env),
+            match parse::imap_fetch_to_synced_message(msg, "INBOX", &self.account_id) {
+                Ok(sm) => synced.push(sm),
                 Err(e) => warn!(uid = msg.uid, error = %e, "Failed to parse IMAP message"),
             }
         }
 
         let _ = session.logout().await;
 
-        debug!(
-            "IMAP delta sync complete: {} new messages",
-            envelopes.len()
-        );
+        debug!("IMAP delta sync complete: {} new messages", synced.len());
 
         Ok(SyncBatch {
-            upserted: envelopes,
+            upserted: synced,
             deleted_provider_ids: vec![],
             label_changes: vec![],
             next_cursor: SyncCursor::Imap {
@@ -250,11 +238,7 @@ impl MailSyncProvider for ImapProvider {
         Ok(folder_list
             .iter()
             .map(|f| {
-                folders::map_folder_to_label(
-                    &f.name,
-                    f.special_use.as_deref(),
-                    &self.account_id,
-                )
+                folders::map_folder_to_label(&f.name, f.special_use.as_deref(), &self.account_id)
             })
             .collect())
     }
@@ -270,47 +254,6 @@ impl MailSyncProvider for ImapProvider {
                 "IMAP provider received incompatible cursor: {other:?}"
             ))),
         }
-    }
-
-    async fn fetch_body(
-        &self,
-        provider_message_id: &str,
-    ) -> mxr_core::provider::Result<MessageBody> {
-        let (mailbox, uid) = folders::parse_provider_id(provider_message_id)
-            .map_err(mxr_core::error::MxrError::from)?;
-
-        let mut session = self
-            .session_factory
-            .create_session()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-
-        session
-            .select(&mailbox)
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-
-        let fetched = session
-            .uid_fetch(&uid.to_string(), "BODY[]")
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-
-        let _ = session.logout().await;
-
-        let msg = fetched.first().ok_or_else(|| {
-            mxr_core::error::MxrError::Provider(format!(
-                "Message not found: {provider_message_id}"
-            ))
-        })?;
-
-        let raw = msg.body.as_ref().ok_or_else(|| {
-            mxr_core::error::MxrError::Provider(format!(
-                "Empty body for message: {provider_message_id}"
-            ))
-        })?;
-
-        let message_id = MessageId::from_provider_id("imap", provider_message_id);
-        Ok(parse::parse_message_body(raw, &message_id))
     }
 
     async fn fetch_attachment(
@@ -340,19 +283,17 @@ impl MailSyncProvider for ImapProvider {
         let _ = session.logout().await;
 
         let msg = fetched.first().ok_or_else(|| {
-            mxr_core::error::MxrError::Provider(format!(
-                "Message not found: {provider_message_id}"
-            ))
+            mxr_core::error::MxrError::Provider(format!("Message not found: {provider_message_id}"))
         })?;
 
-        let raw = msg.body.as_ref().ok_or_else(|| {
-            mxr_core::error::MxrError::Provider("Empty body".into())
-        })?;
+        let raw = msg
+            .body
+            .as_ref()
+            .ok_or_else(|| mxr_core::error::MxrError::Provider("Empty body".into()))?;
 
         let parsed = mail_parser::MessageParser::default().parse(raw);
-        let parsed = parsed.ok_or_else(|| {
-            mxr_core::error::MxrError::Provider("Failed to parse message".into())
-        })?;
+        let parsed = parsed
+            .ok_or_else(|| mxr_core::error::MxrError::Provider("Failed to parse message".into()))?;
 
         let part_idx: usize = provider_attachment_id.parse().map_err(|_| {
             mxr_core::error::MxrError::Provider(format!(
@@ -361,9 +302,7 @@ impl MailSyncProvider for ImapProvider {
         })?;
 
         let part = parsed.parts.get(part_idx).ok_or_else(|| {
-            mxr_core::error::MxrError::Provider(format!(
-                "Attachment part {part_idx} not found"
-            ))
+            mxr_core::error::MxrError::Provider(format!("Attachment part {part_idx} not found"))
         })?;
 
         Ok(part.contents().to_vec())
@@ -392,14 +331,8 @@ impl MailSyncProvider for ImapProvider {
         let uid_str = uid.to_string();
 
         // Map label names to IMAP flag operations
-        let add_flags: Vec<&str> = add
-            .iter()
-            .filter_map(|l| label_to_flag(l))
-            .collect();
-        let remove_flags: Vec<&str> = remove
-            .iter()
-            .filter_map(|l| label_to_flag(l))
-            .collect();
+        let add_flags: Vec<&str> = add.iter().filter_map(|l| label_to_flag(l)).collect();
+        let remove_flags: Vec<&str> = remove.iter().filter_map(|l| label_to_flag(l)).collect();
 
         if !add_flags.is_empty() {
             let flag_str = format!("+FLAGS ({})", add_flags.join(" "));
@@ -579,26 +512,15 @@ mod tests {
     }
 
     fn make_fetched_message(uid: u32, subject: &str, from_email: &str) -> FetchedMessage {
+        // Build raw RFC822 message for full body parsing
+        let raw = format!(
+            "From: {from_email}\r\nTo: me@test.com\r\nSubject: {subject}\r\nDate: Mon, 1 Jan 2024 12:00:00 +0000\r\nMessage-ID: <msg{uid}@test.com>\r\nContent-Type: text/plain\r\n\r\nBody of {subject}"
+        );
         FetchedMessage {
             uid,
             flags: vec!["\\Seen".to_string()],
-            envelope: Some(ImapEnvelope {
-                date: Some("Mon, 1 Jan 2024 12:00:00 +0000".to_string()),
-                subject: Some(subject.to_string()),
-                from: vec![ImapAddress {
-                    name: None,
-                    email: from_email.to_string(),
-                }],
-                to: vec![ImapAddress {
-                    name: None,
-                    email: "me@test.com".to_string(),
-                }],
-                cc: vec![],
-                bcc: vec![],
-                message_id: Some(format!("<msg{uid}@test.com>")),
-                in_reply_to: None,
-            }),
-            body: None,
+            envelope: None,
+            body: Some(raw.into_bytes()),
             header: None,
             size: Some(1024),
         }
@@ -635,11 +557,8 @@ mod tests {
             ],
         );
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let labels = provider.sync_labels().await.unwrap();
         assert_eq!(labels.len(), 4);
@@ -671,18 +590,15 @@ mod tests {
             vec![],
         );
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
 
         assert_eq!(batch.upserted.len(), 3);
-        assert_eq!(batch.upserted[0].subject, "Hello");
-        assert_eq!(batch.upserted[1].subject, "Meeting");
-        assert_eq!(batch.upserted[2].subject, "Report");
+        assert_eq!(batch.upserted[0].envelope.subject, "Hello");
+        assert_eq!(batch.upserted[1].envelope.subject, "Meeting");
+        assert_eq!(batch.upserted[2].envelope.subject, "Report");
         assert!(batch.deleted_provider_ids.is_empty());
 
         match batch.next_cursor {
@@ -709,11 +625,8 @@ mod tests {
             vec![],
         );
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
         assert!(batch.upserted.is_empty());
@@ -735,11 +648,8 @@ mod tests {
             vec![],
         );
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let cursor = SyncCursor::Imap {
             uid_validity: 1,
@@ -748,7 +658,7 @@ mod tests {
         let batch = provider.sync_messages(&cursor).await.unwrap();
 
         assert_eq!(batch.upserted.len(), 1);
-        assert_eq!(batch.upserted[0].subject, "New message");
+        assert_eq!(batch.upserted[0].envelope.subject, "New message");
 
         match batch.next_cursor {
             SyncCursor::Imap { uid_next, .. } => assert_eq!(uid_next, 5),
@@ -768,11 +678,8 @@ mod tests {
             vec![],
         );
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let cursor = SyncCursor::Imap {
             uid_validity: 1,
@@ -803,11 +710,8 @@ mod tests {
             vec![],
         );
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let cursor = SyncCursor::Imap {
             uid_validity: 1, // Old value
@@ -817,7 +721,7 @@ mod tests {
 
         // Should have fallen back to initial sync and got messages
         assert_eq!(batch.upserted.len(), 1);
-        assert_eq!(batch.upserted[0].subject, "After reset");
+        assert_eq!(batch.upserted[0].envelope.subject, "After reset");
 
         match batch.next_cursor {
             SyncCursor::Imap { uid_validity, .. } => assert_eq!(uid_validity, 2),
@@ -832,20 +736,8 @@ mod tests {
         let old_msg = FetchedMessage {
             uid: 3, // Below our uid_next of 4
             flags: vec![],
-            envelope: Some(ImapEnvelope {
-                date: Some("Mon, 1 Jan 2024 12:00:00 +0000".to_string()),
-                subject: Some("Old message".to_string()),
-                from: vec![ImapAddress {
-                    name: None,
-                    email: "alice@example.com".to_string(),
-                }],
-                to: vec![],
-                cc: vec![],
-                bcc: vec![],
-                message_id: None,
-                in_reply_to: None,
-            }),
-            body: None,
+            envelope: None,
+            body: Some(b"From: alice@example.com\r\nSubject: Old message\r\nDate: Mon, 1 Jan 2024 12:00:00 +0000\r\nContent-Type: text/plain\r\n\r\nOld body".to_vec()),
             header: None,
             size: None,
         };
@@ -861,11 +753,8 @@ mod tests {
             vec![],
         );
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let cursor = SyncCursor::Imap {
             uid_validity: 1,
@@ -875,40 +764,6 @@ mod tests {
 
         // The old message should be filtered out
         assert!(batch.upserted.is_empty());
-    }
-
-    // -- fetch_body -----------------------------------------------------------
-
-    #[tokio::test]
-    async fn fetch_body_returns_parsed_body() {
-        let raw_email = b"From: alice@example.com\r\nTo: bob@example.com\r\nSubject: Test\r\nContent-Type: text/plain\r\n\r\nHello world";
-
-        let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 2,
-                exists: 1,
-            },
-            vec![vec![FetchedMessage {
-                uid: 42,
-                flags: vec![],
-                envelope: None,
-                body: Some(raw_email.to_vec()),
-                header: None,
-                size: None,
-            }]],
-            vec![],
-        );
-
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
-
-        let body = provider.fetch_body("INBOX:42").await.unwrap();
-        assert!(body.text_plain.is_some());
-        assert!(body.text_plain.unwrap().contains("Hello world"));
     }
 
     // -- mutations ------------------------------------------------------------
@@ -926,11 +781,8 @@ mod tests {
         );
         let log = factory.log.clone();
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         provider.set_read("INBOX:42", true).await.unwrap();
 
@@ -952,11 +804,8 @@ mod tests {
         );
         let log = factory.log.clone();
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         provider.set_read("INBOX:42", false).await.unwrap();
 
@@ -977,11 +826,8 @@ mod tests {
         );
         let log = factory.log.clone();
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         provider.set_starred("INBOX:42", true).await.unwrap();
 
@@ -1002,11 +848,8 @@ mod tests {
         );
         let log = factory.log.clone();
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         provider.trash("INBOX:42").await.unwrap();
 
@@ -1030,11 +873,8 @@ mod tests {
         );
         let log = factory.log.clone();
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         provider
             .modify_labels(
@@ -1095,11 +935,8 @@ mod tests {
             vec![],
         );
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         // Part index 2 should be the attachment (0=root multipart, 1=text, 2=attachment)
         let bytes = provider.fetch_attachment("INBOX:10", "2").await.unwrap();
@@ -1120,11 +957,8 @@ mod tests {
             vec![],
         );
 
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let result = provider
             .sync_messages(&SyncCursor::Gmail { history_id: 1 })
@@ -1156,8 +990,11 @@ mod tests {
             vec![],
         );
 
-        let provider =
-            ImapProvider::with_session_factory(account_id.clone(), config.clone(), Box::new(factory));
+        let provider = ImapProvider::with_session_factory(
+            account_id.clone(),
+            config.clone(),
+            Box::new(factory),
+        );
 
         let batch1 = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
         assert_eq!(batch1.upserted.len(), 3);
@@ -1176,55 +1013,39 @@ mod tests {
             vec![],
         );
 
-        let provider2 =
-            ImapProvider::with_session_factory(account_id.clone(), config.clone(), Box::new(factory2));
+        let provider2 = ImapProvider::with_session_factory(
+            account_id.clone(),
+            config.clone(),
+            Box::new(factory2),
+        );
 
         let batch2 = provider2.sync_messages(&cursor1).await.unwrap();
         assert_eq!(batch2.upserted.len(), 1);
-        assert_eq!(batch2.upserted[0].subject, "Fourth");
+        assert_eq!(batch2.upserted[0].envelope.subject, "Fourth");
+        // Body is eagerly fetched during sync
+        assert!(batch2.upserted[0]
+            .body
+            .text_plain
+            .as_deref()
+            .unwrap_or("")
+            .contains("Body of Fourth"));
 
-        // Phase 3: Fetch body
-        let raw_email = b"From: dave@example.com\r\nSubject: Fourth\r\nContent-Type: text/plain\r\n\r\nHello from Dave";
+        // Phase 3: Mutate — star the message
         let factory3 = MockImapSessionFactory::new(
             MailboxInfo {
                 uid_validity: 1,
                 uid_next: 5,
                 exists: 4,
             },
-            vec![vec![FetchedMessage {
-                uid: 4,
-                flags: vec![],
-                envelope: None,
-                body: Some(raw_email.to_vec()),
-                header: None,
-                size: None,
-            }]],
-            vec![],
-        );
-
-        let provider3 =
-            ImapProvider::with_session_factory(account_id.clone(), config.clone(), Box::new(factory3));
-
-        let body = provider3.fetch_body("INBOX:4").await.unwrap();
-        assert!(body.text_plain.unwrap().contains("Hello from Dave"));
-
-        // Phase 4: Mutate — star the message
-        let factory4 = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 5,
-                exists: 4,
-            },
             vec![],
             vec![],
         );
-        let log4 = factory4.log.clone();
+        let log3 = factory3.log.clone();
 
-        let provider4 =
-            ImapProvider::with_session_factory(account_id, config, Box::new(factory4));
+        let provider3 = ImapProvider::with_session_factory(account_id, config, Box::new(factory3));
 
-        provider4.set_starred("INBOX:4", true).await.unwrap();
-        let cmds = log4.lock().unwrap().commands.clone();
+        provider3.set_starred("INBOX:4", true).await.unwrap();
+        let cmds = log3.lock().unwrap().commands.clone();
         assert!(cmds.contains(&"UID STORE 4 +FLAGS (\\Flagged)".to_string()));
     }
 }

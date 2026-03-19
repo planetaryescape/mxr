@@ -339,11 +339,7 @@ pub mod mock {
                 .push(format!("UID FETCH {uid_set} {query}"));
             let idx = self.fetch_call_count;
             self.fetch_call_count += 1;
-            Ok(self
-                .fetch_responses
-                .get(idx)
-                .cloned()
-                .unwrap_or_default())
+            Ok(self.fetch_responses.get(idx).cloned().unwrap_or_default())
         }
 
         async fn uid_store(&mut self, uid_set: &str, flags: &str) -> Result<()> {
@@ -374,20 +370,12 @@ pub mod mock {
         }
 
         async fn list_folders(&mut self) -> Result<Vec<FolderInfo>> {
-            self.log
-                .lock()
-                .unwrap()
-                .commands
-                .push("LIST".to_string());
+            self.log.lock().unwrap().commands.push("LIST".to_string());
             Ok(self.folders.clone())
         }
 
         async fn logout(&mut self) -> Result<()> {
-            self.log
-                .lock()
-                .unwrap()
-                .commands
-                .push("LOGOUT".to_string());
+            self.log.lock().unwrap().commands.push("LOGOUT".to_string());
             Ok(())
         }
     }
@@ -482,10 +470,7 @@ mod tests {
             log,
         );
 
-        let result = session
-            .uid_fetch("1:*", "(FLAGS ENVELOPE)")
-            .await
-            .unwrap();
+        let result = session.uid_fetch("1:*", "(FLAGS ENVELOPE)").await.unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].uid, 1);
     }

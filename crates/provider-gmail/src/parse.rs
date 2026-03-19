@@ -556,6 +556,182 @@ mod tests {
     }
 
     #[test]
+    fn parse_list_unsubscribe_multi_uri_prefers_one_click() {
+        // Multiple URIs: mailto + https with one-click header
+        let headers = make_headers(&[
+            (
+                "List-Unsubscribe",
+                "<mailto:unsub@example.com>, <https://unsub.example.com/oneclick>",
+            ),
+            ("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"),
+        ]);
+        let result = parse_list_unsubscribe(&headers);
+        // With one-click header, prefers the HTTPS URL for OneClick
+        assert!(matches!(
+            result,
+            UnsubscribeMethod::OneClick { ref url } if url == "https://unsub.example.com/oneclick"
+        ));
+    }
+
+    #[test]
+    fn parse_list_unsubscribe_missing() {
+        let headers = make_headers(&[("Subject", "No unsubscribe here")]);
+        let result = parse_list_unsubscribe(&headers);
+        assert!(matches!(result, UnsubscribeMethod::None));
+    }
+
+    #[test]
+    fn parse_address_quoted_name() {
+        let addr = parse_address("\"Last, First\" <first.last@example.com>");
+        assert_eq!(addr.name, Some("Last, First".to_string()));
+        assert_eq!(addr.email, "first.last@example.com");
+    }
+
+    #[test]
+    fn parse_address_empty_string() {
+        let addr = parse_address("");
+        assert!(addr.name.is_none());
+        assert!(addr.email.is_empty());
+    }
+
+    #[test]
+    fn parse_address_list_with_quoted_commas() {
+        let addrs = parse_address_list("\"Last, First\" <a@example.com>, Bob <b@example.com>");
+        assert_eq!(addrs.len(), 2);
+        assert_eq!(addrs[0].name, Some("Last, First".to_string()));
+        assert_eq!(addrs[0].email, "a@example.com");
+        assert_eq!(addrs[1].email, "b@example.com");
+    }
+
+    #[test]
+    fn parse_deeply_nested_mime() {
+        // multipart/mixed containing multipart/alternative
+        let msg = GmailMessage {
+            id: "msg-nested".to_string(),
+            thread_id: "thread-nested".to_string(),
+            label_ids: None,
+            snippet: None,
+            history_id: None,
+            internal_date: None,
+            size_estimate: None,
+            payload: Some(GmailPayload {
+                mime_type: Some("multipart/mixed".to_string()),
+                headers: None,
+                body: None,
+                parts: Some(vec![
+                    GmailPayload {
+                        mime_type: Some("multipart/alternative".to_string()),
+                        headers: None,
+                        body: None,
+                        parts: Some(vec![
+                            GmailPayload {
+                                mime_type: Some("text/plain".to_string()),
+                                headers: None,
+                                body: Some(GmailBody {
+                                    attachment_id: None,
+                                    size: Some(5),
+                                    data: Some("SGVsbG8".to_string()), // "Hello"
+                                }),
+                                parts: None,
+                                filename: None,
+                            },
+                            GmailPayload {
+                                mime_type: Some("text/html".to_string()),
+                                headers: None,
+                                body: Some(GmailBody {
+                                    attachment_id: None,
+                                    size: Some(12),
+                                    data: Some("PGI-SGVsbG88L2I-".to_string()),
+                                }),
+                                parts: None,
+                                filename: None,
+                            },
+                        ]),
+                        filename: None,
+                    },
+                    GmailPayload {
+                        mime_type: Some("application/pdf".to_string()),
+                        headers: None,
+                        body: Some(GmailBody {
+                            attachment_id: Some("att-001".to_string()),
+                            size: Some(50000),
+                            data: None,
+                        }),
+                        parts: None,
+                        filename: Some("report.pdf".to_string()),
+                    },
+                ]),
+                filename: None,
+            }),
+        };
+
+        let (text_plain, text_html, attachments) = extract_body(&msg);
+        assert_eq!(text_plain, Some("Hello".to_string()));
+        assert!(text_html.is_some());
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].filename, "report.pdf");
+        assert_eq!(attachments[0].mime_type, "application/pdf");
+        assert_eq!(attachments[0].size_bytes, 50000);
+    }
+
+    #[test]
+    fn parse_message_with_attachments_metadata() {
+        let msg = GmailMessage {
+            id: "msg-att".to_string(),
+            thread_id: "thread-att".to_string(),
+            label_ids: Some(vec!["INBOX".to_string()]),
+            snippet: Some("See attached".to_string()),
+            history_id: None,
+            internal_date: Some("1700000000000".to_string()),
+            size_estimate: Some(100000),
+            payload: Some(GmailPayload {
+                mime_type: Some("multipart/mixed".to_string()),
+                headers: Some(make_headers(&[
+                    ("From", "alice@example.com"),
+                    ("To", "bob@example.com"),
+                    ("Subject", "Files attached"),
+                ])),
+                body: None,
+                parts: Some(vec![
+                    GmailPayload {
+                        mime_type: Some("text/plain".to_string()),
+                        headers: None,
+                        body: Some(GmailBody {
+                            attachment_id: None,
+                            size: Some(5),
+                            data: Some("SGVsbG8".to_string()),
+                        }),
+                        parts: None,
+                        filename: None,
+                    },
+                    GmailPayload {
+                        mime_type: Some("image/png".to_string()),
+                        headers: None,
+                        body: Some(GmailBody {
+                            attachment_id: Some("att-img".to_string()),
+                            size: Some(25000),
+                            data: None,
+                        }),
+                        parts: None,
+                        filename: Some("screenshot.png".to_string()),
+                    },
+                ]),
+                filename: None,
+            }),
+        };
+
+        let account_id = AccountId::from_provider_id("gmail", "test-account");
+        let env = gmail_message_to_envelope(&msg, &account_id).unwrap();
+        assert!(env.has_attachments);
+        assert_eq!(env.subject, "Files attached");
+
+        let (_, _, attachments) = extract_body(&msg);
+        assert_eq!(attachments.len(), 1);
+        assert_eq!(attachments[0].filename, "screenshot.png");
+        assert_eq!(attachments[0].mime_type, "image/png");
+    }
+
+    #[test]
     fn body_extraction_multipart() {
         let msg = GmailMessage {
             id: "msg-mp".to_string(),

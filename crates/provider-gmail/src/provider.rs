@@ -1,13 +1,14 @@
 use async_trait::async_trait;
 use mxr_core::{
     AccountId, Address, Draft, Label, LabelChange, LabelId, LabelKind, MailSendProvider,
-    MailSyncProvider, MessageBody, MxrError, SendReceipt, SyncBatch, SyncCapabilities, SyncCursor,
+    MailSyncProvider, MxrError, SendReceipt, SyncBatch, SyncCapabilities, SyncCursor,
 };
 use tracing::{debug, warn};
 
 use crate::client::{GmailClient, MessageFormat};
 use crate::parse::{extract_message_body, gmail_message_to_envelope};
 use crate::send;
+use mxr_core::types::SyncedMessage;
 
 pub struct GmailProvider {
     account_id: AccountId,
@@ -22,7 +23,7 @@ impl GmailProvider {
     async fn initial_sync(&self) -> Result<SyncBatch, MxrError> {
         debug!("Starting initial sync for account {}", self.account_id);
 
-        let mut all_envelopes = Vec::new();
+        let mut all_messages = Vec::new();
         let mut page_token: Option<String> = None;
         let mut latest_history_id: Option<u64> = None;
         // Fetch first 200 messages for fast time-to-first-content.
@@ -32,7 +33,7 @@ impl GmailProvider {
         const MAX_INITIAL_MESSAGES: usize = 200;
 
         loop {
-            let batch_size = (MAX_INITIAL_MESSAGES - all_envelopes.len()).min(100) as u32;
+            let batch_size = (MAX_INITIAL_MESSAGES - all_messages.len()).min(100) as u32;
             if batch_size == 0 {
                 tracing::info!(
                     "Initial sync: fetched {MAX_INITIAL_MESSAGES} messages, \
@@ -55,7 +56,7 @@ impl GmailProvider {
             let ids: Vec<String> = refs.iter().map(|r| r.id.clone()).collect();
             let messages = self
                 .client
-                .batch_get_messages(&ids, MessageFormat::Metadata)
+                .batch_get_messages(&ids, MessageFormat::Full)
                 .await
                 .map_err(MxrError::from)?;
 
@@ -67,7 +68,10 @@ impl GmailProvider {
                     }
                 }
                 match gmail_message_to_envelope(msg, &self.account_id) {
-                    Ok(env) => all_envelopes.push(env),
+                    Ok(env) => {
+                        let body = extract_message_body(msg);
+                        all_messages.push(SyncedMessage { envelope: env, body });
+                    }
                     Err(e) => warn!(msg_id = %msg.id, error = %e, "Failed to parse message"),
                 }
             }
@@ -92,7 +96,7 @@ impl GmailProvider {
             (Some(hid), None) => {
                 tracing::info!(
                     history_id = hid,
-                    total = all_envelopes.len(),
+                    total = all_messages.len(),
                     "Initial sync complete — all messages fetched, delta-ready"
                 );
                 SyncCursor::Gmail { history_id: hid }
@@ -101,7 +105,7 @@ impl GmailProvider {
         };
 
         Ok(SyncBatch {
-            upserted: all_envelopes,
+            upserted: all_messages,
             deleted_provider_ids: vec![],
             label_changes: vec![],
             next_cursor,
@@ -136,18 +140,23 @@ impl GmailProvider {
         }
 
         let ids: Vec<String> = refs.iter().map(|r| r.id.clone()).collect();
-        debug!("Backfill: fetching metadata for {} messages", ids.len());
+        debug!("Backfill: fetching {} messages (full)", ids.len());
         let messages = self
             .client
-            .batch_get_messages(&ids, MessageFormat::Metadata)
+            .batch_get_messages(&ids, MessageFormat::Full)
             .await
             .map_err(MxrError::from)?;
 
-        let mut envelopes = Vec::new();
+        let mut synced = Vec::new();
         for msg in &messages {
             match gmail_message_to_envelope(msg, &self.account_id) {
-                Ok(env) => envelopes.push(env),
-                Err(e) => warn!(msg_id = %msg.id, error = %e, "Failed to parse message in backfill"),
+                Ok(env) => {
+                    let body = extract_message_body(msg);
+                    synced.push(SyncedMessage { envelope: env, body });
+                }
+                Err(e) => {
+                    warn!(msg_id = %msg.id, error = %e, "Failed to parse message in backfill")
+                }
             }
         }
 
@@ -161,13 +170,13 @@ impl GmailProvider {
         };
 
         tracing::info!(
-            fetched = envelopes.len(),
+            fetched = synced.len(),
             has_more,
             "Backfill batch complete"
         );
 
         Ok(SyncBatch {
-            upserted: envelopes,
+            upserted: synced,
             deleted_provider_ids: vec![],
             label_changes: vec![],
             next_cursor,
@@ -244,27 +253,30 @@ impl GmailProvider {
             }
         }
 
-        // Fetch full metadata for new/changed messages
+        // Fetch full messages for new/changed messages
         let ids_to_fetch: Vec<String> = upserted_ids.into_iter().collect();
-        let mut envelopes = Vec::new();
+        let mut synced = Vec::new();
 
         if !ids_to_fetch.is_empty() {
             let messages = self
                 .client
-                .batch_get_messages(&ids_to_fetch, MessageFormat::Metadata)
+                .batch_get_messages(&ids_to_fetch, MessageFormat::Full)
                 .await
                 .map_err(MxrError::from)?;
 
             for msg in &messages {
                 match gmail_message_to_envelope(msg, &self.account_id) {
-                    Ok(env) => envelopes.push(env),
+                    Ok(env) => {
+                        let body = extract_message_body(msg);
+                        synced.push(SyncedMessage { envelope: env, body });
+                    }
                     Err(e) => warn!(msg_id = %msg.id, error = %e, "Failed to parse message"),
                 }
             }
         }
 
         Ok(SyncBatch {
-            upserted: envelopes,
+            upserted: synced,
             deleted_provider_ids: deleted_ids,
             label_changes,
             next_cursor: SyncCursor::Gmail {
@@ -345,19 +357,6 @@ impl MailSyncProvider for GmailProvider {
                 "Gmail provider received incompatible cursor: {other:?}"
             ))),
         }
-    }
-
-    async fn fetch_body(
-        &self,
-        provider_message_id: &str,
-    ) -> mxr_core::provider::Result<MessageBody> {
-        let msg = self
-            .client
-            .get_message(provider_message_id, MessageFormat::Full)
-            .await
-            .map_err(MxrError::from)?;
-
-        Ok(extract_message_body(&msg))
     }
 
     async fn fetch_attachment(
@@ -469,5 +468,23 @@ impl MailSendProvider for GmailProvider {
             provider_message_id: message_id,
             sent_at: chrono::Utc::now(),
         })
+    }
+
+    async fn save_draft(
+        &self,
+        draft: &Draft,
+        from: &Address,
+    ) -> mxr_core::provider::Result<Option<String>> {
+        let rfc2822 = send::build_rfc2822(draft, &from.email)
+            .map_err(|e| MxrError::Provider(e.to_string()))?;
+        let encoded = send::encode_for_gmail(&rfc2822);
+
+        let draft_id = self
+            .client
+            .create_draft(&encoded)
+            .await
+            .map_err(MxrError::from)?;
+
+        Ok(Some(draft_id))
     }
 }

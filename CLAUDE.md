@@ -50,7 +50,7 @@ The internal model is the most important design decision in mxr. All application
 
 1. **Provider-agnostic**: No Gmail-specific or IMAP-specific concepts in the core types.
 2. **Correctness over cleverness**: We store enough data to round-trip back to the provider without loss.
-3. **Lazy hydration**: Envelopes (headers/metadata) are always cached. Bodies are fetched on demand and cached after first access. This keeps sync fast and storage manageable.
+3. **Eager body fetch**: Envelopes and bodies are always fetched together during sync. Opening a message is a pure SQLite read — no network call, no loading state.
 4. **Typed IDs**: Newtypes prevent mixing up account IDs with message IDs at compile time.
 5. **Time-sortable IDs**: UUIDv7 gives naturally ordered primary keys.
 
@@ -64,6 +64,7 @@ These are strict. Violations should be caught in code review:
 4. **`store` and `search` depend only on `core`.** They are storage backends, not business logic.
 5. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
 6. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
+   - **`daemon` MUST interact with providers only through `MailSyncProvider` / `MailSendProvider` traits.** Never import or call provider-specific types (e.g. `GmailClient`, `ImapClient`) from daemon handler/loop code. If a capability is needed, add it to the trait in `core` first, then implement it in the adapter. This is what makes providers swappable.
 7. **`tui` depends only on `core` and `protocol`.** It talks to the daemon via IPC, never directly to providers, store, or search. This enforces the client-server boundary.
 
 ## Development Principles

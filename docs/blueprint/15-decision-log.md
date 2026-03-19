@@ -321,8 +321,38 @@ Every significant design decision, what alternatives were considered, and why we
 
 ---
 
-## D024: Progressive body indexing
+## D024: Progressive body indexing — SUPERSEDED by D049
 
-**Chosen**: Index headers/snippets at sync time. Index body text when the body is fetched (on first read).
+~~**Chosen**: Index headers/snippets at sync time. Index body text when the body is fetched (on first read).~~
 
-**Why**: Keeps initial sync fast (headers only). Search works immediately against subjects and snippets. Gets richer as the user reads messages. Bodies are the expensive part — fetching all of them upfront would make initial sync very slow for large mailboxes.
+~~**Why**: Keeps initial sync fast (headers only). Search works immediately against subjects and snippets. Gets richer as the user reads messages. Bodies are the expensive part — fetching all of them upfront would make initial sync very slow for large mailboxes.~~
+
+Superseded by D049. Bodies and body text are now indexed at sync time.
+
+---
+
+## D049: Eager body fetch replaces lazy hydration
+
+**Chosen**: Fetch envelope + body together during sync. No on-demand body fetching.
+
+**Considered**: Keep lazy hydration with better prefetch, eager fetch for recent + lazy for old.
+
+**Why eager**:
+- Lazy hydration caused visible "Loading..." in TUI when opening messages — violates "blazing fast" UX
+- Network calls at read time mean offline access only works for previously-read messages
+- Progressive search indexing meant body text wasn't searchable until opened
+- The complexity of maintaining two fetch paths (sync + on-demand) wasn't justified
+
+**Trade-offs accepted**:
+- Initial sync downloads more data (~2-5x per message for Gmail Full vs Metadata format)
+- Storage grows proportionally to mailbox size, not reading habits
+- Sync is slightly slower per batch (offset by eliminating background prefetch)
+
+**What changed**:
+- `SyncBatch.upserted` is now `Vec<SyncedMessage>` (envelope + body paired)
+- `fetch_body` removed from `MailSyncProvider` trait
+- Gmail uses `MessageFormat::Full` instead of `Metadata`
+- IMAP uses `BODY.PEEK[]` instead of `BODY.PEEK[HEADER]`
+- Body prefetch loop removed from daemon
+- `GetBody` handler reads from SQLite only, no provider call
+- Search indexes body text immediately during sync

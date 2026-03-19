@@ -49,7 +49,7 @@ These decisions are settled (see [decision log](../blueprint/15-decision-log.md)
 - Two-pool SQLite architecture (single writer + concurrent reader pool)
 - Length-delimited JSON over Unix socket for IPC
 - `yup-oauth2` for Gmail OAuth2
-- Progressive Tantivy indexing (headers at sync, body text on fetch)
+- Tantivy indexing with body text at sync time (D049)
 - Keybinding hierarchy: vim-native first, Gmail second, custom last (D035)
 - IMAP is first-party, not community (D048, overrides D015)
 - Every TUI action has a CLI equivalent (D026)

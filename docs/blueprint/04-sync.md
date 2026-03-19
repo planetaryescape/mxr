@@ -85,29 +85,20 @@ If the sync cursor becomes invalid (Gmail: historyId too old, which happens if y
 3. Inform the user that a full re-sync is happening (it will be slower)
 4. This should be rare in practice if the sync interval is reasonable
 
-## Body fetch (lazy hydration)
+## Eager body fetch
 
-Message bodies are NOT synced eagerly. Only envelopes (headers/metadata) are synced. Bodies are fetched on demand when the user opens a message.
+Envelopes and bodies are always fetched together during sync. The `SyncBatch` contains `Vec<SyncedMessage>` where each `SyncedMessage` pairs an `Envelope` with a `MessageBody`.
 
-```
-User opens message in TUI
-  → TUI sends GetBody { message_id } to daemon
-  → Daemon checks bodies table
-  → If cached: return immediately
-  → If not cached:
-    → Call provider.fetch_body(provider_message_id)
-    → Parse MIME (via mail-parser)
-    → Extract text/plain, text/html, attachment metadata
-    → Store in bodies table + attachments table
-    → Index body text in Tantivy (update existing doc)
-    → Return to TUI
-```
+- Gmail: `batch_get_messages` uses `MessageFormat::Full` to get headers + body in one API call
+- IMAP: `BODY.PEEK[]` fetches the full RFC822 message; both envelope and body are parsed from it
+
+When the user opens a message, the TUI sends `GetBody { message_id }` to the daemon, which reads the body directly from SQLite — no network call, no loading state.
 
 This approach means:
-- Initial sync is fast (headers only)
-- Storage grows incrementally (only messages you actually read)
-- Offline access works for previously read messages
-- Tantivy index becomes richer over time as bodies are fetched
+- Opening any message is instant (pure SQLite read)
+- Full-text search works immediately after sync (body text indexed at sync time)
+- Offline access works for all synced messages
+- Storage grows proportionally to mailbox size (all bodies stored)
 
 ## Snooze wake loop
 

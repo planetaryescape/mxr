@@ -8,7 +8,7 @@ The internal model is the most important design decision in mxr. All application
 
 1. **Provider-agnostic**: No Gmail-specific or IMAP-specific concepts in the core types.
 2. **Correctness over cleverness**: We store enough data to round-trip back to the provider without loss.
-3. **Lazy hydration**: Envelopes (headers/metadata) are always cached. Bodies are fetched on demand and cached after first access. This keeps sync fast and storage manageable.
+3. **Eager body fetch**: Envelopes and bodies are always fetched together during sync. Opening a message is a pure SQLite read — no network call, no loading state.
 4. **Typed IDs**: Newtypes prevent mixing up account IDs with message IDs at compile time.
 5. **Time-sortable IDs**: UUIDv7 gives naturally ordered primary keys.
 
@@ -323,11 +323,17 @@ pub enum SyncCursor {
 
 Opaque cursor stored per-account. The sync engine passes it to the provider on each sync cycle. The provider returns an updated cursor with the response.
 
-### SyncBatch
+### SyncedMessage & SyncBatch
 
 ```rust
+/// Envelope + body fetched together during sync.
+pub struct SyncedMessage {
+    pub envelope: Envelope,
+    pub body: MessageBody,
+}
+
 pub struct SyncBatch {
-    pub upserted: Vec<Envelope>,
+    pub upserted: Vec<SyncedMessage>,
     pub deleted_provider_ids: Vec<String>,
     pub label_changes: Vec<LabelChange>,
     pub next_cursor: SyncCursor,

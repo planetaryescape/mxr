@@ -61,6 +61,7 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         .collect();
 
     let widths = [
+        Constraint::Length(4),  // line number
         Constraint::Length(1),  // unread indicator
         Constraint::Length(2),  // star
         Constraint::Length(22), // sender
@@ -111,6 +112,12 @@ fn build_row<'a>(
     let is_unread = !env.flags.contains(MessageFlags::READ);
     let is_starred = env.flags.contains(MessageFlags::STARRED);
     let is_in_set = view.selected_set.contains(&env.id);
+
+    // Line number
+    let line_num_cell = Cell::from(Span::styled(
+        format!("{:>3}", index + 1),
+        Style::default().fg(theme.line_number_fg),
+    ));
 
     // Unread indicator
     let unread_cell = Cell::from(Span::styled(
@@ -180,6 +187,7 @@ fn build_row<'a>(
     };
 
     Row::new(vec![
+        line_num_cell,
         unread_cell,
         star_cell,
         sender_cell,

@@ -12,6 +12,7 @@ readme = "../../README.md"
 name = "mxr"
 path = "src/main.rs"
 
+
 [dependencies]
 mxr-core = { workspace = true }
 mxr-config = { workspace = true }
@@ -29,7 +30,7 @@ mxr-export = { workspace = true }
 mxr-rules = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
-mxr-tui = { path = "../tui" }
+mxr-tui = { path = "../tui", version = "0.1.0" }
 chrono = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

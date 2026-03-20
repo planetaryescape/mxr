@@ -26,18 +26,34 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 <div class="install-grid">
 <div class="install-method">
+<h4>Cargo</h4>
+
+```bash
+cargo install --git https://github.com/planetaryescape/mxr
+```
+
+</div>
+<div class="install-method">
+<h4>Homebrew</h4>
+
+```bash
+brew tap planetaryescape/mxr
+brew install mxr
+```
+
+Available after first tagged release.
+
+</div>
+<div class="install-method">
 <h4>From source</h4>
 
 ```bash
 git clone https://github.com/planetaryescape/mxr
 cd mxr && cargo build --release
-cp target/release/mxr ~/.local/bin/
 ```
 
 </div>
 </div>
-
-Homebrew and `cargo install` will be available with the first tagged release. For now, build from source — it takes about 2 minutes.
 
 Works with **Gmail**, **IMAP**, and **SMTP** out of the box. One local database, one CLI, all your accounts.
 

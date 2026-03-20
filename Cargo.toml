@@ -32,20 +32,20 @@ categories = ["email", "command-line-utilities"]
 
 [workspace.dependencies]
 # Internal crates
-mxr-core = { path = "crates/core" }
-mxr-store = { path = "crates/store" }
-mxr-search = { path = "crates/search" }
-mxr-protocol = { path = "crates/protocol" }
-mxr-provider-fake = { path = "crates/provider-fake" }
-mxr-config = { path = "crates/config" }
-mxr-sync = { path = "crates/sync" }
-mxr-provider-gmail = { path = "crates/provider-gmail" }
-mxr-reader = { path = "crates/reader" }
-mxr-compose = { path = "crates/compose" }
-mxr-provider-smtp = { path = "crates/provider-smtp" }
-mxr-provider-imap = { path = "crates/provider-imap" }
-mxr-export = { path = "crates/export" }
-mxr-rules = { path = "crates/rules" }
+mxr-core = { path = "crates/core", version = "0.1.0" }
+mxr-store = { path = "crates/store", version = "0.1.0" }
+mxr-search = { path = "crates/search", version = "0.1.0" }
+mxr-protocol = { path = "crates/protocol", version = "0.1.0" }
+mxr-provider-fake = { path = "crates/provider-fake", version = "0.1.0" }
+mxr-config = { path = "crates/config", version = "0.1.0" }
+mxr-sync = { path = "crates/sync", version = "0.1.0" }
+mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.1.0" }
+mxr-reader = { path = "crates/reader", version = "0.1.0" }
+mxr-compose = { path = "crates/compose", version = "0.1.0" }
+mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.1.0" }
+mxr-provider-imap = { path = "crates/provider-imap", version = "0.1.0" }
+mxr-export = { path = "crates/export", version = "0.1.0" }
+mxr-rules = { path = "crates/rules", version = "0.1.0" }
 glob-match = "0.2"
 which = "7"
 

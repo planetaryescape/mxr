@@ -32,6 +32,7 @@ export default defineConfig({
             { label: 'Accounts', slug: 'guides/accounts' },
             { label: 'Observability', slug: 'guides/observability' },
             { label: 'Adapter Development', slug: 'guides/adapter-development' },
+            { label: 'AI Agent Skill', slug: 'guides/agent-skill' },
           ],
         },
         {

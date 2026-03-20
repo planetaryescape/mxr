@@ -1,5 +1,5 @@
 ---
-title: "Your email, your editor, your terminal."
+title: "Your email. Your editor. Your terminal."
 description: "mxr is a local-first terminal email client that lets you write email the same way you write code."
 template: splash
 hero:
@@ -7,7 +7,7 @@ hero:
     Your email.
     <span class="hero-accent">Your editor.</span>
     Your terminal.
-  tagline: "mxr is a local-first terminal email client. Write email in vim. Search in milliseconds. Own your data."
+  tagline: "A blazing fast, local-first terminal email client. Compose in your $EDITOR. Search in milliseconds. Script everything. Own your data."
   actions:
     - text: Get started
       link: /getting-started/install/
@@ -21,15 +21,74 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-<div class="landing-section">
+<div class="landing-section install-section">
 
-## The problem
+## Install
 
-Every time you open Gmail, you leave your terminal. You type into a laggy textarea with none of the muscle memory you've spent years building. No vim motions. No macros. No composability.
+<div class="install-grid">
+<div class="install-method">
+<h4>Homebrew</h4>
 
-mutt solved this in 1995. It still works, but it feels like it. aerc is a step forward but doesn't reimagine the experience. himalaya is a CLI tool, not a full client.
+```bash
+brew tap planetaryescape/mxr
+brew install mxr
+```
 
-**mxr sits in the gap.**
+</div>
+<div class="install-method">
+<h4>Cargo</h4>
+
+```bash
+cargo install mxr-daemon
+```
+
+</div>
+<div class="install-method">
+<h4>Pre-built binaries</h4>
+
+macOS and Linux (x86_64, aarch64)
+
+[Download latest release ->](https://github.com/planetaryescape/mxr/releases)
+
+</div>
+</div>
+
+Works with **Gmail**, **IMAP**, and **SMTP** out of the box. Community adapters can add any provider.
+
+</div>
+
+<div class="landing-section speed-section">
+
+## Blazing fast
+
+<div class="speed-grid">
+<div class="speed-card">
+<span class="speed-number">&lt;50ms</span>
+<span class="speed-label">Search across 10k+ messages</span>
+</div>
+<div class="speed-card">
+<span class="speed-number">0ms</span>
+<span class="speed-label">Open any message (local SQLite)</span>
+</div>
+<div class="speed-card">
+<span class="speed-number">Instant</span>
+<span class="speed-label">Start composing (your $EDITOR)</span>
+</div>
+</div>
+
+mxr syncs your email to a local SQLite database and indexes it with Tantivy — the same engine behind [Quickwit](https://quickwit.io). Opening a message is a local read, not a network call. Search uses BM25 ranking with field-level boosts. No spinners. No loading states.
+
+</div>
+
+<div class="landing-section problem-section">
+
+## Why mxr exists
+
+Every time you open a web email client, you leave your flow. You type into a laggy textarea with none of the muscle memory you've built. No keybindings. No macros. No composability. Writing email feels like a chore because the tools make it one.
+
+mutt solved this decades ago. It still works, but it feels like it. Configuration is arcane. The UX hasn't evolved. aerc is a step forward but doesn't reimagine the experience. himalaya is a CLI tool, not a full client.
+
+**mxr sits in the gap** — a fast, modern terminal email client with the keyboard feel of a well-configured editor, instant search powered by a real engine, a CLI that makes every operation scriptable, and a local-first architecture that means your email is always yours.
 
 </div>
 
@@ -39,24 +98,73 @@ mutt solved this in 1995. It still works, but it feels like it. aerc is a step f
 
 <CardGrid stagger>
   <Card title="Compose in your editor" icon="pencil">
-    `$EDITOR` opens with markdown and YAML frontmatter. Write email the way you write everything else. Full vim motions, your plugins, your config.
+    `$EDITOR` opens with markdown and YAML frontmatter. Your keybindings, your plugins, your muscle memory. mxr handles parsing, markdown-to-multipart conversion, and sending.
   </Card>
   <Card title="Search, don't browse" icon="magnifier">
-    Tantivy gives you BM25-ranked, sub-second search across your entire mailbox. Search is navigation, not an afterthought bolted onto a folder tree.
+    Tantivy gives you BM25-ranked, sub-second full-text search across your entire mailbox. Saved searches live in the sidebar as programmable lenses. Search is navigation, not a bolt-on filter.
   </Card>
-  <Card title="Distraction-free reading" icon="open-book">
-    mxr shows you what the email says, not what it's trying to sell you. No tracking pixels. No banners. Just the words. One key to unsubscribe.
+  <Card title="Script everything" icon="seti:shell">
+    Every single TUI action has a CLI equivalent. Pipe, chain, automate. Batch mutations with `--search`. Machine-readable output with `--format json`. Your AI coding agent can manage your inbox.
   </Card>
   <Card title="Daemon-backed" icon="setting">
-    Sync, indexing, rules, and snooze run in the background. Close the TUI — nothing stops. CLI and scripts talk to the same engine.
+    The daemon is the system. The TUI is just a thin client. Sync, indexing, rules, and snooze run in the background. Close the TUI — nothing stops. Build your own client if you want.
   </Card>
   <Card title="Local-first" icon="laptop">
-    SQLite is the canonical store. Your email lives on your machine. Works offline. Cloud services are transports, not dependencies.
+    SQLite is the canonical store. Your email lives on your machine. The search index rebuilds from the database. Works offline. Cloud services are transports, not dependencies.
   </Card>
-  <Card title="Scriptable" icon="seti:shell">
-    Every TUI action has a CLI equivalent. Pipe data to shell commands. Unix composition over plugin frameworks.
+  <Card title="Distraction-free" icon="open-book">
+    Reader mode strips tracking pixels, banners, signatures, and quoted text. You see what the email says, not what it's trying to sell you. One key to unsubscribe from anything.
   </Card>
 </CardGrid>
+
+</div>
+
+<div class="landing-section agent-section">
+
+## AI-agent native
+
+mxr's full CLI surface means your coding agent can do anything with your email. Install the [mxr skill](/guides/agent-skill/) and ask:
+
+<div class="agent-examples">
+<div class="agent-example">
+<div class="agent-prompt">"Go through my unread emails from the last 24 hours. For each one, tell me who it's from, one-line summary, and whether it needs a response. Draft replies for anything urgent."</div>
+</div>
+<div class="agent-example">
+<div class="agent-prompt">"Find all emails from our CI system that are build failures. Extract the failing test names, cross-reference with my recent commits, and archive the ones that have since been fixed."</div>
+</div>
+<div class="agent-example">
+<div class="agent-prompt">"I'm prepping for my 1-on-1 with Sarah. Pull up all email threads between us from the last two weeks, summarize the open items, and draft an agenda."</div>
+</div>
+<div class="agent-example">
+<div class="agent-prompt">"Search my inbox for recurring newsletters I haven't opened in 3 months. Show me the list, and unsubscribe from the ones I confirm."</div>
+</div>
+<div class="agent-example">
+<div class="agent-prompt">"Export the thread about the Q2 roadmap as markdown, summarize the key decisions, and create a TODO list from the action items mentioned in the replies."</div>
+</div>
+</div>
+
+Every command supports `--format json` for structured output, `--dry-run` for safe previews, and `--search` for batch operations. Your agent doesn't need screen scraping or browser automation — just the CLI.
+
+</div>
+
+<div class="landing-section extensible-section">
+
+## Built to extend
+
+<div class="extend-grid">
+<div class="extend-card">
+<h3>Build your own provider</h3>
+<p>The adapter interface is a clean Rust trait. Gmail, IMAP, and SMTP are first-party. Outlook, Fastmail, ProtonMail — write an adapter and plug it in. The conformance test suite validates your implementation.</p>
+</div>
+<div class="extend-card">
+<h3>Build your own client</h3>
+<p>The daemon speaks JSON over a Unix socket. The TUI is just one thin client. Build a web dashboard, a mobile bridge, a Raycast extension — anything that can open a socket can be an mxr client.</p>
+</div>
+<div class="extend-card">
+<h3>Automate with rules</h3>
+<p>Deterministic rules engine with TOML definitions. Dry-run before you commit. Shell hooks as escape hatches. Inspect, replay, audit — rules are data, not opaque scripts.</p>
+</div>
+</div>
 
 </div>
 
@@ -66,44 +174,35 @@ mutt solved this in 1995. It still works, but it feels like it. aerc is a step f
 
 | | mutt | aerc | himalaya | **mxr** |
 |---|:---:|:---:|:---:|:---:|
-| Daemon architecture | | | | **yes** |
-| Local SQLite store | | | | **yes** |
-| Tantivy search engine | | | | **yes** |
+| Daemon architecture | no | no | no | **yes** |
+| Local SQLite store | no | no | no | **yes** |
+| Full-text search engine | no | no | no | **yes** |
+| Full CLI for every action | partial | partial | yes | **yes** |
 | Compose in $EDITOR | partial | partial | yes | **yes** |
-| Markdown to multipart | | | | **yes** |
-| Saved searches as lenses | | | | **yes** |
-| Command palette | | | | **yes** |
-| One-key unsubscribe | | | | **yes** |
-| Reader mode | | | | **yes** |
-| Rules with dry-run | procmail | | | **yes** |
-| LLM thread export | | | | **yes** |
+| Markdown to multipart | no | no | no | **yes** |
+| Saved searches as sidebar lenses | no | no | no | **yes** |
+| Command palette | no | no | no | **yes** |
+| One-key unsubscribe | no | no | no | **yes** |
+| Reader mode | no | no | no | **yes** |
+| Rules with dry-run | procmail | no | no | **yes** |
+| AI-agent compatible CLI | no | no | partial | **yes** |
+| Pluggable provider adapters | no | partial | partial | **yes** |
+| Custom client support | no | no | no | **yes** |
 
 </div>
 
-<div class="landing-section install-section">
+<div class="landing-section opensource-section">
 
-## Install
+## Open source, built for contributors
 
-```bash
-# Homebrew
-brew tap planetaryescape/mxr && brew install mxr
+mxr is MIT / Apache-2.0 dual-licensed. The entire codebase is open. No telemetry, no analytics, no "phone home." Your email stays on your machine.
 
-# Cargo
-cargo install mxr-daemon
-
-# Pre-built binaries
-curl -fsSL https://github.com/planetaryescape/mxr/releases/latest
-```
-
-</div>
-
-<div class="landing-section cta-section">
-
-## Ready to take back your inbox?
+The architecture is designed for contribution: clean crate boundaries, compile-time checked SQL, a conformance test suite for provider adapters, and thorough documentation. Whether it's a bug fix, a new provider adapter, a CLI improvement, or an idea — we want to hear from you.
 
 <div class="cta-buttons">
   <a href="/getting-started/install/" class="cta-primary">Get started</a>
-  <a href="/getting-started/gmail-setup/" class="cta-secondary">Gmail setup</a>
+  <a href="https://github.com/planetaryescape/mxr" class="cta-secondary">Contribute on GitHub</a>
+  <a href="/guides/agent-skill/" class="cta-secondary">Install the AI skill</a>
 </div>
 
 </div>

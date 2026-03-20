@@ -3,17 +3,24 @@ title: Gmail Setup
 description: Connect a Gmail account to mxr.
 ---
 
-## Prerequisites
+## Why you need your own Google Cloud project
 
-You need a Google Cloud project with the Gmail API enabled and OAuth desktop credentials created.
+mxr ships with a default OAuth client ID for quick testing, but Google shows a prominent "unverified app" warning screen when using it. This is normal for open-source projects — Google's verification process requires a privacy policy review that doesn't fit the local-first model.
 
-## Steps
+For daily use, we recommend creating your own Google Cloud project. This takes about 5 minutes, removes the warning screen entirely, and means your OAuth credentials are fully under your control. As a developer, you've likely done this before.
+
+## Create your Google Cloud project
 
 1. Open [Google Cloud Console](https://console.cloud.google.com).
-2. Create or select a project.
-3. Enable the Gmail API.
-4. Create OAuth 2.0 desktop credentials.
-5. Run:
+2. Create a new project (e.g., "mxr-email").
+3. Go to **APIs & Services > Library** and enable the **Gmail API**.
+4. Go to **APIs & Services > Credentials** and click **Create Credentials > OAuth client ID**.
+5. Select **Desktop app** as the application type.
+6. Copy the **Client ID** and **Client Secret**.
+
+## Connect your Gmail account
+
+1. Run:
 
 ```bash
 mxr accounts add gmail

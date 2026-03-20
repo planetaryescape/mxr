@@ -216,7 +216,7 @@ fn process_body_lines(raw: &str, theme: &Theme) -> Vec<Line<'static>> {
 
         // Regular line — flush any pending quotes first
         flush_quotes(&mut quote_buffer, &mut lines, theme);
-        lines.push(Line::from(line.to_string()));
+        lines.push(style_line_with_links(line, theme));
     }
 
     // Flush remaining
@@ -273,5 +273,53 @@ fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>, theme:
                 .add_modifier(Modifier::ITALIC),
         )));
         buffer.clear();
+    }
+}
+
+/// Split a line into spans, highlighting URLs in link_fg with underline.
+fn style_line_with_links(line: &str, theme: &Theme) -> Line<'static> {
+    let link_style = Style::default()
+        .fg(theme.link_fg)
+        .add_modifier(Modifier::UNDERLINED);
+
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut rest = line;
+
+    while let Some(start) = rest.find("http://").or_else(|| rest.find("https://")) {
+        // Text before the URL
+        if start > 0 {
+            spans.push(Span::raw(rest[..start].to_string()));
+        }
+
+        // Find end of URL (whitespace, angle bracket, or end of string)
+        let url_rest = &rest[start..];
+        let end = url_rest
+            .find(|c: char| c.is_whitespace() || c == '>' || c == ')' || c == ']' || c == '"')
+            .unwrap_or(url_rest.len());
+
+        let url = &url_rest[..end];
+        // Strip trailing punctuation that's probably not part of the URL
+        let url_trimmed = url.trim_end_matches(|c: char| matches!(c, '.' | ',' | ';' | ':' | '!' | '?'));
+        let trimmed_len = url_trimmed.len();
+
+        spans.push(Span::styled(url_trimmed.to_string(), link_style));
+
+        // Any trailing punctuation goes back as plain text
+        if trimmed_len < end {
+            spans.push(Span::raw(url_rest[trimmed_len..end].to_string()));
+        }
+
+        rest = &rest[start + end..];
+    }
+
+    // Remaining text after last URL
+    if !rest.is_empty() {
+        spans.push(Span::raw(rest.to_string()));
+    }
+
+    if spans.is_empty() {
+        Line::from(line.to_string())
+    } else {
+        Line::from(spans)
     }
 }

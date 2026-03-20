@@ -33,6 +33,7 @@ pub struct Theme {
     pub quote_fg: Color,
     pub signature_fg: Color,
     pub line_number_fg: Color,
+    pub link_fg: Color,
 }
 
 impl Theme {
@@ -58,6 +59,7 @@ impl Theme {
             quote_fg: Color::DarkGray,
             signature_fg: Color::DarkGray,
             line_number_fg: Color::Rgb(80, 80, 80),
+            link_fg: Color::Rgb(96, 165, 250), // blue, underlined in render
         }
     }
 

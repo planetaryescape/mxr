@@ -13,8 +13,9 @@ brew tap planetaryescape/mxr && brew install mxr
 # Cargo
 cargo install mxr
 
-# Pre-built binaries — macOS and Linux (x86_64, aarch64)
-# https://github.com/planetaryescape/mxr/releases
+# From source
+git clone https://github.com/planetaryescape/mxr
+cd mxr && cargo build --release
 ```
 
 Works with **Gmail**, **IMAP**, and **SMTP** out of the box. Community adapters can add any provider.

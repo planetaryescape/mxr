@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "IMAP adapter for mxr"
+publish = false
 
 [dependencies]
 mxr-core = { workspace = true }
@@ -28,3 +29,6 @@ async-std = { version = "1", features = ["default"] }
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 pretty_assertions = { workspace = true }
+mxr-test-support = { workspace = true }
+insta = { workspace = true }
+mxr-provider-fake = { workspace = true }

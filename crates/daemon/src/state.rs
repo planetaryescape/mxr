@@ -149,6 +149,7 @@ impl AppState {
                     }
                     Some(sync_provider)
                 }
+                #[cfg(feature = "imap")]
                 Some(mxr_config::SyncProviderConfig::Imap {
                     host,
                     port,
@@ -165,6 +166,11 @@ impl AppState {
                         use_tls: *use_tls,
                     },
                 )) as Arc<dyn MailSyncProvider>),
+                #[cfg(not(feature = "imap"))]
+                Some(mxr_config::SyncProviderConfig::Imap { .. }) => {
+                    tracing::warn!("IMAP provider configured but not compiled in (enable 'imap' feature)");
+                    None
+                }
                 None => None,
             };
 

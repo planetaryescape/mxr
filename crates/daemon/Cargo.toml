@@ -12,6 +12,10 @@ readme = "../../README.md"
 name = "mxr"
 path = "src/main.rs"
 
+[features]
+default = ["imap"]
+imap = ["dep:mxr-provider-imap"]
+
 
 [dependencies]
 mxr-core = { workspace = true }
@@ -21,7 +25,7 @@ mxr-search = { workspace = true }
 mxr-protocol = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-provider-gmail = { workspace = true }
-mxr-provider-imap = { workspace = true }
+mxr-provider-imap = { workspace = true, optional = true }
 mxr-provider-smtp = { workspace = true }
 mxr-sync = { workspace = true }
 mxr-compose = { workspace = true }
@@ -30,7 +34,7 @@ mxr-export = { workspace = true }
 mxr-rules = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
-mxr-tui = { path = "../tui", version = "0.1.0" }
+mxr-tui = { path = "../tui", version = "0.1.1" }
 chrono = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -49,3 +53,9 @@ regex = { workspace = true }
 url = { workspace = true }
 which = { workspace = true }
 keyring = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+insta = { workspace = true }
+mxr-test-support = { workspace = true }

@@ -76,6 +76,28 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             }
         }
 
+        Request::ListEnvelopesByIds { message_ids } => match state.store.list_envelopes_by_ids(message_ids).await {
+            Ok(mut envelopes) => {
+                for envelope in &mut envelopes {
+                    if let Ok(labels) = state
+                        .store
+                        .list_labels_by_account(&envelope.account_id)
+                        .await
+                    {
+                        let _ =
+                            populate_envelope_label_provider_ids(state, envelope, &labels)
+                                .await;
+                    }
+                }
+                Response::Ok {
+                    data: ResponseData::Envelopes { envelopes },
+                }
+            }
+            Err(e) => Response::Error {
+                message: e.to_string(),
+            },
+        },
+
         Request::GetEnvelope { message_id } => match state.store.get_envelope(message_id).await {
             Ok(Some(mut envelope)) => {
                 if let Ok(labels) = state
@@ -155,6 +177,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                         text_html: html,
                         attachments: vec![],
                         fetched_at: full.fetched_at,
+                        metadata: full.metadata,
                     });
                 }
             }
@@ -633,6 +656,20 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                 if let Some(ref irt) = envelope.in_reply_to {
                     headers.push(("In-Reply-To".to_string(), irt.clone()));
                 }
+                if let Ok(Some(body)) = state.store.get_body(message_id).await {
+                    if let Some(list_id) = body.metadata.list_id {
+                        headers.push(("List-Id".to_string(), list_id));
+                    }
+                    for auth_result in body.metadata.auth_results {
+                        headers.push(("Authentication-Results".to_string(), auth_result));
+                    }
+                    if !body.metadata.content_language.is_empty() {
+                        headers.push((
+                            "Content-Language".to_string(),
+                            body.metadata.content_language.join(", "),
+                        ));
+                    }
+                }
                 Response::Ok {
                     data: ResponseData::Headers { headers },
                 }
@@ -1005,6 +1042,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
 
             let context = ReplyContext {
                 in_reply_to: envelope.message_id_header.clone().unwrap_or_default(),
+                references: build_reply_references(&envelope),
                 reply_to: envelope.from.email.clone(),
                 cc,
                 subject: envelope.subject.clone(),
@@ -1166,6 +1204,16 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
     }
 }
 
+fn build_reply_references(envelope: &mxr_core::types::Envelope) -> Vec<String> {
+    let mut references = envelope.references.clone();
+    if let Some(message_id) = &envelope.message_id_header {
+        if !references.iter().any(|reference| reference == message_id) {
+            references.push(message_id.clone());
+        }
+    }
+    references
+}
+
 /// Build an ExportThread from a thread_id by fetching envelopes and bodies from the store.
 async fn build_export_thread(
     state: &Arc<AppState>,
@@ -1201,7 +1249,9 @@ async fn build_export_thread(
             subject: env.subject.clone(),
             body_text: body.as_ref().and_then(|b| b.text_plain.clone()),
             body_html: body.as_ref().and_then(|b| b.text_html.clone()),
-            headers_raw: None,
+            headers_raw: body
+                .as_ref()
+                .and_then(|b| b.metadata.raw_headers.clone()),
             attachments: body
                 .as_ref()
                 .map(|b| {
@@ -1934,6 +1984,7 @@ async fn test_account_config(account: AccountConfigData) -> Result<String, Strin
                     .unwrap_or(0);
                 Ok(format!("Gmail sync ok: {count} labels"))
             }
+            #[cfg(feature = "imap")]
             AccountSyncConfigData::Imap {
                 host,
                 port,
@@ -1954,6 +2005,10 @@ async fn test_account_config(account: AccountConfigData) -> Result<String, Strin
                 );
                 let folders = provider.sync_labels().await.map_err(|e| e.to_string())?;
                 Ok(format!("IMAP sync ok: {} folders", folders.len()))
+            }
+            #[cfg(not(feature = "imap"))]
+            AccountSyncConfigData::Imap { .. } => {
+                Err("IMAP support not compiled in (enable 'imap' feature)".to_string())
             }
         };
     }
@@ -2989,6 +3044,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_run_saved_search_returns_results() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+
+        let create = IpcMessage {
+            id: 200,
+            payload: IpcPayload::Request(Request::CreateSavedSearch {
+                name: "Deploy".into(),
+                query: "deployment".into(),
+            }),
+        };
+        handle_request(&state, &create).await;
+
+        let msg = IpcMessage {
+            id: 201,
+            payload: IpcPayload::Request(Request::RunSavedSearch {
+                name: "Deploy".into(),
+                limit: 10,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SearchResults { results },
+            }) => assert!(!results.is_empty(), "saved search should return results"),
+            other => panic!("Expected SearchResults, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn dispatch_status() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
 
@@ -3456,6 +3545,7 @@ mod tests {
                 text_html: Some("<p>Hello <b>world</b></p>".into()),
                 attachments: vec![],
                 fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
             })
             .await
             .unwrap();
@@ -3675,7 +3765,7 @@ mod tests {
         let draft = mxr_core::types::Draft {
             id: mxr_core::DraftId::new(),
             account_id: state.default_account_id(),
-            in_reply_to: None,
+            reply_headers: None,
             to: vec![mxr_core::types::Address {
                 name: None,
                 email: "test@example.com".to_string(),
@@ -4054,6 +4144,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_sync_now_acknowledges() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+
+        let msg = IpcMessage {
+            id: 300,
+            payload: IpcPayload::Request(Request::SyncNow { account_id: None }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("Expected Ack, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn dispatch_export_thread_json_is_valid() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         state
@@ -4097,6 +4205,115 @@ mod tests {
                 assert!(parsed["subject"].is_string());
             }
             other => panic!("Expected ExportResult, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_get_headers_includes_standards_metadata() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let id = sync_and_get_first_id(&state).await;
+
+        let mut body = state.store.get_body(&id).await.unwrap().unwrap();
+        body.metadata.list_id = Some("fixtures.example.com".into());
+        body.metadata.auth_results = vec!["mx.example.net; dkim=pass".into()];
+        body.metadata.content_language = vec!["en".into(), "fr".into()];
+        state.store.insert_body(&body).await.unwrap();
+
+        let msg = IpcMessage {
+            id: 3,
+            payload: IpcPayload::Request(Request::GetHeaders {
+                message_id: id.clone(),
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        let headers = match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Headers { headers },
+            }) => headers,
+            other => panic!("Expected Headers, got {:?}", other),
+        };
+
+        assert!(headers.iter().any(|(name, _)| name == "From"));
+        assert!(headers.iter().any(|(name, _)| name == "Subject"));
+        assert!(
+            headers
+                .iter()
+                .any(|(name, value)| name == "List-Id" && value == "fixtures.example.com")
+        );
+        assert!(headers.iter().any(|(name, value)| {
+            name == "Authentication-Results" && value == "mx.example.net; dkim=pass"
+        }));
+        assert!(headers.iter().any(|(name, value)| {
+            name == "Content-Language" && value == "en, fr"
+        }));
+    }
+
+    #[tokio::test]
+    async fn dispatch_export_search_json_is_valid() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+
+        let msg = IpcMessage {
+            id: 4,
+            payload: IpcPayload::Request(Request::ExportSearch {
+                query: "deployment".into(),
+                format: mxr_core::types::ExportFormat::Json,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match &resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::ExportResult { content },
+            }) => {
+                let parsed: serde_json::Value =
+                    serde_json::from_str(content).expect("Export JSON should be valid");
+                let messages = parsed["messages"]
+                    .as_array()
+                    .expect("export search should include messages");
+                assert!(!messages.is_empty(), "export search should return results");
+            }
+            other => panic!("Expected ExportResult, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_save_draft_to_server() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: state.default_account_id(),
+            reply_headers: None,
+            to: vec![mxr_core::types::Address {
+                name: Some("Recipient".into()),
+                email: "recipient@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Saved draft".into(),
+            body_markdown: "Body".into(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let msg = IpcMessage {
+            id: 5,
+            payload: IpcPayload::Request(Request::SaveDraftToServer { draft }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("Expected Ack, got {:?}", other),
         }
     }
 }

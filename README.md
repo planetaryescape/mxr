@@ -64,18 +64,18 @@ SQLite is the canonical store. Your email lives on your machine. Works offline. 
 
 ## How it compares
 
-| | gog / gwc | notmuch | mutt | aerc | himalaya | meli | **mxr** |
+| | gog / gws | notmuch | mutt | aerc | himalaya | meli | **mxr** |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | Works beyond Google | no | yes | yes | yes | yes | yes | **yes** |
-| Full CLI for every action | partial | search only | no | no | yes | no | **yes** |
-| JSON output for scripting | yes | yes | no | no | partial | no | **yes** |
-| Compose and send from CLI | partial | no | no | no | yes | no | **yes** |
-| Batch operations via search | no | tag only | no | no | no | no | **yes** |
+| Full CLI for every action | yes (Gmail) | most | partial | partial | yes | no | **yes** |
+| JSON output for scripting | yes | yes | no | no | yes | no | **yes** |
+| Compose and send from CLI | yes | no | yes | partial | yes | no | **yes** |
+| Batch operations via search | partial | tag only | no | no | no | no | **yes** |
 | Daemon architecture | no | no | no | no | no | no | **yes** |
 | Local database | no | Xapian | no | no | no | optional | **SQLite** |
 | Full-text search engine | no | yes | no | no | no | optional | **yes** |
-| Compose in $EDITOR | no | via Emacs | partial | partial | yes | no | **yes** |
-| Pluggable provider adapters | no | no | no | partial | partial | no | **yes** |
+| Compose in $EDITOR | no | via Emacs | yes | yes | yes | partial | **yes** |
+| Pluggable provider adapters | no | no | no | partial | partial | partial | **yes** |
 | Custom client support | no | yes | no | no | no | no | **yes** |
 
 ## Quick start

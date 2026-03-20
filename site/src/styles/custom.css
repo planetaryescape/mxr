@@ -1,286 +1,496 @@
-/* Brand colors */
+/* ==========================================================
+   mxr — terminal-utilitarian aesthetic
+   Monospace-forward, high contrast, scanline texture,
+   terminal prompt motifs. Premium developer tool feel.
+   ========================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap');
+
 :root {
-  --sl-color-accent-low: #1a1a2e;
-  --sl-color-accent: #6c63ff;
-  --sl-color-accent-high: #c4c1ff;
-  --sl-font: 'Inter', system-ui, -apple-system, sans-serif;
-  --sl-font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  --mxr-green: #39d353;
+  --mxr-green-dim: #1a6b29;
+  --mxr-amber: #e3b341;
+  --mxr-cyan: #58a6ff;
+  --mxr-red: #f85149;
+  --mxr-surface: #0d1117;
+  --mxr-surface-raised: #161b22;
+  --mxr-border: #30363d;
+  --mxr-text-primary: #e6edf3;
+  --mxr-text-secondary: #8b949e;
+  --mxr-text-tertiary: #484f58;
+
+  --sl-color-accent-low: #0d2818;
+  --sl-color-accent: #39d353;
+  --sl-color-accent-high: #a8f0b8;
+  --sl-font: 'IBM Plex Sans', system-ui, sans-serif;
+  --sl-font-mono: 'IBM Plex Mono', 'Cascadia Code', ui-monospace, monospace;
 }
 
 :root[data-theme='light'] {
-  --sl-color-accent-low: #e8e6ff;
-  --sl-color-accent: #5b52e0;
-  --sl-color-accent-high: #2d2680;
+  --mxr-green: #1a7f37;
+  --mxr-green-dim: #dafbe1;
+  --mxr-surface: #ffffff;
+  --mxr-surface-raised: #f6f8fa;
+  --mxr-border: #d0d7de;
+  --mxr-text-primary: #1f2328;
+  --mxr-text-secondary: #656d76;
+  --mxr-text-tertiary: #b1bac4;
+
+  --sl-color-accent-low: #dafbe1;
+  --sl-color-accent: #1a7f37;
+  --sl-color-accent-high: #0d3b1a;
 }
 
-/* Hero */
+/* ---- Hero ---- */
 .hero-accent {
-  color: var(--sl-color-accent);
+  color: var(--mxr-green);
+  text-shadow: 0 0 40px rgba(57, 211, 83, 0.15);
 }
 
 [data-page-title] .hero {
-  padding-block: 2rem 1rem;
+  padding-block: 3rem 1.5rem;
+  position: relative;
+}
+
+[data-page-title] .hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(57, 211, 83, 0.015) 2px,
+      rgba(57, 211, 83, 0.015) 4px
+    );
+  pointer-events: none;
+  z-index: 0;
 }
 
 [data-page-title] .hero h1 {
-  font-size: clamp(2.5rem, 6vw, 4rem);
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  font-weight: 800;
+  font-family: var(--sl-font-mono);
+  font-size: clamp(2.2rem, 5.5vw, 3.5rem);
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+  position: relative;
 }
 
 [data-page-title] .hero .tagline {
-  font-size: clamp(1.05rem, 2.2vw, 1.25rem);
-  max-width: 48ch;
-  color: var(--sl-color-gray-2);
-  line-height: 1.6;
+  font-size: clamp(1rem, 2vw, 1.15rem);
+  max-width: 52ch;
+  color: var(--mxr-text-secondary);
+  line-height: 1.7;
+  font-family: var(--sl-font);
 }
 
-/* Landing sections */
+/* Override Starlight hero buttons */
+[data-page-title] .hero .action.primary {
+  background: var(--mxr-green) !important;
+  border-color: var(--mxr-green) !important;
+  color: #000 !important;
+  font-weight: 600;
+}
+
+[data-page-title] .hero .action.primary:hover {
+  box-shadow: 0 0 20px rgba(57, 211, 83, 0.25);
+}
+
+/* ---- Section labels ---- */
 .landing-section {
-  max-width: 65rem;
+  max-width: 64rem;
   margin-inline: auto;
-  padding-block: 2rem;
+  padding-block: 2.5rem;
+  position: relative;
 }
 
 .landing-section h2 {
-  font-size: clamp(1.5rem, 3.5vw, 2.1rem);
-  font-weight: 700;
+  font-family: var(--sl-font-mono);
+  font-size: clamp(1.3rem, 3vw, 1.7rem);
+  font-weight: 600;
   letter-spacing: -0.01em;
-  margin-block-end: 1.25rem;
+  margin-block-end: 1.5rem;
+  color: var(--mxr-text-primary);
 }
 
-/* Install section — prominent */
+.landing-section h2::before {
+  content: '> ';
+  color: var(--mxr-green);
+  font-weight: 400;
+}
+
+/* ---- Install section ---- */
 .install-section {
-  border: 1px solid var(--sl-color-gray-5);
-  border-radius: 1rem;
+  border: 1px solid var(--mxr-border);
+  border-radius: 0.5rem;
   padding: 2rem;
-  background: var(--sl-color-gray-7, rgba(255, 255, 255, 0.02));
+  background: var(--mxr-surface-raised);
+  position: relative;
+  overflow: hidden;
+}
+
+.install-section::before {
+  content: 'INSTALL';
+  position: absolute;
+  top: 0.75rem;
+  right: 1rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  color: var(--mxr-text-tertiary);
+  font-weight: 500;
+}
+
+.install-section h2::before {
+  content: '$ ';
 }
 
 .install-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
 .install-method h4 {
-  font-size: 0.85rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--sl-color-gray-3);
+  letter-spacing: 0.1em;
+  color: var(--mxr-green);
   margin-block-end: 0.5rem;
-}
-
-.install-method pre {
-  border-radius: 0.5rem;
-  font-size: 0.85rem;
-}
-
-.install-method a {
-  font-size: 0.9rem;
   font-weight: 500;
 }
 
-/* Problem section */
-.problem-section {
-  max-width: 56ch;
-  font-size: 1.05rem;
-  line-height: 1.7;
+.install-method pre {
+  border-radius: 0.375rem;
+  font-size: 0.82rem;
+  border: 1px solid var(--mxr-border);
 }
 
-.problem-section p {
-  margin-block-end: 1rem;
-}
-
-.problem-section strong {
-  color: var(--sl-color-accent);
-  font-size: 1.1rem;
-}
-
-/* Speed section */
-.speed-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1.25rem;
-  margin-block-end: 1.5rem;
-}
-
-.speed-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 1.25rem;
-  border: 1px solid var(--sl-color-gray-5);
-  border-radius: 0.75rem;
-  text-align: center;
-}
-
-.speed-number {
-  font-size: 2rem;
-  font-weight: 800;
-  color: var(--sl-color-accent);
-  letter-spacing: -0.02em;
+.install-method a {
+  font-size: 0.85rem;
+  font-weight: 500;
   font-family: var(--sl-font-mono);
 }
 
-.speed-label {
-  font-size: 0.85rem;
-  color: var(--sl-color-gray-3);
+.install-section > p {
+  font-size: 0.9rem;
+  color: var(--mxr-text-secondary);
+  margin-block-start: 1rem;
 }
 
-.speed-section > p {
-  max-width: 56ch;
-  line-height: 1.7;
-  color: var(--sl-color-gray-2);
+/* ---- Problem section ---- */
+.problem-section {
+  max-width: 58ch;
+  font-size: 1.02rem;
+  line-height: 1.75;
 }
 
-/* Feature cards */
-.features-section .card {
-  border: 1px solid var(--sl-color-gray-5);
-  border-radius: 0.75rem;
-  transition: border-color 0.2s ease, transform 0.15s ease;
+.problem-section p {
+  margin-block-end: 1.25rem;
+  color: var(--mxr-text-secondary);
 }
 
-.features-section .card:hover {
-  border-color: var(--sl-color-accent);
-  transform: translateY(-2px);
+.problem-section strong {
+  color: var(--mxr-green);
+  font-weight: 600;
 }
 
-/* Agent section */
+.problem-section a {
+  color: var(--mxr-cyan);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.problem-section code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.88em;
+  background: var(--mxr-surface-raised);
+  padding: 0.15em 0.4em;
+  border-radius: 0.25rem;
+  border: 1px solid var(--mxr-border);
+  color: var(--mxr-amber);
+}
+
+/* ---- Agent section ---- */
 .agent-section {
-  max-width: 56rem;
+  max-width: 58rem;
 }
 
 .agent-examples {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  margin-block: 1.25rem;
+  gap: 0;
+  margin-block: 1.5rem;
+  border: 1px solid var(--mxr-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
 }
 
 .agent-example {
-  border-left: 3px solid var(--sl-color-accent);
-  padding: 1rem 1.25rem;
-  background: var(--sl-color-gray-7, rgba(255, 255, 255, 0.02));
-  border-radius: 0 0.5rem 0.5rem 0;
+  padding: 1rem 1.5rem;
+  background: var(--mxr-surface-raised);
+  border-bottom: 1px solid var(--mxr-border);
+  position: relative;
+  padding-left: 3rem;
+  transition: background 0.15s ease;
+}
+
+.agent-example:last-child {
+  border-bottom: none;
+}
+
+.agent-example:hover {
+  background: rgba(57, 211, 83, 0.03);
+}
+
+.agent-example::before {
+  content: '$';
+  position: absolute;
+  left: 1.25rem;
+  top: 1.1rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.85rem;
+  color: var(--mxr-green);
+  font-weight: 600;
 }
 
 .agent-prompt {
-  font-size: 0.95rem;
-  line-height: 1.6;
-  color: var(--sl-color-gray-2);
-  font-style: italic;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: var(--mxr-text-secondary);
+  font-style: normal;
+  font-family: var(--sl-font);
 }
 
 .agent-section > p {
-  max-width: 56ch;
-  color: var(--sl-color-gray-3);
-  line-height: 1.6;
+  max-width: 58ch;
+  color: var(--mxr-text-secondary);
+  line-height: 1.7;
+  font-size: 0.95rem;
 }
 
-/* Extensible section */
-.extend-grid {
+/* ---- Speed section ---- */
+.speed-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px;
+  margin-block-end: 1.5rem;
+  border: 1px solid var(--mxr-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--mxr-border);
 }
 
-.extend-card {
+.speed-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   padding: 1.5rem;
-  border: 1px solid var(--sl-color-gray-5);
-  border-radius: 0.75rem;
+  background: var(--mxr-surface-raised);
+  text-align: left;
+}
+
+.speed-number {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--mxr-green);
+  letter-spacing: -0.03em;
+  font-family: var(--sl-font-mono);
+  line-height: 1;
+}
+
+.speed-label {
+  font-size: 0.8rem;
+  color: var(--mxr-text-tertiary);
+  font-family: var(--sl-font-mono);
+  letter-spacing: 0.01em;
+}
+
+.speed-section > p {
+  max-width: 58ch;
+  line-height: 1.7;
+  color: var(--mxr-text-secondary);
+  font-size: 0.95rem;
+}
+
+/* ---- Feature cards ---- */
+.features-section .sl-card-grid {
+  gap: 1px;
+}
+
+.features-section .card {
+  border: 1px solid var(--mxr-border);
+  border-radius: 0.375rem;
+  background: var(--mxr-surface-raised);
   transition: border-color 0.2s ease;
 }
 
-.extend-card:hover {
-  border-color: var(--sl-color-accent);
+.features-section .card:hover {
+  border-color: var(--mxr-green);
+  transform: none;
 }
 
-.extend-card h3 {
-  font-size: 1rem;
+.features-section .card .title {
+  font-family: var(--sl-font-mono);
   font-weight: 600;
-  margin-block-end: 0.5rem;
+  font-size: 0.95rem;
 }
 
-.extend-card p {
-  font-size: 0.9rem;
-  line-height: 1.6;
-  color: var(--sl-color-gray-2);
+/* ---- Comparison table ---- */
+.comparison-section {
+  overflow-x: auto;
 }
 
-/* Comparison table */
 .comparison-section table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
+  font-family: var(--sl-font-mono);
+  border: 1px solid var(--mxr-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
 }
 
-.comparison-section th,
+.comparison-section thead {
+  background: var(--mxr-surface-raised);
+}
+
+.comparison-section th {
+  padding: 0.75rem 0.65rem;
+  font-weight: 600;
+  color: var(--mxr-text-primary);
+  text-align: center;
+  border-bottom: 2px solid var(--mxr-border);
+  font-size: 0.8rem;
+}
+
+.comparison-section th:first-child {
+  text-align: left;
+}
+
 .comparison-section td {
-  padding: 0.6rem 0.8rem;
-  border-bottom: 1px solid var(--sl-color-gray-6);
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--mxr-border);
+  color: var(--mxr-text-secondary);
+  text-align: center;
+}
+
+.comparison-section td:first-child {
+  text-align: left;
+  color: var(--mxr-text-primary);
+  font-weight: 500;
 }
 
 .comparison-section td:last-child {
-  font-weight: 600;
-  color: var(--sl-color-accent);
+  font-weight: 700;
+  color: var(--mxr-green);
 }
 
-.comparison-section tr:hover {
-  background: var(--sl-color-gray-7, rgba(255, 255, 255, 0.03));
+.comparison-section tr:hover td {
+  background: rgba(57, 211, 83, 0.03);
 }
 
-/* Open source section */
+.comparison-section tr:last-child td {
+  border-bottom: none;
+}
+
+/* ---- Open source section ---- */
 .opensource-section {
   text-align: center;
-  max-width: 52ch;
+  max-width: 54ch;
   margin-inline: auto;
+  padding-block: 3rem;
+}
+
+.opensource-section h2::before {
+  content: none;
 }
 
 .opensource-section p {
-  line-height: 1.7;
-  color: var(--sl-color-gray-2);
+  line-height: 1.75;
+  color: var(--mxr-text-secondary);
   margin-block-end: 1rem;
+  font-size: 0.95rem;
 }
 
-/* CTA buttons */
+/* ---- CTA buttons ---- */
 .cta-buttons {
   display: flex;
   gap: 0.75rem;
   justify-content: center;
   flex-wrap: wrap;
-  margin-block-start: 1.5rem;
+  margin-block-start: 2rem;
 }
 
 .cta-primary,
 .cta-secondary {
   display: inline-flex;
   align-items: center;
-  padding: 0.7rem 1.5rem;
-  border-radius: 0.5rem;
+  padding: 0.65rem 1.5rem;
+  border-radius: 0.375rem;
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
+  font-family: var(--sl-font-mono);
   text-decoration: none;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: all 0.15s ease;
+  letter-spacing: 0.01em;
 }
 
 .cta-primary {
-  background: var(--sl-color-accent);
-  color: white;
+  background: var(--mxr-green);
+  color: #000;
+  border: 1px solid var(--mxr-green);
 }
 
 .cta-primary:hover {
+  box-shadow: 0 0 20px rgba(57, 211, 83, 0.2);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(108, 99, 255, 0.3);
 }
 
 .cta-secondary {
-  border: 1px solid var(--sl-color-gray-4);
-  color: var(--sl-color-gray-1);
+  border: 1px solid var(--mxr-border);
+  color: var(--mxr-text-secondary);
 }
 
 .cta-secondary:hover {
-  border-color: var(--sl-color-accent);
-  color: var(--sl-color-accent);
+  border-color: var(--mxr-green);
+  color: var(--mxr-green);
+}
+
+/* ---- Global refinements ---- */
+
+/* Section dividers */
+.landing-section + .landing-section {
+  border-top: 1px solid var(--mxr-border);
+  padding-block-start: 3rem;
+}
+
+/* Code in prose */
+.landing-section :not(pre) > code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.85em;
+  background: var(--mxr-surface-raised);
+  padding: 0.15em 0.45em;
+  border-radius: 0.25rem;
+  border: 1px solid var(--mxr-border);
+  color: var(--mxr-amber);
+}
+
+/* Scanline overlay on the whole splash page (subtle) */
+[data-page-title]::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(57, 211, 83, 0.008) 3px,
+      rgba(57, 211, 83, 0.008) 4px
+    );
+  pointer-events: none;
+  z-index: 9999;
 }

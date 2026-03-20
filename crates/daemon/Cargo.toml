@@ -5,7 +5,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Local-first terminal email client"
+description = "A programmable, agent-native email client. One CLI across all your providers."
+readme = "../../README.md"
 
 [[bin]]
 name = "mxr"

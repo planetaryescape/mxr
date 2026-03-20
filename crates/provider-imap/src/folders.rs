@@ -13,7 +13,8 @@ pub fn map_folder_to_label(
         Some("\\Drafts") => ("DRAFT".to_string(), LabelKind::System),
         Some("\\Trash") => ("TRASH".to_string(), LabelKind::System),
         Some("\\Junk") | Some("\\Spam") => ("SPAM".to_string(), LabelKind::System),
-        Some("\\Archive") | Some("\\All") => ("ALL".to_string(), LabelKind::System),
+        Some("\\Archive") => ("ARCHIVE".to_string(), LabelKind::System),
+        Some("\\All") => ("ALL".to_string(), LabelKind::System),
         Some("\\Flagged") => ("STARRED".to_string(), LabelKind::System),
         _ => (folder_name.to_string(), LabelKind::Folder),
     };
@@ -63,6 +64,9 @@ mod tests {
         assert_eq!(label.name, "SPAM");
 
         let label = map_folder_to_label("Archive", Some("\\Archive"), &aid);
+        assert_eq!(label.name, "ARCHIVE");
+
+        let label = map_folder_to_label("All Mail", Some("\\All"), &aid);
         assert_eq!(label.name, "ALL");
     }
 

@@ -58,8 +58,15 @@ impl Store {
     }
 
     async fn run_migrations(&self) -> Result<(), sqlx::Error> {
-        let sql = include_str!("../migrations/001_initial.sql");
-        sqlx::raw_sql(sql).execute(&self.writer).await?;
+        let _ = sqlx::raw_sql(include_str!("../migrations/001_initial.sql"))
+            .execute(&self.writer)
+            .await;
+        let _ = sqlx::raw_sql(include_str!("../migrations/002_body_metadata.sql"))
+            .execute(&self.writer)
+            .await;
+        let _ = sqlx::raw_sql(include_str!("../migrations/003_sync_runtime_status.sql"))
+            .execute(&self.writer)
+            .await;
         Ok(())
     }
 

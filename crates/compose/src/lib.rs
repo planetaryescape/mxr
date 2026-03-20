@@ -1,6 +1,8 @@
 pub mod attachments;
+pub mod email;
 pub mod editor;
 pub mod frontmatter;
+pub mod parse;
 pub mod render;
 
 use crate::frontmatter::{ComposeError, ComposeFrontmatter};
@@ -15,6 +17,7 @@ pub enum ComposeKind {
     },
     Reply {
         in_reply_to: String,
+        references: Vec<String>,
         to: String,
         cc: String,
         subject: String,
@@ -42,6 +45,7 @@ pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usiz
                 subject: String::new(),
                 from: from.to_string(),
                 in_reply_to: None,
+                references: Vec::new(),
                 attach: Vec::new(),
             };
             (fm, String::new(), None)
@@ -54,12 +58,14 @@ pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usiz
                 subject: String::new(),
                 from: from.to_string(),
                 in_reply_to: None,
+                references: Vec::new(),
                 attach: Vec::new(),
             };
             (fm, String::new(), None)
         }
         ComposeKind::Reply {
             in_reply_to,
+            references,
             to,
             cc,
             subject,
@@ -72,6 +78,7 @@ pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usiz
                 subject: format!("Re: {subject}"),
                 from: from.to_string(),
                 in_reply_to: Some(in_reply_to),
+                references,
                 attach: Vec::new(),
             };
             (fm, String::new(), Some(thread_context))
@@ -87,6 +94,7 @@ pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usiz
                 subject: format!("Fwd: {subject}"),
                 from: from.to_string(),
                 in_reply_to: None,
+                references: Vec::new(),
                 attach: Vec::new(),
             };
             let body = "---------- Forwarded message ----------".to_string();
@@ -193,6 +201,7 @@ mod tests {
         let (path, _) = create_draft_file(
             ComposeKind::Reply {
                 in_reply_to: "<msg-123@example.com>".into(),
+                references: vec!["<root@example.com>".into(), "<msg-123@example.com>".into()],
                 to: "alice@example.com".into(),
                 cc: "bob@example.com".into(),
                 subject: "Deployment plan".into(),
@@ -206,6 +215,7 @@ mod tests {
         assert_eq!(fm.subject, "Re: Deployment plan");
         assert_eq!(fm.to, "alice@example.com");
         assert!(fm.in_reply_to.is_some());
+        assert_eq!(fm.references.len(), 2);
         assert!(!body.contains("Hey team?"));
         std::fs::remove_file(path).ok();
     }
@@ -237,6 +247,7 @@ mod tests {
             subject: "Test".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            references: Vec::new(),
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "body");
@@ -252,6 +263,7 @@ mod tests {
             subject: "Test".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            references: Vec::new(),
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "body");
@@ -267,6 +279,7 @@ mod tests {
             subject: String::new(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            references: Vec::new(),
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "body");
@@ -301,6 +314,7 @@ mod tests {
             subject: "Hello".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            references: Vec::new(),
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "Hello there!");

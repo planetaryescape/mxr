@@ -29,6 +29,27 @@ pub fn config_dir() -> PathBuf {
         .join("mxr")
 }
 
+/// Returns the runtime instance name used for data/socket namespacing.
+///
+/// Defaults:
+/// - release builds: `mxr`
+/// - debug builds: `mxr-dev`
+/// - override with `MXR_INSTANCE`
+pub fn app_instance_name() -> String {
+    if let Ok(value) = std::env::var("MXR_INSTANCE") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+
+    if cfg!(debug_assertions) {
+        "mxr-dev".to_string()
+    } else {
+        "mxr".to_string()
+    }
+}
+
 /// Returns the path to the main config file.
 pub fn config_file_path() -> PathBuf {
     config_dir().join("config.toml")
@@ -38,7 +59,24 @@ pub fn config_file_path() -> PathBuf {
 pub fn data_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("mxr")
+        .join(app_instance_name())
+}
+
+/// Returns the IPC socket path for the current instance.
+pub fn socket_path() -> PathBuf {
+    if cfg!(target_os = "macos") {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("Library")
+            .join("Application Support")
+            .join(app_instance_name())
+            .join("mxr.sock")
+    } else {
+        dirs::runtime_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join(app_instance_name())
+            .join("mxr.sock")
+    }
 }
 
 /// Load config from the default config file path, falling back to defaults.

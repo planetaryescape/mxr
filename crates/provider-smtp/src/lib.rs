@@ -2,26 +2,43 @@ pub mod config;
 
 use async_trait::async_trait;
 use config::{SmtpConfig, SmtpError};
-use lettre::{
-    message::{header::ContentType, Mailbox, MultiPart, SinglePart},
-    transport::smtp::authentication::Credentials,
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
-};
-use mxr_compose::render::render_markdown;
+#[cfg(not(test))]
+use lettre::AsyncTransport;
+use lettre::{transport::smtp::authentication::Credentials, AsyncSmtpTransport, Tokio1Executor};
+use mxr_compose::email::build_message;
 use mxr_core::error::MxrError;
 use mxr_core::provider::MailSendProvider;
 use mxr_core::types::{Address, Draft, SendReceipt};
 
 pub struct SmtpSendProvider {
     config: SmtpConfig,
+    #[cfg(test)]
+    test_sender: Option<std::sync::Arc<dyn TestSender>>,
 }
 
 impl SmtpSendProvider {
     pub fn new(config: SmtpConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            #[cfg(test)]
+            test_sender: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_test_sender(config: SmtpConfig, test_sender: std::sync::Arc<dyn TestSender>) -> Self {
+        Self {
+            config,
+            test_sender: Some(test_sender),
+        }
     }
 
     pub async fn test_connection(&self) -> Result<(), SmtpError> {
+        #[cfg(test)]
+        if let Some(sender) = &self.test_sender {
+            return sender.test_connection().await.map_err(SmtpError::Transport);
+        }
+
         let transport = self.build_transport().await?;
         transport
             .test_connection()
@@ -59,67 +76,6 @@ impl SmtpSendProvider {
     }
 }
 
-/// Build a lettre Message from a Draft.
-fn build_message(draft: &Draft, from: &Address) -> Result<Message, MxrError> {
-    let from_mailbox: Mailbox =
-        from.email
-            .parse()
-            .map_err(|e: lettre::address::AddressError| {
-                MxrError::Provider(format!("Invalid from address: {e}"))
-            })?;
-
-    let mut builder = Message::builder().from(from_mailbox);
-
-    for addr in &draft.to {
-        let mailbox: Mailbox = addr
-            .email
-            .parse()
-            .map_err(|e: lettre::address::AddressError| {
-                MxrError::Provider(format!("Invalid to address: {e}"))
-            })?;
-        builder = builder.to(mailbox);
-    }
-
-    for addr in &draft.cc {
-        let mailbox: Mailbox = addr
-            .email
-            .parse()
-            .map_err(|e: lettre::address::AddressError| {
-                MxrError::Provider(format!("Invalid cc address: {e}"))
-            })?;
-        builder = builder.cc(mailbox);
-    }
-
-    for addr in &draft.bcc {
-        let mailbox: Mailbox = addr
-            .email
-            .parse()
-            .map_err(|e: lettre::address::AddressError| {
-                MxrError::Provider(format!("Invalid bcc address: {e}"))
-            })?;
-        builder = builder.bcc(mailbox);
-    }
-
-    builder = builder.subject(&draft.subject);
-
-    let rendered = render_markdown(&draft.body_markdown);
-    let multipart = MultiPart::alternative()
-        .singlepart(
-            SinglePart::builder()
-                .header(ContentType::TEXT_PLAIN)
-                .body(rendered.plain),
-        )
-        .singlepart(
-            SinglePart::builder()
-                .header(ContentType::TEXT_HTML)
-                .body(rendered.html),
-        );
-
-    builder
-        .multipart(multipart)
-        .map_err(|e| MxrError::Provider(format!("Failed to build message: {e}")))
-}
-
 #[async_trait]
 impl MailSendProvider for SmtpSendProvider {
     fn name(&self) -> &str {
@@ -127,17 +83,29 @@ impl MailSendProvider for SmtpSendProvider {
     }
 
     async fn send(&self, draft: &Draft, from: &Address) -> Result<SendReceipt, MxrError> {
-        let transport = self
-            .build_transport()
-            .await
-            .map_err(|e| MxrError::Provider(e.to_string()))?;
+        let message = build_message(draft, from, false)
+            .map_err(|e| MxrError::Provider(format!("Failed to build message: {e}")))?;
 
-        let message = build_message(draft, from)?;
+        #[cfg(test)]
+        if let Some(sender) = &self.test_sender {
+            sender
+                .send(message)
+                .await
+                .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
+        }
 
-        transport
-            .send(message)
-            .await
-            .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
+        #[cfg(not(test))]
+        {
+            let transport = self
+                .build_transport()
+                .await
+                .map_err(|e| MxrError::Provider(e.to_string()))?;
+
+            transport
+                .send(message)
+                .await
+                .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
+        }
 
         Ok(SendReceipt {
             provider_message_id: None,
@@ -147,15 +115,23 @@ impl MailSendProvider for SmtpSendProvider {
 }
 
 #[cfg(test)]
+#[async_trait]
+trait TestSender: Send + Sync {
+    async fn send(&self, message: lettre::Message) -> Result<(), String>;
+    async fn test_connection(&self) -> Result<(), String>;
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use mxr_core::id::DraftId;
+    use std::sync::{Arc, Mutex};
 
     fn test_draft() -> Draft {
         Draft {
             id: DraftId::new(),
             account_id: mxr_core::id::AccountId::new(),
-            in_reply_to: None,
+            reply_headers: None,
             to: vec![Address {
                 name: Some("Alice".into()),
                 email: "alice@example.com".into(),
@@ -170,6 +146,26 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct RecordedSender {
+        messages: Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl TestSender for RecordedSender {
+        async fn send(&self, message: lettre::Message) -> Result<(), String> {
+            self.messages
+                .lock()
+                .unwrap()
+                .push(String::from_utf8(message.formatted()).unwrap());
+            Ok(())
+        }
+
+        async fn test_connection(&self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn build_message_basic() {
         let draft = test_draft();
@@ -177,7 +173,7 @@ mod tests {
             name: Some("Me".into()),
             email: "me@example.com".into(),
         };
-        let msg = build_message(&draft, &from).unwrap();
+        let msg = build_message(&draft, &from, false).unwrap();
         // Verify the message was built successfully by formatting it
         let bytes = msg.formatted();
         let formatted = String::from_utf8_lossy(&bytes);
@@ -198,6 +194,25 @@ mod tests {
             name: None,
             email: "me@example.com".into(),
         };
-        assert!(build_message(&draft, &from).is_err());
+        assert!(build_message(&draft, &from, false).is_err());
+    }
+
+    #[tokio::test]
+    async fn smtp_provider_passes_send_conformance() {
+        let sender = Arc::new(RecordedSender::default());
+        let provider = SmtpSendProvider::with_test_sender(
+            SmtpConfig {
+                host: "smtp.example.com".into(),
+                port: 587,
+                username: "me@example.com".into(),
+                password_ref: "mxr/test".into(),
+                use_tls: true,
+            },
+            sender.clone(),
+        );
+        mxr_provider_fake::conformance::run_send_conformance(&provider).await;
+        let messages = sender.messages.lock().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("Subject: Conformance test draft"));
     }
 }

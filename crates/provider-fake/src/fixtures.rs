@@ -40,7 +40,7 @@ pub fn sample_draft(account_id: AccountId) -> Draft {
     Draft {
         id: DraftId::new(),
         account_id,
-        in_reply_to: None,
+        reply_headers: None,
         to: vec![Address {
             name: Some("Recipient".to_string()),
             email: "recipient@example.com".to_string(),
@@ -646,6 +646,7 @@ fn push_msg(
             text_html: None,
             attachments,
             fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
         },
     );
 }

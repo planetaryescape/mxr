@@ -195,6 +195,7 @@ mod tests {
             text_html: None,
             attachments: vec![],
             fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
         }
     }
 

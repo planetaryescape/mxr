@@ -1,5 +1,6 @@
 use mxr_core::id::*;
 use mxr_core::types::*;
+use sqlx::Row;
 impl super::Store {
     pub async fn upsert_envelope(&self, envelope: &Envelope) -> Result<(), sqlx::Error> {
         let id = envelope.id.as_str();
@@ -238,6 +239,74 @@ impl super::Store {
                     &r.label_provider_ids,
                 )
             })
+            .collect())
+    }
+
+    pub async fn list_envelopes_by_ids(
+        &self,
+        message_ids: &[MessageId],
+    ) -> Result<Vec<Envelope>, sqlx::Error> {
+        if message_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let placeholders: Vec<String> = message_ids.iter().map(|_| "?".to_string()).collect();
+        let sql = format!(
+            r#"SELECT
+                m.id as "id!", m.account_id as "account_id!", m.provider_id as "provider_id!",
+                m.thread_id as "thread_id!", m.message_id_header, m.in_reply_to,
+                m.reference_headers, m.from_name, m.from_email as "from_email!",
+                m.to_addrs as "to_addrs!", m.cc_addrs as "cc_addrs!", m.bcc_addrs as "bcc_addrs!",
+                m.subject as "subject!", m.date as "date!", m.flags as "flags!",
+                m.snippet as "snippet!", m.has_attachments as "has_attachments!: bool",
+                m.size_bytes as "size_bytes!", m.unsubscribe_method,
+                COALESCE((
+                    SELECT GROUP_CONCAT(labels.provider_id, char(31))
+                    FROM message_labels
+                    JOIN labels ON labels.id = message_labels.label_id
+                    WHERE message_labels.message_id = m.id
+                ), '') as "label_provider_ids!: String"
+             FROM messages m
+             WHERE m.id IN ({})"#,
+            placeholders.join(", ")
+        );
+
+        let mut query = sqlx::query(&sql);
+        for message_id in message_ids {
+            query = query.bind(message_id.as_str());
+        }
+
+        let rows = query.fetch_all(self.reader()).await?;
+        let mut by_id = std::collections::HashMap::with_capacity(rows.len());
+        for row in rows {
+            let envelope = record_to_envelope(
+                row.get::<String, _>("id").as_str(),
+                row.get::<String, _>("account_id").as_str(),
+                row.get::<String, _>("provider_id").as_str(),
+                row.get::<String, _>("thread_id").as_str(),
+                row.get::<Option<String>, _>("message_id_header").as_deref(),
+                row.get::<Option<String>, _>("in_reply_to").as_deref(),
+                row.get::<Option<String>, _>("reference_headers").as_deref(),
+                row.get::<Option<String>, _>("from_name").as_deref(),
+                row.get::<String, _>("from_email").as_str(),
+                row.get::<String, _>("to_addrs").as_str(),
+                row.get::<String, _>("cc_addrs").as_str(),
+                row.get::<String, _>("bcc_addrs").as_str(),
+                row.get::<String, _>("subject").as_str(),
+                row.get::<i64, _>("date"),
+                row.get::<i64, _>("flags"),
+                row.get::<String, _>("snippet").as_str(),
+                row.get::<bool, _>("has_attachments"),
+                row.get::<i64, _>("size_bytes"),
+                row.get::<Option<String>, _>("unsubscribe_method").as_deref(),
+                row.get::<String, _>("label_provider_ids").as_str(),
+            );
+            by_id.insert(envelope.id.clone(), envelope);
+        }
+
+        Ok(message_ids
+            .iter()
+            .filter_map(|message_id| by_id.remove(message_id))
             .collect())
     }
 

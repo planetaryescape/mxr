@@ -16,3 +16,5 @@ pub mod send_confirm_modal;
 pub mod sidebar;
 pub mod snooze_modal;
 pub mod status_bar;
+pub mod url_modal;
+pub mod unsubscribe_modal;

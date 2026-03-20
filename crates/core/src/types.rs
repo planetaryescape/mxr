@@ -123,6 +123,41 @@ pub enum UnsubscribeMethod {
     None,
 }
 
+// -- ReplyHeaders ------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReplyHeaders {
+    pub in_reply_to: String,
+    #[serde(default)]
+    pub references: Vec<String>,
+}
+
+// -- MessageMetadata ---------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct MessageMetadata {
+    pub list_id: Option<String>,
+    #[serde(default)]
+    pub auth_results: Vec<String>,
+    #[serde(default)]
+    pub content_language: Vec<String>,
+    pub text_plain_format: Option<TextPlainFormat>,
+    pub calendar: Option<CalendarMetadata>,
+    pub raw_headers: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TextPlainFormat {
+    Fixed,
+    Flowed { delsp: bool },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CalendarMetadata {
+    pub method: Option<String>,
+    pub summary: Option<String>,
+}
+
 // -- MessageBody --------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,6 +167,8 @@ pub struct MessageBody {
     pub text_html: Option<String>,
     pub attachments: Vec<AttachmentMeta>,
     pub fetched_at: DateTime<Utc>,
+    #[serde(default)]
+    pub metadata: MessageMetadata,
 }
 
 // -- AttachmentMeta -----------------------------------------------------------
@@ -167,7 +204,7 @@ pub struct Thread {
 pub struct Draft {
     pub id: DraftId,
     pub account_id: AccountId,
-    pub in_reply_to: Option<MessageId>,
+    pub reply_headers: Option<ReplyHeaders>,
     pub to: Vec<Address>,
     pub cc: Vec<Address>,
     pub bcc: Vec<Address>,
@@ -213,10 +250,39 @@ pub struct Snoozed {
 // -- Sync types ---------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImapMailboxCursor {
+    pub mailbox: String,
+    pub uid_validity: u32,
+    pub uid_next: u32,
+    #[serde(default)]
+    pub highest_modseq: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImapCapabilityState {
+    pub move_ext: bool,
+    pub uidplus: bool,
+    pub idle: bool,
+    pub condstore: bool,
+    pub qresync: bool,
+    pub namespace: bool,
+    pub list_status: bool,
+    pub utf8_accept: bool,
+    pub imap4rev2: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SyncCursor {
     Gmail { history_id: u64 },
     GmailBackfill { history_id: u64, page_token: String },
-    Imap { uid_validity: u32, uid_next: u32 },
+    Imap {
+        uid_validity: u32,
+        uid_next: u32,
+        #[serde(default)]
+        mailboxes: Vec<ImapMailboxCursor>,
+        #[serde(default)]
+        capabilities: Option<ImapCapabilityState>,
+    },
     Initial,
 }
 

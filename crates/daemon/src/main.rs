@@ -11,11 +11,15 @@ mod state;
 pub mod unsubscribe;
 
 use clap::Parser;
-use cli::{Cli, Command};
+use cli::{unsupported_command_guidance, Cli, Command};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(guidance) = unsupported_command_guidance(&args) {
+        anyhow::bail!(guidance);
+    }
+    let cli = Cli::parse_from(&args);
 
     let is_foreground = matches!(cli.command, Some(Command::Daemon { foreground: true }));
     init_tracing(is_foreground)?;
@@ -38,11 +42,13 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Doctor {
             reindex,
             check,
+            verbose,
             index_stats,
             store_stats,
             format,
         }) => {
-            commands::doctor::run(reindex, check, index_stats, store_stats, format)?;
+            commands::doctor::run(reindex, check, verbose, index_stats, store_stats, format)
+                .await?;
         }
         Some(Command::Logs {
             no_follow,
@@ -165,7 +171,6 @@ async fn main() -> anyhow::Result<()> {
             yes,
             dry_run,
         }) => {
-            crate::server::ensure_daemon_running().await?;
             let _ = yes;
             commands::mutations::compose(commands::mutations::ComposeOptions {
                 to,

@@ -2,7 +2,7 @@ use crate::ast::*;
 use crate::schema::MxrSchema;
 use chrono::{Datelike, Local, NaiveDate};
 use std::ops::Bound;
-use tantivy::query::{BooleanQuery, BoostQuery, Occur, PhraseQuery, Query, RangeQuery, TermQuery};
+use tantivy::query::{AllQuery, BooleanQuery, BoostQuery, Occur, PhraseQuery, Query, RangeQuery, TermQuery};
 use tantivy::schema::{Field, IndexRecordOption};
 use tantivy::Term;
 
@@ -11,12 +11,19 @@ pub struct QueryBuilder {
     from_name: Field,
     from_email: Field,
     to_email: Field,
+    cc_email: Field,
+    bcc_email: Field,
     snippet: Field,
     body_text: Field,
+    attachment_filenames: Field,
     labels: Field,
-    date: Field,
     is_read: Field,
     is_starred: Field,
+    is_draft: Field,
+    is_sent: Field,
+    is_trash: Field,
+    is_spam: Field,
+    is_answered: Field,
     has_attachments: Field,
 }
 
@@ -27,12 +34,19 @@ impl QueryBuilder {
             from_name: schema.from_name,
             from_email: schema.from_email,
             to_email: schema.to_email,
+            cc_email: schema.cc_email,
+            bcc_email: schema.bcc_email,
             snippet: schema.snippet,
             body_text: schema.body_text,
+            attachment_filenames: schema.attachment_filenames,
             labels: schema.labels,
-            date: schema.date,
             is_read: schema.is_read,
             is_starred: schema.is_starred,
+            is_draft: schema.is_draft,
+            is_sent: schema.is_sent,
+            is_trash: schema.is_trash,
+            is_spam: schema.is_spam,
+            is_answered: schema.is_answered,
             has_attachments: schema.has_attachments,
         }
     }
@@ -45,6 +59,7 @@ impl QueryBuilder {
             QueryNode::Filter(filter) => self.build_filter_query(filter),
             QueryNode::Label(label) => self.build_label_query(label),
             QueryNode::DateRange { bound, date } => self.build_date_query(bound, date),
+            QueryNode::Size { op, bytes } => self.build_size_query(op, *bytes),
             QueryNode::And(left, right) => {
                 let left_q = self.build(left);
                 let right_q = self.build(right);
@@ -66,7 +81,7 @@ impl QueryBuilder {
                 Box::new(BooleanQuery::new(vec![
                     (Occur::MustNot, inner_q),
                     // BooleanQuery with only MustNot needs an all-docs clause
-                    (Occur::Should, Box::new(tantivy::query::AllQuery)),
+                    (Occur::Should, Box::new(AllQuery)),
                 ]))
             }
         }
@@ -117,18 +132,22 @@ impl QueryBuilder {
         let tantivy_field = match field {
             QueryField::From => self.from_email,
             QueryField::To => self.to_email,
+            QueryField::Cc => self.cc_email,
+            QueryField::Bcc => self.bcc_email,
             QueryField::Subject => self.subject,
+            QueryField::Body => self.body_text,
+            QueryField::Filename => self.attachment_filenames,
         };
 
-        // For subject, use TEXT tokenized search (lowercase)
-        // For email fields, use STRING exact match
-        let term_value = match field {
-            QueryField::Subject => value.to_lowercase(),
-            _ => value.to_string(),
-        };
-
-        let term = Term::from_field_text(tantivy_field, &term_value);
-        Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))
+        match field {
+            QueryField::Subject | QueryField::Body | QueryField::Filename => {
+                self.build_text_field_query(tantivy_field, value)
+            }
+            QueryField::From | QueryField::To | QueryField::Cc | QueryField::Bcc => {
+                let term = Term::from_field_text(tantivy_field, value);
+                Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))
+            }
+        }
     }
 
     fn build_filter_query(&self, filter: &FilterKind) -> Box<dyn Query> {
@@ -145,6 +164,38 @@ impl QueryBuilder {
                 let term = Term::from_field_bool(self.is_starred, true);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
+            FilterKind::Draft => {
+                let term = Term::from_field_bool(self.is_draft, true);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::Sent => {
+                let term = Term::from_field_bool(self.is_sent, true);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::Trash => {
+                let term = Term::from_field_bool(self.is_trash, true);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::Spam => {
+                let term = Term::from_field_bool(self.is_spam, true);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::Answered => {
+                let term = Term::from_field_bool(self.is_answered, true);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::Inbox => self.build_label_query("INBOX"),
+            FilterKind::Archived => Box::new(BooleanQuery::new(vec![
+                (Occur::Should, self.build_label_query("ARCHIVE")),
+                (Occur::Should, Box::new(BooleanQuery::new(vec![
+                    (Occur::MustNot, self.build_label_query("INBOX")),
+                    (Occur::MustNot, self.build_filter_query(&FilterKind::Sent)),
+                    (Occur::MustNot, self.build_filter_query(&FilterKind::Draft)),
+                    (Occur::MustNot, self.build_filter_query(&FilterKind::Trash)),
+                    (Occur::MustNot, self.build_filter_query(&FilterKind::Spam)),
+                    (Occur::Should, Box::new(AllQuery)),
+                ]))),
+            ])),
             FilterKind::HasAttachment => {
                 let term = Term::from_field_bool(self.has_attachments, true);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
@@ -153,52 +204,90 @@ impl QueryBuilder {
     }
 
     fn build_label_query(&self, label: &str) -> Box<dyn Query> {
-        let term = Term::from_field_text(self.labels, label);
+        let term = Term::from_field_text(self.labels, &label.to_lowercase());
         Box::new(TermQuery::new(term, IndexRecordOption::Basic))
     }
 
     fn build_date_query(&self, bound: &DateBound, date_val: &DateValue) -> Box<dyn Query> {
         let resolved = resolve_date(date_val);
         let field_name = "date".to_string();
+        let start = self.date_to_tantivy(resolved);
 
         match bound {
-            DateBound::After => {
-                let start = self.date_to_term(resolved);
-                Box::new(RangeQuery::new_term_bounds(
-                    field_name,
-                    tantivy::schema::Type::Date,
-                    &Bound::Included(start),
-                    &Bound::Unbounded,
-                ))
-            }
-            DateBound::Before => {
-                let end = self.date_to_term(resolved);
-                Box::new(RangeQuery::new_term_bounds(
-                    field_name,
-                    tantivy::schema::Type::Date,
-                    &Bound::Unbounded,
-                    &Bound::Excluded(end),
-                ))
-            }
+            DateBound::After => Box::new(RangeQuery::new_date_bounds(
+                field_name,
+                Bound::Included(start),
+                Bound::Unbounded,
+            )),
+            DateBound::Before => Box::new(RangeQuery::new_date_bounds(
+                field_name,
+                Bound::Unbounded,
+                Bound::Excluded(start),
+            )),
             DateBound::Exact => {
-                let start = self.date_to_term(resolved);
                 let end_date = resolved.succ_opt().unwrap_or(resolved);
-                let end = self.date_to_term(end_date);
-                Box::new(RangeQuery::new_term_bounds(
+                let end = self.date_to_tantivy(end_date);
+                Box::new(RangeQuery::new_date_bounds(
                     field_name,
-                    tantivy::schema::Type::Date,
-                    &Bound::Included(start),
-                    &Bound::Excluded(end),
+                    Bound::Included(start),
+                    Bound::Excluded(end),
                 ))
             }
         }
     }
 
-    fn date_to_term(&self, date: NaiveDate) -> Term {
+    fn build_size_query(&self, op: &SizeOp, bytes: u64) -> Box<dyn Query> {
+        let field_name = "size_bytes".to_string();
+        match op {
+            SizeOp::LessThan => Box::new(RangeQuery::new_u64_bounds(
+                field_name,
+                Bound::Unbounded,
+                Bound::Excluded(bytes),
+            )),
+            SizeOp::LessThanOrEqual => Box::new(RangeQuery::new_u64_bounds(
+                field_name,
+                Bound::Unbounded,
+                Bound::Included(bytes),
+            )),
+            SizeOp::Equal => Box::new(RangeQuery::new_u64_bounds(
+                field_name,
+                Bound::Included(bytes),
+                Bound::Included(bytes),
+            )),
+            SizeOp::GreaterThan => Box::new(RangeQuery::new_u64_bounds(
+                field_name,
+                Bound::Excluded(bytes),
+                Bound::Unbounded,
+            )),
+            SizeOp::GreaterThanOrEqual => Box::new(RangeQuery::new_u64_bounds(
+                field_name,
+                Bound::Included(bytes),
+                Bound::Unbounded,
+            )),
+        }
+    }
+
+    fn build_text_field_query(&self, field: Field, value: &str) -> Box<dyn Query> {
+        let terms: Vec<Term> = tokenize_text_value(value)
+            .into_iter()
+            .map(|word| Term::from_field_text(field, &word))
+            .collect();
+
+        if terms.len() <= 1 {
+            let term = terms
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| Term::from_field_text(field, &value.to_lowercase()));
+            return Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs));
+        }
+
+        Box::new(PhraseQuery::new(terms))
+    }
+
+    fn date_to_tantivy(&self, date: NaiveDate) -> tantivy::DateTime {
         let dt = date.and_hms_opt(0, 0, 0).unwrap();
         let ts = dt.and_utc().timestamp();
-        let tantivy_dt = tantivy::DateTime::from_timestamp_secs(ts);
-        Term::from_field_date(self.date, tantivy_dt)
+        tantivy::DateTime::from_timestamp_secs(ts)
     }
 }
 
@@ -216,6 +305,14 @@ fn resolve_date(date_val: &DateValue) -> NaiveDate {
             NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today)
         }
     }
+}
+
+fn tokenize_text_value(value: &str) -> Vec<String> {
+    value
+        .split(|ch: char| !ch.is_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .map(|part| part.to_lowercase())
+        .collect()
 }
 
 #[cfg(test)]

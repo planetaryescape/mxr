@@ -21,6 +21,11 @@ pub enum Action {
     OpenRulesScreen,
     OpenDiagnosticsScreen,
     OpenAccountsScreen,
+    OpenTab1,
+    OpenTab2,
+    OpenTab3,
+    OpenTab4,
+    OpenTab5,
     // Search
     OpenSearch,
     SubmitSearch,
@@ -78,11 +83,15 @@ pub enum Action {
     ApplyLabel,
     MoveToLabel,
     Unsubscribe,
+    ConfirmUnsubscribeOnly,
+    ConfirmUnsubscribeAndArchiveSender,
+    CancelUnsubscribe,
     Snooze,
     OpenInBrowser,
 
     // --- Phase 2: Reader mode ---
     ToggleReaderMode,
+    ToggleSignature,
 
     // --- Phase 2: Batch operations (A007) ---
     ToggleSelect,
@@ -91,6 +100,9 @@ pub enum Action {
 
     // --- Phase 2: Attachments ---
     AttachmentList,
+
+    // --- Phase 2: Links ---
+    OpenLinks,
 
     // --- Phase 2: Layout ---
     ToggleFullscreen,

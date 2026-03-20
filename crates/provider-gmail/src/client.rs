@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use crate::auth::GmailAuth;
 use crate::error::GmailError;
 use crate::types::*;
@@ -26,6 +27,48 @@ pub struct GmailClient {
     http: reqwest::Client,
     auth: GmailAuth,
     base_url: String,
+}
+
+#[async_trait]
+pub trait GmailApi: Send + Sync {
+    async fn list_messages(
+        &self,
+        query: Option<&str>,
+        page_token: Option<&str>,
+        max_results: u32,
+    ) -> Result<GmailListResponse, GmailError>;
+    async fn batch_get_messages(
+        &self,
+        message_ids: &[String],
+        format: MessageFormat,
+    ) -> Result<Vec<GmailMessage>, GmailError>;
+    async fn list_history(
+        &self,
+        start_history_id: u64,
+        page_token: Option<&str>,
+    ) -> Result<GmailHistoryResponse, GmailError>;
+    async fn modify_message(
+        &self,
+        message_id: &str,
+        add_labels: &[&str],
+        remove_labels: &[&str],
+    ) -> Result<(), GmailError>;
+    async fn trash_message(&self, message_id: &str) -> Result<(), GmailError>;
+    async fn send_message(&self, raw_base64url: &str) -> Result<serde_json::Value, GmailError>;
+    async fn get_attachment(
+        &self,
+        message_id: &str,
+        attachment_id: &str,
+    ) -> Result<Vec<u8>, GmailError>;
+    async fn create_draft(&self, raw_base64url: &str) -> Result<String, GmailError>;
+    async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError>;
+    async fn create_label(
+        &self,
+        name: &str,
+        color: Option<&str>,
+    ) -> Result<GmailLabel, GmailError>;
+    async fn rename_label(&self, label_id: &str, new_name: &str) -> Result<GmailLabel, GmailError>;
+    async fn delete_label(&self, label_id: &str) -> Result<(), GmailError>;
 }
 
 impl GmailClient {
@@ -428,6 +471,83 @@ impl GmailClient {
         }
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl GmailApi for GmailClient {
+    async fn list_messages(
+        &self,
+        query: Option<&str>,
+        page_token: Option<&str>,
+        max_results: u32,
+    ) -> Result<GmailListResponse, GmailError> {
+        GmailClient::list_messages(self, query, page_token, max_results).await
+    }
+
+    async fn batch_get_messages(
+        &self,
+        message_ids: &[String],
+        format: MessageFormat,
+    ) -> Result<Vec<GmailMessage>, GmailError> {
+        GmailClient::batch_get_messages(self, message_ids, format).await
+    }
+
+    async fn list_history(
+        &self,
+        start_history_id: u64,
+        page_token: Option<&str>,
+    ) -> Result<GmailHistoryResponse, GmailError> {
+        GmailClient::list_history(self, start_history_id, page_token).await
+    }
+
+    async fn modify_message(
+        &self,
+        message_id: &str,
+        add_labels: &[&str],
+        remove_labels: &[&str],
+    ) -> Result<(), GmailError> {
+        GmailClient::modify_message(self, message_id, add_labels, remove_labels).await
+    }
+
+    async fn trash_message(&self, message_id: &str) -> Result<(), GmailError> {
+        GmailClient::trash_message(self, message_id).await
+    }
+
+    async fn send_message(&self, raw_base64url: &str) -> Result<serde_json::Value, GmailError> {
+        GmailClient::send_message(self, raw_base64url).await
+    }
+
+    async fn get_attachment(
+        &self,
+        message_id: &str,
+        attachment_id: &str,
+    ) -> Result<Vec<u8>, GmailError> {
+        GmailClient::get_attachment(self, message_id, attachment_id).await
+    }
+
+    async fn create_draft(&self, raw_base64url: &str) -> Result<String, GmailError> {
+        GmailClient::create_draft(self, raw_base64url).await
+    }
+
+    async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError> {
+        GmailClient::list_labels(self).await
+    }
+
+    async fn create_label(
+        &self,
+        name: &str,
+        color: Option<&str>,
+    ) -> Result<GmailLabel, GmailError> {
+        GmailClient::create_label(self, name, color).await
+    }
+
+    async fn rename_label(&self, label_id: &str, new_name: &str) -> Result<GmailLabel, GmailError> {
+        GmailClient::rename_label(self, label_id, new_name).await
+    }
+
+    async fn delete_label(&self, label_id: &str) -> Result<(), GmailError> {
+        GmailClient::delete_label(self, label_id).await
     }
 }
 

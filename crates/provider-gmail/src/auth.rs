@@ -54,6 +54,13 @@ pub struct GmailAuth {
 type TokenFuture =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, AuthError>> + Send>>;
 
+#[derive(serde::Deserialize)]
+struct RefreshTokenResponse {
+    access_token: Option<String>,
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
 impl GmailAuth {
     pub fn new(client_id: String, client_secret: String, token_ref: String) -> Self {
         Self {
@@ -61,6 +68,55 @@ impl GmailAuth {
             client_secret,
             token_ref,
             token_fn: None,
+        }
+    }
+
+    pub fn with_refresh_token(
+        client_id: String,
+        client_secret: String,
+        refresh_token: String,
+    ) -> Self {
+        let token_client_id = client_id.clone();
+        let token_client_secret = client_secret.clone();
+        let token_fn = Box::new(move || {
+            let client_id = token_client_id.clone();
+            let client_secret = token_client_secret.clone();
+            let refresh_token = refresh_token.clone();
+            Box::pin(async move {
+                let response = reqwest::Client::new()
+                    .post("https://oauth2.googleapis.com/token")
+                    .form(&[
+                        ("client_id", client_id.as_str()),
+                        ("client_secret", client_secret.as_str()),
+                        ("refresh_token", refresh_token.as_str()),
+                        ("grant_type", "refresh_token"),
+                    ])
+                    .send()
+                    .await
+                    .map_err(|e| AuthError::OAuth2(e.to_string()))?;
+                let status = response.status();
+                let body: RefreshTokenResponse = response
+                    .json()
+                    .await
+                    .map_err(|e| AuthError::OAuth2(e.to_string()))?;
+
+                if !status.is_success() {
+                    return Err(AuthError::OAuth2(
+                        body.error_description
+                            .or(body.error)
+                            .unwrap_or_else(|| format!("token refresh failed with status {status}")),
+                    ));
+                }
+
+                body.access_token.ok_or(AuthError::TokenExpired)
+            }) as TokenFuture
+        });
+
+        Self {
+            client_id,
+            client_secret,
+            token_ref: "refresh-token".into(),
+            token_fn: Some(token_fn),
         }
     }
 

@@ -564,31 +564,28 @@ pub struct ComposeOptions {
     pub dry_run: bool,
 }
 
-pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
-    let mut client = IpcClient::connect().await?;
+fn resolve_compose_from_address(explicit_from: Option<String>) -> String {
+    if let Some(from) = explicit_from {
+        return from;
+    }
 
-    // Resolve "from" address from daemon status if not provided
-    let from_addr = if let Some(f) = options.from {
-        f
-    } else {
-        let resp = client.request(Request::ListAccounts).await?;
-        match resp {
-            Response::Ok {
-                data: ResponseData::Accounts { mut accounts },
-            } => {
-                if let Some(index) = accounts.iter().position(|account| account.is_default) {
-                    accounts.remove(index).email
-                } else {
-                    accounts
-                        .into_iter()
-                        .next()
-                        .map(|account| account.email)
-                        .unwrap_or_else(|| "you@example.com".to_string())
-                }
-            }
-            _ => "you@example.com".to_string(),
+    let config = mxr_config::load_config().unwrap_or_default();
+    if let Some(default_key) = config.general.default_account.as_deref() {
+        if let Some(account) = config.accounts.get(default_key) {
+            return account.email.clone();
         }
-    };
+    }
+
+    config
+        .accounts
+        .values()
+        .next()
+        .map(|account| account.email.clone())
+        .unwrap_or_else(|| "you@example.com".to_string())
+}
+
+pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
+    let from_addr = resolve_compose_from_address(options.from);
 
     if options.dry_run {
         println!("Would open $EDITOR to compose new email from {}", from_addr);
@@ -641,6 +638,40 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::resolve_compose_from_address;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn compose_from_prefers_explicit_value() {
+        let resolved = resolve_compose_from_address(Some("alice@example.com".into()));
+        assert_eq!(resolved, "alice@example.com");
+    }
+
+    #[test]
+    fn compose_from_falls_back_when_no_config() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let temp_home = std::env::temp_dir().join(format!("mxr-compose-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&temp_home);
+        std::fs::create_dir_all(&temp_home).unwrap();
+        unsafe { std::env::set_var("HOME", &temp_home) };
+
+        let resolved = resolve_compose_from_address(None);
+
+        match prev_home {
+            Some(value) => unsafe { std::env::set_var("HOME", value) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        let _ = std::fs::remove_dir_all(&temp_home);
+
+        assert_eq!(resolved, "you@example.com");
+    }
+}
+
 pub async fn reply(
     message_id: String,
     body: Option<String>,
@@ -674,6 +705,7 @@ pub async fn reply(
     let (path, cursor_line) = mxr_compose::create_draft_file(
         mxr_compose::ComposeKind::Reply {
             in_reply_to: ctx.in_reply_to,
+            references: ctx.references,
             to: ctx.reply_to,
             cc: String::new(),
             subject: ctx.subject,
@@ -733,6 +765,7 @@ pub async fn reply_all(
     let (path, cursor_line) = mxr_compose::create_draft_file(
         mxr_compose::ComposeKind::Reply {
             in_reply_to: ctx.in_reply_to,
+            references: ctx.references,
             to: ctx.reply_to,
             cc: ctx.cc,
             subject: ctx.subject,

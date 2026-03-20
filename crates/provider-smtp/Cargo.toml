@@ -22,3 +22,5 @@ chrono = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 serde_json = { workspace = true }
+insta = { workspace = true }
+mxr-provider-fake = { workspace = true }

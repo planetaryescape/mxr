@@ -137,6 +137,14 @@ impl SyncEngine {
                             }
                         }
                     }
+
+                    if let (Ok(Some(envelope)), Ok(Some(body))) = (
+                        self.store.get_envelope(&message_id).await,
+                        self.store.get_body(&message_id).await,
+                    ) {
+                        let mut search = self.search.lock().await;
+                        search.index_body(&envelope, &body)?;
+                    }
                 }
             }
 

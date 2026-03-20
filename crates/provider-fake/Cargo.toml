@@ -16,3 +16,4 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+insta = { workspace = true }

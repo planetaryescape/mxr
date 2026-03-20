@@ -29,3 +29,7 @@ uuid = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 wiremock = { workspace = true }
+mxr-test-support = { workspace = true }
+insta = { workspace = true }
+mxr-provider-fake = { workspace = true }
+mail-parser = { workspace = true }

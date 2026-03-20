@@ -49,9 +49,18 @@ mod tests {
                 name: Some(from_name.to_string()),
                 email: from_email.to_string(),
             },
-            to: vec![],
-            cc: vec![],
-            bcc: vec![],
+            to: vec![Address {
+                name: None,
+                email: "recipient@example.com".to_string(),
+            }],
+            cc: vec![Address {
+                name: None,
+                email: "team@example.com".to_string(),
+            }],
+            bcc: vec![Address {
+                name: None,
+                email: "hidden@example.com".to_string(),
+            }],
             subject: subject.to_string(),
             date: chrono::Utc::now(),
             flags,
@@ -59,7 +68,7 @@ mod tests {
             has_attachments,
             size_bytes: 1000,
             unsubscribe: UnsubscribeMethod::None,
-            label_provider_ids: vec![],
+            label_provider_ids: vec!["notifications".to_string()],
         }
     }
 
@@ -133,6 +142,7 @@ mod tests {
             text_html: None,
             attachments: vec![],
             fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
         };
         idx.index_body(&env, &body).unwrap();
         idx.commit().unwrap();
@@ -284,10 +294,107 @@ mod tests {
     }
 
     #[test]
+    fn e2e_search_by_label() {
+        let (idx, envelopes) = build_e2e_index();
+        let results = e2e_search(&idx, "label:notifications");
+        assert_eq!(results.len(), envelopes.len());
+    }
+
+    #[test]
+    fn e2e_search_by_label_is_case_insensitive() {
+        let (idx, envelopes) = build_e2e_index();
+        let results = e2e_search(&idx, "label:NOTIFICATIONS");
+        assert_eq!(results.len(), envelopes.len());
+    }
+
+    #[test]
     fn e2e_filter_starred() {
         let (idx, envelopes) = build_e2e_index();
         let results = e2e_search(&idx, "is:starred");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], envelopes[1].id.as_str());
+    }
+
+    #[test]
+    fn e2e_search_cc_and_bcc_fields() {
+        let (idx, envelopes) = build_e2e_index();
+
+        let cc_results = e2e_search(&idx, "cc:team@example.com");
+        assert_eq!(cc_results.len(), envelopes.len());
+
+        let bcc_results = e2e_search(&idx, "bcc:hidden@example.com");
+        assert_eq!(bcc_results.len(), envelopes.len());
+    }
+
+    #[test]
+    fn e2e_search_sent_filter() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let sent = make_envelope_full(
+            "Sent follow-up",
+            "Done",
+            "Alice",
+            "alice@example.com",
+            MessageFlags::READ | MessageFlags::SENT,
+            false,
+        );
+        let inbox = make_envelope_full(
+            "Inbox message",
+            "Pending",
+            "Bob",
+            "bob@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        idx.index_envelope(&sent).unwrap();
+        idx.index_envelope(&inbox).unwrap();
+        idx.commit().unwrap();
+
+        let results = e2e_search(&idx, "is:sent");
+        assert_eq!(results, vec![sent.id.as_str().to_string()]);
+    }
+
+    #[test]
+    fn e2e_search_size_and_body_and_filename() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let env = make_envelope_full(
+            "Release checklist",
+            "Contains attachment",
+            "Alice",
+            "alice@example.com",
+            MessageFlags::READ,
+            true,
+        );
+        let body = MessageBody {
+            message_id: env.id.clone(),
+            text_plain: Some("Deploy canary to 10% before global rollout".to_string()),
+            text_html: None,
+            attachments: vec![AttachmentMeta {
+                id: AttachmentId::new(),
+                message_id: env.id.clone(),
+                filename: "release-notes-v2.pdf".to_string(),
+                mime_type: "application/pdf".to_string(),
+                size_bytes: 10,
+                local_path: None,
+                provider_id: "att-1".to_string(),
+            }],
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
+        };
+
+        idx.index_body(&env, &body).unwrap();
+        idx.commit().unwrap();
+
+        assert_eq!(
+            e2e_search(&idx, "body:canary"),
+            vec![env.id.as_str().to_string()]
+        );
+        assert_eq!(
+            e2e_search(&idx, "filename:release-notes"),
+            vec![env.id.as_str().to_string()]
+        );
+        assert_eq!(
+            e2e_search(&idx, "size:>=1000"),
+            vec![env.id.as_str().to_string()]
+        );
     }
 }

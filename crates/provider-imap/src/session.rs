@@ -2,17 +2,32 @@ use async_trait::async_trait;
 
 use crate::config::ImapConfig;
 use crate::error::ImapProviderError;
-use crate::types::{FetchedMessage, FolderInfo, ImapAddress, ImapEnvelope, MailboxInfo};
+use crate::types::{
+    FetchedMessage, FolderInfo, ImapAddress, ImapCapabilities, ImapEnvelope, MailboxInfo,
+    NamespaceInfo, QresyncInfo,
+};
 
 pub type Result<T> = std::result::Result<T, ImapProviderError>;
 
 /// Abstraction over an IMAP session for testability.
 #[async_trait]
 pub trait ImapSession: Send {
+    async fn capabilities(&mut self) -> Result<ImapCapabilities>;
+    async fn enable(&mut self, capabilities: &[&str]) -> Result<()>;
+    async fn namespace(&mut self) -> Result<Option<NamespaceInfo>>;
     async fn select(&mut self, mailbox: &str) -> Result<MailboxInfo>;
+    async fn select_qresync(
+        &mut self,
+        mailbox: &str,
+        uid_validity: u32,
+        highest_modseq: u64,
+        known_uids: &str,
+    ) -> Result<QresyncInfo>;
     async fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<FetchedMessage>>;
     async fn uid_store(&mut self, uid_set: &str, flags: &str) -> Result<()>;
     async fn uid_copy(&mut self, uid_set: &str, mailbox: &str) -> Result<()>;
+    async fn uid_move(&mut self, uid_set: &str, mailbox: &str) -> Result<()>;
+    async fn uid_expunge(&mut self, uid_set: &str) -> Result<()>;
     async fn expunge(&mut self) -> Result<()>;
     async fn list_folders(&mut self) -> Result<Vec<FolderInfo>>;
     async fn create_mailbox(&mut self, mailbox: &str) -> Result<()>;
@@ -74,6 +89,25 @@ struct RealImapSession {
 
 #[async_trait]
 impl ImapSession for RealImapSession {
+    async fn capabilities(&mut self) -> Result<ImapCapabilities> {
+        let capabilities = self
+            .session
+            .capabilities()
+            .await
+            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+        Ok(ImapCapabilities {
+            move_ext: capabilities.has_str("MOVE"),
+            uidplus: capabilities.has_str("UIDPLUS"),
+            idle: capabilities.has_str("IDLE"),
+            condstore: capabilities.has_str("CONDSTORE"),
+            qresync: capabilities.has_str("QRESYNC"),
+            namespace: capabilities.has_str("NAMESPACE"),
+            list_status: capabilities.has_str("LIST-STATUS"),
+            utf8_accept: capabilities.has_str("UTF8=ACCEPT"),
+            imap4rev2: capabilities.has_str("IMAP4rev2"),
+        })
+    }
+
     async fn select(&mut self, mailbox: &str) -> Result<MailboxInfo> {
         let mb = self
             .session
@@ -85,6 +119,67 @@ impl ImapSession for RealImapSession {
             uid_validity: mb.uid_validity.unwrap_or(0),
             uid_next: mb.uid_next.unwrap_or(0),
             exists: mb.exists,
+            highest_modseq: mb.highest_modseq,
+        })
+    }
+
+    async fn enable(&mut self, capabilities: &[&str]) -> Result<()> {
+        if capabilities.is_empty() {
+            return Ok(());
+        }
+
+        self.session
+            .enable(capabilities)
+            .await
+            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn namespace(&mut self) -> Result<Option<NamespaceInfo>> {
+        let namespace = self
+            .session
+            .namespace()
+            .await
+            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+        Ok(Some(NamespaceInfo {
+            personal_prefix: namespace.personal.first().map(|entry| entry.prefix.clone()),
+            delimiter: namespace.personal.first().and_then(|entry| entry.delimiter.clone()),
+        }))
+    }
+
+    async fn select_qresync(
+        &mut self,
+        mailbox: &str,
+        uid_validity: u32,
+        highest_modseq: u64,
+        known_uids: &str,
+    ) -> Result<QresyncInfo> {
+        let response = self
+            .session
+            .select_qresync(
+                mailbox,
+                format!("{uid_validity} {highest_modseq} {known_uids}"),
+            )
+            .await
+            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+
+        Ok(QresyncInfo {
+            mailbox: MailboxInfo {
+                uid_validity: response.mailbox.uid_validity.unwrap_or(0),
+                uid_next: response.mailbox.uid_next.unwrap_or(0),
+                exists: response.mailbox.exists,
+                highest_modseq: response.mailbox.highest_modseq,
+            },
+            vanished: response
+                .vanished
+                .into_iter()
+                .flat_map(|range| range.collect::<Vec<_>>())
+                .collect(),
+            changed: response
+                .fetches
+                .into_iter()
+                .filter_map(|fetch| fetch.uid)
+                .collect(),
         })
     }
 
@@ -218,6 +313,28 @@ impl ImapSession for RealImapSession {
         Ok(())
     }
 
+    async fn uid_move(&mut self, uid_set: &str, mailbox: &str) -> Result<()> {
+        self.session
+            .uid_mv(uid_set, mailbox)
+            .await
+            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn uid_expunge(&mut self, uid_set: &str) -> Result<()> {
+        use futures::TryStreamExt;
+        let stream = self
+            .session
+            .uid_expunge(uid_set)
+            .await
+            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+        let _: Vec<_> = stream
+            .try_collect()
+            .await
+            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+        Ok(())
+    }
+
     async fn expunge(&mut self) -> Result<()> {
         use futures::TryStreamExt;
         let stream = self
@@ -233,20 +350,34 @@ impl ImapSession for RealImapSession {
     }
 
     async fn list_folders(&mut self) -> Result<Vec<FolderInfo>> {
-        use futures::TryStreamExt;
-        let stream = self
-            .session
-            .list(Some(""), Some("*"))
-            .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+        let namespace = self.namespace().await.ok().flatten();
+        let names = if self.capabilities().await?.list_status {
+            self.session
+                .list_status("", "*")
+                .await
+                .map_err(|e| ImapProviderError::Protocol(e.to_string()))?
+                .into_iter()
+                .map(|status| (status.name, Some(status.mailbox)))
+                .collect::<Vec<_>>()
+        } else {
+            use futures::TryStreamExt;
+            let stream = self
+                .session
+                .list(Some(""), Some("*"))
+                .await
+                .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
 
-        let names: Vec<_> = stream
-            .try_collect()
-            .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            stream
+                .try_collect::<Vec<_>>()
+                .await
+                .map_err(|e| ImapProviderError::Protocol(e.to_string()))?
+                .into_iter()
+                .map(|name| (name, None))
+                .collect::<Vec<_>>()
+        };
 
         let mut folders = Vec::with_capacity(names.len());
-        for name in &names {
+        for (name, mailbox) in &names {
             let special_use = name.attributes().iter().find_map(|attr| {
                 let s = format!("{attr:?}");
                 match s.as_str() {
@@ -271,6 +402,15 @@ impl ImapSession for RealImapSession {
             folders.push(FolderInfo {
                 name: name.name().to_string(),
                 special_use,
+                delimiter: name.delimiter().map(ToString::to_string),
+                unread_count: mailbox.as_ref().and_then(|mailbox| mailbox.unseen),
+                total_count: mailbox.as_ref().map(|mailbox| mailbox.exists),
+                uid_validity: mailbox.as_ref().and_then(|mailbox| mailbox.uid_validity),
+                uid_next: mailbox.as_ref().and_then(|mailbox| mailbox.uid_next),
+                highest_modseq: mailbox.as_ref().and_then(|mailbox| mailbox.highest_modseq),
+                namespace_prefix: namespace
+                    .as_ref()
+                    .and_then(|namespace| namespace.personal_prefix.clone()),
             });
         }
 
@@ -324,6 +464,9 @@ pub mod mock {
 
     pub struct MockImapSession {
         pub mailbox_info: MailboxInfo,
+        pub capabilities: ImapCapabilities,
+        pub namespace: Option<NamespaceInfo>,
+        pub qresync_response: Option<QresyncInfo>,
         pub fetch_responses: Vec<Vec<FetchedMessage>>,
         pub folders: Vec<FolderInfo>,
         pub log: Arc<Mutex<CommandLog>>,
@@ -333,12 +476,18 @@ pub mod mock {
     impl MockImapSession {
         pub fn new(
             mailbox_info: MailboxInfo,
+            capabilities: ImapCapabilities,
+            namespace: Option<NamespaceInfo>,
+            qresync_response: Option<QresyncInfo>,
             fetch_responses: Vec<Vec<FetchedMessage>>,
             folders: Vec<FolderInfo>,
             log: Arc<Mutex<CommandLog>>,
         ) -> Self {
             Self {
                 mailbox_info,
+                capabilities,
+                namespace,
+                qresync_response,
                 fetch_responses,
                 folders,
                 log,
@@ -349,6 +498,35 @@ pub mod mock {
 
     #[async_trait]
     impl ImapSession for MockImapSession {
+        async fn capabilities(&mut self) -> Result<ImapCapabilities> {
+            self.log
+                .lock()
+                .unwrap()
+                .commands
+                .push("CAPABILITY".to_string());
+            Ok(self.capabilities.clone())
+        }
+
+        async fn enable(&mut self, capabilities: &[&str]) -> Result<()> {
+            if !capabilities.is_empty() {
+                self.log
+                    .lock()
+                    .unwrap()
+                    .commands
+                    .push(format!("ENABLE {}", capabilities.join(" ")));
+            }
+            Ok(())
+        }
+
+        async fn namespace(&mut self) -> Result<Option<NamespaceInfo>> {
+            self.log
+                .lock()
+                .unwrap()
+                .commands
+                .push("NAMESPACE".to_string());
+            Ok(self.namespace.clone())
+        }
+
         async fn select(&mut self, mailbox: &str) -> Result<MailboxInfo> {
             self.log
                 .lock()
@@ -356,6 +534,25 @@ pub mod mock {
                 .commands
                 .push(format!("SELECT {mailbox}"));
             Ok(self.mailbox_info.clone())
+        }
+
+        async fn select_qresync(
+            &mut self,
+            mailbox: &str,
+            _uid_validity: u32,
+            _highest_modseq: u64,
+            _known_uids: &str,
+        ) -> Result<QresyncInfo> {
+            self.log
+                .lock()
+                .unwrap()
+                .commands
+                .push(format!("SELECT {mailbox} QRESYNC"));
+            Ok(self.qresync_response.clone().unwrap_or(QresyncInfo {
+                mailbox: self.mailbox_info.clone(),
+                vanished: vec![],
+                changed: vec![],
+            }))
         }
 
         async fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<FetchedMessage>> {
@@ -384,6 +581,24 @@ pub mod mock {
                 .unwrap()
                 .commands
                 .push(format!("UID COPY {uid_set} {mailbox}"));
+            Ok(())
+        }
+
+        async fn uid_move(&mut self, uid_set: &str, mailbox: &str) -> Result<()> {
+            self.log
+                .lock()
+                .unwrap()
+                .commands
+                .push(format!("UID MOVE {uid_set} {mailbox}"));
+            Ok(())
+        }
+
+        async fn uid_expunge(&mut self, uid_set: &str) -> Result<()> {
+            self.log
+                .lock()
+                .unwrap()
+                .commands
+                .push(format!("UID EXPUNGE {uid_set}"));
             Ok(())
         }
 
@@ -436,6 +651,9 @@ pub mod mock {
 
     pub struct MockImapSessionFactory {
         pub mailbox_info: MailboxInfo,
+        pub capabilities: ImapCapabilities,
+        pub namespace: Option<NamespaceInfo>,
+        pub qresync_response: Option<QresyncInfo>,
         pub fetch_responses: Vec<Vec<FetchedMessage>>,
         pub folders: Vec<FolderInfo>,
         pub log: Arc<Mutex<CommandLog>>,
@@ -449,10 +667,28 @@ pub mod mock {
         ) -> Self {
             Self {
                 mailbox_info,
+                capabilities: ImapCapabilities::default(),
+                namespace: None,
+                qresync_response: None,
                 fetch_responses,
                 folders,
                 log: Arc::new(Mutex::new(CommandLog::default())),
             }
+        }
+
+        pub fn with_capabilities(mut self, capabilities: ImapCapabilities) -> Self {
+            self.capabilities = capabilities;
+            self
+        }
+
+        pub fn with_namespace(mut self, namespace: NamespaceInfo) -> Self {
+            self.namespace = Some(namespace);
+            self
+        }
+
+        pub fn with_qresync(mut self, response: QresyncInfo) -> Self {
+            self.qresync_response = Some(response);
+            self
         }
 
         pub fn commands(&self) -> Vec<String> {
@@ -465,6 +701,9 @@ pub mod mock {
         async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
             Ok(Box::new(MockImapSession::new(
                 self.mailbox_info.clone(),
+                self.capabilities.clone(),
+                self.namespace.clone(),
+                self.qresync_response.clone(),
                 self.fetch_responses.clone(),
                 self.folders.clone(),
                 self.log.clone(),
@@ -488,7 +727,11 @@ mod tests {
                 uid_validity: 1,
                 uid_next: 100,
                 exists: 50,
+                highest_modseq: Some(10),
             },
+            ImapCapabilities::default(),
+            None,
+            None,
             vec![],
             vec![],
             log.clone(),
@@ -518,7 +761,11 @@ mod tests {
                 uid_validity: 1,
                 uid_next: 2,
                 exists: 1,
+                highest_modseq: None,
             },
+            ImapCapabilities::default(),
+            None,
+            None,
             vec![messages],
             vec![],
             log,
@@ -536,11 +783,19 @@ mod tests {
                 uid_validity: 1,
                 uid_next: 10,
                 exists: 5,
+                highest_modseq: None,
             },
             vec![],
             vec![FolderInfo {
                 name: "INBOX".to_string(),
                 special_use: Some("\\Inbox".to_string()),
+                delimiter: Some("/".to_string()),
+                unread_count: None,
+                total_count: None,
+                uid_validity: None,
+                uid_next: None,
+                highest_modseq: None,
+                namespace_prefix: None,
             }],
         );
 

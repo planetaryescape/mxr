@@ -9,14 +9,32 @@ use tokio::sync::mpsc;
 use tokio_util::codec::Framed;
 
 pub async fn run_daemon() -> anyhow::Result<()> {
-    let state = Arc::new(AppState::new().await?);
-
-    // Remove stale socket
     let sock_path = AppState::socket_path();
     if let Some(parent) = sock_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let _ = std::fs::remove_file(&sock_path);
+    match inspect_socket_state(&sock_path).await {
+        SocketState::Reachable => {
+            anyhow::bail!(
+                "Daemon already running at {}. Try `mxr status`, `mxr logs --level error`, or `mxr daemon --foreground`.",
+                sock_path.display()
+            );
+        }
+        SocketState::Stale => {
+            let _ = std::fs::remove_file(&sock_path);
+        }
+        SocketState::Missing => {}
+    }
+
+    let state = Arc::new(match AppState::new().await {
+        Ok(state) => state,
+        Err(error) if is_index_lock_error(&error.to_string()) => {
+            anyhow::bail!(
+                "Search index is locked by another process. Try `mxr status`, `mxr logs --level error`, or `mxr daemon --foreground`.\nOriginal error: {error}"
+            );
+        }
+        Err(error) => return Err(error),
+    });
 
     let listener = UnixListener::bind(&sock_path)?;
     tracing::info!("Daemon listening on {}", sock_path.display());
@@ -120,8 +138,12 @@ pub async fn run_daemon() -> anyhow::Result<()> {
 pub async fn ensure_daemon_running() -> anyhow::Result<()> {
     let sock_path = AppState::socket_path();
 
-    if tokio::net::UnixStream::connect(&sock_path).await.is_ok() {
-        return Ok(());
+    match inspect_socket_state(&sock_path).await {
+        SocketState::Reachable => return Ok(()),
+        SocketState::Stale => {
+            let _ = std::fs::remove_file(&sock_path);
+        }
+        SocketState::Missing => {}
     }
 
     eprint!("Starting daemon...");
@@ -154,7 +176,52 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
         }
     }
     anyhow::bail!(
-        "Failed to start daemon. Check logs at {}",
+        "Failed to start daemon. Check logs at {}. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`.",
         log_path.display()
     )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SocketState {
+    Reachable,
+    Stale,
+    Missing,
+}
+
+async fn inspect_socket_state(path: &std::path::Path) -> SocketState {
+    if !path.exists() {
+        return SocketState::Missing;
+    }
+
+    if tokio::net::UnixStream::connect(path).await.is_ok() {
+        SocketState::Reachable
+    } else {
+        SocketState::Stale
+    }
+}
+
+fn is_index_lock_error(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("lockbusy")
+        || lower.contains("lockfile")
+        || lower.contains("failed to acquire index lock")
+        || lower.contains("failed to acquire lockfile")
+        || lower.contains("already an `indexwriter` working")
+        || lower.contains("already an indexwriter working")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_index_lock_error;
+
+    #[test]
+    fn detects_tantivy_lockbusy_message() {
+        let msg = "Search error: Failed to acquire Lockfile: LockBusy. Some(\"Failed to acquire index lock. If you are using a regular directory, this means there is already an `IndexWriter` working on this `Directory`, in this process or in a different process.\")";
+        assert!(is_index_lock_error(msg));
+    }
+
+    #[test]
+    fn ignores_unrelated_search_error() {
+        assert!(!is_index_lock_error("Search error: schema does not match"));
+    }
 }

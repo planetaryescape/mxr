@@ -138,6 +138,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "toggle_fullscreen" => Some(Action::ToggleFullscreen),
         "visual_line_mode" => Some(Action::VisualLineMode),
         "attachment_list" => Some(Action::AttachmentList),
+        "open_links" => Some(Action::OpenLinks),
         "sync" => Some(Action::SyncNow),
         // Go-to navigation (A005)
         "go_inbox" => Some(Action::GoToInbox),
@@ -146,6 +147,12 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "go_drafts" => Some(Action::GoToDrafts),
         "go_all_mail" => Some(Action::GoToAllMail),
         "go_label" => Some(Action::GoToLabel),
+        "open_tab_1" => Some(Action::OpenTab1),
+        "open_tab_2" => Some(Action::OpenTab2),
+        "open_tab_3" => Some(Action::OpenTab3),
+        "open_tab_4" => Some(Action::OpenTab4),
+        "open_tab_5" => Some(Action::OpenTab5),
+        "toggle_signature" => Some(Action::ToggleSignature),
         _ => None,
     }
 }
@@ -245,9 +252,16 @@ fn action_display_name(action: &str) -> String {
         "next_message" => "Next Msg".into(),
         "prev_message" => "Prev Msg".into(),
         "attachment_list" => "Attachments".into(),
+        "open_links" => "Open Links".into(),
         "toggle_reader_mode" => "Reader".into(),
+        "toggle_signature" => "Signature".into(),
         "export_thread" => "Export".into(),
         "open_in_browser" => "Browser".into(),
+        "open_tab_1" => "Mailbox".into(),
+        "open_tab_2" => "Search Page".into(),
+        "open_tab_3" => "Rules Page".into(),
+        "open_tab_4" => "Accounts Page".into(),
+        "open_tab_5" => "Diagnostics Page".into(),
         "quit_view" => "Quit".into(),
         "clear_selection" => "Clear Sel".into(),
         _ => action
@@ -355,11 +369,17 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("Z", "snooze"),
         ("O", "open_in_browser"),
         ("R", "toggle_reader_mode"),
+        ("S", "toggle_signature"),
         ("E", "export_thread"),
         ("V", "visual_line_mode"),
         ("Ctrl-p", "command_palette"),
         ("Tab", "switch_panes"),
         ("F", "toggle_fullscreen"),
+        ("1", "open_tab_1"),
+        ("2", "open_tab_2"),
+        ("3", "open_tab_3"),
+        ("4", "open_tab_4"),
+        ("5", "open_tab_5"),
         // Gmail go-to (A005)
         ("gi", "go_inbox"),
         ("gs", "go_starred"),
@@ -381,6 +401,7 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("R", "toggle_reader_mode"),
         ("O", "open_in_browser"),
         ("A", "attachment_list"),
+        ("L", "open_links"),
         ("r", "reply"),
         ("a", "reply_all"),
         ("f", "forward"),
@@ -391,6 +412,12 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("I", "mark_read"),
         ("U", "mark_unread"),
         ("D", "unsubscribe"),
+        ("S", "toggle_signature"),
+        ("1", "open_tab_1"),
+        ("2", "open_tab_2"),
+        ("3", "open_tab_3"),
+        ("4", "open_tab_4"),
+        ("5", "open_tab_5"),
     ];
     for (key, action) in mv_defaults {
         if let Ok(kb) = parse_key_string(key) {
@@ -406,6 +433,7 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("a", "reply_all"),
         ("f", "forward"),
         ("A", "attachment_list"),
+        ("L", "open_links"),
         ("R", "toggle_reader_mode"),
         ("E", "export_thread"),
         ("O", "open_in_browser"),
@@ -416,6 +444,12 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("I", "mark_read"),
         ("U", "mark_unread"),
         ("D", "unsubscribe"),
+        ("S", "toggle_signature"),
+        ("1", "open_tab_1"),
+        ("2", "open_tab_2"),
+        ("3", "open_tab_3"),
+        ("4", "open_tab_4"),
+        ("5", "open_tab_5"),
     ];
     for (key, action) in tv_defaults {
         if let Ok(kb) = parse_key_string(key) {

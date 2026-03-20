@@ -3,7 +3,7 @@ use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::*;
 use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, RuleId, StringMatch};
-use mxr_search::ast::{FilterKind, QueryField, QueryNode};
+use mxr_search::ast::{FilterKind, QueryField, QueryNode, SizeOp};
 use mxr_search::parse_query;
 
 fn parse_action(value: &str) -> anyhow::Result<RuleAction> {
@@ -62,6 +62,12 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
             QueryField::Subject => FieldCondition::Subject {
                 pattern: StringMatch::Contains(value),
             },
+            QueryField::Body => FieldCondition::BodyContains {
+                pattern: StringMatch::Contains(value),
+            },
+            QueryField::Cc | QueryField::Bcc | QueryField::Filename => {
+                anyhow::bail!("field is not supported in rules conditions yet")
+            }
         }),
         QueryNode::Label(label) => Conditions::Field(FieldCondition::HasLabel { label }),
         QueryNode::Filter(FilterKind::Unread) => Conditions::Field(FieldCondition::IsUnread),
@@ -70,6 +76,27 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
         QueryNode::Filter(FilterKind::Read) => Conditions::Not {
             condition: Box::new(Conditions::Field(FieldCondition::IsUnread)),
         },
+        QueryNode::Filter(FilterKind::Draft) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "DRAFT".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Sent) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "SENT".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Trash) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "TRASH".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Spam) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "SPAM".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Inbox) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "INBOX".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Archived) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "ARCHIVE".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Answered) => {
+            anyhow::bail!("is:answered is not supported in rules conditions yet")
+        }
         QueryNode::Text(value) | QueryNode::Phrase(value) => Conditions::Field(FieldCondition::BodyContains {
             pattern: StringMatch::Contains(value),
         }),
@@ -96,6 +123,26 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
                 },
             }
         }
+        QueryNode::Size { op, bytes } => match op {
+            SizeOp::GreaterThan => Conditions::Field(FieldCondition::SizeGreaterThan { bytes }),
+            SizeOp::GreaterThanOrEqual => Conditions::Field(FieldCondition::SizeGreaterThan {
+                bytes: bytes.saturating_sub(1),
+            }),
+            SizeOp::LessThan => Conditions::Field(FieldCondition::SizeLessThan { bytes }),
+            SizeOp::LessThanOrEqual => Conditions::Field(FieldCondition::SizeLessThan {
+                bytes: bytes.saturating_add(1),
+            }),
+            SizeOp::Equal => Conditions::And {
+                conditions: vec![
+                    Conditions::Field(FieldCondition::SizeGreaterThan {
+                        bytes: bytes.saturating_sub(1),
+                    }),
+                    Conditions::Field(FieldCondition::SizeLessThan {
+                        bytes: bytes.saturating_add(1),
+                    }),
+                ],
+            },
+        },
     })
 }
 

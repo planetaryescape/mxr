@@ -105,11 +105,26 @@ impl SearchIndex {
         for addr in &envelope.to {
             doc.add_text(s.to_email, &addr.email);
         }
+        for addr in &envelope.cc {
+            doc.add_text(s.cc_email, &addr.email);
+        }
+        for addr in &envelope.bcc {
+            doc.add_text(s.bcc_email, &addr.email);
+        }
         doc.add_text(s.snippet, &envelope.snippet);
+        for label in &envelope.label_provider_ids {
+            doc.add_text(s.labels, &label.to_lowercase());
+        }
+        doc.add_u64(s.size_bytes, envelope.size_bytes);
         doc.add_u64(s.flags, envelope.flags.bits() as u64);
         doc.add_bool(s.has_attachments, envelope.has_attachments);
         doc.add_bool(s.is_read, envelope.flags.contains(MessageFlags::READ));
         doc.add_bool(s.is_starred, envelope.flags.contains(MessageFlags::STARRED));
+        doc.add_bool(s.is_draft, envelope.flags.contains(MessageFlags::DRAFT));
+        doc.add_bool(s.is_sent, envelope.flags.contains(MessageFlags::SENT));
+        doc.add_bool(s.is_trash, envelope.flags.contains(MessageFlags::TRASH));
+        doc.add_bool(s.is_spam, envelope.flags.contains(MessageFlags::SPAM));
+        doc.add_bool(s.is_answered, envelope.flags.contains(MessageFlags::ANSWERED));
 
         let dt = tantivy::DateTime::from_timestamp_secs(envelope.date.timestamp());
         doc.add_date(s.date, dt);
@@ -135,15 +150,33 @@ impl SearchIndex {
         for addr in &envelope.to {
             doc.add_text(s.to_email, &addr.email);
         }
+        for addr in &envelope.cc {
+            doc.add_text(s.cc_email, &addr.email);
+        }
+        for addr in &envelope.bcc {
+            doc.add_text(s.bcc_email, &addr.email);
+        }
         doc.add_text(s.snippet, &envelope.snippet);
+        for label in &envelope.label_provider_ids {
+            doc.add_text(s.labels, &label.to_lowercase());
+        }
 
         let body_text = body.text_plain.as_deref().unwrap_or("");
         doc.add_text(s.body_text, body_text);
+        for attachment in &body.attachments {
+            doc.add_text(s.attachment_filenames, &attachment.filename.to_lowercase());
+        }
 
+        doc.add_u64(s.size_bytes, envelope.size_bytes);
         doc.add_u64(s.flags, envelope.flags.bits() as u64);
         doc.add_bool(s.has_attachments, envelope.has_attachments);
         doc.add_bool(s.is_read, envelope.flags.contains(MessageFlags::READ));
         doc.add_bool(s.is_starred, envelope.flags.contains(MessageFlags::STARRED));
+        doc.add_bool(s.is_draft, envelope.flags.contains(MessageFlags::DRAFT));
+        doc.add_bool(s.is_sent, envelope.flags.contains(MessageFlags::SENT));
+        doc.add_bool(s.is_trash, envelope.flags.contains(MessageFlags::TRASH));
+        doc.add_bool(s.is_spam, envelope.flags.contains(MessageFlags::SPAM));
+        doc.add_bool(s.is_answered, envelope.flags.contains(MessageFlags::ANSWERED));
         let dt = tantivy::DateTime::from_timestamp_secs(envelope.date.timestamp());
         doc.add_date(s.date, dt);
 
@@ -173,12 +206,19 @@ impl SearchIndex {
 
         let mut query_parser = QueryParser::for_index(
             &self.index,
-            vec![s.subject, s.from_name, s.snippet, s.body_text],
+            vec![
+                s.subject,
+                s.from_name,
+                s.snippet,
+                s.body_text,
+                s.attachment_filenames,
+            ],
         );
         query_parser.set_field_boost(s.subject, 3.0);
         query_parser.set_field_boost(s.from_name, 2.0);
         query_parser.set_field_boost(s.snippet, 1.0);
         query_parser.set_field_boost(s.body_text, 0.5);
+        query_parser.set_field_boost(s.attachment_filenames, 0.75);
 
         let query = query_parser
             .parse_query(query_str)

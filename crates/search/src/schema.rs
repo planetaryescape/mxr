@@ -9,14 +9,23 @@ pub struct MxrSchema {
     pub from_name: Field,
     pub from_email: Field,
     pub to_email: Field,
+    pub cc_email: Field,
+    pub bcc_email: Field,
     pub snippet: Field,
     pub body_text: Field,
+    pub attachment_filenames: Field,
     pub labels: Field,
     pub date: Field,
+    pub size_bytes: Field,
     pub flags: Field,
     pub has_attachments: Field,
     pub is_read: Field,
     pub is_starred: Field,
+    pub is_draft: Field,
+    pub is_sent: Field,
+    pub is_trash: Field,
+    pub is_spam: Field,
+    pub is_answered: Field,
 }
 
 impl MxrSchema {
@@ -31,15 +40,24 @@ impl MxrSchema {
         let from_name = builder.add_text_field("from_name", TEXT);
         let from_email = builder.add_text_field("from_email", STRING);
         let to_email = builder.add_text_field("to_email", STRING);
+        let cc_email = builder.add_text_field("cc_email", STRING);
+        let bcc_email = builder.add_text_field("bcc_email", STRING);
         let snippet = builder.add_text_field("snippet", TEXT);
         let body_text = builder.add_text_field("body_text", TEXT);
+        let attachment_filenames = builder.add_text_field("attachment_filenames", TEXT);
 
         let labels = builder.add_text_field("labels", STRING);
         let date = builder.add_date_field("date", INDEXED | STORED);
+        let size_bytes = builder.add_u64_field("size_bytes", INDEXED | STORED);
         let flags = builder.add_u64_field("flags", INDEXED);
         let has_attachments = builder.add_bool_field("has_attachments", INDEXED);
         let is_read = builder.add_bool_field("is_read", INDEXED);
         let is_starred = builder.add_bool_field("is_starred", INDEXED);
+        let is_draft = builder.add_bool_field("is_draft", INDEXED);
+        let is_sent = builder.add_bool_field("is_sent", INDEXED);
+        let is_trash = builder.add_bool_field("is_trash", INDEXED);
+        let is_spam = builder.add_bool_field("is_spam", INDEXED);
+        let is_answered = builder.add_bool_field("is_answered", INDEXED);
 
         let schema = builder.build();
 
@@ -52,14 +70,23 @@ impl MxrSchema {
             from_name,
             from_email,
             to_email,
+            cc_email,
+            bcc_email,
             snippet,
             body_text,
+            attachment_filenames,
             labels,
             date,
+            size_bytes,
             flags,
             has_attachments,
             is_read,
             is_starred,
+            is_draft,
+            is_sent,
+            is_trash,
+            is_spam,
+            is_answered,
         }
     }
 }

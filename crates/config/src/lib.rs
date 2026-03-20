@@ -3,8 +3,8 @@ mod resolve;
 mod types;
 
 pub use resolve::{
-    config_dir, config_file_path, data_dir, load_config, load_config_from_path,
-    load_config_from_str, save_config, save_config_to_path, ConfigError,
+    app_instance_name, config_dir, config_file_path, data_dir, load_config, load_config_from_path,
+    load_config_from_str, save_config, save_config_to_path, socket_path, ConfigError,
 };
 pub use types::*;
 
@@ -140,6 +140,9 @@ editor = "emacs"
 
     #[test]
     fn xdg_paths_correct() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::remove_var("MXR_INSTANCE") };
+
         let cfg = config_dir();
         assert!(
             cfg.ends_with("mxr"),
@@ -149,8 +152,9 @@ editor = "emacs"
 
         let data = data_dir();
         assert!(
-            data.ends_with("mxr"),
-            "data_dir should end with 'mxr': {:?}",
+            data.ends_with(app_instance_name()),
+            "data_dir should end with instance name '{}': {:?}",
+            app_instance_name(),
             data
         );
 
@@ -160,6 +164,22 @@ editor = "emacs"
             "config_file_path should end with 'config.toml': {:?}",
             file
         );
+
+        let socket = socket_path();
+        assert!(
+            socket.ends_with("mxr.sock"),
+            "socket_path should end with 'mxr.sock': {:?}",
+            socket
+        );
+    }
+
+    #[test]
+    fn instance_name_can_be_overridden() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe { std::env::set_var("MXR_INSTANCE", "mxr-test") };
+        assert_eq!(app_instance_name(), "mxr-test");
+        assert!(data_dir().ends_with("mxr-test"));
+        unsafe { std::env::remove_var("MXR_INSTANCE") };
     }
 
     #[test]

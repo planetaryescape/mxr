@@ -11,7 +11,10 @@ use mxr_core::id::AccountId;
 use mxr_core::provider::MailSyncProvider;
 use mxr_core::types::*;
 use session::{ImapSessionFactory, RealImapSessionFactory};
+use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};
+
+use crate::types::{FolderInfo, ImapCapabilities};
 
 pub struct ImapProvider {
     account_id: AccountId,
@@ -51,6 +54,202 @@ impl ImapProvider {
         self
     }
 
+    fn build_imap_cursor(
+        mailboxes: Vec<ImapMailboxCursor>,
+        capabilities: &ImapCapabilities,
+    ) -> SyncCursor {
+        let fallback = mailboxes
+            .iter()
+            .find(|mailbox| mailbox.mailbox.eq_ignore_ascii_case("INBOX"))
+            .or_else(|| mailboxes.first());
+
+        SyncCursor::Imap {
+            uid_validity: fallback.map(|mailbox| mailbox.uid_validity).unwrap_or(0),
+            uid_next: fallback.map(|mailbox| mailbox.uid_next).unwrap_or(0),
+            mailboxes,
+            capabilities: Some(ImapCapabilityState {
+                move_ext: capabilities.move_ext,
+                uidplus: capabilities.uidplus,
+                idle: capabilities.idle,
+                condstore: capabilities.condstore,
+                qresync: capabilities.qresync,
+                namespace: capabilities.namespace,
+                list_status: capabilities.list_status,
+                utf8_accept: capabilities.utf8_accept,
+                imap4rev2: capabilities.imap4rev2,
+            }),
+        }
+    }
+
+    fn syncable_folders(folders: &[FolderInfo]) -> Vec<FolderInfo> {
+        let folders: Vec<FolderInfo> = folders
+            .iter()
+            .filter(|folder| folder.special_use.as_deref() != Some("\\All"))
+            .cloned()
+            .collect();
+
+        if folders.is_empty() {
+            vec![FolderInfo {
+                name: "INBOX".to_string(),
+                special_use: Some("\\Inbox".to_string()),
+                ..Default::default()
+            }]
+        } else {
+            folders
+        }
+    }
+
+    fn resolve_folder_for_label(label: &str, folders: &[FolderInfo]) -> Option<String> {
+        let label_upper = label.to_ascii_uppercase();
+        let special_use = match label_upper.as_str() {
+            "INBOX" => Some("\\Inbox"),
+            "SENT" => Some("\\Sent"),
+            "DRAFT" | "DRAFTS" => Some("\\Drafts"),
+            "TRASH" => Some("\\Trash"),
+            "SPAM" => Some("\\Junk"),
+            "ARCHIVE" => Some("\\Archive"),
+            "ALL" => Some("\\All"),
+            _ => None,
+        };
+
+        if let Some(special_use) = special_use {
+            if let Some(folder) = folders.iter().find(|folder| {
+                folder
+                    .special_use
+                    .as_deref()
+                    .is_some_and(|value: &str| value.eq_ignore_ascii_case(special_use))
+                    || (special_use == "\\Inbox" && folder.name.eq_ignore_ascii_case("INBOX"))
+            }) {
+                return Some(folder.name.clone());
+            }
+        }
+
+        folders
+            .iter()
+            .find(|folder| folder.name.eq_ignore_ascii_case(label))
+            .map(|folder| folder.name.clone())
+            .or_else(|| {
+                if label_upper == "ALL" || label_upper == "TRASH" {
+                    None
+                } else {
+                    Some(label.to_string())
+                }
+            })
+    }
+
+    fn enableable_capabilities(capabilities: &ImapCapabilities) -> Vec<&'static str> {
+        let mut enabled = Vec::new();
+        if capabilities.qresync {
+            enabled.push("QRESYNC");
+        }
+        if capabilities.condstore && !capabilities.qresync {
+            enabled.push("CONDSTORE");
+        }
+        if capabilities.utf8_accept {
+            enabled.push("UTF8=ACCEPT");
+        }
+        enabled
+    }
+
+    async fn enable_session(
+        session: &mut dyn session::ImapSession,
+        capabilities: &ImapCapabilities,
+    ) -> mxr_core::provider::Result<()> {
+        let enabled = Self::enableable_capabilities(capabilities);
+        session
+            .enable(&enabled)
+            .await
+            .map_err(mxr_core::error::MxrError::from)
+    }
+
+    fn known_uid_set(mailbox: &ImapMailboxCursor) -> Option<String> {
+        (mailbox.uid_next > 1).then(|| format!("1:{}", mailbox.uid_next - 1))
+    }
+
+    fn fetch_query_for_changed_since(modseq: u64) -> String {
+        format!("(FLAGS BODY.PEEK[] RFC822.SIZE) (CHANGEDSINCE {modseq})")
+    }
+
+    async fn collect_synced_messages(
+        session: &mut dyn session::ImapSession,
+        mailbox: &str,
+        uid_set: &str,
+        query: &str,
+        min_uid: u32,
+        seen_uids: &mut HashSet<u32>,
+        account_id: &AccountId,
+        synced: &mut Vec<SyncedMessage>,
+    ) -> mxr_core::provider::Result<()> {
+        let fetched = session
+            .uid_fetch(uid_set, query)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        for msg in &fetched {
+            if msg.uid < min_uid || !seen_uids.insert(msg.uid) {
+                continue;
+            }
+            match parse::imap_fetch_to_synced_message(msg, mailbox, account_id) {
+                Ok(sm) => synced.push(sm),
+                Err(e) => warn!(
+                    mailbox = %mailbox,
+                    uid = msg.uid,
+                    error = %e,
+                    "Failed to parse IMAP message"
+                ),
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn delete_selected_message(
+        session: &mut dyn session::ImapSession,
+        uid: &str,
+        capabilities: &ImapCapabilities,
+    ) -> mxr_core::provider::Result<()> {
+        session
+            .uid_store(uid, "+FLAGS (\\Deleted)")
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        if capabilities.uidplus {
+            session
+                .uid_expunge(uid)
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+        } else {
+            session
+                .expunge()
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+        }
+
+        Ok(())
+    }
+
+    async fn move_selected_message(
+        session: &mut dyn session::ImapSession,
+        uid: &str,
+        target_folder: &str,
+        capabilities: &ImapCapabilities,
+    ) -> mxr_core::provider::Result<()> {
+        if capabilities.move_ext {
+            session
+                .uid_move(uid, target_folder)
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+        } else {
+            session
+                .uid_copy(uid, target_folder)
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+            Self::delete_selected_message(session, uid, capabilities).await?;
+        }
+
+        Ok(())
+    }
+
     async fn assert_mutable_folder(&self, folder_name: &str) -> mxr_core::provider::Result<()> {
         let mut session = self
             .session_factory
@@ -77,7 +276,7 @@ impl ImapProvider {
         Ok(())
     }
 
-    /// Initial sync: fetch all messages from INBOX via UID FETCH.
+    /// Initial sync: fetch all messages from syncable mailboxes via UID FETCH.
     async fn initial_sync(&self) -> mxr_core::provider::Result<SyncBatch> {
         debug!("Starting IMAP initial sync for account {}", self.account_id);
 
@@ -87,34 +286,52 @@ impl ImapProvider {
             .await
             .map_err(mxr_core::error::MxrError::from)?;
 
-        let mailbox_info = session
-            .select("INBOX")
+        let capabilities = session
+            .capabilities()
             .await
             .map_err(mxr_core::error::MxrError::from)?;
+        debug!(?capabilities, "IMAP server capabilities");
+        Self::enable_session(&mut *session, &capabilities).await?;
 
-        if mailbox_info.exists == 0 {
-            let _ = session.logout().await;
-            return Ok(SyncBatch {
-                upserted: vec![],
-                deleted_provider_ids: vec![],
-                label_changes: vec![],
-                next_cursor: SyncCursor::Imap {
-                    uid_validity: mailbox_info.uid_validity,
-                    uid_next: mailbox_info.uid_next,
-                },
+        let folders = session
+            .list_folders()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let sync_folders = Self::syncable_folders(&folders);
+
+        let mut synced = Vec::new();
+        let mut mailboxes = Vec::with_capacity(sync_folders.len());
+        for folder in &sync_folders {
+            let mailbox_info = session
+                .select(&folder.name)
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+            mailboxes.push(ImapMailboxCursor {
+                mailbox: folder.name.clone(),
+                uid_validity: mailbox_info.uid_validity,
+                uid_next: mailbox_info.uid_next,
+                highest_modseq: mailbox_info.highest_modseq,
             });
-        }
 
-        let fetched = session
-            .uid_fetch("1:*", "(FLAGS BODY.PEEK[] RFC822.SIZE)")
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            if mailbox_info.exists == 0 {
+                continue;
+            }
 
-        let mut synced = Vec::with_capacity(fetched.len());
-        for msg in &fetched {
-            match parse::imap_fetch_to_synced_message(msg, "INBOX", &self.account_id) {
-                Ok(sm) => synced.push(sm),
-                Err(e) => warn!(uid = msg.uid, error = %e, "Failed to parse IMAP message"),
+            let fetched = session
+                .uid_fetch("1:*", "(FLAGS BODY.PEEK[] RFC822.SIZE)")
+                .await
+                .map_err(mxr_core::error::MxrError::from)?;
+
+            for msg in &fetched {
+                match parse::imap_fetch_to_synced_message(msg, &folder.name, &self.account_id) {
+                    Ok(sm) => synced.push(sm),
+                    Err(e) => warn!(
+                        mailbox = %folder.name,
+                        uid = msg.uid,
+                        error = %e,
+                        "Failed to parse IMAP message"
+                    ),
+                }
             }
         }
 
@@ -126,22 +343,15 @@ impl ImapProvider {
             upserted: synced,
             deleted_provider_ids: vec![],
             label_changes: vec![],
-            next_cursor: SyncCursor::Imap {
-                uid_validity: mailbox_info.uid_validity,
-                uid_next: mailbox_info.uid_next,
-            },
+            next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
         })
     }
 
-    /// Delta sync: fetch only new messages since last uid_next.
-    async fn delta_sync(
-        &self,
-        old_uid_validity: u32,
-        old_uid_next: u32,
-    ) -> mxr_core::provider::Result<SyncBatch> {
+    /// Delta sync: fetch new messages per mailbox since the last known UIDNEXT.
+    async fn delta_sync(&self, old_mailboxes: &[ImapMailboxCursor]) -> mxr_core::provider::Result<SyncBatch> {
         debug!(
-            old_uid_validity,
-            old_uid_next, "Starting IMAP delta sync for account {}", self.account_id
+            mailbox_count = old_mailboxes.len(),
+            "Starting IMAP delta sync for account {}", self.account_id
         );
 
         let mut session = self
@@ -150,53 +360,178 @@ impl ImapProvider {
             .await
             .map_err(mxr_core::error::MxrError::from)?;
 
-        let mailbox_info = session
-            .select("INBOX")
+        let capabilities = session
+            .capabilities()
             .await
             .map_err(mxr_core::error::MxrError::from)?;
+        debug!(?capabilities, "IMAP server capabilities");
+        Self::enable_session(&mut *session, &capabilities).await?;
 
-        // UIDVALIDITY changed — must do full resync
-        if mailbox_info.uid_validity != old_uid_validity {
-            warn!(
-                old = old_uid_validity,
-                new = mailbox_info.uid_validity,
-                "UIDVALIDITY changed, falling back to initial sync"
-            );
-            let _ = session.logout().await;
-            return self.initial_sync().await;
-        }
+        let folders = session
+            .list_folders()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let sync_folders = Self::syncable_folders(&folders);
+        let old_by_mailbox: HashMap<&str, &ImapMailboxCursor> = old_mailboxes
+            .iter()
+            .map(|mailbox| (mailbox.mailbox.as_str(), mailbox))
+            .collect();
 
-        // No new messages
-        if mailbox_info.uid_next <= old_uid_next {
-            let _ = session.logout().await;
-            return Ok(SyncBatch {
-                upserted: vec![],
-                deleted_provider_ids: vec![],
-                label_changes: vec![],
-                next_cursor: SyncCursor::Imap {
-                    uid_validity: mailbox_info.uid_validity,
-                    uid_next: mailbox_info.uid_next,
-                },
+        let mut synced = Vec::new();
+        let mut mailboxes = Vec::with_capacity(sync_folders.len());
+        let mut deleted_provider_ids = Vec::new();
+
+        for folder in &sync_folders {
+            let old_mailbox = old_by_mailbox.get(folder.name.as_str()).copied();
+            let mut qresync_used = false;
+            let mut seen_uids = HashSet::new();
+            let mailbox_info = if capabilities.qresync {
+                match old_mailbox
+                    .and_then(|mailbox| mailbox.highest_modseq.map(|modseq| (mailbox, modseq)))
+                    .and_then(|(mailbox, modseq)| {
+                        Self::known_uid_set(mailbox).map(|known_uids| (mailbox, modseq, known_uids))
+                    }) {
+                    Some((old_mailbox, highest_modseq, known_uids)) => {
+                        match session
+                            .select_qresync(
+                                &folder.name,
+                                old_mailbox.uid_validity,
+                                highest_modseq,
+                                &known_uids,
+                            )
+                            .await
+                        {
+                            Ok(response) => {
+                                qresync_used = true;
+                                deleted_provider_ids.extend(
+                                    response.vanished.iter().map(|uid| {
+                                        folders::format_provider_id(&folder.name, *uid)
+                                    }),
+                                );
+                                if !response.changed.is_empty() {
+                                    let uid_set = response
+                                        .changed
+                                        .iter()
+                                        .map(u32::to_string)
+                                        .collect::<Vec<_>>()
+                                        .join(",");
+                                    Self::collect_synced_messages(
+                                        &mut *session,
+                                        &folder.name,
+                                        &uid_set,
+                                        "(FLAGS BODY.PEEK[] RFC822.SIZE)",
+                                        1,
+                                        &mut seen_uids,
+                                        &self.account_id,
+                                        &mut synced,
+                                    )
+                                    .await?;
+                                }
+                                response.mailbox
+                            }
+                            Err(error) => {
+                                warn!(
+                                    mailbox = %folder.name,
+                                    error = %error,
+                                    "QRESYNC failed, falling back to SELECT"
+                                );
+                                session
+                                    .select(&folder.name)
+                                    .await
+                                    .map_err(mxr_core::error::MxrError::from)?
+                            }
+                        }
+                    }
+                    None => session
+                        .select(&folder.name)
+                        .await
+                        .map_err(mxr_core::error::MxrError::from)?,
+                }
+            } else {
+                session
+                    .select(&folder.name)
+                    .await
+                    .map_err(mxr_core::error::MxrError::from)?
+            };
+            mailboxes.push(ImapMailboxCursor {
+                mailbox: folder.name.clone(),
+                uid_validity: mailbox_info.uid_validity,
+                uid_next: mailbox_info.uid_next,
+                highest_modseq: mailbox_info.highest_modseq,
             });
-        }
 
-        let uid_range = format!("{}:*", old_uid_next);
-        let fetched = session
-            .uid_fetch(&uid_range, "(FLAGS BODY.PEEK[] RFC822.SIZE)")
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            if !qresync_used
+                && capabilities.condstore
+                && old_mailbox.is_some()
+                && mailbox_info.highest_modseq.is_some()
+            {
+                let old_mailbox = old_mailbox.expect("checked is_some");
+                if mailbox_info.uid_validity == old_mailbox.uid_validity
+                    && old_mailbox
+                        .highest_modseq
+                        .zip(mailbox_info.highest_modseq)
+                        .is_some_and(|(old_modseq, new_modseq)| new_modseq > old_modseq)
+                {
+                    Self::collect_synced_messages(
+                        &mut *session,
+                        &folder.name,
+                        "1:*",
+                        &Self::fetch_query_for_changed_since(
+                            old_mailbox.highest_modseq.expect("checked is_some"),
+                        ),
+                        1,
+                        &mut seen_uids,
+                        &self.account_id,
+                        &mut synced,
+                    )
+                    .await?;
+                }
+            }
 
-        let mut synced = Vec::with_capacity(fetched.len());
-        for msg in &fetched {
-            // IMAP may return the last message with UID < uid_next if using "uid_next:*"
-            // and there are no new messages. Filter those out.
-            if msg.uid < old_uid_next {
+            let query = match old_mailbox {
+                Some(old_mailbox) if mailbox_info.uid_validity != old_mailbox.uid_validity => {
+                    warn!(
+                        mailbox = %folder.name,
+                        old = old_mailbox.uid_validity,
+                        new = mailbox_info.uid_validity,
+                        "UIDVALIDITY changed, resyncing mailbox from scratch"
+                    );
+                    if mailbox_info.exists == 0 {
+                        None
+                    } else {
+                        Some("1:*".to_string())
+                    }
+                }
+                Some(old_mailbox) if mailbox_info.uid_next > old_mailbox.uid_next => {
+                    Some(format!("{}:*", old_mailbox.uid_next))
+                }
+                Some(_) => None,
+                None if mailbox_info.exists == 0 => None,
+                None => Some("1:*".to_string()),
+            };
+
+            let Some(query) = query else {
                 continue;
-            }
-            match parse::imap_fetch_to_synced_message(msg, "INBOX", &self.account_id) {
-                Ok(sm) => synced.push(sm),
-                Err(e) => warn!(uid = msg.uid, error = %e, "Failed to parse IMAP message"),
-            }
+            };
+
+            let min_uid = match old_mailbox {
+                Some(old_mailbox) if mailbox_info.uid_validity == old_mailbox.uid_validity => {
+                    old_mailbox.uid_next
+                }
+                _ => 1,
+            };
+
+            Self::collect_synced_messages(
+                &mut *session,
+                &folder.name,
+                &query,
+                "(FLAGS BODY.PEEK[] RFC822.SIZE)",
+                min_uid,
+                &mut seen_uids,
+                &self.account_id,
+                &mut synced,
+            )
+            .await?;
         }
 
         let _ = session.logout().await;
@@ -205,12 +540,9 @@ impl ImapProvider {
 
         Ok(SyncBatch {
             upserted: synced,
-            deleted_provider_ids: vec![],
+            deleted_provider_ids,
             label_changes: vec![],
-            next_cursor: SyncCursor::Imap {
-                uid_validity: mailbox_info.uid_validity,
-                uid_next: mailbox_info.uid_next,
-            },
+            next_cursor: Self::build_imap_cursor(mailboxes, &capabilities),
         })
     }
 }
@@ -229,7 +561,7 @@ impl MailSyncProvider for ImapProvider {
         SyncCapabilities {
             labels: false,
             server_search: true,
-            delta_sync: false,
+            delta_sync: true,
             push: false,
             batch_operations: false,
             native_thread_ids: false,
@@ -265,7 +597,11 @@ impl MailSyncProvider for ImapProvider {
         Ok(folder_list
             .iter()
             .map(|f| {
-                folders::map_folder_to_label(&f.name, f.special_use.as_deref(), &self.account_id)
+                let mut label =
+                    folders::map_folder_to_label(&f.name, f.special_use.as_deref(), &self.account_id);
+                label.unread_count = f.unread_count.unwrap_or(0);
+                label.total_count = f.total_count.unwrap_or(0);
+                label
             })
             .collect())
     }
@@ -276,7 +612,21 @@ impl MailSyncProvider for ImapProvider {
             SyncCursor::Imap {
                 uid_validity,
                 uid_next,
-            } => self.delta_sync(*uid_validity, *uid_next).await,
+                mailboxes,
+                ..
+            } => {
+                let legacy_mailboxes = if mailboxes.is_empty() {
+                    vec![ImapMailboxCursor {
+                        mailbox: "INBOX".to_string(),
+                        uid_validity: *uid_validity,
+                        uid_next: *uid_next,
+                        highest_modseq: None,
+                    }]
+                } else {
+                    mailboxes.clone()
+                };
+                self.delta_sync(&legacy_mailboxes).await
+            }
             other => Err(mxr_core::error::MxrError::Provider(format!(
                 "IMAP provider received incompatible cursor: {other:?}"
             ))),
@@ -354,6 +704,14 @@ impl MailSyncProvider for ImapProvider {
             .select(&mailbox)
             .await
             .map_err(mxr_core::error::MxrError::from)?;
+        let capabilities = session
+            .capabilities()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let folders = session
+            .list_folders()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
 
         let uid_str = uid.to_string();
 
@@ -378,17 +736,45 @@ impl MailSyncProvider for ImapProvider {
         }
 
         // Handle folder moves (labels that are actually folder names)
-        let add_folders: Vec<&str> = add
+        let add_folders: Vec<String> = add
             .iter()
             .filter(|l| label_to_flag(l).is_none())
-            .map(|s| s.as_str())
+            .filter_map(|label| Self::resolve_folder_for_label(label, &folders))
+            .filter(|folder| !folder.eq_ignore_ascii_case(&mailbox))
             .collect();
 
-        for folder in add_folders {
-            session
-                .uid_copy(&uid_str, folder)
-                .await
-                .map_err(mxr_core::error::MxrError::from)?;
+        let remove_current_mailbox = remove.iter().any(|label| {
+            label.eq_ignore_ascii_case(&mailbox)
+                || (mailbox.eq_ignore_ascii_case("INBOX") && label.eq_ignore_ascii_case("INBOX"))
+        });
+
+        if remove_current_mailbox && add_folders.is_empty() && mailbox.eq_ignore_ascii_case("INBOX") {
+            let archive_folder = Self::resolve_folder_for_label("ARCHIVE", &folders).ok_or_else(|| {
+                mxr_core::error::MxrError::Provider(
+                    "Archive folder not found on IMAP server".to_string(),
+                )
+            })?;
+            Self::move_selected_message(&mut *session, &uid_str, &archive_folder, &capabilities)
+                .await?;
+        } else if remove_current_mailbox && add_folders.len() == 1 {
+            Self::move_selected_message(
+                &mut *session,
+                &uid_str,
+                &add_folders[0],
+                &capabilities,
+            )
+            .await?;
+        } else {
+            for folder in &add_folders {
+                session
+                    .uid_copy(&uid_str, folder)
+                    .await
+                    .map_err(mxr_core::error::MxrError::from)?;
+            }
+
+            if remove_current_mailbox {
+                Self::delete_selected_message(&mut *session, &uid_str, &capabilities).await?;
+            }
         }
 
         let _ = session.logout().await;
@@ -468,32 +854,31 @@ impl MailSyncProvider for ImapProvider {
             .select(&mailbox)
             .await
             .map_err(mxr_core::error::MxrError::from)?;
+        let capabilities = session
+            .capabilities()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let folders = session
+            .list_folders()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
 
         let uid_str = uid.to_string();
+        let trash_folder = Self::resolve_folder_for_label("TRASH", &folders)
+            .unwrap_or_else(|| self.trash_folder.clone());
 
-        // Copy to trash folder
-        session
-            .uid_copy(&uid_str, &self.trash_folder)
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
+        if mailbox.eq_ignore_ascii_case(&trash_folder) {
+            let _ = session.logout().await;
+            return Ok(());
+        }
 
-        // Mark deleted in source
-        session
-            .uid_store(&uid_str, "+FLAGS (\\Deleted)")
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
-
-        // Expunge
-        session
-            .expunge()
-            .await
-            .map_err(mxr_core::error::MxrError::from)?;
+        Self::move_selected_message(&mut *session, &uid_str, &trash_folder, &capabilities).await?;
 
         let _ = session.logout().await;
 
         debug!(
             provider_id = provider_message_id,
-            trash_folder = %self.trash_folder,
+            trash_folder = %trash_folder,
             "IMAP trash complete"
         );
 
@@ -612,34 +997,49 @@ mod tests {
         }
     }
 
+    fn mailbox_info(uid_validity: u32, uid_next: u32, exists: u32) -> MailboxInfo {
+        MailboxInfo {
+            uid_validity,
+            uid_next,
+            exists,
+            highest_modseq: None,
+        }
+    }
+
+    fn folder_info(name: &str, special_use: Option<&str>) -> FolderInfo {
+        FolderInfo {
+            name: name.to_string(),
+            special_use: special_use.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    fn imap_cursor(uid_validity: u32, uid_next: u32) -> SyncCursor {
+        SyncCursor::Imap {
+            uid_validity,
+            uid_next,
+            mailboxes: vec![ImapMailboxCursor {
+                mailbox: "INBOX".into(),
+                uid_validity,
+                uid_next,
+                highest_modseq: None,
+            }],
+            capabilities: None,
+        }
+    }
+
     // -- sync_labels ----------------------------------------------------------
 
     #[tokio::test]
     async fn sync_labels_returns_mapped_folders() {
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 1,
-                exists: 0,
-            },
+            mailbox_info(1, 1, 0),
             vec![],
             vec![
-                FolderInfo {
-                    name: "INBOX".to_string(),
-                    special_use: Some("\\Inbox".to_string()),
-                },
-                FolderInfo {
-                    name: "Sent Messages".to_string(),
-                    special_use: Some("\\Sent".to_string()),
-                },
-                FolderInfo {
-                    name: "Drafts".to_string(),
-                    special_use: Some("\\Drafts".to_string()),
-                },
-                FolderInfo {
-                    name: "Projects/Work".to_string(),
-                    special_use: None,
-                },
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("Sent Messages", Some("\\Sent")),
+                folder_info("Drafts", Some("\\Drafts")),
+                folder_info("Projects/Work", None),
             ],
         );
 
@@ -656,6 +1056,43 @@ mod tests {
         assert_eq!(labels[3].kind, LabelKind::Folder);
     }
 
+    #[tokio::test]
+    async fn imap_provider_passes_sync_conformance() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 3, 2),
+            vec![
+                vec![
+                    make_fetched_message(1, "Inbox fixture", "alice@example.com"),
+                    make_fetched_message(2, "Attachment fixture", "bob@example.com"),
+                ],
+                vec![],
+            ],
+            vec![
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("Archive", Some("\\Archive")),
+            ],
+        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+        mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
+    }
+
+    #[tokio::test]
+    async fn sync_labels_surfaces_folder_counts() {
+        let mut inbox = folder_info("INBOX", Some("\\Inbox"));
+        inbox.unread_count = Some(7);
+        inbox.total_count = Some(12);
+
+        let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![inbox]);
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let labels = provider.sync_labels().await.unwrap();
+        assert_eq!(labels[0].unread_count, 7);
+        assert_eq!(labels[0].total_count, 12);
+    }
+
     // -- sync_messages: initial -----------------------------------------------
 
     #[tokio::test]
@@ -667,11 +1104,7 @@ mod tests {
         ];
 
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 4,
-                exists: 3,
-            },
+            mailbox_info(1, 4, 3),
             vec![messages],
             vec![],
         );
@@ -691,6 +1124,7 @@ mod tests {
             SyncCursor::Imap {
                 uid_validity,
                 uid_next,
+                ..
             } => {
                 assert_eq!(uid_validity, 1);
                 assert_eq!(uid_next, 4);
@@ -702,11 +1136,7 @@ mod tests {
     #[tokio::test]
     async fn initial_sync_empty_mailbox() {
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 1,
-                exists: 0,
-            },
+            mailbox_info(1, 1, 0),
             vec![],
             vec![],
         );
@@ -718,6 +1148,38 @@ mod tests {
         assert!(batch.upserted.is_empty());
     }
 
+    #[tokio::test]
+    async fn initial_sync_fetches_multiple_mailboxes_and_skips_all_mail() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 2, 1),
+            vec![
+                vec![make_fetched_message(1, "Inbox message", "alice@example.com")],
+                vec![make_fetched_message(1, "Archive message", "bob@example.com")],
+            ],
+            vec![
+                folder_info("INBOX", Some("\\Inbox")),
+                folder_info("Archive", Some("\\Archive")),
+                folder_info("All Mail", Some("\\All")),
+            ],
+        );
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+        assert_eq!(batch.upserted.len(), 2);
+        assert_eq!(batch.upserted[0].envelope.provider_id, "INBOX:1");
+        assert_eq!(batch.upserted[1].envelope.provider_id, "Archive:1");
+        match batch.next_cursor {
+            SyncCursor::Imap { mailboxes, .. } => {
+                assert_eq!(mailboxes.len(), 2);
+                assert!(mailboxes.iter().any(|mailbox| mailbox.mailbox == "INBOX"));
+                assert!(mailboxes.iter().any(|mailbox| mailbox.mailbox == "Archive"));
+            }
+            other => panic!("Expected Imap cursor, got: {other:?}"),
+        }
+    }
+
     // -- sync_messages: delta -------------------------------------------------
 
     #[tokio::test]
@@ -725,11 +1187,7 @@ mod tests {
         let new_msg = make_fetched_message(4, "New message", "dave@example.com");
 
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 5,
-                exists: 4,
-            },
+            mailbox_info(1, 5, 4),
             vec![vec![new_msg]],
             vec![],
         );
@@ -737,10 +1195,7 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let cursor = SyncCursor::Imap {
-            uid_validity: 1,
-            uid_next: 4,
-        };
+        let cursor = imap_cursor(1, 4);
         let batch = provider.sync_messages(&cursor).await.unwrap();
 
         assert_eq!(batch.upserted.len(), 1);
@@ -755,11 +1210,7 @@ mod tests {
     #[tokio::test]
     async fn delta_sync_no_new_messages() {
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 4,
-                exists: 3,
-            },
+            mailbox_info(1, 4, 3),
             vec![],
             vec![],
         );
@@ -767,10 +1218,7 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let cursor = SyncCursor::Imap {
-            uid_validity: 1,
-            uid_next: 4,
-        };
+        let cursor = imap_cursor(1, 4);
         let batch = provider.sync_messages(&cursor).await.unwrap();
 
         assert!(batch.upserted.is_empty());
@@ -791,6 +1239,7 @@ mod tests {
                 uid_validity: 2, // Changed from 1
                 uid_next: 2,
                 exists: 1,
+                highest_modseq: None,
             },
             vec![vec![msg]], // Used by the initial_sync fallback
             vec![],
@@ -799,10 +1248,7 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let cursor = SyncCursor::Imap {
-            uid_validity: 1, // Old value
-            uid_next: 100,
-        };
+        let cursor = imap_cursor(1, 100); // Old value
         let batch = provider.sync_messages(&cursor).await.unwrap();
 
         // Should have fallen back to initial sync and got messages
@@ -834,6 +1280,7 @@ mod tests {
                 uid_validity: 1,
                 uid_next: 5, // > old_uid_next of 4
                 exists: 3,
+                highest_modseq: None,
             },
             vec![vec![old_msg]],
             vec![],
@@ -842,14 +1289,135 @@ mod tests {
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        let cursor = SyncCursor::Imap {
-            uid_validity: 1,
-            uid_next: 4,
-        };
+        let cursor = imap_cursor(1, 4);
         let batch = provider.sync_messages(&cursor).await.unwrap();
 
         // The old message should be filtered out
         assert!(batch.upserted.is_empty());
+    }
+
+    #[tokio::test]
+    async fn delta_sync_enables_qresync_and_tracks_vanished_messages() {
+        let factory = MockImapSessionFactory::new(
+            MailboxInfo {
+                uid_validity: 1,
+                uid_next: 5,
+                exists: 4,
+                highest_modseq: Some(20),
+            },
+            vec![
+                vec![make_fetched_message(3, "Changed message", "alice@example.com")],
+                vec![make_fetched_message(4, "Brand new", "bob@example.com")],
+            ],
+            vec![],
+        )
+        .with_capabilities(ImapCapabilities {
+            condstore: true,
+            qresync: true,
+            utf8_accept: true,
+            ..Default::default()
+        })
+        .with_qresync(QresyncInfo {
+            mailbox: MailboxInfo {
+                uid_validity: 1,
+                uid_next: 5,
+                exists: 4,
+                highest_modseq: Some(20),
+            },
+            vanished: vec![2],
+            changed: vec![3],
+        });
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let cursor = SyncCursor::Imap {
+            uid_validity: 1,
+            uid_next: 4,
+            mailboxes: vec![ImapMailboxCursor {
+                mailbox: "INBOX".into(),
+                uid_validity: 1,
+                uid_next: 4,
+                highest_modseq: Some(10),
+            }],
+            capabilities: None,
+        };
+
+        let batch = provider.sync_messages(&cursor).await.unwrap();
+
+        assert_eq!(batch.deleted_provider_ids, vec!["INBOX:2"]);
+        assert_eq!(batch.upserted.len(), 2);
+        assert!(batch
+            .upserted
+            .iter()
+            .any(|message| message.envelope.subject == "Changed message"));
+        assert!(batch
+            .upserted
+            .iter()
+            .any(|message| message.envelope.subject == "Brand new"));
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.contains(&"ENABLE QRESYNC UTF8=ACCEPT".to_string()));
+        assert!(commands.contains(&"SELECT INBOX QRESYNC".to_string()));
+    }
+
+    #[tokio::test]
+    async fn delta_sync_uses_condstore_changedsince_when_qresync_is_unavailable() {
+        let factory = MockImapSessionFactory::new(
+            MailboxInfo {
+                uid_validity: 1,
+                uid_next: 5,
+                exists: 4,
+                highest_modseq: Some(20),
+            },
+            vec![
+                vec![
+                    make_fetched_message(3, "Changed flags", "alice@example.com"),
+                    make_fetched_message(4, "New via condstore", "bob@example.com"),
+                ],
+                vec![make_fetched_message(4, "New via condstore", "bob@example.com")],
+            ],
+            vec![],
+        )
+        .with_capabilities(ImapCapabilities {
+            condstore: true,
+            ..Default::default()
+        });
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let cursor = SyncCursor::Imap {
+            uid_validity: 1,
+            uid_next: 4,
+            mailboxes: vec![ImapMailboxCursor {
+                mailbox: "INBOX".into(),
+                uid_validity: 1,
+                uid_next: 4,
+                highest_modseq: Some(10),
+            }],
+            capabilities: None,
+        };
+
+        let batch = provider.sync_messages(&cursor).await.unwrap();
+
+        assert_eq!(batch.upserted.len(), 2);
+        assert!(batch
+            .upserted
+            .iter()
+            .any(|message| message.envelope.subject == "Changed flags"));
+        assert!(batch
+            .upserted
+            .iter()
+            .any(|message| message.envelope.subject == "New via condstore"));
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.contains(&"ENABLE CONDSTORE".to_string()));
+        assert!(commands
+            .iter()
+            .any(|command| command.contains("CHANGEDSINCE 10")));
     }
 
     // -- mutations ------------------------------------------------------------
@@ -857,11 +1425,7 @@ mod tests {
     #[tokio::test]
     async fn set_read_sends_correct_flags() {
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 2,
-                exists: 1,
-            },
+            mailbox_info(1, 2, 1),
             vec![],
             vec![],
         );
@@ -880,11 +1444,7 @@ mod tests {
     #[tokio::test]
     async fn set_read_false_removes_seen() {
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 2,
-                exists: 1,
-            },
+            mailbox_info(1, 2, 1),
             vec![],
             vec![],
         );
@@ -902,11 +1462,7 @@ mod tests {
     #[tokio::test]
     async fn set_starred_sends_correct_flags() {
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 2,
-                exists: 1,
-            },
+            mailbox_info(1, 2, 1),
             vec![],
             vec![],
         );
@@ -924,11 +1480,7 @@ mod tests {
     #[tokio::test]
     async fn trash_copies_and_deletes() {
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 2,
-                exists: 1,
-            },
+            mailbox_info(1, 2, 1),
             vec![],
             vec![],
         );
@@ -947,13 +1499,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn trash_uses_move_when_server_supports_it() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 2, 1),
+            vec![],
+            vec![folder_info("Trash", Some("\\Trash"))],
+        )
+        .with_capabilities(ImapCapabilities {
+            move_ext: true,
+            ..Default::default()
+        });
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        provider.trash("INBOX:42").await.unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.contains(&"UID MOVE 42 Trash".to_string()));
+        assert!(!commands.contains(&"UID COPY 42 Trash".to_string()));
+        assert!(!commands.contains(&"EXPUNGE".to_string()));
+    }
+
+    #[tokio::test]
+    async fn trash_uses_uid_expunge_when_uidplus_is_available() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 2, 1),
+            vec![],
+            vec![folder_info("Trash", Some("\\Trash"))],
+        )
+        .with_capabilities(ImapCapabilities {
+            uidplus: true,
+            ..Default::default()
+        });
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        provider.trash("INBOX:42").await.unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.contains(&"UID COPY 42 Trash".to_string()));
+        assert!(commands.contains(&"UID EXPUNGE 42".to_string()));
+        assert!(!commands.contains(&"EXPUNGE".to_string()));
+    }
+
+    #[tokio::test]
     async fn modify_labels_maps_flags_and_folders() {
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 2,
-                exists: 1,
-            },
+            mailbox_info(1, 2, 1),
             vec![],
             vec![],
         );
@@ -981,18 +1577,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn modify_labels_archive_moves_out_of_inbox() {
+        let factory = MockImapSessionFactory::new(
+            mailbox_info(1, 2, 1),
+            vec![],
+            vec![folder_info("Archive", Some("\\Archive"))],
+        )
+        .with_capabilities(ImapCapabilities {
+            move_ext: true,
+            ..Default::default()
+        });
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        provider
+            .modify_labels("INBOX:42", &[], &["INBOX".to_string()])
+            .await
+            .unwrap();
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(commands.contains(&"UID MOVE 42 Archive".to_string()));
+        assert!(!commands.contains(&"UID STORE 42 +FLAGS (\\Deleted)".to_string()));
+    }
+
+    #[tokio::test]
     async fn rename_label_rejects_special_use_folder() {
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 2,
-                exists: 1,
-            },
+            mailbox_info(1, 2, 1),
             vec![],
-            vec![FolderInfo {
-                name: "INBOX".to_string(),
-                special_use: Some("\\Inbox".to_string()),
-            }],
+            vec![folder_info("INBOX", Some("\\Inbox"))],
         );
 
         let provider =
@@ -1027,11 +1642,7 @@ mod tests {
         );
 
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 2,
-                exists: 1,
-            },
+            mailbox_info(1, 2, 1),
             vec![vec![FetchedMessage {
                 uid: 10,
                 flags: vec![],
@@ -1056,11 +1667,7 @@ mod tests {
     #[tokio::test]
     async fn sync_messages_rejects_gmail_cursor() {
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 1,
-                exists: 0,
-            },
+            mailbox_info(1, 1, 0),
             vec![],
             vec![],
         );
@@ -1089,11 +1696,7 @@ mod tests {
         ];
 
         let factory = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 4,
-                exists: 3,
-            },
+            mailbox_info(1, 4, 3),
             vec![initial_messages],
             vec![],
         );
@@ -1112,11 +1715,7 @@ mod tests {
         // Phase 2: Delta sync — 1 new message
         let new_msg = make_fetched_message(4, "Fourth", "dave@example.com");
         let factory2 = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 5,
-                exists: 4,
-            },
+            mailbox_info(1, 5, 4),
             vec![vec![new_msg]],
             vec![],
         );
@@ -1140,11 +1739,7 @@ mod tests {
 
         // Phase 3: Mutate — star the message
         let factory3 = MockImapSessionFactory::new(
-            MailboxInfo {
-                uid_validity: 1,
-                uid_next: 5,
-                exists: 4,
-            },
+            mailbox_info(1, 5, 4),
             vec![],
             vec![],
         );

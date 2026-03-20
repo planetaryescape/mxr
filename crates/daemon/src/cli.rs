@@ -135,6 +135,8 @@ pub enum Command {
         #[arg(long)]
         check: bool,
         #[arg(long)]
+        verbose: bool,
+        #[arg(long)]
         index_stats: bool,
         #[arg(long)]
         store_stats: bool,
@@ -560,6 +562,34 @@ pub enum OutputFormat {
     Ids,
 }
 
+pub fn unsupported_command_guidance(args: &[String]) -> Option<String> {
+    let command = args.get(1)?.as_str();
+    match command {
+        "start" => Some(
+            "Unknown subcommand `start`. Use `mxr daemon` to start the daemon, `mxr daemon --foreground` to debug it, or `mxr status` to inspect it.".to_string(),
+        ),
+        "stop" | "restart" => Some(format!(
+            "Unknown subcommand `{command}`. Use `mxr status`, `mxr logs --level error`, or run `mxr daemon --foreground` in a terminal for diagnosis."
+        )),
+        "daemon" => match args.get(2).map(String::as_str) {
+            Some("start") => Some(
+                "`mxr daemon` starts the daemon directly. Use `mxr daemon` or `mxr daemon --foreground`.".to_string(),
+            ),
+            Some("status") => Some(
+                "`mxr daemon` has no `status` verb. Use `mxr status`.".to_string(),
+            ),
+            Some("logs") => Some(
+                "`mxr daemon` has no `logs` verb. Use `mxr logs`.".to_string(),
+            ),
+            Some("stop") | Some("restart") => Some(
+                "`mxr daemon` has no lifecycle verbs. Use `mxr status`, `mxr logs --level error`, or `mxr daemon --foreground`.".to_string(),
+            ),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -721,5 +751,18 @@ mod tests {
             }
             other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
         }
+    }
+
+    #[test]
+    fn suggests_root_start_replacement() {
+        let guidance = unsupported_command_guidance(&["mxr".into(), "start".into()]);
+        assert!(guidance.unwrap().contains("mxr daemon"));
+    }
+
+    #[test]
+    fn suggests_daemon_status_replacement() {
+        let guidance =
+            unsupported_command_guidance(&["mxr".into(), "daemon".into(), "status".into()]);
+        assert_eq!(guidance.as_deref(), Some("`mxr daemon` has no `status` verb. Use `mxr status`."));
     }
 }

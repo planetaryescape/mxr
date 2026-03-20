@@ -114,6 +114,23 @@ mod tests {
             SyncCursor::Imap {
                 uid_validity: 1,
                 uid_next: 100,
+                mailboxes: vec![ImapMailboxCursor {
+                    mailbox: "INBOX".into(),
+                    uid_validity: 1,
+                    uid_next: 100,
+                    highest_modseq: Some(123),
+                }],
+                capabilities: Some(ImapCapabilityState {
+                    move_ext: true,
+                    uidplus: true,
+                    idle: true,
+                    condstore: false,
+                    qresync: false,
+                    namespace: true,
+                    list_status: false,
+                    utf8_accept: false,
+                    imap4rev2: false,
+                }),
             },
             SyncCursor::Initial,
         ];

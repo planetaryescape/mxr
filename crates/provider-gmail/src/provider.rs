@@ -5,18 +5,26 @@ use mxr_core::{
 };
 use tracing::{debug, warn};
 
-use crate::client::{GmailClient, MessageFormat};
+use crate::client::{GmailApi, GmailClient, MessageFormat};
 use crate::parse::{extract_message_body, gmail_message_to_envelope};
 use crate::send;
 use mxr_core::types::SyncedMessage;
 
 pub struct GmailProvider {
     account_id: AccountId,
-    client: GmailClient,
+    client: Box<dyn GmailApi>,
 }
 
 impl GmailProvider {
     pub fn new(account_id: AccountId, client: GmailClient) -> Self {
+        Self {
+            account_id,
+            client: Box::new(client),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_api(account_id: AccountId, client: Box<dyn GmailApi>) -> Self {
         Self { account_id, client }
     }
 
@@ -486,7 +494,7 @@ impl MailSendProvider for GmailProvider {
     }
 
     async fn send(&self, draft: &Draft, from: &Address) -> mxr_core::provider::Result<SendReceipt> {
-        let rfc2822 = send::build_rfc2822(draft, &from.email)
+        let rfc2822 = send::build_rfc2822(draft, from)
             .map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
 
@@ -509,7 +517,7 @@ impl MailSendProvider for GmailProvider {
         draft: &Draft,
         from: &Address,
     ) -> mxr_core::provider::Result<Option<String>> {
-        let rfc2822 = send::build_rfc2822(draft, &from.email)
+        let rfc2822 = send::build_rfc2822(draft, from)
             .map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
 
@@ -520,5 +528,302 @@ impl MailSendProvider for GmailProvider {
             .map_err(MxrError::from)?;
 
         Ok(Some(draft_id))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::GmailError;
+    use crate::types::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    use serde_json::json;
+    struct MockGmailApi {
+        messages: HashMap<String, GmailMessage>,
+        labels: Vec<GmailLabel>,
+        modified: Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl GmailApi for MockGmailApi {
+        async fn list_messages(
+            &self,
+            _query: Option<&str>,
+            page_token: Option<&str>,
+            _max_results: u32,
+        ) -> Result<GmailListResponse, GmailError> {
+            Ok(match page_token {
+                Some("page-2") => GmailListResponse {
+                    messages: Some(vec![GmailMessageRef {
+                        id: "msg-backfill".into(),
+                        thread_id: "thread-backfill".into(),
+                    }]),
+                    next_page_token: None,
+                    result_size_estimate: Some(3),
+                },
+                _ => GmailListResponse {
+                    messages: Some(vec![
+                        GmailMessageRef {
+                            id: "msg-1".into(),
+                            thread_id: "thread-1".into(),
+                        },
+                        GmailMessageRef {
+                            id: "msg-attach".into(),
+                            thread_id: "thread-attach".into(),
+                        },
+                    ]),
+                    next_page_token: Some("page-2".into()),
+                    result_size_estimate: Some(3),
+                },
+            })
+        }
+
+        async fn batch_get_messages(
+            &self,
+            message_ids: &[String],
+            _format: MessageFormat,
+        ) -> Result<Vec<GmailMessage>, GmailError> {
+            Ok(message_ids
+                .iter()
+                .filter_map(|id| self.messages.get(id).cloned())
+                .collect())
+        }
+
+        async fn list_history(
+            &self,
+            _start_history_id: u64,
+            _page_token: Option<&str>,
+        ) -> Result<GmailHistoryResponse, GmailError> {
+            Ok(GmailHistoryResponse {
+                history: Some(vec![GmailHistoryRecord {
+                    id: "23".into(),
+                    messages: None,
+                    messages_added: Some(vec![GmailHistoryMessageAdded {
+                        message: GmailMessageRef {
+                            id: "msg-3".into(),
+                            thread_id: "thread-3".into(),
+                        },
+                    }]),
+                    messages_deleted: Some(vec![GmailHistoryMessageDeleted {
+                        message: GmailMessageRef {
+                            id: "msg-1".into(),
+                            thread_id: "thread-1".into(),
+                        },
+                    }]),
+                    labels_added: Some(vec![GmailHistoryLabelAdded {
+                        message: GmailMessageRef {
+                            id: "msg-attach".into(),
+                            thread_id: "thread-attach".into(),
+                        },
+                        label_ids: Some(vec!["STARRED".into()]),
+                    }]),
+                    labels_removed: None,
+                }]),
+                next_page_token: None,
+                history_id: Some("23".into()),
+            })
+        }
+
+        async fn modify_message(
+            &self,
+            message_id: &str,
+            _add_labels: &[&str],
+            _remove_labels: &[&str],
+        ) -> Result<(), GmailError> {
+            self.modified.lock().unwrap().push(message_id.to_string());
+            Ok(())
+        }
+
+        async fn trash_message(&self, message_id: &str) -> Result<(), GmailError> {
+            self.modified
+                .lock()
+                .unwrap()
+                .push(format!("trash:{message_id}"));
+            Ok(())
+        }
+
+        async fn send_message(&self, _raw_base64url: &str) -> Result<serde_json::Value, GmailError> {
+            Ok(json!({"id": "sent-1"}))
+        }
+
+        async fn get_attachment(
+            &self,
+            _message_id: &str,
+            _attachment_id: &str,
+        ) -> Result<Vec<u8>, GmailError> {
+            Ok(b"Hello".to_vec())
+        }
+
+        async fn create_draft(&self, _raw_base64url: &str) -> Result<String, GmailError> {
+            Ok("draft-1".into())
+        }
+
+        async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError> {
+            Ok(GmailLabelsResponse {
+                labels: Some(self.labels.clone()),
+            })
+        }
+
+        async fn create_label(
+            &self,
+            name: &str,
+            color: Option<&str>,
+        ) -> Result<GmailLabel, GmailError> {
+            Ok(GmailLabel {
+                id: "Label_2".into(),
+                name: name.into(),
+                label_type: Some("user".into()),
+                messages_total: Some(0),
+                messages_unread: Some(0),
+                color: color.map(|color| GmailLabelColor {
+                    text_color: Some("#000000".into()),
+                    background_color: Some(color.into()),
+                }),
+            })
+        }
+
+        async fn rename_label(&self, label_id: &str, new_name: &str) -> Result<GmailLabel, GmailError> {
+            Ok(GmailLabel {
+                id: label_id.into(),
+                name: new_name.into(),
+                label_type: Some("user".into()),
+                messages_total: Some(0),
+                messages_unread: Some(0),
+                color: None,
+            })
+        }
+
+        async fn delete_label(&self, _label_id: &str) -> Result<(), GmailError> {
+            Ok(())
+        }
+    }
+
+    fn gmail_provider() -> GmailProvider {
+        let mut messages = HashMap::new();
+        for message in [
+            serde_json::from_value::<GmailMessage>(gmail_message("msg-1", "thread-1", "Welcome")).unwrap(),
+            serde_json::from_value::<GmailMessage>(gmail_attachment_message()).unwrap(),
+            serde_json::from_value::<GmailMessage>(gmail_message("msg-3", "thread-3", "Delta message")).unwrap(),
+            serde_json::from_value::<GmailMessage>(gmail_message("msg-backfill", "thread-backfill", "Backfill message")).unwrap(),
+        ] {
+            messages.insert(message.id.clone(), message);
+        }
+
+        GmailProvider::with_api(
+            AccountId::new(),
+            Box::new(MockGmailApi {
+                messages,
+                labels: vec![
+                    GmailLabel {
+                        id: "INBOX".into(),
+                        name: "INBOX".into(),
+                        label_type: Some("system".into()),
+                        messages_total: Some(2),
+                        messages_unread: Some(1),
+                        color: None,
+                    },
+                    GmailLabel {
+                        id: "Label_1".into(),
+                        name: "Projects".into(),
+                        label_type: Some("user".into()),
+                        messages_total: Some(1),
+                        messages_unread: Some(0),
+                        color: None,
+                    },
+                ],
+                modified: Mutex::new(Vec::new()),
+            }),
+        )
+    }
+
+    fn gmail_message(id: &str, thread_id: &str, subject: &str) -> serde_json::Value {
+        json!({
+            "id": id,
+            "threadId": thread_id,
+            "labelIds": ["INBOX"],
+            "snippet": format!("Snippet for {subject}"),
+            "historyId": "22",
+            "internalDate": "1710495000000",
+            "sizeEstimate": 1024,
+            "payload": {
+                "mimeType": "multipart/mixed",
+                "headers": [
+                    {"name": "From", "value": "Alice Example <alice@example.com>"},
+                    {"name": "To", "value": "Bob Example <bob@example.com>"},
+                    {"name": "Subject", "value": subject},
+                    {"name": "Date", "value": "Fri, 15 Mar 2024 09:30:00 +0000"},
+                    {"name": "Message-ID", "value": format!("<{id}@example.com>")}
+                ],
+                "parts": [
+                    {
+                        "mimeType": "text/plain",
+                        "body": {"size": 12, "data": "SGVsbG8gd29ybGQ"}
+                    },
+                    {
+                        "mimeType": "text/html",
+                        "body": {"size": 33, "data": "PHA-SGVsbG8gd29ybGQ8L3A-"}
+                    }
+                ]
+            }
+        })
+    }
+
+    fn gmail_attachment_message() -> serde_json::Value {
+        json!({
+            "id": "msg-attach",
+            "threadId": "thread-attach",
+            "labelIds": ["INBOX", "UNREAD"],
+            "snippet": "Attachment snippet",
+            "historyId": "21",
+            "internalDate": "1710495000000",
+            "sizeEstimate": 2048,
+            "payload": {
+                "mimeType": "multipart/mixed",
+                "headers": [
+                    {"name": "From", "value": "Calendar Bot <calendar@example.com>"},
+                    {"name": "To", "value": "Bob Example <bob@example.com>"},
+                    {"name": "Subject", "value": "Calendar invite"},
+                    {"name": "Date", "value": "Fri, 15 Mar 2024 09:30:00 +0000"},
+                    {"name": "Message-ID", "value": "<msg-attach@example.com>"},
+                    {"name": "List-Unsubscribe", "value": "<https://example.com/unsubscribe>"},
+                    {"name": "Authentication-Results", "value": "mx.example.net; dkim=pass"},
+                    {"name": "Content-Language", "value": "en"}
+                ],
+                "parts": [
+                    {
+                        "mimeType": "text/plain",
+                        "body": {"size": 16, "data": "QXR0YWNobWVudCBib2R5"}
+                    },
+                    {
+                        "mimeType": "application/pdf",
+                        "filename": "report.pdf",
+                        "body": {"attachmentId": "att-1", "size": 5}
+                    }
+                ]
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn gmail_provider_passes_sync_and_send_conformance() {
+        let provider = gmail_provider();
+        mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
+        mxr_provider_fake::conformance::run_send_conformance(&provider).await;
+    }
+
+    #[tokio::test]
+    async fn gmail_delta_sync_tracks_history_changes() {
+        let provider = gmail_provider();
+        let batch = provider
+            .sync_messages(&SyncCursor::Gmail { history_id: 22 })
+            .await
+            .unwrap();
+
+        assert_eq!(batch.deleted_provider_ids, vec!["msg-1"]);
+        assert_eq!(batch.label_changes.len(), 1);
+        assert_eq!(batch.upserted.len(), 1);
+        assert_eq!(batch.upserted[0].envelope.provider_id, "msg-3");
+        assert!(matches!(batch.next_cursor, SyncCursor::Gmail { history_id: 23 }));
     }
 }

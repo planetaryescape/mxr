@@ -1,0 +1,2 @@
+ALTER TABLE bodies
+ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';

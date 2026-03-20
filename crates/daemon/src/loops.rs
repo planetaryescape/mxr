@@ -4,6 +4,7 @@ use mxr_core::types::SyncCursor;
 use mxr_core::MailSyncProvider;
 use mxr_rules::{Rule, RuleAction, RuleEngine, RuleExecutionLog};
 use mxr_protocol::*;
+use mxr_store::{SyncRuntimeStatusUpdate, SyncStatus as StoreSyncStatus};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
@@ -43,10 +44,70 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
             tokio::time::sleep(Duration::from_secs(wait)).await;
         }
 
+        let started_at = chrono::Utc::now();
+        let existing_status = state.store.get_sync_runtime_status(&account_id).await.ok().flatten();
+        let pre_sync_cursor = state.store.get_sync_cursor(&account_id).await.ok().flatten();
+        let sync_log_id = state
+            .store
+            .insert_sync_log(&account_id, &StoreSyncStatus::Running)
+            .await
+            .ok();
+        let _ = state
+            .store
+            .upsert_sync_runtime_status(
+                &account_id,
+                &SyncRuntimeStatusUpdate {
+                    last_attempt_at: Some(started_at),
+                    last_error: Some(None),
+                    failure_class: Some(None),
+                    sync_in_progress: Some(true),
+                    current_cursor_summary: Some(Some(describe_sync_cursor(pre_sync_cursor.as_ref()))),
+                    ..Default::default()
+                },
+            )
+            .await;
+
         match state.sync_engine.sync_account_with_outcome(provider.as_ref()).await {
             Ok(outcome) => {
                 let count = outcome.synced_count;
                 backoff_secs = 0;
+                let post_sync_cursor = state.store.get_sync_cursor(&account_id).await.ok().flatten();
+                let _ = state
+                    .store
+                    .upsert_sync_runtime_status(
+                        &account_id,
+                        &SyncRuntimeStatusUpdate {
+                            last_success_at: Some(chrono::Utc::now()),
+                            last_error: Some(None),
+                            failure_class: Some(None),
+                            consecutive_failures: Some(0),
+                            backoff_until: Some(None),
+                            sync_in_progress: Some(false),
+                            current_cursor_summary: Some(Some(describe_sync_cursor(post_sync_cursor.as_ref()))),
+                            last_synced_count: Some(count),
+                            ..Default::default()
+                        },
+                    )
+                    .await;
+                if let Some(log_id) = sync_log_id {
+                    let _ = state
+                        .store
+                        .complete_sync_log(log_id, &StoreSyncStatus::Success, count, None)
+                        .await;
+                }
+                let _ = state
+                    .store
+                    .insert_event(
+                        "info",
+                        "sync",
+                        &format!("Sync completed for {account_id}"),
+                        Some(&account_id),
+                        Some(&format!(
+                            "messages_synced={count}; cursor={}",
+                            describe_sync_cursor(post_sync_cursor.as_ref())
+                        )),
+                    )
+                    .await;
                 if count > 0 {
                     if let Err(error) =
                         apply_rules_to_messages(&state, &account_id, provider.as_ref(), &outcome.upserted_message_ids)
@@ -54,31 +115,31 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
                     {
                         tracing::error!(account = %account_id, "Rule execution failed: {error}");
                     }
-                    tracing::info!(account = %account_id, "Sync completed: {count} messages");
-                    let event = IpcMessage {
-                        id: 0,
-                        payload: IpcPayload::Event(DaemonEvent::SyncCompleted {
-                            account_id: account_id.clone(),
-                            messages_synced: count,
-                        }),
-                    };
-                    let _ = state.event_tx.send(event);
+                }
+                tracing::info!(account = %account_id, "Sync completed: {count} messages");
+                let event = IpcMessage {
+                    id: 0,
+                    payload: IpcPayload::Event(DaemonEvent::SyncCompleted {
+                        account_id: account_id.clone(),
+                        messages_synced: count,
+                    }),
+                };
+                let _ = state.event_tx.send(event);
 
-                    if let Ok(labels) = state.store.list_labels_by_account(&account_id).await {
-                        let counts: Vec<_> = labels
-                            .iter()
-                            .map(|l| LabelCount {
-                                label_id: l.id.clone(),
-                                unread_count: l.unread_count,
-                                total_count: l.total_count,
-                            })
-                            .collect();
-                        let counts_event = IpcMessage {
-                            id: 0,
-                            payload: IpcPayload::Event(DaemonEvent::LabelCountsUpdated { counts }),
-                        };
-                        let _ = state.event_tx.send(counts_event);
-                    }
+                if let Ok(labels) = state.store.list_labels_by_account(&account_id).await {
+                    let counts: Vec<_> = labels
+                        .iter()
+                        .map(|l| LabelCount {
+                            label_id: l.id.clone(),
+                            unread_count: l.unread_count,
+                            total_count: l.total_count,
+                        })
+                        .collect();
+                    let counts_event = IpcMessage {
+                        id: 0,
+                        payload: IpcPayload::Event(DaemonEvent::LabelCountsUpdated { counts }),
+                    };
+                    let _ = state.event_tx.send(counts_event);
                 }
 
                 if let Ok(Some(cursor)) = state.store.get_sync_cursor(&account_id).await {
@@ -92,6 +153,12 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
             }
             Err(e) => {
                 let err_str = e.to_string();
+                let failure_class = classify_sync_error(&err_str);
+                let consecutive_failures = existing_status
+                    .as_ref()
+                    .map(|status| status.consecutive_failures.saturating_add(1))
+                    .unwrap_or(1);
+                let mut backoff_until = None;
                 if err_str.contains("Rate limited") {
                     let secs = err_str
                         .split("retry after ")
@@ -99,9 +166,45 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
                         .and_then(|s| s.trim_end_matches('s').parse::<u64>().ok())
                         .unwrap_or(120);
                     backoff_secs = secs + 10;
+                    backoff_until = Some(chrono::Utc::now() + chrono::Duration::seconds(backoff_secs as i64));
                 } else {
                     backoff_secs = (backoff_secs * 2).clamp(30, 300);
                 }
+                let post_error_cursor = state.store.get_sync_cursor(&account_id).await.ok().flatten();
+                let _ = state
+                    .store
+                    .upsert_sync_runtime_status(
+                        &account_id,
+                        &SyncRuntimeStatusUpdate {
+                            last_error: Some(Some(err_str.clone())),
+                            failure_class: Some(Some(failure_class.to_string())),
+                            consecutive_failures: Some(consecutive_failures),
+                            backoff_until: Some(backoff_until),
+                            sync_in_progress: Some(false),
+                            current_cursor_summary: Some(Some(describe_sync_cursor(post_error_cursor.as_ref()))),
+                            ..Default::default()
+                        },
+                    )
+                    .await;
+                if let Some(log_id) = sync_log_id {
+                    let _ = state
+                        .store
+                        .complete_sync_log(log_id, &StoreSyncStatus::Error, 0, Some(&err_str))
+                        .await;
+                }
+                let _ = state
+                    .store
+                    .insert_event(
+                        "error",
+                        "sync",
+                        &format!("Sync failed for {account_id}"),
+                        Some(&account_id),
+                        Some(&format!(
+                            "class={failure_class}; error={err_str}; cursor={}",
+                            describe_sync_cursor(post_error_cursor.as_ref())
+                        )),
+                    )
+                    .await;
                 tracing::error!(account = %account_id, "Sync error: {err_str}");
                 let event = IpcMessage {
                     id: 0,
@@ -113,6 +216,64 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
                 let _ = state.event_tx.send(event);
             }
         }
+    }
+}
+
+fn classify_sync_error(error: &str) -> &'static str {
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("rate limit") || lower.contains("retry after") {
+        "rate_limit"
+    } else if lower.contains("auth") || lower.contains("oauth") || lower.contains("login") {
+        "auth"
+    } else if lower.contains("timeout")
+        || lower.contains("dns")
+        || lower.contains("connection")
+        || lower.contains("network")
+        || lower.contains("tls")
+    {
+        "network"
+    } else if lower.contains("lockbusy")
+        || lower.contains("tantivy")
+        || lower.contains("sqlite")
+        || lower.contains("index")
+    {
+        "store_index"
+    } else if lower.contains("imap") || lower.contains("smtp") || lower.contains("gmail") {
+        "protocol"
+    } else {
+        "unknown"
+    }
+}
+
+fn describe_sync_cursor(cursor: Option<&SyncCursor>) -> String {
+    match cursor {
+        Some(SyncCursor::Initial) | None => "initial".to_string(),
+        Some(SyncCursor::Gmail { history_id }) => format!("gmail history_id={history_id}"),
+        Some(SyncCursor::GmailBackfill {
+            history_id,
+            page_token,
+        }) => format!(
+            "gmail_backfill history_id={history_id} page_token={}",
+            truncate_token(page_token)
+        ),
+        Some(SyncCursor::Imap {
+            uid_validity,
+            uid_next,
+            mailboxes,
+            ..
+        }) => format!(
+            "imap uid_validity={uid_validity} uid_next={uid_next} mailboxes={}",
+            mailboxes.len()
+        ),
+    }
+}
+
+fn truncate_token(token: &str) -> String {
+    let truncated: String = token.chars().take(24).collect();
+    if token.chars().count() > 24 {
+        format!("{truncated}...")
+    } else {
+        truncated
     }
 }
 

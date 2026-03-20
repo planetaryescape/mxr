@@ -10,12 +10,14 @@ mod search;
 mod snooze;
 mod sync_cursor;
 mod sync_log;
+mod sync_runtime_status;
 mod thread;
 
 pub use event_log::EventLogEntry;
 pub use pool::Store;
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
 pub use sync_log::{SyncLogEntry, SyncStatus};
+pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 
 #[cfg(test)]
 mod tests {
@@ -165,6 +167,7 @@ mod tests {
                 provider_id: "att-1".to_string(),
             }],
             fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
         };
         store.insert_body(&body).await.unwrap();
 
@@ -250,7 +253,7 @@ mod tests {
         let draft = Draft {
             id: DraftId::new(),
             account_id: account.id.clone(),
-            in_reply_to: None,
+            reply_headers: None,
             to: vec![Address {
                 name: None,
                 email: "bob@example.com".to_string(),

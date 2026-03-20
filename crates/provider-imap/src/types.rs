@@ -1,10 +1,24 @@
 //! Intermediate IMAP types used between raw IMAP responses and mxr core types.
 /// Mailbox status returned by IMAP SELECT.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MailboxInfo {
     pub uid_validity: u32,
     pub uid_next: u32,
     pub exists: u32,
+    pub highest_modseq: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ImapCapabilities {
+    pub move_ext: bool,
+    pub uidplus: bool,
+    pub idle: bool,
+    pub condstore: bool,
+    pub qresync: bool,
+    pub namespace: bool,
+    pub list_status: bool,
+    pub utf8_accept: bool,
+    pub imap4rev2: bool,
 }
 
 /// A single fetched message from IMAP FETCH.
@@ -39,10 +53,30 @@ pub struct ImapAddress {
 }
 
 /// IMAP folder info from LIST response.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FolderInfo {
     pub name: String,
     pub special_use: Option<String>,
+    pub delimiter: Option<String>,
+    pub unread_count: Option<u32>,
+    pub total_count: Option<u32>,
+    pub uid_validity: Option<u32>,
+    pub uid_next: Option<u32>,
+    pub highest_modseq: Option<u64>,
+    pub namespace_prefix: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NamespaceInfo {
+    pub personal_prefix: Option<String>,
+    pub delimiter: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct QresyncInfo {
+    pub mailbox: MailboxInfo,
+    pub vanished: Vec<u32>,
+    pub changed: Vec<u32>,
 }
 
 #[cfg(test)]
@@ -55,10 +89,12 @@ mod tests {
             uid_validity: 1,
             uid_next: 100,
             exists: 50,
+            highest_modseq: Some(10),
         };
         assert_eq!(info.uid_validity, 1);
         assert_eq!(info.uid_next, 100);
         assert_eq!(info.exists, 50);
+        assert_eq!(info.highest_modseq, Some(10));
     }
 
     #[test]
@@ -96,6 +132,13 @@ mod tests {
         let folder = FolderInfo {
             name: "INBOX".to_string(),
             special_use: Some("\\Inbox".to_string()),
+            delimiter: Some("/".to_string()),
+            unread_count: Some(3),
+            total_count: Some(10),
+            uid_validity: Some(1),
+            uid_next: Some(5),
+            highest_modseq: Some(12),
+            namespace_prefix: None,
         };
         assert_eq!(folder.name, "INBOX");
         assert_eq!(folder.special_use, Some("\\Inbox".to_string()));
@@ -106,7 +149,21 @@ mod tests {
         let folder = FolderInfo {
             name: "Projects/Work".to_string(),
             special_use: None,
+            delimiter: Some("/".to_string()),
+            unread_count: None,
+            total_count: None,
+            uid_validity: None,
+            uid_next: None,
+            highest_modseq: None,
+            namespace_prefix: None,
         };
         assert!(folder.special_use.is_none());
+    }
+
+    #[test]
+    fn capabilities_default_to_disabled() {
+        let caps = ImapCapabilities::default();
+        assert!(!caps.move_ext);
+        assert!(!caps.uidplus);
     }
 }

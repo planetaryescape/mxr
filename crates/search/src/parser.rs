@@ -1,5 +1,5 @@
 use crate::ast::*;
-use chrono::NaiveDate;
+use chrono::{Duration, Local, NaiveDate};
 use thiserror::Error;
 
 // -- Tokens -------------------------------------------------------------------
@@ -31,6 +31,8 @@ pub enum ParseError {
     ExpectedValue,
     #[error("unknown filter: {0}")]
     UnknownFilter(String),
+    #[error("invalid size: {0}")]
+    InvalidSize(String),
     #[error("invalid date: {0}")]
     InvalidDate(String),
 }
@@ -239,8 +241,24 @@ impl Parser {
                 field: QueryField::To,
                 value,
             }),
+            "cc" => Ok(QueryNode::Field {
+                field: QueryField::Cc,
+                value,
+            }),
+            "bcc" => Ok(QueryNode::Field {
+                field: QueryField::Bcc,
+                value,
+            }),
             "subject" => Ok(QueryNode::Field {
                 field: QueryField::Subject,
+                value,
+            }),
+            "body" => Ok(QueryNode::Field {
+                field: QueryField::Body,
+                value,
+            }),
+            "filename" => Ok(QueryNode::Field {
+                field: QueryField::Filename,
                 value,
             }),
             "label" => Ok(QueryNode::Label(value)),
@@ -248,12 +266,23 @@ impl Parser {
                 "unread" => Ok(QueryNode::Filter(FilterKind::Unread)),
                 "read" => Ok(QueryNode::Filter(FilterKind::Read)),
                 "starred" => Ok(QueryNode::Filter(FilterKind::Starred)),
+                "draft" | "drafts" => Ok(QueryNode::Filter(FilterKind::Draft)),
+                "sent" => Ok(QueryNode::Filter(FilterKind::Sent)),
+                "trash" | "deleted" => Ok(QueryNode::Filter(FilterKind::Trash)),
+                "spam" | "junk" => Ok(QueryNode::Filter(FilterKind::Spam)),
+                "answered" | "replied" => Ok(QueryNode::Filter(FilterKind::Answered)),
+                "inbox" => Ok(QueryNode::Filter(FilterKind::Inbox)),
+                "archived" | "archive" => Ok(QueryNode::Filter(FilterKind::Archived)),
                 other => Err(ParseError::UnknownFilter(other.to_string())),
             },
             "has" => match value.to_lowercase().as_str() {
                 "attachment" | "attachments" => Ok(QueryNode::Filter(FilterKind::HasAttachment)),
                 other => Err(ParseError::UnknownFilter(other.to_string())),
             },
+            "size" => {
+                let (op, bytes) = parse_size_value(&value)?;
+                Ok(QueryNode::Size { op, bytes })
+            }
             "after" => {
                 let date = parse_date_value(&value)?;
                 Ok(QueryNode::DateRange {
@@ -275,6 +304,20 @@ impl Parser {
                     date,
                 })
             }
+            "older" => {
+                let date = parse_relative_duration_date(&value)?;
+                Ok(QueryNode::DateRange {
+                    bound: DateBound::Before,
+                    date: DateValue::Specific(date),
+                })
+            }
+            "newer" => {
+                let date = parse_relative_duration_date(&value)?;
+                Ok(QueryNode::DateRange {
+                    bound: DateBound::After,
+                    date: DateValue::Specific(date),
+                })
+            }
             other => Err(ParseError::UnknownFilter(other.to_string())),
         }
     }
@@ -292,6 +335,69 @@ fn parse_date_value(s: &str) -> Result<DateValue, ParseError> {
             Ok(DateValue::Specific(date))
         }
     }
+}
+
+fn parse_relative_duration_date(s: &str) -> Result<NaiveDate, ParseError> {
+    let input = s.trim().to_lowercase();
+    if input.len() < 2 {
+        return Err(ParseError::InvalidDate(s.to_string()));
+    }
+
+    let (amount, unit) = input.split_at(input.len() - 1);
+    let count = amount
+        .parse::<i64>()
+        .map_err(|_| ParseError::InvalidDate(s.to_string()))?;
+    let days = match unit {
+        "d" => count,
+        "w" => count * 7,
+        "m" => count * 30,
+        "y" => count * 365,
+        _ => return Err(ParseError::InvalidDate(s.to_string())),
+    };
+
+    Ok(Local::now().date_naive() - Duration::days(days))
+}
+
+fn parse_size_value(s: &str) -> Result<(SizeOp, u64), ParseError> {
+    let input = s.trim().to_lowercase();
+    if input.is_empty() {
+        return Err(ParseError::InvalidSize(s.to_string()));
+    }
+
+    let (op, rest) = if let Some(rest) = input.strip_prefix(">=") {
+        (SizeOp::GreaterThanOrEqual, rest)
+    } else if let Some(rest) = input.strip_prefix("<=") {
+        (SizeOp::LessThanOrEqual, rest)
+    } else if let Some(rest) = input.strip_prefix('>') {
+        (SizeOp::GreaterThan, rest)
+    } else if let Some(rest) = input.strip_prefix('<') {
+        (SizeOp::LessThan, rest)
+    } else if let Some(rest) = input.strip_prefix('=') {
+        (SizeOp::Equal, rest)
+    } else {
+        (SizeOp::Equal, input.as_str())
+    };
+
+    let number_end = rest
+        .find(|ch: char| !ch.is_ascii_digit() && ch != '.')
+        .unwrap_or(rest.len());
+    let (number_part, unit_part) = rest.split_at(number_end);
+    if number_part.is_empty() {
+        return Err(ParseError::InvalidSize(s.to_string()));
+    }
+
+    let value = number_part
+        .parse::<f64>()
+        .map_err(|_| ParseError::InvalidSize(s.to_string()))?;
+    let multiplier = match unit_part {
+        "" | "b" => 1_f64,
+        "k" | "kb" => 1024_f64,
+        "m" | "mb" => 1024_f64 * 1024_f64,
+        "g" | "gb" => 1024_f64 * 1024_f64 * 1024_f64,
+        other => return Err(ParseError::InvalidSize(other.to_string())),
+    };
+
+    Ok((op, (value * multiplier).round() as u64))
 }
 
 // -- Public API ---------------------------------------------------------------
@@ -357,6 +463,31 @@ mod tests {
     }
 
     #[test]
+    fn parse_cc_bcc_and_body_fields() {
+        assert_eq!(
+            parse_query("cc:alice@example.com").unwrap(),
+            QueryNode::Field {
+                field: QueryField::Cc,
+                value: "alice@example.com".to_string(),
+            }
+        );
+        assert_eq!(
+            parse_query("bcc:hidden@example.com").unwrap(),
+            QueryNode::Field {
+                field: QueryField::Bcc,
+                value: "hidden@example.com".to_string(),
+            }
+        );
+        assert_eq!(
+            parse_query("body:\"deploy canary\"").unwrap(),
+            QueryNode::Field {
+                field: QueryField::Body,
+                value: "deploy canary".to_string(),
+            }
+        );
+    }
+
+    #[test]
     fn parse_subject_field() {
         let result = parse_query("subject:invoice").unwrap();
         assert_eq!(
@@ -378,6 +509,23 @@ mod tests {
     fn parse_is_starred() {
         let result = parse_query("is:starred").unwrap();
         assert_eq!(result, QueryNode::Filter(FilterKind::Starred));
+    }
+
+    #[test]
+    fn parse_additional_is_filters() {
+        assert_eq!(parse_query("is:sent").unwrap(), QueryNode::Filter(FilterKind::Sent));
+        assert_eq!(parse_query("is:draft").unwrap(), QueryNode::Filter(FilterKind::Draft));
+        assert_eq!(parse_query("is:trash").unwrap(), QueryNode::Filter(FilterKind::Trash));
+        assert_eq!(parse_query("is:spam").unwrap(), QueryNode::Filter(FilterKind::Spam));
+        assert_eq!(
+            parse_query("is:answered").unwrap(),
+            QueryNode::Filter(FilterKind::Answered)
+        );
+        assert_eq!(parse_query("is:inbox").unwrap(), QueryNode::Filter(FilterKind::Inbox));
+        assert_eq!(
+            parse_query("is:archived").unwrap(),
+            QueryNode::Filter(FilterKind::Archived)
+        );
     }
 
     #[test]
@@ -426,6 +574,62 @@ mod tests {
                 date: DateValue::Today,
             }
         );
+    }
+
+    #[test]
+    fn parse_older_relative_duration() {
+        let expected = Local::now().date_naive() - Duration::days(30);
+        let result = parse_query("older:30d").unwrap();
+        assert_eq!(
+            result,
+            QueryNode::DateRange {
+                bound: DateBound::Before,
+                date: DateValue::Specific(expected),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_newer_relative_duration() {
+        let expected = Local::now().date_naive() - Duration::days(14);
+        let result = parse_query("newer:2w").unwrap();
+        assert_eq!(
+            result,
+            QueryNode::DateRange {
+                bound: DateBound::After,
+                date: DateValue::Specific(expected),
+            }
+        );
+    }
+
+    #[test]
+    fn reject_invalid_relative_duration_unit() {
+        let result = parse_query("older:30q");
+        assert_eq!(result, Err(ParseError::InvalidDate("30q".to_string())));
+    }
+
+    #[test]
+    fn parse_size_query() {
+        assert_eq!(
+            parse_query("size:>5mb").unwrap(),
+            QueryNode::Size {
+                op: SizeOp::GreaterThan,
+                bytes: 5 * 1024 * 1024,
+            }
+        );
+        assert_eq!(
+            parse_query("size:<=42kb").unwrap(),
+            QueryNode::Size {
+                op: SizeOp::LessThanOrEqual,
+                bytes: 42 * 1024,
+            }
+        );
+    }
+
+    #[test]
+    fn reject_invalid_size_unit() {
+        let result = parse_query("size:>5tb");
+        assert_eq!(result, Err(ParseError::InvalidSize("tb".to_string())));
     }
 
     #[test]

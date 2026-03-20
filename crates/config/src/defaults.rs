@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::types::*;
 
 impl Default for GeneralConfig {
@@ -9,10 +7,7 @@ impl Default for GeneralConfig {
             default_account: None,
             sync_interval: 60,
             hook_timeout: 30,
-            attachment_dir: dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("~"))
-                .join("mxr")
-                .join("attachments"),
+            attachment_dir: crate::resolve::data_dir().join("attachments"),
         }
     }
 }

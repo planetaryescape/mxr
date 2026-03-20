@@ -17,3 +17,5 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+mxr-test-support = { workspace = true }
+insta = { workspace = true }

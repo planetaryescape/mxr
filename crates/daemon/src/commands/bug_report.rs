@@ -239,6 +239,7 @@ async fn collect_daemon_summary(socket_exists: bool) -> DaemonSummary {
                         uptime_secs,
                         accounts,
                         total_messages,
+                        ..
                     },
             }) => DaemonSummary {
                 running: true,

@@ -326,25 +326,41 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             Err(message) => Response::Error { message },
         },
 
-        Request::UpsertAccountConfig { account } => match upsert_account_config(state, account.clone()).await {
-            Ok(message) => Response::Ok {
-                data: ResponseData::AccountStatus { message },
+        Request::AuthorizeAccountConfig {
+            account,
+            reauthorize,
+        } => Response::Ok {
+            data: ResponseData::AccountOperation {
+                result: authorize_account_config(account.clone(), *reauthorize).await,
             },
-            Err(message) => Response::Error { message },
+        },
+
+        Request::UpsertAccountConfig { account } => Response::Ok {
+            data: ResponseData::AccountOperation {
+                result: upsert_account_config(state, account.clone()).await,
+            },
         },
 
         Request::SetDefaultAccount { key } => match set_default_account(state, key).await {
-            Ok(message) => Response::Ok {
-                data: ResponseData::AccountStatus { message },
+            Ok(_) => Response::Ok {
+                data: ResponseData::AccountOperation {
+                    result: account_operation_result(
+                        true,
+                        format!("Default account set to '{key}'."),
+                        Some(account_step(true, format!("Default account set to '{key}'."))),
+                        None,
+                        None,
+                        None,
+                    ),
+                },
             },
             Err(message) => Response::Error { message },
         },
 
-        Request::TestAccountConfig { account } => match test_account_config(account.clone()).await {
-            Ok(message) => Response::Ok {
-                data: ResponseData::AccountStatus { message },
+        Request::TestAccountConfig { account } => Response::Ok {
+            data: ResponseData::AccountOperation {
+                result: test_account_config(account.clone()).await,
             },
-            Err(message) => Response::Error { message },
         },
 
         Request::GetRule { rule } => match state.store.get_rule_by_id_or_name(rule).await {
@@ -530,10 +546,11 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             },
         },
 
-        Request::GetDoctorReport => Response::Ok {
-            data: ResponseData::DoctorReport {
-                report: collect_doctor_report(),
+        Request::GetDoctorReport => match collect_doctor_report(state).await {
+            Ok(report) => Response::Ok {
+                data: ResponseData::DoctorReport { report },
             },
+            Err(message) => Response::Error { message },
         },
 
         Request::GenerateBugReport {
@@ -572,7 +589,15 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                     let tantivy_query = builder.build(&ast);
                     search.search_ast(tantivy_query, *limit as usize)
                 }
-                Err(_) => search.search(query, *limit as usize),
+                Err(error) => {
+                    if should_fallback_to_tantivy(query, &error) {
+                        search.search(query, *limit as usize)
+                    } else {
+                        Err(mxr_core::MxrError::Search(format!(
+                            "Invalid search query: {error}"
+                        )))
+                    }
+                }
             };
             match results {
                 Ok(results) => {
@@ -611,7 +636,15 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                     let tantivy_query = builder.build(&ast);
                     search.search_ast(tantivy_query, 10_000)
                 }
-                Err(_) => search.search(query, 10_000),
+                Err(error) => {
+                    if should_fallback_to_tantivy(query, &error) {
+                        search.search(query, 10_000)
+                    } else {
+                        Err(mxr_core::MxrError::Search(format!(
+                            "Invalid search query: {error}"
+                        )))
+                    }
+                }
             };
             match results {
                 Ok(results) => Response::Ok {
@@ -767,30 +800,18 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             }
         }
 
-        Request::GetStatus => {
-            let mut total = 0;
-            let mut accounts = Vec::new();
-            for account_id in state.account_ids() {
-                total += state
-                    .store
-                    .count_messages_by_account(&account_id)
-                    .await
-                    .unwrap_or(0);
-                if let Some(account) = state.store.get_account(&account_id).await.ok().flatten() {
-                    accounts.push(account.name);
-                }
-            }
-            if accounts.is_empty() {
-                accounts.push("unknown".to_string());
-            }
-            Response::Ok {
+        Request::GetStatus => match collect_status_snapshot(state).await {
+            Ok((accounts, total_messages, sync_statuses)) => Response::Ok {
                 data: ResponseData::Status {
                     uptime_secs: state.uptime_secs(),
                     accounts,
-                    total_messages: total,
+                    total_messages,
+                    daemon_pid: Some(std::process::id()),
+                    sync_statuses,
                 },
-            }
-        }
+            },
+            Err(message) => Response::Error { message },
+        },
 
         Request::SyncNow { account_id } => {
             let provider = state.get_provider(account_id.as_ref()).clone();
@@ -1195,11 +1216,11 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             }
         }
 
-        Request::GetSyncStatus { .. } => Response::Ok {
-            data: ResponseData::SyncStatus {
-                last_sync: None,
-                status: "ok".to_string(),
+        Request::GetSyncStatus { account_id } => match build_account_sync_status(state, account_id).await {
+            Ok(sync) => Response::Ok {
+                data: ResponseData::SyncStatus { sync },
             },
+            Err(message) => Response::Error { message },
         },
     }
 }
@@ -1503,7 +1524,7 @@ fn parse_rule_condition_string(input: &str) -> Result<Conditions, String> {
 }
 
 fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Conditions, String> {
-    use mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode};
+    use mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp};
 
     Ok(match node {
         QueryNode::And(left, right) => Conditions::And {
@@ -1525,6 +1546,12 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
             QueryField::Subject => FieldCondition::Subject {
                 pattern: StringMatch::Contains(value),
             },
+            QueryField::Body => FieldCondition::BodyContains {
+                pattern: StringMatch::Contains(value),
+            },
+            QueryField::Cc | QueryField::Bcc | QueryField::Filename => {
+                return Err("field is not supported in rules form".to_string())
+            }
         }),
         QueryNode::Label(label) => Conditions::Field(FieldCondition::HasLabel { label }),
         QueryNode::Filter(FilterKind::Unread) => Conditions::Field(FieldCondition::IsUnread),
@@ -1533,6 +1560,27 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
         QueryNode::Filter(FilterKind::Read) => Conditions::Not {
             condition: Box::new(Conditions::Field(FieldCondition::IsUnread)),
         },
+        QueryNode::Filter(FilterKind::Draft) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "DRAFT".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Sent) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "SENT".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Trash) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "TRASH".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Spam) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "SPAM".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Inbox) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "INBOX".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Archived) => {
+            Conditions::Field(FieldCondition::HasLabel { label: "ARCHIVE".to_string() })
+        }
+        QueryNode::Filter(FilterKind::Answered) => {
+            return Err("is:answered is not supported in rules form".to_string())
+        }
         QueryNode::Text(value) | QueryNode::Phrase(value) => Conditions::Field(FieldCondition::BodyContains {
             pattern: StringMatch::Contains(value),
         }),
@@ -1557,6 +1605,26 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
                 },
             }
         }
+        QueryNode::Size { op, bytes } => match op {
+            SizeOp::GreaterThan => Conditions::Field(FieldCondition::SizeGreaterThan { bytes }),
+            SizeOp::GreaterThanOrEqual => Conditions::Field(FieldCondition::SizeGreaterThan {
+                bytes: bytes.saturating_sub(1),
+            }),
+            SizeOp::LessThan => Conditions::Field(FieldCondition::SizeLessThan { bytes }),
+            SizeOp::LessThanOrEqual => Conditions::Field(FieldCondition::SizeLessThan {
+                bytes: bytes.saturating_add(1),
+            }),
+            SizeOp::Equal => Conditions::And {
+                conditions: vec![
+                    Conditions::Field(FieldCondition::SizeGreaterThan {
+                        bytes: bytes.saturating_sub(1),
+                    }),
+                    Conditions::Field(FieldCondition::SizeLessThan {
+                        bytes: bytes.saturating_add(1),
+                    }),
+                ],
+            },
+        },
     })
 }
 
@@ -1720,7 +1788,154 @@ fn recent_log_lines(limit: usize, level: Option<&str>) -> Result<Vec<String>, st
     Ok(lines.split_off(start))
 }
 
-fn collect_doctor_report() -> mxr_protocol::DoctorReport {
+fn should_fallback_to_tantivy(query: &str, error: &mxr_search::ParseError) -> bool {
+    if looks_structured_query(query) {
+        return false;
+    }
+
+    matches!(
+        error,
+        mxr_search::ParseError::UnexpectedToken(_)
+            | mxr_search::ParseError::UnexpectedEnd
+            | mxr_search::ParseError::UnmatchedParen
+    )
+}
+
+fn looks_structured_query(query: &str) -> bool {
+    let trimmed = query.trim();
+    trimmed.contains(':')
+        || trimmed.contains('(')
+        || trimmed.contains(')')
+        || trimmed.starts_with('-')
+        || trimmed.contains(" AND ")
+        || trimmed.contains(" OR ")
+        || trimmed.contains(" NOT ")
+}
+
+async fn collect_status_snapshot(
+    state: &Arc<AppState>,
+) -> Result<(Vec<String>, u32, Vec<AccountSyncStatus>), String> {
+    let accounts = state.store.list_accounts().await.map_err(|e| e.to_string())?;
+    let mut names = Vec::new();
+    let mut total_messages = 0;
+    let mut sync_statuses = Vec::new();
+
+    for account in accounts {
+        names.push(account.name.clone());
+        total_messages += state
+            .store
+            .count_messages_by_account(&account.id)
+            .await
+            .map_err(|e| e.to_string())?;
+        sync_statuses.push(build_account_sync_status(state, &account.id).await?);
+    }
+
+    if names.is_empty() {
+        names.push("unknown".to_string());
+    }
+
+    Ok((names, total_messages, sync_statuses))
+}
+
+async fn build_account_sync_status(
+    state: &Arc<AppState>,
+    account_id: &mxr_core::AccountId,
+) -> Result<AccountSyncStatus, String> {
+    let account = state
+        .store
+        .get_account(account_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Account not found: {account_id}"))?;
+    let runtime = state
+        .store
+        .get_sync_runtime_status(account_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let cursor = state
+        .store
+        .get_sync_cursor(account_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let last_attempt_at = runtime
+        .as_ref()
+        .and_then(|row| row.last_attempt_at)
+        .map(|dt| dt.to_rfc3339());
+    let last_success_at = runtime
+        .as_ref()
+        .and_then(|row| row.last_success_at)
+        .map(|dt| dt.to_rfc3339());
+    let last_error = runtime.as_ref().and_then(|row| row.last_error.clone());
+    let backoff_until = runtime
+        .as_ref()
+        .and_then(|row| row.backoff_until)
+        .map(|dt| dt.to_rfc3339());
+    let sync_in_progress = runtime
+        .as_ref()
+        .map(|row| row.sync_in_progress)
+        .unwrap_or(false);
+    let consecutive_failures = runtime
+        .as_ref()
+        .map(|row| row.consecutive_failures)
+        .unwrap_or(0);
+    let healthy =
+        !sync_in_progress && last_error.is_none() && backoff_until.is_none() && last_success_at.is_some();
+
+    Ok(AccountSyncStatus {
+        account_id: account.id,
+        account_name: account.name,
+        last_attempt_at,
+        last_success_at,
+        last_error,
+        failure_class: runtime.as_ref().and_then(|row| row.failure_class.clone()),
+        consecutive_failures,
+        backoff_until,
+        sync_in_progress,
+        current_cursor_summary: Some(
+            runtime
+                .as_ref()
+                .and_then(|row| row.current_cursor_summary.clone())
+                .unwrap_or_else(|| describe_cursor_for_status(cursor.as_ref())),
+        ),
+        last_synced_count: runtime
+            .as_ref()
+            .map(|row| row.last_synced_count)
+            .unwrap_or(0),
+        healthy,
+    })
+}
+
+fn describe_cursor_for_status(cursor: Option<&mxr_core::types::SyncCursor>) -> String {
+    match cursor {
+        Some(mxr_core::types::SyncCursor::Initial) | None => "initial".to_string(),
+        Some(mxr_core::types::SyncCursor::Gmail { history_id }) => {
+            format!("gmail history_id={history_id}")
+        }
+        Some(mxr_core::types::SyncCursor::GmailBackfill {
+            history_id,
+            page_token,
+        }) => {
+            let short: String = page_token.chars().take(24).collect();
+            if page_token.chars().count() > 24 {
+                format!("gmail_backfill history_id={history_id} page_token={short}...")
+            } else {
+                format!("gmail_backfill history_id={history_id} page_token={short}")
+            }
+        }
+        Some(mxr_core::types::SyncCursor::Imap {
+            uid_validity,
+            uid_next,
+            mailboxes,
+            ..
+        }) => format!(
+            "imap uid_validity={uid_validity} uid_next={uid_next} mailboxes={}",
+            mailboxes.len()
+        ),
+    }
+}
+
+async fn collect_doctor_report(state: &Arc<AppState>) -> Result<mxr_protocol::DoctorReport, String> {
     let data_dir = mxr_config::data_dir();
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
@@ -1731,20 +1946,55 @@ fn collect_doctor_report() -> mxr_protocol::DoctorReport {
     let database_exists = db_path.exists();
     let index_exists = index_path.exists();
     let socket_exists = socket_path.exists();
+    let (_, _, sync_statuses) = collect_status_snapshot(state).await?;
+    let recent_sync_events = state
+        .store
+        .list_events(10, None, Some("sync"))
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(protocol_event_entry)
+        .collect();
+    let recent_error_logs = recent_log_lines(10, Some("error")).unwrap_or_default();
+    let recommended_next_steps = if sync_statuses.iter().all(|status| status.healthy) {
+        vec!["mxr status".to_string()]
+    } else {
+        vec![
+            "mxr status".to_string(),
+            "mxr sync --status".to_string(),
+            "mxr logs --level error".to_string(),
+            "mxr daemon --foreground".to_string(),
+        ]
+    };
+    let healthy = data_dir_exists
+        && database_exists
+        && index_exists
+        && socket_exists
+        && sync_statuses.iter().all(|status| status.healthy);
 
-    mxr_protocol::DoctorReport {
-        healthy: data_dir_exists && database_exists && index_exists && socket_exists,
+    Ok(mxr_protocol::DoctorReport {
+        healthy,
         data_dir_exists,
         database_exists,
         index_exists,
         socket_exists,
+        socket_reachable: true,
+        stale_socket: false,
+        daemon_running: true,
+        daemon_pid: Some(std::process::id()),
+        index_lock_held: false,
+        index_lock_error: None,
         database_path: db_path.display().to_string(),
         database_size_bytes: file_size(&db_path),
         index_path: index_path.display().to_string(),
         index_size_bytes: dir_size(&index_path),
         log_path: log_path.display().to_string(),
         log_size_bytes: file_size(&log_path),
-    }
+        sync_statuses,
+        recent_sync_events,
+        recent_error_logs,
+        recommended_next_steps,
+    })
 }
 
 fn file_size(path: &std::path::Path) -> u64 {
@@ -1804,7 +2054,7 @@ async fn list_runtime_accounts(
     let config = state.config_snapshot();
     let default_config_key = config.general.default_account.clone();
     let runtime_ids = state.runtime_account_ids();
-    let default_account_id = state.default_account_id();
+    let default_account_id = state.default_account_id_opt();
     let runtime_accounts = state.store.list_accounts().await.map_err(|e| e.to_string())?;
 
     let mut accounts: BTreeMap<String, AccountSummaryData> = BTreeMap::new();
@@ -1843,7 +2093,7 @@ async fn list_runtime_accounts(
                 sync_kind,
                 send_kind,
                 enabled: account.enabled,
-                is_default: account.id == default_account_id,
+                is_default: default_account_id.as_ref() == Some(&account.id),
                 source: AccountSourceData::Runtime,
                 editable: AccountEditModeData::RuntimeOnly,
                 sync: None,
@@ -1920,31 +2170,61 @@ fn list_account_configs() -> Result<Vec<AccountConfigData>, String> {
 async fn upsert_account_config(
     state: &Arc<AppState>,
     account: AccountConfigData,
-) -> Result<String, String> {
-    let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
-    persist_account_passwords(&account).map_err(|e| e.to_string())?;
+) -> AccountOperationResult {
+    let save_result = (|| -> Result<String, String> {
+        let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
+        persist_account_passwords(&account).map_err(|e| e.to_string())?;
 
-    config.accounts.insert(
-        account.key.clone(),
-        mxr_config::AccountConfig {
-            name: account.name,
-            email: account.email,
-            sync: account
-                .sync
-                .map(sync_data_to_config)
-                .transpose()?,
-            send: account
-                .send
-                .map(send_data_to_config)
-                .transpose()?,
+        config.accounts.insert(
+            account.key.clone(),
+            mxr_config::AccountConfig {
+                name: account.name.clone(),
+                email: account.email.clone(),
+                sync: account.sync.clone().map(sync_data_to_config).transpose()?,
+                send: account.send.clone().map(send_data_to_config).transpose()?,
+            },
+        );
+        if account.is_default || config.general.default_account.is_none() {
+            config.general.default_account = Some(account.key.clone());
+        }
+        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+        Ok(format!("Saved account '{}' to config.", account.key))
+    })();
+
+    match save_result {
+        Ok(save_detail) => match state.reload_accounts_from_disk().await {
+            Ok(()) => account_operation_result(
+                true,
+                format!("Saved account '{}' and reloaded runtime.", account.key),
+                Some(account_step(
+                    true,
+                    format!("{save_detail} Runtime reloaded."),
+                )),
+                None,
+                None,
+                None,
+            ),
+            Err(error) => account_operation_result(
+                false,
+                format!("Saved account '{}' but failed to reload runtime.", account.key),
+                Some(account_step(
+                    false,
+                    format!("{save_detail} Reload failed: {error}"),
+                )),
+                None,
+                None,
+                None,
+            ),
         },
-    );
-    if account.is_default || config.general.default_account.is_none() {
-        config.general.default_account = Some(account.key.clone());
+        Err(error) => account_operation_result(
+            false,
+            format!("Failed to save account '{}'.", account.key),
+            Some(account_step(false, error)),
+            None,
+            None,
+            None,
+        ),
     }
-    mxr_config::save_config(&config).map_err(|e| e.to_string())?;
-    state.reload_accounts_from_disk().await?;
-    Ok(format!("Saved account '{}' and reloaded runtime.", account.key))
 }
 
 async fn set_default_account(state: &Arc<AppState>, key: &str) -> Result<String, String> {
@@ -1958,31 +2238,162 @@ async fn set_default_account(state: &Arc<AppState>, key: &str) -> Result<String,
     Ok(format!("Default account set to '{}'.", key))
 }
 
-async fn test_account_config(account: AccountConfigData) -> Result<String, String> {
-    persist_account_passwords(&account).map_err(|e| e.to_string())?;
+async fn authorize_account_config(
+    account: AccountConfigData,
+    reauthorize: bool,
+) -> AccountOperationResult {
+    let Some(AccountSyncConfigData::Gmail {
+        credential_source,
+        client_id,
+        client_secret,
+        token_ref,
+    }) = account.sync
+    else {
+        return account_operation_result(
+            false,
+            "Authorization is only available for Gmail accounts.".into(),
+            None,
+            Some(account_step(
+                false,
+                "Selected account does not use Gmail sync.".into(),
+            )),
+            None,
+            None,
+        );
+    };
 
-    if let Some(sync) = account.sync {
-        return match sync {
+    let (client_id, client_secret) =
+        match resolve_gmail_credentials(credential_source, client_id, client_secret) {
+            Ok(creds) => creds,
+            Err(error) => {
+                return account_operation_result(
+                    false,
+                    "Gmail authorization unavailable.".into(),
+                    None,
+                    Some(account_step(false, error)),
+                    None,
+                    None,
+                )
+            }
+        };
+
+    let mut auth = mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
+    let auth_result = if reauthorize {
+        auth.interactive_auth().await
+    } else {
+        match auth.load_existing().await {
+            Ok(()) => Ok(()),
+            Err(_) => auth.interactive_auth().await,
+        }
+    };
+
+    match auth_result {
+        Ok(()) => account_operation_result(
+            true,
+            if reauthorize {
+                "Gmail authorization refreshed.".into()
+            } else {
+                "Gmail authorization ready.".into()
+            },
+            None,
+            Some(account_step(
+                true,
+                if reauthorize {
+                    "Browser authorization completed and token stored.".into()
+                } else {
+                    "OAuth token is available for this Gmail account.".into()
+                },
+            )),
+            None,
+            None,
+        ),
+        Err(error) => account_operation_result(
+            false,
+            "Gmail authorization failed.".into(),
+            None,
+            Some(account_step(false, error.to_string())),
+            None,
+            None,
+        ),
+    }
+}
+
+async fn test_account_config(account: AccountConfigData) -> AccountOperationResult {
+    if let Err(error) = persist_account_passwords(&account) {
+        return account_operation_result(
+            false,
+            "Failed to persist account secrets before testing.".into(),
+            None,
+            Some(account_step(false, error.to_string())),
+            None,
+            None,
+        );
+    }
+
+    let mut auth = None;
+    let mut sync = None;
+    let mut send = None;
+    let mut ok = true;
+
+    if let Some(sync_config) = account.sync.clone() {
+        match sync_config {
             AccountSyncConfigData::Gmail {
+                credential_source,
                 client_id,
                 client_secret,
                 token_ref,
             } => {
-                let mut auth = mxr_provider_gmail::auth::GmailAuth::new(
-                    client_id,
-                    client_secret.unwrap_or_default(),
-                    token_ref,
-                );
-                auth.load_existing().await.map_err(|e| e.to_string())?;
-                let client = mxr_provider_gmail::client::GmailClient::new(auth);
-                let count = client
-                    .list_labels()
-                    .await
-                    .map_err(|e| e.to_string())?
-                    .labels
-                    .map(|labels| labels.len())
-                    .unwrap_or(0);
-                Ok(format!("Gmail sync ok: {count} labels"))
+                let creds =
+                    resolve_gmail_credentials(credential_source, client_id, client_secret);
+                match creds {
+                    Ok((client_id, client_secret)) => {
+                        let mut gmail_auth =
+                            mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
+                        let auth_result = match gmail_auth.load_existing().await {
+                            Ok(()) => Ok("Existing OAuth token loaded.".to_string()),
+                            Err(_) => gmail_auth
+                                .interactive_auth()
+                                .await
+                                .map(|_| "Browser authorization completed and token stored.".to_string()),
+                        };
+                        match auth_result {
+                            Ok(detail) => {
+                                auth = Some(account_step(true, detail));
+                                let client = mxr_provider_gmail::client::GmailClient::new(gmail_auth);
+                                match client.list_labels().await {
+                                    Ok(response) => {
+                                        let count =
+                                            response.labels.map(|labels| labels.len()).unwrap_or(0);
+                                        sync = Some(account_step(
+                                            true,
+                                            format!("Gmail sync ok: {count} labels"),
+                                        ));
+                                    }
+                                    Err(error) => {
+                                        ok = false;
+                                        sync = Some(account_step(false, error.to_string()));
+                                    }
+                                }
+                            }
+                            Err(error) => {
+                                ok = false;
+                                auth = Some(account_step(false, error.to_string()));
+                                sync = Some(account_step(
+                                    false,
+                                    "Skipped Gmail sync because authorization failed.".into(),
+                                ));
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        ok = false;
+                        auth = Some(account_step(false, error));
+                        sync = Some(account_step(
+                            false,
+                            "Skipped Gmail sync because OAuth credentials are unavailable.".into(),
+                        ));
+                    }
+                }
             }
             AccountSyncConfigData::Imap {
                 host,
@@ -2002,14 +2413,26 @@ async fn test_account_config(account: AccountConfigData) -> Result<String, Strin
                         use_tls,
                     },
                 );
-                let folders = provider.sync_labels().await.map_err(|e| e.to_string())?;
-                Ok(format!("IMAP sync ok: {} folders", folders.len()))
+                match provider.sync_labels().await {
+                    Ok(folders) => {
+                        sync = Some(account_step(
+                            true,
+                            format!("IMAP sync ok: {} folders", folders.len()),
+                        ));
+                    }
+                    Err(error) => {
+                        ok = false;
+                        sync = Some(account_step(false, error.to_string()));
+                    }
+                }
             }
-        };
+        }
     }
 
     match account.send {
-        Some(AccountSendConfigData::Gmail) => Ok("Gmail send configured".into()),
+        Some(AccountSendConfigData::Gmail) => {
+            send = Some(account_step(true, "Gmail send configured.".into()));
+        }
         Some(AccountSendConfigData::Smtp {
             host,
             port,
@@ -2027,23 +2450,102 @@ async fn test_account_config(account: AccountConfigData) -> Result<String, Strin
                     use_tls,
                 },
             );
-            provider
-                .test_connection()
-                .await
-                .map_err(|e| e.to_string())?;
-            Ok("SMTP send ok".into())
+            match provider.test_connection().await {
+                Ok(()) => {
+                    send = Some(account_step(true, "SMTP send ok".into()));
+                }
+                Err(error) => {
+                    ok = false;
+                    send = Some(account_step(false, error.to_string()));
+                }
+            }
         }
-        None => Err("No sync or send configuration provided".into()),
+        None if account.sync.is_none() => {
+            ok = false;
+            send = Some(account_step(false, "No sync or send configuration provided.".into()));
+        }
+        None => {}
+    }
+
+    account_operation_result(
+        ok,
+        if ok {
+            format!("Account '{}' test passed.", account.key)
+        } else {
+            format!("Account '{}' test failed.", account.key)
+        },
+        None,
+        auth,
+        sync,
+        send,
+    )
+}
+
+fn account_step(ok: bool, detail: String) -> AccountOperationStep {
+    AccountOperationStep { ok, detail }
+}
+
+fn account_operation_result(
+    ok: bool,
+    summary: String,
+    save: Option<AccountOperationStep>,
+    auth: Option<AccountOperationStep>,
+    sync: Option<AccountOperationStep>,
+    send: Option<AccountOperationStep>,
+) -> AccountOperationResult {
+    AccountOperationResult {
+        ok,
+        summary,
+        save,
+        auth,
+        sync,
+        send,
+    }
+}
+
+fn resolve_gmail_credentials(
+    credential_source: GmailCredentialSourceData,
+    client_id: String,
+    client_secret: Option<String>,
+) -> Result<(String, String), String> {
+    match credential_source {
+        GmailCredentialSourceData::Bundled => {
+            match (
+                mxr_provider_gmail::auth::BUNDLED_CLIENT_ID,
+                mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET,
+            ) {
+                (Some(id), Some(secret)) => Ok((id.to_string(), secret.to_string())),
+                _ => {
+                    if client_id.trim().is_empty() || client_secret.as_deref().unwrap_or("").trim().is_empty() {
+                        Err("Bundled Gmail OAuth credentials are unavailable. Switch Credential source to Custom and enter your client ID/client secret.".into())
+                    } else {
+                        Ok((client_id, client_secret.unwrap_or_default()))
+                    }
+                }
+            }
+        }
+        GmailCredentialSourceData::Custom => {
+            if client_id.trim().is_empty() || client_secret.as_deref().unwrap_or("").trim().is_empty() {
+                Err("Custom Gmail OAuth requires both client ID and client secret.".into())
+            } else {
+                Ok((client_id, client_secret.unwrap_or_default()))
+            }
+        }
     }
 }
 
 fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfigData {
     match sync {
         mxr_config::SyncProviderConfig::Gmail {
+            credential_source,
             client_id,
             client_secret,
             token_ref,
         } => AccountSyncConfigData::Gmail {
+            credential_source: match credential_source {
+                mxr_config::GmailCredentialSource::Bundled => GmailCredentialSourceData::Bundled,
+                mxr_config::GmailCredentialSource::Custom => GmailCredentialSourceData::Custom,
+            },
             client_id,
             client_secret,
             token_ref,
@@ -2130,10 +2632,15 @@ fn send_config_to_data(send: mxr_config::SendProviderConfig) -> AccountSendConfi
 fn sync_data_to_config(data: AccountSyncConfigData) -> Result<mxr_config::SyncProviderConfig, String> {
     match data {
         AccountSyncConfigData::Gmail {
+            credential_source,
             client_id,
             client_secret,
             token_ref,
         } => Ok(mxr_config::SyncProviderConfig::Gmail {
+            credential_source: match credential_source {
+                GmailCredentialSourceData::Bundled => mxr_config::GmailCredentialSource::Bundled,
+                GmailCredentialSourceData::Custom => mxr_config::GmailCredentialSource::Custom,
+            },
             client_id,
             client_secret,
             token_ref,
@@ -3089,9 +3596,13 @@ mod tests {
                         uptime_secs: _,
                         accounts,
                         total_messages: _,
+                        daemon_pid,
+                        sync_statuses,
                     },
             }) => {
                 assert!(!accounts.is_empty());
+                assert!(daemon_pid.is_some());
+                assert!(!sync_statuses.is_empty());
             }
             other => panic!("Expected Status, got {:?}", other),
         }
@@ -3114,6 +3625,27 @@ mod tests {
                 assert!(report.index_path.contains("search_index"));
             }
             other => panic!("Expected DoctorReport, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_sync_status() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_account_id();
+
+        let msg = IpcMessage {
+            id: 82,
+            payload: IpcPayload::Request(Request::GetSyncStatus { account_id }),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SyncStatus { sync },
+            }) => {
+                assert!(!sync.account_name.is_empty());
+                assert!(sync.current_cursor_summary.is_some());
+            }
+            other => panic!("Expected SyncStatus, got {:?}", other),
         }
     }
 
@@ -3147,6 +3679,27 @@ mod tests {
                 );
             }
             other => panic!("Expected SearchResults, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_search_rejects_invalid_structured_query() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let msg = IpcMessage {
+            id: 12,
+            payload: IpcPayload::Request(Request::Search {
+                query: "older:30q".to_string(),
+                limit: 10,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Error { message }) => {
+                assert!(message.contains("Invalid search query"));
+                assert!(message.contains("invalid date"));
+            }
+            other => panic!("Expected Error, got {:?}", other),
         }
     }
 

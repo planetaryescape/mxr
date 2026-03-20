@@ -2,6 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GmailCredentialSource {
+    #[default]
+    Bundled,
+    Custom,
+}
+
 /// Top-level mxr configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -40,6 +48,8 @@ pub struct AccountConfig {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SyncProviderConfig {
     Gmail {
+        #[serde(default)]
+        credential_source: GmailCredentialSource,
         client_id: String,
         client_secret: Option<String>,
         token_ref: String,

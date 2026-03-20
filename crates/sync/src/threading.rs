@@ -42,6 +42,10 @@ pub fn thread_messages(messages: &[MessageForThreading]) -> Vec<ThreadTree> {
         return Vec::new();
     }
 
+    let message_map: HashMap<&str, &MessageForThreading> = messages
+        .iter()
+        .map(|message| (message.message_id.as_str(), message))
+        .collect();
     let mut id_table: HashMap<String, Container> = HashMap::new();
 
     // Step 1: Build ID table
@@ -149,7 +153,7 @@ pub fn thread_messages(messages: &[MessageForThreading]) -> Vec<ThreadTree> {
         }
     }
 
-    threads
+    merge_subject_fallback_threads(threads, &message_map)
 }
 
 fn collect_thread_messages(table: &HashMap<String, Container>, id: &str, out: &mut Vec<String>) {
@@ -173,6 +177,95 @@ fn would_create_cycle(table: &HashMap<String, Container>, parent_id: &str, child
         current = table.get(id).and_then(|c| c.parent.as_deref());
     }
     false
+}
+
+fn merge_subject_fallback_threads(
+    threads: Vec<ThreadTree>,
+    message_map: &HashMap<&str, &MessageForThreading>,
+) -> Vec<ThreadTree> {
+    let mut merged: Vec<ThreadTree> = Vec::new();
+    let mut subject_roots: HashMap<String, usize> = HashMap::new();
+
+    for thread in threads {
+        let Some(first_id) = thread.messages.first() else {
+            continue;
+        };
+        let key = message_map
+            .get(first_id.as_str())
+            .map(|message| normalize_subject(&message.subject))
+            .unwrap_or_default();
+        let has_headers = thread.messages.iter().any(|id| {
+            message_map.get(id.as_str()).is_some_and(|message| {
+                message.in_reply_to.is_some() || !message.references.is_empty()
+            })
+        });
+
+        if !has_headers && !key.is_empty() {
+            if let Some(index) = subject_roots.get(&key).copied() {
+                let target = &mut merged[index];
+                for message_id in &thread.messages {
+                    if !target.messages.contains(message_id) {
+                        target.messages.push(message_id.clone());
+                    }
+                }
+                sort_thread_messages(target, message_map);
+                continue;
+            }
+        }
+
+        let mut thread = thread;
+        sort_thread_messages(&mut thread, message_map);
+        if !key.is_empty() {
+            subject_roots.entry(key).or_insert_with(|| merged.len());
+        }
+        merged.push(thread);
+    }
+
+    merged
+}
+
+fn sort_thread_messages(thread: &mut ThreadTree, message_map: &HashMap<&str, &MessageForThreading>) {
+    thread.messages.sort_by(|left, right| {
+        let left_date = message_map
+            .get(left.as_str())
+            .map(|message| message.date)
+            .unwrap_or_default();
+        let right_date = message_map
+            .get(right.as_str())
+            .map(|message| message.date)
+            .unwrap_or_default();
+        left_date.cmp(&right_date)
+    });
+    if let Some(first) = thread.messages.first() {
+        thread.root_message_id = first.clone();
+    }
+}
+
+fn normalize_subject(subject: &str) -> String {
+    let mut normalized = subject.trim();
+
+    loop {
+        let Some(prefix_end) = normalized.find(':') else {
+            break;
+        };
+        let prefix = normalized[..prefix_end].trim();
+        let lower = prefix.to_ascii_lowercase();
+        let base = lower
+            .trim_end_matches(|ch: char| ch.is_ascii_digit() || matches!(ch, '[' | ']' | '(' | ')' | ' '))
+            .trim();
+
+        if matches!(
+            base,
+            "re" | "fw" | "fwd" | "aw" | "sv" | "antw" | "rv" | "odp" | "tr" | "wg"
+        ) {
+            normalized = normalized[prefix_end + 1..].trim();
+            continue;
+        }
+
+        break;
+    }
+
+    normalized.to_ascii_lowercase()
 }
 
 #[cfg(test)]
@@ -259,5 +352,44 @@ mod tests {
     fn jwz_threading_empty_input() {
         let threads = thread_messages(&[]);
         assert!(threads.is_empty());
+    }
+
+    #[test]
+    fn subject_fallback_groups_headerless_replies() {
+        let messages = vec![
+            msg("msg1@ex", None, &[], "Hello"),
+            msg("msg2@ex", None, &[], "Re: Hello"),
+            msg("msg3@ex", None, &[], "AW: Hello"),
+        ];
+
+        let threads = thread_messages(&messages);
+        assert_eq!(threads.len(), 1);
+        assert_eq!(threads[0].messages.len(), 3);
+    }
+
+    #[test]
+    fn subject_fallback_attaches_headerless_reply_to_header_thread() {
+        let messages = vec![
+            msg("msg1@ex", None, &[], "Topic"),
+            msg("msg2@ex", Some("msg1@ex"), &["msg1@ex"], "Re: Topic"),
+            msg("msg3@ex", None, &[], "SV: Topic"),
+        ];
+
+        let threads = thread_messages(&messages);
+        assert_eq!(threads.len(), 1);
+        assert_eq!(threads[0].messages.len(), 3);
+    }
+
+    #[test]
+    fn subject_fallback_does_not_merge_independent_header_threads() {
+        let messages = vec![
+            msg("root-a@ex", None, &[], "Topic"),
+            msg("reply-a@ex", Some("root-a@ex"), &["root-a@ex"], "Re: Topic"),
+            msg("root-b@ex", None, &[], "Topic"),
+            msg("reply-b@ex", Some("root-b@ex"), &["root-b@ex"], "Re: Topic"),
+        ];
+
+        let threads = thread_messages(&messages);
+        assert_eq!(threads.len(), 2);
     }
 }

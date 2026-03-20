@@ -26,6 +26,9 @@ pub enum Request {
         limit: u32,
         offset: u32,
     },
+    ListEnvelopesByIds {
+        message_ids: Vec<MessageId>,
+    },
     GetEnvelope {
         message_id: MessageId,
     },
@@ -66,6 +69,10 @@ pub enum Request {
     ListRules,
     ListAccounts,
     ListAccountsConfig,
+    AuthorizeAccountConfig {
+        account: AccountConfigData,
+        reauthorize: bool,
+    },
     UpsertAccountConfig {
         account: AccountConfigData,
     },
@@ -232,6 +239,7 @@ pub enum MutationCommand {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplyContext {
     pub in_reply_to: String,
+    pub references: Vec<String>,
     pub reply_to: String,
     pub cc: String,
     pub subject: String,
@@ -296,8 +304,8 @@ pub enum ResponseData {
     AccountsConfig {
         accounts: Vec<AccountConfigData>,
     },
-    AccountStatus {
-        message: String,
+    AccountOperation {
+        result: AccountOperationResult,
     },
     RuleFormData {
         form: RuleFormData,
@@ -324,8 +332,7 @@ pub enum ResponseData {
         results: Vec<SearchResultItem>,
     },
     SyncStatus {
-        last_sync: Option<String>,
-        status: String,
+        sync: AccountSyncStatus,
     },
     Count {
         count: u32,
@@ -343,6 +350,8 @@ pub enum ResponseData {
         uptime_secs: u64,
         accounts: Vec<String>,
         total_messages: u32,
+        daemon_pid: Option<u32>,
+        sync_statuses: Vec<AccountSyncStatus>,
     },
     ReplyContext {
         context: ReplyContext,
@@ -390,6 +399,22 @@ pub struct EventLogEntry {
     pub details: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccountSyncStatus {
+    pub account_id: AccountId,
+    pub account_name: String,
+    pub last_attempt_at: Option<String>,
+    pub last_success_at: Option<String>,
+    pub last_error: Option<String>,
+    pub failure_class: Option<String>,
+    pub consecutive_failures: u32,
+    pub backoff_until: Option<String>,
+    pub sync_in_progress: bool,
+    pub current_cursor_summary: Option<String>,
+    pub last_synced_count: u32,
+    pub healthy: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DoctorReport {
     pub healthy: bool,
@@ -397,12 +422,22 @@ pub struct DoctorReport {
     pub database_exists: bool,
     pub index_exists: bool,
     pub socket_exists: bool,
+    pub socket_reachable: bool,
+    pub stale_socket: bool,
+    pub daemon_running: bool,
+    pub daemon_pid: Option<u32>,
+    pub index_lock_held: bool,
+    pub index_lock_error: Option<String>,
     pub database_path: String,
     pub database_size_bytes: u64,
     pub index_path: String,
     pub index_size_bytes: u64,
     pub log_path: String,
     pub log_size_bytes: u64,
+    pub sync_statuses: Vec<AccountSyncStatus>,
+    pub recent_sync_events: Vec<EventLogEntry>,
+    pub recent_error_logs: Vec<String>,
+    pub recommended_next_steps: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -457,10 +492,20 @@ pub struct AccountSummaryData {
     pub send: Option<AccountSendConfigData>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GmailCredentialSourceData {
+    #[default]
+    Bundled,
+    Custom,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AccountSyncConfigData {
     Gmail {
+        #[serde(default)]
+        credential_source: GmailCredentialSourceData,
         client_id: String,
         client_secret: Option<String>,
         token_ref: String,
@@ -473,6 +518,22 @@ pub enum AccountSyncConfigData {
         password: Option<String>,
         use_tls: bool,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountOperationStep {
+    pub ok: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountOperationResult {
+    pub ok: bool,
+    pub summary: String,
+    pub save: Option<AccountOperationStep>,
+    pub auth: Option<AccountOperationStep>,
+    pub sync: Option<AccountOperationStep>,
+    pub send: Option<AccountOperationStep>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

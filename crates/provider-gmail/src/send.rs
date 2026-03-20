@@ -1,85 +1,17 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use mxr_compose::render::render_markdown;
+use mxr_compose::email::{build_message, format_message_for_gmail};
 use mxr_core::types::{Address, Draft};
 
-/// Build an RFC 2822 message from a Draft and return the raw string.
-pub fn build_rfc2822(draft: &Draft, from: &str) -> Result<String, GmailSendError> {
-    let rendered = render_markdown(&draft.body_markdown);
-
-    let mut headers = Vec::new();
-    headers.push(format!("From: {from}"));
-    headers.push(format!(
-        "To: {}",
-        draft
-            .to
-            .iter()
-            .map(format_address)
-            .collect::<Vec<_>>()
-            .join(", ")
-    ));
-
-    if !draft.cc.is_empty() {
-        headers.push(format!(
-            "Cc: {}",
-            draft
-                .cc
-                .iter()
-                .map(format_address)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
-    }
-
-    headers.push(format!("Subject: {}", draft.subject));
-    headers.push(format!("Date: {}", chrono::Utc::now().to_rfc2822()));
-    headers.push(format!(
-        "Message-ID: <{}.mxr@localhost>",
-        uuid::Uuid::now_v7()
-    ));
-    headers.push("MIME-Version: 1.0".to_string());
-
-    if let Some(ref reply_to) = draft.in_reply_to {
-        headers.push(format!("In-Reply-To: {reply_to}"));
-        headers.push(format!("References: {reply_to}"));
-    }
-
-    let boundary = format!("mxr-{}", uuid::Uuid::now_v7());
-    headers.push(format!(
-        "Content-Type: multipart/alternative; boundary=\"{boundary}\""
-    ));
-
-    let mut message = headers.join("\r\n");
-    message.push_str("\r\n\r\n");
-
-    // text/plain part
-    message.push_str(&format!("--{boundary}\r\n"));
-    message.push_str("Content-Type: text/plain; charset=utf-8\r\n");
-    message.push_str("Content-Transfer-Encoding: quoted-printable\r\n\r\n");
-    message.push_str(&rendered.plain);
-    message.push_str("\r\n");
-
-    // text/html part
-    message.push_str(&format!("--{boundary}\r\n"));
-    message.push_str("Content-Type: text/html; charset=utf-8\r\n");
-    message.push_str("Content-Transfer-Encoding: quoted-printable\r\n\r\n");
-    message.push_str(&rendered.html);
-    message.push_str("\r\n");
-
-    message.push_str(&format!("--{boundary}--\r\n"));
-
-    Ok(message)
+/// Build an RFC 5322 message from a Draft and return the raw bytes.
+pub fn build_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
+    let message = build_message(draft, from, true)
+        .map_err(|err| GmailSendError::Build(err.to_string()))?;
+    Ok(format_message_for_gmail(&message))
 }
 
-/// Encode an RFC 2822 message as base64url for Gmail API.
-pub fn encode_for_gmail(rfc2822: &str) -> String {
-    URL_SAFE_NO_PAD.encode(rfc2822.as_bytes())
-}
-
-fn format_address(addr: &Address) -> String {
-    match &addr.name {
-        Some(name) => format!("{name} <{}>", addr.email),
-        None => addr.email.clone(),
-    }
+/// Encode an RFC 5322 message as base64url for Gmail API.
+pub fn encode_for_gmail(rfc2822: &[u8]) -> String {
+    URL_SAFE_NO_PAD.encode(rfc2822)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -94,12 +26,13 @@ pub enum GmailSendError {
 mod tests {
     use super::*;
     use mxr_core::id::{AccountId, DraftId};
+    use mxr_core::types::ReplyHeaders;
 
     fn test_draft() -> Draft {
         Draft {
             id: DraftId::new(),
             account_id: AccountId::new(),
-            in_reply_to: None,
+            reply_headers: None,
             to: vec![Address {
                 name: Some("Alice".into()),
                 email: "alice@example.com".into(),
@@ -114,45 +47,55 @@ mod tests {
         }
     }
 
+    fn from() -> Address {
+        Address {
+            name: Some("Me".into()),
+            email: "me@example.com".into(),
+        }
+    }
+
     #[test]
     fn rfc2822_basic_message() {
         let draft = test_draft();
-        let msg = build_rfc2822(&draft, "me@example.com").unwrap();
-        assert!(msg.contains("From: me@example.com"));
+        let msg = String::from_utf8(build_rfc2822(&draft, &from()).unwrap()).unwrap();
+        assert!(msg.contains("From: Me <me@example.com>"));
         assert!(msg.contains("To: Alice <alice@example.com>"));
         assert!(msg.contains("Subject: Test Subject"));
         assert!(msg.contains("MIME-Version: 1.0"));
         assert!(msg.contains("Content-Type: multipart/alternative"));
-        assert!(msg.contains("text/plain"));
-        assert!(msg.contains("text/html"));
+        assert!(msg.contains("text/plain; charset=utf-8"));
+        assert!(msg.contains("text/html; charset=utf-8"));
+        assert!(msg.contains("\r\n"));
     }
 
     #[test]
-    fn rfc2822_reply_has_in_reply_to() {
+    fn rfc2822_reply_has_full_references_chain() {
         let mut draft = test_draft();
-        draft.in_reply_to = Some(mxr_core::id::MessageId::new());
-        let msg = build_rfc2822(&draft, "me@example.com").unwrap();
-        assert!(msg.contains("In-Reply-To:"));
-        assert!(msg.contains("References:"));
+        draft.reply_headers = Some(ReplyHeaders {
+            in_reply_to: "<parent@example.com>".into(),
+            references: vec!["<root@example.com>".into()],
+        });
+        let msg = String::from_utf8(build_rfc2822(&draft, &from()).unwrap()).unwrap();
+        assert!(msg.contains("In-Reply-To: <parent@example.com>\r\n"));
+        assert!(msg.contains("References: <root@example.com> <parent@example.com>\r\n"));
     }
 
     #[test]
     fn encode_for_gmail_base64url() {
-        let rfc2822 = "From: test@test.com\r\nTo: alice@test.com\r\n\r\nHello";
+        let rfc2822 = b"From: test@test.com\r\nTo: alice@test.com\r\n\r\nHello";
         let encoded = encode_for_gmail(rfc2822);
-        // Should be valid base64url (no +, /, or = padding)
         assert!(!encoded.contains('+'));
         assert!(!encoded.contains('/'));
     }
 
     #[test]
-    fn rfc2822_with_cc() {
+    fn rfc2822_keeps_bcc_for_gmail_submission() {
         let mut draft = test_draft();
-        draft.cc = vec![Address {
+        draft.bcc = vec![Address {
             name: None,
-            email: "bob@example.com".into(),
+            email: "hidden@example.com".into(),
         }];
-        let msg = build_rfc2822(&draft, "me@example.com").unwrap();
-        assert!(msg.contains("Cc: bob@example.com"));
+        let msg = String::from_utf8(build_rfc2822(&draft, &from()).unwrap()).unwrap();
+        assert!(msg.contains("Bcc: hidden@example.com\r\n"));
     }
 }

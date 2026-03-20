@@ -16,6 +16,8 @@ pub struct ComposeFrontmatter {
         skip_serializing_if = "Option::is_none"
     )]
     pub in_reply_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub references: Vec<String>,
     #[serde(default)]
     pub attach: Vec<String>,
 }
@@ -132,6 +134,7 @@ mod tests {
             subject: "Test Subject".into(),
             from: "me@example.com".into(),
             in_reply_to: None,
+            references: Vec::new(),
             attach: Vec::new(),
         };
         let rendered = render_compose_file(&fm, "Hello!", None).unwrap();
@@ -150,12 +153,17 @@ mod tests {
             subject: "Re: Meeting".into(),
             from: "me@example.com".into(),
             in_reply_to: Some("<msg-123@example.com>".into()),
+            references: vec!["<root@example.com>".into(), "<msg-123@example.com>".into()],
             attach: Vec::new(),
         };
         let context = "From: alice@example.com\nDate: 2026-03-15\n\nOriginal message.";
         let rendered = render_compose_file(&fm, "My reply.", Some(context)).unwrap();
         let (parsed_fm, parsed_body) = parse_compose_file(&rendered).unwrap();
         assert_eq!(parsed_fm.subject, "Re: Meeting");
+        assert_eq!(
+            parsed_fm.references,
+            vec!["<root@example.com>".to_string(), "<msg-123@example.com>".to_string()]
+        );
         assert_eq!(parsed_body, "My reply.");
         assert!(!parsed_body.contains("Original message"));
     }

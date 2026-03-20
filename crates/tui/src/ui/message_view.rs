@@ -1,4 +1,4 @@
-use crate::app::{ActivePane, BodyViewState};
+use crate::app::{ActivePane, AttachmentSummary, BodyViewState};
 use crate::theme::Theme;
 use mxr_core::types::Envelope;
 use ratatui::prelude::*;
@@ -9,8 +9,10 @@ pub struct ThreadMessageBlock {
     pub envelope: Envelope,
     pub body_state: BodyViewState,
     pub labels: Vec<String>,
-    pub attachments: Vec<String>,
+    pub attachments: Vec<AttachmentSummary>,
     pub selected: bool,
+    pub has_unsubscribe: bool,
+    pub signature_expanded: bool,
 }
 
 pub fn draw(
@@ -105,30 +107,53 @@ pub fn draw(
             lines.push(Line::from(chips));
         }
 
+        if message.has_unsubscribe {
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("{:<label_width$}", "List:"),
+                    label_style,
+                ),
+                Span::styled(
+                    " unsubscribe ",
+                    Style::default().bg(theme.warning).fg(Color::Black).bold(),
+                ),
+            ]));
+        }
+
         // Attachments
         if !message.attachments.is_empty() {
-            let mut chips: Vec<Span> = vec![Span::styled(
+            lines.push(Line::from(vec![Span::styled(
                 format!("{:<label_width$}", "Attach:"),
                 label_style,
-            )];
+            )]));
             for attachment in &message.attachments {
-                chips.push(Span::styled(
-                    format!("[{}]", attachment),
-                    Style::default().fg(theme.success).bold(),
-                ));
-                chips.push(Span::raw(" "));
+                lines.push(Line::from(vec![
+                    Span::raw(" ".repeat(label_width)),
+                    Span::styled(&attachment.filename, Style::default().fg(theme.success).bold()),
+                    Span::styled(
+                        format!(" ({})", human_size(attachment.size_bytes)),
+                        Style::default().fg(theme.text_muted),
+                    ),
+                ]));
             }
-            lines.push(Line::from(chips));
         }
         lines.push(Line::from(""));
 
         match &message.body_state {
             BodyViewState::Ready { rendered, .. } => {
-                lines.extend(process_body_lines(rendered, theme));
+                lines.extend(process_body_lines(
+                    rendered,
+                    theme,
+                    message.signature_expanded,
+                ));
             }
             BodyViewState::Loading { preview } => {
                 if let Some(preview) = preview {
-                    lines.extend(process_body_lines(preview, theme));
+                    lines.extend(process_body_lines(
+                        preview,
+                        theme,
+                        message.signature_expanded,
+                    ));
                     lines.push(Line::from(""));
                 }
                 lines.push(Line::from(Span::styled(
@@ -138,7 +163,11 @@ pub fn draw(
             }
             BodyViewState::Empty { preview } => {
                 if let Some(preview) = preview {
-                    lines.extend(process_body_lines(preview, theme));
+                    lines.extend(process_body_lines(
+                        preview,
+                        theme,
+                        message.signature_expanded,
+                    ));
                     lines.push(Line::from(""));
                 }
                 lines.push(Line::from(Span::styled(
@@ -146,13 +175,17 @@ pub fn draw(
                     Style::default().fg(theme.text_muted),
                 )));
             }
-            BodyViewState::Error { message, preview } => {
+            BodyViewState::Error { message: err_msg, preview } => {
                 if let Some(preview) = preview {
-                    lines.extend(process_body_lines(preview, theme));
+                    lines.extend(process_body_lines(
+                        preview,
+                        theme,
+                        message.signature_expanded,
+                    ));
                     lines.push(Line::from(""));
                 }
                 lines.push(Line::from(Span::styled(
-                    format!("Error: {message}"),
+                    format!("Error: {err_msg}"),
                     Style::default().fg(theme.error),
                 )));
             }
@@ -173,7 +206,7 @@ pub fn draw(
     frame.render_widget(paragraph, inner);
 }
 
-fn process_body_lines(raw: &str, theme: &Theme) -> Vec<Line<'static>> {
+fn process_body_lines(raw: &str, theme: &Theme, signature_expanded: bool) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut quote_buffer: Vec<String> = Vec::new();
     let mut in_signature = false;
@@ -222,18 +255,46 @@ fn process_body_lines(raw: &str, theme: &Theme) -> Vec<Line<'static>> {
     // Flush remaining
     flush_quotes(&mut quote_buffer, &mut lines, theme);
 
-    // Collapsed signature
     if !signature_lines.is_empty() {
-        let count = signature_lines.len();
-        lines.push(Line::from(Span::styled(
-            format!("-- signature ({} lines) --", count),
-            Style::default()
-                .fg(theme.text_muted)
-                .add_modifier(Modifier::ITALIC),
-        )));
+        if signature_expanded {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "-- signature --",
+                Style::default()
+                    .fg(theme.signature_fg)
+                    .add_modifier(Modifier::ITALIC),
+            )));
+            for line in signature_lines {
+                lines.push(Line::from(Span::styled(
+                    line,
+                    Style::default().fg(theme.signature_fg),
+                )));
+            }
+        } else {
+            let count = signature_lines.len();
+            lines.push(Line::from(Span::styled(
+                format!("-- signature ({} lines, press S to expand) --", count),
+                Style::default()
+                    .fg(theme.text_muted)
+                    .add_modifier(Modifier::ITALIC),
+            )));
+        }
     }
 
     lines
+}
+
+fn human_size(size_bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * 1024;
+
+    if size_bytes >= MB {
+        format!("{:.1} MB", size_bytes as f64 / MB as f64)
+    } else if size_bytes >= KB {
+        format!("{:.1} KB", size_bytes as f64 / KB as f64)
+    } else {
+        format!("{size_bytes} B")
+    }
 }
 
 fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>, theme: &Theme) {

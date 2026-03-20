@@ -54,6 +54,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
             if let Some(sync) = &acct.sync {
                 match sync {
                     mxr_config::SyncProviderConfig::Gmail {
+                        credential_source: _,
                         client_id,
                         client_secret,
                         token_ref,
@@ -129,17 +130,17 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
 async fn add_gmail() -> anyhow::Result<()> {
     println!("Adding Gmail account\n");
 
-    let (client_id, client_secret) = match (BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET) {
+    let (credential_source, client_id, client_secret) = match (BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET) {
         (Some(id), Some(secret)) => {
             println!("Using bundled OAuth credentials.");
-            (id.to_string(), secret.to_string())
+            (mxr_config::GmailCredentialSource::Bundled, id.to_string(), secret.to_string())
         }
         _ => {
             println!("No bundled OAuth credentials. You'll need your own Google Cloud project.");
             println!("See: https://console.cloud.google.com/apis/library/gmail.googleapis.com\n");
             let id = prompt("Client ID: ")?;
             let secret = prompt("Client Secret: ")?;
-            (id, secret)
+            (mxr_config::GmailCredentialSource::Custom, id, secret)
         }
     };
 
@@ -159,6 +160,7 @@ async fn add_gmail() -> anyhow::Result<()> {
             name: account_name.clone(),
             email,
             sync: Some(mxr_config::SyncProviderConfig::Gmail {
+                credential_source,
                 client_id,
                 client_secret: Some(client_secret),
                 token_ref,

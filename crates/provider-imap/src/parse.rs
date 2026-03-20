@@ -1,9 +1,13 @@
 use chrono::{DateTime, TimeZone, Utc};
 use mail_parser::MimeHeaders;
+use mxr_compose::parse::{
+    body_unsubscribe_from_html, calendar_metadata_from_text, decode_format_flowed,
+    extract_raw_header_block, parse_headers_from_raw,
+};
 use mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};
 use mxr_core::types::{
     Address, AttachmentMeta, Envelope, MessageBody, MessageFlags, SyncedMessage,
-    UnsubscribeMethod,
+    TextPlainFormat, UnsubscribeMethod,
 };
 
 use crate::error::ImapProviderError;
@@ -77,56 +81,27 @@ pub fn imap_fetch_to_synced_message(
     let parsed_msg = parsed.ok_or_else(|| {
         ImapProviderError::Parse(format!("Failed to parse RFC822 message for UID {}", msg.uid))
     })?;
+    let raw_headers = extract_raw_header_block(raw)
+        .ok_or_else(|| ImapProviderError::Parse("Missing RFC822 header block".into()))?;
+    let parsed_headers = parse_headers_from_raw(&raw_headers, None)
+        .map_err(|err| ImapProviderError::Parse(err.to_string()))?;
 
-    // Extract envelope fields from parsed message
-    let date = parsed_msg
-        .date()
-        .and_then(|d| {
-            let timestamp = d.to_timestamp();
-            DateTime::from_timestamp(timestamp, 0)
-        })
-        .unwrap_or_else(Utc::now);
-
-    let subject = parsed_msg
-        .subject()
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "(no subject)".to_string());
-
-    let from = parsed_msg
-        .from()
-        .and_then(|addr| extract_first_addr(addr))
-        .unwrap_or_else(|| Address {
-            name: None,
-            email: "unknown@unknown".to_string(),
-        });
-
-    let to = parsed_msg.to().map(extract_addrs).unwrap_or_default();
-    let cc = parsed_msg.cc().map(extract_addrs).unwrap_or_default();
-    let bcc = parsed_msg.bcc().map(extract_addrs).unwrap_or_default();
-
-    let message_id_header = parsed_msg
-        .message_id()
-        .map(|id| format!("<{id}>"));
-
-    let in_reply_to = parsed_msg
-        .in_reply_to()
-        .as_text_list()
-        .and_then(|ids| ids.first().map(|id| format!("<{id}>")));
-
-    let references = parsed_msg
-        .references()
-        .as_text_list()
-        .map(|ids| ids.iter().map(|id| format!("<{id}>")).collect())
-        .unwrap_or_default();
-
-    // Detect attachments
     let has_attachments = parsed_msg.attachments().next().is_some();
-
-    // Build snippet from body text
-    let snippet = parsed_msg
-        .body_text(0)
-        .map(|t| t.chars().take(200).collect::<String>())
-        .unwrap_or_else(|| subject.chars().take(100).collect());
+    let body = parse_message_body(raw, &message_id);
+    let unsubscribe = match parsed_headers.unsubscribe {
+        UnsubscribeMethod::None => body
+            .text_html
+            .as_deref()
+            .and_then(body_unsubscribe_from_html)
+            .unwrap_or(UnsubscribeMethod::None),
+        unsubscribe => unsubscribe,
+    };
+    let snippet = body
+        .text_plain
+        .as_deref()
+        .or(body.text_html.as_deref())
+        .map(|text| text.chars().take(200).collect::<String>())
+        .unwrap_or_else(|| parsed_headers.subject.chars().take(100).collect());
 
     let mut flags = flags_from_imap(&msg.flags);
     let mailbox_lower = mailbox.to_lowercase();
@@ -145,64 +120,27 @@ pub fn imap_fetch_to_synced_message(
         account_id: account_id.clone(),
         provider_id,
         thread_id: ThreadId::new(),
-        message_id_header,
-        in_reply_to,
-        references,
-        from,
-        to,
-        cc,
-        bcc,
-        subject,
-        date,
+        message_id_header: parsed_headers.message_id_header,
+        in_reply_to: parsed_headers.in_reply_to,
+        references: parsed_headers.references,
+        from: parsed_headers.from.unwrap_or_else(|| Address {
+            name: None,
+            email: "unknown@unknown".to_string(),
+        }),
+        to: parsed_headers.to,
+        cc: parsed_headers.cc,
+        bcc: parsed_headers.bcc,
+        subject: parsed_headers.subject,
+        date: parsed_headers.date,
         flags,
         snippet,
         has_attachments,
         size_bytes: msg.size.unwrap_or(0) as u64,
-        unsubscribe: UnsubscribeMethod::None,
+        unsubscribe,
         label_provider_ids: vec![mailbox.to_string()],
     };
 
-    let body = parse_message_body(raw, &message_id);
-
     Ok(SyncedMessage { envelope, body })
-}
-
-/// Extract the first address from a mail_parser Address enum.
-fn extract_first_addr(addr: &mail_parser::Address) -> Option<Address> {
-    match addr {
-        mail_parser::Address::List(list) => list.first().map(|a| Address {
-            name: a.name().map(|n| n.to_string()),
-            email: a.address().unwrap_or("unknown@unknown").to_string(),
-        }),
-        mail_parser::Address::Group(groups) => groups
-            .first()
-            .and_then(|g| g.addresses.first())
-            .map(|a| Address {
-                name: a.name().map(|n| n.to_string()),
-                email: a.address().unwrap_or("unknown@unknown").to_string(),
-            }),
-    }
-}
-
-/// Extract all addresses from a mail_parser Address enum.
-fn extract_addrs(addr: &mail_parser::Address) -> Vec<Address> {
-    match addr {
-        mail_parser::Address::List(list) => list
-            .iter()
-            .map(|a| Address {
-                name: a.name().map(|n| n.to_string()),
-                email: a.address().unwrap_or("unknown@unknown").to_string(),
-            })
-            .collect(),
-        mail_parser::Address::Group(groups) => groups
-            .iter()
-            .flat_map(|g| &g.addresses)
-            .map(|a| Address {
-                name: a.name().map(|n| n.to_string()),
-                email: a.address().unwrap_or("unknown@unknown").to_string(),
-            })
-            .collect(),
-    }
 }
 
 /// Parse raw RFC822 message body into mxr MessageBody.
@@ -211,10 +149,23 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
 
     match parsed {
         Some(msg) => {
-            let text_plain = msg.body_text(0).map(|t| t.to_string());
+            let raw_headers = extract_raw_header_block(raw);
+            let mut metadata = raw_headers
+                .as_deref()
+                .and_then(|headers| parse_headers_from_raw(headers, None).ok())
+                .map(|parsed| parsed.metadata)
+                .unwrap_or_default();
+            let text_plain = match (msg.body_text(0), metadata.text_plain_format.as_ref()) {
+                (Some(text), Some(TextPlainFormat::Flowed { delsp })) => {
+                    Some(decode_format_flowed(&text, *delsp))
+                }
+                (Some(text), _) => Some(text.to_string()),
+                (None, _) => None,
+            };
             let text_html = msg.body_html(0).map(|t| t.to_string());
 
             let mut attachments = Vec::new();
+            let mut calendar = None;
             for attachment in msg.attachments() {
                 let idx = msg
                     .parts
@@ -244,6 +195,19 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
                     provider_id: format!("{idx}"),
                 });
             }
+            for part in &msg.parts {
+                if let Some(content_type) = part.content_type() {
+                    let subtype = content_type.subtype().unwrap_or_default();
+                    if content_type.ctype().eq_ignore_ascii_case("text")
+                        && subtype.eq_ignore_ascii_case("calendar")
+                    {
+                        if let Some(text) = part.text_contents() {
+                            calendar = calendar.or_else(|| calendar_metadata_from_text(text));
+                        }
+                    }
+                }
+            }
+            metadata.calendar = calendar;
 
             MessageBody {
                 message_id: message_id.clone(),
@@ -251,6 +215,7 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
                 text_html,
                 attachments,
                 fetched_at: Utc::now(),
+                metadata,
             }
         }
         None => MessageBody {
@@ -259,6 +224,7 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
             text_html: None,
             attachments: vec![],
             fetched_at: Utc::now(),
+            metadata: Default::default(),
         },
     }
 }
@@ -266,6 +232,8 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
+    use serde_json::json;
 
     #[test]
     fn flags_from_imap_converts_standard_flags() {
@@ -292,6 +260,73 @@ mod tests {
     fn flags_from_imap_empty() {
         let flags = flags_from_imap(&[]);
         assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn standards_fixture_multipart_calendar_snapshot() {
+        let raw = standards_fixture_bytes("multipart-calendar.eml");
+        let account_id = AccountId::new();
+        let msg = FetchedMessage {
+            uid: 42,
+            flags: vec!["\\Seen".into()],
+            envelope: None,
+            body: Some(raw.clone()),
+            header: None,
+            size: Some(raw.len() as u32),
+        };
+
+        let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
+        insta::assert_yaml_snapshot!(
+            "imap_multipart_calendar",
+            json!({
+                "subject": synced.envelope.subject,
+                "from": synced.envelope.from,
+                "unsubscribe": format!("{:?}", synced.envelope.unsubscribe),
+                "attachment_filenames": synced.body.attachments.iter().map(|attachment| attachment.filename.clone()).collect::<Vec<_>>(),
+                "calendar": synced.body.metadata.calendar,
+                "content_language": synced.body.metadata.content_language,
+                "auth_results": synced.body.metadata.auth_results,
+                "html_present": synced.body.text_html.is_some(),
+                "plain_present": synced.body.text_plain.is_some(),
+            })
+        );
+    }
+
+    #[test]
+    fn standards_fixture_imap_matrix_snapshots() {
+        let account_id = AccountId::new();
+
+        for (index, fixture) in standards_fixture_names().iter().enumerate() {
+            let raw = standards_fixture_bytes(fixture);
+            let msg = FetchedMessage {
+                uid: index as u32 + 1,
+                flags: vec!["\\Seen".into()],
+                envelope: None,
+                body: Some(raw.clone()),
+                header: None,
+                size: Some(raw.len() as u32),
+            };
+
+            let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
+            insta::assert_yaml_snapshot!(
+                format!("imap_fixture__{}", fixture_stem(fixture)),
+                json!({
+                    "subject": synced.envelope.subject,
+                    "from": synced.envelope.from,
+                    "to": synced.envelope.to,
+                    "cc": synced.envelope.cc,
+                    "message_id": synced.envelope.message_id_header,
+                    "unsubscribe": format!("{:?}", synced.envelope.unsubscribe),
+                    "attachment_filenames": synced.body.attachments.iter().map(|attachment| attachment.filename.clone()).collect::<Vec<_>>(),
+                    "calendar": synced.body.metadata.calendar,
+                    "content_language": synced.body.metadata.content_language,
+                    "auth_results": synced.body.metadata.auth_results,
+                    "text_plain_format": format!("{:?}", synced.body.metadata.text_plain_format),
+                    "plain_excerpt": synced.body.text_plain.as_deref().map(|body| body.lines().take(3).collect::<Vec<_>>().join("\n")),
+                    "html_present": synced.body.text_html.is_some(),
+                })
+            );
+        }
     }
 
     #[test]

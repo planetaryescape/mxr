@@ -8,6 +8,10 @@ pub enum QueryNode {
     Filter(FilterKind),
     Label(String),
     DateRange { bound: DateBound, date: DateValue },
+    Size {
+        op: SizeOp,
+        bytes: u64,
+    },
     And(Box<QueryNode>, Box<QueryNode>),
     Or(Box<QueryNode>, Box<QueryNode>),
     Not(Box<QueryNode>),
@@ -17,7 +21,11 @@ pub enum QueryNode {
 pub enum QueryField {
     From,
     To,
+    Cc,
+    Bcc,
     Subject,
+    Body,
+    Filename,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,6 +33,13 @@ pub enum FilterKind {
     Unread,
     Read,
     Starred,
+    Draft,
+    Sent,
+    Trash,
+    Spam,
+    Answered,
+    Inbox,
+    Archived,
     HasAttachment,
 }
 
@@ -42,4 +57,13 @@ pub enum DateValue {
     Yesterday,
     ThisWeek,
     ThisMonth,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SizeOp {
+    LessThan,
+    LessThanOrEqual,
+    Equal,
+    GreaterThan,
+    GreaterThanOrEqual,
 }

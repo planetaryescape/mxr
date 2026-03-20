@@ -9,7 +9,10 @@ impl super::Store {
         let cc_addrs = serde_json::to_string(&draft.cc).unwrap();
         let bcc_addrs = serde_json::to_string(&draft.bcc).unwrap();
         let attachments = serde_json::to_string(&draft.attachments).unwrap();
-        let in_reply_to = draft.in_reply_to.as_ref().map(|id| id.as_str());
+        let in_reply_to = draft
+            .reply_headers
+            .as_ref()
+            .map(|headers| serde_json::to_string(headers).unwrap());
         let created_at = draft.created_at.timestamp();
         let updated_at = draft.updated_at.timestamp();
 
@@ -50,9 +53,7 @@ impl super::Store {
         Ok(row.map(|r| Draft {
             id: DraftId::from_uuid(uuid::Uuid::parse_str(&r.id).unwrap()),
             account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&r.account_id).unwrap()),
-            in_reply_to: r
-                .in_reply_to
-                .map(|s| MessageId::from_uuid(uuid::Uuid::parse_str(&s).unwrap())),
+            reply_headers: parse_reply_headers(r.in_reply_to),
             to: serde_json::from_str(&r.to_addrs).unwrap_or_default(),
             cc: serde_json::from_str(&r.cc_addrs).unwrap_or_default(),
             bcc: serde_json::from_str(&r.bcc_addrs).unwrap_or_default(),
@@ -82,9 +83,7 @@ impl super::Store {
             .map(|r| Draft {
                 id: DraftId::from_uuid(uuid::Uuid::parse_str(&r.id).unwrap()),
                 account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&r.account_id).unwrap()),
-                in_reply_to: r
-                    .in_reply_to
-                    .map(|s| MessageId::from_uuid(uuid::Uuid::parse_str(&s).unwrap())),
+                reply_headers: parse_reply_headers(r.in_reply_to),
                 to: serde_json::from_str(&r.to_addrs).unwrap_or_default(),
                 cc: serde_json::from_str(&r.cc_addrs).unwrap_or_default(),
                 bcc: serde_json::from_str(&r.bcc_addrs).unwrap_or_default(),
@@ -104,4 +103,18 @@ impl super::Store {
             .await?;
         Ok(())
     }
+}
+
+fn parse_reply_headers(raw: Option<String>) -> Option<ReplyHeaders> {
+    let raw = raw?;
+    serde_json::from_str(&raw).ok().or_else(|| {
+        if raw.trim().is_empty() {
+            None
+        } else {
+            Some(ReplyHeaders {
+                in_reply_to: raw,
+                references: Vec::new(),
+            })
+        }
+    })
 }

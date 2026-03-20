@@ -1,5 +1,6 @@
 use mxr_core::id::*;
 use mxr_core::types::*;
+use sqlx::Row;
 
 impl super::Store {
     pub async fn get_body(
@@ -7,10 +8,10 @@ impl super::Store {
         message_id: &MessageId,
     ) -> Result<Option<MessageBody>, sqlx::Error> {
         let mid = message_id.as_str();
-        let row = sqlx::query!(
-            r#"SELECT message_id as "message_id!", text_plain, text_html, fetched_at as "fetched_at!" FROM bodies WHERE message_id = ?"#,
-            mid,
+        let row = sqlx::query(
+            r#"SELECT message_id, text_plain, text_html, fetched_at, metadata_json FROM bodies WHERE message_id = ?"#,
         )
+        .bind(mid)
         .fetch_optional(self.reader())
         .await?;
 
@@ -40,26 +41,33 @@ impl super::Store {
             })
             .collect();
 
+        let metadata_json: String = row.try_get("metadata_json")?;
         Ok(Some(MessageBody {
-            message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&row.message_id).unwrap()),
-            text_plain: row.text_plain,
-            text_html: row.text_html,
+            message_id: MessageId::from_uuid(
+                uuid::Uuid::parse_str(row.try_get::<&str, _>("message_id")?).unwrap(),
+            ),
+            text_plain: row.try_get("text_plain")?,
+            text_html: row.try_get("text_html")?,
             attachments,
-            fetched_at: chrono::DateTime::from_timestamp(row.fetched_at, 0).unwrap_or_default(),
+            fetched_at: chrono::DateTime::from_timestamp(row.try_get("fetched_at")?, 0)
+                .unwrap_or_default(),
+            metadata: serde_json::from_str(&metadata_json).unwrap_or_default(),
         }))
     }
 
     pub async fn insert_body(&self, body: &MessageBody) -> Result<(), sqlx::Error> {
         let fetched_at = body.fetched_at.timestamp();
         let mid = body.message_id.as_str();
+        let metadata_json = serde_json::to_string(&body.metadata).unwrap_or_else(|_| "{}".into());
 
-        sqlx::query!(
-            "INSERT OR REPLACE INTO bodies (message_id, text_plain, text_html, fetched_at) VALUES (?, ?, ?, ?)",
-            mid,
-            body.text_plain,
-            body.text_html,
-            fetched_at,
+        sqlx::query(
+            "INSERT OR REPLACE INTO bodies (message_id, text_plain, text_html, fetched_at, metadata_json) VALUES (?, ?, ?, ?, ?)",
         )
+        .bind(mid)
+        .bind(&body.text_plain)
+        .bind(&body.text_html)
+        .bind(fetched_at)
+        .bind(metadata_json)
         .execute(self.writer())
         .await?;
 

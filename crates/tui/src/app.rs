@@ -1,6 +1,7 @@
 use crate::action::{Action, PatternKind};
 use crate::client::Client;
 use crate::input::InputHandler;
+use crate::theme::Theme;
 use crate::ui;
 use crate::ui::command_palette::CommandPalette;
 use crate::ui::compose_picker::ComposePicker;
@@ -8,7 +9,7 @@ use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
 use crate::ui::search_bar::SearchBar;
 use crossterm::event::{KeyCode, KeyModifiers};
 use mxr_config::RenderConfig;
-use mxr_core::id::{AttachmentId, MessageId};
+use mxr_core::id::{AccountId, AttachmentId, MessageId};
 use mxr_core::types::*;
 use mxr_core::MxrError;
 use mxr_protocol::{MutationCommand, Request};
@@ -125,6 +126,7 @@ pub struct SearchPageState {
     pub query: String,
     pub editing: bool,
     pub results: Vec<Envelope>,
+    pub scores: HashMap<MessageId, f32>,
     pub selected_index: usize,
     pub scroll_offset: usize,
 }
@@ -207,6 +209,7 @@ pub enum AccountFormMode {
 pub struct AccountFormState {
     pub visible: bool,
     pub mode: AccountFormMode,
+    pub pending_mode_switch: Option<AccountFormMode>,
     pub key: String,
     pub name: String,
     pub email: String,
@@ -236,6 +239,7 @@ impl Default for AccountFormState {
         Self {
             visible: false,
             mode: AccountFormMode::Gmail,
+            pending_mode_switch: None,
             key: String::new(),
             name: String::new(),
             email: String::new(),
@@ -319,6 +323,35 @@ pub struct PendingBulkConfirm {
     pub status_message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachmentSummary {
+    pub filename: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingUnsubscribeConfirm {
+    pub message_id: MessageId,
+    pub account_id: AccountId,
+    pub sender_email: String,
+    pub method_label: String,
+    pub archive_message_ids: Vec<MessageId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingUnsubscribeAction {
+    pub message_id: MessageId,
+    pub archive_message_ids: Vec<MessageId>,
+    pub sender_email: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SidebarGroup {
+    SystemLabels,
+    UserLabels,
+    SavedSearches,
+}
+
 impl BodyViewState {
     pub fn display_text(&self) -> Option<&str> {
         match self {
@@ -331,6 +364,7 @@ impl BodyViewState {
 }
 
 pub struct App {
+    pub theme: Theme,
     pub envelopes: Vec<Envelope>,
     pub all_envelopes: Vec<Envelope>,
     pub labels: Vec<Label>,
@@ -390,7 +424,10 @@ pub struct App {
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,
     pub pending_bulk_confirm: Option<PendingBulkConfirm>,
+    pub pending_unsubscribe_confirm: Option<PendingUnsubscribeConfirm>,
+    pub pending_unsubscribe_action: Option<PendingUnsubscribeAction>,
     pub reader_mode: bool,
+    pub signature_expanded: bool,
     pub label_picker: LabelPicker,
     pub compose_picker: ComposePicker,
     pub attachment_panel: AttachmentPanelState,
@@ -401,7 +438,11 @@ pub struct App {
     pub visual_anchor: Option<usize>,
     pub pending_export_thread: Option<mxr_core::id::ThreadId>,
     pub snooze_config: mxr_config::SnoozeConfig,
+    pub sidebar_system_expanded: bool,
+    pub sidebar_user_expanded: bool,
+    pub sidebar_saved_searches_expanded: bool,
     pending_label_action: Option<(LabelPickerMode, String)>,
+    pub url_modal: Option<ui::url_modal::UrlModalState>,
     input: InputHandler,
 }
 
@@ -418,6 +459,7 @@ impl App {
 
     pub fn from_config(config: &mxr_config::MxrConfig) -> Self {
         let mut app = Self::from_render_and_snooze(&config.render, &config.snooze);
+        app.theme = Theme::from_spec(&config.appearance.theme);
         if config.accounts.is_empty() {
             app.enter_account_setup_onboarding();
         }
@@ -433,6 +475,7 @@ impl App {
         snooze_config: &mxr_config::SnoozeConfig,
     ) -> Self {
         Self {
+            theme: Theme::default(),
             envelopes: Vec::new(),
             all_envelopes: Vec::new(),
             labels: Vec::new(),
@@ -492,7 +535,10 @@ impl App {
             pending_compose: None,
             pending_send_confirm: None,
             pending_bulk_confirm: None,
+            pending_unsubscribe_confirm: None,
+            pending_unsubscribe_action: None,
             reader_mode: render.reader_mode,
+            signature_expanded: false,
             label_picker: LabelPicker::default(),
             compose_picker: ComposePicker::default(),
             attachment_panel: AttachmentPanelState::default(),
@@ -503,7 +549,11 @@ impl App {
             visual_anchor: None,
             pending_export_thread: None,
             snooze_config: snooze_config.clone(),
+            sidebar_system_expanded: true,
+            sidebar_user_expanded: true,
+            sidebar_saved_searches_expanded: true,
             pending_label_action: None,
+            url_modal: None,
             input: InputHandler::new(),
         }
     }
@@ -535,18 +585,29 @@ impl App {
 
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
         let mut items = vec![SidebarItem::AllMail];
-        items.extend(
-            self.visible_labels()
-                .into_iter()
-                .cloned()
-                .map(SidebarItem::Label),
-        );
-        items.extend(
-            self.saved_searches
-                .iter()
-                .cloned()
-                .map(SidebarItem::SavedSearch),
-        );
+        let mut system_labels = Vec::new();
+        let mut user_labels = Vec::new();
+        for label in self.visible_labels() {
+            if label.kind == LabelKind::System {
+                system_labels.push(label.clone());
+            } else {
+                user_labels.push(label.clone());
+            }
+        }
+        if self.sidebar_system_expanded {
+            items.extend(system_labels.into_iter().map(SidebarItem::Label));
+        }
+        if self.sidebar_user_expanded {
+            items.extend(user_labels.into_iter().map(SidebarItem::Label));
+        }
+        if self.sidebar_saved_searches_expanded {
+            items.extend(
+                self.saved_searches
+                    .iter()
+                    .cloned()
+                    .map(SidebarItem::SavedSearch),
+            );
+        }
         items
     }
 
@@ -691,20 +752,58 @@ impl App {
         }
     }
 
-    fn cycle_account_form_mode(&mut self, forward: bool) {
-        self.accounts_page.form.mode = match (self.accounts_page.form.mode, forward) {
+    fn next_account_form_mode(&self, forward: bool) -> AccountFormMode {
+        match (self.accounts_page.form.mode, forward) {
             (AccountFormMode::Gmail, true) => AccountFormMode::ImapSmtp,
             (AccountFormMode::ImapSmtp, true) => AccountFormMode::SmtpOnly,
             (AccountFormMode::SmtpOnly, true) => AccountFormMode::Gmail,
             (AccountFormMode::Gmail, false) => AccountFormMode::SmtpOnly,
             (AccountFormMode::ImapSmtp, false) => AccountFormMode::Gmail,
             (AccountFormMode::SmtpOnly, false) => AccountFormMode::ImapSmtp,
-        };
+        }
+    }
+
+    fn account_form_has_meaningful_input(&self) -> bool {
+        let form = &self.accounts_page.form;
+        [
+            form.key.trim(),
+            form.name.trim(),
+            form.email.trim(),
+            form.gmail_client_id.trim(),
+            form.gmail_client_secret.trim(),
+            form.imap_host.trim(),
+            form.imap_username.trim(),
+            form.imap_password_ref.trim(),
+            form.imap_password.trim(),
+            form.smtp_host.trim(),
+            form.smtp_username.trim(),
+            form.smtp_password_ref.trim(),
+            form.smtp_password.trim(),
+        ]
+        .iter()
+        .any(|value| !value.is_empty())
+    }
+
+    fn apply_account_form_mode(&mut self, mode: AccountFormMode) {
+        self.accounts_page.form.mode = mode;
+        self.accounts_page.form.pending_mode_switch = None;
         self.accounts_page.form.active_field =
             self.accounts_page.form.active_field.min(self.account_form_field_count().saturating_sub(1));
         self.accounts_page.form.editing_field = false;
         self.accounts_page.form.field_cursor = 0;
         self.refresh_account_form_derived_fields();
+    }
+
+    fn request_account_form_mode_change(&mut self, forward: bool) {
+        let next_mode = self.next_account_form_mode(forward);
+        if next_mode == self.accounts_page.form.mode {
+            return;
+        }
+        if self.account_form_has_meaningful_input() {
+            self.accounts_page.form.pending_mode_switch = Some(next_mode);
+        } else {
+            self.apply_account_form_mode(next_mode);
+        }
     }
 
     fn refresh_account_form_derived_fields(&mut self) {
@@ -998,6 +1097,20 @@ impl App {
             };
         }
 
+        if self.pending_unsubscribe_confirm.is_some() {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Enter, _)
+                | (KeyCode::Char('u'), KeyModifiers::NONE)
+                | (KeyCode::Char('U'), KeyModifiers::SHIFT) => Some(Action::ConfirmUnsubscribeOnly),
+                (KeyCode::Char('a'), KeyModifiers::NONE)
+                | (KeyCode::Char('A'), KeyModifiers::SHIFT) => {
+                    Some(Action::ConfirmUnsubscribeAndArchiveSender)
+                }
+                (KeyCode::Esc, _) => Some(Action::CancelUnsubscribe),
+                _ => None,
+            };
+        }
+
         if self.snooze_panel.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => return Some(Action::Snooze),
@@ -1016,6 +1129,68 @@ impl App {
                         .selected_index
                         .checked_sub(1)
                         .unwrap_or(snooze_presets().len() - 1);
+                    return None;
+                }
+                _ => return None,
+            }
+        }
+
+        // Route keys to URL modal when active
+        if let Some(ref mut url_state) = self.url_modal {
+            match (key.code, key.modifiers) {
+                (KeyCode::Enter | KeyCode::Char('o'), _) => {
+                    if let Some(url) = url_state.selected_url().map(|s| s.to_string()) {
+                        ui::url_modal::open_url(&url);
+                        self.status_message = Some(format!("Opening {url}"));
+                    }
+                    self.url_modal = None;
+                    return None;
+                }
+                (KeyCode::Char('y'), _) => {
+                    if let Some(url) = url_state.selected_url().map(|s| s.to_string()) {
+                        // Copy to clipboard via pbcopy (macOS) or xclip (Linux)
+                        #[cfg(target_os = "macos")]
+                        {
+                            use std::io::Write;
+                            if let Ok(mut child) = std::process::Command::new("pbcopy")
+                                .stdin(std::process::Stdio::piped())
+                                .spawn()
+                            {
+                                if let Some(mut stdin) = child.stdin.take() {
+                                    let _ = stdin.write_all(url.as_bytes());
+                                }
+                                let _ = child.wait();
+                            }
+                        }
+                        #[cfg(target_os = "linux")]
+                        {
+                            use std::io::Write;
+                            if let Ok(mut child) = std::process::Command::new("xclip")
+                                .args(["-selection", "clipboard"])
+                                .stdin(std::process::Stdio::piped())
+                                .spawn()
+                            {
+                                if let Some(mut stdin) = child.stdin.take() {
+                                    let _ = stdin.write_all(url.as_bytes());
+                                }
+                                let _ = child.wait();
+                            }
+                        }
+                        self.status_message = Some(format!("Copied: {url}"));
+                    }
+                    self.url_modal = None;
+                    return None;
+                }
+                (KeyCode::Char('j') | KeyCode::Down, _) => {
+                    url_state.next();
+                    return None;
+                }
+                (KeyCode::Char('k') | KeyCode::Up, _) => {
+                    url_state.prev();
+                    return None;
+                }
+                (KeyCode::Esc | KeyCode::Char('q'), _) => {
+                    self.url_modal = None;
                     return None;
                 }
                 _ => return None,
@@ -1166,6 +1341,8 @@ impl App {
                 }
                 // o = open in browser (message already open in pane)
                 (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::OpenInBrowser),
+                // L = open links picker
+                (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLinks),
                 _ => self.input.handle_key(key),
             },
             ActivePane::Sidebar => match (key.code, key.modifiers) {
@@ -1175,6 +1352,14 @@ impl App {
                 }
                 (KeyCode::Char('k') | KeyCode::Up, _) => {
                     self.sidebar_move_up();
+                    None
+                }
+                (KeyCode::Char('['), _) => {
+                    self.collapse_current_sidebar_section();
+                    None
+                }
+                (KeyCode::Char(']'), _) => {
+                    self.expand_current_sidebar_section();
                     None
                 }
                 (KeyCode::Enter | KeyCode::Char('o'), _) => self.sidebar_select(),
@@ -1398,6 +1583,22 @@ impl App {
     }
 
     fn handle_account_form_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        if self.accounts_page.form.pending_mode_switch.is_some() {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Enter | KeyCode::Char('y'), _) => {
+                    if let Some(mode) = self.accounts_page.form.pending_mode_switch {
+                        self.apply_account_form_mode(mode);
+                    }
+                    None
+                }
+                (KeyCode::Esc | KeyCode::Char('n'), _) => {
+                    self.accounts_page.form.pending_mode_switch = None;
+                    None
+                }
+                _ => None,
+            };
+        }
+
         if self.accounts_page.form.editing_field {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc, _) | (KeyCode::Enter, _) => {
@@ -1470,6 +1671,14 @@ impl App {
                 self.accounts_page.form.visible = false;
                 None
             }
+            (KeyCode::Left | KeyCode::Char('h'), _) => {
+                self.request_account_form_mode_change(false);
+                None
+            }
+            (KeyCode::Right | KeyCode::Char('l'), _) => {
+                self.request_account_form_mode_change(true);
+                None
+            }
             (KeyCode::Char('j') | KeyCode::Down, _) => {
                 self.accounts_page.form.active_field =
                     (self.accounts_page.form.active_field + 1) % self.account_form_field_count();
@@ -1484,21 +1693,21 @@ impl App {
                 None
             }
             (KeyCode::Tab, _) => {
-                self.accounts_page.form.active_field =
-                    (self.accounts_page.form.active_field + 1) % self.account_form_field_count();
+                if self.accounts_page.form.active_field == 0 {
+                    self.request_account_form_mode_change(true);
+                } else {
+                    self.accounts_page.form.active_field =
+                        (self.accounts_page.form.active_field + 1) % self.account_form_field_count();
+                }
                 None
             }
             (KeyCode::BackTab, _) => {
-                self.accounts_page.form.active_field =
-                    self.accounts_page.form.active_field.saturating_sub(1);
-                None
-            }
-            (KeyCode::Left | KeyCode::Char('h'), _) if self.accounts_page.form.active_field == 0 => {
-                self.cycle_account_form_mode(false);
-                None
-            }
-            (KeyCode::Right | KeyCode::Char('l'), _) if self.accounts_page.form.active_field == 0 => {
-                self.cycle_account_form_mode(true);
+                if self.accounts_page.form.active_field == 0 {
+                    self.request_account_form_mode_change(false);
+                } else {
+                    self.accounts_page.form.active_field =
+                        self.accounts_page.form.active_field.saturating_sub(1);
+                }
                 None
             }
             (KeyCode::Enter | KeyCode::Char('i'), _) => {
@@ -1509,7 +1718,7 @@ impl App {
                         .unwrap_or(0);
                     None
                 } else if self.accounts_page.form.active_field == 0 {
-                    self.cycle_account_form_mode(true);
+                    self.request_account_form_mode_change(true);
                     None
                 } else if matches!(self.accounts_page.form.mode, AccountFormMode::Gmail)
                     && self.accounts_page.form.active_field == 4
@@ -1531,7 +1740,7 @@ impl App {
             }
             (KeyCode::Char('s'), _) => Some(Action::SaveAccountForm),
             (KeyCode::Char(' '), _) if self.accounts_page.form.active_field == 0 => {
-                self.cycle_account_form_mode(true);
+                self.request_account_form_mode_change(true);
                 None
             }
             (KeyCode::Char(' '), _)
@@ -1866,6 +2075,21 @@ impl App {
             }
             Action::GoToLabel => {
                 self.apply(Action::ClearFilter);
+            }
+            Action::OpenTab1 => {
+                self.apply(Action::OpenMailboxScreen);
+            }
+            Action::OpenTab2 => {
+                self.apply(Action::OpenSearchScreen);
+            }
+            Action::OpenTab3 => {
+                self.apply(Action::OpenRulesScreen);
+            }
+            Action::OpenTab4 => {
+                self.apply(Action::OpenAccountsScreen);
+            }
+            Action::OpenTab5 => {
+                self.apply(Action::OpenDiagnosticsScreen);
             }
             // Command palette
             Action::OpenCommandPalette => {
@@ -2268,13 +2492,52 @@ impl App {
             }
             Action::Unsubscribe => {
                 if let Some(env) = self.context_envelope() {
-                    let id = env.id.clone();
-                    self.pending_mutation_queue.push((
-                        Request::Unsubscribe { message_id: id },
-                        MutationEffect::StatusOnly("Unsubscribed".into()),
-                    ));
+                    if matches!(env.unsubscribe, UnsubscribeMethod::None) {
+                        self.status_message = Some("No unsubscribe option found for this message".into());
+                    } else {
+                        let sender_email = env.from.email.clone();
+                        let archive_message_ids = self
+                            .all_envelopes
+                            .iter()
+                            .filter(|candidate| {
+                                candidate.account_id == env.account_id
+                                    && candidate.from.email.eq_ignore_ascii_case(&sender_email)
+                            })
+                            .map(|candidate| candidate.id.clone())
+                            .collect();
+                        self.pending_unsubscribe_confirm = Some(PendingUnsubscribeConfirm {
+                            message_id: env.id.clone(),
+                            account_id: env.account_id.clone(),
+                            sender_email,
+                            method_label: unsubscribe_method_label(&env.unsubscribe).to_string(),
+                            archive_message_ids,
+                        });
+                    }
+                }
+            }
+            Action::ConfirmUnsubscribeOnly => {
+                if let Some(pending) = self.pending_unsubscribe_confirm.take() {
+                    self.pending_unsubscribe_action = Some(PendingUnsubscribeAction {
+                        message_id: pending.message_id,
+                        archive_message_ids: Vec::new(),
+                        sender_email: pending.sender_email,
+                    });
                     self.status_message = Some("Unsubscribing...".into());
                 }
+            }
+            Action::ConfirmUnsubscribeAndArchiveSender => {
+                if let Some(pending) = self.pending_unsubscribe_confirm.take() {
+                    self.pending_unsubscribe_action = Some(PendingUnsubscribeAction {
+                        message_id: pending.message_id,
+                        archive_message_ids: pending.archive_message_ids,
+                        sender_email: pending.sender_email,
+                    });
+                    self.status_message = Some("Unsubscribing and archiving sender...".into());
+                }
+            }
+            Action::CancelUnsubscribe => {
+                self.pending_unsubscribe_confirm = None;
+                self.status_message = Some("Unsubscribe cancelled".into());
             }
             Action::Snooze => {
                 if self.snooze_panel.visible {
@@ -2325,6 +2588,9 @@ impl App {
                         self.body_view_state = self.resolve_body_view_state(&env);
                     }
                 }
+            }
+            Action::ToggleSignature => {
+                self.signature_expanded = !self.signature_expanded;
             }
 
             // Phase 2: Batch operations (A007)
@@ -2420,6 +2686,9 @@ impl App {
                     self.open_attachment_panel();
                 }
             }
+            Action::OpenLinks => {
+                self.open_url_modal();
+            }
             Action::ToggleFullscreen => {
                 if self.layout_mode == LayoutMode::FullScreen {
                     self.layout_mode = LayoutMode::ThreePane;
@@ -2509,6 +2778,41 @@ impl App {
             Some(SidebarItem::SavedSearch(_)) => SidebarSection::SavedSearches,
             _ => SidebarSection::Labels,
         };
+    }
+
+    fn current_sidebar_group(&self) -> SidebarGroup {
+        match self.selected_sidebar_item() {
+            Some(SidebarItem::SavedSearch(_)) => SidebarGroup::SavedSearches,
+            Some(SidebarItem::Label(label)) if label.kind == LabelKind::System => {
+                SidebarGroup::SystemLabels
+            }
+            Some(SidebarItem::Label(_)) => SidebarGroup::UserLabels,
+            Some(SidebarItem::AllMail) | None => SidebarGroup::SystemLabels,
+        }
+    }
+
+    fn collapse_current_sidebar_section(&mut self) {
+        match self.current_sidebar_group() {
+            SidebarGroup::SystemLabels => self.sidebar_system_expanded = false,
+            SidebarGroup::UserLabels => self.sidebar_user_expanded = false,
+            SidebarGroup::SavedSearches => self.sidebar_saved_searches_expanded = false,
+        }
+        self.sidebar_selected = self
+            .sidebar_selected
+            .min(self.sidebar_items().len().saturating_sub(1));
+        self.sync_sidebar_section();
+    }
+
+    fn expand_current_sidebar_section(&mut self) {
+        match self.current_sidebar_group() {
+            SidebarGroup::SystemLabels => self.sidebar_system_expanded = true,
+            SidebarGroup::UserLabels => self.sidebar_user_expanded = true,
+            SidebarGroup::SavedSearches => self.sidebar_saved_searches_expanded = true,
+        }
+        self.sidebar_selected = self
+            .sidebar_selected
+            .min(self.sidebar_items().len().saturating_sub(1));
+        self.sync_sidebar_section();
     }
 
     /// Live filter: instant client-side prefix matching on subject/from/snippet,
@@ -2651,6 +2955,7 @@ impl App {
 
     fn open_envelope(&mut self, env: Envelope) {
         self.close_attachment_panel();
+        self.signature_expanded = false;
         self.viewed_thread = None;
         self.viewed_thread_messages = self.optimistic_thread_messages(&env);
         self.thread_selected_index = self.default_thread_selected_index();
@@ -2889,6 +3194,22 @@ impl App {
         self.attachment_panel.status = None;
     }
 
+    pub fn open_url_modal(&mut self) {
+        let body = self.current_viewing_body();
+        let Some(body) = body else {
+            self.status_message = Some("No message body loaded".into());
+            return;
+        };
+        let text_plain = body.text_plain.as_deref();
+        let text_html = body.text_html.as_deref();
+        let urls = ui::url_modal::extract_urls(text_plain, text_html);
+        if urls.is_empty() {
+            self.status_message = Some("No links found".into());
+            return;
+        }
+        self.url_modal = Some(ui::url_modal::UrlModalState::new(urls));
+    }
+
     pub fn close_attachment_panel(&mut self) {
         self.attachment_panel = AttachmentPanelState::default();
         self.pending_attachment_action = None;
@@ -2942,16 +3263,35 @@ impl App {
             .collect()
     }
 
-    fn attachment_chips_for_envelope(&self, envelope: &Envelope) -> Vec<String> {
+    fn attachment_summaries_for_envelope(&self, envelope: &Envelope) -> Vec<AttachmentSummary> {
         self.body_cache
             .get(&envelope.id)
             .map(|body| {
                 body.attachments
                     .iter()
-                    .map(|attachment| attachment.filename.clone())
+                    .map(|attachment| AttachmentSummary {
+                        filename: attachment.filename.clone(),
+                        size_bytes: attachment.size_bytes,
+                    })
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    fn thread_message_blocks(&self) -> Vec<ui::message_view::ThreadMessageBlock> {
+        self.viewed_thread_messages
+            .iter()
+            .map(|message| ui::message_view::ThreadMessageBlock {
+                envelope: message.clone(),
+                body_state: self.resolve_body_view_state(message),
+                labels: self.label_chips_for_envelope(message),
+                attachments: self.attachment_summaries_for_envelope(message),
+                selected: self.viewing_envelope.as_ref().map(|env| env.id.clone())
+                    == Some(message.id.clone()),
+                has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
+                signature_expanded: self.signature_expanded,
+            })
+            .collect()
     }
 
     pub fn apply_local_label_refs(
@@ -3116,7 +3456,7 @@ impl App {
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
-        let theme = crate::theme::Theme::default();
+        let theme = &self.theme;
         let area = frame.area();
 
         // Layout: tabs (1 line) | hint bar (2 lines) | content | status bar (1 line)
@@ -3188,6 +3528,9 @@ impl App {
                         all_mail_active: !self.search_active
                             && self.active_label.is_none()
                             && self.pending_active_label.is_none(),
+                        system_expanded: self.sidebar_system_expanded,
+                        user_expanded: self.sidebar_user_expanded,
+                        saved_searches_expanded: self.sidebar_saved_searches_expanded,
                         active_label: self
                             .pending_active_label
                             .as_ref()
@@ -3233,6 +3576,9 @@ impl App {
                         all_mail_active: !self.search_active
                             && self.active_label.is_none()
                             && self.pending_active_label.is_none(),
+                        system_expanded: self.sidebar_system_expanded,
+                        user_expanded: self.sidebar_user_expanded,
+                        saved_searches_expanded: self.sidebar_saved_searches_expanded,
                         active_label: self
                             .pending_active_label
                             .as_ref()
@@ -3259,18 +3605,7 @@ impl App {
                 ui::message_view::draw(
                     frame,
                     chunks[2],
-                    &self
-                        .viewed_thread_messages
-                        .iter()
-                        .map(|message| ui::message_view::ThreadMessageBlock {
-                            envelope: message.clone(),
-                            body_state: self.resolve_body_view_state(message),
-                            labels: self.label_chips_for_envelope(message),
-                            attachments: self.attachment_chips_for_envelope(message),
-                            selected: self.viewing_envelope.as_ref().map(|env| env.id.clone())
-                                == Some(message.id.clone()),
-                        })
-                        .collect::<Vec<_>>(),
+                    &self.thread_message_blocks(),
                     self.message_scroll_offset,
                     &self.active_pane,
                     &theme,
@@ -3280,18 +3615,7 @@ impl App {
                 ui::message_view::draw(
                     frame,
                     content_area,
-                    &self
-                        .viewed_thread_messages
-                        .iter()
-                        .map(|message| ui::message_view::ThreadMessageBlock {
-                            envelope: message.clone(),
-                            body_state: self.resolve_body_view_state(message),
-                            labels: self.label_chips_for_envelope(message),
-                            attachments: self.attachment_chips_for_envelope(message),
-                            selected: self.viewing_envelope.as_ref().map(|env| env.id.clone())
-                                == Some(message.id.clone()),
-                        })
-                        .collect::<Vec<_>>(),
+                    &self.thread_message_blocks(),
                     self.message_scroll_offset,
                     &self.active_pane,
                     &theme,
@@ -3306,18 +3630,7 @@ impl App {
                     &self.search_page,
                     &rows,
                     self.mail_list_mode,
-                    &self
-                        .viewed_thread_messages
-                        .iter()
-                        .map(|message| ui::message_view::ThreadMessageBlock {
-                            envelope: message.clone(),
-                            body_state: self.resolve_body_view_state(message),
-                            labels: self.label_chips_for_envelope(message),
-                            attachments: self.attachment_chips_for_envelope(message),
-                            selected: self.viewing_envelope.as_ref().map(|env| env.id.clone())
-                                == Some(message.id.clone()),
-                        })
-                        .collect::<Vec<_>>(),
+                    &self.thread_message_blocks(),
                     self.message_scroll_offset,
                     &theme,
                 );
@@ -3358,6 +3671,9 @@ impl App {
         // Attachment overlay
         ui::attachment_modal::draw(frame, area, &self.attachment_panel, &theme);
 
+        // URL picker overlay
+        ui::url_modal::draw(frame, area, self.url_modal.as_ref(), &theme);
+
         // Snooze overlay
         ui::snooze_modal::draw(frame, area, &self.snooze_panel, &self.snooze_config, &theme);
 
@@ -3366,6 +3682,9 @@ impl App {
 
         // Bulk confirmation overlay
         ui::bulk_confirm_modal::draw(frame, area, self.pending_bulk_confirm.as_ref(), &theme);
+
+        // Unsubscribe confirmation overlay
+        ui::unsubscribe_modal::draw(frame, area, self.pending_unsubscribe_confirm.as_ref(), &theme);
 
         // Help overlay
         ui::help_modal::draw(
@@ -3393,6 +3712,16 @@ fn apply_provider_label_changes(
         if !label_provider_ids.iter().any(|existing| existing == provider_id) {
             label_provider_ids.push(provider_id.clone());
         }
+    }
+}
+
+fn unsubscribe_method_label(method: &UnsubscribeMethod) -> &'static str {
+    match method {
+        UnsubscribeMethod::OneClick { .. } => "one-click",
+        UnsubscribeMethod::Mailto { .. } => "mailto",
+        UnsubscribeMethod::HttpLink { .. } => "browser link",
+        UnsubscribeMethod::BodyLink { .. } => "body link",
+        UnsubscribeMethod::None => "none",
     }
 }
 

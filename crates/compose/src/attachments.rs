@@ -4,7 +4,11 @@ use std::path::PathBuf;
 /// Resolve and validate attachment paths from frontmatter.
 /// Supports tilde expansion.
 pub fn resolve_attachments(paths: &[String]) -> Result<Vec<ResolvedAttachment>, ComposeError> {
-    paths.iter().map(|p| resolve_one(p)).collect()
+    paths.iter().map(|p| resolve_one_str(p)).collect()
+}
+
+pub fn resolve_attachment_paths(paths: &[PathBuf]) -> Result<Vec<ResolvedAttachment>, ComposeError> {
+    paths.iter().map(|p| resolve_one_path(p)).collect()
 }
 
 #[derive(Debug)]
@@ -14,12 +18,20 @@ pub struct ResolvedAttachment {
     pub mime_type: String,
 }
 
-fn resolve_one(path_str: &str) -> Result<ResolvedAttachment, ComposeError> {
+fn resolve_one_str(path_str: &str) -> Result<ResolvedAttachment, ComposeError> {
     let expanded = expand_tilde(path_str);
     let path = PathBuf::from(&expanded);
+    resolve_one_path(&path).map_err(|err| match err {
+        ComposeError::AttachmentNotFound(_) => ComposeError::AttachmentNotFound(path_str.to_string()),
+        other => other,
+    })
+}
+
+fn resolve_one_path(path: &PathBuf) -> Result<ResolvedAttachment, ComposeError> {
+    let path = path.clone();
 
     if !path.exists() {
-        return Err(ComposeError::AttachmentNotFound(path_str.to_string()));
+        return Err(ComposeError::AttachmentNotFound(path.display().to_string()));
     }
 
     let filename = path
@@ -66,7 +78,7 @@ mod tests {
 
     #[test]
     fn attachment_not_found_error() {
-        let result = resolve_one("/nonexistent/file.pdf");
+        let result = resolve_one_str("/nonexistent/file.pdf");
         assert!(result.is_err());
         match result.unwrap_err() {
             ComposeError::AttachmentNotFound(path) => {
@@ -79,7 +91,7 @@ mod tests {
     #[test]
     fn attachment_found_with_correct_mime() {
         let tmp = tempfile::NamedTempFile::with_suffix(".pdf").unwrap();
-        let result = resolve_one(tmp.path().to_str().unwrap()).unwrap();
+        let result = resolve_one_str(tmp.path().to_str().unwrap()).unwrap();
         assert_eq!(result.mime_type, "application/pdf");
     }
 

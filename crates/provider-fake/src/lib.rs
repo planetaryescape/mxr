@@ -116,6 +116,7 @@ impl MailSyncProvider for FakeProvider {
                                 text_html: None,
                                 attachments: vec![],
                                 fetched_at: chrono::Utc::now(),
+                                metadata: Default::default(),
                             });
                         SyncedMessage {
                             envelope: env.clone(),
@@ -328,7 +329,7 @@ mod tests {
         let draft = Draft {
             id: DraftId::new(),
             account_id: provider.account_id().clone(),
-            in_reply_to: None,
+            reply_headers: None,
             to: vec![Address {
                 name: None,
                 email: "bob@example.com".to_string(),

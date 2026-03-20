@@ -12,14 +12,14 @@ use tokio::sync::{broadcast, Mutex};
 pub(crate) struct ProviderSetup {
     pub providers: HashMap<AccountId, Arc<dyn MailSyncProvider>>,
     pub send_providers: HashMap<AccountId, Arc<dyn MailSendProvider>>,
-    pub default_provider: Arc<dyn MailSyncProvider>,
+    pub default_provider: Option<Arc<dyn MailSyncProvider>>,
     pub default_send_provider: Option<Arc<dyn MailSendProvider>>,
 }
 
 pub(crate) struct ProviderRuntime {
     pub providers: HashMap<AccountId, Arc<dyn MailSyncProvider>>,
     pub send_providers: HashMap<AccountId, Arc<dyn MailSendProvider>>,
-    pub default_provider: Arc<dyn MailSyncProvider>,
+    pub default_provider: Option<Arc<dyn MailSyncProvider>>,
     pub default_send_provider: Option<Arc<dyn MailSendProvider>>,
 }
 
@@ -48,16 +48,7 @@ impl AppState {
         let search = Arc::new(Mutex::new(SearchIndex::open(&index_path)?));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
-        let provider_setup = match Self::create_providers_from_config(&config, &store)
-            .await
-        {
-            Ok(p) => p,
-            Err(e) => {
-                anyhow::bail!(
-                        "No configured account: {e}\nRun `mxr accounts add gmail|imap` to set up your account."
-                    );
-            }
-        };
+        let provider_setup = Self::create_providers_from_config(&config, &store).await?;
 
         let (event_tx, _) = broadcast::channel(256);
 
@@ -118,6 +109,7 @@ impl AppState {
 
             let sync_provider = match &acct_config.sync {
                 Some(mxr_config::SyncProviderConfig::Gmail {
+                    credential_source: _,
                     client_id,
                     client_secret,
                     token_ref,
@@ -205,8 +197,6 @@ impl AppState {
             }
         }
 
-        let default_provider = default_provider.ok_or_else(|| anyhow::anyhow!("no sync-capable accounts in config"))?;
-
         Ok(ProviderSetup {
             providers,
             send_providers,
@@ -245,6 +235,16 @@ impl AppState {
             .expect("runtime lock poisoned")
             .default_provider
             .clone()
+            .expect("no sync-capable accounts configured")
+    }
+
+    pub fn default_account_id_opt(&self) -> Option<AccountId> {
+        self.runtime
+            .read()
+            .expect("runtime lock poisoned")
+            .default_provider
+            .as_ref()
+            .map(|provider| provider.account_id().clone())
     }
 
     pub fn default_account_id(&self) -> AccountId {
@@ -268,7 +268,8 @@ impl AppState {
         let runtime = self.runtime.read().expect("runtime lock poisoned");
         account_id
             .and_then(|id| runtime.providers.get(id).cloned())
-            .unwrap_or_else(|| runtime.default_provider.clone())
+            .or_else(|| runtime.default_provider.clone())
+            .expect("no sync-capable accounts configured")
     }
 
     /// Get send provider for a specific account, or fall back to default.
@@ -280,17 +281,6 @@ impl AppState {
         account_id
             .and_then(|id| runtime.send_providers.get(id).cloned())
             .or_else(|| runtime.default_send_provider.clone())
-    }
-
-    /// All configured account IDs.
-    pub fn account_ids(&self) -> Vec<AccountId> {
-        self.runtime
-            .read()
-            .expect("runtime lock poisoned")
-            .providers
-            .keys()
-            .cloned()
-            .collect()
     }
 
     pub fn runtime_account_ids(&self) -> Vec<AccountId> {
@@ -383,7 +373,7 @@ impl AppState {
             runtime: RwLock::new(ProviderRuntime {
                 providers,
                 send_providers,
-                default_provider: provider,
+                default_provider: Some(provider),
                 default_send_provider: send_provider,
             }),
             sync_loop_accounts: StdMutex::new(HashSet::new()),
@@ -394,15 +384,7 @@ impl AppState {
     }
 
     pub fn socket_path() -> std::path::PathBuf {
-        if cfg!(target_os = "macos") {
-            dirs::home_dir()
-                .unwrap()
-                .join("Library/Application Support/mxr/mxr.sock")
-        } else {
-            dirs::runtime_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-                .join("mxr/mxr.sock")
-            }
+        mxr_config::socket_path()
     }
 
     #[cfg(test)]
@@ -497,7 +479,15 @@ use_tls = true
 
         assert_eq!(setup.providers.len(), 2);
         assert_eq!(setup.send_providers.len(), 1);
-        assert_eq!(setup.default_provider.account_id().as_str().len(), 36);
+        assert_eq!(
+            setup.default_provider
+                .as_ref()
+                .expect("default provider")
+                .account_id()
+                .as_str()
+                .len(),
+            36
+        );
         assert_eq!(
             setup
                 .default_send_provider
@@ -525,10 +515,30 @@ use_tls = true
             .expect("provider setup");
 
         let default_account = store
-            .get_account(setup.default_provider.account_id())
+            .get_account(
+                setup.default_provider
+                    .as_ref()
+                    .expect("default provider")
+                    .account_id(),
+            )
             .await
             .expect("account fetch")
             .expect("stored account");
         assert_eq!(default_account.name, "Work");
+    }
+
+    #[tokio::test]
+    async fn create_providers_from_config_allows_empty_config() {
+        let store = Arc::new(Store::in_memory().await.expect("store"));
+        let config = mxr_config::MxrConfig::default();
+
+        let setup = AppState::create_providers_from_config(&config, &store)
+            .await
+            .expect("provider setup");
+
+        assert!(setup.providers.is_empty());
+        assert!(setup.send_providers.is_empty());
+        assert!(setup.default_provider.is_none());
+        assert!(setup.default_send_provider.is_none());
     }
 }

@@ -2,9 +2,13 @@ use crate::types::{GmailHeader, GmailMessage, GmailPayload};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use chrono::{TimeZone, Utc};
+use mxr_compose::parse::{
+    body_unsubscribe_from_html, calendar_metadata_from_text, decode_format_flowed,
+    parse_address_list as parse_rfc_address_list, parse_headers_from_pairs,
+};
 use mxr_core::{
     AccountId, Address, AttachmentId, AttachmentMeta, Envelope, MessageBody, MessageFlags,
-    MessageId, ThreadId, UnsubscribeMethod,
+    MessageId, MessageMetadata, TextPlainFormat, ThreadId, UnsubscribeMethod,
 };
 use thiserror::Error;
 
@@ -18,6 +22,9 @@ pub enum ParseError {
 
     #[error("Decode error: {0}")]
     Decode(String),
+
+    #[error("Invalid headers: {0}")]
+    Headers(String),
 }
 
 pub fn gmail_message_to_envelope(
@@ -31,55 +38,55 @@ pub fn gmail_message_to_envelope(
         .map(|h| h.as_slice())
         .unwrap_or(&[]);
 
-    let from_raw = find_header(headers, "From").unwrap_or_default();
-    let to_raw = find_header(headers, "To").unwrap_or_default();
-    let cc_raw = find_header(headers, "Cc").unwrap_or_default();
-    let bcc_raw = find_header(headers, "Bcc").unwrap_or_default();
-    let subject = find_header(headers, "Subject").unwrap_or_default();
-    let message_id_header =
-        find_header(headers, "Message-ID").or_else(|| find_header(headers, "Message-Id"));
-    let in_reply_to = find_header(headers, "In-Reply-To");
-    let references_raw = find_header(headers, "References").unwrap_or_default();
-
-    let references: Vec<String> = if references_raw.is_empty() {
-        vec![]
-    } else {
-        references_raw
-            .split_whitespace()
-            .map(|s| s.to_string())
-            .collect()
-    };
-
-    let date = if let Some(ref internal_date) = msg.internal_date {
+    let fallback_date = if let Some(ref internal_date) = msg.internal_date {
         let millis: i64 = internal_date
             .parse()
             .map_err(|_| ParseError::InvalidDate(internal_date.clone()))?;
-        Utc.timestamp_millis_opt(millis)
-            .single()
-            .unwrap_or_else(Utc::now)
+        Some(
+            Utc.timestamp_millis_opt(millis)
+                .single()
+                .unwrap_or_else(Utc::now),
+        )
     } else {
-        Utc::now()
+        None
     };
+    let header_pairs: Vec<(String, String)> = headers
+        .iter()
+        .map(|header| (header.name.clone(), header.value.clone()))
+        .collect();
+    let parsed_headers = parse_headers_from_pairs(&header_pairs, fallback_date)
+        .map_err(|err| ParseError::Headers(err.to_string()))?;
+    let body_data = extract_body_data(msg);
 
     let label_ids = msg.label_ids.as_deref().unwrap_or(&[]);
     let flags = labels_to_flags(label_ids);
-    let unsubscribe = parse_list_unsubscribe(headers);
     let has_attachments = check_has_attachments(msg.payload.as_ref());
+    let unsubscribe = match parsed_headers.unsubscribe {
+        UnsubscribeMethod::None => body_data
+            .text_html
+            .as_deref()
+            .and_then(body_unsubscribe_from_html)
+            .unwrap_or(UnsubscribeMethod::None),
+        unsubscribe => unsubscribe,
+    };
 
     Ok(Envelope {
         id: MessageId::from_provider_id("gmail", &msg.id),
         account_id: account_id.clone(),
         provider_id: msg.id.clone(),
         thread_id: ThreadId::from_provider_id("gmail", &msg.thread_id),
-        message_id_header,
-        in_reply_to,
-        references,
-        from: parse_address(&from_raw),
-        to: parse_address_list(&to_raw),
-        cc: parse_address_list(&cc_raw),
-        bcc: parse_address_list(&bcc_raw),
-        subject,
-        date,
+        message_id_header: parsed_headers.message_id_header,
+        in_reply_to: parsed_headers.in_reply_to,
+        references: parsed_headers.references,
+        from: parsed_headers.from.unwrap_or_else(|| Address {
+            name: None,
+            email: "unknown@unknown".to_string(),
+        }),
+        to: parsed_headers.to,
+        cc: parsed_headers.cc,
+        bcc: parsed_headers.bcc,
+        subject: parsed_headers.subject,
+        date: parsed_headers.date,
         flags,
         snippet: msg.snippet.clone().unwrap_or_default(),
         has_attachments,
@@ -113,147 +120,29 @@ pub fn labels_to_flags(label_ids: &[String]) -> MessageFlags {
 }
 
 pub fn parse_list_unsubscribe(headers: &[GmailHeader]) -> UnsubscribeMethod {
-    let unsub_header = match find_header(headers, "List-Unsubscribe") {
-        Some(v) => v,
-        None => return UnsubscribeMethod::None,
-    };
-
-    let has_one_click = find_header(headers, "List-Unsubscribe-Post").is_some();
-
-    // Extract URLs/mailto from angle brackets
-    let entries: Vec<&str> = unsub_header
-        .split(',')
-        .map(|s| {
-            s.trim()
-                .trim_start_matches('<')
-                .trim_end_matches('>')
-                .trim()
-        })
+    let header_pairs: Vec<(String, String)> = headers
+        .iter()
+        .map(|header| (header.name.clone(), header.value.clone()))
         .collect();
-
-    // If one-click is available, find the HTTPS URL
-    if has_one_click {
-        for entry in &entries {
-            if entry.starts_with("https://") || entry.starts_with("http://") {
-                return UnsubscribeMethod::OneClick {
-                    url: entry.to_string(),
-                };
-            }
-        }
-    }
-
-    // Check for mailto
-    for entry in &entries {
-        if let Some(mailto) = entry.strip_prefix("mailto:") {
-            let (address, subject) = if let Some(idx) = mailto.find('?') {
-                let addr = &mailto[..idx];
-                let query = &mailto[idx + 1..];
-                let subj = query
-                    .split('&')
-                    .find_map(|param| param.strip_prefix("subject="))
-                    .map(|s| s.to_string());
-                (addr.to_string(), subj)
-            } else {
-                (mailto.to_string(), None)
-            };
-            return UnsubscribeMethod::Mailto { address, subject };
-        }
-    }
-
-    // Fall back to HTTP link
-    for entry in &entries {
-        if entry.starts_with("https://") || entry.starts_with("http://") {
-            return UnsubscribeMethod::HttpLink {
-                url: entry.to_string(),
-            };
-        }
-    }
-
-    UnsubscribeMethod::None
+    parse_headers_from_pairs(&header_pairs, Some(Utc::now()))
+        .map(|parsed| parsed.unsubscribe)
+        .unwrap_or(UnsubscribeMethod::None)
 }
 
 pub fn parse_address(raw: &str) -> Address {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return Address {
-            name: None,
-            email: String::new(),
-        };
-    }
-
-    // "Name <email>" format
-    if let Some(angle_start) = raw.rfind('<') {
-        if let Some(angle_end) = raw.rfind('>') {
-            let name = raw[..angle_start].trim().trim_matches('"').to_string();
-            let email = raw[angle_start + 1..angle_end].trim().to_string();
-            return Address {
-                name: if name.is_empty() { None } else { Some(name) },
-                email,
-            };
-        }
-    }
-
-    // Bare email
-    Address {
+    parse_rfc_address_list(raw).into_iter().next().unwrap_or(Address {
         name: None,
-        email: raw.to_string(),
-    }
+        email: raw.trim().to_string(),
+    })
 }
 
 pub fn parse_address_list(raw: &str) -> Vec<Address> {
-    if raw.trim().is_empty() {
-        return vec![];
-    }
-
-    // Split on commas, but be careful about commas inside quoted names
-    let mut addresses = Vec::new();
-    let mut current = String::new();
-    let mut in_quotes = false;
-    let mut in_angle = false;
-
-    for ch in raw.chars() {
-        match ch {
-            '"' => {
-                in_quotes = !in_quotes;
-                current.push(ch);
-            }
-            '<' => {
-                in_angle = true;
-                current.push(ch);
-            }
-            '>' => {
-                in_angle = false;
-                current.push(ch);
-            }
-            ',' if !in_quotes && !in_angle => {
-                let trimmed = current.trim().to_string();
-                if !trimmed.is_empty() {
-                    addresses.push(parse_address(&trimmed));
-                }
-                current.clear();
-            }
-            _ => current.push(ch),
-        }
-    }
-
-    let trimmed = current.trim().to_string();
-    if !trimmed.is_empty() {
-        addresses.push(parse_address(&trimmed));
-    }
-
-    addresses
+    parse_rfc_address_list(raw)
 }
 
 pub fn base64_decode_url(data: &str) -> Result<String, anyhow::Error> {
     let bytes = URL_SAFE_NO_PAD.decode(data)?;
     Ok(String::from_utf8(bytes)?)
-}
-
-fn find_header(headers: &[GmailHeader], name: &str) -> Option<String> {
-    headers
-        .iter()
-        .find(|h| h.name.eq_ignore_ascii_case(name))
-        .map(|h| h.value.clone())
 }
 
 fn check_has_attachments(payload: Option<&GmailPayload>) -> bool {
@@ -288,31 +177,32 @@ fn check_has_attachments(payload: Option<&GmailPayload>) -> bool {
     false
 }
 
+#[derive(Debug, Default)]
+struct ExtractedBodyData {
+    text_plain: Option<String>,
+    text_html: Option<String>,
+    attachments: Vec<AttachmentMeta>,
+    calendar: Option<mxr_core::types::CalendarMetadata>,
+}
+
 /// Extract text_plain and text_html from a GmailMessage payload.
 pub fn extract_body(msg: &GmailMessage) -> (Option<String>, Option<String>, Vec<AttachmentMeta>) {
-    let mut text_plain = None;
-    let mut text_html = None;
-    let mut attachments = Vec::new();
+    let body_data = extract_body_data(msg);
+    (body_data.text_plain, body_data.text_html, body_data.attachments)
+}
 
+fn extract_body_data(msg: &GmailMessage) -> ExtractedBodyData {
+    let mut data = ExtractedBodyData::default();
     if let Some(ref payload) = msg.payload {
-        walk_parts(
-            payload,
-            &msg.id,
-            &mut text_plain,
-            &mut text_html,
-            &mut attachments,
-        );
+        walk_parts(payload, &msg.id, &mut data);
     }
-
-    (text_plain, text_html, attachments)
+    data
 }
 
 fn walk_parts(
     payload: &GmailPayload,
     provider_msg_id: &str,
-    text_plain: &mut Option<String>,
-    text_html: &mut Option<String>,
-    attachments: &mut Vec<AttachmentMeta>,
+    body_data: &mut ExtractedBodyData,
 ) {
     let mime = payload
         .mime_type
@@ -343,7 +233,7 @@ fn walk_parts(
             .and_then(|b| b.attachment_id.clone())
             .unwrap_or_default();
 
-        attachments.push(AttachmentMeta {
+        body_data.attachments.push(AttachmentMeta {
             id: AttachmentId::from_provider_id(
                 "gmail",
                 &format!("{provider_msg_id}:{provider_id}"),
@@ -360,17 +250,24 @@ fn walk_parts(
 
     // Leaf text node
     match mime {
-        "text/plain" if text_plain.is_none() => {
+        "text/plain" if body_data.text_plain.is_none() => {
             if let Some(data) = payload.body.as_ref().and_then(|b| b.data.as_ref()) {
                 if let Ok(decoded) = base64_decode_url(data) {
-                    *text_plain = Some(decoded);
+                    body_data.text_plain = Some(decoded);
                 }
             }
         }
-        "text/html" if text_html.is_none() => {
+        "text/html" if body_data.text_html.is_none() => {
             if let Some(data) = payload.body.as_ref().and_then(|b| b.data.as_ref()) {
                 if let Ok(decoded) = base64_decode_url(data) {
-                    *text_html = Some(decoded);
+                    body_data.text_html = Some(decoded);
+                }
+            }
+        }
+        "text/calendar" if body_data.calendar.is_none() => {
+            if let Some(data) = payload.body.as_ref().and_then(|b| b.data.as_ref()) {
+                if let Ok(decoded) = base64_decode_url(data) {
+                    body_data.calendar = calendar_metadata_from_text(&decoded);
                 }
             }
         }
@@ -380,19 +277,43 @@ fn walk_parts(
     // Recurse into child parts
     if let Some(ref parts) = payload.parts {
         for part in parts {
-            walk_parts(part, provider_msg_id, text_plain, text_html, attachments);
+            walk_parts(part, provider_msg_id, body_data);
         }
     }
 }
 
 pub fn extract_message_body(msg: &GmailMessage) -> MessageBody {
-    let (text_plain, text_html, attachments) = extract_body(msg);
+    let header_pairs: Vec<(String, String)> = msg
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.headers.as_ref())
+        .map(|headers| {
+            headers
+                .iter()
+                .map(|header| (header.name.clone(), header.value.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let parsed_headers = parse_headers_from_pairs(&header_pairs, Some(Utc::now())).ok();
+    let body_data = extract_body_data(msg);
+    let mut metadata = parsed_headers
+        .map(|parsed| parsed.metadata)
+        .unwrap_or_else(MessageMetadata::default);
+    metadata.calendar = body_data.calendar.clone();
+    let text_plain = match (&body_data.text_plain, &metadata.text_plain_format) {
+        (Some(text_plain), Some(TextPlainFormat::Flowed { delsp })) => {
+            Some(decode_format_flowed(text_plain, *delsp))
+        }
+        (Some(text_plain), _) => Some(text_plain.clone()),
+        (None, _) => None,
+    };
     MessageBody {
         message_id: MessageId::from_provider_id("gmail", &msg.id),
         text_plain,
-        text_html,
-        attachments,
+        text_html: body_data.text_html,
+        attachments: body_data.attachments,
         fetched_at: Utc::now(),
+        metadata,
     }
 }
 
@@ -400,6 +321,11 @@ pub fn extract_message_body(msg: &GmailMessage) -> MessageBody {
 mod tests {
     use super::*;
     use crate::types::GmailBody;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use mail_parser::MessageParser;
+    use mxr_compose::parse::extract_raw_header_block;
+    use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
+    use serde_json::json;
 
     fn make_headers(pairs: &[(&str, &str)]) -> Vec<GmailHeader> {
         pairs
@@ -434,6 +360,67 @@ mod tests {
                     attachment_id: None,
                     size: Some(100),
                     data: None,
+                }),
+                parts: None,
+                filename: None,
+            }),
+        }
+    }
+
+    fn gmail_message_from_fixture(name: &str) -> GmailMessage {
+        let raw = standards_fixture_bytes(name);
+        let parsed = MessageParser::default().parse(&raw).unwrap();
+        let mut headers = Vec::new();
+        let mut current_name = String::new();
+        let mut current_value = String::new();
+        for line in extract_raw_header_block(&raw).unwrap().lines() {
+            if line.starts_with(' ') || line.starts_with('\t') {
+                current_value.push(' ');
+                current_value.push_str(line.trim());
+                continue;
+            }
+
+            if !current_name.is_empty() {
+                headers.push(GmailHeader {
+                    name: current_name.clone(),
+                    value: current_value.trim().to_string(),
+                });
+            }
+
+            if let Some((name, value)) = line.split_once(':') {
+                current_name = name.to_string();
+                current_value = value.trim().to_string();
+            } else {
+                current_name.clear();
+                current_value.clear();
+            }
+        }
+        if !current_name.is_empty() {
+            headers.push(GmailHeader {
+                name: current_name,
+                value: current_value.trim().to_string(),
+            });
+        }
+        let body = parsed
+            .body_text(0)
+            .or_else(|| parsed.body_html(0))
+            .unwrap_or_default();
+
+        GmailMessage {
+            id: format!("fixture-{}", fixture_stem(name)),
+            thread_id: format!("fixture-thread-{}", fixture_stem(name)),
+            label_ids: Some(vec!["INBOX".to_string(), "UNREAD".to_string()]),
+            snippet: Some(body.lines().next().unwrap_or_default().to_string()),
+            history_id: Some("500".to_string()),
+            internal_date: Some("1710495000000".to_string()),
+            size_estimate: Some(raw.len() as u64),
+            payload: Some(GmailPayload {
+                mime_type: Some("text/plain".to_string()),
+                headers: Some(headers),
+                body: Some(GmailBody {
+                    attachment_id: None,
+                    size: Some(body.len() as u64),
+                    data: Some(URL_SAFE_NO_PAD.encode(body.as_bytes())),
                 }),
                 parts: None,
                 filename: None,
@@ -778,5 +765,98 @@ mod tests {
         let (text_plain, text_html, _) = extract_body(&msg);
         assert_eq!(text_plain, Some("Hello".to_string()));
         assert!(text_html.is_some());
+    }
+
+    #[test]
+    fn standards_fixture_like_gmail_message_snapshot() {
+        let msg: GmailMessage = serde_json::from_value(json!({
+            "id": "fixture-1",
+            "threadId": "fixture-thread",
+            "labelIds": ["INBOX", "UNREAD"],
+            "snippet": "Fixture snippet",
+            "historyId": "500",
+            "internalDate": "1710495000000",
+            "sizeEstimate": 4096,
+            "payload": {
+                "mimeType": "multipart/mixed",
+                "headers": [
+                    {"name": "From", "value": "Alice Smith <alice@example.com>"},
+                    {"name": "To", "value": "Bob Example <bob@example.com>"},
+                    {"name": "Subject", "value": "Planning meeting"},
+                    {"name": "Date", "value": "Tue, 19 Mar 2024 14:15:00 +0000"},
+                    {"name": "Message-ID", "value": "<calendar@example.com>"},
+                    {"name": "Authentication-Results", "value": "mx.example.net; dkim=pass"},
+                    {"name": "Content-Language", "value": "en"},
+                    {"name": "List-Unsubscribe", "value": "<https://example.com/unsubscribe>"}
+                ],
+                "parts": [
+                    {
+                        "mimeType": "text/plain",
+                        "body": {"size": 33, "data": "UGxlYXNlIGpvaW4gdGhlIHBsYW5uaW5nIG1lZXRpbmcu"}
+                    },
+                    {
+                        "mimeType": "text/html",
+                        "body": {"size": 76, "data": "PHA-PlBsZWFzZSBqb2luIHRoZSA8YSBocmVmPSJodHRwczovL2V4YW1wbGUuY29tL3Vuc3Vic2NyaWJlIj5tYWlsIHByZWZlcmVuY2VzPC9hPi48L3A-"}
+                    },
+                    {
+                        "mimeType": "application/pdf",
+                        "filename": "report.pdf",
+                        "body": {"attachmentId": "att-1", "size": 5}
+                    },
+                    {
+                        "mimeType": "text/calendar",
+                        "body": {"size": 82, "data": "QkVHSU46VkNBTEVOREFSDQpNRVRIT0Q6UkVRVUVTVA0KQkVHSU46VkVWRU5UDQpTVU1NQVJZOlBsYW5uaW5nIG1lZXRpbmcNCkVORDpWRVZFTlQNCkVORDpWQ0FMRU5EQVI"}
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        let account_id = AccountId::from_provider_id("gmail", "test-account");
+        let envelope = gmail_message_to_envelope(&msg, &account_id).unwrap();
+        let body = extract_message_body(&msg);
+        insta::assert_yaml_snapshot!(
+            "gmail_fixture_message",
+            json!({
+                "subject": envelope.subject,
+                "unsubscribe": format!("{:?}", envelope.unsubscribe),
+                "flags": envelope.flags.bits(),
+                "attachment_filenames": body.attachments.iter().map(|attachment| attachment.filename.clone()).collect::<Vec<_>>(),
+                "calendar": body.metadata.calendar,
+                "auth_results": body.metadata.auth_results,
+                "content_language": body.metadata.content_language,
+                "plain_text": body.text_plain,
+            })
+        );
+    }
+
+    #[test]
+    fn standards_fixture_gmail_header_matrix_snapshots() {
+        let account_id = AccountId::from_provider_id("gmail", "matrix-account");
+
+        for fixture in standards_fixture_names() {
+            let msg = gmail_message_from_fixture(fixture);
+            let envelope = gmail_message_to_envelope(&msg, &account_id).unwrap();
+            let body = extract_message_body(&msg);
+
+            insta::assert_yaml_snapshot!(
+                format!("gmail_fixture__{}", fixture_stem(fixture)),
+                json!({
+                    "subject": envelope.subject,
+                    "from": envelope.from,
+                    "to": envelope.to,
+                    "cc": envelope.cc,
+                    "message_id": envelope.message_id_header,
+                    "in_reply_to": envelope.in_reply_to,
+                    "references": envelope.references,
+                    "unsubscribe": format!("{:?}", envelope.unsubscribe),
+                    "list_id": body.metadata.list_id,
+                    "auth_results": body.metadata.auth_results,
+                    "content_language": body.metadata.content_language,
+                    "text_plain_format": format!("{:?}", body.metadata.text_plain_format),
+                    "plain_excerpt": body.text_plain.as_deref().map(|text| text.lines().take(2).collect::<Vec<_>>().join("\n")),
+                })
+            );
+        }
     }
 }

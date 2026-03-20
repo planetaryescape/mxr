@@ -18,7 +18,7 @@ Keep these intact:
 
 1. `mxr-core` depends on nothing internal.
 2. `mxr-protocol` depends only on `mxr-core`.
-3. provider crates depend only on `mxr-core`.
+3. Provider crates depend only on `mxr-core`.
 4. `mxr-store` and `mxr-search` depend only on `mxr-core`.
 5. `mxr-sync` depends on `core + store + search`.
 6. `mxr` (daemon crate) is the integration point.
@@ -70,10 +70,10 @@ Adapter crates are replaceable by design.
 
 When adding or changing an adapter:
 
-1. keep provider-specific code inside the adapter crate
-2. map into mxr internal model, not the other way around
-3. validate against fake/conformance coverage
-4. document any provider semantic mismatch honestly
+1. Keep provider-specific code inside the adapter crate.
+2. Map into the mxr internal model, not the other way around.
+3. Validate against fake/conformance coverage.
+4. Document any provider semantic mismatch honestly.
 
 ## Docs and release hygiene
 

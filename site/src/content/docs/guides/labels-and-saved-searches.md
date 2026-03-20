@@ -1,5 +1,5 @@
 ---
-title: Labels and Saved Searches
+title: Labels and saved searches
 description: Organize mail with labels, sidebar filters, and saved inbox lenses.
 ---
 
@@ -35,14 +35,14 @@ mxr move Done --search "label:inbox from:billing@example.com"
 
 - `l`: apply label
 - `v`: move to label
-- sidebar labels change mailbox scope
-- open messages and thread headers show label chips
+- Sidebar labels change mailbox scope
+- Open messages and thread headers show label chips
 
 The sidebar separates:
 
-- system labels
-- user labels
-- saved searches
+- System labels
+- User labels
+- Saved searches
 
 ## Saved searches
 
@@ -59,16 +59,16 @@ mxr saved run recruiters
 
 TUI:
 
-- saved searches appear in the sidebar
-- saved searches are reachable through the command palette
-- selecting one changes the mail list to that query scope
+- Saved searches appear in the sidebar
+- Saved searches are reachable through the command palette
+- Selecting one changes the mail list to that query scope
 
-## Why mxr emphasizes them
+## Why saved searches matter
 
 Folders are not enough for high-volume mail. Saved searches let you treat search as a stable view:
 
-- waiting for reply
-- unread invoices
-- recruiter follow-up
-- production alerts
-- travel receipts
+- Waiting for reply
+- Unread invoices
+- Recruiter follow-up
+- Production alerts
+- Travel receipts

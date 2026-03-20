@@ -16,9 +16,9 @@ The daemon only talks to providers through `MailSyncProvider` and `MailSendProvi
 
 ## Why this matters
 
-- local state stays provider-agnostic
-- adapters can be swapped without rewriting search, store, or TUI code
-- fake-provider fixtures exercise real daemon and sync flows in tests
+- Local state stays provider-agnostic.
+- Adapters can be swapped without rewriting search, store, or TUI code.
+- Fake-provider fixtures exercise real daemon and sync flows in tests.
 
 ## Writing a new adapter
 

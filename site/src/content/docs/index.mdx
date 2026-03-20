@@ -38,7 +38,7 @@ brew install mxr
 <h4>Cargo</h4>
 
 ```bash
-cargo install --git https://github.com/planetaryescape/mxr
+cargo install mxr
 ```
 
 </div>
@@ -52,7 +52,7 @@ macOS (Intel + Apple Silicon) and Linux x86_64.
 </div>
 </div>
 
-Works with **Gmail**, **IMAP**, and **SMTP** out of the box. One local database, one CLI, all your accounts.
+Works with Gmail, IMAP, and SMTP out of the box. One local database, one CLI, all your accounts.
 
 </div>
 
@@ -60,11 +60,11 @@ Works with **Gmail**, **IMAP**, and **SMTP** out of the box. One local database,
 
 ## A CLI for all your email
 
-Tools like mutt and aerc pioneered terminal email. himalaya brought a clean CLI-first approach. [gog](https://github.com/steipete/gogcli) and [Google Workspace CLI](https://github.com/googleworkspace/cli) made Gmail fully scriptable. [notmuch](https://notmuchmail.org/) proved that local indexing and search changes everything. mxr builds on these ideas and combines them: a single CLI that works across Gmail, IMAP, and SMTP, backed by a local database and a real search engine.
+Tools like mutt and aerc pioneered terminal email. himalaya brought a clean CLI-first approach. [gog](https://github.com/steipete/gogcli) and [Google Workspace CLI](https://github.com/googleworkspace/cli) made Gmail fully scriptable. [notmuch](https://notmuchmail.org/) proved that local indexing and search changes everything. mxr combines these ideas: a single CLI that works across Gmail, IMAP, and SMTP, backed by a local database and a real search engine.
 
 One binary. One CLI that can search, compose, reply, label, archive, snooze, unsubscribe, and export across all your accounts. One interface your scripts and agents can talk to, regardless of what provider sits behind it.
 
-A real CLI with `--format json`, `--dry-run`, `--search` for batch operations, and every output piped through stdout. Hack it with Python, Bash, Go, TypeScript — whatever you already use.
+A real CLI with `--format json`, `--dry-run`, `--search` for batch operations, and every output piped through stdout. Hack it with Python, Bash, Go, TypeScript, whatever you already use.
 
 </div>
 
@@ -92,13 +92,13 @@ Your coding agent can already write code, run tests, and commit to git. Now it c
 </div>
 </div>
 
-This works because mxr isn't a GUI with an API bolted on. The CLI *is* the interface. Every operation supports structured JSON output, safe dry-runs, and batch operations via search queries. Your agent doesn't need screen scraping, browser automation, or a provider-specific SDK — just `mxr`.
+This works because the CLI *is* the interface. Every operation supports structured JSON output, safe dry-runs, and batch operations via search queries. Your agent doesn't need screen scraping, browser automation, or a provider-specific SDK. Just `mxr`.
 
 </div>
 
 <div class="landing-section speed-section">
 
-## Blazing fast, local-first
+## Local-first, fast
 
 <div class="speed-grid">
 <div class="speed-card">
@@ -115,13 +115,13 @@ This works because mxr isn't a GUI with an API bolted on. The CLI *is* the inter
 </div>
 </div>
 
-mxr syncs your email to a local SQLite database and indexes it with Tantivy — the same engine behind [Quickwit](https://quickwit.io). Opening a message is a local read, not a network call. Search uses BM25 ranking with field-level boosts. Works offline. Your data lives on your machine. No spinners. No loading states.
+mxr syncs your email to a local SQLite database and indexes it with Tantivy, the same engine behind [Quickwit](https://quickwit.io). Opening a message is a local read, not a network call. Search uses BM25 ranking with field-level boosts. Works offline. Your data lives on your machine. No spinners. No loading states.
 
 </div>
 
 <div class="landing-section features-section">
 
-## Everything else you'd want
+## Everything else
 
 <CardGrid stagger>
   <Card title="Compose in your editor" icon="pencil">
@@ -131,16 +131,16 @@ mxr syncs your email to a local SQLite database and indexes it with Tantivy — 
     Tantivy gives you BM25-ranked, sub-second full-text search. Saved searches live in the sidebar as programmable lenses. Search is navigation, not a bolt-on filter.
   </Card>
   <Card title="Daemon-backed" icon="setting">
-    The daemon is the system. The TUI is just a thin client. Sync, indexing, rules, and snooze run in the background. Close the TUI — nothing stops.
+    The daemon is the system. The TUI is a thin client. Sync, indexing, rules, and snooze run in the background. Close the TUI, nothing stops.
   </Card>
   <Card title="Provider-agnostic" icon="random">
-    Gmail, IMAP, SMTP — all normalize into one internal model. Mix providers freely. Add new ones with a clean Rust trait. The conformance suite validates your adapter.
+    Gmail, IMAP, SMTP all normalize into one internal model. Mix providers freely. Add new ones with a clean Rust trait. The conformance suite validates your adapter.
   </Card>
   <Card title="Distraction-free" icon="open-book">
     Reader mode strips tracking pixels, banners, signatures, and quoted text. You see what the email says, not what it's selling you. One key to unsubscribe.
   </Card>
   <Card title="Build your own client" icon="puzzle">
-    The daemon speaks JSON over a Unix socket. The TUI is just one client. Build a web dashboard, a mobile bridge, a Raycast extension — anything that can open a socket.
+    The daemon speaks JSON over a Unix socket. The TUI is one client. Build a web dashboard, a mobile bridge, a Raycast extension, anything that can open a socket.
   </Card>
 </CardGrid>
 
@@ -171,11 +171,11 @@ mxr syncs your email to a local SQLite database and indexes it with Tantivy — 
 
 <div class="landing-section opensource-section">
 
-## Open source, built for contributors
+## Open source
 
-mxr is MIT / Apache-2.0 dual-licensed. The entire codebase is open. Built with Rust — one binary, no runtime, runs on every platform. No telemetry, no analytics, no "phone home."
+mxr is MIT / Apache-2.0 dual-licensed. The entire codebase is open. Built with Rust, one binary, no runtime, runs on every platform. No telemetry, no analytics, no "phone home."
 
-The architecture is designed for contribution: clean crate boundaries, compile-time checked SQL, a conformance test suite for provider adapters, and thorough documentation. Whether it's a bug fix, a new provider adapter, a CLI improvement, or an idea — we want to hear from you.
+The architecture is built for contribution: clean crate boundaries, compile-time checked SQL, a conformance test suite for provider adapters, and thorough documentation. Bug fixes, new provider adapters, CLI improvements, ideas, all welcome.
 
 <div class="cta-buttons">
   <a href="/getting-started/install/" class="cta-primary">Get started</a>

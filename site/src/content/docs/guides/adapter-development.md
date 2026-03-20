@@ -1,5 +1,5 @@
 ---
-title: Adapter Development
+title: Adapter development
 description: Build an mxr provider adapter against mxr-core.
 ---
 
@@ -22,10 +22,10 @@ Keep provider-specific logic inside the adapter crate. Map native provider state
 
 ## Design rules
 
-- preserve provider ids needed for round-trips
-- normalize labels/folders/flags into mxr types
-- keep auth and transport details inside the adapter crate
-- report unsupported capabilities honestly
+- Preserve provider IDs needed for round-trips.
+- Normalize labels/folders/flags into mxr types.
+- Keep auth and transport details inside the adapter crate.
+- Report unsupported capabilities honestly.
 
 ## References
 

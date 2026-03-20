@@ -1,5 +1,5 @@
 ---
-title: Conformance Tests
+title: Conformance tests
 description: Reusable adapter checks exported from mxr-provider-fake.
 ---
 
@@ -18,11 +18,11 @@ conformance::run_sync_conformance(&provider).await;
 The sync checks validate:
 
 - `sync_labels` returns usable labels
-- initial sync returns messages with bodies
-- cursors advance
-- attachments can be fetched when present
-- mutation methods succeed
-- label management works when label support is advertised
+- Initial sync returns messages with bodies
+- Cursors advance
+- Attachments can be fetched when present
+- Mutation methods succeed
+- Label management works when label support is advertised
 
 ## Send conformance
 
@@ -34,16 +34,16 @@ conformance::run_send_conformance(&provider).await;
 
 The send checks validate:
 
-- sending returns a receipt
-- timestamps are sane
-- draft save does not fail
+- Sending returns a receipt
+- Timestamps are sane
+- Draft save does not fail
 
 ## Canonical fixtures
 
 `mxr-provider-fake::fixtures` also exports:
 
-- canonical fixture dataset
-- sample draft
-- sample from-address
+- Canonical fixture dataset
+- Sample draft
+- Sample from-address
 
 Use those to build provider-specific tests around your adapter.

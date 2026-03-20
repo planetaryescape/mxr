@@ -5,7 +5,7 @@ description: Deterministic inbox automation with dry runs, history, and shell ho
 
 ## Philosophy
 
-Rules are data first. `mxr` lets you inspect, dry-run, enable, disable, and audit them before trusting them on live sync traffic.
+Rules are data first. mxr lets you inspect, dry-run, enable, disable, and audit them before trusting them on live sync traffic.
 
 ## CLI
 
@@ -28,11 +28,11 @@ mxr rules history
 
 The Rules page gives you:
 
-- rule list
-- details panel
-- history panel
-- dry-run panel
-- form-driven create and edit flows
+- Rule list
+- Details panel
+- History panel
+- Dry-run panel
+- Form-driven create and edit flows
 
 Open it from:
 

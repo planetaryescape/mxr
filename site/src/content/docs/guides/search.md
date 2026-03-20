@@ -1,11 +1,11 @@
 ---
-title: Search Workflow
+title: Search workflow
 description: Use search as the primary navigation model in mxr.
 ---
 
 ## Core idea
 
-`mxr` treats search as navigation, not a bolt-on filter. Search results drive the TUI mail list, saved searches, exports, and batch mutations.
+mxr treats search as navigation, not a bolt-on filter. Search results drive the TUI mail list, saved searches, exports, and batch mutations.
 
 ## Common patterns
 
@@ -17,19 +17,19 @@ mxr search "unsubscribe"
 mxr search "label:inbox" --format ids
 ```
 
-## Dedicated Search page
+## Dedicated search page
 
 The TUI has both:
 
-- inline search with `/`
-- a dedicated Search page for a broader search-and-preview workflow
+- Inline search with `/`
+- A dedicated Search page for a broader search-and-preview workflow
 
 The dedicated page gives you:
 
-- query input
-- result list
-- preview pane
-- normal open flow into mailbox/thread interaction
+- Query input
+- Result list
+- Preview pane
+- Normal open flow into mailbox/thread interaction
 
 ## Useful combinations
 
@@ -48,10 +48,10 @@ The dedicated page gives you:
 
 ## Saved searches
 
-Saved searches are not secondary convenience features. They are persistent inbox lenses and appear in:
+Saved searches are not a secondary convenience. They are persistent inbox lenses and appear in:
 
-- the sidebar
-- command palette
+- The sidebar
+- Command palette
 - CLI via `mxr saved`
 
 Common flow:

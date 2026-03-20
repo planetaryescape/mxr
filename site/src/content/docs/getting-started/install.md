@@ -9,7 +9,7 @@ description: How to install and verify mxr.
 - A truecolor terminal (recommended)
 - `$EDITOR` set to your preferred editor (vim, neovim, helix, etc.)
 
-SQLite is bundled — no separate install needed. Rust is only needed if building from source.
+SQLite is bundled, no separate install needed. Rust is only needed if building from source.
 
 ## Homebrew (macOS / Linux)
 
@@ -33,10 +33,10 @@ tar xzf mxr-v*.tar.gz
 cp mxr ~/.local/bin/  # or /usr/local/bin
 ```
 
-## Cargo (from git, requires Rust)
+## Cargo
 
 ```bash
-cargo install --git https://github.com/planetaryescape/mxr
+cargo install mxr
 ```
 
 ## Build from source (requires Rust 1.75+)
@@ -58,6 +58,6 @@ mxr --help
 
 ## Next
 
-- [Gmail Setup](/getting-started/gmail-setup/) for Gmail accounts
-- [IMAP / SMTP Setup](/getting-started/imap-smtp-setup/) for any other provider
-- [First Sync](/getting-started/first-sync/)
+- [Gmail setup](/getting-started/gmail-setup/) for Gmail accounts
+- [IMAP / SMTP setup](/getting-started/imap-smtp-setup/) for any other provider
+- [First sync](/getting-started/first-sync/)

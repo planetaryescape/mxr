@@ -1,5 +1,5 @@
 ---
-title: Bug Reports
+title: Bug reports
 description: Generate a sanitized diagnostic bundle for support and issue filing.
 ---
 
@@ -27,21 +27,21 @@ mxr bug-report --no-sanitize
 
 ## Included data
 
-- system details
-- resolved config summary
-- daemon status
-- account health
-- recent sync events
-- recent errors
-- recent text logs
+- System details
+- Resolved config summary
+- Daemon status
+- Account health
+- Recent sync events
+- Recent errors
+- Recent text logs
 
 ## Sanitization
 
 Unless `--no-sanitize` is set, mxr redacts:
 
-- email addresses
-- token and password references
+- Email addresses
+- Token and password references
 - API keys and authorization material
-- message subjects and body fields
+- Message subjects and body fields
 - IP addresses
-- home-directory prefixes in file paths
+- Home-directory prefixes in file paths

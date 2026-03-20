@@ -1,5 +1,5 @@
 ---
-title: Mailbox Workflow
+title: Mailbox workflow
 description: How to navigate, triage, and work through mail in the mxr TUI.
 ---
 
@@ -7,19 +7,19 @@ description: How to navigate, triage, and work through mail in the mxr TUI.
 
 The mailbox screen is the default TUI workspace:
 
-- left: sidebar
-- center: mail list
-- right: preview, single-message, or thread view
+- Left: sidebar
+- Center: mail list
+- Right: preview, single-message, or thread view
 
-The list is thread-first by default. `mxr` can also show message rows, but the default mode is one row per conversation.
+The list is thread-first by default. mxr can also show message rows, but the default is one row per conversation.
 
 ## Sidebar
 
-The sidebar is split into:
+The sidebar has three sections:
 
-- system labels
-- user labels
-- saved searches
+- System labels
+- User labels
+- Saved searches
 
 Selecting a label or saved search changes the active mailbox scope. The mail-list header reflects the current scope.
 
@@ -27,12 +27,12 @@ Selecting a label or saved search changes the active mailbox scope. The mail-lis
 
 A thread row shows:
 
-- unread/star state
-- sender summary
-- subject and snippet
-- date metadata
-- attachment marker when any message in the row has attachments
-- thread count inline with distinct styling when the conversation has multiple messages
+- Unread/star state
+- Sender summary
+- Subject and snippet
+- Date metadata
+- Attachment marker when any message in the row has attachments
+- Thread count with distinct styling when the conversation has multiple messages
 
 Long subjects are truncated so date and metadata remain visible.
 
@@ -48,16 +48,16 @@ Long subjects are truncated so date and metadata remain visible.
 Inside a thread:
 
 - `j` / `k` move the focused message
-- reply, reply-all, forward, archive, label, snooze, and other actions target the focused message
-- message headers show label chips and attachment metadata
-- reader mode and attachment actions work from the focused message
+- Reply, reply-all, forward, archive, label, snooze, and other actions target the focused message
+- Message headers show label chips and attachment metadata
+- Reader mode and attachment actions work from the focused message
 
 ## Search in the TUI
 
-Two search flows exist:
+Two search flows:
 
 - `/`: inline mailbox search
-- dedicated Search page: global search workspace with results + preview
+- Dedicated Search page: global search workspace with results + preview
 
 From Search:
 
@@ -71,26 +71,26 @@ From Search:
 
 When selection is active:
 
-- hint bar switches into selection-aware actions
-- command palette still works
-- destructive or broad mutations use a confirmation modal first
+- Hint bar switches to selection-aware actions
+- Command palette still works
+- Destructive or broad mutations use a confirmation modal first
 
 Common bulk actions:
 
-- archive
-- trash
-- spam
-- mark read/unread
-- star
-- apply label
-- move to label
+- Archive
+- Trash
+- Spam
+- Mark read/unread
+- Star
+- Apply label
+- Move to label
 
 ## Attachments
 
 When a message has attachments:
 
-- the mail list shows an attachment marker
-- the thread/message header shows attachment info
+- The mail list shows an attachment marker
+- The thread/message header shows attachment info
 - `A` opens the attachment modal
 - `Enter` / `o` opens the selected attachment
 - `d` downloads it
@@ -103,7 +103,7 @@ Snoozing is local-first but also updates provider state where supported. For Gma
 
 ## Help and discovery
 
-- `?`: exhaustive help modal
+- `?`: help modal with all keybindings
 - `Ctrl-p`: command palette
 
-The help modal is context-aware and the command palette exposes mailbox, search, rules, diagnostics, and account actions.
+The help modal is context-aware. The command palette exposes mailbox, search, rules, diagnostics, and account actions.

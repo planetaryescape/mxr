@@ -1,11 +1,11 @@
 ---
-title: AI Agent Skill
+title: AI agent skill
 description: Give your coding agent full control over your email with the mxr CLI skill.
 ---
 
 ## What is the mxr skill?
 
-The mxr skill is a configuration file that teaches AI coding agents (Claude Code, Cursor, Windsurf, etc.) how to use the mxr CLI. Once installed, you can ask your agent to read, search, compose, triage, and automate your email — all through natural language.
+The mxr skill is a configuration file that teaches AI coding agents (Claude Code, Cursor, Windsurf, etc.) how to use the mxr CLI. Once installed, you can ask your agent to read, search, compose, and triage your email through natural language.
 
 ## Install the skill
 
@@ -26,13 +26,13 @@ The skill is a markdown file with structured CLI documentation. It works with an
 
 ## What your agent can do
 
-With the mxr skill installed, your agent has access to every mxr CLI command. Here are some examples of what you can ask:
+With the skill installed, your agent has access to every mxr CLI command. Some examples:
 
 ### Triage and summarize
 
 > "Go through my unread emails from the last 24 hours. For each one, tell me who it's from, give a one-line summary, and flag anything that needs a response. Draft replies for the urgent ones."
 
-The agent will run `mxr search "is:unread" --format json`, parse the results, read individual messages with `mxr cat`, and compose replies with `mxr reply`.
+The agent runs `mxr search "is:unread" --format json`, parses the results, reads individual messages with `mxr cat`, and composes replies with `mxr reply`.
 
 ### Automated cleanup
 
@@ -71,4 +71,4 @@ The agent identifies stale subscriptions and uses `mxr unsubscribe <id>` for eac
 
 ## Publishing the skill
 
-The mxr skill source is maintained at [`/.claude/skills/mxr/SKILL.md`](https://github.com/planetaryescape/mxr/blob/main/.claude/skills/mxr/SKILL.md) in the mxr repository. Contributions welcome.
+The mxr skill source is at [`/.claude/skills/mxr/SKILL.md`](https://github.com/planetaryescape/mxr/blob/main/.claude/skills/mxr/SKILL.md) in the mxr repository. Contributions welcome.

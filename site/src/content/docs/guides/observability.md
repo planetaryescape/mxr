@@ -14,14 +14,14 @@ mxr doctor --index-stats
 mxr doctor --store-stats
 ```
 
-The TUI Diagnostics page surfaces the same runtime information in one place:
+The TUI Diagnostics page shows the same runtime information in one place:
 
-- account health
-- status
-- doctor data
-- recent events
-- recent logs
-- bug-report trigger
+- Account health
+- Status
+- Doctor data
+- Recent events
+- Recent logs
+- Bug-report trigger
 
 ## Event stream
 
@@ -41,7 +41,7 @@ mxr logs --level error
 mxr logs --purge
 ```
 
-Text logs live under the mxr data directory. Structured event history is also retained in SQLite and pruned by the configured retention window.
+Text logs live under the mxr data directory. Structured event history is also in SQLite and pruned by the configured retention window.
 
 ## Notifications and quick counts
 
@@ -52,7 +52,7 @@ mxr notify --watch
 mxr count "label:inbox unread"
 ```
 
-These commands are intended for status bars, shell prompts, and lightweight monitoring.
+These commands are useful for status bars, shell prompts, and lightweight monitoring.
 
 ## Bug reports
 

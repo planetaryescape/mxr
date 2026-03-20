@@ -1,5 +1,5 @@
 ---
-title: First Sync
+title: First sync
 description: From installed binary to a working local mailbox.
 ---
 
@@ -43,9 +43,9 @@ mxr thread THREAD_ID
 
 ## What to expect in the TUI
 
-- left sidebar: system labels, user labels, saved searches
-- center list: threads by default
-- right pane: preview or thread view
+- Left sidebar: system labels, user labels, saved searches
+- Center list: threads by default
+- Right pane: preview or thread view
 - `Ctrl-p`: command palette
 - `?`: full help modal
 - `/`: inline mailbox search
@@ -61,6 +61,6 @@ mxr bug-report --stdout
 
 ## Next
 
-- [Mailbox Workflow](/guides/mailbox/)
+- [Mailbox workflow](/guides/mailbox/)
 - [Compose](/guides/compose/)
 - [Accounts](/guides/accounts/)

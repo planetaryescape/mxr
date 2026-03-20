@@ -5,7 +5,7 @@ description: Top-level mxr configuration model.
 
 ## Location
 
-`mxr` uses a TOML config file under the standard config directory for your platform.
+mxr uses a TOML config file under the standard config directory for your platform.
 
 To inspect the resolved path:
 
@@ -89,6 +89,6 @@ Send provider types:
 
 ## Notes
 
-- runtime account inventory is not identical to config entries
-- Gmail browser-auth accounts may exist at runtime without being editable config-backed entries
-- IMAP/SMTP entries are the main editable config-backed account type
+- Runtime account inventory is not identical to config entries.
+- Gmail browser-auth accounts may exist at runtime without being editable config-backed entries.
+- IMAP/SMTP entries are the main editable config-backed account type.

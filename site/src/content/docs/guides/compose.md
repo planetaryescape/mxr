@@ -5,15 +5,15 @@ description: Compose, reply, reply-all, and forward through $EDITOR.
 
 ## Core model
 
-`mxr` writes drafts in your editor. The daemon handles parsing, validation, send, save-draft, and provider delivery.
+mxr writes drafts in your editor. The daemon handles parsing, validation, send, save-draft, and provider delivery.
 
 This applies to:
 
-- new compose
-- reply
-- reply-all
-- forward
-- draft editing
+- New compose
+- Reply
+- Reply-all
+- Forward
+- Draft editing
 
 ## CLI
 
@@ -34,7 +34,7 @@ mxr send DRAFT_ID
 - `a`: reply all
 - `f`: forward
 
-If you start from a thread view, reply actions target the focused message, not just the latest message in the thread.
+If you start from a thread view, reply actions target the focused message, not the latest message in the thread.
 
 ## Draft format
 
@@ -54,14 +54,14 @@ Hello from mxr.
 
 ## Reply context
 
-Reply and forward drafts include message context. If the original message only had HTML, `mxr` uses the rendered reader output, not raw HTML tags.
+Reply and forward drafts include message context. If the original message only had HTML, mxr uses the rendered reader output, not raw HTML tags.
 
 ## Send confirmation
 
-After the editor closes, `mxr` shows a confirmation modal:
+After the editor closes, mxr shows a confirmation modal:
 
-- changed draft: send, save draft, edit again, discard
-- unchanged draft: edit again or discard
+- Changed draft: send, save draft, edit again, discard
+- Unchanged draft: edit again or discard
 
 ## Account selection
 
@@ -75,4 +75,4 @@ CLI compose supports:
 mxr compose --attach ./invoice.pdf --attach ./notes.txt
 ```
 
-TUI message viewing supports attachment open/download. Compose-side attachment management remains editor and CLI oriented.
+TUI message viewing supports attachment open/download. Compose-side attachment management is through the editor and CLI.

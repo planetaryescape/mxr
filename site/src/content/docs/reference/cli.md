@@ -1,5 +1,5 @@
 ---
-title: CLI Commands
+title: CLI commands
 description: Daemon-backed CLI reference for mxr.
 ---
 

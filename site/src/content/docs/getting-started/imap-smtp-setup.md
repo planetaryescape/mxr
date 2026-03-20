@@ -1,9 +1,9 @@
 ---
-title: IMAP / SMTP Setup
+title: IMAP / SMTP setup
 description: Connect any email provider to mxr using IMAP for sync and SMTP for sending.
 ---
 
-IMAP and SMTP are first-party adapters in mxr, shipped as part of the standard library alongside Gmail. Any email provider that supports IMAP and SMTP works out of the box — Fastmail, ProtonMail (with Bridge), Outlook, Yahoo, your company's Exchange server, self-hosted Dovecot, anything.
+IMAP and SMTP are first-party adapters in mxr, shipped alongside Gmail. Any email provider that supports IMAP and SMTP works: Fastmail, ProtonMail (with Bridge), Outlook, Yahoo, your company's Exchange server, self-hosted Dovecot, anything.
 
 ## Add an IMAP/SMTP account
 
@@ -102,7 +102,7 @@ password_ref = "keyring:mxr/personal"
 use_tls = true
 ```
 
-You can mix and match — one account on Gmail, another on IMAP/SMTP, a third on a different provider. They all sync into the same local database and are searchable together.
+You can mix and match: one account on Gmail, another on IMAP/SMTP, a third on something else. They all sync into the same local database and are searchable together.
 
 ## TUI account view
 

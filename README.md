@@ -2,7 +2,7 @@
 
 **The CLI for your email.**
 
-A programmable, agent-native email client that works across every provider. One binary. Full CLI. Hackable with any language you already use.
+A programmable, agent-native email client that works across every provider. One binary, full CLI, hackable with any language you already use.
 
 ## Install
 
@@ -10,22 +10,22 @@ A programmable, agent-native email client that works across every provider. One 
 # Homebrew
 brew tap planetaryescape/mxr && brew install mxr
 
-# Cargo (from git)
-cargo install --git https://github.com/planetaryescape/mxr
+# Cargo
+cargo install mxr
 
 # Pre-built binaries: macOS (Intel + Apple Silicon), Linux x86_64
 # https://github.com/planetaryescape/mxr/releases/latest
 ```
 
-Works with **Gmail**, **IMAP**, and **SMTP** out of the box. One local database, one CLI, all your accounts.
+Works with Gmail, IMAP, and SMTP out of the box. One local database, one CLI, all your accounts.
 
 ## A CLI for all your email
 
-Tools like mutt and aerc pioneered terminal email. himalaya brought a clean CLI-first approach. [gog](https://github.com/steipete/gogcli) and [Google Workspace CLI](https://github.com/googleworkspace/cli) made Gmail fully scriptable. [notmuch](https://notmuchmail.org/) proved that local indexing and search changes everything. mxr builds on these ideas and combines them: a single CLI that works across Gmail, IMAP, and SMTP, backed by a local database and a real search engine.
+Tools like mutt and aerc pioneered terminal email. himalaya brought a clean CLI-first approach. [gog](https://github.com/steipete/gogcli) and [Google Workspace CLI](https://github.com/googleworkspace/cli) made Gmail fully scriptable. [notmuch](https://notmuchmail.org/) proved that local indexing and search changes everything. mxr combines these ideas: a single CLI that works across Gmail, IMAP, and SMTP, backed by a local database and a real search engine.
 
 One binary. One CLI that can search, compose, reply, label, archive, snooze, unsubscribe, and export across all your accounts. One interface your scripts and agents can talk to, regardless of what provider sits behind it.
 
-A real CLI with `--format json`, `--dry-run`, `--search` for batch operations, and every output piped through stdout. Hack it with Python, Bash, Go, TypeScript — whatever you already use.
+A real CLI with `--format json`, `--dry-run`, `--search` for batch operations, and every output piped through stdout. Hack it with Python, Bash, Go, TypeScript, whatever you already use.
 
 ## Agent-native email
 
@@ -39,13 +39,13 @@ Your coding agent can already write code, run tests, and commit to git. Now it c
 
 > "Export the thread about the Q2 roadmap as markdown, summarize key decisions, and create a TODO list from the action items."
 
-This works because the CLI *is* the interface. Every operation supports `--format json`, `--dry-run`, and `--search` for batch operations. Your agent doesn't need screen scraping or browser automation — just `mxr`.
+This works because the CLI *is* the interface. Every operation supports `--format json`, `--dry-run`, and `--search` for batch operations. Your agent doesn't need screen scraping or browser automation, just `mxr`.
 
-## Blazing fast, local-first
+## Local-first, fast
 
 - **<50ms** to search across 10,000+ messages (Tantivy BM25 with field boosts)
 - **0ms** to open any message (local SQLite, no network call)
-- **Instant** compose — your `$EDITOR` launches immediately with markdown + YAML frontmatter
+- **Instant** compose, your `$EDITOR` launches immediately with markdown + YAML frontmatter
 
 SQLite is the canonical store. Your email lives on your machine. Works offline. No spinners. No loading states.
 
@@ -53,13 +53,13 @@ SQLite is the canonical store. Your email lives on your machine. Works offline. 
 
 **Compose in your editor.** `$EDITOR` opens with markdown and YAML frontmatter. Your keybindings, your plugins, your muscle memory.
 
-**Daemon-backed.** The daemon is the system. The TUI is just a thin client. Sync, indexing, rules, and snooze run in the background. Close the TUI — nothing stops.
+**Daemon-backed.** The daemon is the system. The TUI is a thin client. Sync, indexing, rules, and snooze run in the background. Close the TUI, nothing stops.
 
-**Provider-agnostic.** Gmail, IMAP, SMTP — all normalize into one internal model. Mix providers freely. Write new adapters with a clean Rust trait.
+**Provider-agnostic.** Gmail, IMAP, SMTP all normalize into one internal model. Mix providers freely. Write new adapters with a clean Rust trait.
 
 **Distraction-free.** Reader mode strips tracking pixels, banners, and quoted text. One key to unsubscribe.
 
-**Build your own client.** The daemon speaks JSON over a Unix socket. Build a web dashboard, a mobile bridge, a Raycast extension — anything that can open a socket.
+**Build your own client.** The daemon speaks JSON over a Unix socket. Build a web dashboard, a mobile bridge, a Raycast extension, anything that can open a socket.
 
 ## Where mxr fits in
 
@@ -91,9 +91,9 @@ See the [docs](https://mxr-mail.vercel.app) for setup guides, CLI reference, and
 
 ## Open source
 
-mxr is MIT / Apache-2.0 dual-licensed. Built with Rust — one binary, no runtime, runs on every platform. No telemetry, no analytics, no "phone home."
+mxr is MIT / Apache-2.0 dual-licensed. Built with Rust, one binary, no runtime, runs on every platform. No telemetry, no analytics, no "phone home."
 
-We welcome contributions — bug fixes, new provider adapters, CLI improvements, documentation, and ideas. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
+Contributions welcome: bug fixes, new provider adapters, CLI improvements, documentation, ideas. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
 ## Built with
 

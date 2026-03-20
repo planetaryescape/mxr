@@ -148,9 +148,9 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate
 
     frame.render_widget(Clear, popup_area);
 
-    let block = Block::default()
+    let block = Block::bordered()
         .title(" Compose — To: (Tab to add, Enter to compose) ")
-        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.accent));
 
     let inner = block.inner(popup_area);

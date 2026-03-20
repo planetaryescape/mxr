@@ -11,6 +11,7 @@ pub struct HintBarState<'a> {
     pub help_modal_open: bool,
     pub selected_count: usize,
     pub bulk_confirm_open: bool,
+    pub sync_status: Option<String>,
 }
 
 pub fn draw(
@@ -33,9 +34,31 @@ pub fn draw(
         ), theme)
     };
 
+    // Split area: hints on left, sync status on right
+    let sync_text = state.sync_status.as_deref().unwrap_or("synced");
+    let sync_width = (sync_text.len() + 4) as u16; // "● " + text + padding
+
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(sync_width)])
+        .split(area);
+
     frame.render_widget(
         Paragraph::new(lines).style(Style::default().bg(theme.hint_bar_bg)),
-        area,
+        chunks[0],
+    );
+
+    // Sync status indicator
+    let sync_line = Line::from(vec![
+        Span::styled("● ", Style::default().fg(theme.success)),
+        Span::styled(
+            sync_text.to_string(),
+            Style::default().fg(theme.text_muted),
+        ),
+    ]);
+    frame.render_widget(
+        Paragraph::new(sync_line).style(Style::default().bg(theme.hint_bar_bg)),
+        chunks[1],
     );
 }
 

@@ -114,6 +114,36 @@ impl Theme {
     pub fn modal_block_style(&self) -> Style {
         Style::default().bg(self.modal_bg)
     }
+
+    /// Returns a color for a label based on its name.
+    /// System labels get fixed colors, user labels use a hash-based palette.
+    pub fn label_color(label_name: &str) -> Color {
+        match label_name.to_uppercase().as_str() {
+            "INBOX" => Color::Blue,
+            "STARRED" => Color::Yellow,
+            "SENT" => Color::Gray,
+            "DRAFT" => Color::Magenta,
+            "TRASH" => Color::Red,
+            "SPAM" => Color::Rgb(255, 140, 0),
+            "ARCHIVE" => Color::DarkGray,
+            "IMPORTANT" => Color::Yellow,
+            _ => {
+                // Hash-based color for user labels
+                let hash: u8 = label_name.bytes().fold(0u8, |acc, b| acc.wrapping_add(b));
+                let colors = [
+                    Color::Rgb(96, 165, 250),  // blue
+                    Color::Rgb(52, 211, 153),  // emerald
+                    Color::Rgb(251, 146, 60),  // orange
+                    Color::Rgb(167, 139, 250), // violet
+                    Color::Rgb(251, 113, 133), // rose
+                    Color::Rgb(56, 189, 248),  // sky
+                    Color::Rgb(253, 186, 116), // amber
+                    Color::Rgb(134, 239, 172), // green
+                ];
+                colors[(hash % colors.len() as u8) as usize]
+            }
+        }
+    }
 }
 
 impl Default for Theme {

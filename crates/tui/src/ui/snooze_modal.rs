@@ -11,9 +11,9 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &SnoozePanelState, config: &Sn
     let popup = centered_rect(46, 38, area);
     frame.render_widget(Clear, popup);
 
-    let block = Block::default()
+    let block = Block::bordered()
         .title(" Snooze ")
-        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.warning))
         .style(Style::default().bg(theme.modal_bg));
     let inner = block.inner(popup);
@@ -37,7 +37,21 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &SnoozePanelState, config: &Sn
             ListItem::new(label).style(style)
         })
         .collect();
+    let presets_len = snooze_presets().len();
+    let list_height = chunks[0].height as usize;
     frame.render_widget(List::new(items), chunks[0]);
+
+    if presets_len > list_height {
+        let mut scrollbar_state = ScrollbarState::new(presets_len.saturating_sub(list_height))
+            .position(panel.selected_index);
+        frame.render_stateful_widget(
+            Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .thumb_style(Style::default().fg(theme.warning)),
+            chunks[0],
+            &mut scrollbar_state,
+        );
+    }
 
     frame.render_widget(
         Paragraph::new("Enter snooze  j/k move  Esc cancel")

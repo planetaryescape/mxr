@@ -49,134 +49,125 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
     let border_style = theme.border_style(is_focused);
 
     let visible_height = area.height.saturating_sub(2) as usize;
-    let inner_width = area.width.saturating_sub(2) as usize;
-    let compact = inner_width < 72;
-    let ultra_compact = inner_width < 48;
 
-    let items: Vec<ListItem> = view
+    let table_rows: Vec<Row> = view
         .rows
         .iter()
         .enumerate()
         .skip(view.scroll_offset)
         .take(visible_height)
-        .map(|(i, row)| render_row(view, row, i, inner_width, compact, ultra_compact, theme))
+        .map(|(i, row)| build_row(view, row, i, theme))
         .collect();
 
-    let list = List::new(items).block(
-        Block::default()
-            .title(format!(" {} ", view.title))
-            .borders(Borders::ALL)
-            .border_style(border_style),
-    );
+    let widths = [
+        Constraint::Length(1),  // unread indicator
+        Constraint::Length(2),  // star
+        Constraint::Length(22), // sender
+        Constraint::Fill(1),   // subject (+ thread count badge)
+        Constraint::Length(8),  // date
+        Constraint::Length(2),  // attachment icon
+    ];
 
-    frame.render_widget(list, area);
+    let table = Table::new(table_rows, widths)
+        .block(
+            Block::default()
+                .title(format!(" {} ", view.title))
+                .borders(Borders::ALL)
+                .border_style(border_style),
+        )
+        .highlight_style(
+            Style::default()
+                .bg(theme.selection_bg)
+                .fg(theme.selection_fg),
+        )
+        .column_spacing(1);
+
+    // We use manual highlight via row styles since we handle scroll_offset ourselves
+    frame.render_widget(table, area);
+
+    // Scrollbar
+    if view.rows.len() > visible_height {
+        let mut scrollbar_state = ScrollbarState::new(view.rows.len().saturating_sub(visible_height))
+            .position(view.scroll_offset);
+        frame.render_stateful_widget(
+            Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .thumb_style(Style::default().fg(theme.accent)),
+            area,
+            &mut scrollbar_state,
+        );
+    }
 }
 
-fn render_row(
+fn build_row<'a>(
     view: &MailListView<'_>,
     row: &MailListRow,
     index: usize,
-    inner_width: usize,
-    compact: bool,
-    ultra_compact: bool,
     theme: &Theme,
-) -> ListItem<'static> {
+) -> Row<'a> {
     let env = &row.representative;
     let is_selected = index == view.selected_index;
     let is_unread = !env.flags.contains(MessageFlags::READ);
     let is_starred = env.flags.contains(MessageFlags::STARRED);
-    let is_answered = env.flags.contains(MessageFlags::ANSWERED);
     let is_in_set = view.selected_set.contains(&env.id);
-    let right_text = format_right_column(env, compact);
-    let date_width = display_width(&right_text).max(if compact { 7 } else { 12 });
-    let line_number_width = if ultra_compact { 0 } else { 4 };
-    let selection_width = usize::from(!view.selected_set.is_empty());
-    let flags_width = if compact { 5 } else { 6 };
-    let gap_width = 3;
 
-    let reserved = selection_width + line_number_width + flags_width + gap_width + date_width;
-    let available_text = inner_width.saturating_sub(reserved);
-    let min_sender_width = if ultra_compact { 8 } else { 12 };
-    let min_subject_width = if ultra_compact { 8 } else { 14 };
-    let preferred_sender_width = if ultra_compact {
-        available_text / 2
-    } else if compact {
-        18
-    } else {
-        22
-    };
-    let mut sender_width = preferred_sender_width.min(available_text.saturating_sub(min_subject_width));
-    sender_width = sender_width.max(min_sender_width.min(available_text));
-    let subject_width = available_text.saturating_sub(sender_width);
-
-    let (sender_text, thread_count) = sender_parts(row, view.mode);
-    let thread_count_width = thread_count
-        .map(|count| display_width(&format!(" {}", count)))
-        .unwrap_or(0);
-    let subject_text = if ultra_compact {
-        truncate_display(&env.subject, subject_width)
-    } else {
-        pad_right_display(&truncate_display(&env.subject, subject_width), subject_width)
-    };
-
-    let mut spans: Vec<Span> = Vec::new();
-
-    if !view.selected_set.is_empty() {
-        spans.push(if is_in_set {
-            Span::styled("*", Style::default().fg(theme.accent).bold())
-        } else {
-            Span::raw(" ")
-        });
-    }
-
-    if !ultra_compact {
-        spans.push(Span::styled(
-            pad_left_display(&(index + 1).to_string(), 3) + " ",
-            Style::default().fg(theme.line_number_fg),
-        ));
-    }
-
-    spans.push(Span::styled(
+    // Unread indicator
+    let unread_cell = Cell::from(Span::styled(
         if is_unread { "N" } else { " " },
         Style::default().fg(theme.accent).bold(),
     ));
-    spans.push(Span::styled(
+
+    // Star
+    let star_cell = Cell::from(Span::styled(
         if is_starred { "★" } else { " " },
         Style::default().fg(theme.warning),
     ));
-    if !compact {
-        spans.push(Span::styled(
-            if is_answered { "A" } else { " " },
-            Style::default().fg(theme.accent_dim),
-        ));
-    }
-    spans.push(Span::styled(
-        attachment_marker(env.has_attachments),
-        Style::default().fg(theme.success),
-    ));
-    spans.push(Span::raw(" "));
-    let sender_cell = pad_right_display(
-        &sender_text,
-        sender_width.saturating_sub(thread_count_width),
-    );
-    spans.push(Span::styled(
-        sender_cell,
-        Style::default().fg(if is_unread { theme.text_primary } else { theme.text_secondary }),
-    ));
-    if let Some(thread_count) = thread_count {
-        spans.push(Span::styled(
-            format!(" {}", thread_count),
-            Style::default().fg(theme.accent_dim).bold(),
-        ));
-    }
-    spans.push(Span::raw(" "));
-    spans.push(Span::raw(subject_text));
-    spans.push(Span::styled(
-        pad_left_display(&right_text, date_width),
+
+    // Sender (with thread count badge)
+    let (sender_text, thread_count) = sender_parts(row, view.mode);
+    let sender_spans: Vec<Span> = if let Some(count) = thread_count {
+        vec![
+            Span::styled(
+                sender_text,
+                Style::default().fg(if is_unread {
+                    theme.text_primary
+                } else {
+                    theme.text_secondary
+                }),
+            ),
+            Span::styled(
+                format!(" {}", count),
+                Style::default().fg(theme.accent_dim).bold(),
+            ),
+        ]
+    } else {
+        vec![Span::styled(
+            sender_text,
+            Style::default().fg(if is_unread {
+                theme.text_primary
+            } else {
+                theme.text_secondary
+            }),
+        )]
+    };
+    let sender_cell = Cell::from(Line::from(sender_spans));
+
+    // Subject
+    let subject_cell = Cell::from(Span::raw(env.subject.clone()));
+
+    // Date
+    let date_str = format_date(&env.date);
+    let date_cell = Cell::from(Span::styled(
+        date_str,
         Style::default().fg(theme.text_muted),
     ));
 
-    let line = Line::from(spans);
+    // Attachment
+    let attach_cell = Cell::from(Span::styled(
+        attachment_marker(env.has_attachments),
+        Style::default().fg(theme.success),
+    ));
+
     let base_style = if is_selected {
         Style::default().bg(theme.selection_bg).fg(theme.selection_fg)
     } else if is_in_set {
@@ -187,16 +178,15 @@ fn render_row(
         Style::default().fg(theme.text_secondary)
     };
 
-    ListItem::new(line).style(base_style)
-}
-
-fn format_right_column(env: &mxr_core::Envelope, compact: bool) -> String {
-    let date_str = format_date(&env.date);
-    if compact {
-        date_str
-    } else {
-        format!("{} {}", date_str, format_size(env.size_bytes))
-    }
+    Row::new(vec![
+        unread_cell,
+        star_cell,
+        sender_cell,
+        subject_cell,
+        date_cell,
+        attach_cell,
+    ])
+    .style(base_style)
 }
 
 fn sender_parts(row: &MailListRow, mode: MailListMode) -> (String, Option<usize>) {

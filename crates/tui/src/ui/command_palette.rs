@@ -424,9 +424,9 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
     // Clear background
     frame.render_widget(Clear, popup_area);
 
-    let block = Block::default()
+    let block = Block::bordered()
         .title(" Command Palette ")
-        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.warning));
 
     let inner = block.inner(popup_area);
@@ -472,7 +472,8 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
             } else {
                 Style::default()
             };
-            ListItem::new(format!("  {:<12} {}{}", cmd.category, cmd.label, shortcut)).style(style)
+            let icon = category_icon(&cmd.category);
+            ListItem::new(format!("  {} {:<12} {}{}", icon, cmd.category, cmd.label, shortcut)).style(style)
         })
         .collect();
 
@@ -481,6 +482,7 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
 
     let mut scrollbar_state =
         ScrollbarState::new(palette.filtered.len().saturating_sub(visible_len)).position(start);
+
     frame.render_stateful_widget(
         Scrollbar::default()
             .orientation(ScrollbarOrientation::VerticalRight)
@@ -488,4 +490,19 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
         list_area,
         &mut scrollbar_state,
     );
+}
+
+fn category_icon(category: &str) -> &'static str {
+    match category {
+        "Mail" => "[M]",
+        "Navigation" => "[N]",
+        "Search" => "[S]",
+        "Selection" => "[X]",
+        "View" => "[V]",
+        "Rules" => "[R]",
+        "Diagnostics" => "[D]",
+        "Accounts" => "[A]",
+        "Sync" => "[Y]",
+        _ => "[?]",
+    }
 }

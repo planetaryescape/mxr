@@ -15,7 +15,7 @@ pub struct SidebarView<'a> {
 
 #[derive(Debug, Clone)]
 enum SidebarEntry<'a> {
-    Spacer,
+    Separator,
     Header(&'static str),
     AllMail,
     Label(&'a Label),
@@ -33,7 +33,13 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
     let items = entries
         .iter()
         .map(|entry| match entry {
-            SidebarEntry::Spacer => ListItem::new(Line::from("")),
+            SidebarEntry::Separator => {
+                // Visual separator line instead of empty spacer
+                ListItem::new(Line::from(Span::styled(
+                    "─".repeat(inner_width),
+                    Style::default().fg(theme.text_muted),
+                )))
+            }
             SidebarEntry::Header(title) => ListItem::new(Line::from(Span::styled(
                 *title,
                 Style::default().fg(theme.accent).bold(),
@@ -46,9 +52,9 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
 
     let list = List::new(items)
         .block(
-            Block::default()
+            Block::bordered()
                 .title(" Sidebar ")
-                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .border_style(border_style),
         )
         .highlight_style(theme.highlight_style());
@@ -92,7 +98,7 @@ fn build_sidebar_entries<'a>(
 
     if !user_labels.is_empty() {
         if !entries.is_empty() {
-            entries.push(SidebarEntry::Spacer);
+            entries.push(SidebarEntry::Separator);
         }
         entries.push(SidebarEntry::Header(" Labels"));
         entries.extend(user_labels.into_iter().map(SidebarEntry::Label));
@@ -100,7 +106,7 @@ fn build_sidebar_entries<'a>(
 
     if !saved_searches.is_empty() {
         if !entries.is_empty() {
-            entries.push(SidebarEntry::Spacer);
+            entries.push(SidebarEntry::Separator);
         }
         entries.push(SidebarEntry::Header(" Saved Searches"));
         entries.extend(saved_searches.iter().map(SidebarEntry::SavedSearch));
@@ -119,17 +125,21 @@ fn visual_index_for_selection(entries: &[SidebarEntry<'_>], sidebar_selected: us
                 }
                 selectable += 1;
             }
-            SidebarEntry::Spacer | SidebarEntry::Header(_) => {}
+            SidebarEntry::Separator | SidebarEntry::Header(_) => {}
         }
     }
     None
 }
 
 fn render_all_mail_item<'a>(inner_width: usize, is_active: bool, theme: &Theme) -> ListItem<'a> {
-    let prefix = if is_active { "▸ " } else { "  " };
-    let line = format!("{prefix}{:<width$}", "All Mail", width = inner_width.saturating_sub(2));
+    let name = "All Mail";
+    let line = format!("  {:<width$}", name, width = inner_width.saturating_sub(2));
     let style = if is_active {
-        Style::default().fg(theme.accent).bold()
+        // Full-width highlight bar for active label
+        Style::default()
+            .bg(theme.selection_bg)
+            .fg(theme.accent)
+            .bold()
     } else {
         Style::default()
     };
@@ -144,7 +154,6 @@ fn render_label_item<'a>(
 ) -> ListItem<'a> {
     let is_active = active_label.map(|current| current == &label.id).unwrap_or(false);
     let display_name = humanize_label(&label.name);
-    let prefix = if is_active { "▸ " } else { "  " };
 
     let count_str = if label.unread_count > 0 {
         format!("{}/{}", label.unread_count, label.total_count)
@@ -154,15 +163,21 @@ fn render_label_item<'a>(
         String::new()
     };
 
-    let name_width = inner_width.saturating_sub(2 + count_str.len() + 1);
+    // Right-align count: name on left, count on right
+    let name_part = format!("  {}", display_name);
     let line = if count_str.is_empty() {
-        format!("{prefix}{display_name}")
+        name_part
     } else {
-        format!("{prefix}{display_name:<name_width$} {count_str}")
+        let padding = inner_width.saturating_sub(name_part.len() + count_str.len());
+        format!("{}{}{}", name_part, " ".repeat(padding), count_str)
     };
 
     let style = if is_active {
-        Style::default().fg(theme.accent).bold()
+        // Full-width highlight bar for active label
+        Style::default()
+            .bg(theme.selection_bg)
+            .fg(theme.accent)
+            .bold()
     } else if label.unread_count > 0 {
         theme.unread_style()
     } else {
@@ -258,7 +273,7 @@ mod tests {
         let entries = build_sidebar_entries(&labels, &[]);
         assert!(matches!(entries[0], SidebarEntry::AllMail));
         assert!(matches!(entries[1], SidebarEntry::Label(label) if label.name == "INBOX"));
-        assert!(matches!(entries[2], SidebarEntry::Spacer));
+        assert!(matches!(entries[2], SidebarEntry::Separator));
         assert!(matches!(entries[3], SidebarEntry::Header(" Labels")));
         assert!(matches!(entries[4], SidebarEntry::Label(label) if label.name == "Work"));
     }

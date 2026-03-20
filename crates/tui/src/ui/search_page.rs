@@ -18,15 +18,18 @@ pub fn draw(
         .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(area);
 
+    let result_count = rows.len();
     let query_title = if state.editing {
-        " Search Query (editing) "
+        " Search Query (editing) ".to_string()
+    } else if result_count > 0 {
+        format!(" Search Results ({}) ", result_count)
     } else {
-        " Search Query "
+        " Search Query ".to_string()
     };
     let query = Paragraph::new(state.query.as_str()).block(
-        Block::default()
+        Block::bordered()
             .title(query_title)
-            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(theme.warning)),
     );
     frame.render_widget(query, chunks[0]);

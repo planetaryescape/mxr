@@ -60,6 +60,7 @@ pub enum Action {
     OpenAccountFormNew,
     SaveAccountForm,
     TestAccountForm,
+    ReauthorizeAccountForm,
     SetDefaultAccount,
     GenerateBugReport,
 

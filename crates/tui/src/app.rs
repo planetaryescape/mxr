@@ -3119,21 +3119,39 @@ impl App {
         let theme = crate::theme::Theme::default();
         let area = frame.area();
 
-        // Layout: hint bar (1 line) | content | status bar (1 line)
+        // Layout: tabs (1 line) | hint bar (2 lines) | content | status bar (1 line)
         let outer_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
+                Constraint::Length(1), // tab bar
                 Constraint::Length(2), // hint bar
                 Constraint::Min(0),    // content
                 Constraint::Length(1), // status bar
             ])
             .split(area);
 
-        let hint_bar_area = outer_chunks[0];
-        let content_area = outer_chunks[1];
+        let tab_bar_area = outer_chunks[0];
+        let hint_bar_area = outer_chunks[1];
+        let content_area = outer_chunks[2];
         // Update visible height based on actual terminal size (subtract borders/header)
         self.visible_height = content_area.height.saturating_sub(2) as usize;
-        let bottom_bar_area = outer_chunks[2];
+        let bottom_bar_area = outer_chunks[3];
+
+        // Tab bar
+        let tab_titles = vec!["Mailbox", "Search", "Rules", "Accounts", "Diagnostics"];
+        let selected_tab = match self.screen {
+            Screen::Mailbox => 0,
+            Screen::Search => 1,
+            Screen::Rules => 2,
+            Screen::Accounts => 3,
+            Screen::Diagnostics => 4,
+        };
+        let tabs = ratatui::widgets::Tabs::new(tab_titles)
+            .select(selected_tab)
+            .style(Style::default().fg(theme.text_muted))
+            .highlight_style(Style::default().fg(theme.accent).bold())
+            .divider(Span::styled(" | ", Style::default().fg(theme.text_muted)));
+        frame.render_widget(tabs, tab_bar_area);
 
         // Hint bar
         ui::hint_bar::draw(
@@ -3146,6 +3164,7 @@ impl App {
                 help_modal_open: self.help_modal_open,
                 selected_count: self.selected_set.len(),
                 bulk_confirm_open: self.pending_bulk_confirm.is_some(),
+                sync_status: self.last_sync_status.clone(),
             },
             &theme,
         );

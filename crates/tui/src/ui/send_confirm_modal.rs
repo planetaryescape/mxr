@@ -10,9 +10,9 @@ pub fn draw(frame: &mut Frame, area: Rect, pending: Option<&PendingSend>, theme:
     let popup = centered_rect(58, 24, area);
     frame.render_widget(Clear, popup);
 
-    let block = Block::default()
+    let block = Block::bordered()
         .title(" Draft Ready ")
-        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.warning))
         .style(Style::default().bg(theme.modal_bg));
     let inner = block.inner(popup);

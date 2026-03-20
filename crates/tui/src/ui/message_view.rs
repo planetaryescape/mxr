@@ -1,4 +1,5 @@
 use crate::app::{ActivePane, BodyViewState};
+use crate::theme::Theme;
 use mxr_core::types::Envelope;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -18,7 +19,7 @@ pub fn draw(
     messages: &[ThreadMessageBlock],
     scroll_offset: u16,
     active_pane: &ActivePane,
-    theme: &crate::theme::Theme,
+    theme: &Theme,
 ) {
     let is_focused = *active_pane == ActivePane::MessageView;
     let border_style = theme.border_style(is_focused);
@@ -28,9 +29,9 @@ pub fn draw(
     } else {
         " Message "
     };
-    let block = Block::default()
+    let block = Block::bordered()
         .title(title)
-        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(border_style);
 
     let inner = block.inner(area);
@@ -50,52 +51,73 @@ pub fn draw(
 
         let env = &message.envelope;
         let from = env.from.name.as_deref().unwrap_or(&env.from.email);
-        let header_style = if message.selected {
+        let label_style = if message.selected {
             Style::default().fg(theme.accent).bold()
         } else {
-            Style::default().bold()
+            Style::default().fg(theme.text_muted)
         };
+        let value_style = Style::default().fg(theme.text_primary);
 
+        // Aligned headers with consistent label width
+        let label_width = 10; // "Subject: " padded
         lines.push(Line::from(vec![
-            Span::styled("From: ", header_style),
-            Span::raw(format!("{} <{}>", from, env.from.email)),
+            Span::styled(format!("{:<label_width$}", "From:"), label_style),
+            Span::styled(format!("{} <{}>", from, env.from.email), value_style),
         ]));
-        lines.push(Line::from(vec![
-            Span::styled("Date: ", header_style),
-            Span::raw(env.date.format("%Y-%m-%d %H:%M").to_string()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Subject: ", header_style),
-            Span::raw(env.subject.clone()),
-        ]));
-        if !message.labels.is_empty() {
-            let chips = message
-                .labels
+        if !env.to.is_empty() {
+            let to_str = env
+                .to
                 .iter()
-                .map(|label| {
-                    Span::styled(
-                        format!("[{label}] "),
-                        Style::default().fg(theme.warning).bold(),
-                    )
+                .map(|a| {
+                    a.name
+                        .as_ref()
+                        .map(|n| format!("{} <{}>", n, a.email))
+                        .unwrap_or_else(|| a.email.clone())
                 })
-                .collect::<Vec<_>>();
+                .collect::<Vec<_>>()
+                .join(", ");
+            lines.push(Line::from(vec![
+                Span::styled(format!("{:<label_width$}", "To:"), label_style),
+                Span::styled(to_str, value_style),
+            ]));
+        }
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<label_width$}", "Date:"), label_style),
+            Span::styled(env.date.format("%Y-%m-%d %H:%M").to_string(), value_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<label_width$}", "Subject:"), label_style),
+            Span::styled(env.subject.clone(), value_style),
+        ]));
+
+        // Label chips with colored backgrounds
+        if !message.labels.is_empty() {
+            let mut chips: Vec<Span> = Vec::new();
+            for label in &message.labels {
+                chips.push(Span::styled(
+                    format!(" {} ", label),
+                    Style::default()
+                        .bg(Theme::label_color(label))
+                        .fg(Color::Black),
+                ));
+                chips.push(Span::raw(" "));
+            }
             lines.push(Line::from(chips));
         }
+
+        // Attachments
         if !message.attachments.is_empty() {
-            let chips = message
-                .attachments
-                .iter()
-                .map(|attachment| {
-                    Span::styled(
-                        format!("[{attachment}] "),
-                        Style::default().fg(theme.success).bold(),
-                    )
-                })
-                .collect::<Vec<_>>();
-            lines.push(Line::from(vec![
-                Span::styled("Attachments: ", header_style),
-                Span::raw(""),
-            ]));
+            let mut chips: Vec<Span> = vec![Span::styled(
+                format!("{:<label_width$}", "Attach:"),
+                label_style,
+            )];
+            for attachment in &message.attachments {
+                chips.push(Span::styled(
+                    format!("[{}]", attachment),
+                    Style::default().fg(theme.success).bold(),
+                ));
+                chips.push(Span::raw(" "));
+            }
             lines.push(Line::from(chips));
         }
         lines.push(Line::from(""));
@@ -151,10 +173,11 @@ pub fn draw(
     frame.render_widget(paragraph, inner);
 }
 
-fn process_body_lines(raw: &str, theme: &crate::theme::Theme) -> Vec<Line<'static>> {
+fn process_body_lines(raw: &str, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut quote_buffer: Vec<String> = Vec::new();
     let mut in_signature = false;
+    let mut signature_lines: Vec<String> = Vec::new();
     let mut consecutive_blanks: u32 = 0;
 
     for line in raw.lines() {
@@ -167,6 +190,10 @@ fn process_body_lines(raw: &str, theme: &crate::theme::Theme) -> Vec<Line<'stati
 
         // Blank line collapsing
         if line.trim().is_empty() {
+            if in_signature {
+                signature_lines.push(String::new());
+                continue;
+            }
             flush_quotes(&mut quote_buffer, &mut lines, theme);
             consecutive_blanks += 1;
             if consecutive_blanks <= 2 {
@@ -177,10 +204,7 @@ fn process_body_lines(raw: &str, theme: &crate::theme::Theme) -> Vec<Line<'stati
         consecutive_blanks = 0;
 
         if in_signature {
-            lines.push(Line::from(Span::styled(
-                line.to_string(),
-                Style::default().fg(theme.signature_fg),
-            )));
+            signature_lines.push(line.to_string());
             continue;
         }
 
@@ -197,10 +221,22 @@ fn process_body_lines(raw: &str, theme: &crate::theme::Theme) -> Vec<Line<'stati
 
     // Flush remaining
     flush_quotes(&mut quote_buffer, &mut lines, theme);
+
+    // Collapsed signature
+    if !signature_lines.is_empty() {
+        let count = signature_lines.len();
+        lines.push(Line::from(Span::styled(
+            format!("-- signature ({} lines) --", count),
+            Style::default()
+                .fg(theme.text_muted)
+                .add_modifier(Modifier::ITALIC),
+        )));
+    }
+
     lines
 }
 
-fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>, theme: &crate::theme::Theme) {
+fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>, theme: &Theme) {
     if buffer.is_empty() {
         return;
     }

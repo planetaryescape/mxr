@@ -10,9 +10,9 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &AttachmentPanelState, theme: 
     let popup = centered_rect(60, 55, area);
     frame.render_widget(Clear, popup);
 
-    let block = Block::default()
+    let block = Block::bordered()
         .title(" Attachments ")
-        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.success))
         .style(Style::default().bg(theme.modal_bg));
     let inner = block.inner(popup);
@@ -48,7 +48,20 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &AttachmentPanelState, theme: 
             .style(style)
         })
         .collect();
+    let list_height = chunks[0].height as usize;
     frame.render_widget(List::new(items), chunks[0]);
+
+    if panel.attachments.len() > list_height {
+        let mut scrollbar_state = ScrollbarState::new(panel.attachments.len().saturating_sub(list_height))
+            .position(panel.selected_index);
+        frame.render_stateful_widget(
+            Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .thumb_style(Style::default().fg(theme.success)),
+            chunks[0],
+            &mut scrollbar_state,
+        );
+    }
 
     let footer = panel.status.clone().unwrap_or_else(|| {
         "Enter/o open  d download  j/k move  Esc close".to_string()

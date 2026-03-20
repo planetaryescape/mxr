@@ -64,18 +64,19 @@ SQLite is the canonical store. Your email lives on your machine. Works offline. 
 
 ## How it compares
 
-| | gog / gwc | mutt | aerc | himalaya | **mxr** |
-|---|:---:|:---:|:---:|:---:|:---:|
-| Works beyond Google | no | yes | yes | yes | **yes** |
-| Full CLI for every action | partial | no | no | yes | **yes** |
-| JSON output for scripting | yes | no | no | partial | **yes** |
-| Daemon architecture | no | no | no | no | **yes** |
-| Local SQLite store | no | no | no | no | **yes** |
-| Full-text search engine | no | no | no | no | **yes** |
-| Compose in $EDITOR | no | partial | partial | yes | **yes** |
-| Batch operations via search | no | no | no | no | **yes** |
-| Pluggable provider adapters | no | no | partial | partial | **yes** |
-| Custom client support | no | no | no | no | **yes** |
+| | gog / gwc | notmuch | mutt | aerc | himalaya | meli | **mxr** |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Works beyond Google | no | yes | yes | yes | yes | yes | **yes** |
+| Full CLI for every action | partial | search only | no | no | yes | no | **yes** |
+| JSON output for scripting | yes | yes | no | no | partial | no | **yes** |
+| Compose and send from CLI | partial | no | no | no | yes | no | **yes** |
+| Batch operations via search | no | tag only | no | no | no | no | **yes** |
+| Daemon architecture | no | no | no | no | no | no | **yes** |
+| Local database | no | Xapian | no | no | no | optional | **SQLite** |
+| Full-text search engine | no | yes | no | no | no | optional | **yes** |
+| Compose in $EDITOR | no | via Emacs | partial | partial | yes | no | **yes** |
+| Pluggable provider adapters | no | no | no | partial | partial | no | **yes** |
+| Custom client support | no | yes | no | no | no | no | **yes** |
 
 ## Quick start
 

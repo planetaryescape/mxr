@@ -26,34 +26,18 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 <div class="install-grid">
 <div class="install-method">
-<h4>Homebrew</h4>
-
-```bash
-brew tap planetaryescape/mxr
-brew install mxr
-```
-
-</div>
-<div class="install-method">
-<h4>Cargo</h4>
-
-```bash
-cargo install mxr
-```
-
-</div>
-<div class="install-method">
 <h4>From source</h4>
 
 ```bash
 git clone https://github.com/planetaryescape/mxr
 cd mxr && cargo build --release
+cp target/release/mxr ~/.local/bin/
 ```
 
-Pre-built binaries for macOS and Linux coming with the first release.
+</div>
+</div>
 
-</div>
-</div>
+Homebrew and `cargo install` will be available with the first tagged release. For now, build from source — it takes about 2 minutes.
 
 Works with **Gmail**, **IMAP**, and **SMTP** out of the box. One local database, one CLI, all your accounts.
 
@@ -61,13 +45,13 @@ Works with **Gmail**, **IMAP**, and **SMTP** out of the box. One local database,
 
 <div class="landing-section problem-section">
 
-## The missing email CLI
+## A CLI for all your email
 
-Tools like [gog](https://github.com/steipete/gogcli) and [Google Workspace CLI](https://github.com/googleworkspace/cli) give you a CLI for email — but only if you use Google. What if you're on Fastmail? Or your company's Exchange server? Or you have a Gmail personal account and an IMAP work account? There's nothing that works across providers with the same power.
+Tools like mutt and aerc pioneered terminal email. himalaya brought a clean CLI-first approach. [gog](https://github.com/steipete/gogcli) and [Google Workspace CLI](https://github.com/googleworkspace/cli) made Gmail fully scriptable. [notmuch](https://notmuchmail.org/) proved that local indexing and search changes everything. mxr builds on these ideas and combines them: a single CLI that works across Gmail, IMAP, and SMTP, backed by a local database and a real search engine.
 
-mxr is that tool. One binary that syncs Gmail, IMAP, and SMTP into one local database. One CLI that can search, compose, reply, label, archive, snooze, unsubscribe, and export across all your accounts. One interface your scripts and agents can talk to, regardless of what provider sits behind it.
+One binary. One CLI that can search, compose, reply, label, archive, snooze, unsubscribe, and export across all your accounts. One interface your scripts and agents can talk to, regardless of what provider sits behind it.
 
-Not a wrapper around provider APIs. Not a DSL you have to learn. A real CLI with `--format json`, `--dry-run`, `--search` for batch operations, and every output piped through stdout. Hack it with Python, Bash, Go, TypeScript — whatever you already use.
+A real CLI with `--format json`, `--dry-run`, `--search` for batch operations, and every output piped through stdout. Hack it with Python, Bash, Go, TypeScript — whatever you already use.
 
 </div>
 
@@ -151,24 +135,24 @@ mxr syncs your email to a local SQLite database and indexes it with Tantivy — 
 
 <div class="landing-section comparison-section">
 
-## How it compares
+## Where mxr fits in
 
 | | gog / gws | notmuch | mutt | aerc | himalaya | meli | **mxr** |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Works beyond Google | no | yes | yes | yes | yes | yes | **yes** |
-| Full CLI for every action | yes (Gmail) | most | partial | partial | yes | no | **yes** |
-| JSON output for scripting | yes | yes | no | no | yes | no | **yes** |
-| Compose and send from CLI | yes | no | yes | partial | yes | no | **yes** |
+| Works beyond Google | no | **yes** | **yes** | **yes** | **yes** | **yes** | **yes** |
+| Full CLI for every action | **yes** (Gmail) | most | partial | partial | **yes** | no | **yes** |
+| JSON output for scripting | **yes** | **yes** | no | no | **yes** | no | **yes** |
+| Compose and send from CLI | **yes** | no | **yes** | partial | **yes** | no | **yes** |
 | Batch operations via search | partial | tag only | no | no | no | no | **yes** |
 | Daemon architecture | no | no | no | no | no | no | **yes** |
-| Local database | no | Xapian | no | no | no | optional | **SQLite** |
-| Full-text search engine | no | yes | no | no | no | optional | **yes** |
-| Compose in $EDITOR | no | via Emacs | yes | yes | yes | partial | **yes** |
+| Local database | no | **Xapian** | no | no | no | optional | **SQLite** |
+| Full-text search engine | no | **yes** | no | no | no | optional | **yes** |
+| Compose in $EDITOR | no | via Emacs | **yes** | **yes** | **yes** | partial | **yes** |
 | Markdown to multipart | no | no | no | no | no | no | **yes** |
 | One-key unsubscribe | no | no | no | no | no | no | **yes** |
-| Rules with dry-run | no | no | procmail | no | no | no | **yes** |
+| Rules with dry-run | no | no | **procmail** | no | no | no | **yes** |
 | Pluggable provider adapters | no | no | no | partial | partial | partial | **yes** |
-| Custom client support | no | yes | no | no | no | no | **yes** |
+| Custom client support | no | **yes** | no | no | no | no | **yes** |
 
 </div>
 

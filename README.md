@@ -7,26 +7,22 @@ A programmable, agent-native email client that works across every provider. One 
 ## Install
 
 ```bash
-# Homebrew
-brew tap planetaryescape/mxr && brew install mxr
-
-# Cargo
-cargo install mxr
-
-# From source
 git clone https://github.com/planetaryescape/mxr
 cd mxr && cargo build --release
+cp target/release/mxr ~/.local/bin/
 ```
+
+Homebrew and `cargo install` will be available with the first tagged release.
 
 Works with **Gmail**, **IMAP**, and **SMTP** out of the box. One local database, one CLI, all your accounts.
 
-## The missing email CLI
+## A CLI for all your email
 
-Tools like [gog](https://github.com/steipete/gogcli) and [Google Workspace CLI](https://github.com/googleworkspace/cli) give you a CLI for email — but only if you use Google. What if you're on Fastmail? Or your company's Exchange server? Or you have a Gmail personal account and an IMAP work account?
+Tools like mutt and aerc pioneered terminal email. himalaya brought a clean CLI-first approach. [gog](https://github.com/steipete/gogcli) and [Google Workspace CLI](https://github.com/googleworkspace/cli) made Gmail fully scriptable. [notmuch](https://notmuchmail.org/) proved that local indexing and search changes everything. mxr builds on these ideas and combines them: a single CLI that works across Gmail, IMAP, and SMTP, backed by a local database and a real search engine.
 
-mxr is that tool. One binary that syncs Gmail, IMAP, and SMTP into one local database. One CLI that can search, compose, reply, label, archive, snooze, unsubscribe, and export across all your accounts. One interface your scripts and agents can talk to, regardless of what provider sits behind it.
+One binary. One CLI that can search, compose, reply, label, archive, snooze, unsubscribe, and export across all your accounts. One interface your scripts and agents can talk to, regardless of what provider sits behind it.
 
-Not a wrapper around provider APIs. Not a DSL you have to learn. A real CLI with `--format json`, `--dry-run`, `--search` for batch operations, and every output piped through stdout. Hack it with Python, Bash, Go, TypeScript — whatever you already use.
+A real CLI with `--format json`, `--dry-run`, `--search` for batch operations, and every output piped through stdout. Hack it with Python, Bash, Go, TypeScript — whatever you already use.
 
 ## Agent-native email
 
@@ -62,21 +58,21 @@ SQLite is the canonical store. Your email lives on your machine. Works offline. 
 
 **Build your own client.** The daemon speaks JSON over a Unix socket. Build a web dashboard, a mobile bridge, a Raycast extension — anything that can open a socket.
 
-## How it compares
+## Where mxr fits in
 
 | | gog / gws | notmuch | mutt | aerc | himalaya | meli | **mxr** |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Works beyond Google | no | yes | yes | yes | yes | yes | **yes** |
-| Full CLI for every action | yes (Gmail) | most | partial | partial | yes | no | **yes** |
-| JSON output for scripting | yes | yes | no | no | yes | no | **yes** |
-| Compose and send from CLI | yes | no | yes | partial | yes | no | **yes** |
+| Works beyond Google | no | **yes** | **yes** | **yes** | **yes** | **yes** | **yes** |
+| Full CLI for every action | **yes** (Gmail) | most | partial | partial | **yes** | no | **yes** |
+| JSON output for scripting | **yes** | **yes** | no | no | **yes** | no | **yes** |
+| Compose and send from CLI | **yes** | no | **yes** | partial | **yes** | no | **yes** |
 | Batch operations via search | partial | tag only | no | no | no | no | **yes** |
 | Daemon architecture | no | no | no | no | no | no | **yes** |
-| Local database | no | Xapian | no | no | no | optional | **SQLite** |
-| Full-text search engine | no | yes | no | no | no | optional | **yes** |
-| Compose in $EDITOR | no | via Emacs | yes | yes | yes | partial | **yes** |
+| Local database | no | **Xapian** | no | no | no | optional | **SQLite** |
+| Full-text search engine | no | **yes** | no | no | no | optional | **yes** |
+| Compose in $EDITOR | no | via Emacs | **yes** | **yes** | **yes** | partial | **yes** |
 | Pluggable provider adapters | no | no | no | partial | partial | partial | **yes** |
-| Custom client support | no | yes | no | no | no | no | **yes** |
+| Custom client support | no | **yes** | no | no | no | no | **yes** |
 
 ## Quick start
 

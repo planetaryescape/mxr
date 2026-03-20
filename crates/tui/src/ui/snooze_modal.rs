@@ -3,7 +3,7 @@ use mxr_config::SnoozeConfig;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, panel: &SnoozePanelState, config: &SnoozeConfig) {
+pub fn draw(frame: &mut Frame, area: Rect, panel: &SnoozePanelState, config: &SnoozeConfig, theme: &crate::theme::Theme) {
     if !panel.visible {
         return;
     }
@@ -14,8 +14,8 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &SnoozePanelState, config: &Sn
     let block = Block::default()
         .title(" Snooze ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow))
-        .style(Style::default().bg(Color::Rgb(18, 18, 26)));
+        .border_style(Style::default().fg(theme.warning))
+        .style(Style::default().bg(theme.modal_bg));
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
@@ -30,7 +30,7 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &SnoozePanelState, config: &Sn
         .map(|(index, preset)| {
             let label = format_preset(*preset, config);
             let style = if index == panel.selected_index {
-                Style::default().bg(Color::DarkGray).fg(Color::White).bold()
+                theme.highlight_style()
             } else {
                 Style::default()
             };
@@ -41,7 +41,7 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &SnoozePanelState, config: &Sn
 
     frame.render_widget(
         Paragraph::new("Enter snooze  j/k move  Esc cancel")
-            .style(Style::default().fg(Color::Gray)),
+            .style(Style::default().fg(theme.text_secondary)),
         chunks[1],
     );
 }

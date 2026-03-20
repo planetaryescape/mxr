@@ -3,15 +3,16 @@ pub mod app;
 pub mod client;
 pub mod input;
 pub mod keybindings;
+pub mod theme;
 pub mod ui;
 
 use app::{App, AttachmentOperation, ComposeAction, PendingSend};
 use client::Client;
 use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
-use mxr_config::load_config;
+use mxr_config::{load_config, socket_path as config_socket_path};
 use mxr_core::MxrError;
-use mxr_protocol::{DaemonEvent, Request, Response, ResponseData, SearchResultItem};
+use mxr_protocol::{DaemonEvent, Request, Response, ResponseData};
 use tokio::sync::{mpsc, oneshot};
 
 /// A request sent from the main loop to the background IPC worker.
@@ -98,6 +99,7 @@ fn request_supports_retry(request: &Request) -> bool {
     matches!(
         request,
         Request::ListEnvelopes { .. }
+            | Request::ListEnvelopesByIds { .. }
             | Request::GetEnvelope { .. }
             | Request::GetBody { .. }
             | Request::ListBodies { .. }
@@ -151,8 +153,12 @@ pub async fn run() -> anyhow::Result<()> {
     let config = load_config()?;
 
     let mut app = App::from_config(&config);
-    app.load(&mut client).await?;
-    app.apply(action::Action::GoToInbox);
+    if config.accounts.is_empty() {
+        app.accounts_page.refresh_pending = true;
+    } else {
+        app.load(&mut client).await?;
+        app.apply(action::Action::GoToInbox);
+    }
 
     let mut terminal = ratatui::init();
     let mut events = EventStream::new();
@@ -228,11 +234,25 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::Search { query, limit: 200 }).await;
-                let results = match resp {
+                let results = match ipc_call(&bg, Request::Search { query, limit: 200 }).await {
                     Ok(Response::Ok {
                         data: ResponseData::SearchResults { results },
-                    }) => Ok(results),
+                    }) => {
+                        let message_ids =
+                            results.into_iter().map(|result| result.message_id).collect::<Vec<_>>();
+                        if message_ids.is_empty() {
+                            Ok(Vec::new())
+                        } else {
+                            match ipc_call(&bg, Request::ListEnvelopesByIds { message_ids }).await {
+                                Ok(Response::Ok {
+                                    data: ResponseData::Envelopes { envelopes },
+                                }) => Ok(envelopes),
+                                Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                                Err(e) => Err(e),
+                                _ => Err(MxrError::Ipc("unexpected response".into())),
+                            }
+                        }
+                    }
                     Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
@@ -442,16 +462,53 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::ListAccounts).await;
+                let result = load_accounts_page_accounts(&bg).await;
+                let _ = tx.send(AsyncResult::Accounts(result));
+            });
+        }
+
+        if app.pending_labels_refresh {
+            app.pending_labels_refresh = false;
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::ListLabels { account_id: None }).await;
                 let result = match resp {
                     Ok(Response::Ok {
-                        data: ResponseData::Accounts { accounts },
-                    }) => Ok(accounts),
+                        data: ResponseData::Labels { labels },
+                    }) => Ok(labels),
                     Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::Accounts(result));
+                let _ = tx.send(AsyncResult::Labels(result));
+            });
+        }
+
+        if app.pending_all_envelopes_refresh {
+            app.pending_all_envelopes_refresh = false;
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListEnvelopes {
+                        label_id: None,
+                        account_id: None,
+                        limit: 5000,
+                        offset: 0,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Envelopes { envelopes },
+                    }) => Ok(envelopes),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::AllEnvelopes(result));
             });
         }
 
@@ -459,15 +516,7 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::UpsertAccountConfig { account }).await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::AccountStatus { message },
-                    }) => Ok(message),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
+                let result = run_account_save_workflow(&bg, account).await;
                 let _ = tx.send(AsyncResult::AccountOperation(result));
             });
         }
@@ -476,15 +525,20 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::TestAccountConfig { account }).await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::AccountStatus { message },
-                    }) => Ok(message),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
+                let result = request_account_operation(&bg, Request::TestAccountConfig { account }).await;
+                let _ = tx.send(AsyncResult::AccountOperation(result));
+            });
+        }
+
+        if let Some((account, reauthorize)) = app.pending_account_authorize.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let result = request_account_operation(
+                    &bg,
+                    Request::AuthorizeAccountConfig { account, reauthorize },
+                )
+                .await;
                 let _ = tx.send(AsyncResult::AccountOperation(result));
             });
         }
@@ -493,15 +547,8 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::SetDefaultAccount { key }).await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::AccountStatus { message },
-                    }) => Ok(message),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
+                let result =
+                    request_account_operation(&bg, Request::SetDefaultAccount { key }).await;
                 let _ = tx.send(AsyncResult::AccountOperation(result));
             });
         }
@@ -665,21 +712,13 @@ pub async fn run() -> anyhow::Result<()> {
                 if let Some(msg) = result {
                     match msg {
                         AsyncResult::Search(Ok(results)) => {
-                            let matched_ids: std::collections::HashSet<_> =
-                                results.iter().map(|r| r.message_id.clone()).collect();
-                            let matched: Vec<_> = app
-                                .all_envelopes
-                                .iter()
-                                .filter(|e| matched_ids.contains(&e.id))
-                                .cloned()
-                                .collect();
                             if app.screen == app::Screen::Search {
-                                app.search_page.results = matched;
+                                app.search_page.results = results;
                                 app.search_page.selected_index = 0;
                                 app.search_page.scroll_offset = 0;
                                 app.auto_preview_search();
                             } else {
-                                app.envelopes = matched;
+                                app.envelopes = results;
                                 app.selected_index = 0;
                                 app.scroll_offset = 0;
                             }
@@ -765,13 +804,17 @@ pub async fn run() -> anyhow::Result<()> {
                                     data:
                                         ResponseData::Status {
                                             uptime_secs,
+                                            daemon_pid,
                                             accounts,
                                             total_messages,
+                                            sync_statuses,
                                         },
                                 } => {
                                     app.diagnostics_page.uptime_secs = Some(uptime_secs);
+                                    app.diagnostics_page.daemon_pid = daemon_pid;
                                     app.diagnostics_page.accounts = accounts;
                                     app.diagnostics_page.total_messages = Some(total_messages);
+                                    app.diagnostics_page.sync_statuses = sync_statuses;
                                 }
                                 Response::Ok {
                                     data: ResponseData::DoctorReport { report },
@@ -805,13 +848,42 @@ pub async fn run() -> anyhow::Result<()> {
                                 .accounts_page
                                 .selected_index
                                 .min(app.accounts_page.accounts.len().saturating_sub(1));
+                            if app.accounts_page.accounts.is_empty() {
+                                app.accounts_page.onboarding_required = true;
+                            } else {
+                                app.accounts_page.onboarding_required = false;
+                                app.accounts_page.onboarding_modal_open = false;
+                            }
                         }
                         AsyncResult::Accounts(Err(e)) => {
                             app.accounts_page.status = Some(format!("Accounts error: {e}"));
                         }
-                        AsyncResult::AccountOperation(Ok(message)) => {
-                            app.accounts_page.status = Some(message);
-                            app.accounts_page.form.visible = false;
+                        AsyncResult::Labels(Ok(labels)) => {
+                            app.labels = labels;
+                            app.resolve_desired_system_mailbox();
+                        }
+                        AsyncResult::Labels(Err(e)) => {
+                            app.status_message = Some(format!("Label refresh failed: {e}"));
+                        }
+                        AsyncResult::AllEnvelopes(Ok(envelopes)) => {
+                            apply_all_envelopes_refresh(&mut app, envelopes);
+                        }
+                        AsyncResult::AllEnvelopes(Err(e)) => {
+                            app.status_message =
+                                Some(format!("Mailbox refresh failed: {e}"));
+                        }
+                        AsyncResult::AccountOperation(Ok(result)) => {
+                            app.accounts_page.status = Some(result.summary.clone());
+                            app.accounts_page.last_result = Some(result.clone());
+                            app.accounts_page.form.last_result = Some(result.clone());
+                            app.accounts_page.form.gmail_authorized = result
+                                .auth
+                                .as_ref()
+                                .map(|step| step.ok)
+                                .unwrap_or(app.accounts_page.form.gmail_authorized);
+                            if result.save.as_ref().is_some_and(|step| step.ok) {
+                                app.accounts_page.form.visible = false;
+                            }
                             app.accounts_page.refresh_pending = true;
                         }
                         AsyncResult::AccountOperation(Err(e)) => {
@@ -858,28 +930,12 @@ pub async fn run() -> anyhow::Result<()> {
                             app.status_message = Some(message);
                         }
                         AsyncResult::LabelEnvelopes(Ok(envelopes)) => {
-                            // Preserve user's position by tracking selected message ID
-                            let selected_id = app.envelopes.get(app.selected_index).map(|e| e.id.clone());
+                            let selected_id =
+                                app.selected_mail_row().map(|row| row.representative.id);
                             app.envelopes = envelopes;
                             app.active_label = app.pending_active_label.take();
+                            restore_mail_list_selection(&mut app, selected_id);
                             app.queue_body_window();
-                            if let Some(ref id) = selected_id {
-                                if let Some(pos) = app.envelopes.iter().position(|e| &e.id == id) {
-                                    app.selected_index = pos;
-                                    // Keep scroll offset valid
-                                    if app.selected_index < app.scroll_offset {
-                                        app.scroll_offset = app.selected_index;
-                                    } else if app.selected_index >= app.scroll_offset + app.visible_height.max(1) {
-                                        app.scroll_offset = app.selected_index + 1 - app.visible_height.max(1);
-                                    }
-                                } else {
-                                    // Selected message no longer in list (deleted/moved)
-                                    app.selected_index = app.selected_index.min(app.envelopes.len().saturating_sub(1));
-                                }
-                            } else {
-                                app.selected_index = 0;
-                                app.scroll_offset = 0;
-                            }
                         }
                         AsyncResult::LabelEnvelopes(Err(e)) => {
                             app.pending_active_label = None;
@@ -963,20 +1019,7 @@ pub async fn run() -> anyhow::Result<()> {
                                     app.status_message = Some("Done".into());
                                 }
                                 app::MutationEffect::UpdateFlags { message_id, flags } => {
-                                    for e in app
-                                        .envelopes
-                                        .iter_mut()
-                                        .chain(app.all_envelopes.iter_mut())
-                                    {
-                                        if e.id == message_id {
-                                            e.flags = flags;
-                                        }
-                                    }
-                                    if let Some(ref mut ve) = app.viewing_envelope {
-                                        if ve.id == message_id {
-                                            ve.flags = flags;
-                                        }
-                                    }
+                                    app.apply_local_flags(&message_id, flags);
                                     app.status_message = Some("Done".into());
                                 }
                                 app::MutationEffect::RefreshList => {
@@ -1043,36 +1086,7 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ExportResult(Err(e)) => {
                             app.status_message = Some(format!("Export failed: {e}"));
                         }
-                        AsyncResult::DaemonEvent(event) => {
-                            match event {
-                                DaemonEvent::SyncCompleted { messages_synced, .. } => {
-                                    // Re-fetch current view's envelopes
-                                    if let Some(label_id) = app.active_label.clone() {
-                                        app.pending_label_fetch = Some(label_id);
-                                    }
-                                    // Label counts are updated in-place via
-                                    // LabelCountsUpdated events — no need to re-fetch
-                                    // the full label list here.
-                                    if messages_synced > 0 {
-                                        app.status_message = Some(format!(
-                                            "Synced {messages_synced} messages"
-                                        ));
-                                    }
-                                }
-                                DaemonEvent::LabelCountsUpdated { counts } => {
-                                    // Update label counts in-place without re-fetching
-                                    for count in &counts {
-                                        if let Some(label) = app.labels.iter_mut().find(
-                                            |l| l.id == count.label_id,
-                                        ) {
-                                            label.unread_count = count.unread_count;
-                                            label.total_count = count.total_count;
-                                        }
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
+                        AsyncResult::DaemonEvent(event) => handle_daemon_event(&mut app, event),
                     }
                 }
             }
@@ -1091,7 +1105,7 @@ pub async fn run() -> anyhow::Result<()> {
 }
 
 enum AsyncResult {
-    Search(Result<Vec<SearchResultItem>, MxrError>),
+    Search(Result<Vec<mxr_core::types::Envelope>, MxrError>),
     Rules(Result<Vec<serde_json::Value>, MxrError>),
     RuleDetail(Result<serde_json::Value, MxrError>),
     RuleHistory(Result<Vec<serde_json::Value>, MxrError>),
@@ -1101,7 +1115,9 @@ enum AsyncResult {
     RuleUpsert(Result<serde_json::Value, MxrError>),
     Diagnostics(Box<Result<Response, MxrError>>),
     Accounts(Result<Vec<mxr_protocol::AccountSummaryData>, MxrError>),
-    AccountOperation(Result<String, MxrError>),
+    Labels(Result<Vec<mxr_core::Label>, MxrError>),
+    AllEnvelopes(Result<Vec<mxr_core::Envelope>, MxrError>),
+    AccountOperation(Result<mxr_protocol::AccountOperationResult, MxrError>),
     BugReport(Result<String, MxrError>),
     AttachmentFile {
         operation: AttachmentOperation,
@@ -1161,6 +1177,7 @@ async fn handle_compose_action(
                     data: ResponseData::ReplyContext { context },
                 } => mxr_compose::ComposeKind::Reply {
                     in_reply_to: context.in_reply_to,
+                    references: context.references,
                     to: context.reply_to,
                     cc: context.cc,
                     subject: context.subject,
@@ -1184,6 +1201,7 @@ async fn handle_compose_action(
                     data: ResponseData::ReplyContext { context },
                 } => mxr_compose::ComposeKind::Reply {
                     in_reply_to: context.in_reply_to,
+                    references: context.references,
                     to: context.reply_to,
                     cc: context.cc,
                     subject: context.subject,
@@ -1264,21 +1282,250 @@ fn pending_send_from_edited_draft(
 }
 
 fn daemon_socket_path() -> std::path::PathBuf {
-    if cfg!(target_os = "macos") {
-        dirs::home_dir()
-            .unwrap()
-            .join("Library/Application Support/mxr/mxr.sock")
+    config_socket_path()
+}
+
+async fn request_account_operation(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    request: Request,
+) -> Result<mxr_protocol::AccountOperationResult, MxrError> {
+    let resp = ipc_call(bg, request).await;
+    match resp {
+        Ok(Response::Ok {
+            data: ResponseData::AccountOperation { result },
+        }) => Ok(result),
+        Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+        Err(e) => Err(e),
+        _ => Err(MxrError::Ipc("unexpected response".into())),
+    }
+}
+
+async fn run_account_save_workflow(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    account: mxr_protocol::AccountConfigData,
+) -> Result<mxr_protocol::AccountOperationResult, MxrError> {
+    let mut result = if matches!(
+        account.sync,
+        Some(mxr_protocol::AccountSyncConfigData::Gmail { .. })
+    ) {
+        request_account_operation(
+            bg,
+            Request::AuthorizeAccountConfig {
+                account: account.clone(),
+                reauthorize: false,
+            },
+        )
+        .await?
     } else {
-        dirs::runtime_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-            .join("mxr/mxr.sock")
+        empty_account_operation_result()
+    };
+
+    if result.auth.as_ref().is_some_and(|step| !step.ok) {
+        return Ok(result);
+    }
+
+    let save_result =
+        request_account_operation(bg, Request::UpsertAccountConfig { account: account.clone() }).await?;
+    merge_account_operation_result(&mut result, save_result);
+
+    if result.save.as_ref().is_some_and(|step| !step.ok) {
+        return Ok(result);
+    }
+
+    let test_result =
+        request_account_operation(bg, Request::TestAccountConfig { account }).await?;
+    merge_account_operation_result(&mut result, test_result);
+
+    Ok(result)
+}
+
+fn empty_account_operation_result() -> mxr_protocol::AccountOperationResult {
+    mxr_protocol::AccountOperationResult {
+        ok: true,
+        summary: String::new(),
+        save: None,
+        auth: None,
+        sync: None,
+        send: None,
+    }
+}
+
+fn merge_account_operation_result(
+    base: &mut mxr_protocol::AccountOperationResult,
+    next: mxr_protocol::AccountOperationResult,
+) {
+    base.ok &= next.ok;
+    if !next.summary.is_empty() {
+        if base.summary.is_empty() {
+            base.summary = next.summary;
+        } else {
+            base.summary = format!("{} | {}", base.summary, next.summary);
+        }
+    }
+    if next.save.is_some() {
+        base.save = next.save;
+    }
+    if next.auth.is_some() {
+        base.auth = next.auth;
+    }
+    if next.sync.is_some() {
+        base.sync = next.sync;
+    }
+    if next.send.is_some() {
+        base.send = next.send;
+    }
+}
+
+fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
+    match event {
+        DaemonEvent::SyncCompleted { messages_synced, .. } => {
+            app.pending_labels_refresh = true;
+            app.pending_all_envelopes_refresh = true;
+            if let Some(label_id) = app.active_label.clone() {
+                app.pending_label_fetch = Some(label_id);
+            }
+            if messages_synced > 0 {
+                app.status_message = Some(format!("Synced {messages_synced} messages"));
+            }
+        }
+        DaemonEvent::LabelCountsUpdated { counts } => {
+            for count in &counts {
+                if let Some(label) = app.labels.iter_mut().find(|label| label.id == count.label_id) {
+                    label.unread_count = count.unread_count;
+                    label.total_count = count.total_count;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>) {
+    let selected_id = app.selected_mail_row().map(|row| row.representative.id);
+    app.all_envelopes = envelopes;
+    if app.active_label.is_none() && !app.search_active {
+        app.envelopes = app
+            .all_envelopes
+            .iter()
+            .filter(|envelope| !envelope.flags.contains(mxr_core::MessageFlags::TRASH))
+            .cloned()
+            .collect();
+        restore_mail_list_selection(app, selected_id);
+        app.queue_body_window();
+    }
+}
+
+fn restore_mail_list_selection(app: &mut App, selected_id: Option<mxr_core::MessageId>) {
+    let row_count = app.mail_list_rows().len();
+    if row_count == 0 {
+        app.selected_index = 0;
+        app.scroll_offset = 0;
+        return;
+    }
+
+    if let Some(id) = selected_id {
+        if let Some(position) = app
+            .mail_list_rows()
+            .iter()
+            .position(|row| row.representative.id == id)
+        {
+            app.selected_index = position;
+        } else {
+            app.selected_index = app.selected_index.min(row_count.saturating_sub(1));
+        }
+    } else {
+        app.selected_index = 0;
+    }
+
+    let visible_height = app.visible_height.max(1);
+    if app.selected_index < app.scroll_offset {
+        app.scroll_offset = app.selected_index;
+    } else if app.selected_index >= app.scroll_offset + visible_height {
+        app.scroll_offset = app.selected_index + 1 - visible_height;
+    }
+}
+
+async fn load_accounts_page_accounts(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+) -> Result<Vec<mxr_protocol::AccountSummaryData>, MxrError> {
+    match ipc_call(bg, Request::ListAccounts).await {
+        Ok(Response::Ok {
+            data: ResponseData::Accounts { accounts },
+        }) if !accounts.is_empty() => Ok(accounts),
+        Ok(Response::Ok {
+            data: ResponseData::Accounts { .. },
+        })
+        | Ok(Response::Error { .. })
+        | Err(_) => load_config_account_summaries(bg).await,
+        Ok(_) => Err(MxrError::Ipc("unexpected response".into())),
+    }
+}
+
+async fn load_config_account_summaries(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+) -> Result<Vec<mxr_protocol::AccountSummaryData>, MxrError> {
+    let resp = ipc_call(bg, Request::ListAccountsConfig).await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::AccountsConfig { accounts },
+        } => Ok(accounts
+            .into_iter()
+            .map(account_config_to_summary)
+            .collect()),
+        Response::Error { message } => Err(MxrError::Ipc(message)),
+        _ => Err(MxrError::Ipc("unexpected response".into())),
+    }
+}
+
+fn account_config_to_summary(
+    account: mxr_protocol::AccountConfigData,
+) -> mxr_protocol::AccountSummaryData {
+    let provider_kind = account
+        .sync
+        .as_ref()
+        .map(account_sync_kind_label)
+        .or_else(|| account.send.as_ref().map(account_send_kind_label))
+        .unwrap_or_else(|| "unknown".to_string());
+    let account_id = mxr_core::AccountId::from_provider_id(&provider_kind, &account.email);
+
+    mxr_protocol::AccountSummaryData {
+        account_id,
+        key: Some(account.key),
+        name: account.name,
+        email: account.email,
+        provider_kind,
+        sync_kind: account.sync.as_ref().map(account_sync_kind_label),
+        send_kind: account.send.as_ref().map(account_send_kind_label),
+        enabled: true,
+        is_default: account.is_default,
+        source: mxr_protocol::AccountSourceData::Config,
+        editable: mxr_protocol::AccountEditModeData::Full,
+        sync: account.sync,
+        send: account.send,
+    }
+}
+
+fn account_sync_kind_label(sync: &mxr_protocol::AccountSyncConfigData) -> String {
+    match sync {
+        mxr_protocol::AccountSyncConfigData::Gmail { .. } => "gmail".to_string(),
+        mxr_protocol::AccountSyncConfigData::Imap { .. } => "imap".to_string(),
+    }
+}
+
+fn account_send_kind_label(send: &mxr_protocol::AccountSendConfigData) -> String {
+    match send {
+        mxr_protocol::AccountSendConfigData::Gmail => "gmail".to_string(),
+        mxr_protocol::AccountSendConfigData::Smtp { .. } => "smtp".to_string(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::action::Action;
-    use super::{pending_send_from_edited_draft, ComposeReadyData, PendingSend};
+    use super::{
+        apply_all_envelopes_refresh, handle_daemon_event, pending_send_from_edited_draft,
+        ComposeReadyData, PendingSend,
+    };
     use super::app::{ActivePane, App, BodySource, BodyViewState, LayoutMode, MutationEffect, Screen};
     use super::input::InputHandler;
     use super::ui::command_palette::CommandPalette;
@@ -1289,7 +1536,7 @@ mod tests {
     use mxr_config::RenderConfig;
     use mxr_core::id::*;
     use mxr_core::types::*;
-    use mxr_protocol::Request;
+    use mxr_protocol::{DaemonEvent, MutationCommand, Request};
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
         (0..count)
@@ -1555,6 +1802,20 @@ mod tests {
     }
 
     #[test]
+    fn reopening_active_search_preserves_query() {
+        let mut app = App::new();
+        app.search_active = true;
+        app.search_bar.query = "deploy".to_string();
+        app.search_bar.cursor_pos = 0;
+
+        app.apply(Action::OpenSearch);
+
+        assert!(app.search_bar.active);
+        assert_eq!(app.search_bar.query, "deploy");
+        assert_eq!(app.search_bar.cursor_pos, "deploy".len());
+    }
+
+    #[test]
     fn g_prefix_navigation() {
         let mut h = InputHandler::new();
         assert_eq!(
@@ -1626,6 +1887,16 @@ mod tests {
                 kind: LabelKind::System,
                 color: None,
                 provider_id: "DRAFT".to_string(),
+                unread_count: 0,
+                total_count: 0,
+            },
+            Label {
+                id: LabelId::from_provider_id("test", "ARCHIVE"),
+                account_id: AccountId::new(),
+                name: "ARCHIVE".to_string(),
+                kind: LabelKind::System,
+                color: None,
+                provider_id: "ARCHIVE".to_string(),
                 unread_count: 0,
                 total_count: 0,
             },
@@ -1846,6 +2117,8 @@ mod tests {
         assert_eq!(system_names[0], "INBOX");
         assert_eq!(system_names[1], "STARRED");
         assert_eq!(system_names[2], "SENT");
+        assert_eq!(system_names[3], "DRAFT");
+        assert_eq!(system_names[4], "ARCHIVE");
     }
 
     #[test]
@@ -1875,6 +2148,10 @@ mod tests {
         assert!(
             names.contains(&"DRAFT"),
             "Primary system labels shown even if empty"
+        );
+        assert!(
+            names.contains(&"ARCHIVE"),
+            "Archive should be shown as a primary system label even if empty"
         );
         // IMPORTANT has 5 total — should be shown (non-primary but non-empty)
         assert!(
@@ -1916,6 +2193,105 @@ mod tests {
             app.pending_label_fetch.is_some(),
             "Should trigger label fetch"
         );
+    }
+
+    #[test]
+    fn goto_inbox_without_labels_records_desired_mailbox() {
+        let mut app = App::new();
+        app.apply(Action::GoToInbox);
+        assert_eq!(app.desired_system_mailbox.as_deref(), Some("INBOX"));
+        assert!(app.pending_label_fetch.is_none());
+        assert!(app.pending_active_label.is_none());
+    }
+
+    #[test]
+    fn labels_refresh_resolves_desired_inbox() {
+        let mut app = App::new();
+        app.desired_system_mailbox = Some("INBOX".into());
+        app.labels = make_test_labels();
+
+        app.resolve_desired_system_mailbox();
+
+        let inbox_id = app
+            .labels
+            .iter()
+            .find(|label| label.name == "INBOX")
+            .unwrap()
+            .id
+            .clone();
+        assert_eq!(app.pending_active_label.as_ref(), Some(&inbox_id));
+        assert_eq!(app.pending_label_fetch.as_ref(), Some(&inbox_id));
+        assert!(app.active_label.is_none());
+    }
+
+    #[test]
+    fn sync_completed_requests_live_refresh_even_without_active_label() {
+        let mut app = App::new();
+
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncCompleted {
+                account_id: AccountId::new(),
+                messages_synced: 5,
+            },
+        );
+
+        assert!(app.pending_labels_refresh);
+        assert!(app.pending_all_envelopes_refresh);
+        assert!(app.pending_label_fetch.is_none());
+        assert_eq!(app.status_message.as_deref(), Some("Synced 5 messages"));
+    }
+
+    #[test]
+    fn all_envelopes_refresh_updates_visible_all_mail() {
+        let mut app = App::new();
+        let envelopes = make_test_envelopes(4);
+        app.active_label = None;
+        app.search_active = false;
+
+        apply_all_envelopes_refresh(&mut app, envelopes.clone());
+
+        assert_eq!(app.all_envelopes.len(), 4);
+        assert_eq!(app.envelopes.len(), 4);
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn all_envelopes_refresh_preserves_selection_when_possible() {
+        let mut app = App::new();
+        app.visible_height = 3;
+        let initial = make_test_envelopes(4);
+        app.all_envelopes = initial.clone();
+        app.envelopes = initial.clone();
+        app.selected_index = 2;
+        app.scroll_offset = 1;
+
+        let mut refreshed = initial.clone();
+        refreshed.push(make_test_envelopes(1).remove(0));
+
+        apply_all_envelopes_refresh(&mut app, refreshed);
+
+        assert_eq!(app.selected_index, 2);
+        assert_eq!(app.envelopes[app.selected_index].id, initial[2].id);
+        assert_eq!(app.scroll_offset, 1);
+    }
+
+    #[test]
+    fn label_counts_refresh_can_follow_empty_boot() {
+        let mut app = App::new();
+        app.desired_system_mailbox = Some("INBOX".into());
+
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::SyncCompleted {
+                account_id: AccountId::new(),
+                messages_synced: 0,
+            },
+        );
+
+        assert!(app.pending_labels_refresh);
+        assert!(app.pending_all_envelopes_refresh);
+        assert_eq!(app.desired_system_mailbox.as_deref(), Some("INBOX"));
     }
 
     #[test]
@@ -2142,6 +2518,54 @@ mod tests {
     }
 
     #[test]
+    fn open_selected_marks_unread_message_read_and_queues_mutation() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.envelopes[0].flags = MessageFlags::empty();
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+
+        assert!(app.envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(app.all_envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(app.viewed_thread_messages[0].flags.contains(MessageFlags::READ));
+        assert!(app.viewing_envelope.as_ref().unwrap().flags.contains(MessageFlags::READ));
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        match &app.pending_mutation_queue[0].0 {
+            Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
+                assert!(*read);
+                assert_eq!(message_ids, &vec![app.envelopes[0].id.clone()]);
+            }
+            other => panic!("expected set-read mutation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_selected_on_read_message_does_not_queue_read_mutation() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.envelopes[0].flags = MessageFlags::READ;
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+
+        assert!(app.pending_mutation_queue.is_empty());
+    }
+
+    #[test]
+    fn reopening_same_message_does_not_queue_duplicate_read_mutation() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.envelopes[0].flags = MessageFlags::empty();
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+        app.apply(Action::OpenSelected);
+
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+    }
+
+    #[test]
     fn thread_move_down_changes_reply_target() {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(2);
@@ -2173,6 +2597,38 @@ mod tests {
                 message_id: app.envelopes[1].id.clone()
             })
         );
+    }
+
+    #[test]
+    fn thread_focus_change_marks_newly_focused_unread_message_read() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(2);
+        let shared_thread = ThreadId::new();
+        app.envelopes[0].thread_id = shared_thread.clone();
+        app.envelopes[1].thread_id = shared_thread;
+        app.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(5);
+        app.envelopes[1].date = chrono::Utc::now();
+        app.envelopes[0].flags = MessageFlags::empty();
+        app.envelopes[1].flags = MessageFlags::empty();
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+        assert_eq!(app.thread_selected_index, 1);
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+
+        assert_eq!(app.thread_selected_index, 0);
+        assert!(app.viewed_thread_messages[0].flags.contains(MessageFlags::READ));
+        assert!(app.viewing_envelope.as_ref().unwrap().flags.contains(MessageFlags::READ));
+        assert_eq!(app.pending_mutation_queue.len(), 2);
+        match &app.pending_mutation_queue[1].0 {
+            Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
+                assert!(*read);
+                assert_eq!(message_ids, &vec![app.envelopes[0].id.clone()]);
+            }
+            other => panic!("expected set-read mutation, got {other:?}"),
+        }
     }
 
     #[test]
@@ -2228,8 +2684,42 @@ mod tests {
         assert!(app.accounts_page.form.visible);
         assert_eq!(
             app.accounts_page.form.mode,
-            crate::app::AccountFormMode::ImapSmtp
+            crate::app::AccountFormMode::Gmail
         );
+    }
+
+    #[test]
+    fn app_from_empty_config_enters_account_onboarding() {
+        let config = mxr_config::MxrConfig::default();
+        let app = App::from_config(&config);
+
+        assert_eq!(app.screen, Screen::Accounts);
+        assert!(app.accounts_page.refresh_pending);
+        assert!(app.accounts_page.onboarding_required);
+        assert!(app.accounts_page.onboarding_modal_open);
+    }
+
+    #[test]
+    fn onboarding_confirm_opens_new_account_form() {
+        let config = mxr_config::MxrConfig::default();
+        let mut app = App::from_config(&config);
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(app.screen, Screen::Accounts);
+        assert!(app.accounts_page.form.visible);
+        assert!(!app.accounts_page.onboarding_modal_open);
+    }
+
+    #[test]
+    fn onboarding_blocks_mailbox_screen_until_account_exists() {
+        let config = mxr_config::MxrConfig::default();
+        let mut app = App::from_config(&config);
+
+        app.apply(Action::OpenMailboxScreen);
+
+        assert_eq!(app.screen, Screen::Accounts);
+        assert!(app.accounts_page.onboarding_required);
     }
 
     #[test]
@@ -2327,6 +2817,7 @@ mod tests {
                     provider_id: "att-1".into(),
                 }],
                 fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
             },
         );
 
@@ -2372,6 +2863,7 @@ mod tests {
                 subject: "Hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                references: vec![],
                 attach: vec![],
             },
             body: "Body".into(),
@@ -2529,6 +3021,7 @@ mod tests {
                 text_html: None,
                 attachments: vec![],
                 fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
             },
         );
 
@@ -2559,6 +3052,7 @@ mod tests {
                 text_html: Some("<p>Hello html</p>".into()),
                 attachments: vec![],
                 fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
             },
         );
 
@@ -2591,6 +3085,7 @@ mod tests {
                 text_html: None,
                 attachments: vec![],
                 fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
             },
         );
 
@@ -2639,6 +3134,7 @@ mod tests {
             text_html: None,
             attachments: vec![],
             fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
         });
 
         assert_eq!(app.viewing_envelope.as_ref().map(|env| env.id.clone()), Some(second.id));
@@ -2663,6 +3159,7 @@ mod tests {
                 text_html: Some("<p>Hello html</p>".into()),
                 attachments: vec![],
                 fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
             },
         );
 

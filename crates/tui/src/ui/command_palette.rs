@@ -407,7 +407,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
     ]
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette) {
+pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &crate::theme::Theme) {
     if !palette.visible {
         return;
     }
@@ -427,7 +427,7 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette) {
     let block = Block::default()
         .title(" Command Palette ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
+        .border_style(Style::default().fg(theme.warning));
 
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
@@ -439,7 +439,7 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette) {
     // Input line
     let input_area = Rect::new(inner.x, inner.y, inner.width, 1);
     let input_line =
-        Paragraph::new(format!("> {}", palette.input)).style(Style::default().fg(Color::White));
+        Paragraph::new(format!("> {}", palette.input)).style(Style::default().fg(theme.text_primary));
     frame.render_widget(input_line, input_area);
 
     // Results
@@ -468,7 +468,7 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette) {
                 format!(" [{}]", cmd.shortcut)
             };
             let style = if i + start == palette.selected {
-                Style::default().bg(Color::DarkGray).bold()
+                theme.highlight_style()
             } else {
                 Style::default()
             };
@@ -484,7 +484,7 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette) {
     frame.render_stateful_widget(
         Scrollbar::default()
             .orientation(ScrollbarOrientation::VerticalRight)
-            .thumb_style(Style::default().fg(Color::Yellow)),
+            .thumb_style(Style::default().fg(theme.warning)),
         list_area,
         &mut scrollbar_state,
     );

@@ -2,7 +2,7 @@ use crate::app::PendingSend;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, pending: Option<&PendingSend>) {
+pub fn draw(frame: &mut Frame, area: Rect, pending: Option<&PendingSend>, theme: &crate::theme::Theme) {
     let Some(pending) = pending else {
         return;
     };
@@ -13,8 +13,8 @@ pub fn draw(frame: &mut Frame, area: Rect, pending: Option<&PendingSend>) {
     let block = Block::default()
         .title(" Draft Ready ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow))
-        .style(Style::default().bg(Color::Rgb(18, 18, 26)));
+        .border_style(Style::default().fg(theme.warning))
+        .style(Style::default().bg(theme.modal_bg));
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
@@ -76,6 +76,7 @@ mod tests {
                 subject: "Hello".into(),
                 from: "me@example.com".into(),
                 in_reply_to: None,
+                references: vec![],
                 attach: vec![],
             },
             body: "hi".into(),

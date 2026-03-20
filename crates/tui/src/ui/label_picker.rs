@@ -102,7 +102,7 @@ impl LabelPicker {
     }
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, picker: &LabelPicker) {
+pub fn draw(frame: &mut Frame, area: Rect, picker: &LabelPicker, theme: &crate::theme::Theme) {
     if !picker.visible {
         return;
     }
@@ -125,7 +125,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &LabelPicker) {
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Green));
+        .border_style(Style::default().fg(theme.success));
 
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
@@ -137,7 +137,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &LabelPicker) {
     // Input line
     let input_area = Rect::new(inner.x, inner.y, inner.width, 1);
     let input_line =
-        Paragraph::new(format!("> {}", picker.input)).style(Style::default().fg(Color::White));
+        Paragraph::new(format!("> {}", picker.input)).style(Style::default().fg(theme.text_primary));
     frame.render_widget(input_line, input_area);
 
     // Label list
@@ -157,7 +157,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &LabelPicker) {
             let label = &picker.labels[label_idx];
             let display = humanize_label(&label.name);
             let style = if i == picker.selected {
-                Style::default().bg(Color::DarkGray).bold()
+                theme.highlight_style()
             } else {
                 Style::default()
             };

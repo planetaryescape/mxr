@@ -2,7 +2,7 @@ use crate::app::AttachmentPanelState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, panel: &AttachmentPanelState) {
+pub fn draw(frame: &mut Frame, area: Rect, panel: &AttachmentPanelState, theme: &crate::theme::Theme) {
     if !panel.visible {
         return;
     }
@@ -13,8 +13,8 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &AttachmentPanelState) {
     let block = Block::default()
         .title(" Attachments ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Green))
-        .style(Style::default().bg(Color::Rgb(18, 18, 26)));
+        .border_style(Style::default().fg(theme.success))
+        .style(Style::default().bg(theme.modal_bg));
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
@@ -34,7 +34,7 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &AttachmentPanelState) {
                 "remote"
             };
             let style = if index == panel.selected_index {
-                Style::default().bg(Color::DarkGray).fg(Color::White).bold()
+                theme.highlight_style()
             } else {
                 Style::default()
             };
@@ -54,7 +54,7 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &AttachmentPanelState) {
         "Enter/o open  d download  j/k move  Esc close".to_string()
     });
     frame.render_widget(
-        Paragraph::new(footer).style(Style::default().fg(Color::Gray)),
+        Paragraph::new(footer).style(Style::default().fg(theme.text_secondary)),
         chunks[1],
     );
 }

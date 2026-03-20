@@ -2,7 +2,7 @@ use crate::app::{RuleFormState, RulesPageState, RulesPanel};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, state: &RulesPageState) {
+pub fn draw(frame: &mut Frame, area: Rect, state: &RulesPageState, theme: &crate::theme::Theme) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
@@ -29,7 +29,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &RulesPageState) {
         Block::default()
             .title(" Rules ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan)),
+            .border_style(Style::default().fg(theme.accent)),
     );
     let mut stateful = ListState::default().with_selected(Some(state.selected_index));
     frame.render_stateful_widget(list, chunks[0], &mut stateful);
@@ -43,10 +43,10 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &RulesPageState) {
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
+        .border_style(Style::default().fg(theme.warning));
 
     if state.form.visible {
-        draw_form(frame, chunks[1], &state.form);
+        draw_form(frame, chunks[1], &state.form, theme);
         return;
     }
 
@@ -62,7 +62,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &RulesPageState) {
     frame.render_widget(paragraph, chunks[1]);
 }
 
-fn draw_form(frame: &mut Frame, area: Rect, form: &RuleFormState) {
+fn draw_form(frame: &mut Frame, area: Rect, form: &RuleFormState, theme: &crate::theme::Theme) {
     let fields = [
         ("Name", form.name.as_str()),
         ("Condition", form.condition.as_str()),
@@ -73,9 +73,9 @@ fn draw_form(frame: &mut Frame, area: Rect, form: &RuleFormState) {
     let mut lines = Vec::new();
     for (index, (label, value)) in fields.iter().enumerate() {
         let style = if index == form.active_field {
-            Style::default().fg(Color::Cyan).bold()
+            Style::default().fg(theme.accent).bold()
         } else {
-            Style::default().fg(Color::White)
+            Style::default().fg(theme.text_primary)
         };
         lines.push(Line::from(vec![
             Span::styled(format!("{label:<10}"), style),
@@ -87,7 +87,7 @@ fn draw_form(frame: &mut Frame, area: Rect, form: &RuleFormState) {
             Block::default()
                 .title(" Rule Form ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow)),
+                .border_style(Style::default().fg(theme.warning)),
         )
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, area);

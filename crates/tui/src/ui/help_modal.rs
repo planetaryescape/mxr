@@ -19,7 +19,7 @@ pub struct HelpModalState<'a> {
     pub scroll_offset: u16,
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>) {
+pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>, theme: &crate::theme::Theme) {
     if !state.open {
         return;
     }
@@ -30,12 +30,12 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>) {
     let block = Block::default()
         .title(" Help ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
-        .style(Style::default().bg(Color::Rgb(18, 18, 26)));
+        .border_style(Style::default().fg(theme.accent))
+        .style(Style::default().bg(theme.modal_bg));
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
-    let lines = render_sections(&help_sections(&state));
+    let lines = render_sections(&help_sections(&state), theme);
     let content_height = lines.len();
     let paragraph = Paragraph::new(lines)
         .scroll((state.scroll_offset, 0))
@@ -47,7 +47,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>) {
     frame.render_stateful_widget(
         Scrollbar::default()
             .orientation(ScrollbarOrientation::VerticalRight)
-            .thumb_style(Style::default().fg(Color::Yellow)),
+            .thumb_style(Style::default().fg(theme.warning)),
         inner,
         &mut scrollbar_state,
     );
@@ -197,7 +197,7 @@ fn command_sections() -> Vec<HelpSection> {
         .collect()
 }
 
-fn render_sections(sections: &[HelpSection]) -> Vec<Line<'static>> {
+fn render_sections(sections: &[HelpSection], theme: &crate::theme::Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     for (index, section) in sections.iter().enumerate() {
@@ -206,12 +206,12 @@ fn render_sections(sections: &[HelpSection]) -> Vec<Line<'static>> {
         }
         lines.push(Line::from(Span::styled(
             section.title.clone(),
-            Style::default().fg(Color::Cyan).bold(),
+            Style::default().fg(theme.accent).bold(),
         )));
         for (key, action) in &section.entries {
             lines.push(Line::from(vec![
-                Span::styled(format!("{key:<20}"), Style::default().fg(Color::White).bold()),
-                Span::styled(action.clone(), Style::default().fg(Color::Gray)),
+                Span::styled(format!("{key:<20}"), Style::default().fg(theme.text_primary).bold()),
+                Span::styled(action.clone(), Style::default().fg(theme.text_secondary)),
             ]));
         }
     }

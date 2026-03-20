@@ -133,7 +133,7 @@ impl ComposePicker {
     }
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker) {
+pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate::theme::Theme) {
     if !picker.visible {
         return;
     }
@@ -151,7 +151,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker) {
     let block = Block::default()
         .title(" Compose — To: (Tab to add, Enter to compose) ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(theme.accent));
 
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
@@ -164,7 +164,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker) {
     let recipients_area = Rect::new(inner.x, inner.y, inner.width, 1);
     if picker.recipients.is_empty() {
         frame.render_widget(
-            Paragraph::new("").style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new("").style(Style::default().fg(theme.text_muted)),
             recipients_area,
         );
     } else {
@@ -175,7 +175,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker) {
                 vec![
                     Span::styled(
                         format!(" {} ", r),
-                        Style::default().bg(Color::Rgb(40, 60, 80)).fg(Color::White),
+                        Style::default().bg(theme.selection_bg).fg(theme.text_primary),
                     ),
                     Span::raw(" "),
                 ]
@@ -187,7 +187,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker) {
     // Input line
     let input_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
     let input_line =
-        Paragraph::new(format!("> {}", picker.input)).style(Style::default().fg(Color::White));
+        Paragraph::new(format!("> {}", picker.input)).style(Style::default().fg(theme.text_primary));
     frame.render_widget(input_line, input_area);
 
     // Contact suggestions
@@ -207,7 +207,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker) {
             let contact = &picker.contacts[idx];
             let display = contact.display();
             let style = if i == picker.selected {
-                Style::default().bg(Color::DarkGray).bold()
+                theme.highlight_style()
             } else {
                 Style::default()
             };

@@ -2,7 +2,7 @@ use crate::app::PendingBulkConfirm;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, pending: Option<&PendingBulkConfirm>) {
+pub fn draw(frame: &mut Frame, area: Rect, pending: Option<&PendingBulkConfirm>, theme: &crate::theme::Theme) {
     let Some(pending) = pending else {
         return;
     };
@@ -13,8 +13,8 @@ pub fn draw(frame: &mut Frame, area: Rect, pending: Option<&PendingBulkConfirm>)
     let block = Block::default()
         .title(format!(" {} ", pending.title))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow))
-        .style(Style::default().bg(Color::Rgb(18, 18, 26)));
+        .border_style(Style::default().fg(theme.warning))
+        .style(Style::default().bg(theme.modal_bg));
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 

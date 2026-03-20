@@ -1,4 +1,5 @@
 use crate::app::ActivePane;
+use crate::theme::Theme;
 use mxr_core::types::{Label, LabelKind, SavedSearch};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -8,6 +9,7 @@ pub struct SidebarView<'a> {
     pub active_pane: &'a ActivePane,
     pub saved_searches: &'a [SavedSearch],
     pub sidebar_selected: usize,
+    pub all_mail_active: bool,
     pub active_label: Option<&'a mxr_core::LabelId>,
 }
 
@@ -15,17 +17,14 @@ pub struct SidebarView<'a> {
 enum SidebarEntry<'a> {
     Spacer,
     Header(&'static str),
+    AllMail,
     Label(&'a Label),
     SavedSearch(&'a SavedSearch),
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>) {
+pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme) {
     let is_focused = *view.active_pane == ActivePane::Sidebar;
-    let border_style = if is_focused {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
+    let border_style = theme.border_style(is_focused);
 
     let inner_width = area.width.saturating_sub(2) as usize;
     let entries = build_sidebar_entries(view.labels, view.saved_searches);
@@ -37,9 +36,10 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>) {
             SidebarEntry::Spacer => ListItem::new(Line::from("")),
             SidebarEntry::Header(title) => ListItem::new(Line::from(Span::styled(
                 *title,
-                Style::default().fg(Color::Cyan).bold(),
+                Style::default().fg(theme.accent).bold(),
             ))),
-            SidebarEntry::Label(label) => render_label_item(label, inner_width, view.active_label),
+            SidebarEntry::AllMail => render_all_mail_item(inner_width, view.all_mail_active, theme),
+            SidebarEntry::Label(label) => render_label_item(label, inner_width, view.active_label, theme),
             SidebarEntry::SavedSearch(search) => ListItem::new(format!("  {}", search.name)),
         })
         .collect::<Vec<_>>();
@@ -51,12 +51,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>) {
                 .borders(Borders::ALL)
                 .border_style(border_style),
         )
-        .highlight_style(
-            Style::default()
-                .bg(Color::Rgb(50, 50, 60))
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        );
+        .highlight_style(theme.highlight_style());
 
     if is_focused {
         let mut state = ListState::default().with_selected(selected_visual_index);
@@ -92,7 +87,7 @@ fn build_sidebar_entries<'a>(
         .collect();
     user_labels.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
 
-    let mut entries = Vec::new();
+    let mut entries = vec![SidebarEntry::AllMail];
     entries.extend(system_labels.into_iter().map(SidebarEntry::Label));
 
     if !user_labels.is_empty() {
@@ -118,7 +113,7 @@ fn visual_index_for_selection(entries: &[SidebarEntry<'_>], sidebar_selected: us
     let mut selectable = 0usize;
     for (visual_index, entry) in entries.iter().enumerate() {
         match entry {
-            SidebarEntry::Label(_) | SidebarEntry::SavedSearch(_) => {
+            SidebarEntry::AllMail | SidebarEntry::Label(_) | SidebarEntry::SavedSearch(_) => {
                 if selectable == sidebar_selected {
                     return Some(visual_index);
                 }
@@ -130,10 +125,22 @@ fn visual_index_for_selection(entries: &[SidebarEntry<'_>], sidebar_selected: us
     None
 }
 
+fn render_all_mail_item<'a>(inner_width: usize, is_active: bool, theme: &Theme) -> ListItem<'a> {
+    let prefix = if is_active { "▸ " } else { "  " };
+    let line = format!("{prefix}{:<width$}", "All Mail", width = inner_width.saturating_sub(2));
+    let style = if is_active {
+        Style::default().fg(theme.accent).bold()
+    } else {
+        Style::default()
+    };
+    ListItem::new(line).style(style)
+}
+
 fn render_label_item<'a>(
     label: &Label,
     inner_width: usize,
     active_label: Option<&mxr_core::LabelId>,
+    theme: &Theme,
 ) -> ListItem<'a> {
     let is_active = active_label.map(|current| current == &label.id).unwrap_or(false);
     let display_name = humanize_label(&label.name);
@@ -155,9 +162,9 @@ fn render_label_item<'a>(
     };
 
     let style = if is_active {
-        Style::default().fg(Color::Cyan).bold()
+        Style::default().fg(theme.accent).bold()
     } else if label.unread_count > 0 {
-        Style::default().fg(Color::White).bold()
+        theme.unread_style()
     } else {
         Style::default()
     };
@@ -170,6 +177,8 @@ pub fn humanize_label(name: &str) -> &str {
         "INBOX" => "Inbox",
         "SENT" => "Sent",
         "DRAFT" => "Drafts",
+        "ARCHIVE" => "Archive",
+        "ALL" => "All Mail",
         "TRASH" => "Trash",
         "SPAM" => "Spam",
         "STARRED" => "Starred",
@@ -188,6 +197,7 @@ pub fn should_hide_label(name: &str) -> bool {
             | "CATEGORY_PERSONAL"
             | "CATEGORY_PROMOTIONS"
             | "CATEGORY_SOCIAL"
+            | "ALL"
             | "RED_STAR"
             | "YELLOW_STAR"
             | "ORANGE_STAR"
@@ -206,7 +216,7 @@ pub fn should_hide_label(name: &str) -> bool {
 pub fn is_primary_system_label(name: &str) -> bool {
     matches!(
         name,
-        "INBOX" | "STARRED" | "SENT" | "DRAFT" | "SPAM" | "TRASH"
+        "INBOX" | "STARRED" | "SENT" | "DRAFT" | "ARCHIVE" | "SPAM" | "TRASH"
     )
 }
 
@@ -216,8 +226,9 @@ pub fn system_label_order(name: &str) -> usize {
         "STARRED" => 1,
         "SENT" => 2,
         "DRAFT" => 3,
-        "SPAM" => 4,
-        "TRASH" => 5,
+        "ARCHIVE" => 4,
+        "SPAM" => 5,
+        "TRASH" => 6,
         _ => 100,
     }
 }
@@ -245,10 +256,11 @@ mod tests {
     fn sidebar_entries_insert_labels_header_before_user_labels() {
         let labels = vec![label("INBOX", LabelKind::System), label("Work", LabelKind::User)];
         let entries = build_sidebar_entries(&labels, &[]);
-        assert!(matches!(entries[0], SidebarEntry::Label(label) if label.name == "INBOX"));
-        assert!(matches!(entries[1], SidebarEntry::Spacer));
-        assert!(matches!(entries[2], SidebarEntry::Header(" Labels")));
-        assert!(matches!(entries[3], SidebarEntry::Label(label) if label.name == "Work"));
+        assert!(matches!(entries[0], SidebarEntry::AllMail));
+        assert!(matches!(entries[1], SidebarEntry::Label(label) if label.name == "INBOX"));
+        assert!(matches!(entries[2], SidebarEntry::Spacer));
+        assert!(matches!(entries[3], SidebarEntry::Header(" Labels")));
+        assert!(matches!(entries[4], SidebarEntry::Label(label) if label.name == "Work"));
     }
 
     #[test]
@@ -266,7 +278,8 @@ mod tests {
         }];
         let entries = build_sidebar_entries(&labels, &searches);
         assert_eq!(visual_index_for_selection(&entries, 0), Some(0));
-        assert_eq!(visual_index_for_selection(&entries, 1), Some(3));
-        assert_eq!(visual_index_for_selection(&entries, 2), Some(6));
+        assert_eq!(visual_index_for_selection(&entries, 1), Some(1));
+        assert_eq!(visual_index_for_selection(&entries, 2), Some(4));
+        assert_eq!(visual_index_for_selection(&entries, 3), Some(7));
     }
 }

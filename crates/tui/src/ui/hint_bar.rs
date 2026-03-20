@@ -1,5 +1,6 @@
 use crate::app::{ActivePane, Screen};
 use crate::keybindings::{display_bindings_for_actions, ViewContext};
+use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -16,23 +17,24 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     state: HintBarState<'_>,
+    theme: &Theme,
 ) {
     let lines = if state.bulk_confirm_open {
-        vec![hint_line(&[("Enter", "Confirm"), ("y", "Confirm"), ("Esc", "Cancel")])]
+        vec![hint_line(&[("Enter", "Confirm"), ("y", "Confirm"), ("Esc", "Cancel")], theme)]
     } else if state.help_modal_open {
-        vec![hint_line(&[("Esc", "Close Help"), ("?", "Toggle Help")])]
+        vec![hint_line(&[("Esc", "Close Help"), ("?", "Toggle Help")], theme)]
     } else if state.search_active {
-        vec![hint_line(&[("Enter", "Confirm Search"), ("Esc", "Cancel Search")])]
+        vec![hint_line(&[("Enter", "Confirm Search"), ("Esc", "Cancel Search")], theme)]
     } else {
         build_lines(&hints_for_state(
             state.screen,
             state.active_pane,
             state.selected_count,
-        ))
+        ), theme)
     };
 
     frame.render_widget(
-        Paragraph::new(lines).style(Style::default().bg(Color::Rgb(30, 30, 40))),
+        Paragraph::new(lines).style(Style::default().bg(theme.hint_bar_bg)),
         area,
     );
 }
@@ -152,33 +154,33 @@ pub fn hints_for_state(
     }
 }
 
-fn build_lines(hints: &[(String, String)]) -> Vec<Line<'static>> {
+fn build_lines(hints: &[(String, String)], theme: &Theme) -> Vec<Line<'static>> {
     let mid = hints.len().div_ceil(2);
-    vec![hint_line_owned(&hints[..mid]), hint_line_owned(&hints[mid..])]
+    vec![hint_line_owned(&hints[..mid], theme), hint_line_owned(&hints[mid..], theme)]
 }
 
-fn hint_line(hints: &[(&str, &str)]) -> Line<'static> {
+fn hint_line(hints: &[(&str, &str)], theme: &Theme) -> Line<'static> {
     Line::from(
         hints
             .iter()
             .flat_map(|(key, action)| {
                 [
-                    Span::styled(format!(" {key}"), Style::default().fg(Color::White).bold()),
-                    Span::styled(format!(":{action}  "), Style::default().fg(Color::Gray)),
+                    Span::styled(format!(" {key}"), Style::default().fg(theme.text_primary).bold()),
+                    Span::styled(format!(":{action}  "), Style::default().fg(theme.text_secondary)),
                 ]
             })
             .collect::<Vec<_>>(),
     )
 }
 
-fn hint_line_owned(hints: &[(String, String)]) -> Line<'static> {
+fn hint_line_owned(hints: &[(String, String)], theme: &Theme) -> Line<'static> {
     Line::from(
         hints
             .iter()
             .flat_map(|(key, action)| {
                 [
-                    Span::styled(format!(" {key}"), Style::default().fg(Color::White).bold()),
-                    Span::styled(format!(":{action}  "), Style::default().fg(Color::Gray)),
+                    Span::styled(format!(" {key}"), Style::default().fg(theme.text_primary).bold()),
+                    Span::styled(format!(":{action}  "), Style::default().fg(theme.text_secondary)),
                 ]
             })
             .collect::<Vec<_>>(),

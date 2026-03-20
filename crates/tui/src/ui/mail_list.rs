@@ -1,4 +1,5 @@
 use crate::app::{ActivePane, MailListMode, MailListRow};
+use crate::theme::Theme;
 use chrono::{Datelike, Local, Utc};
 use mxr_core::id::MessageId;
 use mxr_core::types::MessageFlags;
@@ -25,6 +26,7 @@ pub fn draw(
     scroll_offset: usize,
     active_pane: &ActivePane,
     title: &str,
+    theme: &Theme,
 ) {
     draw_view(
         frame,
@@ -38,16 +40,13 @@ pub fn draw(
             selected_set: &HashSet::new(),
             mode: MailListMode::Threads,
         },
+        theme,
     );
 }
 
-pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>) {
+pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: &Theme) {
     let is_focused = *view.active_pane == ActivePane::MailList;
-    let border_style = if is_focused {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
+    let border_style = theme.border_style(is_focused);
 
     let visible_height = area.height.saturating_sub(2) as usize;
     let inner_width = area.width.saturating_sub(2) as usize;
@@ -60,7 +59,7 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>) {
         .enumerate()
         .skip(view.scroll_offset)
         .take(visible_height)
-        .map(|(i, row)| render_row(view, row, i, inner_width, compact, ultra_compact))
+        .map(|(i, row)| render_row(view, row, i, inner_width, compact, ultra_compact, theme))
         .collect();
 
     let list = List::new(items).block(
@@ -80,6 +79,7 @@ fn render_row(
     inner_width: usize,
     compact: bool,
     ultra_compact: bool,
+    theme: &Theme,
 ) -> ListItem<'static> {
     let env = &row.representative;
     let is_selected = index == view.selected_index;
@@ -123,7 +123,7 @@ fn render_row(
 
     if !view.selected_set.is_empty() {
         spans.push(if is_in_set {
-            Span::styled("*", Style::default().fg(Color::Magenta).bold())
+            Span::styled("*", Style::default().fg(theme.accent).bold())
         } else {
             Span::raw(" ")
         });
@@ -132,27 +132,27 @@ fn render_row(
     if !ultra_compact {
         spans.push(Span::styled(
             pad_left_display(&(index + 1).to_string(), 3) + " ",
-            Style::default().fg(Color::Rgb(80, 80, 80)),
+            Style::default().fg(theme.line_number_fg),
         ));
     }
 
     spans.push(Span::styled(
         if is_unread { "N" } else { " " },
-        Style::default().fg(Color::Cyan).bold(),
+        Style::default().fg(theme.accent).bold(),
     ));
     spans.push(Span::styled(
         if is_starred { "★" } else { " " },
-        Style::default().fg(Color::Yellow),
+        Style::default().fg(theme.warning),
     ));
     if !compact {
         spans.push(Span::styled(
             if is_answered { "A" } else { " " },
-            Style::default().fg(Color::Blue),
+            Style::default().fg(theme.accent_dim),
         ));
     }
     spans.push(Span::styled(
         attachment_marker(env.has_attachments),
-        Style::default().fg(Color::Green),
+        Style::default().fg(theme.success),
     ));
     spans.push(Span::raw(" "));
     let sender_cell = pad_right_display(
@@ -161,30 +161,30 @@ fn render_row(
     );
     spans.push(Span::styled(
         sender_cell,
-        Style::default().fg(if is_unread { Color::White } else { Color::Gray }),
+        Style::default().fg(if is_unread { theme.text_primary } else { theme.text_secondary }),
     ));
     if let Some(thread_count) = thread_count {
         spans.push(Span::styled(
             format!(" {}", thread_count),
-            Style::default().fg(Color::LightBlue).bold(),
+            Style::default().fg(theme.accent_dim).bold(),
         ));
     }
     spans.push(Span::raw(" "));
     spans.push(Span::raw(subject_text));
     spans.push(Span::styled(
         pad_left_display(&right_text, date_width),
-        Style::default().fg(Color::Rgb(100, 100, 110)),
+        Style::default().fg(theme.text_muted),
     ));
 
     let line = Line::from(spans);
     let base_style = if is_selected {
-        Style::default().bg(Color::Rgb(50, 50, 60)).fg(Color::White)
+        Style::default().bg(theme.selection_bg).fg(theme.selection_fg)
     } else if is_in_set {
-        Style::default().bg(Color::Rgb(40, 30, 50)).fg(Color::White)
+        Style::default().bg(theme.label_bg).fg(theme.text_primary)
     } else if is_unread {
-        Style::default().fg(Color::White).bold()
+        theme.unread_style()
     } else {
-        Style::default().fg(Color::Gray)
+        Style::default().fg(theme.text_secondary)
     };
 
     ListItem::new(line).style(base_style)

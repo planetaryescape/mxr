@@ -18,13 +18,10 @@ pub fn draw(
     messages: &[ThreadMessageBlock],
     scroll_offset: u16,
     active_pane: &ActivePane,
+    theme: &crate::theme::Theme,
 ) {
     let is_focused = *active_pane == ActivePane::MessageView;
-    let border_style = if is_focused {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
+    let border_style = theme.border_style(is_focused);
 
     let title = if messages.len() > 1 {
         " Thread "
@@ -46,7 +43,7 @@ pub fn draw(
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "────────────────────────────────────────",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.text_muted),
             )));
             lines.push(Line::from(""));
         }
@@ -54,7 +51,7 @@ pub fn draw(
         let env = &message.envelope;
         let from = env.from.name.as_deref().unwrap_or(&env.from.email);
         let header_style = if message.selected {
-            Style::default().fg(Color::Cyan).bold()
+            Style::default().fg(theme.accent).bold()
         } else {
             Style::default().bold()
         };
@@ -78,7 +75,7 @@ pub fn draw(
                 .map(|label| {
                     Span::styled(
                         format!("[{label}] "),
-                        Style::default().fg(Color::Yellow).bold(),
+                        Style::default().fg(theme.warning).bold(),
                     )
                 })
                 .collect::<Vec<_>>();
@@ -91,7 +88,7 @@ pub fn draw(
                 .map(|attachment| {
                     Span::styled(
                         format!("[{attachment}] "),
-                        Style::default().fg(Color::Green).bold(),
+                        Style::default().fg(theme.success).bold(),
                     )
                 })
                 .collect::<Vec<_>>();
@@ -105,36 +102,36 @@ pub fn draw(
 
         match &message.body_state {
             BodyViewState::Ready { rendered, .. } => {
-                lines.extend(process_body_lines(rendered));
+                lines.extend(process_body_lines(rendered, theme));
             }
             BodyViewState::Loading { preview } => {
                 if let Some(preview) = preview {
-                    lines.extend(process_body_lines(preview));
+                    lines.extend(process_body_lines(preview, theme));
                     lines.push(Line::from(""));
                 }
                 lines.push(Line::from(Span::styled(
                     "Loading...",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(theme.text_muted),
                 )));
             }
             BodyViewState::Empty { preview } => {
                 if let Some(preview) = preview {
-                    lines.extend(process_body_lines(preview));
+                    lines.extend(process_body_lines(preview, theme));
                     lines.push(Line::from(""));
                 }
                 lines.push(Line::from(Span::styled(
                     "(no body available)",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(theme.text_muted),
                 )));
             }
             BodyViewState::Error { message, preview } => {
                 if let Some(preview) = preview {
-                    lines.extend(process_body_lines(preview));
+                    lines.extend(process_body_lines(preview, theme));
                     lines.push(Line::from(""));
                 }
                 lines.push(Line::from(Span::styled(
                     format!("Error: {message}"),
-                    Style::default().fg(Color::Red),
+                    Style::default().fg(theme.error),
                 )));
             }
         }
@@ -143,7 +140,7 @@ pub fn draw(
     if messages.is_empty() {
         lines.push(Line::from(Span::styled(
             "No message selected",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme.text_muted),
         )));
     }
 
@@ -154,7 +151,7 @@ pub fn draw(
     frame.render_widget(paragraph, inner);
 }
 
-fn process_body_lines(raw: &str) -> Vec<Line<'static>> {
+fn process_body_lines(raw: &str, theme: &crate::theme::Theme) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut quote_buffer: Vec<String> = Vec::new();
     let mut in_signature = false;
@@ -163,14 +160,14 @@ fn process_body_lines(raw: &str) -> Vec<Line<'static>> {
     for line in raw.lines() {
         // Signature detection
         if line == "-- " || line == "--" {
-            flush_quotes(&mut quote_buffer, &mut lines);
+            flush_quotes(&mut quote_buffer, &mut lines, theme);
             in_signature = true;
             continue;
         }
 
         // Blank line collapsing
         if line.trim().is_empty() {
-            flush_quotes(&mut quote_buffer, &mut lines);
+            flush_quotes(&mut quote_buffer, &mut lines, theme);
             consecutive_blanks += 1;
             if consecutive_blanks <= 2 {
                 lines.push(Line::from(""));
@@ -182,7 +179,7 @@ fn process_body_lines(raw: &str) -> Vec<Line<'static>> {
         if in_signature {
             lines.push(Line::from(Span::styled(
                 line.to_string(),
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.signature_fg),
             )));
             continue;
         }
@@ -194,21 +191,21 @@ fn process_body_lines(raw: &str) -> Vec<Line<'static>> {
         }
 
         // Regular line — flush any pending quotes first
-        flush_quotes(&mut quote_buffer, &mut lines);
+        flush_quotes(&mut quote_buffer, &mut lines, theme);
         lines.push(Line::from(line.to_string()));
     }
 
     // Flush remaining
-    flush_quotes(&mut quote_buffer, &mut lines);
+    flush_quotes(&mut quote_buffer, &mut lines, theme);
     lines
 }
 
-fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>) {
+fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>, theme: &crate::theme::Theme) {
     if buffer.is_empty() {
         return;
     }
 
-    let quote_style = Style::default().fg(Color::DarkGray);
+    let quote_style = Style::default().fg(theme.quote_fg);
 
     if buffer.len() <= 3 {
         for line in buffer.drain(..) {
@@ -217,7 +214,7 @@ fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>) {
                 .trim_start_matches(' ')
                 .to_string();
             lines.push(Line::from(vec![
-                Span::styled("│ ", Style::default().fg(Color::Blue)),
+                Span::styled("│ ", Style::default().fg(theme.accent_dim)),
                 Span::styled(cleaned, quote_style),
             ]));
         }
@@ -228,7 +225,7 @@ fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>) {
                 .trim_start_matches(' ')
                 .to_string();
             lines.push(Line::from(vec![
-                Span::styled("│ ", Style::default().fg(Color::Blue)),
+                Span::styled("│ ", Style::default().fg(theme.accent_dim)),
                 Span::styled(cleaned, quote_style),
             ]));
         }
@@ -236,7 +233,7 @@ fn flush_quotes(buffer: &mut Vec<String>, lines: &mut Vec<Line<'static>>) {
         lines.push(Line::from(Span::styled(
             format!("  ┆ ... {hidden} more quoted lines ..."),
             Style::default()
-                .fg(Color::DarkGray)
+                .fg(theme.quote_fg)
                 .add_modifier(Modifier::ITALIC),
         )));
         buffer.clear();

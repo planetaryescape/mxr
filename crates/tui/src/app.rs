@@ -115,6 +115,7 @@ pub struct MailListRow {
 
 #[derive(Debug, Clone)]
 pub enum SidebarItem {
+    AllMail,
     Label(Label),
     SavedSearch(mxr_core::SavedSearch),
 }
@@ -184,8 +185,10 @@ impl Default for RulesPageState {
 #[derive(Debug, Clone, Default)]
 pub struct DiagnosticsPageState {
     pub uptime_secs: Option<u64>,
+    pub daemon_pid: Option<u32>,
     pub accounts: Vec<String>,
     pub total_messages: Option<u32>,
+    pub sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
     pub doctor: Option<mxr_protocol::DoctorReport>,
     pub events: Vec<mxr_protocol::EventLogEntry>,
     pub logs: Vec<String>,
@@ -195,6 +198,7 @@ pub struct DiagnosticsPageState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccountFormMode {
+    Gmail,
     ImapSmtp,
     SmtpOnly,
 }
@@ -206,6 +210,11 @@ pub struct AccountFormState {
     pub key: String,
     pub name: String,
     pub email: String,
+    pub gmail_credential_source: mxr_protocol::GmailCredentialSourceData,
+    pub gmail_client_id: String,
+    pub gmail_client_secret: String,
+    pub gmail_token_ref: String,
+    pub gmail_authorized: bool,
     pub imap_host: String,
     pub imap_port: String,
     pub imap_username: String,
@@ -217,16 +226,24 @@ pub struct AccountFormState {
     pub smtp_password_ref: String,
     pub smtp_password: String,
     pub active_field: usize,
+    pub editing_field: bool,
+    pub field_cursor: usize,
+    pub last_result: Option<mxr_protocol::AccountOperationResult>,
 }
 
 impl Default for AccountFormState {
     fn default() -> Self {
         Self {
             visible: false,
-            mode: AccountFormMode::ImapSmtp,
+            mode: AccountFormMode::Gmail,
             key: String::new(),
             name: String::new(),
             email: String::new(),
+            gmail_credential_source: mxr_protocol::GmailCredentialSourceData::Bundled,
+            gmail_client_id: String::new(),
+            gmail_client_secret: String::new(),
+            gmail_token_ref: String::new(),
+            gmail_authorized: false,
             imap_host: String::new(),
             imap_port: "993".into(),
             imap_username: String::new(),
@@ -238,6 +255,9 @@ impl Default for AccountFormState {
             smtp_password_ref: String::new(),
             smtp_password: String::new(),
             active_field: 0,
+            editing_field: false,
+            field_cursor: 0,
+            last_result: None,
         }
     }
 }
@@ -247,7 +267,10 @@ pub struct AccountsPageState {
     pub accounts: Vec<mxr_protocol::AccountSummaryData>,
     pub selected_index: usize,
     pub status: Option<String>,
+    pub last_result: Option<mxr_protocol::AccountOperationResult>,
     pub refresh_pending: bool,
+    pub onboarding_required: bool,
+    pub onboarding_modal_open: bool,
     pub form: AccountFormState,
 }
 
@@ -346,6 +369,7 @@ pub struct App {
     pub pending_bug_report: bool,
     pub pending_account_save: Option<mxr_protocol::AccountConfigData>,
     pub pending_account_test: Option<mxr_protocol::AccountConfigData>,
+    pub pending_account_authorize: Option<(mxr_protocol::AccountConfigData, bool)>,
     pub pending_account_set_default: Option<String>,
     pub sidebar_selected: usize,
     pub sidebar_section: SidebarSection,
@@ -358,6 +382,9 @@ pub struct App {
     pub active_label: Option<mxr_core::LabelId>,
     pub pending_label_fetch: Option<mxr_core::LabelId>,
     pub pending_active_label: Option<mxr_core::LabelId>,
+    pub pending_labels_refresh: bool,
+    pub pending_all_envelopes_refresh: bool,
+    pub desired_system_mailbox: Option<String>,
     pub status_message: Option<String>,
     pub pending_mutation_queue: Vec<(Request, MutationEffect)>,
     pub pending_compose: Option<ComposeAction>,
@@ -390,7 +417,11 @@ impl App {
     }
 
     pub fn from_config(config: &mxr_config::MxrConfig) -> Self {
-        Self::from_render_and_snooze(&config.render, &config.snooze)
+        let mut app = Self::from_render_and_snooze(&config.render, &config.snooze);
+        if config.accounts.is_empty() {
+            app.enter_account_setup_onboarding();
+        }
+        app
     }
 
     pub fn from_render_config(render: &RenderConfig) -> Self {
@@ -440,6 +471,7 @@ impl App {
             pending_bug_report: false,
             pending_account_save: None,
             pending_account_test: None,
+            pending_account_authorize: None,
             pending_account_set_default: None,
             sidebar_selected: 0,
             sidebar_section: SidebarSection::Labels,
@@ -452,6 +484,9 @@ impl App {
             active_label: None,
             pending_label_fetch: None,
             pending_active_label: None,
+            pending_labels_refresh: false,
+            pending_all_envelopes_refresh: false,
+            desired_system_mailbox: None,
             status_message: None,
             pending_mutation_queue: Vec::new(),
             pending_compose: None,
@@ -499,12 +534,13 @@ impl App {
     }
 
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
-        let mut items = self
-            .visible_labels()
-            .into_iter()
-            .cloned()
-            .map(SidebarItem::Label)
-            .collect::<Vec<_>>();
+        let mut items = vec![SidebarItem::AllMail];
+        items.extend(
+            self.visible_labels()
+                .into_iter()
+                .cloned()
+                .map(SidebarItem::Label),
+        );
         items.extend(
             self.saved_searches
                 .iter()
@@ -543,12 +579,37 @@ impl App {
             .get(self.accounts_page.selected_index)
     }
 
+    pub fn enter_account_setup_onboarding(&mut self) {
+        self.screen = Screen::Accounts;
+        self.accounts_page.refresh_pending = true;
+        self.accounts_page.onboarding_required = true;
+        self.accounts_page.onboarding_modal_open = true;
+        self.active_label = None;
+        self.pending_active_label = None;
+        self.pending_label_fetch = None;
+        self.desired_system_mailbox = None;
+    }
+
+    fn complete_account_setup_onboarding(&mut self) {
+        self.accounts_page.onboarding_modal_open = false;
+        self.apply(Action::OpenAccountFormNew);
+    }
+
     fn selected_account_config(&self) -> Option<mxr_protocol::AccountConfigData> {
         self.selected_account().and_then(account_summary_to_config)
     }
 
     fn account_form_field_count(&self) -> usize {
         match self.accounts_page.form.mode {
+            AccountFormMode::Gmail => {
+                if self.accounts_page.form.gmail_credential_source
+                    == mxr_protocol::GmailCredentialSourceData::Custom
+                {
+                    8
+                } else {
+                    6
+                }
+            }
             AccountFormMode::ImapSmtp => 14,
             AccountFormMode::SmtpOnly => 9,
         }
@@ -573,7 +634,22 @@ impl App {
         } else {
             form.smtp_username.trim().to_string()
         };
+        let gmail_token_ref = if form.gmail_token_ref.trim().is_empty() {
+            format!("mxr/{key}-gmail")
+        } else {
+            form.gmail_token_ref.trim().to_string()
+        };
         let sync = match form.mode {
+            AccountFormMode::Gmail => Some(mxr_protocol::AccountSyncConfigData::Gmail {
+                credential_source: form.gmail_credential_source.clone(),
+                client_id: form.gmail_client_id.trim().to_string(),
+                client_secret: if form.gmail_client_secret.trim().is_empty() {
+                    None
+                } else {
+                    Some(form.gmail_client_secret.clone())
+                },
+                token_ref: gmail_token_ref,
+            }),
             AccountFormMode::ImapSmtp => Some(mxr_protocol::AccountSyncConfigData::Imap {
                 host: form.imap_host.trim().to_string(),
                 port: form.imap_port.parse().unwrap_or(993),
@@ -588,18 +664,23 @@ impl App {
             }),
             AccountFormMode::SmtpOnly => None,
         };
-        let send = Some(mxr_protocol::AccountSendConfigData::Smtp {
-            host: form.smtp_host.trim().to_string(),
-            port: form.smtp_port.parse().unwrap_or(587),
-            username: smtp_username,
-            password_ref: form.smtp_password_ref.trim().to_string(),
-            password: if form.smtp_password.is_empty() {
-                None
-            } else {
-                Some(form.smtp_password.clone())
-            },
-            use_tls: true,
-        });
+        let send = match form.mode {
+            AccountFormMode::Gmail => Some(mxr_protocol::AccountSendConfigData::Gmail),
+            AccountFormMode::ImapSmtp | AccountFormMode::SmtpOnly => {
+                Some(mxr_protocol::AccountSendConfigData::Smtp {
+                    host: form.smtp_host.trim().to_string(),
+                    port: form.smtp_port.parse().unwrap_or(587),
+                    username: smtp_username,
+                    password_ref: form.smtp_password_ref.trim().to_string(),
+                    password: if form.smtp_password.is_empty() {
+                        None
+                    } else {
+                        Some(form.smtp_password.clone())
+                    },
+                    use_tls: true,
+                })
+            }
+        };
         mxr_protocol::AccountConfigData {
             key,
             name,
@@ -607,6 +688,34 @@ impl App {
             sync,
             send,
             is_default,
+        }
+    }
+
+    fn cycle_account_form_mode(&mut self, forward: bool) {
+        self.accounts_page.form.mode = match (self.accounts_page.form.mode, forward) {
+            (AccountFormMode::Gmail, true) => AccountFormMode::ImapSmtp,
+            (AccountFormMode::ImapSmtp, true) => AccountFormMode::SmtpOnly,
+            (AccountFormMode::SmtpOnly, true) => AccountFormMode::Gmail,
+            (AccountFormMode::Gmail, false) => AccountFormMode::SmtpOnly,
+            (AccountFormMode::ImapSmtp, false) => AccountFormMode::Gmail,
+            (AccountFormMode::SmtpOnly, false) => AccountFormMode::ImapSmtp,
+        };
+        self.accounts_page.form.active_field =
+            self.accounts_page.form.active_field.min(self.account_form_field_count().saturating_sub(1));
+        self.accounts_page.form.editing_field = false;
+        self.accounts_page.form.field_cursor = 0;
+        self.refresh_account_form_derived_fields();
+    }
+
+    fn refresh_account_form_derived_fields(&mut self) {
+        if matches!(self.accounts_page.form.mode, AccountFormMode::Gmail) {
+            let key = self.accounts_page.form.key.trim();
+            let token_ref = if key.is_empty() {
+                String::new()
+            } else {
+                format!("mxr/{key}-gmail")
+            };
+            self.accounts_page.form.gmail_token_ref = token_ref;
         }
     }
 
@@ -673,8 +782,8 @@ impl App {
     }
 
     pub async fn load(&mut self, client: &mut Client) -> Result<(), MxrError> {
-        self.envelopes = client.list_envelopes(5000, 0).await?;
-        self.all_envelopes = self.envelopes.clone();
+        self.all_envelopes = client.list_envelopes(5000, 0).await?;
+        self.envelopes = self.all_mail_envelopes();
         self.labels = client.list_labels().await?;
         self.saved_searches = client.list_saved_searches().await.unwrap_or_default();
         // Queue body prefetch for first visible window
@@ -767,16 +876,13 @@ impl App {
                             self.pending_send_confirm = Some(pending);
                             return None;
                         }
-                        let parse_addrs = |s: &str| -> Vec<mxr_core::Address> {
-                            s.split(',')
-                                .map(|a| a.trim())
-                                .filter(|a| !a.is_empty())
-                                .map(|a| mxr_core::Address {
-                                    name: None,
-                                    email: a.to_string(),
-                                })
-                                .collect()
-                        };
+                        let parse_addrs = |s: &str| mxr_compose::parse::parse_address_list(s);
+                        let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
+                            mxr_core::types::ReplyHeaders {
+                                in_reply_to: in_reply_to.clone(),
+                                references: pending.fm.references.clone(),
+                            }
+                        });
                         let account_id = self
                             .envelopes
                             .first()
@@ -787,7 +893,7 @@ impl App {
                         let draft = mxr_core::Draft {
                             id: mxr_core::id::DraftId::new(),
                             account_id,
-                            in_reply_to: None,
+                            reply_headers,
                             to: parse_addrs(&pending.fm.to),
                             cc: parse_addrs(&pending.fm.cc),
                             bcc: parse_addrs(&pending.fm.bcc),
@@ -818,16 +924,13 @@ impl App {
                             self.pending_send_confirm = Some(pending);
                             return None;
                         }
-                        let parse_addrs = |s: &str| -> Vec<mxr_core::Address> {
-                            s.split(',')
-                                .map(|a| a.trim())
-                                .filter(|a| !a.is_empty())
-                                .map(|a| mxr_core::Address {
-                                    name: None,
-                                    email: a.to_string(),
-                                })
-                                .collect()
-                        };
+                        let parse_addrs = |s: &str| mxr_compose::parse::parse_address_list(s);
+                        let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
+                            mxr_core::types::ReplyHeaders {
+                                in_reply_to: in_reply_to.clone(),
+                                references: pending.fm.references.clone(),
+                            }
+                        });
                         let account_id = self
                             .envelopes
                             .first()
@@ -838,7 +941,7 @@ impl App {
                         let draft = mxr_core::Draft {
                             id: mxr_core::id::DraftId::new(),
                             account_id,
-                            in_reply_to: None,
+                            reply_headers,
                             to: parse_addrs(&pending.fm.to),
                             cc: parse_addrs(&pending.fm.cc),
                             bcc: parse_addrs(&pending.fm.bcc),
@@ -1241,6 +1344,20 @@ impl App {
     }
 
     fn handle_accounts_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        if self.accounts_page.onboarding_modal_open {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Enter | KeyCode::Char(' '), _) => {
+                    self.complete_account_setup_onboarding();
+                    None
+                }
+                (KeyCode::Esc, _) => {
+                    self.accounts_page.onboarding_modal_open = false;
+                    None
+                }
+                _ => None,
+            };
+        }
+
         if self.accounts_page.form.visible {
             return self.handle_account_form_key(key);
         }
@@ -1274,15 +1391,96 @@ impl App {
                 }
                 None
             }
+            (KeyCode::Esc, _) if self.accounts_page.onboarding_required => None,
             (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
             _ => self.input.handle_key(key),
         }
     }
 
     fn handle_account_form_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        if self.accounts_page.form.editing_field {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc, _) | (KeyCode::Enter, _) => {
+                    self.accounts_page.form.editing_field = false;
+                    None
+                }
+                (KeyCode::Tab, _) => {
+                    self.accounts_page.form.editing_field = false;
+                    self.accounts_page.form.active_field =
+                        (self.accounts_page.form.active_field + 1) % self.account_form_field_count();
+                    self.accounts_page.form.field_cursor =
+                        account_form_field_value(&self.accounts_page.form)
+                            .map(|value| value.chars().count())
+                            .unwrap_or(0);
+                    None
+                }
+                (KeyCode::BackTab, _) => {
+                    self.accounts_page.form.editing_field = false;
+                    self.accounts_page.form.active_field =
+                        self.accounts_page.form.active_field.saturating_sub(1);
+                    self.accounts_page.form.field_cursor =
+                        account_form_field_value(&self.accounts_page.form)
+                            .map(|value| value.chars().count())
+                            .unwrap_or(0);
+                    None
+                }
+                (KeyCode::Left, _) => {
+                    self.accounts_page.form.field_cursor =
+                        self.accounts_page.form.field_cursor.saturating_sub(1);
+                    None
+                }
+                (KeyCode::Right, _) => {
+                    if let Some(value) = account_form_field_value(&self.accounts_page.form) {
+                        self.accounts_page.form.field_cursor = (self.accounts_page.form.field_cursor + 1)
+                            .min(value.chars().count());
+                    }
+                    None
+                }
+                (KeyCode::Home, _) => {
+                    self.accounts_page.form.field_cursor = 0;
+                    None
+                }
+                (KeyCode::End, _) => {
+                    self.accounts_page.form.field_cursor = account_form_field_value(&self.accounts_page.form)
+                        .map(|value| value.chars().count())
+                        .unwrap_or(0);
+                    None
+                }
+                (KeyCode::Backspace, _) => {
+                    delete_account_form_char(&mut self.accounts_page.form, true);
+                    self.refresh_account_form_derived_fields();
+                    None
+                }
+                (KeyCode::Delete, _) => {
+                    delete_account_form_char(&mut self.accounts_page.form, false);
+                    self.refresh_account_form_derived_fields();
+                    None
+                }
+                (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                    insert_account_form_char(&mut self.accounts_page.form, c);
+                    self.refresh_account_form_derived_fields();
+                    None
+                }
+                _ => None,
+            };
+        }
+
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) => {
                 self.accounts_page.form.visible = false;
+                None
+            }
+            (KeyCode::Char('j') | KeyCode::Down, _) => {
+                self.accounts_page.form.active_field =
+                    (self.accounts_page.form.active_field + 1) % self.account_form_field_count();
+                None
+            }
+            (KeyCode::Char('k') | KeyCode::Up, _) => {
+                self.accounts_page.form.active_field = if self.accounts_page.form.active_field == 0 {
+                    self.account_form_field_count().saturating_sub(1)
+                } else {
+                    self.accounts_page.form.active_field - 1
+                };
                 None
             }
             (KeyCode::Tab, _) => {
@@ -1295,23 +1493,55 @@ impl App {
                     self.accounts_page.form.active_field.saturating_sub(1);
                 None
             }
-            (KeyCode::Enter, _) => Some(Action::SaveAccountForm),
+            (KeyCode::Left | KeyCode::Char('h'), _) if self.accounts_page.form.active_field == 0 => {
+                self.cycle_account_form_mode(false);
+                None
+            }
+            (KeyCode::Right | KeyCode::Char('l'), _) if self.accounts_page.form.active_field == 0 => {
+                self.cycle_account_form_mode(true);
+                None
+            }
+            (KeyCode::Enter | KeyCode::Char('i'), _) => {
+                if account_form_field_is_editable(&self.accounts_page.form) {
+                    self.accounts_page.form.editing_field = true;
+                    self.accounts_page.form.field_cursor = account_form_field_value(&self.accounts_page.form)
+                        .map(|value| value.chars().count())
+                        .unwrap_or(0);
+                    None
+                } else if self.accounts_page.form.active_field == 0 {
+                    self.cycle_account_form_mode(true);
+                    None
+                } else if matches!(self.accounts_page.form.mode, AccountFormMode::Gmail)
+                    && self.accounts_page.form.active_field == 4
+                {
+                    self.accounts_page.form.gmail_credential_source =
+                        next_gmail_credential_source(self.accounts_page.form.gmail_credential_source.clone(), true);
+                    self.accounts_page.form.active_field =
+                        self.accounts_page.form.active_field.min(self.account_form_field_count().saturating_sub(1));
+                    None
+                } else {
+                    None
+                }
+            }
             (KeyCode::Char('t'), _) => Some(Action::TestAccountForm),
+            (KeyCode::Char('r'), _)
+                if matches!(self.accounts_page.form.mode, AccountFormMode::Gmail) =>
+            {
+                Some(Action::ReauthorizeAccountForm)
+            }
+            (KeyCode::Char('s'), _) => Some(Action::SaveAccountForm),
             (KeyCode::Char(' '), _) if self.accounts_page.form.active_field == 0 => {
-                self.accounts_page.form.mode = match self.accounts_page.form.mode {
-                    AccountFormMode::ImapSmtp => AccountFormMode::SmtpOnly,
-                    AccountFormMode::SmtpOnly => AccountFormMode::ImapSmtp,
-                };
+                self.cycle_account_form_mode(true);
                 None
             }
-            (KeyCode::Backspace, _) => {
-                mutate_account_form_field(&mut self.accounts_page.form, |value| {
-                    value.pop();
-                });
-                None
-            }
-            (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                mutate_account_form_field(&mut self.accounts_page.form, |value| value.push(c));
+            (KeyCode::Char(' '), _)
+                if matches!(self.accounts_page.form.mode, AccountFormMode::Gmail)
+                    && self.accounts_page.form.active_field == 4 =>
+            {
+                self.accounts_page.form.gmail_credential_source =
+                    next_gmail_credential_source(self.accounts_page.form.gmail_credential_source.clone(), true);
+                self.accounts_page.form.active_field =
+                    self.accounts_page.form.active_field.min(self.account_form_field_count().saturating_sub(1));
                 None
             }
             _ => None,
@@ -1328,6 +1558,12 @@ impl App {
 
         match action {
             Action::OpenMailboxScreen => {
+                if self.accounts_page.onboarding_required {
+                    self.screen = Screen::Accounts;
+                    self.accounts_page.onboarding_modal_open = self.accounts_page.accounts.is_empty()
+                        && !self.accounts_page.form.visible;
+                    return;
+                }
                 self.screen = Screen::Mailbox;
                 self.active_pane = if self.layout_mode == LayoutMode::ThreePane {
                     ActivePane::MailList
@@ -1365,6 +1601,8 @@ impl App {
             Action::OpenAccountFormNew => {
                 self.accounts_page.form = AccountFormState::default();
                 self.accounts_page.form.visible = true;
+                self.accounts_page.onboarding_modal_open = false;
+                self.refresh_account_form_derived_fields();
                 self.screen = Screen::Accounts;
             }
             Action::SaveAccountForm => {
@@ -1372,6 +1610,8 @@ impl App {
                     .selected_account()
                     .is_some_and(|account| account.is_default)
                     || self.accounts_page.accounts.is_empty();
+                self.accounts_page.last_result = None;
+                self.accounts_page.form.last_result = None;
                 self.pending_account_save = Some(self.account_form_data(is_default));
                 self.accounts_page.status = Some("Saving account...".into());
             }
@@ -1384,8 +1624,17 @@ impl App {
                     self.accounts_page.status = Some("No editable account selected.".into());
                     return;
                 };
+                self.accounts_page.last_result = None;
+                self.accounts_page.form.last_result = None;
                 self.pending_account_test = Some(account);
                 self.accounts_page.status = Some("Testing account...".into());
+            }
+            Action::ReauthorizeAccountForm => {
+                let account = self.account_form_data(false);
+                self.accounts_page.last_result = None;
+                self.accounts_page.form.last_result = None;
+                self.pending_account_authorize = Some((account, true));
+                self.accounts_page.status = Some("Authorizing Gmail account...".into());
             }
             Action::SetDefaultAccount => {
                 if let Some(key) = self
@@ -1540,7 +1789,11 @@ impl App {
             }
             // Search
             Action::OpenSearch => {
-                self.search_bar.activate();
+                if self.search_active {
+                    self.search_bar.activate_existing();
+                } else {
+                    self.search_bar.activate();
+                }
             }
             Action::SubmitSearch => {
                 if self.screen == Screen::Search {
@@ -1561,7 +1814,7 @@ impl App {
                 self.search_bar.deactivate();
                 self.search_active = false;
                 // Restore full envelope list
-                self.envelopes = self.all_envelopes.clone();
+                self.envelopes = self.all_mail_envelopes();
                 self.selected_index = 0;
                 self.scroll_offset = 0;
             }
@@ -1583,21 +1836,29 @@ impl App {
             Action::GoToInbox => {
                 if let Some(label) = self.labels.iter().find(|l| l.name == "INBOX") {
                     self.apply(Action::SelectLabel(label.id.clone()));
+                } else {
+                    self.desired_system_mailbox = Some("INBOX".into());
                 }
             }
             Action::GoToStarred => {
                 if let Some(label) = self.labels.iter().find(|l| l.name == "STARRED") {
                     self.apply(Action::SelectLabel(label.id.clone()));
+                } else {
+                    self.desired_system_mailbox = Some("STARRED".into());
                 }
             }
             Action::GoToSent => {
                 if let Some(label) = self.labels.iter().find(|l| l.name == "SENT") {
                     self.apply(Action::SelectLabel(label.id.clone()));
+                } else {
+                    self.desired_system_mailbox = Some("SENT".into());
                 }
             }
             Action::GoToDrafts => {
                 if let Some(label) = self.labels.iter().find(|l| l.name == "DRAFT") {
                     self.apply(Action::SelectLabel(label.id.clone()));
+                } else {
+                    self.desired_system_mailbox = Some("DRAFT".into());
                 }
             }
             Action::GoToAllMail => {
@@ -1724,6 +1985,7 @@ impl App {
             Action::SelectLabel(label_id) => {
                 self.pending_label_fetch = Some(label_id);
                 self.pending_active_label = self.pending_label_fetch.clone();
+                self.desired_system_mailbox = None;
                 self.active_pane = ActivePane::MailList;
                 self.screen = Screen::Mailbox;
             }
@@ -1740,8 +2002,9 @@ impl App {
             Action::ClearFilter => {
                 self.active_label = None;
                 self.pending_active_label = None;
+                self.desired_system_mailbox = None;
                 self.search_active = false;
-                self.envelopes = self.all_envelopes.clone();
+                self.envelopes = self.all_mail_envelopes();
                 self.selected_index = 0;
                 self.scroll_offset = 0;
             }
@@ -2234,6 +2497,7 @@ impl App {
 
     fn sidebar_select(&mut self) -> Option<Action> {
         match self.selected_sidebar_item() {
+            Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
             Some(SidebarItem::Label(label)) => Some(Action::SelectLabel(label.id)),
             Some(SidebarItem::SavedSearch(search)) => Some(Action::SelectSavedSearch(search.query)),
             None => None,
@@ -2252,7 +2516,7 @@ impl App {
     fn trigger_live_search(&mut self) {
         let query = self.search_bar.query.to_lowercase();
         if query.is_empty() {
-            self.envelopes = self.all_envelopes.clone();
+            self.envelopes = self.all_mail_envelopes();
             self.search_active = false;
         } else {
             let query_words: Vec<&str> = query.split_whitespace().collect();
@@ -2261,6 +2525,7 @@ impl App {
             self.envelopes = self
                 .all_envelopes
                 .iter()
+                .filter(|e| !e.flags.contains(MessageFlags::TRASH))
                 .filter(|e| {
                     let haystack = format!(
                         "{} {} {} {}",
@@ -2306,7 +2571,32 @@ impl App {
                 format!("{list_name} ({list_count})")
             }
         } else {
-            format!("{list_name} ({list_count})")
+            format!("All Mail {list_name} ({list_count})")
+        }
+    }
+
+    fn all_mail_envelopes(&self) -> Vec<Envelope> {
+        self.all_envelopes
+            .iter()
+            .filter(|envelope| !envelope.flags.contains(MessageFlags::TRASH))
+            .cloned()
+            .collect()
+    }
+
+    pub fn resolve_desired_system_mailbox(&mut self) {
+        let Some(target) = self.desired_system_mailbox.as_deref() else {
+            return;
+        };
+        if self.pending_active_label.is_some() || self.active_label.is_some() {
+            return;
+        }
+        if let Some(label_id) = self
+            .labels
+            .iter()
+            .find(|label| label.name.eq_ignore_ascii_case(target))
+            .map(|label| label.id.clone())
+        {
+            self.apply(Action::SelectLabel(label_id));
         }
     }
 
@@ -2365,6 +2655,9 @@ impl App {
         self.viewed_thread_messages = self.optimistic_thread_messages(&env);
         self.thread_selected_index = self.default_thread_selected_index();
         self.viewing_envelope = self.focused_thread_envelope().cloned();
+        if let Some(viewing_envelope) = self.viewing_envelope.clone() {
+            self.mark_envelope_read_on_open(&viewing_envelope);
+        }
         for message in self.viewed_thread_messages.clone() {
             self.queue_body_fetch(message.id);
         }
@@ -2398,8 +2691,45 @@ impl App {
     fn sync_focused_thread_envelope(&mut self) {
         self.close_attachment_panel();
         self.viewing_envelope = self.focused_thread_envelope().cloned();
+        if let Some(viewing_envelope) = self.viewing_envelope.clone() {
+            self.mark_envelope_read_on_open(&viewing_envelope);
+        }
         self.message_scroll_offset = 0;
         self.ensure_current_body_state();
+    }
+
+    fn mark_envelope_read_on_open(&mut self, envelope: &Envelope) {
+        if envelope.flags.contains(MessageFlags::READ)
+            || self.has_pending_set_read(&envelope.id, true)
+        {
+            return;
+        }
+
+        let mut flags = envelope.flags;
+        flags.insert(MessageFlags::READ);
+        self.apply_local_flags(&envelope.id, flags);
+        self.pending_mutation_queue.push((
+            Request::Mutation(MutationCommand::SetRead {
+                message_ids: vec![envelope.id.clone()],
+                read: true,
+            }),
+            MutationEffect::UpdateFlags {
+                message_id: envelope.id.clone(),
+                flags,
+            },
+        ));
+    }
+
+    fn has_pending_set_read(&self, message_id: &MessageId, read: bool) -> bool {
+        self.pending_mutation_queue.iter().any(|(request, _)| {
+            matches!(
+                request,
+                Request::Mutation(MutationCommand::SetRead { message_ids, read: queued_read })
+                    if *queued_read == read
+                        && message_ids.len() == 1
+                        && message_ids[0] == *message_id
+            )
+        })
     }
 
     fn move_thread_focus_down(&mut self) {
@@ -2658,6 +2988,25 @@ impl App {
         }
     }
 
+    pub fn apply_local_flags(&mut self, message_id: &MessageId, flags: MessageFlags) {
+        for envelope in self
+            .envelopes
+            .iter_mut()
+            .chain(self.all_envelopes.iter_mut())
+            .chain(self.search_page.results.iter_mut())
+            .chain(self.viewed_thread_messages.iter_mut())
+        {
+            if &envelope.id == message_id {
+                envelope.flags = flags;
+            }
+        }
+        if let Some(envelope) = self.viewing_envelope.as_mut() {
+            if &envelope.id == message_id {
+                envelope.flags = flags;
+            }
+        }
+    }
+
     fn resolve_label_provider_ids(&self, refs: &[String]) -> Vec<String> {
         refs.iter()
             .filter_map(|label_ref| {
@@ -2767,6 +3116,7 @@ impl App {
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
+        let theme = crate::theme::Theme::default();
         let area = frame.area();
 
         // Layout: hint bar (1 line) | content | status bar (1 line)
@@ -2797,6 +3147,7 @@ impl App {
                 selected_count: self.selected_set.len(),
                 bulk_confirm_open: self.pending_bulk_confirm.is_some(),
             },
+            &theme,
         );
 
         match self.screen {
@@ -2815,11 +3166,15 @@ impl App {
                         active_pane: &self.active_pane,
                         saved_searches: &self.saved_searches,
                         sidebar_selected: self.sidebar_selected,
+                        all_mail_active: !self.search_active
+                            && self.active_label.is_none()
+                            && self.pending_active_label.is_none(),
                         active_label: self
                             .pending_active_label
                             .as_ref()
                             .or(self.active_label.as_ref()),
                     },
+                    &theme,
                 );
 
                 let mail_title = self.mail_list_title();
@@ -2835,6 +3190,7 @@ impl App {
                         selected_set: &self.selected_set,
                         mode: self.mail_list_mode,
                     },
+                    &theme,
                 );
             }
             LayoutMode::ThreePane => {
@@ -2855,11 +3211,15 @@ impl App {
                         active_pane: &self.active_pane,
                         saved_searches: &self.saved_searches,
                         sidebar_selected: self.sidebar_selected,
+                        all_mail_active: !self.search_active
+                            && self.active_label.is_none()
+                            && self.pending_active_label.is_none(),
                         active_label: self
                             .pending_active_label
                             .as_ref()
                             .or(self.active_label.as_ref()),
                     },
+                    &theme,
                 );
 
                 let mail_title = self.mail_list_title();
@@ -2875,6 +3235,7 @@ impl App {
                         selected_set: &self.selected_set,
                         mode: self.mail_list_mode,
                     },
+                    &theme,
                 );
                 ui::message_view::draw(
                     frame,
@@ -2893,6 +3254,7 @@ impl App {
                         .collect::<Vec<_>>(),
                     self.message_scroll_offset,
                     &self.active_pane,
+                    &theme,
                 );
             }
             LayoutMode::FullScreen => {
@@ -2913,6 +3275,7 @@ impl App {
                         .collect::<Vec<_>>(),
                     self.message_scroll_offset,
                     &self.active_pane,
+                    &theme,
                 );
             }
         },
@@ -2937,52 +3300,53 @@ impl App {
                         })
                         .collect::<Vec<_>>(),
                     self.message_scroll_offset,
+                    &theme,
                 );
             }
             Screen::Rules => {
-                ui::rules_page::draw(frame, content_area, &self.rules_page);
+                ui::rules_page::draw(frame, content_area, &self.rules_page, &theme);
             }
             Screen::Diagnostics => {
-                ui::diagnostics_page::draw(frame, content_area, &self.diagnostics_page);
+                ui::diagnostics_page::draw(frame, content_area, &self.diagnostics_page, &theme);
             }
             Screen::Accounts => {
-                ui::accounts_page::draw(frame, content_area, &self.accounts_page);
+                ui::accounts_page::draw(frame, content_area, &self.accounts_page, &theme);
             }
         }
 
-        // Bottom bar: search bar takes priority over status bar
+        ui::status_bar::draw(
+            frame,
+            bottom_bar_area,
+            &self.envelopes,
+            self.last_sync_status.as_deref(),
+            self.status_message.as_deref(),
+            &theme,
+        );
+
         if self.search_bar.active {
-            ui::search_bar::draw(frame, bottom_bar_area, &self.search_bar);
-        } else {
-            ui::status_bar::draw(
-                frame,
-                bottom_bar_area,
-                &self.envelopes,
-                self.last_sync_status.as_deref(),
-                self.status_message.as_deref(),
-            );
+            ui::search_bar::draw(frame, area, &self.search_bar, &theme);
         }
 
         // Command palette overlay
-        ui::command_palette::draw(frame, area, &self.command_palette);
+        ui::command_palette::draw(frame, area, &self.command_palette, &theme);
 
         // Label picker overlay
-        ui::label_picker::draw(frame, area, &self.label_picker);
+        ui::label_picker::draw(frame, area, &self.label_picker, &theme);
 
         // Compose picker overlay
-        ui::compose_picker::draw(frame, area, &self.compose_picker);
+        ui::compose_picker::draw(frame, area, &self.compose_picker, &theme);
 
         // Attachment overlay
-        ui::attachment_modal::draw(frame, area, &self.attachment_panel);
+        ui::attachment_modal::draw(frame, area, &self.attachment_panel, &theme);
 
         // Snooze overlay
-        ui::snooze_modal::draw(frame, area, &self.snooze_panel, &self.snooze_config);
+        ui::snooze_modal::draw(frame, area, &self.snooze_panel, &self.snooze_config, &theme);
 
         // Send confirmation overlay
-        ui::send_confirm_modal::draw(frame, area, self.pending_send_confirm.as_ref());
+        ui::send_confirm_modal::draw(frame, area, self.pending_send_confirm.as_ref(), &theme);
 
         // Bulk confirmation overlay
-        ui::bulk_confirm_modal::draw(frame, area, self.pending_bulk_confirm.as_ref());
+        ui::bulk_confirm_modal::draw(frame, area, self.pending_bulk_confirm.as_ref(), &theme);
 
         // Help overlay
         ui::help_modal::draw(
@@ -2995,6 +3359,7 @@ impl App {
                 selected_count: self.selected_set.len(),
                 scroll_offset: self.help_scroll_offset,
             },
+            &theme,
         );
     }
 }
@@ -3059,6 +3424,18 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
 
     if let Some(sync) = account.sync {
         match sync {
+            mxr_protocol::AccountSyncConfigData::Gmail {
+                credential_source,
+                client_id,
+                client_secret,
+                token_ref,
+            } => {
+                form.mode = AccountFormMode::Gmail;
+                form.gmail_credential_source = credential_source;
+                form.gmail_client_id = client_id;
+                form.gmail_client_secret = client_secret.unwrap_or_default();
+                form.gmail_token_ref = token_ref;
+            }
             mxr_protocol::AccountSyncConfigData::Imap {
                 host,
                 port,
@@ -3072,38 +3449,95 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 form.imap_username = username;
                 form.imap_password_ref = password_ref;
             }
-            mxr_protocol::AccountSyncConfigData::Gmail { .. } => {}
         }
     } else {
         form.mode = AccountFormMode::SmtpOnly;
     }
 
-    if let Some(mxr_protocol::AccountSendConfigData::Smtp {
-        host,
-        port,
-        username,
-        password_ref,
-        ..
-    }) = account.send
-    {
-        form.smtp_host = host;
-        form.smtp_port = port.to_string();
-        form.smtp_username = username;
-        form.smtp_password_ref = password_ref;
+    match account.send {
+        Some(mxr_protocol::AccountSendConfigData::Smtp {
+            host,
+            port,
+            username,
+            password_ref,
+            ..
+        }) => {
+            form.smtp_host = host;
+            form.smtp_port = port.to_string();
+            form.smtp_username = username;
+            form.smtp_password_ref = password_ref;
+        }
+        Some(mxr_protocol::AccountSendConfigData::Gmail) => {
+            if form.gmail_token_ref.is_empty() {
+                form.gmail_token_ref = format!("mxr/{}-gmail", form.key);
+            }
+        }
+        None => {}
     }
 
     form
 }
 
-fn mutate_account_form_field<F>(form: &mut AccountFormState, mut update: F)
+fn account_form_field_value(form: &AccountFormState) -> Option<&str> {
+    match (form.mode, form.active_field) {
+        (_, 0) => None,
+        (_, 1) => Some(form.key.as_str()),
+        (_, 2) => Some(form.name.as_str()),
+        (_, 3) => Some(form.email.as_str()),
+        (AccountFormMode::Gmail, 4) => None,
+        (AccountFormMode::Gmail, 5)
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+        {
+            Some(form.gmail_client_id.as_str())
+        }
+        (AccountFormMode::Gmail, 6)
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+        {
+            Some(form.gmail_client_secret.as_str())
+        }
+        (AccountFormMode::Gmail, 5 | 6) => None,
+        (AccountFormMode::Gmail, 7) => None,
+        (AccountFormMode::ImapSmtp, 4) => Some(form.imap_host.as_str()),
+        (AccountFormMode::ImapSmtp, 5) => Some(form.imap_port.as_str()),
+        (AccountFormMode::ImapSmtp, 6) => Some(form.imap_username.as_str()),
+        (AccountFormMode::ImapSmtp, 7) => Some(form.imap_password_ref.as_str()),
+        (AccountFormMode::ImapSmtp, 8) => Some(form.imap_password.as_str()),
+        (AccountFormMode::ImapSmtp, 9) => Some(form.smtp_host.as_str()),
+        (AccountFormMode::ImapSmtp, 10) => Some(form.smtp_port.as_str()),
+        (AccountFormMode::ImapSmtp, 11) => Some(form.smtp_username.as_str()),
+        (AccountFormMode::ImapSmtp, 12) => Some(form.smtp_password_ref.as_str()),
+        (AccountFormMode::ImapSmtp, 13) => Some(form.smtp_password.as_str()),
+        (AccountFormMode::SmtpOnly, 4) => Some(form.smtp_host.as_str()),
+        (AccountFormMode::SmtpOnly, 5) => Some(form.smtp_port.as_str()),
+        (AccountFormMode::SmtpOnly, 6) => Some(form.smtp_username.as_str()),
+        (AccountFormMode::SmtpOnly, 7) => Some(form.smtp_password_ref.as_str()),
+        (AccountFormMode::SmtpOnly, 8) => Some(form.smtp_password.as_str()),
+        _ => None,
+    }
+}
+
+fn account_form_field_is_editable(form: &AccountFormState) -> bool {
+    account_form_field_value(form).is_some()
+}
+
+fn with_account_form_field_mut<F>(form: &mut AccountFormState, mut update: F)
 where
     F: FnMut(&mut String),
 {
     let field = match (form.mode, form.active_field) {
-        (_, 0) => return,
         (_, 1) => &mut form.key,
         (_, 2) => &mut form.name,
         (_, 3) => &mut form.email,
+        (AccountFormMode::Gmail, 5)
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+        {
+            &mut form.gmail_client_id
+        }
+        (AccountFormMode::Gmail, 6)
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+        {
+            &mut form.gmail_client_secret
+        }
         (AccountFormMode::ImapSmtp, 4) => &mut form.imap_host,
         (AccountFormMode::ImapSmtp, 5) => &mut form.imap_port,
         (AccountFormMode::ImapSmtp, 6) => &mut form.imap_username,
@@ -3119,9 +3553,71 @@ where
         (AccountFormMode::SmtpOnly, 6) => &mut form.smtp_username,
         (AccountFormMode::SmtpOnly, 7) => &mut form.smtp_password_ref,
         (AccountFormMode::SmtpOnly, 8) => &mut form.smtp_password,
-        _ => &mut form.smtp_password,
+        _ => return,
     };
     update(field);
+}
+
+fn insert_account_form_char(form: &mut AccountFormState, c: char) {
+    let cursor = form.field_cursor;
+    with_account_form_field_mut(form, |value| {
+        let insert_at = char_to_byte_index(value, cursor);
+        value.insert(insert_at, c);
+    });
+    form.field_cursor = form.field_cursor.saturating_add(1);
+}
+
+fn delete_account_form_char(form: &mut AccountFormState, backspace: bool) {
+    let cursor = form.field_cursor;
+    with_account_form_field_mut(form, |value| {
+        if backspace {
+            if cursor == 0 {
+                return;
+            }
+            let start = char_to_byte_index(value, cursor - 1);
+            let end = char_to_byte_index(value, cursor);
+            value.replace_range(start..end, "");
+        } else {
+            let len = value.chars().count();
+            if cursor >= len {
+                return;
+            }
+            let start = char_to_byte_index(value, cursor);
+            let end = char_to_byte_index(value, cursor + 1);
+            value.replace_range(start..end, "");
+        }
+    });
+    if backspace {
+        form.field_cursor = form.field_cursor.saturating_sub(1);
+    }
+}
+
+fn char_to_byte_index(value: &str, char_index: usize) -> usize {
+    value
+        .char_indices()
+        .nth(char_index)
+        .map(|(index, _)| index)
+        .unwrap_or(value.len())
+}
+
+fn next_gmail_credential_source(
+    current: mxr_protocol::GmailCredentialSourceData,
+    forward: bool,
+) -> mxr_protocol::GmailCredentialSourceData {
+    match (current, forward) {
+        (mxr_protocol::GmailCredentialSourceData::Bundled, true) => {
+            mxr_protocol::GmailCredentialSourceData::Custom
+        }
+        (mxr_protocol::GmailCredentialSourceData::Custom, true) => {
+            mxr_protocol::GmailCredentialSourceData::Bundled
+        }
+        (mxr_protocol::GmailCredentialSourceData::Bundled, false) => {
+            mxr_protocol::GmailCredentialSourceData::Custom
+        }
+        (mxr_protocol::GmailCredentialSourceData::Custom, false) => {
+            mxr_protocol::GmailCredentialSourceData::Bundled
+        }
+    }
 }
 
 pub fn snooze_presets() -> [SnoozePreset; 4] {

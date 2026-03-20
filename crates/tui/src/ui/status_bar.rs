@@ -8,6 +8,7 @@ pub fn draw(
     envelopes: &[Envelope],
     sync_status: Option<&str>,
     status_message: Option<&str>,
+    theme: &crate::theme::Theme,
 ) {
     let total = envelopes.len();
     let unread_count = envelopes
@@ -30,7 +31,7 @@ pub fn draw(
         format!("=INBOX [Msgs:{total} New:{unread_count} Starred:{starred_count}]= {sync_part}")
     };
 
-    let bar = Paragraph::new(status).style(Style::default().bg(Color::DarkGray).fg(Color::White));
+    let bar = Paragraph::new(status).style(Style::default().bg(theme.hint_bar_bg).fg(theme.text_primary));
 
     frame.render_widget(bar, area);
 }

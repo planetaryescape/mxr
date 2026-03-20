@@ -7,15 +7,14 @@ A programmable, agent-native email client that works across every provider. One 
 ## Install
 
 ```bash
+# Homebrew
+brew tap planetaryescape/mxr && brew install mxr
+
 # Cargo (from git)
 cargo install --git https://github.com/planetaryescape/mxr
 
-# Homebrew (available after first tagged release)
-brew tap planetaryescape/mxr && brew install mxr
-
-# From source
-git clone https://github.com/planetaryescape/mxr
-cd mxr && cargo build --release
+# Pre-built binaries: macOS (Intel + Apple Silicon), Linux x86_64
+# https://github.com/planetaryescape/mxr/releases/latest
 ```
 
 Works with **Gmail**, **IMAP**, and **SMTP** out of the box. One local database, one CLI, all your accounts.

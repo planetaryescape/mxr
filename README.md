@@ -11,7 +11,7 @@ A blazing fast, local-first terminal email client. Compose in your `$EDITOR`. Se
 brew tap planetaryescape/mxr && brew install mxr
 
 # Cargo
-cargo install mxr-daemon
+cargo install mxr
 
 # Pre-built binaries — macOS and Linux (x86_64, aarch64)
 # https://github.com/planetaryescape/mxr/releases

@@ -50,11 +50,11 @@ jobs:
 
       - name: Build (cross)
         if: matrix.use_cross
-        run: cross build --release --target ${{ matrix.target }} -p mxr-daemon
+        run: cross build --release --target ${{ matrix.target }} -p mxr
 
       - name: Build (native)
         if: "!matrix.use_cross"
-        run: cargo build --release --target ${{ matrix.target }} -p mxr-daemon
+        run: cargo build --release --target ${{ matrix.target }} -p mxr
 
       - name: Package
         run: |

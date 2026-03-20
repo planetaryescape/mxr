@@ -195,8 +195,6 @@ dependencies = [
 [[package]]
 name = "async-imap"
 version = "0.10.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca726c61b73c471f531b65e83e161776ba62c2b6ba4ec73d51fad357009ed00a"
 dependencies = [
  "async-channel 2.5.0",
  "async-compression",
@@ -2112,63 +2110,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 
 [[package]]
-name = "mxr-adapter-skeleton"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "mxr-core",
- "mxr-provider-fake",
-]
-
-[[package]]
-name = "mxr-compose"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "comrak",
- "dirs",
- "mxr-core",
- "mxr-reader",
- "pretty_assertions",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "mxr-config"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "mxr-core",
- "serde",
- "tempfile",
- "thiserror 2.0.18",
- "toml",
- "tracing",
-]
-
-[[package]]
-name = "mxr-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bitflags",
- "chrono",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "uuid",
-]
-
-[[package]]
-name = "mxr-daemon"
+name = "mxr"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -2206,6 +2148,66 @@ dependencies = [
  "url",
  "uuid",
  "which",
+]
+
+[[package]]
+name = "mxr-adapter-skeleton"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "mxr-core",
+ "mxr-provider-fake",
+]
+
+[[package]]
+name = "mxr-compose"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "comrak",
+ "dirs",
+ "lettre",
+ "mail-parser",
+ "mxr-core",
+ "mxr-reader",
+ "pretty_assertions",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "mxr-config"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "mxr-core",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml",
+ "tracing",
+]
+
+[[package]]
+name = "mxr-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bitflags",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]
@@ -2282,6 +2284,7 @@ dependencies = [
  "futures",
  "keyring",
  "mail-parser",
+ "mxr-compose",
  "mxr-core",
  "pretty_assertions",
  "serde",

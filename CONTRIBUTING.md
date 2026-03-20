@@ -1,153 +1,91 @@
 # Contributing to mxr
 
-Thank you for your interest in contributing to mxr. This document covers everything you need to get started.
+## Non-negotiables
 
-## Core Principles
+- local-first first
+- SQLite is canonical state
+- search index is rebuildable
+- daemon is the system
+- TUI and CLI are both clients
+- provider-specific logic stays in adapter crates
+- compose uses `$EDITOR`
+- rules are deterministic before they are clever
+- plain-text-first rendering wins over flashy rendering
 
-These are non-negotiable. They guide every design decision. If a feature or implementation conflicts with these, the feature loses.
+## Crate boundaries
 
-### 1. Local-first
+Keep these intact:
 
-Your email lives on your machine. SQLite is the canonical state store. The search index is rebuildable from SQLite. mxr works offline. Cloud services are optional transports, not requirements.
+1. `mxr-core` depends on nothing internal.
+2. `mxr-protocol` depends only on `mxr-core`.
+3. provider crates depend only on `mxr-core`.
+4. `mxr-store` and `mxr-search` depend only on `mxr-core`.
+5. `mxr-sync` depends on `core + store + search`.
+6. `mxr` (daemon crate) is the integration point.
+7. `mxr-tui` depends only on `core + protocol`.
 
-### 2. Provider-agnostic internal model
+## Required checks
 
-All application logic speaks one language: the mxr internal model. Gmail labels, IMAP folders, and flags all normalize into this model. No provider-specific concepts leak into core code. If a provider disappears, only its adapter crate needs rewriting.
-
-### 3. Daemon-backed architecture
-
-The daemon is the system. The TUI is a client. The CLI is a client. Scripts are clients. This separation means background sync, indexing, and rule execution happen regardless of whether the TUI is open.
-
-### 4. $EDITOR for writing
-
-mxr does not compete with your text editor. Compose opens $EDITOR with a markdown file. YAML frontmatter carries metadata. The daemon handles the rest.
-
-### 5. Fast search is a first-class feature
-
-Search is not an afterthought bolted onto a folder browser. Tantivy provides BM25 ranking, field-level boosts, and sub-second results across large mailboxes. Every email is indexed at sync time.
-
-### 6. Saved searches are a core primitive
-
-Saved searches are user-programmed inbox lenses. They live in the sidebar, appear in the command palette, and are the primary way users organize their view of email.
-
-### 7. Rules engine is deterministic first
-
-Rules are data, not scripts. They are inspectable, replayable, idempotent, and dry-runnable. "Show me what this rule would do" must work before "run this rule."
-
-### 8. Shell hooks over premature plugin systems
-
-Don't build a plugin framework. Pipe data to shell commands. Let users write automation in whatever language they want. Unix composition over framework lock-in.
-
-### 9. Adapters are swappable
-
-No provider-specific logic outside adapter crates. Ever. The adapter interface is the contract.
-
-### 10. Correctness beats cleverness
-
-No clever macro towers. No "you need to understand my architecture philosophy before fixing a bug." Plain, legible Rust code. Compile-time checked SQL queries. Explicit error types. When in doubt, be boring.
-
-## Non-negotiables Checklist
-
-Before submitting a PR, verify:
-
-- [ ] Local-first by default
-- [ ] SQLite is the canonical state store
-- [ ] Search index is rebuildable from SQLite
-- [ ] Provider adapters are replaceable
-- [ ] No provider-specific logic outside adapter crates
-- [ ] Compose uses $EDITOR
-- [ ] Core features do not depend on proprietary services
-- [ ] Rules are deterministic before they are intelligent
-- [ ] TUI is a client of the daemon, not the system itself
-- [ ] Distraction-free rendering: plain text first, reader mode, no inline images
-
-## Crate Dependency Rules
-
-These are strict. Violations should be caught in code review:
-
-1. **`core` depends on nothing internal.** It is the leaf node. All other crates depend on it.
-2. **`protocol` depends only on `core`.** It defines the IPC contract between daemon and clients.
-3. **Provider crates depend only on `core`.** They implement traits defined in core. They do NOT depend on store, search, or sync.
-4. **`store` and `search` depend only on `core`.** They are storage backends, not business logic.
-5. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
-6. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable.
-7. **`tui` depends only on `core` and `protocol`.** It talks to the daemon via IPC, never directly to providers, store, or search.
-
-## Development Setup
-
-### Prerequisites
-
-- Rust stable toolchain (see `rust-toolchain.toml`)
-- Git
-
-### Build
-
-```bash
-cargo build --workspace
-```
-
-### Run
-
-```bash
-# Start daemon in foreground (uses fake provider with test data)
-cargo run -- daemon --foreground
-
-# In another terminal, start TUI
-cargo run
-```
-
-### Test
-
-```bash
-cargo test --workspace
-```
-
-### Lint
+Run all of these before sending changes:
 
 ```bash
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo sqlx prepare --check --workspace
 ```
 
-## Code Style
+If you touch the docs site:
 
-- **Edition**: 2021
-- **Error handling**: `thiserror` for typed errors in library crates, `anyhow` for application-level (daemon, CLI)
-- **Async**: tokio runtime, `async-trait` for trait definitions
-- **SQL**: sqlx with compile-time checked queries where possible
-- **Logging**: `tracing` crate with structured spans
-- **Testing**: Unit tests in modules, integration tests in `tests/` directory. Use in-memory SQLite and in-memory Tantivy for test isolation.
+```bash
+cd site
+npm install
+npm run build
+```
 
-## How to Add a Feature
+## Real-system verification
 
-1. Check the [decision log](docs/blueprint/15-decision-log.md) — the decision may already be settled
-2. Check the [blueprint](docs/blueprint/) — the feature may already be specified
-3. Open an issue describing the feature and how it fits with the core principles
-4. Implement with tests
-5. Submit a PR
+Green unit tests are not enough. For user-facing work, also test the real flow:
 
-## How to Build an Adapter
+```bash
+cargo run -- daemon --foreground
+mxr status
+mxr search "label:inbox"
+mxr doctor --check
+```
 
-See the [adapter development guide](docs/blueprint/03-providers.md) and the adapter kit documentation.
+If you changed rules, exports, labels, notify, events, or logs, exercise the matching CLI surface too.
 
-Quick summary:
-1. Create a new crate that depends only on `mxr-core`
-2. Implement `MailSyncProvider` and/or `MailSendProvider` traits
-3. Run the conformance test suite
-4. See `crates/provider-fake/` as a reference implementation
+## Rules for changes
 
-## PR Guidelines
+- Keep blast radius small.
+- Do not refactor adjacent code unless the task requires it.
+- Add tests for new behavior.
+- Prefer integration coverage over mock-heavy unit tests.
+- Do not wire a daemon feature for only one client surface when both TUI and CLI need it.
 
-- Keep PRs focused. One feature or fix per PR.
-- Include tests for new functionality
-- Run `cargo fmt` and `cargo clippy` before submitting
-- Update documentation if your change affects user-facing behavior
-- Reference related issues
+## Adapter work
 
-## Architecture Reference
+Adapter crates are replaceable by design.
 
-See [docs/blueprint/](docs/blueprint/) for the complete design specification and [docs/implementation/](docs/implementation/) for phased implementation plans.
+When adding or changing an adapter:
 
-## License
+1. keep provider-specific code inside the adapter crate
+2. map into mxr internal model, not the other way around
+3. validate against fake/conformance coverage
+4. document any provider semantic mismatch honestly
 
-By contributing, you agree that your contributions will be licensed under the MIT OR Apache-2.0 dual license.
+## Docs and release hygiene
+
+- Update `README.md` for changed user-facing behavior.
+- Update `site/` docs for new commands or workflows.
+- Keep `.github/workflows/` aligned with the actual build and release process.
+- Keep issue templates and bug-report flow current.
+
+## Useful references
+
+- `docs/blueprint/`
+- `docs/implementation/`
+- `docs/blueprint/15-decision-log.md`
+- `docs/blueprint/17-release-pipeline.md`
+- `docs/blueprint/18-bug-reporting.md`

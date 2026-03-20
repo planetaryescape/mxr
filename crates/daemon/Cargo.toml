@@ -1,5 +1,5 @@
 [package]
-name = "mxr-daemon"
+name = "mxr"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

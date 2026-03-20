@@ -9,6 +9,9 @@ export default defineConfig({
       social: {
         github: 'https://github.com/planetaryescape/mxr',
       },
+      customCss: [
+        './src/styles/custom.css',
+      ],
       sidebar: [
         {
           label: 'Start Here',

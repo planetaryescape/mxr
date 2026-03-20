@@ -1,0 +1,169 @@
+/* Brand colors */
+:root {
+  --sl-color-accent-low: #1a1a2e;
+  --sl-color-accent: #6c63ff;
+  --sl-color-accent-high: #c4c1ff;
+  --sl-font: 'Inter', system-ui, -apple-system, sans-serif;
+  --sl-font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #e8e6ff;
+  --sl-color-accent: #5b52e0;
+  --sl-color-accent-high: #2d2680;
+}
+
+/* Hero styling */
+.hero-accent {
+  color: var(--sl-color-accent);
+}
+
+[data-page-title] .hero {
+  padding-block: 3rem;
+}
+
+[data-page-title] .hero h1 {
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+}
+
+[data-page-title] .hero .tagline {
+  font-size: clamp(1.1rem, 2.5vw, 1.35rem);
+  max-width: 42ch;
+  color: var(--sl-color-gray-2);
+  line-height: 1.6;
+}
+
+/* Landing sections */
+.landing-section {
+  max-width: 65rem;
+  margin-inline: auto;
+  padding-block: 2rem;
+}
+
+.landing-section h2 {
+  font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-block-end: 1.5rem;
+}
+
+/* Problem section — tighter, impactful */
+.landing-section:first-of-type {
+  max-width: 52ch;
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+
+.landing-section:first-of-type p {
+  margin-block-end: 1rem;
+}
+
+.landing-section:first-of-type strong {
+  color: var(--sl-color-accent);
+  font-size: 1.2rem;
+}
+
+/* Feature cards */
+.features-section .sl-card-grid {
+  gap: 1.25rem;
+}
+
+.features-section .card {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.75rem;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.features-section .card:hover {
+  border-color: var(--sl-color-accent);
+  transform: translateY(-2px);
+}
+
+.features-section .card .title {
+  font-weight: 600;
+}
+
+/* Comparison table */
+.comparison-section table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.comparison-section th,
+.comparison-section td {
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--sl-color-gray-6);
+}
+
+.comparison-section td:last-child {
+  font-weight: 600;
+  color: var(--sl-color-accent);
+}
+
+.comparison-section tr:hover {
+  background: var(--sl-color-gray-7, rgba(255, 255, 255, 0.03));
+}
+
+/* Install section */
+.install-section {
+  max-width: 40rem;
+}
+
+.install-section pre {
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
+}
+
+/* CTA section */
+.cta-section {
+  text-align: center;
+  padding-block: 3rem;
+}
+
+.cta-section h2 {
+  font-size: clamp(1.6rem, 3.5vw, 2rem);
+  margin-block-end: 2rem;
+}
+
+.cta-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.cta-primary,
+.cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.75rem 1.75rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 1rem;
+  text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cta-primary {
+  background: var(--sl-color-accent);
+  color: white;
+}
+
+.cta-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(108, 99, 255, 0.3);
+}
+
+.cta-secondary {
+  border: 1px solid var(--sl-color-gray-4);
+  color: var(--sl-color-gray-1);
+}
+
+.cta-secondary:hover {
+  border-color: var(--sl-color-accent);
+  color: var(--sl-color-accent);
+}

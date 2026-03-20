@@ -1,0 +1,109 @@
+---
+title: "Your email, your editor, your terminal."
+description: "mxr is a local-first terminal email client that lets you write email the same way you write code."
+template: splash
+hero:
+  title: |
+    Your email.
+    <span class="hero-accent">Your editor.</span>
+    Your terminal.
+  tagline: "mxr is a local-first terminal email client. Write email in vim. Search in milliseconds. Own your data."
+  actions:
+    - text: Get started
+      link: /getting-started/install/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/planetaryescape/mxr
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<div class="landing-section">
+
+## The problem
+
+Every time you open Gmail, you leave your terminal. You type into a laggy textarea with none of the muscle memory you've spent years building. No vim motions. No macros. No composability.
+
+mutt solved this in 1995. It still works, but it feels like it. aerc is a step forward but doesn't reimagine the experience. himalaya is a CLI tool, not a full client.
+
+**mxr sits in the gap.**
+
+</div>
+
+<div class="landing-section features-section">
+
+## What makes mxr different
+
+<CardGrid stagger>
+  <Card title="Compose in your editor" icon="pencil">
+    `$EDITOR` opens with markdown and YAML frontmatter. Write email the way you write everything else. Full vim motions, your plugins, your config.
+  </Card>
+  <Card title="Search, don't browse" icon="magnifier">
+    Tantivy gives you BM25-ranked, sub-second search across your entire mailbox. Search is navigation, not an afterthought bolted onto a folder tree.
+  </Card>
+  <Card title="Distraction-free reading" icon="open-book">
+    mxr shows you what the email says, not what it's trying to sell you. No tracking pixels. No banners. Just the words. One key to unsubscribe.
+  </Card>
+  <Card title="Daemon-backed" icon="setting">
+    Sync, indexing, rules, and snooze run in the background. Close the TUI — nothing stops. CLI and scripts talk to the same engine.
+  </Card>
+  <Card title="Local-first" icon="laptop">
+    SQLite is the canonical store. Your email lives on your machine. Works offline. Cloud services are transports, not dependencies.
+  </Card>
+  <Card title="Scriptable" icon="seti:shell">
+    Every TUI action has a CLI equivalent. Pipe data to shell commands. Unix composition over plugin frameworks.
+  </Card>
+</CardGrid>
+
+</div>
+
+<div class="landing-section comparison-section">
+
+## How it compares
+
+| | mutt | aerc | himalaya | **mxr** |
+|---|:---:|:---:|:---:|:---:|
+| Daemon architecture | | | | **yes** |
+| Local SQLite store | | | | **yes** |
+| Tantivy search engine | | | | **yes** |
+| Compose in $EDITOR | partial | partial | yes | **yes** |
+| Markdown to multipart | | | | **yes** |
+| Saved searches as lenses | | | | **yes** |
+| Command palette | | | | **yes** |
+| One-key unsubscribe | | | | **yes** |
+| Reader mode | | | | **yes** |
+| Rules with dry-run | procmail | | | **yes** |
+| LLM thread export | | | | **yes** |
+
+</div>
+
+<div class="landing-section install-section">
+
+## Install
+
+```bash
+# Homebrew
+brew tap planetaryescape/mxr && brew install mxr
+
+# Cargo
+cargo install mxr-daemon
+
+# Pre-built binaries
+curl -fsSL https://github.com/planetaryescape/mxr/releases/latest
+```
+
+</div>
+
+<div class="landing-section cta-section">
+
+## Ready to take back your inbox?
+
+<div class="cta-buttons">
+  <a href="/getting-started/install/" class="cta-primary">Get started</a>
+  <a href="/getting-started/gmail-setup/" class="cta-secondary">Gmail setup</a>
+</div>
+
+</div>

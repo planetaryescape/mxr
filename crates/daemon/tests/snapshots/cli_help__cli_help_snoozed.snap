@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List snoozed messages
+
+Usage: mxr snoozed
+
+Options:
+  -h, --help  Print help

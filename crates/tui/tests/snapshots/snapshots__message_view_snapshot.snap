@@ -1,0 +1,25 @@
+---
+source: crates/tui/tests/snapshots.rs
+assertion_line: 112
+expression: snapshot
+---
+"╭ Message ───────────────────────────────────────────────────────────╮"
+"│From:     Alice Example <alice@example.com>                         │"
+"│To:       Bob Example <bob@example.com>                             │"
+"│Date:     2024-03-15 09:30                                          │"
+"│Subject:  Snapshot fixture                                          │"
+"│ INBOX   STARRED   UNSUBSCRIBE                                      │"
+"│List:      unsubscribe                                              │"
+"│Attach:                                                             │"
+"│          report.pdf (10 B)                                         │"
+"│                                                                    │"
+"│Hello                                                               │"
+"││ quoted                                                            │"
+"││ lines                                                             │"
+"│-- signature (1 lines, press S to expand) --                        │"
+"│                                                                    │"
+"│                                                                    │"
+"│                                                                    │"
+"│                                                                    │"
+"│                                                                    │"
+"╰────────────────────────────────────────────────────────────────────╯"

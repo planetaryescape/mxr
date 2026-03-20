@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+View daemon logs
+
+Usage: mxr logs [OPTIONS]
+
+Options:
+      --no-follow      
+      --level <LEVEL>  
+      --since <SINCE>  
+      --purge          
+  -h, --help           Print help

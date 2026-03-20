@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Unsubscribe from a mailing list
+
+Usage: mxr unsubscribe [OPTIONS] [MESSAGE_ID]
+
+Arguments:
+  [MESSAGE_ID]  
+
+Options:
+      --yes              
+      --search <SEARCH>  
+      --dry-run          
+  -h, --help             Print help

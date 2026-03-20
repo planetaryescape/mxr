@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 13
+expression: stdout
+---
+Run diagnostics
+
+Usage: mxr doctor [OPTIONS]
+
+Options:
+      --reindex          
+      --check            
+      --verbose          
+      --index-stats      
+      --store-stats      
+      --format <FORMAT>  [possible values: table, json, csv, ids]
+  -h, --help             Print help

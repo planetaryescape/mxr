@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Count matching messages
+
+Usage: mxr count <QUERY>
+
+Arguments:
+  <QUERY>  
+
+Options:
+  -h, --help  Print help

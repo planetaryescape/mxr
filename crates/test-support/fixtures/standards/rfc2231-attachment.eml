@@ -1,0 +1,19 @@
+From: Files <files@example.com>
+To: Bob <bob@example.com>
+Subject: RFC2231 attachment
+Date: Thu, 21 Mar 2024 09:00:00 +0000
+Message-ID: <rfc2231@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix-2231"
+
+--mix-2231
+Content-Type: text/plain; charset=UTF-8
+
+Attachment filename uses RFC2231 encoding.
+--mix-2231
+Content-Type: application/octet-stream; name*="utf-8''na%C3%AFve%20file.txt"
+Content-Disposition: attachment; filename*="utf-8''na%C3%AFve%20file.txt"
+Content-Transfer-Encoding: base64
+
+SGVsbG8=
+--mix-2231--

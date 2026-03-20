@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Move message to trash
+
+Usage: mxr trash [OPTIONS] [MESSAGE_ID]
+
+Arguments:
+  [MESSAGE_ID]  
+
+Options:
+      --search <SEARCH>  
+      --yes              
+      --dry-run          
+  -h, --help             Print help

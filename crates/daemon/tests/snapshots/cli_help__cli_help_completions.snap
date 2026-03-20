@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Generate shell completions
+
+Usage: mxr completions <SHELL>
+
+Arguments:
+  <SHELL>  
+
+Options:
+  -h, --help  Print help

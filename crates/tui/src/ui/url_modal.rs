@@ -174,7 +174,7 @@ pub fn extract_urls(text_plain: Option<&str>, text_html: Option<&str>) -> Vec<Ur
 
 fn extract_plain_urls(text: &str, urls: &mut Vec<UrlEntry>, seen: &mut HashSet<String>) {
     let mut rest = text;
-    while let Some(start) = rest.find("http://").or_else(|| rest.find("https://")) {
+    while let Some(start) = next_url_start(rest) {
         let url_rest = &rest[start..];
         let end = url_rest
             .find(|c: char| {
@@ -196,6 +196,15 @@ fn extract_plain_urls(text: &str, urls: &mut Vec<UrlEntry>, seen: &mut HashSet<S
             });
         }
         rest = &rest[start + end..];
+    }
+}
+
+fn next_url_start(text: &str) -> Option<usize> {
+    match (text.find("https://"), text.find("http://")) {
+        (Some(https), Some(http)) => Some(https.min(http)),
+        (Some(https), None) => Some(https),
+        (None, Some(http)) => Some(http),
+        (None, None) => None,
     }
 }
 

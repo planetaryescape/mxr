@@ -1,6 +1,6 @@
 use crate::state::AppState;
 use mxr_core::provider::MailSyncProvider;
-use mxr_core::types::{ExportFormat, Snoozed};
+use mxr_core::types::{Address, Draft, ExportFormat, Snoozed, UnsubscribeMethod};
 use mxr_export::{ExportAttachment, ExportMessage, ExportThread};
 use mxr_protocol::*;
 use mxr_reader::ReaderConfig;
@@ -1181,22 +1181,71 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         },
 
         Request::Unsubscribe { message_id } => match state.store.get_envelope(message_id).await {
-            Ok(Some(envelope)) => {
-                let client = reqwest::Client::new();
-                let result =
-                    crate::unsubscribe::execute_unsubscribe(&envelope.unsubscribe, &client).await;
-                match result {
-                    crate::unsubscribe::UnsubscribeResult::Success(_) => Response::Ok {
-                        data: ResponseData::Ack,
-                    },
-                    crate::unsubscribe::UnsubscribeResult::Failed(msg) => {
-                        Response::Error { message: msg }
+            Ok(Some(envelope)) => match &envelope.unsubscribe {
+                UnsubscribeMethod::Mailto { address, subject } => {
+                    match state.get_send_provider(Some(&envelope.account_id)) {
+                        Some(sender) => {
+                            let account = state
+                                .store
+                                .get_account(&envelope.account_id)
+                                .await
+                                .ok()
+                                .flatten();
+                            let from = Address {
+                                name: account.as_ref().map(|a| a.name.clone()),
+                                email: account
+                                    .as_ref()
+                                    .map(|a| a.email.clone())
+                                    .unwrap_or_else(|| "user@example.com".to_string()),
+                            };
+                            let now = chrono::Utc::now();
+                            let draft = Draft {
+                                id: mxr_core::DraftId::new(),
+                                account_id: envelope.account_id.clone(),
+                                reply_headers: None,
+                                to: vec![Address {
+                                    name: None,
+                                    email: address.clone(),
+                                }],
+                                cc: vec![],
+                                bcc: vec![],
+                                subject: subject.clone().unwrap_or_else(|| "unsubscribe".to_string()),
+                                body_markdown: "unsubscribe".to_string(),
+                                attachments: vec![],
+                                created_at: now,
+                                updated_at: now,
+                            };
+                            match sender.send(&draft, &from).await {
+                                Ok(_) => Response::Ok {
+                                    data: ResponseData::Ack,
+                                },
+                                Err(error) => Response::Error {
+                                    message: error.to_string(),
+                                },
+                            }
+                        }
+                        None => Response::Error {
+                            message: "No send provider configured".to_string(),
+                        },
                     }
-                    crate::unsubscribe::UnsubscribeResult::NoMethod => Response::Error {
-                        message: "No unsubscribe method available for this message".to_string(),
-                    },
                 }
-            }
+                _ => {
+                    let client = reqwest::Client::new();
+                    let result =
+                        crate::unsubscribe::execute_unsubscribe(&envelope.unsubscribe, &client).await;
+                    match result {
+                        crate::unsubscribe::UnsubscribeResult::Success(_) => Response::Ok {
+                            data: ResponseData::Ack,
+                        },
+                        crate::unsubscribe::UnsubscribeResult::Failed(msg) => {
+                            Response::Error { message: msg }
+                        }
+                        crate::unsubscribe::UnsubscribeResult::NoMethod => Response::Error {
+                            message: "No unsubscribe method available for this message".to_string(),
+                        },
+                    }
+                }
+            },
             Ok(None) => Response::Error {
                 message: "Message not found".to_string(),
             },
@@ -4524,6 +4573,46 @@ mod tests {
             }
             other => panic!("Expected Error for no unsubscribe method, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn dispatch_unsubscribe_mailto_sends_via_provider() {
+        let (state, fake) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+
+        let mailto_id = state
+            .store
+            .list_envelopes_by_account(&state.default_account_id(), 200, 0)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|envelope| matches!(envelope.unsubscribe, UnsubscribeMethod::Mailto { .. }))
+            .map(|envelope| envelope.id)
+            .expect("mailto fixture");
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Unsubscribe {
+                message_id: mailto_id,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("Expected Ack for mailto unsubscribe, got {:?}", other),
+        }
+
+        let sent = fake.sent_drafts();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].to[0].email, "unsub@changelog.com");
+        assert_eq!(sent[0].subject, "unsubscribe");
     }
 
     #[tokio::test]

@@ -1,0 +1,8 @@
+From: Plain <plain@example.com>
+To: Bob <bob@example.com>
+Subject: Missing content type
+Date: Sun, 24 Mar 2024 08:15:00 +0000
+Message-ID: <missing-content-type@example.com>
+
+No Content-Type header here.
+Just plain text.

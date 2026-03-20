@@ -1,0 +1,12 @@
+---
+source: crates/reader/tests/standards.rs
+expression: "json!({\n    \"content_preview\": output.content.lines().take(6).collect::<Vec<_>>(),\n    \"quoted_blocks\": output.quoted_messages.len(), \"signature\":\n    output.signature, \"original_lines\": output.original_lines,\n    \"cleaned_lines\": output.cleaned_lines,\n})"
+---
+cleaned_lines: 3
+content_preview:
+  - "Hello team, "
+  - "this paragraph is flowed and "
+  - should join cleanly.
+original_lines: 6
+quoted_blocks: 0
+signature: José

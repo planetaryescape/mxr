@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Forward a message
+
+Usage: mxr forward [OPTIONS] <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>  Message ID to forward
+
+Options:
+      --to <TO>      Forward to recipient(s)
+      --body <BODY>  Inline body
+      --body-stdin   Read body from stdin
+      --yes          Skip confirmation
+      --dry-run      Show what would be sent
+  -h, --help         Print help

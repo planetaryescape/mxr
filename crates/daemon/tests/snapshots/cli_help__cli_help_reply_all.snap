@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Reply to all recipients
+
+Usage: mxr reply-all [OPTIONS] <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>  Message ID to reply to
+
+Options:
+      --body <BODY>  Inline reply body
+      --body-stdin   Read body from stdin
+      --yes          Skip confirmation
+      --dry-run      Show what would be sent
+  -h, --help         Print help

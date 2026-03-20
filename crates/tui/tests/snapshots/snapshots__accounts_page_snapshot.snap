@@ -1,0 +1,24 @@
+---
+source: crates/tui/tests/snapshots.rs
+expression: snapshot
+---
+"┌ Accounts ────────────────────────┐┌ Details ─────────────────────────────────────────────────────┐"
+"│Work * [imap / smtp] {config}     ││Key: work                                                     │"
+"│                                  ││Name: Work                                                    │"
+"│                                  ││Email: me@example.com                                         │"
+"│                                  ││Provider: imap                                                │"
+"│                                  ││Sync: imap                                                    │"
+"│                                  ││Send: smtp                                                    │"
+"│                                  ││Source: config                                                │"
+"│                                  ││Editable: full                                                │"
+"│                                  ││Default: yes                                                  │"
+"│                                  ││                                                              │"
+"│                                  ││n:new  Enter:edit  t:test  d:set default                      │"
+"│                                  ││                                                              │"
+"│                                  ││                                                              │"
+"│                                  ││                                                              │"
+"│                                  ││                                                              │"
+"│                                  ││                                                              │"
+"│                                  ││                                                              │"
+"│                                  ││                                                              │"
+"└──────────────────────────────────┘└──────────────────────────────────────────────────────────────┘"

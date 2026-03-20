@@ -1,0 +1,8 @@
+From: No Id <noid@example.com>
+To: Bob <bob@example.com>
+Subject: Missing message id
+Date: Wed, 27 Mar 2024 18:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+This message omits Message-ID on purpose.

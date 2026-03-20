@@ -1,0 +1,29 @@
+---
+source: crates/tui/tests/snapshots.rs
+assertion_line: 497
+expression: snapshot
+---
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                    ╭ Attachments ─────────────────────────────────────────────╮                    "
+"                    │ 1  report.pdf  application/pdf  (downloaded)             │                    "
+"                    │                                                          │                    "
+"                    │                                                          │                    "
+"                    │                                                          │                    "
+"                    │                                                          │                    "
+"                    │                                                          │                    "
+"                    │                                                          │                    "
+"                    │                                                          │                    "
+"                    │                                                          │                    "
+"                    │Enter/o open  d download  j/k move  Esc close             │                    "
+"                    │                                                          │                    "
+"                    ╰──────────────────────────────────────────────────────────╯                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "

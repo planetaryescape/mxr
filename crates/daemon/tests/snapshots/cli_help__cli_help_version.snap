@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Show version
+
+Usage: mxr version
+
+Options:
+  -h, --help  Print help

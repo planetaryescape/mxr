@@ -26,3 +26,7 @@ unicode-width = { workspace = true }
 toml = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+mxr-test-support = { workspace = true }
+insta = { workspace = true }

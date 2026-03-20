@@ -154,6 +154,11 @@ impl InputHandler {
             }
             (KeyState::Normal, KeyCode::Esc, _) => Some(Action::Back),
             (KeyState::Normal, KeyCode::Char('q'), _) => Some(Action::QuitView),
+            (KeyState::Normal, KeyCode::Char('1'), KeyModifiers::NONE) => Some(Action::OpenTab1),
+            (KeyState::Normal, KeyCode::Char('2'), KeyModifiers::NONE) => Some(Action::OpenTab2),
+            (KeyState::Normal, KeyCode::Char('3'), KeyModifiers::NONE) => Some(Action::OpenTab3),
+            (KeyState::Normal, KeyCode::Char('4'), KeyModifiers::NONE) => Some(Action::OpenTab4),
+            (KeyState::Normal, KeyCode::Char('5'), KeyModifiers::NONE) => Some(Action::OpenTab5),
 
             // Search
             (KeyState::Normal, KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenSearch),
@@ -194,6 +199,9 @@ impl InputHandler {
             }
             (KeyState::Normal, KeyCode::Char('R'), KeyModifiers::SHIFT) => {
                 Some(Action::ToggleReaderMode)
+            }
+            (KeyState::Normal, KeyCode::Char('S'), KeyModifiers::SHIFT) => {
+                Some(Action::ToggleSignature)
             }
             (KeyState::Normal, KeyCode::Char('A'), KeyModifiers::SHIFT) => {
                 Some(Action::AttachmentList)

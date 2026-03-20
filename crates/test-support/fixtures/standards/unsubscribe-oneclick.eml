@@ -1,0 +1,13 @@
+From: Newsletter <news@example.com>
+To: User <user@example.com>
+Subject: One click unsubscribe
+Date: Tue, 26 Mar 2024 07:20:00 +0000
+Message-ID: <unsubscribe@example.com>
+List-Id: Weekly Digest <digest.example.com>
+List-Unsubscribe: <https://example.com/unsub?id=42>, <mailto:leave@example.com?subject=unsubscribe>
+List-Unsubscribe-Post: List-Unsubscribe=One-Click
+Authentication-Results: mx.example.net; dkim=pass
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+This fixture validates RFC 8058 one-click handling.

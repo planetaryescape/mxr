@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Watch daemon events
+
+Usage: mxr events [OPTIONS]
+
+Options:
+      --type <EVENT_TYPE>  
+      --format <FORMAT>    [possible values: table, json, csv, ids]
+  -h, --help               Print help

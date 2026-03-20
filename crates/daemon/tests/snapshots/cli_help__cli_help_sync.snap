@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Trigger or query sync
+
+Usage: mxr sync [OPTIONS]
+
+Options:
+      --account <ACCOUNT>  
+      --status             
+      --history            
+  -h, --help               Print help

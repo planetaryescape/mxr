@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Star a message
+
+Usage: mxr star [OPTIONS] [MESSAGE_ID]
+
+Arguments:
+  [MESSAGE_ID]  
+
+Options:
+      --search <SEARCH>  
+      --yes              
+      --dry-run          
+  -h, --help             Print help

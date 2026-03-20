@@ -1,0 +1,17 @@
+---
+source: crates/provider-gmail/src/parse.rs
+expression: "json!({\n    \"subject\": envelope.subject, \"unsubscribe\":\n    format!(\"{:?}\", envelope.unsubscribe), \"flags\": envelope.flags.bits(),\n    \"attachment_filenames\":\n    body.attachments.iter().map(|attachment|\n    attachment.filename.clone()).collect::<Vec<_>>(), \"calendar\":\n    body.metadata.calendar, \"auth_results\": body.metadata.auth_results,\n    \"content_language\": body.metadata.content_language, \"plain_text\":\n    body.text_plain,\n})"
+---
+attachment_filenames:
+  - report.pdf
+auth_results:
+  - mx.example.net; dkim=pass
+calendar:
+  method: REQUEST
+  summary: Planning meeting
+content_language:
+  - en
+flags: 0
+plain_text: Please join the planning meeting.
+subject: Planning meeting
+unsubscribe: "HttpLink { url: \"https://example.com/unsubscribe\" }"

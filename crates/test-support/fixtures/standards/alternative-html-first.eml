@@ -1,0 +1,17 @@
+From: Ordering <ordering@example.com>
+To: Bob <bob@example.com>
+Subject: Alternative ordering
+Date: Thu, 28 Mar 2024 07:45:00 +0000
+Message-ID: <alt-order@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt-order"
+
+--alt-order
+Content-Type: text/html; charset=UTF-8
+
+<p>HTML first.</p>
+--alt-order
+Content-Type: text/plain; charset=UTF-8
+
+Plain alternative second.
+--alt-order--

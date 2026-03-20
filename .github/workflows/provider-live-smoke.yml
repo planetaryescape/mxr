@@ -1,0 +1,48 @@
+name: Provider Live Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *"
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    if: >-
+      ${{
+        secrets.MXR_GMAIL_CLIENT_ID != '' &&
+        secrets.MXR_GMAIL_CLIENT_SECRET != '' &&
+        secrets.MXR_GMAIL_REFRESH_TOKEN != '' &&
+        secrets.MXR_GMAIL_ACCOUNT_EMAIL != '' &&
+        secrets.MXR_IMAP_HOST != '' &&
+        secrets.MXR_IMAP_PORT != '' &&
+        secrets.MXR_IMAP_USERNAME != '' &&
+        secrets.MXR_IMAP_PASSWORD != '' &&
+        secrets.MXR_SMTP_HOST != '' &&
+        secrets.MXR_SMTP_PORT != '' &&
+        secrets.MXR_SMTP_USERNAME != '' &&
+        secrets.MXR_SMTP_PASSWORD != ''
+      }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run provider live smoke suite
+        env:
+          MXR_GMAIL_CLIENT_ID: ${{ secrets.MXR_GMAIL_CLIENT_ID }}
+          MXR_GMAIL_CLIENT_SECRET: ${{ secrets.MXR_GMAIL_CLIENT_SECRET }}
+          MXR_GMAIL_REFRESH_TOKEN: ${{ secrets.MXR_GMAIL_REFRESH_TOKEN }}
+          MXR_GMAIL_ACCOUNT_EMAIL: ${{ secrets.MXR_GMAIL_ACCOUNT_EMAIL }}
+          MXR_IMAP_HOST: ${{ secrets.MXR_IMAP_HOST }}
+          MXR_IMAP_PORT: ${{ secrets.MXR_IMAP_PORT }}
+          MXR_IMAP_USERNAME: ${{ secrets.MXR_IMAP_USERNAME }}
+          MXR_IMAP_PASSWORD: ${{ secrets.MXR_IMAP_PASSWORD }}
+          MXR_SMTP_HOST: ${{ secrets.MXR_SMTP_HOST }}
+          MXR_SMTP_PORT: ${{ secrets.MXR_SMTP_PORT }}
+          MXR_SMTP_USERNAME: ${{ secrets.MXR_SMTP_USERNAME }}
+          MXR_SMTP_PASSWORD: ${{ secrets.MXR_SMTP_PASSWORD }}
+          MXR_SMTP_TO: ${{ secrets.MXR_SMTP_TO }}
+        run: cargo test --workspace live_smoke_ -- --ignored --nocapture

@@ -1,0 +1,29 @@
+---
+source: crates/provider-gmail/src/parse.rs
+expression: "json!({\n    \"subject\": envelope.subject, \"from\": envelope.from, \"to\": envelope.to,\n    \"cc\": envelope.cc, \"message_id\": envelope.message_id_header,\n    \"in_reply_to\": envelope.in_reply_to, \"references\": envelope.references,\n    \"unsubscribe\": format!(\"{:?}\", envelope.unsubscribe), \"list_id\":\n    body.metadata.list_id, \"auth_results\": body.metadata.auth_results,\n    \"content_language\": body.metadata.content_language, \"text_plain_format\":\n    format!(\"{:?}\", body.metadata.text_plain_format), \"plain_excerpt\":\n    body.text_plain.as_deref().map(|text|\n    text.lines().take(2).collect::<Vec<_>>().join(\"\\n\")),\n})"
+---
+auth_results:
+  - mx.example.net; dkim=pass header.d=example.com; spf=pass
+cc:
+  - email: dev@example.com
+    name: ~
+content_language:
+  - fr
+from:
+  email: jose@example.com
+  name: José Example
+in_reply_to: "<parent@example.com>"
+list_id: ~
+message_id: "<folded-flowed@example.com>"
+plain_excerpt: "Hello team,this paragraph is flowed andshould join cleanly.\n"
+references:
+  - "<root@example.com>"
+  - "<parent@example.com>"
+subject: Quarterly update — release notes
+text_plain_format: "Some(Flowed { delsp: true })"
+to:
+  - email: team@example.com
+    name: Team
+  - email: support@example.com
+    name: Support List
+unsubscribe: "OneClick { url: \"https://example.com/unsubscribe?id=abc123\" }"

@@ -1,0 +1,27 @@
+From: Nested <nested@example.com>
+To: Bob <bob@example.com>
+Subject: Nested multipart
+Date: Mon, 25 Mar 2024 13:45:00 +0000
+Message-ID: <nested@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: multipart/alternative; boundary="inner"
+
+--inner
+Content-Type: text/plain; charset=UTF-8
+
+Nested plain body.
+--inner
+Content-Type: text/html; charset=UTF-8
+
+<p>Nested <strong>HTML</strong> body.</p>
+--inner--
+--outer
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="nested.pdf"
+Content-Transfer-Encoding: base64
+
+SGVsbG8=
+--outer--

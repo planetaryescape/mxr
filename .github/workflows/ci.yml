@@ -48,6 +48,57 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
+      - run: cargo test -p mxr-adapter-skeleton
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+      - run: >
+          cargo llvm-cov
+          --package mxr-compose
+          --package mxr-provider-gmail
+          --package mxr-provider-imap
+          --package mxr-provider-smtp
+          --package mxr-reader
+          --package mxr-export
+          --package mxr-sync
+          --package mxr
+          --summary-only
+          --fail-under-lines 90
+          --fail-under-regions 75
+
+  sqlx:
+    name: SQLx Offline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install sqlx-cli --no-default-features --features sqlite,rustls
+      - run: cargo sqlx prepare --check --workspace
+
+  docs:
+    name: Docs Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: site/package.json
+      - run: npm install
+      - run: npm run build
 
   build:
     name: Build

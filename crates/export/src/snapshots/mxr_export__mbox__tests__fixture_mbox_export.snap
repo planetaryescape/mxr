@@ -1,0 +1,29 @@
+---
+source: crates/export/src/mbox.rs
+expression: export_mbox(&thread)
+---
+From jose@example.com Fri Mar 15 09:30:00 2024
+From: =?UTF-8?Q?Jos=C3=A9_Example?= <jose@example.com>
+To: Team <team@example.com>, "Support List" <support@example.com>
+Cc: dev@example.com
+Subject: =?UTF-8?Q?Quarterly_update_=E2=80=94?=
+ =?UTF-8?Q?_release_notes?=
+Date: Fri, 15 Mar 2024 09:30:00 +0000
+Message-ID: <folded-flowed@example.com>
+In-Reply-To: <parent@example.com>
+References: <root@example.com> <parent@example.com>
+List-Id: Product Updates <updates.example.com>
+List-Unsubscribe: <mailto:list@example.com?subject=unsubscribe>,
+ <https://example.com/unsubscribe?id=abc123>
+List-Unsubscribe-Post: List-Unsubscribe=One-Click
+Authentication-Results: mx.example.net; dkim=pass header.d=example.com; spf=pass
+Content-Language: en, fr
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8; format=flowed; delsp=yes
+
+Hello team, 
+this paragraph is flowed and 
+should join cleanly.
+
+-- 
+José

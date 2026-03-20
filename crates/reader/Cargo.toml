@@ -18,3 +18,7 @@ which = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
+mxr-test-support = { workspace = true }
+insta = { workspace = true }
+mail-parser = { workspace = true }
+serde_json = { workspace = true }

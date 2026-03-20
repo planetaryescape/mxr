@@ -1,0 +1,38 @@
+From: Alice Smith <alice@example.com>
+To: Bob Example <bob@example.com>
+Subject: Planning meeting
+Date: Tue, 19 Mar 2024 14:15:00 +0000
+Message-ID: <calendar@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix-123"
+
+--mix-123
+Content-Type: multipart/alternative; boundary="alt-123"
+
+--alt-123
+Content-Type: text/plain; charset=UTF-8
+
+Please join the planning meeting.
+
+--alt-123
+Content-Type: text/html; charset=UTF-8
+
+<p>Please join the <a href="https://example.com/unsubscribe">mail preferences</a>.</p>
+
+--alt-123--
+--mix-123
+Content-Type: text/calendar; charset=UTF-8
+
+BEGIN:VCALENDAR
+METHOD:REQUEST
+BEGIN:VEVENT
+SUMMARY:Planning meeting
+END:VEVENT
+END:VCALENDAR
+--mix-123
+Content-Type: application/pdf; name*="utf-8''Q4-%E2%82%AC-report.pdf"
+Content-Disposition: attachment; filename*="utf-8''Q4-%E2%82%AC-report.pdf"
+Content-Transfer-Encoding: base64
+
+SGVsbG8=
+--mix-123--

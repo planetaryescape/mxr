@@ -238,15 +238,24 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::SearchResults { results },
                     }) => {
-                        let message_ids =
-                            results.into_iter().map(|result| result.message_id).collect::<Vec<_>>();
+                        let mut scores = std::collections::HashMap::new();
+                        let message_ids = results
+                            .into_iter()
+                            .map(|result| {
+                                scores.insert(result.message_id.clone(), result.score);
+                                result.message_id
+                            })
+                            .collect::<Vec<_>>();
                         if message_ids.is_empty() {
-                            Ok(Vec::new())
+                            Ok(SearchResultData {
+                                envelopes: Vec::new(),
+                                scores,
+                            })
                         } else {
                             match ipc_call(&bg, Request::ListEnvelopesByIds { message_ids }).await {
                                 Ok(Response::Ok {
                                     data: ResponseData::Envelopes { envelopes },
-                                }) => Ok(envelopes),
+                                }) => Ok(SearchResultData { envelopes, scores }),
                                 Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
                                 Err(e) => Err(e),
                                 _ => Err(MxrError::Ipc("unexpected response".into())),
@@ -258,6 +267,62 @@ pub async fn run() -> anyhow::Result<()> {
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
                 let _ = tx.send(AsyncResult::Search(results));
+            });
+        }
+
+        if let Some(pending) = app.pending_unsubscribe_action.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let unsubscribe_resp = ipc_call(
+                    &bg,
+                    Request::Unsubscribe {
+                        message_id: pending.message_id.clone(),
+                    },
+                )
+                .await;
+                let unsubscribe_result = match unsubscribe_resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Ack,
+                    }) => Ok(()),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(error) => Err(error),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+
+                let result = match unsubscribe_result {
+                    Ok(()) if pending.archive_message_ids.is_empty() => Ok(UnsubscribeResultData {
+                        archived_ids: Vec::new(),
+                        message: format!("Unsubscribed from {}", pending.sender_email),
+                    }),
+                    Ok(()) => {
+                        let archived_count = pending.archive_message_ids.len();
+                        let archive_resp = ipc_call(
+                            &bg,
+                            Request::Mutation(mxr_protocol::MutationCommand::Archive {
+                                message_ids: pending.archive_message_ids.clone(),
+                            }),
+                        )
+                        .await;
+                        match archive_resp {
+                            Ok(Response::Ok {
+                                data: ResponseData::Ack,
+                            }) => Ok(UnsubscribeResultData {
+                                archived_ids: pending.archive_message_ids,
+                                message: format!(
+                                    "Unsubscribed and archived {} messages from {}",
+                                    archived_count,
+                                    pending.sender_email
+                                ),
+                            }),
+                            Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                            Err(error) => Err(error),
+                            _ => Err(MxrError::Ipc("unexpected response".into())),
+                        }
+                    }
+                    Err(error) => Err(error),
+                };
+                let _ = tx.send(AsyncResult::Unsubscribe(result));
             });
         }
 
@@ -713,12 +778,13 @@ pub async fn run() -> anyhow::Result<()> {
                     match msg {
                         AsyncResult::Search(Ok(results)) => {
                             if app.screen == app::Screen::Search {
-                                app.search_page.results = results;
+                                app.search_page.results = results.envelopes;
+                                app.search_page.scores = results.scores;
                                 app.search_page.selected_index = 0;
                                 app.search_page.scroll_offset = 0;
                                 app.auto_preview_search();
                             } else {
-                                app.envelopes = results;
+                                app.envelopes = results.envelopes;
                                 app.selected_index = 0;
                                 app.scroll_offset = 0;
                             }
@@ -726,6 +792,7 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Search(Err(_)) => {
                             if app.screen == app::Screen::Search {
                                 app.search_page.results.clear();
+                                app.search_page.scores.clear();
                             } else {
                                 app.envelopes = app.all_envelopes.clone();
                             }
@@ -1086,6 +1153,36 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ExportResult(Err(e)) => {
                             app.status_message = Some(format!("Export failed: {e}"));
                         }
+                        AsyncResult::Unsubscribe(Ok(result)) => {
+                            if !result.archived_ids.is_empty() {
+                                app.envelopes
+                                    .retain(|e| !result.archived_ids.iter().any(|id| id == &e.id));
+                                app.all_envelopes.retain(|e| {
+                                    !result.archived_ids.iter().any(|id| id == &e.id)
+                                });
+                                app.search_page.results.retain(|e| {
+                                    !result.archived_ids.iter().any(|id| id == &e.id)
+                                });
+                                if let Some(viewing_id) =
+                                    app.viewing_envelope.as_ref().map(|e| e.id.clone())
+                                {
+                                    if result.archived_ids.iter().any(|id| id == &viewing_id) {
+                                        app.viewing_envelope = None;
+                                        app.body_view_state =
+                                            app::BodyViewState::Empty { preview: None };
+                                        app.layout_mode = app::LayoutMode::TwoPane;
+                                        app.active_pane = app::ActivePane::MailList;
+                                    }
+                                }
+                                if app.selected_index >= app.envelopes.len() && app.selected_index > 0 {
+                                    app.selected_index = app.envelopes.len() - 1;
+                                }
+                            }
+                            app.status_message = Some(result.message);
+                        }
+                        AsyncResult::Unsubscribe(Err(e)) => {
+                            app.status_message = Some(format!("Unsubscribe failed: {e}"));
+                        }
                         AsyncResult::DaemonEvent(event) => handle_daemon_event(&mut app, event),
                     }
                 }
@@ -1105,7 +1202,7 @@ pub async fn run() -> anyhow::Result<()> {
 }
 
 enum AsyncResult {
-    Search(Result<Vec<mxr_core::types::Envelope>, MxrError>),
+    Search(Result<SearchResultData, MxrError>),
     Rules(Result<Vec<serde_json::Value>, MxrError>),
     RuleDetail(Result<serde_json::Value, MxrError>),
     RuleHistory(Result<Vec<serde_json::Value>, MxrError>),
@@ -1135,6 +1232,7 @@ enum AsyncResult {
     MutationResult(Result<app::MutationEffect, MxrError>),
     ComposeReady(Result<ComposeReadyData, MxrError>),
     ExportResult(Result<String, MxrError>),
+    Unsubscribe(Result<UnsubscribeResultData, MxrError>),
     DaemonEvent(DaemonEvent),
 }
 
@@ -1142,6 +1240,16 @@ struct ComposeReadyData {
     draft_path: std::path::PathBuf,
     cursor_line: usize,
     initial_content: String,
+}
+
+struct SearchResultData {
+    envelopes: Vec<mxr_core::types::Envelope>,
+    scores: std::collections::HashMap<mxr_core::MessageId, f32>,
+}
+
+struct UnsubscribeResultData {
+    archived_ids: Vec<mxr_core::MessageId>,
+    message: String,
 }
 
 async fn handle_compose_action(
@@ -1571,6 +1679,37 @@ mod tests {
             .collect()
     }
 
+    fn make_unsubscribe_envelope(
+        account_id: AccountId,
+        sender_email: &str,
+        unsubscribe: UnsubscribeMethod,
+    ) -> Envelope {
+        Envelope {
+            id: MessageId::new(),
+            account_id,
+            provider_id: "unsub-fixture".into(),
+            thread_id: ThreadId::new(),
+            message_id_header: None,
+            in_reply_to: None,
+            references: vec![],
+            from: Address {
+                name: Some("Newsletter".into()),
+                email: sender_email.into(),
+            },
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Newsletter".into(),
+            date: chrono::Utc::now(),
+            flags: MessageFlags::empty(),
+            snippet: "newsletter".into(),
+            has_attachments: false,
+            size_bytes: 42,
+            unsubscribe,
+            label_provider_ids: vec![],
+        }
+    }
+
     #[test]
     fn input_j_moves_down() {
         let mut h = InputHandler::new();
@@ -1783,6 +1922,98 @@ mod tests {
             .map(|&i| p.commands[i].label.as_str())
             .collect();
         assert!(labels.contains(&"Go to Inbox"));
+    }
+
+    #[test]
+    fn unsubscribe_opens_confirm_modal_and_scopes_archive_to_sender_and_account() {
+        let mut app = App::new();
+        let account_id = AccountId::new();
+        let other_account_id = AccountId::new();
+        let target = make_unsubscribe_envelope(
+            account_id.clone(),
+            "news@example.com",
+            UnsubscribeMethod::HttpLink {
+                url: "https://example.com/unsub".into(),
+            },
+        );
+        let same_sender_same_account = make_unsubscribe_envelope(
+            account_id.clone(),
+            "news@example.com",
+            UnsubscribeMethod::None,
+        );
+        let same_sender_other_account = make_unsubscribe_envelope(
+            other_account_id,
+            "news@example.com",
+            UnsubscribeMethod::None,
+        );
+        let different_sender_same_account = make_unsubscribe_envelope(
+            account_id,
+            "other@example.com",
+            UnsubscribeMethod::None,
+        );
+
+        app.envelopes = vec![target.clone()];
+        app.all_envelopes = vec![
+            target.clone(),
+            same_sender_same_account.clone(),
+            same_sender_other_account,
+            different_sender_same_account,
+        ];
+
+        app.apply(Action::Unsubscribe);
+
+        let pending = app
+            .pending_unsubscribe_confirm
+            .as_ref()
+            .expect("unsubscribe modal should open");
+        assert_eq!(pending.sender_email, "news@example.com");
+        assert_eq!(pending.method_label, "browser link");
+        assert_eq!(pending.archive_message_ids.len(), 2);
+        assert!(pending.archive_message_ids.contains(&target.id));
+        assert!(pending.archive_message_ids.contains(&same_sender_same_account.id));
+    }
+
+    #[test]
+    fn unsubscribe_without_method_sets_status_error() {
+        let mut app = App::new();
+        let env = make_unsubscribe_envelope(
+            AccountId::new(),
+            "news@example.com",
+            UnsubscribeMethod::None,
+        );
+        app.envelopes = vec![env];
+
+        app.apply(Action::Unsubscribe);
+
+        assert!(app.pending_unsubscribe_confirm.is_none());
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("No unsubscribe option found for this message")
+        );
+    }
+
+    #[test]
+    fn unsubscribe_confirm_archive_populates_pending_action() {
+        let mut app = App::new();
+        let env = make_unsubscribe_envelope(
+            AccountId::new(),
+            "news@example.com",
+            UnsubscribeMethod::OneClick {
+                url: "https://example.com/one-click".into(),
+            },
+        );
+        app.envelopes = vec![env.clone()];
+        app.all_envelopes = vec![env.clone()];
+        app.apply(Action::Unsubscribe);
+        app.apply(Action::ConfirmUnsubscribeAndArchiveSender);
+
+        let pending = app
+            .pending_unsubscribe_action
+            .as_ref()
+            .expect("unsubscribe action should be queued");
+        assert_eq!(pending.message_id, env.id);
+        assert_eq!(pending.archive_message_ids.len(), 1);
+        assert_eq!(pending.sender_email, "news@example.com");
     }
 
     #[test]
@@ -2720,6 +2951,73 @@ mod tests {
 
         assert_eq!(app.screen, Screen::Accounts);
         assert!(app.accounts_page.onboarding_required);
+    }
+
+    #[test]
+    fn account_form_h_and_l_switch_modes_from_any_field() {
+        let mut app = App::new();
+        app.apply(Action::OpenAccountFormNew);
+        app.accounts_page.form.active_field = 2;
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
+        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::ImapSmtp);
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE));
+        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::Gmail);
+    }
+
+    #[test]
+    fn account_form_tab_on_mode_cycles_modes() {
+        let mut app = App::new();
+        app.apply(Action::OpenAccountFormNew);
+        app.accounts_page.form.active_field = 0;
+
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::ImapSmtp);
+
+        app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::Gmail);
+    }
+
+    #[test]
+    fn account_form_mode_switch_with_input_requires_confirmation() {
+        let mut app = App::new();
+        app.apply(Action::OpenAccountFormNew);
+        app.accounts_page.form.key = "work".into();
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
+
+        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::Gmail);
+        assert_eq!(
+            app.accounts_page.form.pending_mode_switch,
+            Some(crate::app::AccountFormMode::ImapSmtp)
+        );
+    }
+
+    #[test]
+    fn account_form_mode_switch_confirmation_applies_mode_change() {
+        let mut app = App::new();
+        app.apply(Action::OpenAccountFormNew);
+        app.accounts_page.form.key = "work".into();
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::ImapSmtp);
+        assert!(app.accounts_page.form.pending_mode_switch.is_none());
+    }
+
+    #[test]
+    fn account_form_mode_switch_confirmation_cancel_keeps_mode() {
+        let mut app = App::new();
+        app.apply(Action::OpenAccountFormNew);
+        app.accounts_page.form.key = "work".into();
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+
+        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::Gmail);
+        assert!(app.accounts_page.form.pending_mode_switch.is_none());
     }
 
     #[test]

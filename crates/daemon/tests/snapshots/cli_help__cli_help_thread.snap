@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Display a thread
+
+Usage: mxr thread [OPTIONS] <THREAD_ID>
+
+Arguments:
+  <THREAD_ID>  
+
+Options:
+      --format <FORMAT>  [possible values: table, json, csv, ids]
+  -h, --help             Print help

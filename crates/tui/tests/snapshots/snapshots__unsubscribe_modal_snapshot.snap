@@ -1,0 +1,25 @@
+---
+source: crates/tui/tests/snapshots.rs
+assertion_line: 579
+expression: snapshot
+---
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                 ╭ Unsubscribe ───────────────────────────────────────────────────╮                 "
+"                 │Sender: news@example.com                                        │                 "
+"                 │Method: one-click                                               │                 "
+"                 │                                                                │                 "
+"                 │Choose what to do:                                              │                 "
+"                 │[Enter] unsubscribe only                                        │                 "
+"                 │[a] unsubscribe + archive all from this sender (2 messages)     │                 "
+"                 │[Esc] cancel                                                    │                 "
+"                 │                                                                │                 "
+"                 │                                                                │                 "
+"                 ╰────────────────────────────────────────────────────────────────╯                 "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "

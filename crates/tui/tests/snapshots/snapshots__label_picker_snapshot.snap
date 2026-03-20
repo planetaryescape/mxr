@@ -1,0 +1,24 @@
+---
+source: crates/tui/tests/snapshots.rs
+expression: snapshot
+---
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                 ┌ Move to Label ──────────────────┐                  "
+"                 │> p                              │                  "
+"                 │  Projects                       │                  "
+"                 │                                 │                  "
+"                 │                                 │                  "
+"                 └─────────────────────────────────┘                  "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "

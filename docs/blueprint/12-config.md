@@ -167,7 +167,7 @@ s = "star"
 r = "reply"
 c = "compose"
 "Ctrl-p" = "command_palette"
-U = "unsubscribe"
+D = "unsubscribe"
 Z = "snooze"
 
 [message_view]

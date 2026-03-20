@@ -1,0 +1,20 @@
+---
+source: crates/compose/src/parse.rs
+expression: "json!({\n    \"from\":\n    headers.from.as_ref().map(|addr|\n    json!({\"name\": addr.name.clone(), \"email\": addr.email.clone()})),\n    \"subject\": headers.subject, \"message_id\": headers.message_id_header,\n    \"in_reply_to\": headers.in_reply_to, \"references\": headers.references,\n    \"unsubscribe\": format!(\"{:?}\", headers.unsubscribe), \"list_id\":\n    parsed.list_id, \"auth_results\": parsed.auth_results, \"content_language\":\n    parsed.content_language, \"text_plain_format\":\n    format!(\"{:?}\", parsed.text_plain_format),\n})"
+---
+auth_results:
+  - mx.example.net; dkim=pass header.d=example.com; spf=pass
+content_language:
+  - fr
+from:
+  email: jose@example.com
+  name: José Example
+in_reply_to: "<parent@example.com>"
+list_id: ~
+message_id: "<folded-flowed@example.com>"
+references:
+  - "<root@example.com>"
+  - "<parent@example.com>"
+subject: Quarterly update — release notes
+text_plain_format: "Some(Flowed { delsp: true })"
+unsubscribe: "OneClick { url: \"https://example.com/unsubscribe?id=abc123\" }"

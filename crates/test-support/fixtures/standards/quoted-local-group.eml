@@ -1,0 +1,10 @@
+From: Organizer <organizer@example.com>
+To: Friends: Bob <bob@example.com>, Carol <carol@example.com>;
+Cc: "\"quoted.local\""@example.com
+Subject: Group syntax
+Date: Fri, 22 Mar 2024 11:30:00 +0000
+Message-ID: <group@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Tests group syntax and quoted local parts.

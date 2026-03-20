@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Unsnooze a message
+
+Usage: mxr unsnooze [OPTIONS] [MESSAGE_ID]
+
+Arguments:
+  [MESSAGE_ID]  
+
+Options:
+      --all   Unsnooze all
+  -h, --help  Print help

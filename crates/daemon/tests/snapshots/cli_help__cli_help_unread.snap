@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Mark message as unread
+
+Usage: mxr unread [OPTIONS] [MESSAGE_ID]
+
+Arguments:
+  [MESSAGE_ID]  
+
+Options:
+      --search <SEARCH>  
+      --yes              
+      --dry-run          
+  -h, --help             Print help

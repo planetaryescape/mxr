@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List drafts
+
+Usage: mxr drafts
+
+Options:
+  -h, --help  Print help

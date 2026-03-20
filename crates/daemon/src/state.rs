@@ -337,6 +337,12 @@ impl AppState {
     /// Create an in-memory AppState for tests.
     #[cfg(test)]
     pub async fn in_memory() -> anyhow::Result<Self> {
+        let (state, _) = Self::in_memory_with_fake().await?;
+        Ok(state)
+    }
+
+    #[cfg(test)]
+    pub async fn in_memory_with_fake() -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
         let store = Arc::new(Store::in_memory().await?);
         let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
@@ -362,11 +368,11 @@ impl AppState {
         let mut providers = HashMap::new();
         let mut send_providers = HashMap::new();
         providers.insert(account_id.clone(), provider.clone());
-        send_providers.insert(account_id, fake as Arc<dyn MailSendProvider>);
+        send_providers.insert(account_id, fake.clone() as Arc<dyn MailSendProvider>);
 
         let (event_tx, _) = broadcast::channel(256);
 
-        Ok(Self {
+        Ok((Self {
             store,
             search,
             sync_engine,
@@ -380,7 +386,7 @@ impl AppState {
             event_tx,
             start_time: Instant::now(),
             config: RwLock::new(mxr_config::MxrConfig::default()),
-        })
+        }, fake))
     }
 
     pub fn socket_path() -> std::path::PathBuf {

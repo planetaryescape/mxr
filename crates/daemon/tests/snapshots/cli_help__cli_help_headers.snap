@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Show message headers
+
+Usage: mxr headers <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>  
+
+Options:
+  -h, --help  Print help

@@ -1,0 +1,33 @@
+---
+source: crates/tui/tests/snapshots.rs
+assertion_line: 480
+expression: snapshot
+---
+"                                                                                                    "
+"                                                                                                    "
+"      ╭ Help ────────────────────────────────────────────────────────────────────────────────╮      "
+"      │Global                                                                               ▲│      "
+"      │Ctrl-p              Command Palette                                                  █│      "
+"      │?                   Toggle Help                                                      █│      "
+"      │Esc                 Back / Close                                                     ║│      "
+"      │q                   Quit                                                             ║│      "
+"      │                                                                                     ║│      "
+"      │Current Context                                                                      ║│      "
+"      │Screen              Mailbox                                                          ║│      "
+"      │Pane                Mail List                                                        ║│      "
+"      │Selection           2 selected: archive, delete, label, move, read/unread, star, Esc ║│      "
+"      │clears                                                                               ║│      "
+"      │                                                                                     ║│      "
+"      │Mailbox List                                                                         ║│      "
+"      │!                   Spam                                                             ║│      "
+"      │#                   Trash                                                            ║│      "
+"      │/                   Search                                                           ║│      "
+"      │1                   Mailbox                                                          ║│      "
+"      │2                   Search Page                                                      ║│      "
+"      │3                   Rules Page                                                       ║│      "
+"      │4                   Accounts Page                                                    ║│      "
+"      │5                   Diagnostics Page                                                 ║│      "
+"      │?                   Help                                                             ▼│      "
+"      ╰──────────────────────────────────────────────────────────────────────────────────────╯      "
+"                                                                                                    "
+"                                                                                                    "

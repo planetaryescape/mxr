@@ -127,6 +127,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 ("Compose Picker".into(), "Type, Tab, Enter, Esc".into()),
                 ("Attachments".into(), "j/k, Enter/o, d, Esc".into()),
                 ("Links".into(), "j/k, Enter/o open, y copy, Esc".into()),
+                ("Unsubscribe".into(), "Enter unsubscribe, a archive sender, Esc cancel".into()),
                 ("Bulk Confirm".into(), "Enter/y confirm, Esc/n cancel".into()),
             ],
         },

@@ -42,6 +42,20 @@ where
             synced.envelope.id, synced.body.message_id,
             "body message ids must match envelope ids"
         );
+        assert!(
+            synced.envelope.date <= Utc::now() + chrono::Duration::minutes(1),
+            "message dates must be parseable"
+        );
+        for attachment in &synced.body.attachments {
+            assert!(
+                !attachment.provider_id.is_empty(),
+                "attachment provider ids must be populated"
+            );
+            assert_eq!(
+                attachment.message_id, synced.envelope.id,
+                "attachment message ids must match envelope ids"
+            );
+        }
     }
 
     if let Some(with_attachment) = batch
@@ -93,6 +107,10 @@ where
         .await
         .expect("delta sync should succeed");
     assert!(
+        !matches!(delta.next_cursor, SyncCursor::Initial),
+        "delta sync should preserve a non-initial cursor"
+    );
+    assert!(
         delta.upserted.iter().all(|synced| !synced.envelope.provider_id.is_empty()),
         "delta sync results must preserve provider ids"
     );
@@ -120,4 +138,11 @@ where
         .save_draft(&draft, &from)
         .await
         .expect("save_draft should not fail");
+    if provider.name() != "smtp" {
+        let saved = provider
+            .save_draft(&draft, &from)
+            .await
+            .expect("save_draft should stay stable across calls");
+        assert!(saved.is_some(), "non-SMTP providers should return a provider draft id");
+    }
 }

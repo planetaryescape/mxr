@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Report message as spam
+
+Usage: mxr spam [OPTIONS] [MESSAGE_ID]
+
+Arguments:
+  [MESSAGE_ID]  
+
+Options:
+      --search <SEARCH>  
+      --yes              
+      --dry-run          
+  -h, --help             Print help

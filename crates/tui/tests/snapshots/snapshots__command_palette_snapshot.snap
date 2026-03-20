@@ -1,0 +1,25 @@
+---
+source: crates/tui/tests/snapshots.rs
+assertion_line: 130
+expression: snapshot
+---
+"                                                                      "
+"                                                                      "
+"           ╭ Command Palette ────────────────────────────╮            "
+"           │╭ Query  9 matches ─────────────────────────╮│            "
+"           ││> un                                       ││            "
+"           │╰───────────────────────────────────────────╯│            "
+"           │╭ Commands ─────────────────────────────────▲│            "
+"           ││@    Mail  Star / Unstar         s         █│            "
+"           ││@    Mail  Mark Unread           U         █│            "
+"           ││@    Mail  Unsubscribe           D         █│            "
+"           ││>    Navigation  Open Accounts P palette   █│            "
+"           ││#    Rules  Rule Dry Run         palette   █│            "
+"           ││=    Accounts  Refresh Accounts  palette   █│            "
+"           │╰───────────────────────────────────────────▼│            "
+"           │╭───────────────────────────────────────────╮│            "
+"           ││enter run   ↑↓ move   esc close   selected ││            "
+"           │╰───────────────────────────────────────────╯│            "
+"           ╰─────────────────────────────────────────────╯            "
+"                                                                      "
+"                                                                      "

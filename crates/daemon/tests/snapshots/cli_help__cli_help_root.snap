@@ -1,0 +1,57 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Terminal email client
+
+Usage: mxr [COMMAND]
+
+Commands:
+  daemon       Start the daemon explicitly
+  search       Search messages
+  count        Count matching messages
+  cat          Display a message
+  thread       Display a thread
+  export       Export a thread or matching search results
+  headers      Show message headers
+  saved        Manage saved searches
+  sync         Trigger or query sync
+  status       Show daemon status
+  events       Watch daemon events
+  notify       Unread summary for status bars
+  logs         View daemon logs
+  bug-report   Generate a sanitized diagnostic bundle
+  accounts     Manage accounts
+  doctor       Run diagnostics
+  labels       Manage labels
+  rules        Manage rules
+  compose      Compose a new email
+  reply        Reply to a message
+  reply-all    Reply to all recipients
+  forward      Forward a message
+  drafts       List drafts
+  send         Send a draft by ID
+  archive      Archive a message (remove from inbox)
+  trash        Move message to trash
+  spam         Report message as spam
+  star         Star a message
+  unstar       Unstar a message
+  read         Mark message as read
+  unread       Mark message as unread
+  label        Apply a label to a message
+  unlabel      Remove a label from a message
+  move         Move message to a label/folder
+  snooze       Snooze a message until a specified time
+  unsnooze     Unsnooze a message
+  snoozed      List snoozed messages
+  unsubscribe  Unsubscribe from a mailing list
+  open         Open message in browser
+  attachments  Manage message attachments
+  config       Configuration management
+  version      Show version
+  completions  Generate shell completions
+  help         Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version

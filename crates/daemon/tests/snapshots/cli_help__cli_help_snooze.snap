@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Snooze a message until a specified time
+
+Usage: mxr snooze [OPTIONS] --until <UNTIL> [MESSAGE_ID]
+
+Arguments:
+  [MESSAGE_ID]  
+
+Options:
+      --until <UNTIL>    When to resurface: tomorrow|monday|weekend|tonight|ISO8601
+      --search <SEARCH>  
+      --yes              
+      --dry-run          
+  -h, --help             Print help

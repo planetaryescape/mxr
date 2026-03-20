@@ -1,0 +1,21 @@
+---
+source: crates/provider-gmail/src/parse.rs
+expression: "json!({\n    \"subject\": envelope.subject, \"from\": envelope.from, \"to\": envelope.to,\n    \"cc\": envelope.cc, \"message_id\": envelope.message_id_header,\n    \"in_reply_to\": envelope.in_reply_to, \"references\": envelope.references,\n    \"unsubscribe\": format!(\"{:?}\", envelope.unsubscribe), \"list_id\":\n    body.metadata.list_id, \"auth_results\": body.metadata.auth_results,\n    \"content_language\": body.metadata.content_language, \"text_plain_format\":\n    format!(\"{:?}\", body.metadata.text_plain_format), \"plain_excerpt\":\n    body.text_plain.as_deref().map(|text|\n    text.lines().take(2).collect::<Vec<_>>().join(\"\\n\")),\n})"
+---
+auth_results: []
+cc: []
+content_language: []
+from:
+  email: alice@example.com
+  name: Alice Smith
+in_reply_to: ~
+list_id: ~
+message_id: "<calendar@example.com>"
+plain_excerpt: Please join the planning meeting.
+references: []
+subject: Planning meeting
+text_plain_format: None
+to:
+  - email: bob@example.com
+    name: Bob Example
+unsubscribe: None

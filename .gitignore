@@ -4,3 +4,8 @@
 *.db-shm
 search_index/
 .env
+!/vendor/
+!/vendor/async-imap/
+!/vendor/async-imap/**
+.vercel
+.env*.local

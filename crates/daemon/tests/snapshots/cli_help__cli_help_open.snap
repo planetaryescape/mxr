@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Open message in browser
+
+Usage: mxr open <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>  
+
+Options:
+  -h, --help  Print help

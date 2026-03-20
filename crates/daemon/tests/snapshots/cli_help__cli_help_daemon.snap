@@ -1,0 +1,11 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Start the daemon explicitly
+
+Usage: mxr daemon [OPTIONS]
+
+Options:
+      --foreground  Run in foreground (for debugging / systemd)
+  -h, --help        Print help

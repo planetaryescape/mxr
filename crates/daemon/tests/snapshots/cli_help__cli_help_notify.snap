@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Unread summary for status bars
+
+Usage: mxr notify [OPTIONS]
+
+Options:
+      --format <FORMAT>  [possible values: table, json, csv, ids]
+      --watch            
+  -h, --help             Print help

@@ -418,49 +418,79 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
         return;
     }
 
-    // Center overlay: 60% width, up to 50% height
-    let width = (area.width as u32 * 60 / 100).min(80) as u16;
-    let height = (palette.filtered.len() as u16 + 4)
-        .min(area.height * 50 / 100)
-        .max(6);
+    let width = (area.width as u32 * 68 / 100).min(92) as u16;
+    let height = (palette.filtered.len() as u16 + 8)
+        .min(area.height.saturating_sub(4))
+        .max(10);
     let x = area.x + (area.width.saturating_sub(width)) / 2;
     let y = area.y + (area.height.saturating_sub(height)) / 2;
     let popup_area = Rect::new(x, y, width, height);
 
-    // Clear background
     frame.render_widget(Clear, popup_area);
 
     let block = Block::bordered()
         .title(" Command Palette ")
+        .title_style(Style::default().fg(theme.accent).bold())
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.warning));
+        .border_style(Style::default().fg(theme.warning))
+        .style(Style::default().bg(theme.modal_bg));
 
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
 
-    if inner.height < 2 {
+    if inner.height < 4 {
         return;
     }
 
-    // Input line
-    let input_area = Rect::new(inner.x, inner.y, inner.width, 1);
-    let input_line =
-        Paragraph::new(format!("> {}", palette.input)).style(Style::default().fg(theme.text_primary));
-    frame.render_widget(input_line, input_area);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(3),
+            Constraint::Length(3),
+        ])
+        .split(inner);
 
-    // Results
-    let list_area = Rect::new(
-        inner.x,
-        inner.y + 1,
-        inner.width,
-        inner.height.saturating_sub(1),
-    );
+    let selected_command = palette
+        .filtered
+        .get(palette.selected)
+        .and_then(|&idx| palette.commands.get(idx));
+
+    let query_text = if palette.input.is_empty() {
+        "type a command or shortcut".to_string()
+    } else {
+        palette.input.clone()
+    };
+    let input_block = Block::bordered()
+        .title(format!(" Query  {} matches ", palette.filtered.len()))
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.border_unfocused))
+        .style(Style::default().bg(theme.hint_bar_bg));
+    let input = Paragraph::new(Line::from(vec![
+        Span::styled("> ", Style::default().fg(theme.accent).bold()),
+        Span::styled(
+            query_text,
+            Style::default().fg(if palette.input.is_empty() {
+                theme.text_muted
+            } else {
+                theme.text_primary
+            }),
+        ),
+    ]))
+    .block(input_block);
+    frame.render_widget(input, chunks[0]);
+
+    let list_area = chunks[1];
 
     let visible_len = list_area.height as usize;
-    let start = palette
-        .selected
-        .saturating_sub(visible_len.saturating_sub(1));
-    let items: Vec<ListItem> = palette
+    let start = if visible_len == 0 {
+        0
+    } else {
+        palette
+            .selected
+            .saturating_sub(visible_len.saturating_sub(1) / 2)
+    };
+    let rows: Vec<Row> = palette
         .filtered
         .iter()
         .enumerate()
@@ -468,23 +498,52 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
         .take(visible_len)
         .map(|(i, &cmd_idx)| {
             let cmd = &palette.commands[cmd_idx];
-            let shortcut = if cmd.shortcut.is_empty() {
-                String::new()
-            } else {
-                format!(" [{}]", cmd.shortcut)
-            };
             let style = if i + start == palette.selected {
                 theme.highlight_style()
             } else {
-                Style::default()
+                Style::default().fg(theme.text_secondary)
             };
-            let icon = category_icon(&cmd.category);
-            ListItem::new(format!("  {} {:<12} {}{}", icon, cmd.category, cmd.label, shortcut)).style(style)
+            let (icon, category_color) = category_style(&cmd.category, theme);
+            let shortcut = if cmd.shortcut.is_empty() {
+                Span::styled("palette", Style::default().fg(theme.text_muted))
+            } else {
+                Span::styled(
+                    cmd.shortcut.clone(),
+                    Style::default().fg(theme.text_primary).bold(),
+                )
+            };
+            Row::new(vec![
+                Cell::from(Span::styled(icon, Style::default().fg(category_color).bold())),
+                Cell::from(Line::from(vec![
+                    Span::styled(
+                        format!(" {} ", cmd.category),
+                        Style::default().bg(category_color).fg(Color::Black).bold(),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(&cmd.label, Style::default().fg(theme.text_primary)),
+                ])),
+                Cell::from(shortcut),
+            ])
+            .style(style)
         })
         .collect();
 
-    let list = List::new(items);
-    frame.render_widget(list, list_area);
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(3),
+            Constraint::Fill(1),
+            Constraint::Length(10),
+        ],
+    )
+    .column_spacing(1)
+    .block(
+        Block::bordered()
+            .title(" Commands ")
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.border_unfocused)),
+    );
+    frame.render_widget(table, list_area);
 
     let mut scrollbar_state =
         ScrollbarState::new(palette.filtered.len().saturating_sub(visible_len)).position(start);
@@ -496,19 +555,55 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
         list_area,
         &mut scrollbar_state,
     );
+
+    let footer_text = selected_command
+        .map(|cmd| {
+            let shortcut = if cmd.shortcut.is_empty() {
+                "palette".to_string()
+            } else {
+                cmd.shortcut.clone()
+            };
+            Line::from(vec![
+                Span::styled("enter ", Style::default().fg(theme.accent).bold()),
+                Span::styled("run", Style::default().fg(theme.text_secondary)),
+                Span::raw("   "),
+                Span::styled("↑↓ ", Style::default().fg(theme.accent).bold()),
+                Span::styled("move", Style::default().fg(theme.text_secondary)),
+                Span::raw("   "),
+                Span::styled("esc ", Style::default().fg(theme.accent).bold()),
+                Span::styled("close", Style::default().fg(theme.text_secondary)),
+                Span::raw("   "),
+                Span::styled("selected ", Style::default().fg(theme.text_muted)),
+                Span::styled(&cmd.label, Style::default().fg(theme.text_primary).bold()),
+                Span::styled(" · ", Style::default().fg(theme.text_muted)),
+                Span::styled(shortcut, Style::default().fg(theme.accent)),
+            ])
+        })
+        .unwrap_or_else(|| {
+            Line::from(Span::styled(
+                "No matching commands",
+                Style::default().fg(theme.text_muted),
+            ))
+        });
+    let footer = Paragraph::new(footer_text).block(
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.border_unfocused)),
+    );
+    frame.render_widget(footer, chunks[2]);
 }
 
-fn category_icon(category: &str) -> &'static str {
+fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str, Color) {
     match category {
-        "Mail" => "[M]",
-        "Navigation" => "[N]",
-        "Search" => "[S]",
-        "Selection" => "[X]",
-        "View" => "[V]",
-        "Rules" => "[R]",
-        "Diagnostics" => "[D]",
-        "Accounts" => "[A]",
-        "Sync" => "[Y]",
-        _ => "[?]",
+        "Mail" => ("@", theme.warning),
+        "Navigation" => (">", theme.accent),
+        "Search" => ("/", theme.link_fg),
+        "Selection" => ("+", theme.success),
+        "View" => ("~", theme.text_secondary),
+        "Rules" => ("#", theme.error),
+        "Diagnostics" => ("!", theme.warning),
+        "Accounts" => ("=", theme.accent_dim),
+        "Sync" => ("*", theme.success),
+        _ => ("?", theme.text_muted),
     }
 }

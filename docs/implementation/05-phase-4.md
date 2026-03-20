@@ -7,6 +7,7 @@ Ready for public release. Adapter kit for community providers, binary releases, 
 ## Prerequisites
 
 Phase 3 complete:
+
 - Export working (Markdown, JSON, Mbox, LLM Context)
 - Rules engine operational (TOML definitions, dry-run, shell hooks)
 - Multi-account support (multiple Gmail + SMTP configs, account switcher)
@@ -26,6 +27,7 @@ The adapter kit enables community adapter development. It consists of conformanc
 Create a `fixtures` module inside `mxr-provider-fake` that exports canonical test data. This data represents the "golden" dataset that conformance tests validate against.
 
 `crates/providers/fake/src/fixtures.rs`:
+
 ```rust
 use mxr_core::types::{
     AccountId, Envelope, Label, LabelId, MessageBody, MessageFlags,
@@ -111,6 +113,7 @@ pub struct FixtureThread {
 Export from the fake provider crate's public API:
 
 `crates/providers/fake/src/lib.rs`:
+
 ```rust
 pub mod fixtures;
 pub mod conformance;
@@ -122,6 +125,7 @@ pub mod conformance;
 Create a `conformance` module that exports test functions any adapter can call. These are not `#[test]` functions themselves — they are assertion functions that adapter authors call from their own test suites. The conformance suite must be tested against BOTH first-party adapters (Gmail and IMAP) to ensure it validates real-world protocol differences, not just FakeProvider's in-memory behavior.
 
 `crates/providers/fake/src/conformance.rs`:
+
 ```rust
 use mxr_core::provider::{MailSyncProvider, MailSendProvider};
 use mxr_core::types::*;
@@ -422,6 +426,7 @@ The adapter kit provides two reference implementations for community adapter aut
 The existing `FakeProvider` already implements both traits. Document it as the canonical reference:
 
 `crates/providers/fake/src/lib.rs` — add module-level doc comment:
+
 ```rust
 //! # mxr-provider-fake
 //!
@@ -447,6 +452,7 @@ The existing `FakeProvider` already implements both traits. Document it as the c
 Before community adapters can exist as standalone crates, `mxr-core` must be published.
 
 **Pre-publish checklist** (file: `crates/core/Cargo.toml`):
+
 ```toml
 [package]
 name = "mxr-core"
@@ -462,6 +468,7 @@ readme = "README.md"
 ```
 
 **Steps:**
+
 1. Audit `mxr-core` public API surface — every `pub` item is now a semver commitment
 2. Add `#[non_exhaustive]` to enums and structs that may grow (e.g., `SyncCapabilities`, `MessageFlags`)
 3. Ensure no path dependencies leak into the published crate
@@ -470,6 +477,7 @@ readme = "README.md"
 6. `cargo publish -p mxr-core`
 
 **API stability rules** (document in `crates/core/README.md`):
+
 - Provider traits (`MailSyncProvider`, `MailSendProvider`) are semver-guarded
 - Breaking changes to traits require a major version bump + migration guide
 - New default methods on traits are minor version bumps (non-breaking)
@@ -480,6 +488,7 @@ readme = "README.md"
 Create an example skeleton that adapter authors can copy:
 
 `examples/adapter-skeleton/Cargo.toml`:
+
 ```toml
 [package]
 name = "mxr-provider-example"
@@ -500,6 +509,7 @@ tokio = { version = "1", features = ["full", "test-util"] }
 ```
 
 `examples/adapter-skeleton/src/lib.rs`:
+
 ```rust
 //! Example mxr provider adapter.
 //!
@@ -717,6 +727,7 @@ This starts the daemon with in-memory test data. No network, no auth required.
 ## Keybinding Convention
 
 mxr follows a strict keybinding hierarchy (see A005):
+
 1. **Vim-native first** — navigation uses vim conventions (j/k, gg/G, Ctrl-d/u, etc.)
 2. **Gmail second** — email actions use Gmail keyboard shortcuts (e for archive, # for trash, s for star, etc.)
 3. **Custom last** — only invent a keybinding when neither vim nor Gmail has a relevant convention.
@@ -737,6 +748,7 @@ When adding a new TUI action, follow this hierarchy. Check Gmail's keyboard shor
 See the [Adapter Development Guide](docs/guide/adapter-development.md).
 
 Short version:
+
 1. Create a standalone crate depending on `mxr-core`.
 2. Implement `MailSyncProvider` and/or `MailSendProvider`.
 3. Run the conformance test suite.
@@ -774,6 +786,7 @@ By submitting a PR, you agree to license your contribution under these terms.
 ### Issue Templates
 
 `.github/ISSUE_TEMPLATE/bug_report.yml` (updated per A009 to integrate with `mxr bug-report`):
+
 ```yaml
 name: Bug Report
 description: Report a bug in mxr
@@ -818,6 +831,7 @@ body:
 ```
 
 `.github/ISSUE_TEMPLATE/feature_request.yml`:
+
 ```yaml
 name: Feature Request
 description: Suggest a feature for mxr
@@ -844,6 +858,7 @@ body:
 ```
 
 `.github/ISSUE_TEMPLATE/adapter_proposal.yml`:
+
 ```yaml
 name: Provider Adapter Proposal
 description: Propose a new provider adapter
@@ -1190,6 +1205,7 @@ pub struct LogsPurgeOpts {
 ```
 
 `mxr doctor --store-stats` extends the existing doctor command to report log disk usage:
+
 - Text log file sizes (current + rotated)
 - event_log row count and approximate size
 - sync_log row count
@@ -1208,11 +1224,12 @@ Binary naming: `mxr-v{version}-{target}.tar.gz` — follows cargo-binstall conve
 Each archive contains: `mxr` binary, `LICENSE-MIT`, `LICENSE-APACHE`, `README.md`.
 
 `.github/workflows/release.yml`:
-```yaml
+
+````yaml
 name: Release binaries
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 permissions:
   contents: write
@@ -1418,22 +1435,23 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           projectName: mxr-docs
           directory: site/dist
-```
+````
 
 ### Required GitHub Secrets
 
-| Secret | Purpose |
-|---|---|
-| `CARGO_REGISTRY_TOKEN` | crates.io API token for publishing |
-| `HOMEBREW_TAP_TOKEN` | GitHub PAT with push access to the homebrew-tap repo |
-| `CLOUDFLARE_API_TOKEN` | Cloudflare Pages deployment |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier |
+| Secret                  | Purpose                                              |
+| ----------------------- | ---------------------------------------------------- |
+| `CARGO_REGISTRY_TOKEN`  | crates.io API token for publishing                   |
+| `HOMEBREW_TAP_TOKEN`    | GitHub PAT with push access to the homebrew-tap repo |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare Pages deployment                          |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier                        |
 
 ### 3.2 CI Workflow (existing, updated)
 
 Every pull request runs these checks. All must pass before merge. Jobs are split for clear failure diagnosis.
 
 `.github/workflows/ci.yml`:
+
 ```yaml
 name: CI
 on:
@@ -1571,6 +1589,7 @@ Document in `CONTRIBUTING.md` and enforce with commit-lint in CI (see 3.2).
 `git-cliff` generates changelogs from conventional commits. Rust-native tool.
 
 `cliff.toml`:
+
 ```toml
 [changelog]
 header = "# Changelog\n\n"
@@ -1669,6 +1688,7 @@ Why publish individual crates: `mxr-core` is the stable API for community adapte
 Requires publishing the main `mxr` binary crate to crates.io.
 
 `Cargo.toml` (workspace root or binary crate):
+
 ```toml
 [package]
 name = "mxr"
@@ -1683,6 +1703,7 @@ categories = ["email", "command-line-utilities"]
 ```
 
 User installs with:
+
 ```bash
 cargo install mxr
 ```
@@ -1692,6 +1713,7 @@ cargo install mxr
 Create repository: `planetaryescape/homebrew-tap`
 
 `Formula/mxr.rb`:
+
 ```ruby
 class Mxr < Formula
   desc "Local-first, keyboard-native terminal email client"
@@ -1732,6 +1754,7 @@ end
 ```
 
 User installs with:
+
 ```bash
 brew tap planetaryescape/tap
 brew install mxr
@@ -1752,6 +1775,7 @@ This gives users a fast install path without the 5+ minute compile time of `carg
 ### 4.4 AUR Package
 
 `PKGBUILD` (hosted in AUR or a separate `mxr-aur` repo):
+
 ```bash
 # Maintainer: planetaryescape
 pkgname=mxr
@@ -1801,6 +1825,7 @@ packaging/
 ### 4.5 Nix Package
 
 `flake.nix` at project root:
+
 ```nix
 {
   description = "mxr - Local-first, keyboard-native terminal email client";
@@ -1859,6 +1884,7 @@ packaging/
 ```
 
 User installs with:
+
 ```bash
 # Direct run
 nix run github:planetaryescape/mxr
@@ -1873,6 +1899,7 @@ nix develop github:planetaryescape/mxr
 ### 4.6 Install Script
 
 `install.sh` (hosted at project root, served from GitHub raw URL or docs site):
+
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
@@ -1942,6 +1969,7 @@ fi
 ```
 
 User installs with:
+
 ```bash
 curl -sSf https://raw.githubusercontent.com/planetaryescape/mxr/main/install.sh | bash
 ```
@@ -1955,6 +1983,7 @@ curl -sSf https://raw.githubusercontent.com/planetaryescape/mxr/main/install.sh 
 mdBook is Rust-native, simple, has built-in search, and fits the ecosystem. No JavaScript framework overhead.
 
 **Setup:**
+
 ```bash
 cargo install mdbook
 ```
@@ -2013,6 +2042,7 @@ docs/
 ### 5.3 book.toml
 
 `docs/book/book.toml`:
+
 ```toml
 [book]
 title = "mxr — Terminal Email Client"
@@ -2040,6 +2070,7 @@ use-hierarchical-headings = true
 ### 5.4 SUMMARY.md
 
 `docs/book/src/SUMMARY.md`:
+
 ```markdown
 # Summary
 
@@ -2108,6 +2139,7 @@ use-hierarchical-headings = true
 ### 5.6 Deploy to GitHub Pages
 
 `.github/workflows/docs.yml`:
+
 ```yaml
 name: Deploy Docs
 
@@ -2182,14 +2214,14 @@ shell hooks. Export threads for LLM context.
 
 ## Why mxr
 
-| | mutt/neomutt | aerc | himalaya | mxr |
-|---|---|---|---|---|
-| Architecture | Monolith | Monolith | CLI wrapper | Daemon + clients |
-| Local store | Maildir | Maildir | None | SQLite |
-| Search | strstrstr | basic | none | Tantivy BM25 |
-| Compose | $EDITOR | built-in | $EDITOR | $EDITOR + markdown |
-| Reader mode | No | No | No | Yes |
-| Rules engine | procmail | No | No | Built-in |
+|              | mutt/neomutt | aerc     | himalaya    | mxr                |
+| ------------ | ------------ | -------- | ----------- | ------------------ |
+| Architecture | Monolith     | Monolith | CLI wrapper | Daemon + clients   |
+| Local store  | Maildir      | Maildir  | None        | SQLite             |
+| Search       | strstrstr    | basic    | none        | Tantivy BM25       |
+| Compose      | $EDITOR      | built-in | $EDITOR     | $EDITOR + markdown |
+| Reader mode  | No           | No       | No          | Yes                |
+| Rules engine | procmail     | No       | No          | Built-in           |
 
 ## Quick Start
 
@@ -2287,6 +2319,7 @@ MIT OR Apache-2.0
 **Tools**: Use `vhs` (charmbracelet/vhs) to create reproducible terminal GIFs from a `.tape` script.
 
 `docs/assets/demo.tape` (vhs script for the main demo GIF):
+
 ```
 Output docs/assets/demo.gif
 
@@ -2365,15 +2398,15 @@ File: `docs/announcement/launch-post.md` (not published to repo, used as source 
 
 ### 7.2 Target Channels
 
-| Channel | Format | Timing |
-|---------|--------|--------|
-| Hacker News | "Show HN: mxr — local-first terminal email client in Rust" | Primary launch |
-| r/rust | Cross-post with Rust-specific details (crate structure, trait design) | Same day |
-| r/commandline | Focus on workflow, keybindings, composability | Same day |
-| r/linux | Focus on install methods, local-first, privacy | Same day |
-| Rust Community Discord | #showcase channel | Same day |
-| This Week in Rust | Submit for newsletter inclusion | Submit week before |
-| Lobsters | Post link | Same day |
+| Channel                | Format                                                                | Timing             |
+| ---------------------- | --------------------------------------------------------------------- | ------------------ |
+| Hacker News            | "Show HN: mxr — local-first terminal email client in Rust"            | Primary launch     |
+| r/rust                 | Cross-post with Rust-specific details (crate structure, trait design) | Same day           |
+| r/commandline          | Focus on workflow, keybindings, composability                         | Same day           |
+| r/linux                | Focus on install methods, local-first, privacy                        | Same day           |
+| Rust Community Discord | #showcase channel                                                     | Same day           |
+| This Week in Rust      | Submit for newsletter inclusion                                       | Submit week before |
+| Lobsters               | Post link                                                             | Same day           |
 
 ### 7.3 Launch Checklist
 
@@ -2421,6 +2454,7 @@ Phase 4 is complete when ALL of the following are true:
 ### User Acceptance Test
 
 A new user can:
+
 - Discover mxr via README or blog post
 - Install via their preferred method (cargo, brew, binary, nix)
 - Add their Gmail account following the getting-started guide
@@ -2431,18 +2465,18 @@ A new user can:
 
 ## Risks and Mitigations
 
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| Google OAuth verification required for >100 users | Users can't authenticate without creating their own GCP project | Document self-hosted OAuth setup clearly. Provide instructions to create own GCP project + credentials. Long-term: apply for Google verification. |
-| `mxr-core` API instability after publish | Breaking changes force community adapters to update | Audit API surface thoroughly before publish. Use `#[non_exhaustive]` liberally. Start at `0.1.0` to signal instability. Add default trait method implementations for new methods (non-breaking). |
-| Cross-compilation failures for Linux aarch64 | Missing release binary for ARM Linux | Use cargo-zigbuild which handles cross-compilation reliably. Test in CI before first release. Fallback: `cargo install` always works from source. |
-| Homebrew formula SHA256 mismatch after release | Brew install fails | Automate SHA256 update via CI. Manual fallback: update formula within hours of release. |
-| mdBook site search inadequate for large docs | Users can't find what they need | mdBook search is good enough for this doc size. If inadequate, add Algolia DocSearch later. |
-| Demo GIF becomes stale as TUI evolves | README shows outdated UI | Use vhs tape scripts (reproducible). Re-record as part of release checklist. |
-| Hacker News launch gets no traction | Low visibility | Have concrete differentiators in the post (not "yet another email client"). Show real workflows, not architecture diagrams. Post at optimal HN time (Tuesday-Thursday, 9-11am ET). Have friends upvote early. |
-| AUR/Nix packages break on updates | Users on those platforms get broken installs | Automated testing in CI for flake.nix builds. AUR: include checksums, test build before publishing. Pin dependencies. |
-| Install script security concerns (curl pipe sh) | Users wary of the pattern | Script verifies SHA256 checksums. Offer alternative install methods prominently. Script is auditable (simple bash, no obfuscation). |
-| crates.io name squatting or conflict | Can't publish as `mxr` | Name `mxr` is already confirmed available on crates.io (per 00-overview.md). Publish placeholder early if concerned. |
+| Risk                                              | Impact                                                          | Mitigation                                                                                                                                                                                                    |
+| ------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google OAuth verification required for >100 users | Users can't authenticate without creating their own GCP project | Document self-hosted OAuth setup clearly. Provide instructions to create own GCP project + credentials. Long-term: apply for Google verification.                                                             |
+| `mxr-core` API instability after publish          | Breaking changes force community adapters to update             | Audit API surface thoroughly before publish. Use `#[non_exhaustive]` liberally. Start at `0.1.0` to signal instability. Add default trait method implementations for new methods (non-breaking).              |
+| Cross-compilation failures for Linux aarch64      | Missing release binary for ARM Linux                            | Use cargo-zigbuild which handles cross-compilation reliably. Test in CI before first release. Fallback: `cargo install` always works from source.                                                             |
+| Homebrew formula SHA256 mismatch after release    | Brew install fails                                              | Automate SHA256 update via CI. Manual fallback: update formula within hours of release.                                                                                                                       |
+| mdBook site search inadequate for large docs      | Users can't find what they need                                 | mdBook search is good enough for this doc size. If inadequate, add Algolia DocSearch later.                                                                                                                   |
+| Demo GIF becomes stale as TUI evolves             | README shows outdated UI                                        | Use vhs tape scripts (reproducible). Re-record as part of release checklist.                                                                                                                                  |
+| Hacker News launch gets no traction               | Low visibility                                                  | Have concrete differentiators in the post (not "yet another email client"). Show real workflows, not architecture diagrams. Post at optimal HN time (Tuesday-Thursday, 9-11am ET). Have friends upvote early. |
+| AUR/Nix packages break on updates                 | Users on those platforms get broken installs                    | Automated testing in CI for flake.nix builds. AUR: include checksums, test build before publishing. Pin dependencies.                                                                                         |
+| Install script security concerns (curl pipe sh)   | Users wary of the pattern                                       | Script verifies SHA256 checksums. Offer alternative install methods prominently. Script is auditable (simple bash, no obfuscation).                                                                           |
+| crates.io name squatting or conflict              | Can't publish as `mxr`                                          | Name `mxr` is already confirmed available on crates.io (per 00-overview.md). Publish placeholder early if concerned.                                                                                          |
 
 ---
 
@@ -2450,37 +2484,37 @@ A new user can:
 
 Files created or modified in this phase:
 
-| File | Action | Description |
-|------|--------|-------------|
-| `crates/providers/fake/src/fixtures.rs` | Create | Canonical fixture data (messages, threads, labels) |
-| `crates/providers/fake/src/conformance.rs` | Create | Conformance test suite for adapter validation |
-| `crates/providers/fake/src/lib.rs` | Modify | Export fixtures and conformance modules, add crate docs |
-| `crates/core/Cargo.toml` | Modify | Add crates.io metadata, prepare for publish |
-| `crates/core/README.md` | Create | Crate-level README for crates.io |
-| `examples/adapter-skeleton/Cargo.toml` | Create | Out-of-tree adapter template |
-| `examples/adapter-skeleton/src/lib.rs` | Create | Skeleton adapter implementation with todo!() stubs |
-| `CONTRIBUTING.md` | Create | Full contributor guide |
-| `.github/ISSUE_TEMPLATE/bug_report.yml` | Create | Bug report template (updated for `mxr bug-report` integration, A009) |
-| `crates/cli/src/bug_report.rs` | Create | Bug report generator, sanitizer, CLI subcommand (A009, D072-D073) |
-| `.github/ISSUE_TEMPLATE/feature_request.yml` | Create | Feature request template |
-| `.github/ISSUE_TEMPLATE/adapter_proposal.yml` | Create | Adapter proposal template |
-| `.github/workflows/release.yml` | Create | Full release pipeline: musl binaries (4 targets), crates.io publish, GitHub Release, Homebrew update, docs deploy |
-| `.github/workflows/ci.yml` | Modify | Comprehensive CI: fmt, clippy, test (multi-OS), build, sqlx-check, docs build, policy sync, commit lint |
-| `.github/workflows/docs.yml` | Create | mdBook deploy to GitHub Pages |
-| `cliff.toml` | Create | git-cliff configuration for changelog generation |
-| `.commitlintrc.yml` | Create | Conventional commit message lint config |
-| `packaging/aur/mxr/PKGBUILD` | Create | AUR package (build from source) |
-| `packaging/aur/mxr-bin/PKGBUILD` | Create | AUR package (pre-built binary) |
-| `packaging/homebrew/mxr.rb` | Create | Homebrew formula template |
-| `docs/book/book.toml` | Create | mdBook configuration |
-| `docs/book/src/SUMMARY.md` | Create | Documentation table of contents |
-| `docs/book/src/reference/observability.md` | Create | Observability & monitoring guide (A006) |
-| `docs/book/src/**/*.md` | Create | All documentation pages (~26 files) |
-| `docs/guide/adapter-development.md` | Create | Adapter development guide (source for mdBook) |
-| `docs/assets/demo.tape` | Create | vhs script for demo GIF |
-| `docs/assets/*.gif` | Create | Screenshots and demo GIFs |
-| `docs/announcement/launch-post.md` | Create | Blog post draft |
-| `README.md` | Rewrite | Full README overhaul |
-| `install.sh` | Create | Quick install script |
-| `flake.nix` | Create | Nix flake for build + dev shell |
-| `Cargo.toml` (root) | Modify | Add crates.io metadata for binary crate |
+| File                                          | Action  | Description                                                                                                       |
+| --------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `crates/providers/fake/src/fixtures.rs`       | Create  | Canonical fixture data (messages, threads, labels)                                                                |
+| `crates/providers/fake/src/conformance.rs`    | Create  | Conformance test suite for adapter validation                                                                     |
+| `crates/providers/fake/src/lib.rs`            | Modify  | Export fixtures and conformance modules, add crate docs                                                           |
+| `crates/core/Cargo.toml`                      | Modify  | Add crates.io metadata, prepare for publish                                                                       |
+| `crates/core/README.md`                       | Create  | Crate-level README for crates.io                                                                                  |
+| `examples/adapter-skeleton/Cargo.toml`        | Create  | Out-of-tree adapter template                                                                                      |
+| `examples/adapter-skeleton/src/lib.rs`        | Create  | Skeleton adapter implementation with todo!() stubs                                                                |
+| `CONTRIBUTING.md`                             | Create  | Full contributor guide                                                                                            |
+| `.github/ISSUE_TEMPLATE/bug_report.yml`       | Create  | Bug report template (updated for `mxr bug-report` integration, A009)                                              |
+| `crates/cli/src/bug_report.rs`                | Create  | Bug report generator, sanitizer, CLI subcommand (A009, D072-D073)                                                 |
+| `.github/ISSUE_TEMPLATE/feature_request.yml`  | Create  | Feature request template                                                                                          |
+| `.github/ISSUE_TEMPLATE/adapter_proposal.yml` | Create  | Adapter proposal template                                                                                         |
+| `.github/workflows/release.yml`               | Create  | Full release pipeline: musl binaries (4 targets), crates.io publish, GitHub Release, Homebrew update, docs deploy |
+| `.github/workflows/ci.yml`                    | Modify  | Comprehensive CI: fmt, clippy, test (multi-OS), build, sqlx-check, docs build, policy sync, commit lint           |
+| `.github/workflows/docs.yml`                  | Create  | mdBook deploy to GitHub Pages                                                                                     |
+| `cliff.toml`                                  | Create  | git-cliff configuration for changelog generation                                                                  |
+| `.commitlintrc.yml`                           | Create  | Conventional commit message lint config                                                                           |
+| `packaging/aur/mxr/PKGBUILD`                  | Create  | AUR package (build from source)                                                                                   |
+| `packaging/aur/mxr-bin/PKGBUILD`              | Create  | AUR package (pre-built binary)                                                                                    |
+| `packaging/homebrew/mxr.rb`                   | Create  | Homebrew formula template                                                                                         |
+| `docs/book/book.toml`                         | Create  | mdBook configuration                                                                                              |
+| `docs/book/src/SUMMARY.md`                    | Create  | Documentation table of contents                                                                                   |
+| `docs/book/src/reference/observability.md`    | Create  | Observability & monitoring guide (A006)                                                                           |
+| `docs/book/src/**/*.md`                       | Create  | All documentation pages (~26 files)                                                                               |
+| `docs/guide/adapter-development.md`           | Create  | Adapter development guide (source for mdBook)                                                                     |
+| `docs/assets/demo.tape`                       | Create  | vhs script for demo GIF                                                                                           |
+| `docs/assets/*.gif`                           | Create  | Screenshots and demo GIFs                                                                                         |
+| `docs/announcement/launch-post.md`            | Create  | Blog post draft                                                                                                   |
+| `README.md`                                   | Rewrite | Full README overhaul                                                                                              |
+| `install.sh`                                  | Create  | Quick install script                                                                                              |
+| `flake.nix`                                   | Create  | Nix flake for build + dev shell                                                                                   |
+| `Cargo.toml` (root)                           | Modify  | Add crates.io metadata for binary crate                                                                           |

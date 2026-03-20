@@ -64,6 +64,7 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         Constraint::Length(4),  // line number
         Constraint::Length(1),  // unread indicator
         Constraint::Length(2),  // star
+        Constraint::Length(2),  // unsubscribe
         Constraint::Length(22), // sender
         Constraint::Fill(1),   // subject (+ thread count badge)
         Constraint::Length(8),  // date
@@ -131,6 +132,11 @@ fn build_row<'a>(
         Style::default().fg(theme.warning),
     ));
 
+    let unsubscribe_cell = Cell::from(Span::styled(
+        unsubscribe_marker(&env.unsubscribe),
+        Style::default().fg(theme.text_muted),
+    ));
+
     // Sender (with thread count badge)
     let (sender_text, thread_count) = sender_parts(row, view.mode);
     let sender_spans: Vec<Span> = if let Some(count) = thread_count {
@@ -190,6 +196,7 @@ fn build_row<'a>(
         line_num_cell,
         unread_cell,
         star_cell,
+        unsubscribe_cell,
         sender_cell,
         subject_cell,
         date_cell,
@@ -228,6 +235,14 @@ fn format_date(date: &chrono::DateTime<Utc>) -> String {
 
 fn attachment_marker(has_attachments: bool) -> &'static str {
     if has_attachments { "📎" } else { "  " }
+}
+
+fn unsubscribe_marker(unsubscribe: &mxr_core::types::UnsubscribeMethod) -> &'static str {
+    if matches!(unsubscribe, mxr_core::types::UnsubscribeMethod::None) {
+        " "
+    } else {
+        "U"
+    }
 }
 
 #[cfg(test)]

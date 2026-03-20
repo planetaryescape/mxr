@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Archive a message (remove from inbox)
+
+Usage: mxr archive [OPTIONS] [MESSAGE_ID]
+
+Arguments:
+  [MESSAGE_ID]  Message ID
+
+Options:
+      --search <SEARCH>  Operate on messages matching search query
+      --yes              Skip confirmation
+      --dry-run          Show what would happen
+  -h, --help             Print help

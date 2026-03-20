@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Move message to a label/folder
+
+Usage: mxr move [OPTIONS] <LABEL> [MESSAGE_ID]
+
+Arguments:
+  <LABEL>       Target label
+  [MESSAGE_ID]  Message ID
+
+Options:
+      --search <SEARCH>  
+      --yes              
+      --dry-run          
+  -h, --help             Print help

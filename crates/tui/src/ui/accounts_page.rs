@@ -193,6 +193,10 @@ fn draw_form(frame: &mut Frame, area: Rect, form: &crate::app::AccountFormState,
             .border_style(Style::default().fg(theme.accent)),
     );
     frame.render_widget(footer, layout[2]);
+
+    if form.pending_mode_switch.is_some() {
+        draw_mode_switch_confirm_modal(frame, area, theme);
+    }
 }
 
 fn build_fields(form: &crate::app::AccountFormState) -> Vec<(&'static str, String, bool)> {
@@ -326,6 +330,35 @@ fn draw_onboarding_modal(frame: &mut Frame, area: Rect, theme: &crate::theme::Th
                 .title(" Welcome ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.accent))
+                .style(Style::default().bg(theme.modal_bg)),
+        )
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, popup);
+}
+
+fn draw_mode_switch_confirm_modal(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &crate::theme::Theme,
+) {
+    let popup = centered_rect(58, 28, area);
+    frame.render_widget(Clear, popup);
+
+    let lines = vec![
+        Line::from("Switch account mode?"),
+        Line::from(""),
+        Line::from("This can hide or replace fields you already filled in."),
+        Line::from(""),
+        Line::from("Enter/y: switch  Esc/n: stay"),
+    ];
+
+    let paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(" Confirm Mode Switch ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.warning))
                 .style(Style::default().bg(theme.modal_bg)),
         )
         .alignment(Alignment::Center)

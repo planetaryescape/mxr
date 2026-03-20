@@ -1,0 +1,9 @@
+---
+source: crates/reader/tests/standards.rs
+expression: "json!({\n    \"content\": output.content, \"quoted_blocks\": output.quoted_messages.len(),\n    \"signature\": output.signature, \"original_lines\": output.original_lines,\n    \"cleaned_lines\": output.cleaned_lines,\n})"
+---
+cleaned_lines: 1
+content: Please join the planning meeting.
+original_lines: 1
+quoted_blocks: 0
+signature: ~

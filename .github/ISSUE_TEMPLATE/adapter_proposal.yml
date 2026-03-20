@@ -1,0 +1,36 @@
+name: Adapter Proposal
+description: Propose a new provider adapter
+labels: [adapter]
+body:
+  - type: input
+    id: provider
+    attributes:
+      label: Provider name
+      description: What provider or protocol is this adapter for?
+      placeholder: Outlook, JMAP, Proton bridge, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: protocol
+    attributes:
+      label: API or protocol
+      description: What API, protocol, or bridge would the adapter use?
+    validations:
+      required: true
+
+  - type: textarea
+    id: capabilities
+    attributes:
+      label: Expected capabilities
+      description: Sync, send, labels, delta sync, push, server search, batch operations.
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Constraints, auth model, semantic mismatches, maintenance status.
+    validations:
+      required: false

@@ -1,0 +1,25 @@
+---
+source: crates/tui/tests/snapshots.rs
+assertion_line: 523
+expression: snapshot
+---
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                    ╭ Compose — To: (Tab to add, Enter to compose) ────────────╮                    "
+"                    │                                                          │                    "
+"                    │> a                                                       │                    "
+"                    │  Alice Example <alice@example.com>                       │                    "
+"                    │  Bob Example <bob@example.com>                           │                    "
+"                    │                                                          │                    "
+"                    │                                                          │                    "
+"                    ╰──────────────────────────────────────────────────────────╯                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "
+"                                                                                                    "

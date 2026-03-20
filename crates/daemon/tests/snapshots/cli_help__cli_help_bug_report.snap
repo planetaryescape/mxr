@@ -1,0 +1,19 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Generate a sanitized diagnostic bundle
+
+Usage: mxr bug-report [OPTIONS]
+
+Options:
+      --edit             
+      --stdout           
+      --clipboard        
+      --github           
+      --output <OUTPUT>  
+      --verbose          
+      --full-logs        
+      --no-sanitize      
+      --since <SINCE>    
+  -h, --help             Print help

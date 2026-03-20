@@ -1,0 +1,11 @@
+From: Duplicate <dup@example.com>
+To: Bob <bob@example.com>
+Subject: First subject
+Subject: Second subject
+Date: Sat, 23 Mar 2024 12:00:00 +0000
+Message-ID: <dup-one@example.com>
+Message-ID: <dup-two@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+Duplicate singleton headers should not crash parsing.

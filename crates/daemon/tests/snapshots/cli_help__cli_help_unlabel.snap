@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Remove a label from a message
+
+Usage: mxr unlabel [OPTIONS] <NAME> [MESSAGE_ID]
+
+Arguments:
+  <NAME>        Label name
+  [MESSAGE_ID]  Message ID
+
+Options:
+      --search <SEARCH>  
+      --yes              
+      --dry-run          
+  -h, --help             Print help

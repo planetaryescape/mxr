@@ -107,7 +107,7 @@ One pipeline, multiple consumers.
 
 ### Feature summary
 
-Press `U` on any newsletter to unsubscribe. One key. Confirmation prompt. Done.
+Press `D` on any newsletter to unsubscribe. One key. Confirmation prompt. Done. `U` remains mark unread.
 
 ### How it works
 
@@ -149,12 +149,16 @@ Priority: OneClick > Mailto > HttpLink > BodyLink
 ### Keybinding flow
 
 ```
-User presses U on a message
+User presses D on a message
   → If unsubscribe method is None:
     "No unsubscribe option found for this message"
   → If unsubscribe method exists:
-    "Unsubscribe from sender-newsletter@example.com? [y/n]"
-  → User confirms:
+    open confirmation modal
+  → User chooses:
+    → Unsubscribe only
+    → Unsubscribe + archive all from this sender
+    → Cancel
+  → On confirm:
     → OneClick: daemon fires HTTP POST silently. "Unsubscribed."
     → Mailto: daemon sends unsubscribe email automatically. "Unsubscribe email sent."
     → HttpLink/BodyLink: opens in browser. "Opened unsubscribe page in browser."
@@ -171,7 +175,7 @@ In the message list, messages with an available unsubscribe method show a small 
 
 ### Why this matters
 
-Unsubscribe is typically a multi-step process: open email in browser → scroll to bottom → find tiny unsubscribe link → click → confirm on website → maybe enter email again. mxr reduces this to: `U` → `y`. Combined with reader mode, the messaging is: **mxr strips the noise out of newsletters, and when you're done with one, one key to never see it again.**
+Unsubscribe is typically a multi-step process: open email in browser → scroll to bottom → find tiny unsubscribe link → click → confirm on website → maybe enter email again. mxr reduces this to: `D` → confirm. Combined with reader mode, the messaging is: **mxr strips the noise out of newsletters, and when you're done with one, one key to never see it again.**
 
 ### RFC 8058 one-click POST detail
 

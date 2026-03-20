@@ -1,0 +1,23 @@
+---
+source: crates/tui/tests/snapshots.rs
+assertion_line: 239
+expression: snapshot
+---
+"╭ Sidebar ─────────────────────────────╮"
+"│▾ System                              │"
+"│  All Mail                            │"
+"│  Inbox                           4/10│"
+"│  Starred                            2│"
+"│──────────────────────────────────────│"
+"│▾ Labels                              │"
+"│  Projects                         1/5│"
+"│──────────────────────────────────────│"
+"│▾ Saved Searches                      │"
+"│  Unread                              │"
+"│                                      │"
+"│                                      │"
+"│                                      │"
+"│                                      │"
+"│                                      │"
+"│                                      │"
+"╰──────────────────────────────────────╯"

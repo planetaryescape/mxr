@@ -1,0 +1,44 @@
+---
+source: crates/compose/src/email.rs
+expression: redact_rfc822(&formatted)
+---
+From: =?utf-8?b?TcOrIFNlbmRlcg==?= <sender@example.com>
+Subject: Unicode =?utf-8?b?Y2Fmw6k=?=
+Message-ID: <redacted@example.com>
+To: Alice <alice@example.com>
+MIME-Version: 1.0
+Date: Fri, 20 Mar 2026 00:00:00 +0000
+Content-Type: multipart/mixed;
+ boundary="BOUNDARY_0"
+
+--BOUNDARY_0
+Content-Type: multipart/alternative;
+ boundary="BOUNDARY_1"
+
+--BOUNDARY_1
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+hello
+--BOUNDARY_1
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html>
+<head><meta charset=3D"utf-8"></head>
+<body style=3D"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', =
+Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #333; max-wid=
+th: 600px;">
+<p>hello</p>
+
+</body>
+</html>
+--BOUNDARY_1--
+--BOUNDARY_0
+Content-Disposition: attachment; filename="hello.txt"
+Content-Type: text/plain
+Content-Transfer-Encoding: 7bit
+
+hello attachment
+--BOUNDARY_0--

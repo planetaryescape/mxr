@@ -188,7 +188,7 @@ pub enum UnsubscribeMethod {
 }
 ```
 
-**Where this comes from**: The `List-Unsubscribe` header (RFC 2369) is a standard header that most legitimate newsletters include. It's machine-readable by design. Gmail and Apple Mail already use it for their unsubscribe buttons. We parse it at sync time and store it on the envelope so that the one-key unsubscribe feature (`U`) is instant, not a runtime header scan.
+**Where this comes from**: The `List-Unsubscribe` header (RFC 2369) is a standard header that most legitimate newsletters include. It's machine-readable by design. Gmail and Apple Mail already use it for their unsubscribe buttons. We parse it at sync time and store it on the envelope so that the one-key unsubscribe feature (`D`) is instant, not a runtime header scan. `U` remains mark unread.
 
 If the header isn't present, we fall back to scanning the HTML body for common unsubscribe link patterns (href containing "unsubscribe", "opt-out", "manage preferences"). This is fuzzier but catches stragglers.
 

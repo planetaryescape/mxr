@@ -1,0 +1,10 @@
+---
+source: crates/compose/src/parse.rs
+expression: "json!({\n    \"list_id\": parsed.list_id, \"auth_results\": parsed.auth_results,\n    \"content_language\": parsed.content_language, \"text_plain_format\":\n    format!(\"{:?}\", parsed.text_plain_format), \"raw_headers_present\":\n    parsed.raw_headers.is_some(),\n})"
+---
+auth_results:
+  - mx.example.net; dmarc=pass
+content_language: []
+list_id: ~
+raw_headers_present: true
+text_plain_format: None

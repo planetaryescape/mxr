@@ -1,0 +1,10 @@
+---
+source: crates/reader/tests/standards.rs
+expression: "json!({\n    \"content_preview\": output.content.lines().take(6).collect::<Vec<_>>(),\n    \"quoted_blocks\": output.quoted_messages.len(), \"signature\":\n    output.signature, \"original_lines\": output.original_lines,\n    \"cleaned_lines\": output.cleaned_lines,\n})"
+---
+cleaned_lines: 1
+content_preview:
+  - Attachment filename uses RFC2231 encoding.
+original_lines: 1
+quoted_blocks: 0
+signature: ~

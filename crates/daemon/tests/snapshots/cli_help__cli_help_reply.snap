@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Reply to a message
+
+Usage: mxr reply [OPTIONS] <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>  Message ID to reply to
+
+Options:
+      --body <BODY>  Inline reply body (skip $EDITOR)
+      --body-stdin   Read reply body from stdin
+      --yes          Skip confirmation
+      --dry-run      Show what would be sent
+  -h, --help         Print help

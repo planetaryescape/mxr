@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Send a draft by ID
+
+Usage: mxr send <DRAFT_ID>
+
+Arguments:
+  <DRAFT_ID>  Draft ID to send
+
+Options:
+  -h, --help  Print help

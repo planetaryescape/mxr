@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Manage saved searches
+
+Usage: mxr saved [OPTIONS] [COMMAND]
+
+Commands:
+  list    List saved searches
+  add     Add a saved search
+  delete  Delete a saved search
+  run     Run a saved search
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  [possible values: table, json, csv, ids]
+  -h, --help             Print help

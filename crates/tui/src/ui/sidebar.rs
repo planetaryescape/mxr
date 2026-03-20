@@ -10,13 +10,19 @@ pub struct SidebarView<'a> {
     pub saved_searches: &'a [SavedSearch],
     pub sidebar_selected: usize,
     pub all_mail_active: bool,
+    pub system_expanded: bool,
+    pub user_expanded: bool,
+    pub saved_searches_expanded: bool,
     pub active_label: Option<&'a mxr_core::LabelId>,
 }
 
 #[derive(Debug, Clone)]
 enum SidebarEntry<'a> {
     Separator,
-    Header(&'static str),
+    Header {
+        title: &'static str,
+        expanded: bool,
+    },
     AllMail,
     Label(&'a Label),
     SavedSearch(&'a SavedSearch),
@@ -27,7 +33,13 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
     let border_style = theme.border_style(is_focused);
 
     let inner_width = area.width.saturating_sub(2) as usize;
-    let entries = build_sidebar_entries(view.labels, view.saved_searches);
+    let entries = build_sidebar_entries(
+        view.labels,
+        view.saved_searches,
+        view.system_expanded,
+        view.user_expanded,
+        view.saved_searches_expanded,
+    );
     let selected_visual_index = visual_index_for_selection(&entries, view.sidebar_selected);
 
     let items = entries
@@ -40,10 +52,13 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
                     Style::default().fg(theme.text_muted),
                 )))
             }
-            SidebarEntry::Header(title) => ListItem::new(Line::from(Span::styled(
-                *title,
-                Style::default().fg(theme.accent).bold(),
-            ))),
+            SidebarEntry::Header { title, expanded } => ListItem::new(Line::from(vec![
+                Span::styled(
+                    if *expanded { "▾ " } else { "▸ " },
+                    Style::default().fg(theme.text_muted),
+                ),
+                Span::styled(*title, Style::default().fg(theme.accent).bold()),
+            ])),
             SidebarEntry::AllMail => render_all_mail_item(inner_width, view.all_mail_active, theme),
             SidebarEntry::Label(label) => render_label_item(label, inner_width, view.active_label, theme),
             SidebarEntry::SavedSearch(search) => ListItem::new(format!("  {}", search.name)),
@@ -70,6 +85,9 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
 fn build_sidebar_entries<'a>(
     labels: &'a [Label],
     saved_searches: &'a [SavedSearch],
+    system_expanded: bool,
+    user_expanded: bool,
+    saved_searches_expanded: bool,
 ) -> Vec<SidebarEntry<'a>> {
     let visible_labels: Vec<&Label> = labels
         .iter()
@@ -93,23 +111,41 @@ fn build_sidebar_entries<'a>(
         .collect();
     user_labels.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
 
-    let mut entries = vec![SidebarEntry::AllMail];
-    entries.extend(system_labels.into_iter().map(SidebarEntry::Label));
+    let mut entries = vec![
+        SidebarEntry::Header {
+            title: "System",
+            expanded: system_expanded,
+        },
+        SidebarEntry::AllMail,
+    ];
+    if system_expanded {
+        entries.extend(system_labels.into_iter().map(SidebarEntry::Label));
+    }
 
     if !user_labels.is_empty() {
         if !entries.is_empty() {
             entries.push(SidebarEntry::Separator);
         }
-        entries.push(SidebarEntry::Header(" Labels"));
-        entries.extend(user_labels.into_iter().map(SidebarEntry::Label));
+        entries.push(SidebarEntry::Header {
+            title: "Labels",
+            expanded: user_expanded,
+        });
+        if user_expanded {
+            entries.extend(user_labels.into_iter().map(SidebarEntry::Label));
+        }
     }
 
     if !saved_searches.is_empty() {
         if !entries.is_empty() {
             entries.push(SidebarEntry::Separator);
         }
-        entries.push(SidebarEntry::Header(" Saved Searches"));
-        entries.extend(saved_searches.iter().map(SidebarEntry::SavedSearch));
+        entries.push(SidebarEntry::Header {
+            title: "Saved Searches",
+            expanded: saved_searches_expanded,
+        });
+        if saved_searches_expanded {
+            entries.extend(saved_searches.iter().map(SidebarEntry::SavedSearch));
+        }
     }
 
     entries
@@ -125,7 +161,7 @@ fn visual_index_for_selection(entries: &[SidebarEntry<'_>], sidebar_selected: us
                 }
                 selectable += 1;
             }
-            SidebarEntry::Separator | SidebarEntry::Header(_) => {}
+            SidebarEntry::Separator | SidebarEntry::Header { .. } => {}
         }
     }
     None
@@ -270,12 +306,13 @@ mod tests {
     #[test]
     fn sidebar_entries_insert_labels_header_before_user_labels() {
         let labels = vec![label("INBOX", LabelKind::System), label("Work", LabelKind::User)];
-        let entries = build_sidebar_entries(&labels, &[]);
-        assert!(matches!(entries[0], SidebarEntry::AllMail));
-        assert!(matches!(entries[1], SidebarEntry::Label(label) if label.name == "INBOX"));
-        assert!(matches!(entries[2], SidebarEntry::Separator));
-        assert!(matches!(entries[3], SidebarEntry::Header(" Labels")));
-        assert!(matches!(entries[4], SidebarEntry::Label(label) if label.name == "Work"));
+        let entries = build_sidebar_entries(&labels, &[], true, true, true);
+        assert!(matches!(entries[0], SidebarEntry::Header { title: "System", .. }));
+        assert!(matches!(entries[1], SidebarEntry::AllMail));
+        assert!(matches!(entries[2], SidebarEntry::Label(label) if label.name == "INBOX"));
+        assert!(matches!(entries[3], SidebarEntry::Separator));
+        assert!(matches!(entries[4], SidebarEntry::Header { title: "Labels", .. }));
+        assert!(matches!(entries[5], SidebarEntry::Label(label) if label.name == "Work"));
     }
 
     #[test]
@@ -291,10 +328,10 @@ mod tests {
             position: 0,
             created_at: chrono::Utc::now(),
         }];
-        let entries = build_sidebar_entries(&labels, &searches);
-        assert_eq!(visual_index_for_selection(&entries, 0), Some(0));
-        assert_eq!(visual_index_for_selection(&entries, 1), Some(1));
-        assert_eq!(visual_index_for_selection(&entries, 2), Some(4));
-        assert_eq!(visual_index_for_selection(&entries, 3), Some(7));
+        let entries = build_sidebar_entries(&labels, &searches, true, true, true);
+        assert_eq!(visual_index_for_selection(&entries, 0), Some(1));
+        assert_eq!(visual_index_for_selection(&entries, 1), Some(2));
+        assert_eq!(visual_index_for_selection(&entries, 2), Some(5));
+        assert_eq!(visual_index_for_selection(&entries, 3), Some(8));
     }
 }

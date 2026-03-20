@@ -18,6 +18,7 @@ export default defineConfig({
           items: [
             { label: 'Installation', slug: 'getting-started/install' },
             { label: 'Gmail Setup', slug: 'getting-started/gmail-setup' },
+            { label: 'IMAP / SMTP Setup', slug: 'getting-started/imap-smtp-setup' },
             { label: 'First Sync', slug: 'getting-started/first-sync' },
           ],
         },

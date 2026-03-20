@@ -15,6 +15,9 @@ pub trait ImapSession: Send {
     async fn uid_copy(&mut self, uid_set: &str, mailbox: &str) -> Result<()>;
     async fn expunge(&mut self) -> Result<()>;
     async fn list_folders(&mut self) -> Result<Vec<FolderInfo>>;
+    async fn create_mailbox(&mut self, mailbox: &str) -> Result<()>;
+    async fn rename_mailbox(&mut self, old_mailbox: &str, new_mailbox: &str) -> Result<()>;
+    async fn delete_mailbox(&mut self, mailbox: &str) -> Result<()>;
     async fn logout(&mut self) -> Result<()>;
 }
 
@@ -274,6 +277,30 @@ impl ImapSession for RealImapSession {
         Ok(folders)
     }
 
+    async fn create_mailbox(&mut self, mailbox: &str) -> Result<()> {
+        self.session
+            .create(mailbox)
+            .await
+            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn rename_mailbox(&mut self, old_mailbox: &str, new_mailbox: &str) -> Result<()> {
+        self.session
+            .rename(old_mailbox, new_mailbox)
+            .await
+            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn delete_mailbox(&mut self, mailbox: &str) -> Result<()> {
+        self.session
+            .delete(mailbox)
+            .await
+            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+        Ok(())
+    }
+
     async fn logout(&mut self) -> Result<()> {
         self.session
             .logout()
@@ -372,6 +399,33 @@ pub mod mock {
         async fn list_folders(&mut self) -> Result<Vec<FolderInfo>> {
             self.log.lock().unwrap().commands.push("LIST".to_string());
             Ok(self.folders.clone())
+        }
+
+        async fn create_mailbox(&mut self, mailbox: &str) -> Result<()> {
+            self.log
+                .lock()
+                .unwrap()
+                .commands
+                .push(format!("CREATE {mailbox}"));
+            Ok(())
+        }
+
+        async fn rename_mailbox(&mut self, old_mailbox: &str, new_mailbox: &str) -> Result<()> {
+            self.log
+                .lock()
+                .unwrap()
+                .commands
+                .push(format!("RENAME {old_mailbox} {new_mailbox}"));
+            Ok(())
+        }
+
+        async fn delete_mailbox(&mut self, mailbox: &str) -> Result<()> {
+            self.log
+                .lock()
+                .unwrap()
+                .commands
+                .push(format!("DELETE {mailbox}"));
+            Ok(())
         }
 
         async fn logout(&mut self) -> Result<()> {

@@ -1,0 +1,24 @@
+[package]
+name = "mxr-rules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Deterministic rules engine for mxr"
+
+[dependencies]
+mxr-core = { workspace = true }
+chrono = { workspace = true }
+regex = { workspace = true }
+glob-match = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

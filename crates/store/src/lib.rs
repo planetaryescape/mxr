@@ -5,6 +5,7 @@ mod event_log;
 mod label;
 mod message;
 mod pool;
+mod rules;
 mod search;
 mod snooze;
 mod sync_cursor;
@@ -13,6 +14,7 @@ mod thread;
 
 pub use event_log::EventLogEntry;
 pub use pool::Store;
+pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
 pub use sync_log::{SyncLogEntry, SyncStatus};
 
 #[cfg(test)]
@@ -72,6 +74,21 @@ mod tests {
         let fetched = store.get_account(&account.id).await.unwrap().unwrap();
         assert_eq!(fetched.name, account.name);
         assert_eq!(fetched.email, account.email);
+    }
+
+    #[tokio::test]
+    async fn account_insert_upserts_existing_runtime_record() {
+        let store = Store::in_memory().await.unwrap();
+        let mut account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        account.name = "Updated".to_string();
+        account.email = "updated@example.com".to_string();
+        store.insert_account(&account).await.unwrap();
+
+        let fetched = store.get_account(&account.id).await.unwrap().unwrap();
+        assert_eq!(fetched.name, "Updated");
+        assert_eq!(fetched.email, "updated@example.com");
     }
 
     #[tokio::test]
@@ -178,7 +195,7 @@ mod tests {
         let env = test_envelope(&account.id);
         store.upsert_envelope(&env).await.unwrap();
         store
-            .set_message_labels(&env.id, &[label.id.clone()])
+            .set_message_labels(&env.id, std::slice::from_ref(&label.id))
             .await
             .unwrap();
 
@@ -188,6 +205,17 @@ mod tests {
             .unwrap();
         assert_eq!(by_label.len(), 1);
         assert_eq!(by_label[0].id, env.id);
+        assert_eq!(by_label[0].label_provider_ids, vec!["INBOX".to_string()]);
+
+        let by_account = store
+            .list_envelopes_by_account(&account.id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(by_account.len(), 1);
+        assert_eq!(by_account[0].label_provider_ids, vec!["INBOX".to_string()]);
+
+        let fetched = store.get_envelope(&env.id).await.unwrap().unwrap();
+        assert_eq!(fetched.label_provider_ids, vec!["INBOX".to_string()]);
     }
 
     #[tokio::test]
@@ -330,6 +358,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn prune_events_before_removes_old_rows() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        store
+            .insert_event("info", "sync", "recent", Some(&account.id), None)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE event_log SET timestamp = ? WHERE summary = 'recent'")
+            .bind(chrono::Utc::now().timestamp())
+            .execute(store.writer())
+            .await
+            .unwrap();
+
+        store
+            .insert_event("info", "sync", "old", Some(&account.id), None)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE event_log SET timestamp = ? WHERE summary = 'old'")
+            .bind((chrono::Utc::now() - chrono::Duration::days(120)).timestamp())
+            .execute(store.writer())
+            .await
+            .unwrap();
+
+        let removed = store
+            .prune_events_before((chrono::Utc::now() - chrono::Duration::days(90)).timestamp())
+            .await
+            .unwrap();
+        assert_eq!(removed, 1);
+
+        let events = store.list_events(10, None, None).await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].summary, "recent");
+    }
+
+    #[tokio::test]
     async fn get_message_id_by_provider_id() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();
@@ -380,7 +445,7 @@ mod tests {
             }
             store.upsert_envelope(&env).await.unwrap();
             store
-                .set_message_labels(&env.id, &[label.id.clone()])
+                .set_message_labels(&env.id, std::slice::from_ref(&label.id))
                 .await
                 .unwrap();
         }
@@ -390,6 +455,102 @@ mod tests {
         let labels = store.list_labels_by_account(&account.id).await.unwrap();
         assert_eq!(labels[0].total_count, 3);
         assert_eq!(labels[0].unread_count, 1);
+    }
+
+    #[tokio::test]
+    async fn replace_label_moves_message_associations_when_id_changes() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let original = Label {
+            id: LabelId::from_provider_id("imap", "Projects"),
+            account_id: account.id.clone(),
+            name: "Projects".to_string(),
+            kind: LabelKind::Folder,
+            color: None,
+            provider_id: "Projects".to_string(),
+            unread_count: 0,
+            total_count: 0,
+        };
+        store.upsert_label(&original).await.unwrap();
+
+        let env = test_envelope(&account.id);
+        store.upsert_envelope(&env).await.unwrap();
+        store
+            .set_message_labels(&env.id, std::slice::from_ref(&original.id))
+            .await
+            .unwrap();
+
+        let renamed = Label {
+            id: LabelId::from_provider_id("imap", "Client Work"),
+            account_id: account.id.clone(),
+            name: "Client Work".to_string(),
+            kind: LabelKind::Folder,
+            color: None,
+            provider_id: "Client Work".to_string(),
+            unread_count: 0,
+            total_count: 0,
+        };
+        store.replace_label(&original.id, &renamed).await.unwrap();
+
+        let labels = store.list_labels_by_account(&account.id).await.unwrap();
+        assert_eq!(labels.len(), 1);
+        assert_eq!(labels[0].name, "Client Work");
+        assert_eq!(labels[0].id, renamed.id);
+
+        let by_new_label = store
+            .list_envelopes_by_label(&renamed.id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(by_new_label.len(), 1);
+        assert_eq!(by_new_label[0].id, env.id);
+        assert!(store.list_envelopes_by_label(&original.id, 100, 0).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn rules_roundtrip_and_history() {
+        let store = Store::in_memory().await.unwrap();
+        let now = chrono::Utc::now();
+
+        store
+            .upsert_rule(crate::RuleRecordInput {
+                id: "rule-1",
+                name: "Archive newsletters",
+                enabled: true,
+                priority: 10,
+                conditions_json: r#"{"type":"field","field":"has_label","label":"newsletters"}"#,
+                actions_json: r#"[{"type":"archive"}]"#,
+                created_at: now,
+                updated_at: now,
+            })
+            .await
+            .unwrap();
+
+        let rules = store.list_rules().await.unwrap();
+        assert_eq!(rules.len(), 1);
+        let rule_json = crate::rules::row_to_rule_json(&rules[0]);
+        assert_eq!(rule_json["name"], "Archive newsletters");
+        assert_eq!(rule_json["priority"], 10);
+
+        store
+            .insert_rule_log(crate::RuleLogInput {
+                rule_id: "rule-1",
+                rule_name: "Archive newsletters",
+                message_id: "msg-1",
+                actions_applied_json: r#"["archive"]"#,
+                timestamp: now,
+                success: true,
+                error: None,
+            })
+            .await
+            .unwrap();
+
+        let logs = store.list_rule_logs(Some("rule-1"), 10).await.unwrap();
+        assert_eq!(logs.len(), 1);
+        let log_json = crate::rules::row_to_rule_log_json(&logs[0]);
+        assert_eq!(log_json["rule_name"], "Archive newsletters");
+        assert_eq!(log_json["message_id"], "msg-1");
     }
 
     #[tokio::test]

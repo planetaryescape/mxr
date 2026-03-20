@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT flags as \"flags!\" FROM messages WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "flags!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "24ded6ad32f0cb0acdff353ecd146d035bc38965eae128ad97f9948e5bf2b683"
+}

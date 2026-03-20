@@ -20,6 +20,26 @@ impl GmailProvider {
         Self { account_id, client }
     }
 
+    fn map_label(&self, gl: crate::types::GmailLabel) -> Label {
+        let kind = match gl.label_type.as_deref() {
+            Some("system") => LabelKind::System,
+            _ => LabelKind::User,
+        };
+
+        let color = gl.color.as_ref().and_then(|c| c.background_color.clone());
+
+        Label {
+            id: LabelId::from_provider_id("gmail", &gl.id),
+            account_id: self.account_id.clone(),
+            name: gl.name,
+            kind,
+            color,
+            provider_id: gl.id,
+            unread_count: gl.messages_unread.unwrap_or(0),
+            total_count: gl.messages_total.unwrap_or(0),
+        }
+    }
+
     async fn initial_sync(&self) -> Result<SyncBatch, MxrError> {
         debug!("Starting initial sync for account {}", self.account_id);
 
@@ -303,6 +323,7 @@ impl MailSyncProvider for GmailProvider {
             delta_sync: true,
             push: false, // push via pub/sub not yet implemented
             batch_operations: true,
+            native_thread_ids: true,
         }
     }
 
@@ -323,23 +344,7 @@ impl MailSyncProvider for GmailProvider {
         let mut labels = Vec::with_capacity(gmail_labels.len());
 
         for gl in gmail_labels {
-            let kind = match gl.label_type.as_deref() {
-                Some("system") => LabelKind::System,
-                _ => LabelKind::User,
-            };
-
-            let color = gl.color.as_ref().and_then(|c| c.background_color.clone());
-
-            labels.push(Label {
-                id: LabelId::from_provider_id("gmail", &gl.id),
-                account_id: self.account_id.clone(),
-                name: gl.name,
-                kind,
-                color,
-                provider_id: gl.id,
-                unread_count: gl.messages_unread.unwrap_or(0),
-                total_count: gl.messages_total.unwrap_or(0),
-            });
+            labels.push(self.map_label(gl));
         }
 
         Ok(labels)
@@ -380,6 +385,35 @@ impl MailSyncProvider for GmailProvider {
         let remove_refs: Vec<&str> = remove.iter().map(|s| s.as_str()).collect();
         self.client
             .modify_message(provider_message_id, &add_refs, &remove_refs)
+            .await
+            .map_err(MxrError::from)
+    }
+
+    async fn create_label(&self, name: &str, color: Option<&str>) -> mxr_core::provider::Result<Label> {
+        let label = self
+            .client
+            .create_label(name, color)
+            .await
+            .map_err(MxrError::from)?;
+        Ok(self.map_label(label))
+    }
+
+    async fn rename_label(
+        &self,
+        provider_label_id: &str,
+        new_name: &str,
+    ) -> mxr_core::provider::Result<Label> {
+        let label = self
+            .client
+            .rename_label(provider_label_id, new_name)
+            .await
+            .map_err(MxrError::from)?;
+        Ok(self.map_label(label))
+    }
+
+    async fn delete_label(&self, provider_label_id: &str) -> mxr_core::provider::Result<()> {
+        self.client
+            .delete_label(provider_label_id)
             .await
             .map_err(MxrError::from)
     }

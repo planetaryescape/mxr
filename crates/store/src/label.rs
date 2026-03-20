@@ -93,6 +93,71 @@ impl super::Store {
         Ok(())
     }
 
+    pub async fn delete_label(&self, label_id: &LabelId) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM labels WHERE id = ?")
+            .bind(label_id.as_str())
+            .execute(self.writer())
+            .await?;
+        Ok(())
+    }
+
+    pub async fn replace_label(&self, old_label_id: &LabelId, new_label: &Label) -> Result<(), sqlx::Error> {
+        let mut tx = self.writer().begin().await?;
+
+        let existing: Option<(i64, i64)> = sqlx::query_as(
+            "SELECT unread_count, total_count FROM labels WHERE id = ?",
+        )
+        .bind(old_label_id.as_str())
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let (unread_count, total_count) = existing.unwrap_or((0, 0));
+        let kind = match new_label.kind {
+            LabelKind::System => "system",
+            LabelKind::Folder => "folder",
+            LabelKind::User => "user",
+        };
+
+        sqlx::query(
+            "INSERT INTO labels (id, account_id, name, kind, color, provider_id, unread_count, total_count)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                account_id = excluded.account_id,
+                name = excluded.name,
+                kind = excluded.kind,
+                color = excluded.color,
+                provider_id = excluded.provider_id,
+                unread_count = excluded.unread_count,
+                total_count = excluded.total_count",
+        )
+        .bind(new_label.id.as_str())
+        .bind(new_label.account_id.as_str())
+        .bind(&new_label.name)
+        .bind(kind)
+        .bind(&new_label.color)
+        .bind(&new_label.provider_id)
+        .bind(unread_count)
+        .bind(total_count)
+        .execute(&mut *tx)
+        .await?;
+
+        if old_label_id != &new_label.id {
+            sqlx::query("UPDATE message_labels SET label_id = ? WHERE label_id = ?")
+                .bind(new_label.id.as_str())
+                .bind(old_label_id.as_str())
+                .execute(&mut *tx)
+                .await?;
+
+            sqlx::query("DELETE FROM labels WHERE id = ?")
+                .bind(old_label_id.as_str())
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn recalculate_label_counts(
         &self,
         account_id: &AccountId,

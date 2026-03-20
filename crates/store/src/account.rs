@@ -23,7 +23,16 @@ impl super::Store {
 
         sqlx::query!(
             "INSERT INTO accounts (id, name, email, sync_provider, send_provider, sync_config, send_config, enabled, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                email = excluded.email,
+                sync_provider = excluded.sync_provider,
+                send_provider = excluded.send_provider,
+                sync_config = excluded.sync_config,
+                send_config = excluded.send_config,
+                enabled = excluded.enabled,
+                updated_at = excluded.updated_at",
             id,
             account.name,
             account.email,

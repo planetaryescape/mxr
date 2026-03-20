@@ -21,6 +21,15 @@ impl SmtpSendProvider {
         Self { config }
     }
 
+    pub async fn test_connection(&self) -> Result<(), SmtpError> {
+        let transport = self.build_transport().await?;
+        transport
+            .test_connection()
+            .await
+            .map_err(|e| SmtpError::Transport(e.to_string()))?;
+        Ok(())
+    }
+
     async fn build_transport(&self) -> Result<AsyncSmtpTransport<Tokio1Executor>, SmtpError> {
         let password = self.config.resolve_password()?;
         let creds = Credentials::new(self.config.username.clone(), password);

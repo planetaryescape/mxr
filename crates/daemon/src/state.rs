@@ -1,22 +1,37 @@
+use mxr_core::id::AccountId;
 use mxr_core::*;
 use mxr_protocol::IpcMessage;
 use mxr_search::SearchIndex;
 use mxr_store::Store;
 use mxr_sync::SyncEngine;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex as StdMutex, RwLock};
 use std::time::Instant;
 use tokio::sync::{broadcast, Mutex};
+
+pub(crate) struct ProviderSetup {
+    pub providers: HashMap<AccountId, Arc<dyn MailSyncProvider>>,
+    pub send_providers: HashMap<AccountId, Arc<dyn MailSendProvider>>,
+    pub default_provider: Arc<dyn MailSyncProvider>,
+    pub default_send_provider: Option<Arc<dyn MailSendProvider>>,
+}
+
+pub(crate) struct ProviderRuntime {
+    pub providers: HashMap<AccountId, Arc<dyn MailSyncProvider>>,
+    pub send_providers: HashMap<AccountId, Arc<dyn MailSendProvider>>,
+    pub default_provider: Arc<dyn MailSyncProvider>,
+    pub default_send_provider: Option<Arc<dyn MailSendProvider>>,
+}
 
 pub struct AppState {
     pub store: Arc<Store>,
     pub search: Arc<Mutex<SearchIndex>>,
     pub sync_engine: Arc<SyncEngine>,
-    pub provider: Arc<dyn MailSyncProvider>,
-    pub send_provider: Option<Arc<dyn MailSendProvider>>,
+    runtime: RwLock<ProviderRuntime>,
+    sync_loop_accounts: StdMutex<HashSet<AccountId>>,
     pub event_tx: broadcast::Sender<IpcMessage>,
     pub start_time: Instant,
-    #[allow(dead_code)] // Used by CLI commands, sync loop config
-    pub config: mxr_config::MxrConfig,
+    config: RwLock<mxr_config::MxrConfig>,
 }
 
 impl AppState {
@@ -33,13 +48,13 @@ impl AppState {
         let search = Arc::new(Mutex::new(SearchIndex::open(&index_path)?));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
-        let (provider, send_provider) = match Self::create_provider_from_config(&config, &store)
+        let provider_setup = match Self::create_providers_from_config(&config, &store)
             .await
         {
             Ok(p) => p,
             Err(e) => {
                 anyhow::bail!(
-                        "No configured account: {e}\nRun `mxr accounts add gmail` to set up your account."
+                        "No configured account: {e}\nRun `mxr accounts add gmail|imap` to set up your account."
                     );
             }
         };
@@ -50,64 +65,154 @@ impl AppState {
             store,
             search,
             sync_engine,
-            provider,
-            send_provider,
+            runtime: RwLock::new(ProviderRuntime {
+                providers: provider_setup.providers,
+                send_providers: provider_setup.send_providers,
+                default_provider: provider_setup.default_provider,
+                default_send_provider: provider_setup.default_send_provider,
+            }),
+            sync_loop_accounts: StdMutex::new(HashSet::new()),
             event_tx,
             start_time: Instant::now(),
-            config,
+            config: RwLock::new(config),
         })
     }
 
-    async fn create_provider_from_config(
+    async fn create_providers_from_config(
         config: &mxr_config::MxrConfig,
         store: &Arc<Store>,
-    ) -> anyhow::Result<(Arc<dyn MailSyncProvider>, Option<Arc<dyn MailSendProvider>>)> {
-        // Find the first Gmail account in config
+    ) -> anyhow::Result<ProviderSetup> {
+        let mut providers = HashMap::new();
+        let mut send_providers = HashMap::new();
+        let mut default_provider = None;
+        let mut default_send_provider = None;
+        let requested_default = config.general.default_account.as_deref();
+
         for (key, acct_config) in &config.accounts {
-            if let Some(mxr_config::SyncProviderConfig::Gmail {
-                client_id,
-                client_secret,
-                token_ref,
-            }) = &acct_config.sync
-            {
-                // Use config credentials, or fall back to bundled
-                let cid = client_id.clone();
-                let csecret = client_secret
+            let provider_kind = sync_provider_kind(acct_config.sync.as_ref());
+            let send_kind = send_provider_kind(acct_config.send.as_ref());
+            let account_id = AccountId::from_provider_id(
+                provider_kind
                     .clone()
-                    .or_else(|| mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET.map(String::from))
-                    .unwrap_or_default();
+                    .or(send_kind.clone())
+                    .map(provider_kind_name)
+                    .unwrap_or("account"),
+                &acct_config.email,
+            );
 
-                let mut auth =
-                    mxr_provider_gmail::auth::GmailAuth::new(cid, csecret, token_ref.clone());
-                auth.load_existing().await?;
+            let account = Account {
+                id: account_id.clone(),
+                name: acct_config.name.clone(),
+                email: acct_config.email.clone(),
+                sync_backend: provider_kind.map(|provider_kind| BackendRef {
+                    provider_kind,
+                    config_key: key.clone(),
+                }),
+                send_backend: send_kind.map(|provider_kind| BackendRef {
+                    provider_kind,
+                    config_key: key.clone(),
+                }),
+                enabled: true,
+            };
+            store.insert_account(&account).await?;
 
-                let client = mxr_provider_gmail::client::GmailClient::new(auth);
-                let account_id = AccountId::from_provider_id("gmail", &acct_config.email);
-
-                // Ensure account exists in store
-                if store.get_account(&account_id).await?.is_none() {
-                    let account = Account {
-                        id: account_id.clone(),
-                        name: acct_config.name.clone(),
-                        email: acct_config.email.clone(),
-                        sync_backend: Some(BackendRef {
-                            provider_kind: ProviderKind::Gmail,
-                            config_key: key.clone(),
-                        }),
-                        send_backend: None,
-                        enabled: true,
-                    };
-                    store.insert_account(&account).await?;
+            let sync_provider = match &acct_config.sync {
+                Some(mxr_config::SyncProviderConfig::Gmail {
+                    client_id,
+                    client_secret,
+                    token_ref,
+                }) => {
+                    let cid = client_id.clone();
+                    let csecret = client_secret
+                        .clone()
+                        .or_else(|| {
+                            mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET.map(String::from)
+                        })
+                        .unwrap_or_default();
+                    let mut auth =
+                        mxr_provider_gmail::auth::GmailAuth::new(cid, csecret, token_ref.clone());
+                    auth.load_existing().await?;
+                    let client = mxr_provider_gmail::client::GmailClient::new(auth);
+                    let provider = Arc::new(mxr_provider_gmail::GmailProvider::new(
+                        account_id.clone(),
+                        client,
+                    ));
+                    let sync_provider: Arc<dyn MailSyncProvider> = provider.clone();
+                    if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Gmail)) {
+                        let send_provider: Arc<dyn MailSendProvider> = provider.clone();
+                        send_providers.insert(account_id.clone(), send_provider.clone());
+                        if requested_default == Some(key.as_str())
+                            || default_send_provider.is_none()
+                        {
+                            default_send_provider = Some(send_provider);
+                        }
+                    }
+                    Some(sync_provider)
                 }
+                Some(mxr_config::SyncProviderConfig::Imap {
+                    host,
+                    port,
+                    username,
+                    password_ref,
+                    use_tls,
+                }) => Some(Arc::new(mxr_provider_imap::ImapProvider::new(
+                    account_id.clone(),
+                    mxr_provider_imap::config::ImapConfig {
+                        host: host.clone(),
+                        port: *port,
+                        username: username.clone(),
+                        password_ref: password_ref.clone(),
+                        use_tls: *use_tls,
+                    },
+                )) as Arc<dyn MailSyncProvider>),
+                None => None,
+            };
 
-                tracing::info!("Using Gmail provider for account '{key}'");
-                let provider = Arc::new(mxr_provider_gmail::GmailProvider::new(account_id, client));
-                // GmailProvider implements both MailSyncProvider and MailSendProvider
-                let send_provider: Arc<dyn MailSendProvider> = provider.clone();
-                return Ok((provider, Some(send_provider)));
+            if let Some(sync_provider) = sync_provider {
+                if requested_default == Some(key.as_str()) || default_provider.is_none() {
+                    default_provider = Some(sync_provider.clone());
+                }
+                providers.insert(account_id.clone(), sync_provider);
+            }
+
+            if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Gmail))
+                && !send_providers.contains_key(&account_id)
+            {
+                anyhow::bail!("Account '{key}' uses gmail send without gmail sync");
+            }
+
+            if let Some(mxr_config::SendProviderConfig::Smtp {
+                host,
+                port,
+                username,
+                password_ref,
+                use_tls,
+            }) = &acct_config.send
+            {
+                let send_provider = Arc::new(mxr_provider_smtp::SmtpSendProvider::new(
+                    mxr_provider_smtp::config::SmtpConfig {
+                        host: host.clone(),
+                        port: *port,
+                        username: username.clone(),
+                        password_ref: password_ref.clone(),
+                        use_tls: *use_tls,
+                    },
+                )) as Arc<dyn MailSendProvider>;
+                if requested_default == Some(key.as_str()) || default_send_provider.is_none() {
+                    default_send_provider = Some(send_provider.clone());
+                }
+                send_providers.insert(account_id.clone(), send_provider);
             }
         }
-        anyhow::bail!("no Gmail accounts in config")
+
+        let default_provider = default_provider.ok_or_else(|| anyhow::anyhow!("no sync-capable accounts in config"))?;
+
+        Ok(ProviderSetup {
+            providers,
+            send_providers,
+            default_provider,
+            default_send_provider,
+        })
     }
 
     pub fn data_dir() -> std::path::PathBuf {
@@ -116,6 +221,127 @@ impl AppState {
 
     pub fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
+    }
+
+    pub fn config_snapshot(&self) -> mxr_config::MxrConfig {
+        self.config.read().expect("config lock poisoned").clone()
+    }
+
+    pub fn attachment_dir(&self) -> std::path::PathBuf {
+        self.config_snapshot().general.attachment_dir
+    }
+
+    pub fn hook_timeout_secs(&self) -> u64 {
+        self.config_snapshot().general.hook_timeout
+    }
+
+    pub fn sync_interval_secs(&self) -> u64 {
+        self.config_snapshot().general.sync_interval
+    }
+
+    pub fn default_provider(&self) -> Arc<dyn MailSyncProvider> {
+        self.runtime
+            .read()
+            .expect("runtime lock poisoned")
+            .default_provider
+            .clone()
+    }
+
+    pub fn default_account_id(&self) -> AccountId {
+        self.default_provider().account_id().clone()
+    }
+
+    pub fn sync_provider_for_account(
+        &self,
+        account_id: &AccountId,
+    ) -> Option<Arc<dyn MailSyncProvider>> {
+        self.runtime
+            .read()
+            .expect("runtime lock poisoned")
+            .providers
+            .get(account_id)
+            .cloned()
+    }
+
+    /// Get provider for a specific account, or fall back to default.
+    pub fn get_provider(&self, account_id: Option<&AccountId>) -> Arc<dyn MailSyncProvider> {
+        let runtime = self.runtime.read().expect("runtime lock poisoned");
+        account_id
+            .and_then(|id| runtime.providers.get(id).cloned())
+            .unwrap_or_else(|| runtime.default_provider.clone())
+    }
+
+    /// Get send provider for a specific account, or fall back to default.
+    pub fn get_send_provider(
+        &self,
+        account_id: Option<&AccountId>,
+    ) -> Option<Arc<dyn MailSendProvider>> {
+        let runtime = self.runtime.read().expect("runtime lock poisoned");
+        account_id
+            .and_then(|id| runtime.send_providers.get(id).cloned())
+            .or_else(|| runtime.default_send_provider.clone())
+    }
+
+    /// All configured account IDs.
+    pub fn account_ids(&self) -> Vec<AccountId> {
+        self.runtime
+            .read()
+            .expect("runtime lock poisoned")
+            .providers
+            .keys()
+            .cloned()
+            .collect()
+    }
+
+    pub fn runtime_account_ids(&self) -> Vec<AccountId> {
+        let runtime = self.runtime.read().expect("runtime lock poisoned");
+        runtime
+            .providers
+            .keys()
+            .chain(runtime.send_providers.keys())
+            .cloned()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    pub fn sync_provider_entries(&self) -> Vec<(AccountId, Arc<dyn MailSyncProvider>)> {
+        self.runtime
+            .read()
+            .expect("runtime lock poisoned")
+            .providers
+            .iter()
+            .map(|(account_id, provider)| (account_id.clone(), provider.clone()))
+            .collect()
+    }
+
+    pub fn mark_sync_loop_spawned(&self, account_id: &AccountId) -> bool {
+        self.sync_loop_accounts
+            .lock()
+            .expect("sync-loop lock poisoned")
+            .insert(account_id.clone())
+    }
+
+    pub async fn reload_accounts_from_disk(
+        self: &Arc<Self>,
+    ) -> std::result::Result<(), String> {
+        let config = mxr_config::load_config().map_err(|e| e.to_string())?;
+        let provider_setup = Self::create_providers_from_config(&config, &self.store)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        {
+            let mut runtime = self.runtime.write().expect("runtime lock poisoned");
+            *runtime = ProviderRuntime {
+                providers: provider_setup.providers,
+                send_providers: provider_setup.send_providers,
+                default_provider: provider_setup.default_provider,
+                default_send_provider: provider_setup.default_send_provider,
+            };
+        }
+        *self.config.write().expect("config lock poisoned") = config;
+        crate::loops::spawn_sync_loops(self.clone());
+        Ok(())
     }
 
     /// Create an in-memory AppState for tests.
@@ -139,9 +365,14 @@ impl AppState {
         };
         store.insert_account(&account).await?;
 
-        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id));
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
         let provider: Arc<dyn MailSyncProvider> = fake.clone();
-        let send_provider: Option<Arc<dyn MailSendProvider>> = Some(fake);
+        let send_provider: Option<Arc<dyn MailSendProvider>> = Some(fake.clone());
+
+        let mut providers = HashMap::new();
+        let mut send_providers = HashMap::new();
+        providers.insert(account_id.clone(), provider.clone());
+        send_providers.insert(account_id, fake as Arc<dyn MailSendProvider>);
 
         let (event_tx, _) = broadcast::channel(256);
 
@@ -149,11 +380,16 @@ impl AppState {
             store,
             search,
             sync_engine,
-            provider,
-            send_provider,
+            runtime: RwLock::new(ProviderRuntime {
+                providers,
+                send_providers,
+                default_provider: provider,
+                default_send_provider: send_provider,
+            }),
+            sync_loop_accounts: StdMutex::new(HashSet::new()),
             event_tx,
             start_time: Instant::now(),
-            config: mxr_config::MxrConfig::default(),
+            config: RwLock::new(mxr_config::MxrConfig::default()),
         })
     }
 
@@ -166,6 +402,133 @@ impl AppState {
             dirs::runtime_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
                 .join("mxr/mxr.sock")
-        }
+            }
+    }
+
+    #[cfg(test)]
+    pub fn set_attachment_dir_for_tests(&self, path: std::path::PathBuf) {
+        self.config
+            .write()
+            .expect("config lock poisoned")
+            .general
+            .attachment_dir = path;
+    }
+}
+
+fn sync_provider_kind(sync: Option<&mxr_config::SyncProviderConfig>) -> Option<ProviderKind> {
+    match sync {
+        Some(mxr_config::SyncProviderConfig::Gmail { .. }) => Some(ProviderKind::Gmail),
+        Some(mxr_config::SyncProviderConfig::Imap { .. }) => Some(ProviderKind::Imap),
+        None => None,
+    }
+}
+
+fn send_provider_kind(send: Option<&mxr_config::SendProviderConfig>) -> Option<ProviderKind> {
+    match send {
+        Some(mxr_config::SendProviderConfig::Gmail) => Some(ProviderKind::Gmail),
+        Some(mxr_config::SendProviderConfig::Smtp { .. }) => Some(ProviderKind::Smtp),
+        None => None,
+    }
+}
+
+fn provider_kind_name(kind: ProviderKind) -> &'static str {
+    match kind {
+        ProviderKind::Gmail => "gmail",
+        ProviderKind::Imap => "imap",
+        ProviderKind::Smtp => "smtp",
+        ProviderKind::Fake => "fake",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn imap_smtp_config(default_account: &str) -> mxr_config::MxrConfig {
+        mxr_config::load_config_from_str(&format!(
+            r#"
+[general]
+default_account = "{default_account}"
+
+[accounts.personal]
+name = "Personal"
+email = "me@example.com"
+
+[accounts.personal.sync]
+type = "imap"
+host = "imap.example.com"
+port = 993
+username = "me@example.com"
+password_ref = "keyring:test-imap"
+use_tls = true
+
+[accounts.personal.send]
+type = "smtp"
+host = "smtp.example.com"
+port = 587
+username = "me@example.com"
+password_ref = "keyring:test-smtp"
+use_tls = true
+
+[accounts.work]
+name = "Work"
+email = "me@corp.com"
+
+[accounts.work.sync]
+type = "imap"
+host = "imap.corp.com"
+port = 993
+username = "me@corp.com"
+password_ref = "keyring:test-work-imap"
+use_tls = true
+"#
+        ))
+        .expect("parse config")
+    }
+
+    #[tokio::test]
+    async fn create_providers_from_config_supports_imap_and_smtp() {
+        let store = Arc::new(Store::in_memory().await.expect("store"));
+        let config = imap_smtp_config("personal");
+
+        let setup = AppState::create_providers_from_config(&config, &store)
+            .await
+            .expect("provider setup");
+
+        assert_eq!(setup.providers.len(), 2);
+        assert_eq!(setup.send_providers.len(), 1);
+        assert_eq!(setup.default_provider.account_id().as_str().len(), 36);
+        assert_eq!(
+            setup
+                .default_send_provider
+                .as_ref()
+                .expect("default send provider")
+                .name(),
+            "smtp"
+        );
+
+        let accounts = store.list_accounts().await.expect("list accounts");
+        assert_eq!(accounts.len(), 2);
+        assert!(accounts.iter().any(|account| {
+            account.sync_backend.as_ref().map(|backend| &backend.provider_kind)
+                == Some(&ProviderKind::Imap)
+        }));
+    }
+
+    #[tokio::test]
+    async fn create_providers_from_config_uses_default_account() {
+        let store = Arc::new(Store::in_memory().await.expect("store"));
+        let config = imap_smtp_config("work");
+
+        let setup = AppState::create_providers_from_config(&config, &store)
+            .await
+            .expect("provider setup");
+
+        let default_account = store
+            .get_account(setup.default_provider.account_id())
+            .await
+            .expect("account fetch")
+            .expect("stored account");
+        assert_eq!(default_account.name, "Work");
     }
 }

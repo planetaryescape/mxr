@@ -15,6 +15,11 @@ pub enum ConfigError {
         path: PathBuf,
         source: toml::de::Error,
     },
+    #[error("failed to serialize TOML config at {path}")]
+    SerializeToml {
+        path: PathBuf,
+        source: toml::ser::Error,
+    },
 }
 
 /// Returns the mxr config directory (e.g. `~/.config/mxr` on Linux/macOS).
@@ -39,6 +44,11 @@ pub fn data_dir() -> PathBuf {
 /// Load config from the default config file path, falling back to defaults.
 pub fn load_config() -> Result<MxrConfig, ConfigError> {
     load_config_from_path(&config_file_path())
+}
+
+/// Save config to the default config file path.
+pub fn save_config(config: &MxrConfig) -> Result<(), ConfigError> {
+    save_config_to_path(config, &config_file_path())
 }
 
 /// Load config from a specific file path. Returns defaults if file doesn't exist.
@@ -68,6 +78,24 @@ pub fn load_config_from_path(path: &Path) -> Result<MxrConfig, ConfigError> {
 
     apply_env_overrides(&mut config);
     Ok(config)
+}
+
+/// Save config to a specific path.
+pub fn save_config_to_path(config: &MxrConfig, path: &Path) -> Result<(), ConfigError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|source| ConfigError::ReadFile {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+    let contents = toml::to_string_pretty(config).map_err(|source| ConfigError::SerializeToml {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    std::fs::write(path, contents).map_err(|source| ConfigError::ReadFile {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 /// Load config from a TOML string.

@@ -90,13 +90,11 @@ mod tests {
         let result = resolve_editor(None);
 
         // Restore
-        match prev_editor {
-            Some(v) => unsafe { std::env::set_var("EDITOR", v) },
-            None => {}
+        if let Some(v) = prev_editor {
+            unsafe { std::env::set_var("EDITOR", v) }
         }
-        match prev_visual {
-            Some(v) => unsafe { std::env::set_var("VISUAL", v) },
-            None => {}
+        if let Some(v) = prev_visual {
+            unsafe { std::env::set_var("VISUAL", v) }
         }
 
         assert_eq!(result, "vi");
@@ -113,13 +111,11 @@ mod tests {
         let result = resolve_editor(Some("nano"));
 
         // Restore
-        match prev_editor {
-            Some(v) => unsafe { std::env::set_var("EDITOR", v) },
-            None => {}
+        if let Some(v) = prev_editor {
+            unsafe { std::env::set_var("EDITOR", v) }
         }
-        match prev_visual {
-            Some(v) => unsafe { std::env::set_var("VISUAL", v) },
-            None => {}
+        if let Some(v) = prev_visual {
+            unsafe { std::env::set_var("VISUAL", v) }
         }
 
         assert_eq!(result, "nano");

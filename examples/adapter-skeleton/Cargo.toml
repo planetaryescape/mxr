@@ -1,0 +1,13 @@
+[package]
+name = "mxr-adapter-skeleton"
+version = "0.1.0"
+edition = "2021"
+description = "Example mxr provider adapter"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true }
+mxr-core = { workspace = true }
+mxr-provider-fake = { workspace = true }

@@ -1,5 +1,4 @@
-/// Intermediate IMAP types used between raw IMAP responses and mxr core types.
-
+//! Intermediate IMAP types used between raw IMAP responses and mxr core types.
 /// Mailbox status returned by IMAP SELECT.
 #[derive(Debug, Clone)]
 pub struct MailboxInfo {

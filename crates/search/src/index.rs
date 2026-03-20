@@ -222,6 +222,20 @@ impl SearchIndex {
         Ok(results)
     }
 
+    /// Number of indexed documents.
+    pub fn num_docs(&self) -> u64 {
+        self.reader.searcher().num_docs()
+    }
+
+    /// Clear all documents and prepare for reindexing.
+    pub fn clear(&mut self) -> Result<(), MxrError> {
+        self.writer
+            .delete_all_documents()
+            .map_err(|e| MxrError::Search(e.to_string()))?;
+        self.commit()?;
+        Ok(())
+    }
+
     pub fn search_ast(
         &self,
         query: Box<dyn Query>,

@@ -3,6 +3,12 @@ name = "mxr-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Core types and provider traits for mxr"
+readme = "README.md"
+repository.workspace = true
+homepage.workspace = true
+keywords = ["email", "mail", "provider", "adapter"]
+categories = ["email", "api-bindings"]
 
 [dependencies]
 serde = { workspace = true }

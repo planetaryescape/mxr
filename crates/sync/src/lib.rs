@@ -33,6 +33,7 @@ mod tests {
                 delta_sync: false,
                 push: false,
                 batch_operations: false,
+                native_thread_ids: true,
             }
         }
         async fn authenticate(&mut self) -> Result<(), MxrError> {
@@ -114,6 +115,79 @@ mod tests {
         }
     }
 
+    struct ThreadingProvider {
+        account_id: AccountId,
+        messages: Vec<SyncedMessage>,
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for ThreadingProvider {
+        fn name(&self) -> &str {
+            "threading"
+        }
+
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities {
+                labels: false,
+                server_search: false,
+                delta_sync: false,
+                push: false,
+                batch_operations: false,
+                native_thread_ids: false,
+            }
+        }
+
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(vec![])
+        }
+
+        async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            Ok(SyncBatch {
+                upserted: self.messages.clone(),
+                deleted_provider_ids: vec![],
+                label_changes: vec![],
+                next_cursor: SyncCursor::Initial,
+            })
+        }
+
+        async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+
+        async fn modify_labels(
+            &self,
+            _id: &str,
+            _add: &[String],
+            _rm: &[String],
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn trash(&self, _id: &str) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn set_read(&self, _id: &str, _read: bool) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn set_starred(&self, _id: &str, _starred: bool) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
     fn make_empty_body(message_id: &MessageId) -> MessageBody {
         MessageBody {
             message_id: message_id.clone(),
@@ -139,6 +213,7 @@ mod tests {
                 delta_sync: true,
                 push: false,
                 batch_operations: false,
+                native_thread_ids: true,
             }
         }
         async fn authenticate(&mut self) -> Result<(), MxrError> {
@@ -272,21 +347,103 @@ mod tests {
             .unwrap()
             .unwrap();
         let labels_before = store.get_message_label_ids(&msg_id).await.unwrap();
-        assert!(labels_before.iter().any(|l| *l == inbox.id));
-        assert!(!labels_before.iter().any(|l| *l == starred.id));
+        assert!(labels_before.contains(&inbox.id));
+        assert!(!labels_before.contains(&starred.id));
 
         // Delta sync — adds STARRED label
         engine.sync_account(&provider).await.unwrap();
 
         let labels_after = store.get_message_label_ids(&msg_id).await.unwrap();
-        assert!(
-            labels_after.iter().any(|l| *l == inbox.id),
-            "INBOX should still be present"
-        );
-        assert!(
-            labels_after.iter().any(|l| *l == starred.id),
-            "STARRED should be added by delta"
-        );
+        assert!(labels_after.contains(&inbox.id), "INBOX should still be present");
+        assert!(labels_after.contains(&starred.id), "STARRED should be added by delta");
+    }
+
+    #[tokio::test]
+    async fn sync_rethreads_messages_when_provider_lacks_native_thread_ids() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let engine = SyncEngine::new(store.clone(), search);
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        let first_id = MessageId::new();
+        let second_id = MessageId::new();
+        let first = SyncedMessage {
+            envelope: Envelope {
+                id: first_id.clone(),
+                account_id: account_id.clone(),
+                provider_id: "prov-thread-1".into(),
+                thread_id: ThreadId::new(),
+                message_id_header: Some("<root@example.com>".into()),
+                in_reply_to: None,
+                references: vec![],
+                from: mxr_core::Address {
+                    name: Some("Alice".into()),
+                    email: "alice@example.com".into(),
+                },
+                to: vec![],
+                cc: vec![],
+                bcc: vec![],
+                subject: "Topic".into(),
+                date: chrono::Utc::now() - chrono::Duration::minutes(5),
+                flags: MessageFlags::empty(),
+                snippet: "first".into(),
+                has_attachments: false,
+                size_bytes: 100,
+                unsubscribe: UnsubscribeMethod::None,
+                label_provider_ids: vec![],
+            },
+            body: make_empty_body(&first_id),
+        };
+        let second = SyncedMessage {
+            envelope: Envelope {
+                id: second_id.clone(),
+                account_id: account_id.clone(),
+                provider_id: "prov-thread-2".into(),
+                thread_id: ThreadId::new(),
+                message_id_header: Some("<reply@example.com>".into()),
+                in_reply_to: Some("<root@example.com>".into()),
+                references: vec!["<root@example.com>".into()],
+                from: mxr_core::Address {
+                    name: Some("Bob".into()),
+                    email: "bob@example.com".into(),
+                },
+                to: vec![],
+                cc: vec![],
+                bcc: vec![],
+                subject: "Re: Topic".into(),
+                date: chrono::Utc::now(),
+                flags: MessageFlags::empty(),
+                snippet: "second".into(),
+                has_attachments: false,
+                size_bytes: 100,
+                unsubscribe: UnsubscribeMethod::None,
+                label_provider_ids: vec![],
+            },
+            body: make_empty_body(&second_id),
+        };
+
+        let provider = ThreadingProvider {
+            account_id: account_id.clone(),
+            messages: vec![first, second],
+        };
+
+        engine.sync_account(&provider).await.unwrap();
+
+        let first_env = store.get_envelope(&first_id).await.unwrap().unwrap();
+        let second_env = store.get_envelope(&second_id).await.unwrap().unwrap();
+        assert_eq!(first_env.thread_id, second_env.thread_id);
+
+        let thread = store
+            .get_thread(&first_env.thread_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(thread.message_count, 2);
     }
 
     #[tokio::test]
@@ -333,7 +490,7 @@ mod tests {
             .unwrap();
         let labels_before = store.get_message_label_ids(&msg_id).await.unwrap();
         assert!(
-            labels_before.iter().any(|l| *l == starred.id),
+            labels_before.contains(&starred.id),
             "STARRED should be present after initial sync"
         );
 
@@ -341,12 +498,9 @@ mod tests {
         engine.sync_account(&provider).await.unwrap();
 
         let labels_after = store.get_message_label_ids(&msg_id).await.unwrap();
+        assert!(labels_after.contains(&inbox.id), "INBOX should remain");
         assert!(
-            labels_after.iter().any(|l| *l == inbox.id),
-            "INBOX should remain"
-        );
-        assert!(
-            !labels_after.iter().any(|l| *l == starred.id),
+            !labels_after.contains(&starred.id),
             "STARRED should be removed by delta"
         );
     }

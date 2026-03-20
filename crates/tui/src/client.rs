@@ -67,7 +67,7 @@ impl Client {
         &mut self,
         limit: u32,
         offset: u32,
-    ) -> Result<Vec<mxr_core::types::SyncedMessage>, MxrError> {
+    ) -> Result<Vec<Envelope>, MxrError> {
         let resp = self
             .request(Request::ListEnvelopes {
                 label_id: None,
@@ -79,8 +79,8 @@ impl Client {
 
         match resp {
             Response::Ok {
-                data: ResponseData::Envelopes { messages },
-            } => Ok(messages),
+                data: ResponseData::Envelopes { envelopes },
+            } => Ok(envelopes),
             Response::Error { message } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }

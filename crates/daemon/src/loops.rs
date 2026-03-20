@@ -1,23 +1,41 @@
 use crate::state::AppState;
+use mxr_core::id::AccountId;
 use mxr_core::types::SyncCursor;
+use mxr_core::MailSyncProvider;
+use mxr_rules::{Rule, RuleAction, RuleEngine, RuleExecutionLog};
 use mxr_protocol::*;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
-pub async fn sync_loop(state: Arc<AppState>) {
-    let base_interval = state.config.general.sync_interval.max(30);
-    let mut backoff_secs: u64 = 0;
+/// Spawn sync loops for all configured accounts.
+pub fn spawn_sync_loops(state: Arc<AppState>) {
+    for (account_id, _) in state.sync_provider_entries() {
+        if !state.mark_sync_loop_spawned(&account_id) {
+            continue;
+        }
+        let state = state.clone();
+        tokio::spawn(async move {
+            sync_loop_for_account(state, account_id).await;
+        });
+    }
+}
 
-    // Always start syncing immediately — no initial delay.
-    // The daemon accepts clients right away; messages appear as they sync.
+async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
+    let mut backoff_secs: u64 = 0;
     let mut skip_sleep = true;
 
     loop {
+        let Some(provider) = state.sync_provider_for_account(&account_id) else {
+            tracing::info!(account = %account_id, "Sync loop exiting: account removed from runtime");
+            break;
+        };
+        let base_interval = state.sync_interval_secs().max(30);
+
         if skip_sleep {
             skip_sleep = false;
         } else {
             let wait = if backoff_secs > 0 {
-                tracing::info!("Rate limited, backing off {backoff_secs}s");
+                tracing::info!(account = %account_id, "Rate limited, backing off {backoff_secs}s");
                 backoff_secs
             } else {
                 base_interval
@@ -25,30 +43,28 @@ pub async fn sync_loop(state: Arc<AppState>) {
             tokio::time::sleep(Duration::from_secs(wait)).await;
         }
 
-        match state
-            .sync_engine
-            .sync_account(state.provider.as_ref())
-            .await
-        {
-            Ok(count) => {
-                backoff_secs = 0; // Reset backoff on success
+        match state.sync_engine.sync_account_with_outcome(provider.as_ref()).await {
+            Ok(outcome) => {
+                let count = outcome.synced_count;
+                backoff_secs = 0;
                 if count > 0 {
-                    tracing::info!("Sync completed: {count} messages");
+                    if let Err(error) =
+                        apply_rules_to_messages(&state, &account_id, provider.as_ref(), &outcome.upserted_message_ids)
+                            .await
+                    {
+                        tracing::error!(account = %account_id, "Rule execution failed: {error}");
+                    }
+                    tracing::info!(account = %account_id, "Sync completed: {count} messages");
                     let event = IpcMessage {
                         id: 0,
                         payload: IpcPayload::Event(DaemonEvent::SyncCompleted {
-                            account_id: state.provider.account_id().clone(),
+                            account_id: account_id.clone(),
                             messages_synced: count,
                         }),
                     };
                     let _ = state.event_tx.send(event);
 
-                    // Broadcast updated label counts so TUI sidebar refreshes live
-                    if let Ok(labels) = state
-                        .store
-                        .list_labels_by_account(state.provider.account_id())
-                        .await
-                    {
+                    if let Ok(labels) = state.store.list_labels_by_account(&account_id).await {
                         let counts: Vec<_> = labels
                             .iter()
                             .map(|l| LabelCount {
@@ -65,14 +81,9 @@ pub async fn sync_loop(state: Arc<AppState>) {
                     }
                 }
 
-                // Fast-cycle during backfill: re-sync after 2s instead of full interval
-                if let Ok(Some(cursor)) = state
-                    .store
-                    .get_sync_cursor(state.provider.account_id())
-                    .await
-                {
+                if let Ok(Some(cursor)) = state.store.get_sync_cursor(&account_id).await {
                     if matches!(cursor, SyncCursor::GmailBackfill { .. }) {
-                        tracing::info!("Backfill in progress, re-syncing in 2s");
+                        tracing::info!(account = %account_id, "Backfill in progress, re-syncing in 2s");
                         tokio::time::sleep(Duration::from_secs(2)).await;
                         skip_sleep = true;
                         continue;
@@ -81,24 +92,21 @@ pub async fn sync_loop(state: Arc<AppState>) {
             }
             Err(e) => {
                 let err_str = e.to_string();
-                // Parse rate limit retry-after if present
                 if err_str.contains("Rate limited") {
-                    // Extract retry_after from "retry after Xs"
                     let secs = err_str
                         .split("retry after ")
                         .nth(1)
                         .and_then(|s| s.trim_end_matches('s').parse::<u64>().ok())
                         .unwrap_or(120);
-                    backoff_secs = secs + 10; // Add buffer
+                    backoff_secs = secs + 10;
                 } else {
-                    // Exponential backoff for other errors, cap at 5 min
                     backoff_secs = (backoff_secs * 2).clamp(30, 300);
                 }
-                tracing::error!("Sync error: {err_str}");
+                tracing::error!(account = %account_id, "Sync error: {err_str}");
                 let event = IpcMessage {
                     id: 0,
                     payload: IpcPayload::Event(DaemonEvent::SyncError {
-                        account_id: state.provider.account_id().clone(),
+                        account_id: account_id.clone(),
                         error: err_str,
                     }),
                 };
@@ -108,13 +116,293 @@ pub async fn sync_loop(state: Arc<AppState>) {
     }
 }
 
+async fn apply_rules_to_messages(
+    state: &Arc<AppState>,
+    account_id: &AccountId,
+    provider: &dyn MailSyncProvider,
+    message_ids: &[mxr_core::MessageId],
+) -> Result<(), String> {
+    let rows = state.store.list_rules().await.map_err(|e| e.to_string())?;
+    if rows.is_empty() || message_ids.is_empty() {
+        return Ok(());
+    }
+
+    let rules: Vec<Rule> = rows
+        .iter()
+        .map(|row| serde_json::from_value(mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string()))
+        .collect::<Result<_, _>>()?;
+    let engine = RuleEngine::new(rules.clone());
+    let labels = state
+        .store
+        .list_labels_by_account(account_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for message_id in message_ids {
+        let Some(envelope) = state
+            .store
+            .get_envelope(message_id)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+        let body = state.store.get_body(message_id).await.map_err(|e| e.to_string())?;
+        let label_ids = state
+            .store
+            .get_message_label_ids(message_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let label_provider_ids = labels
+            .iter()
+            .filter(|label| label_ids.iter().any(|id| id == &label.id))
+            .map(|label| label.provider_id.clone())
+            .collect();
+        let message = RuleMessage::from_parts(envelope.clone(), body, label_provider_ids);
+        let message_id_str = message_id.as_str();
+        let result = engine.evaluate(&message, &message_id_str);
+        if result.actions.is_empty() {
+            continue;
+        }
+
+        let mut action_names = Vec::new();
+        let mut error = None;
+        for action in &result.actions {
+            action_names.push(format!("{action:?}"));
+            if let Err(err) = execute_rule_action(state, account_id, provider, message_id, action, &labels).await {
+                error = Some(err);
+                break;
+            }
+        }
+
+        for matched_rule_id in result.matched_rules {
+            if let Some(rule) = rules.iter().find(|rule| rule.id == matched_rule_id) {
+                let entry = RuleExecutionLog::entry(
+                    &rule.id,
+                    &rule.name,
+                    &message_id_str,
+                    &action_names,
+                    error.is_none(),
+                    error.as_deref(),
+                );
+                let actions_json = serde_json::to_string(&entry.actions_applied).map_err(|e| e.to_string())?;
+                state
+                    .store
+                    .insert_rule_log(mxr_store::RuleLogInput {
+                        rule_id: &entry.rule_id.0,
+                        rule_name: &entry.rule_name,
+                        message_id: &entry.message_id,
+                        actions_applied_json: &actions_json,
+                        timestamp: entry.timestamp,
+                        success: entry.success,
+                        error: entry.error.as_deref(),
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        let _ = state
+            .store
+            .insert_event(
+                if error.is_some() { "error" } else { "info" },
+                "rule",
+                &format!("Applied rules to {}", message.subject),
+                Some(account_id),
+                error.as_deref(),
+            )
+            .await;
+    }
+
+    Ok(())
+}
+
+async fn execute_rule_action(
+    state: &Arc<AppState>,
+    account_id: &AccountId,
+    provider: &dyn MailSyncProvider,
+    message_id: &mxr_core::MessageId,
+    action: &RuleAction,
+    labels: &[mxr_core::Label],
+) -> Result<(), String> {
+    let provider_message_id = state
+        .store
+        .get_provider_id(message_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Provider ID not found for message {message_id}"))?;
+
+    match action {
+        RuleAction::AddLabel { label } => {
+            provider
+                .modify_labels(&provider_message_id, std::slice::from_ref(label), &[])
+                .await
+                .map_err(|e| e.to_string())?;
+            if let Some(found) = labels.iter().find(|candidate| candidate.provider_id == *label || candidate.name == *label) {
+                state
+                    .store
+                    .add_message_label(message_id, &found.id)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        RuleAction::RemoveLabel { label } => {
+            provider
+                .modify_labels(&provider_message_id, &[], std::slice::from_ref(label))
+                .await
+                .map_err(|e| e.to_string())?;
+            if let Some(found) = labels.iter().find(|candidate| candidate.provider_id == *label || candidate.name == *label) {
+                state
+                    .store
+                    .remove_message_label(message_id, &found.id)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        RuleAction::Archive => {
+            provider
+                .modify_labels(&provider_message_id, &[], &["INBOX".to_string()])
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        RuleAction::Trash => {
+            provider.trash(&provider_message_id).await.map_err(|e| e.to_string())?;
+            state.store.move_to_trash(message_id).await.map_err(|e| e.to_string())?;
+        }
+        RuleAction::Star => {
+            provider
+                .set_starred(&provider_message_id, true)
+                .await
+                .map_err(|e| e.to_string())?;
+            state.store.set_starred(message_id, true).await.map_err(|e| e.to_string())?;
+        }
+        RuleAction::MarkRead => {
+            provider
+                .set_read(&provider_message_id, true)
+                .await
+                .map_err(|e| e.to_string())?;
+            state.store.set_read(message_id, true).await.map_err(|e| e.to_string())?;
+        }
+        RuleAction::MarkUnread => {
+            provider
+                .set_read(&provider_message_id, false)
+                .await
+                .map_err(|e| e.to_string())?;
+            state.store.set_read(message_id, false).await.map_err(|e| e.to_string())?;
+        }
+        RuleAction::Snooze { duration } => {
+            let wake_at = match duration {
+                mxr_rules::SnoozeDuration::Hours { count } => chrono::Utc::now() + chrono::Duration::hours(*count as i64),
+                mxr_rules::SnoozeDuration::Days { count } => chrono::Utc::now() + chrono::Duration::days(*count as i64),
+                mxr_rules::SnoozeDuration::Until { date } => *date,
+            };
+            let original_labels = state
+                .store
+                .get_message_label_ids(message_id)
+                .await
+                .map_err(|e| e.to_string())?;
+            state
+                .store
+                .insert_snooze(&mxr_core::types::Snoozed {
+                    message_id: message_id.clone(),
+                    account_id: account_id.clone(),
+                    snoozed_at: chrono::Utc::now(),
+                    wake_at,
+                    original_labels,
+                })
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        RuleAction::ShellHook { command } => {
+            let payload = serde_json::json!({
+                "message_id": message_id.as_str(),
+                "provider_message_id": provider_message_id,
+            });
+            mxr_rules::shell_hook::execute_shell_hook(
+                command,
+                    &mxr_rules::shell_hook::ShellHookPayload {
+                    id: payload["message_id"].as_str().unwrap_or_default().to_string(),
+                    from: mxr_rules::shell_hook::ShellHookAddress {
+                        name: None,
+                        email: String::new(),
+                    },
+                    subject: String::new(),
+                    date: chrono::Utc::now().to_rfc3339(),
+                    body_text: None,
+                    attachments: Vec::new(),
+                },
+                Some(Duration::from_secs(state.hook_timeout_secs())),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+struct RuleMessage {
+    subject: String,
+    from: String,
+    to: Vec<String>,
+    labels: Vec<String>,
+    has_attachment: bool,
+    size_bytes: u64,
+    date: chrono::DateTime<chrono::Utc>,
+    is_unread: bool,
+    is_starred: bool,
+    has_unsubscribe: bool,
+    body_text: Option<String>,
+}
+
+impl RuleMessage {
+    fn from_parts(
+        envelope: mxr_core::Envelope,
+        body: Option<mxr_core::MessageBody>,
+        labels: Vec<String>,
+    ) -> Self {
+        Self {
+            subject: envelope.subject,
+            from: envelope.from.email,
+            to: envelope.to.into_iter().map(|addr| addr.email).collect(),
+            labels,
+            has_attachment: envelope.has_attachments,
+            size_bytes: envelope.size_bytes,
+            date: envelope.date,
+            is_unread: !envelope.flags.contains(mxr_core::MessageFlags::READ),
+            is_starred: envelope.flags.contains(mxr_core::MessageFlags::STARRED),
+            has_unsubscribe: !matches!(envelope.unsubscribe, mxr_core::types::UnsubscribeMethod::None),
+            body_text: body.and_then(|body| body.text_plain.or(body.text_html)),
+        }
+    }
+}
+
+impl mxr_rules::MessageView for RuleMessage {
+    fn sender_email(&self) -> &str { &self.from }
+    fn to_emails(&self) -> &[String] { &self.to }
+    fn subject(&self) -> &str { &self.subject }
+    fn labels(&self) -> &[String] { &self.labels }
+    fn has_attachment(&self) -> bool { self.has_attachment }
+    fn size_bytes(&self) -> u64 { self.size_bytes }
+    fn date(&self) -> chrono::DateTime<chrono::Utc> { self.date }
+    fn is_unread(&self) -> bool { self.is_unread }
+    fn is_starred(&self) -> bool { self.is_starred }
+    fn has_unsubscribe(&self) -> bool { self.has_unsubscribe }
+    fn body_text(&self) -> Option<&str> { self.body_text.as_deref() }
+}
+
 pub async fn snooze_loop(state: Arc<AppState>) {
     let mut ticker = interval(Duration::from_secs(60));
     loop {
         ticker.tick().await;
-        match state.sync_engine.check_snoozes().await {
-            Ok(woken) => {
-                for message_id in woken {
+        match state.store.get_due_snoozes(chrono::Utc::now()).await {
+            Ok(snoozed) => {
+                for item in snoozed {
+                    let message_id = item.message_id.clone();
+                    if let Err(e) = crate::handler::restore_snoozed_message(&state, &item).await {
+                        tracing::error!(message_id = %message_id, "Snooze wake error: {e}");
+                        continue;
+                    }
                     let event = IpcMessage {
                         id: 0,
                         payload: IpcPayload::Event(DaemonEvent::MessageUnsnoozed { message_id }),
@@ -125,6 +413,80 @@ pub async fn snooze_loop(state: Arc<AppState>) {
             Err(e) => {
                 tracing::error!("Snooze check error: {}", e);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mxr_protocol::{IpcMessage, IpcPayload, Request, Response, ResponseData};
+
+    #[tokio::test]
+    async fn apply_rules_to_messages_marks_message_read_and_logs_history() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let outcome = state
+            .sync_engine
+            .sync_account_with_outcome(state.default_provider().as_ref())
+            .await
+            .unwrap();
+        let mut unread_id = None;
+        for message_id in &outcome.upserted_message_ids {
+            let envelope = state.store.get_envelope(message_id).await.unwrap().unwrap();
+            if !envelope.flags.contains(mxr_core::MessageFlags::READ) {
+                unread_id = Some(message_id.clone());
+                break;
+            }
+        }
+        let unread_id = unread_id.expect("expected unread fixture message");
+        let now = chrono::Utc::now();
+        let rule = serde_json::json!({
+            "id": "rule-1",
+            "name": "Mark unread as read",
+            "enabled": true,
+            "priority": 10,
+            "conditions": {"type":"field","field":"is_unread"},
+            "actions": [{"type":"mark_read"}],
+            "created_at": now,
+            "updated_at": now
+        });
+        let _ = crate::handler::handle_request(
+            &state,
+            &IpcMessage {
+                id: 1,
+                payload: IpcPayload::Request(Request::UpsertRule { rule }),
+            },
+        )
+        .await;
+
+        apply_rules_to_messages(
+            &state,
+            state.default_provider().account_id(),
+            state.default_provider().as_ref(),
+            std::slice::from_ref(&unread_id),
+        )
+        .await
+        .unwrap();
+
+        let envelope = state.store.get_envelope(&unread_id).await.unwrap().unwrap();
+        assert!(envelope.flags.contains(mxr_core::MessageFlags::READ));
+
+        let history = crate::handler::handle_request(
+            &state,
+            &IpcMessage {
+                id: 2,
+                payload: IpcPayload::Request(Request::ListRuleHistory {
+                    rule: Some("rule-1".to_string()),
+                    limit: 10,
+                }),
+            },
+        )
+        .await;
+        match history.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::RuleHistory { entries },
+            }) => assert_eq!(entries.len(), 1),
+            other => panic!("expected rule history, got {:?}", other),
         }
     }
 }

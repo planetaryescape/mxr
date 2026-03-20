@@ -18,6 +18,7 @@ impl Contact {
     }
 }
 
+#[derive(Default)]
 pub struct ComposePicker {
     pub visible: bool,
     pub input: String,
@@ -26,19 +27,6 @@ pub struct ComposePicker {
     pub selected: usize,
     /// Already-chosen recipients.
     pub recipients: Vec<String>,
-}
-
-impl Default for ComposePicker {
-    fn default() -> Self {
-        Self {
-            visible: false,
-            input: String::new(),
-            contacts: Vec::new(),
-            filtered: Vec::new(),
-            selected: 0,
-            recipients: Vec::new(),
-        }
-    }
 }
 
 impl ComposePicker {

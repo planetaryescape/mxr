@@ -1,0 +1,32 @@
+[changelog]
+header = """
+# Changelog
+
+All notable changes to this project are documented here.
+"""
+body = """
+{% if version %}## {{ version }}{% else %}## Unreleased{% endif %}
+{% if timestamp %}Released: {{ timestamp | date(format="%Y-%m-%d") }}{% endif %}
+
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }}{% if commit.scope %} (`{{ commit.scope }}`){% endif %}
+{% endfor %}
+{% endfor %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Fixes" },
+  { message = "^refactor", group = "Refactors" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^test", group = "Tests" },
+  { message = "^chore", group = "Chores" },
+]

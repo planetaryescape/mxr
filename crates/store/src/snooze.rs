@@ -71,6 +71,25 @@ impl super::Store {
             .collect())
     }
 
+    pub async fn get_snooze(&self, message_id: &MessageId) -> Result<Option<Snoozed>, sqlx::Error> {
+        let mid = message_id.as_str();
+        let row = sqlx::query_as::<_, (String, String, i64, i64, String)>(
+            r#"SELECT message_id, account_id, snoozed_at, wake_at, original_labels
+               FROM snoozed WHERE message_id = ?"#,
+        )
+        .bind(mid)
+        .fetch_optional(self.reader())
+        .await?;
+
+        Ok(row.map(|(message_id, account_id, snoozed_at, wake_at, original_labels)| Snoozed {
+            message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&message_id).unwrap()),
+            account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&account_id).unwrap()),
+            snoozed_at: DateTime::from_timestamp(snoozed_at, 0).unwrap_or_default(),
+            wake_at: DateTime::from_timestamp(wake_at, 0).unwrap_or_default(),
+            original_labels: serde_json::from_str(&original_labels).unwrap_or_default(),
+        }))
+    }
+
     pub async fn remove_snooze(&self, message_id: &MessageId) -> Result<(), sqlx::Error> {
         let mid = message_id.as_str();
         sqlx::query!("DELETE FROM snoozed WHERE message_id = ?", mid)

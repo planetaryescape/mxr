@@ -110,7 +110,9 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "prev_search_result" => Some(Action::PrevSearchResult),
         "open" => Some(Action::OpenSelected),
         "quit_view" => Some(Action::QuitView),
+        "clear_selection" => Some(Action::ClearSelection),
         "help" => Some(Action::Help),
+        "toggle_mail_list_mode" => Some(Action::ToggleMailListMode),
         // Email actions (Gmail-native A005)
         "compose" => Some(Action::Compose),
         "reply" => Some(Action::Reply),
@@ -168,6 +170,100 @@ pub fn format_keybinding(kb: &KeyBinding) -> String {
         })
         .collect::<Vec<_>>()
         .join("")
+}
+
+pub fn display_bindings_for_actions(
+    context: ViewContext,
+    actions: &[&str],
+) -> Vec<(String, String)> {
+    let config = default_keybindings();
+    let map = match context {
+        ViewContext::MailList => &config.mail_list,
+        ViewContext::MessageView => &config.message_view,
+        ViewContext::ThreadView => &config.thread_view,
+    };
+
+    actions
+        .iter()
+        .filter_map(|action| {
+            map.iter()
+                .find(|(_, name)| name == action)
+                .map(|(binding, _)| {
+                    (
+                        format_keybinding(binding),
+                        action_display_name(action),
+                    )
+                })
+        })
+        .collect()
+}
+
+pub fn all_bindings_for_context(context: ViewContext) -> Vec<(String, String)> {
+    let config = default_keybindings();
+    let map = match context {
+        ViewContext::MailList => &config.mail_list,
+        ViewContext::MessageView => &config.message_view,
+        ViewContext::ThreadView => &config.thread_view,
+    };
+
+    let mut entries: Vec<(String, String)> = map
+        .iter()
+        .map(|(binding, action)| (format_keybinding(binding), action_display_name(action)))
+        .collect();
+    entries.sort_by(|(left_key, left_action), (right_key, right_action)| {
+        left_key
+            .cmp(right_key)
+            .then_with(|| left_action.cmp(right_action))
+    });
+    entries
+}
+
+fn action_display_name(action: &str) -> String {
+    match action {
+        "move_down" => "Down".into(),
+        "move_up" => "Up".into(),
+        "search" => "Search".into(),
+        "open" => "Open".into(),
+        "apply_label" => "Apply Label".into(),
+        "move_to_label" => "Move Label".into(),
+        "command_palette" => "Commands".into(),
+        "help" => "Help".into(),
+        "reply" => "Reply".into(),
+        "reply_all" => "Reply All".into(),
+        "forward" => "Forward".into(),
+        "archive" => "Archive".into(),
+        "star" => "Star".into(),
+        "mark_read" => "Mark Read".into(),
+        "mark_unread" => "Mark Unread".into(),
+        "unsubscribe" => "Unsubscribe".into(),
+        "snooze" => "Snooze".into(),
+        "visual_line_mode" => "Visual Line Mode".into(),
+        "toggle_fullscreen" => "Toggle Fullscreen".into(),
+        "toggle_select" => "Toggle Select".into(),
+        "go_inbox" => "Go Inbox".into(),
+        "switch_panes" => "Switch Pane".into(),
+        "next_message" => "Next Msg".into(),
+        "prev_message" => "Prev Msg".into(),
+        "attachment_list" => "Attachments".into(),
+        "toggle_reader_mode" => "Reader".into(),
+        "export_thread" => "Export".into(),
+        "open_in_browser" => "Browser".into(),
+        "quit_view" => "Quit".into(),
+        "clear_selection" => "Clear Sel".into(),
+        _ => action
+            .split('_')
+            .map(|part| {
+                let mut chars = part.chars();
+                match chars.next() {
+                    Some(first) => {
+                        first.to_uppercase().collect::<String>() + chars.as_str()
+                    }
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+    }
 }
 
 /// Raw TOML structure for keys.toml
@@ -309,6 +405,7 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("r", "reply"),
         ("a", "reply_all"),
         ("f", "forward"),
+        ("A", "attachment_list"),
         ("R", "toggle_reader_mode"),
         ("E", "export_thread"),
         ("O", "open_in_browser"),
@@ -435,6 +532,16 @@ mod tests {
     fn format_keybinding_basic() {
         let kb = parse_key_string("Ctrl-p").unwrap();
         assert_eq!(format_keybinding(&kb), "Ctrl-p");
+    }
+
+    #[test]
+    fn all_bindings_for_mail_list_include_full_action_set() {
+        let bindings = all_bindings_for_context(ViewContext::MailList);
+        let labels: Vec<String> = bindings.into_iter().map(|(_, label)| label).collect();
+        assert!(labels.contains(&"Apply Label".to_string()));
+        assert!(labels.contains(&"Toggle Fullscreen".to_string()));
+        assert!(labels.contains(&"Visual Line Mode".to_string()));
+        assert!(labels.contains(&"Go Inbox".to_string()));
     }
 
     #[test]

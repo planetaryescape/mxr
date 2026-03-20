@@ -3,6 +3,65 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
+pub struct FixtureDataset {
+    pub envelopes: Vec<Envelope>,
+    pub bodies: HashMap<String, MessageBody>,
+    pub labels: Vec<Label>,
+}
+
+impl FixtureDataset {
+    pub fn canonical(account_id: &AccountId) -> Self {
+        let (envelopes, bodies, labels) = generate_fixtures(account_id);
+        Self {
+            envelopes,
+            bodies,
+            labels,
+        }
+    }
+
+    pub fn unread_message(&self) -> Option<&Envelope> {
+        self.envelopes
+            .iter()
+            .find(|envelope| !envelope.flags.contains(MessageFlags::READ))
+    }
+
+    pub fn attachment_message(&self) -> Option<(&Envelope, &MessageBody)> {
+        self.envelopes.iter().find_map(|envelope| {
+            self.bodies
+                .get(&envelope.provider_id)
+                .filter(|body| !body.attachments.is_empty())
+                .map(|body| (envelope, body))
+        })
+    }
+}
+
+pub fn sample_draft(account_id: AccountId) -> Draft {
+    Draft {
+        id: DraftId::new(),
+        account_id,
+        in_reply_to: None,
+        to: vec![Address {
+            name: Some("Recipient".to_string()),
+            email: "recipient@example.com".to_string(),
+        }],
+        cc: vec![],
+        bcc: vec![],
+        subject: "Conformance test draft".to_string(),
+        body_markdown: "Hello from conformance test.".to_string(),
+        attachments: vec![],
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    }
+}
+
+pub fn sample_from_address() -> Address {
+    Address {
+        name: Some("mxr Conformance".to_string()),
+        email: "sender@example.com".to_string(),
+    }
+}
+
 pub fn generate_fixtures(
     account_id: &AccountId,
 ) -> (Vec<Envelope>, HashMap<String, MessageBody>, Vec<Label>) {

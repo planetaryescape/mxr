@@ -174,6 +174,21 @@ CREATE TABLE IF NOT EXISTS rules (
     updated_at  INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS rule_execution_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id TEXT NOT NULL,
+    rule_name TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    actions_applied TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    success INTEGER NOT NULL DEFAULT 1,
+    error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_rule_log_rule_id ON rule_execution_log(rule_id);
+CREATE INDEX IF NOT EXISTS idx_rule_log_message_id ON rule_execution_log(message_id);
+CREATE INDEX IF NOT EXISTS idx_rule_log_timestamp ON rule_execution_log(timestamp);
+
 -- =========================================================================
 -- FTS5
 -- =========================================================================

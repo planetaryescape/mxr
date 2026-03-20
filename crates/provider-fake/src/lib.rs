@@ -1,3 +1,11 @@
+//! Fake provider, canonical fixtures, and adapter conformance helpers.
+//!
+//! This crate serves three jobs:
+//! - network-free integration testing
+//! - reference provider implementation for adapter authors
+//! - reusable conformance checks exported from [`conformance`]
+
+pub mod conformance;
 pub mod fixtures;
 
 use async_trait::async_trait;
@@ -11,7 +19,7 @@ pub struct FakeProvider {
     account_id: AccountId,
     messages: Vec<Envelope>,
     bodies: HashMap<String, MessageBody>,
-    labels: Vec<Label>,
+    labels: Mutex<Vec<Label>>,
     sent: Mutex<Vec<Draft>>,
     mutations: Mutex<Vec<Mutation>>,
 }
@@ -43,7 +51,7 @@ impl FakeProvider {
             account_id,
             messages,
             bodies,
-            labels,
+            labels: Mutex::new(labels),
             sent: Mutex::new(Vec::new()),
             mutations: Mutex::new(Vec::new()),
         }
@@ -75,6 +83,7 @@ impl MailSyncProvider for FakeProvider {
             delta_sync: false,
             push: false,
             batch_operations: false,
+            native_thread_ids: true,
         }
     }
 
@@ -87,7 +96,7 @@ impl MailSyncProvider for FakeProvider {
     }
 
     async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
-        Ok(self.labels.clone())
+        Ok(self.labels.lock().unwrap().clone())
     }
 
     async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
@@ -152,6 +161,43 @@ impl MailSyncProvider for FakeProvider {
                 added: add.to_vec(),
                 removed: remove.to_vec(),
             });
+        Ok(())
+    }
+
+    async fn create_label(&self, name: &str, color: Option<&str>) -> Result<Label, MxrError> {
+        let label = Label {
+            id: LabelId::from_provider_id("fake", name),
+            account_id: self.account_id.clone(),
+            name: name.to_string(),
+            kind: LabelKind::User,
+            color: color.map(str::to_string),
+            provider_id: name.to_string(),
+            unread_count: 0,
+            total_count: 0,
+        };
+        self.labels.lock().unwrap().push(label.clone());
+        Ok(label)
+    }
+
+    async fn rename_label(&self, provider_label_id: &str, new_name: &str) -> Result<Label, MxrError> {
+        let mut labels = self.labels.lock().unwrap();
+        let label = labels
+            .iter_mut()
+            .find(|label| label.provider_id == provider_label_id)
+            .ok_or_else(|| MxrError::NotFound(format!("label {provider_label_id}")))?;
+        label.id = LabelId::from_provider_id("fake", new_name);
+        label.name = new_name.to_string();
+        label.provider_id = new_name.to_string();
+        Ok(label.clone())
+    }
+
+    async fn delete_label(&self, provider_label_id: &str) -> Result<(), MxrError> {
+        let mut labels = self.labels.lock().unwrap();
+        let before = labels.len();
+        labels.retain(|label| label.provider_id != provider_label_id);
+        if labels.len() == before {
+            return Err(MxrError::NotFound(format!("label {provider_label_id}")));
+        }
         Ok(())
     }
 
@@ -301,5 +347,17 @@ mod tests {
         };
         provider.send(&draft, &from).await.unwrap();
         assert_eq!(provider.sent_drafts().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn fake_provider_passes_sync_conformance() {
+        let provider = FakeProvider::new(AccountId::new());
+        crate::conformance::run_sync_conformance(&provider).await;
+    }
+
+    #[tokio::test]
+    async fn fake_provider_passes_send_conformance() {
+        let provider = FakeProvider::new(AccountId::new());
+        crate::conformance::run_send_conformance(&provider).await;
     }
 }

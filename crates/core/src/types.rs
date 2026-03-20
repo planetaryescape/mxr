@@ -279,6 +279,7 @@ pub struct SyncCapabilities {
     pub delta_sync: bool,
     pub push: bool,
     pub batch_operations: bool,
+    pub native_thread_ids: bool,
 }
 
 // -- SendReceipt --------------------------------------------------------------

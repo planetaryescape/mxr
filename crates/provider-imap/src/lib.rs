@@ -51,6 +51,32 @@ impl ImapProvider {
         self
     }
 
+    async fn assert_mutable_folder(&self, folder_name: &str) -> mxr_core::provider::Result<()> {
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        let folders = session
+            .list_folders()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let _ = session.logout().await;
+
+        let is_special_use = folders.iter().find(|folder| folder.name == folder_name).is_some_and(|folder| {
+            folder.special_use.is_some() || folder.name.eq_ignore_ascii_case("inbox")
+        });
+
+        if is_special_use {
+            return Err(mxr_core::error::MxrError::Provider(
+                "Cannot modify IMAP system folders".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Initial sync: fetch all messages from INBOX via UID FETCH.
     async fn initial_sync(&self) -> mxr_core::provider::Result<SyncBatch> {
         debug!("Starting IMAP initial sync for account {}", self.account_id);
@@ -206,6 +232,7 @@ impl MailSyncProvider for ImapProvider {
             delta_sync: false,
             push: false,
             batch_operations: false,
+            native_thread_ids: false,
         }
     }
 
@@ -364,6 +391,65 @@ impl MailSyncProvider for ImapProvider {
                 .map_err(mxr_core::error::MxrError::from)?;
         }
 
+        let _ = session.logout().await;
+        Ok(())
+    }
+
+    async fn create_label(
+        &self,
+        name: &str,
+        _color: Option<&str>,
+    ) -> mxr_core::provider::Result<Label> {
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        session
+            .create_mailbox(name)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let _ = session.logout().await;
+
+        Ok(folders::map_folder_to_label(name, None, &self.account_id))
+    }
+
+    async fn rename_label(
+        &self,
+        provider_label_id: &str,
+        new_name: &str,
+    ) -> mxr_core::provider::Result<Label> {
+        self.assert_mutable_folder(provider_label_id).await?;
+
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        session
+            .rename_mailbox(provider_label_id, new_name)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+        let _ = session.logout().await;
+
+        Ok(folders::map_folder_to_label(new_name, None, &self.account_id))
+    }
+
+    async fn delete_label(&self, provider_label_id: &str) -> mxr_core::provider::Result<()> {
+        self.assert_mutable_folder(provider_label_id).await?;
+
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        session
+            .delete_mailbox(provider_label_id)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
         let _ = session.logout().await;
         Ok(())
     }
@@ -892,6 +978,28 @@ mod tests {
         assert!(commands.contains(&"UID STORE 42 -FLAGS (\\Seen)".to_string()));
         // Archive is a folder, should be COPY'd
         assert!(commands.contains(&"UID COPY 42 Archive".to_string()));
+    }
+
+    #[tokio::test]
+    async fn rename_label_rejects_special_use_folder() {
+        let factory = MockImapSessionFactory::new(
+            MailboxInfo {
+                uid_validity: 1,
+                uid_next: 2,
+                exists: 1,
+            },
+            vec![],
+            vec![FolderInfo {
+                name: "INBOX".to_string(),
+                special_use: Some("\\Inbox".to_string()),
+            }],
+        );
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let err = provider.rename_label("INBOX", "Archive").await.unwrap_err();
+        assert!(err.to_string().contains("system folders"));
     }
 
     // -- fetch_attachment -----------------------------------------------------

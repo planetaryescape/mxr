@@ -3,6 +3,9 @@ name = "mxr-daemon"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Local-first terminal email client"
 
 [[bin]]
 name = "mxr"
@@ -16,9 +19,13 @@ mxr-search = { workspace = true }
 mxr-protocol = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-provider-gmail = { workspace = true }
+mxr-provider-imap = { workspace = true }
+mxr-provider-smtp = { workspace = true }
 mxr-sync = { workspace = true }
 mxr-compose = { workspace = true }
 mxr-reader = { workspace = true }
+mxr-export = { workspace = true }
+mxr-rules = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 mxr-tui = { path = "../tui" }
@@ -35,3 +42,8 @@ clap_complete = { workspace = true }
 dirs = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
+sqlx = { workspace = true }
+regex = { workspace = true }
+url = { workspace = true }
+which = { workspace = true }
+keyring = { workspace = true }

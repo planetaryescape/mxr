@@ -4,6 +4,7 @@ mod handler;
 mod ipc_client;
 mod loops;
 mod output;
+pub mod reindex;
 mod server;
 pub mod snooze;
 mod state;
@@ -34,15 +35,46 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Completions { shell }) => {
             commands::completions::run(shell)?;
         }
-        Some(Command::Doctor { reindex }) => {
-            commands::doctor::run(reindex)?;
+        Some(Command::Doctor {
+            reindex,
+            check,
+            index_stats,
+            store_stats,
+            format,
+        }) => {
+            commands::doctor::run(reindex, check, index_stats, store_stats, format)?;
         }
         Some(Command::Logs {
             no_follow,
             level,
             since,
+            purge,
         }) => {
-            commands::logs::run(no_follow, level, since)?;
+            commands::logs::run(no_follow, level, since, purge)?;
+        }
+        Some(Command::BugReport {
+            edit,
+            stdout,
+            clipboard,
+            github,
+            output,
+            verbose,
+            full_logs,
+            no_sanitize,
+            since,
+        }) => {
+            commands::bug_report::run(commands::bug_report::BugReportOptions {
+                edit,
+                stdout,
+                clipboard,
+                github,
+                output,
+                verbose,
+                full_logs,
+                no_sanitize,
+                since,
+            })
+            .await?;
         }
         Some(Command::Accounts { action }) => {
             commands::accounts::run(action).await?;
@@ -74,6 +106,15 @@ async fn main() -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::thread::run(thread_id, format).await?;
         }
+        Some(Command::Export {
+            thread_id,
+            search,
+            format,
+            output,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::export::run(thread_id, search, format, output).await?;
+        }
         Some(Command::Headers { message_id }) => {
             crate::server::ensure_daemon_running().await?;
             commands::headers::run(message_id).await?;
@@ -90,13 +131,25 @@ async fn main() -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::sync_cmd::run(account, status, history).await?;
         }
-        Some(Command::Status { format }) => {
+        Some(Command::Status { format, watch }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::status::run(format).await?;
+            commands::status::run(format, watch).await?;
         }
-        Some(Command::Labels) => {
+        Some(Command::Events { event_type, format }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::labels::run().await?;
+            commands::events::run(event_type, format).await?;
+        }
+        Some(Command::Notify { format, watch }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::notify::run(format, watch).await?;
+        }
+        Some(Command::Labels { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::labels::run(action, format).await?;
+        }
+        Some(Command::Rules { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::rules::run(action, format).await?;
         }
 
         // Phase 2: Compose + mutations (daemon-backed)
@@ -113,9 +166,18 @@ async fn main() -> anyhow::Result<()> {
             dry_run,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::compose(
-                to, cc, bcc, subject, body, body_stdin, attach, from, yes, dry_run,
-            )
+            let _ = yes;
+            commands::mutations::compose(commands::mutations::ComposeOptions {
+                to,
+                cc,
+                bcc,
+                subject,
+                body,
+                body_stdin,
+                attach,
+                from,
+                dry_run,
+            })
             .await?;
         }
         Some(Command::Reply {
@@ -287,11 +349,15 @@ async fn main() -> anyhow::Result<()> {
                 cli::AttachmentAction::List { message_id } => {
                     commands::mutations::attachments_list(message_id).await?;
                 }
-                cli::AttachmentAction::Download { message_id, .. } => {
-                    commands::mutations::attachments_list(message_id).await?;
+                cli::AttachmentAction::Download {
+                    message_id,
+                    index,
+                    dir,
+                } => {
+                    commands::mutations::attachments_download(message_id, index, dir).await?;
                 }
-                cli::AttachmentAction::OpenAttachment { message_id, .. } => {
-                    commands::mutations::attachments_list(message_id).await?;
+                cli::AttachmentAction::OpenAttachment { message_id, index } => {
+                    commands::mutations::attachments_open(message_id, index).await?;
                 }
             }
         }

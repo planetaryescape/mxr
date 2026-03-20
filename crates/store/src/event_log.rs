@@ -85,4 +85,12 @@ impl super::Store {
             })
             .collect())
     }
+
+    pub async fn prune_events_before(&self, cutoff_timestamp: i64) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query("DELETE FROM event_log WHERE timestamp < ?")
+            .bind(cutoff_timestamp)
+            .execute(self.writer())
+            .await?;
+        Ok(result.rows_affected())
+    }
 }

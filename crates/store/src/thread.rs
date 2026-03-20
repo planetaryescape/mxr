@@ -70,7 +70,13 @@ impl super::Store {
                 to_addrs as "to_addrs!", cc_addrs as "cc_addrs!", bcc_addrs as "bcc_addrs!",
                 subject as "subject!", date as "date!", flags as "flags!",
                 snippet as "snippet!", has_attachments as "has_attachments!: bool",
-                size_bytes as "size_bytes!", unsubscribe_method
+                size_bytes as "size_bytes!", unsubscribe_method,
+                COALESCE((
+                    SELECT GROUP_CONCAT(labels.provider_id, char(31))
+                    FROM message_labels
+                    JOIN labels ON labels.id = message_labels.label_id
+                    WHERE message_labels.message_id = messages.id
+                ), '') as "label_provider_ids!: String"
              FROM messages WHERE thread_id = ? ORDER BY date ASC"#,
             tid,
         )
@@ -100,6 +106,7 @@ impl super::Store {
                     r.has_attachments,
                     r.size_bytes,
                     r.unsubscribe_method.as_deref(),
+                    &r.label_provider_ids,
                 )
             })
             .collect())

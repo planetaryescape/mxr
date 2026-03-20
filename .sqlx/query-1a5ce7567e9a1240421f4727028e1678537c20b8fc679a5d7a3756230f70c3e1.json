@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                m.id as \"id!\", m.account_id as \"account_id!\", m.provider_id as \"provider_id!\",\n                m.thread_id as \"thread_id!\", m.message_id_header, m.in_reply_to,\n                m.reference_headers, m.from_name, m.from_email as \"from_email!\",\n                m.to_addrs as \"to_addrs!\", m.cc_addrs as \"cc_addrs!\", m.bcc_addrs as \"bcc_addrs!\",\n                m.subject as \"subject!\", m.date as \"date!\", m.flags as \"flags!\",\n                m.snippet as \"snippet!\", m.has_attachments as \"has_attachments!: bool\",\n                m.size_bytes as \"size_bytes!\", m.unsubscribe_method\n             FROM messages m\n             JOIN message_labels ml ON m.id = ml.message_id\n             WHERE ml.label_id = ?\n             ORDER BY m.date DESC\n             LIMIT ? OFFSET ?",
+  "query": "SELECT\n                id as \"id!\", account_id as \"account_id!\", provider_id as \"provider_id!\",\n                thread_id as \"thread_id!\", message_id_header, in_reply_to,\n                reference_headers, from_name, from_email as \"from_email!\",\n                to_addrs as \"to_addrs!\", cc_addrs as \"cc_addrs!\", bcc_addrs as \"bcc_addrs!\",\n                subject as \"subject!\", date as \"date!\", flags as \"flags!\",\n                snippet as \"snippet!\", has_attachments as \"has_attachments!: bool\",\n                size_bytes as \"size_bytes!\", unsubscribe_method,\n                COALESCE((\n                    SELECT GROUP_CONCAT(labels.provider_id, char(31))\n                    FROM message_labels\n                    JOIN labels ON labels.id = message_labels.label_id\n                    WHERE message_labels.message_id = messages.id\n                ), '') as \"label_provider_ids!: String\"\n             FROM messages WHERE account_id = ? ORDER BY date DESC LIMIT ? OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -97,6 +97,11 @@
         "name": "unsubscribe_method",
         "ordinal": 18,
         "type_info": "Text"
+      },
+      {
+        "name": "label_provider_ids!: String",
+        "ordinal": 19,
+        "type_info": "Null"
       }
     ],
     "parameters": {
@@ -121,8 +126,9 @@
       false,
       false,
       false,
-      true
+      true,
+      null
     ]
   },
-  "hash": "2e2ff46c17db43b7686173e9ae793b3c7c61015fa70fa3a993d3e558cca7f098"
+  "hash": "1a5ce7567e9a1240421f4727028e1678537c20b8fc679a5d7a3756230f70c3e1"
 }

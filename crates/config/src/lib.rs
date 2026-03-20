@@ -4,7 +4,7 @@ mod types;
 
 pub use resolve::{
     config_dir, config_file_path, data_dir, load_config, load_config_from_path,
-    load_config_from_str, ConfigError,
+    load_config_from_str, save_config, save_config_to_path, ConfigError,
 };
 pub use types::*;
 
@@ -24,7 +24,9 @@ mod tests {
         let deserialized: MxrConfig =
             toml::from_str(&serialized).expect("deserialize default config");
         assert_eq!(deserialized.general.sync_interval, 60);
+        assert_eq!(deserialized.general.hook_timeout, 30);
         assert_eq!(deserialized.search.max_results, 200);
+        assert_eq!(deserialized.logging.event_retention_days, 90);
         assert!(deserialized.accounts.is_empty());
     }
 
@@ -35,6 +37,7 @@ mod tests {
 editor = "nvim"
 default_account = "personal"
 sync_interval = 120
+hook_timeout = 45
 attachment_dir = "/tmp/attachments"
 
 [accounts.personal]
@@ -70,6 +73,13 @@ evening_hour = 20
 weekend_day = "sunday"
 weekend_hour = 11
 
+[logging]
+level = "debug"
+max_size_mb = 100
+max_files = 5
+stderr = false
+event_retention_days = 30
+
 [appearance]
 theme = "catppuccin"
 sidebar = false
@@ -81,6 +91,7 @@ subject_max_width = 80
         let config: MxrConfig = toml::from_str(toml_str).expect("parse full toml");
         assert_eq!(config.general.editor.as_deref(), Some("nvim"));
         assert_eq!(config.general.sync_interval, 120);
+        assert_eq!(config.general.hook_timeout, 45);
         assert_eq!(config.accounts.len(), 1);
 
         let personal = &config.accounts["personal"];
@@ -89,6 +100,7 @@ subject_max_width = 80
         let serialized = toml::to_string(&config).expect("re-serialize");
         let round_tripped: MxrConfig = toml::from_str(&serialized).expect("round-trip deserialize");
         assert_eq!(round_tripped.search.max_results, 50);
+        assert_eq!(round_tripped.logging.max_files, 5);
         assert_eq!(round_tripped.appearance.theme, "catppuccin");
     }
 
@@ -103,9 +115,11 @@ editor = "emacs"
         assert_eq!(config.general.editor.as_deref(), Some("emacs"));
         // Rest should be defaults
         assert_eq!(config.general.sync_interval, 60);
+        assert_eq!(config.general.hook_timeout, 30);
         assert!(config.render.reader_mode);
         assert_eq!(config.search.max_results, 200);
         assert_eq!(config.snooze.morning_hour, 9);
+        assert_eq!(config.logging.event_retention_days, 90);
         assert_eq!(config.appearance.subject_max_width, 60);
     }
 
@@ -227,5 +241,41 @@ type = "gmail"
         let newsletter = &config.accounts["newsletter"];
         assert!(newsletter.sync.is_none());
         assert!(matches!(newsletter.send, Some(SendProviderConfig::Gmail)));
+    }
+
+    #[test]
+    fn imap_sync_variant_parses() {
+        let toml_str = r#"
+[accounts.fastmail]
+name = "Fastmail"
+email = "me@fastmail.com"
+
+[accounts.fastmail.sync]
+type = "imap"
+host = "imap.fastmail.com"
+port = 993
+username = "me@fastmail.com"
+password_ref = "keyring:fastmail-imap"
+use_tls = true
+
+[accounts.fastmail.send]
+type = "smtp"
+host = "smtp.fastmail.com"
+port = 465
+username = "me@fastmail.com"
+password_ref = "keyring:fastmail-smtp"
+use_tls = true
+"#;
+
+        let config = load_config_from_str(toml_str).expect("parse imap account");
+        let fastmail = &config.accounts["fastmail"];
+        assert!(matches!(
+            fastmail.sync,
+            Some(SyncProviderConfig::Imap { .. })
+        ));
+        assert!(matches!(
+            fastmail.send,
+            Some(SendProviderConfig::Smtp { .. })
+        ));
     }
 }

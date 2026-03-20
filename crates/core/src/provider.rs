@@ -30,6 +30,24 @@ pub trait MailSyncProvider: Send + Sync {
         remove: &[String],
     ) -> Result<()>;
 
+    async fn create_label(&self, _name: &str, _color: Option<&str>) -> Result<Label> {
+        Err(MxrError::Provider(
+            "Label creation not supported".to_string(),
+        ))
+    }
+
+    async fn rename_label(&self, _provider_label_id: &str, _new_name: &str) -> Result<Label> {
+        Err(MxrError::Provider(
+            "Label rename not supported".to_string(),
+        ))
+    }
+
+    async fn delete_label(&self, _provider_label_id: &str) -> Result<()> {
+        Err(MxrError::Provider(
+            "Label deletion not supported".to_string(),
+        ))
+    }
+
     async fn trash(&self, provider_message_id: &str) -> Result<()>;
     async fn set_read(&self, provider_message_id: &str, read: bool) -> Result<()>;
     async fn set_starred(&self, provider_message_id: &str, starred: bool) -> Result<()>;

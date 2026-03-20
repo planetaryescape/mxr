@@ -5,10 +5,11 @@ pub mod input;
 pub mod keybindings;
 pub mod ui;
 
-use app::{App, ComposeAction, PendingSend};
+use app::{App, AttachmentOperation, ComposeAction, PendingSend};
 use client::Client;
 use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
+use mxr_config::load_config;
 use mxr_core::MxrError;
 use mxr_protocol::{DaemonEvent, Request, Response, ResponseData, SearchResultItem};
 use tokio::sync::{mpsc, oneshot};
@@ -30,8 +31,8 @@ fn spawn_ipc_worker(
     tokio::spawn(async move {
         // Create event channel — Client forwards daemon events here
         let (event_tx, mut event_rx) = mpsc::unbounded_channel::<DaemonEvent>();
-        let mut client = match Client::connect(&socket_path).await {
-            Ok(c) => c.with_event_channel(event_tx),
+        let mut client = match connect_ipc_client(&socket_path, event_tx.clone()).await {
+            Ok(client) => client,
             Err(_) => return,
         };
 
@@ -40,7 +41,23 @@ fn spawn_ipc_worker(
                 req = rx.recv() => {
                     match req {
                         Some(req) => {
-                            let result = client.raw_request(req.request).await;
+                            let mut result = client.raw_request(req.request.clone()).await;
+                            if should_reconnect_ipc(&result)
+                                && request_supports_retry(&req.request)
+                            {
+                                match connect_ipc_client(&socket_path, event_tx.clone()).await {
+                                    Ok(mut reconnected) => {
+                                        let retry = reconnected.raw_request(req.request.clone()).await;
+                                        if retry.is_ok() {
+                                            client = reconnected;
+                                        }
+                                        result = retry;
+                                    }
+                                    Err(error) => {
+                                        result = Err(error);
+                                    }
+                                }
+                            }
                             let _ = req.reply.send(result);
                         }
                         None => break,
@@ -55,6 +72,61 @@ fn spawn_ipc_worker(
         }
     });
     tx
+}
+
+async fn connect_ipc_client(
+    socket_path: &std::path::Path,
+    event_tx: mpsc::UnboundedSender<DaemonEvent>,
+) -> Result<Client, MxrError> {
+    Client::connect(socket_path)
+        .await
+        .map(|client| client.with_event_channel(event_tx))
+        .map_err(|e| MxrError::Ipc(e.to_string()))
+}
+
+fn should_reconnect_ipc(result: &Result<Response, MxrError>) -> bool {
+    match result {
+        Err(MxrError::Ipc(message)) => {
+            let lower = message.to_lowercase();
+            lower.contains("broken pipe") || lower.contains("connection closed")
+        }
+        _ => false,
+    }
+}
+
+fn request_supports_retry(request: &Request) -> bool {
+    matches!(
+        request,
+        Request::ListEnvelopes { .. }
+            | Request::GetEnvelope { .. }
+            | Request::GetBody { .. }
+            | Request::ListBodies { .. }
+            | Request::GetThread { .. }
+            | Request::ListLabels { .. }
+            | Request::ListRules
+            | Request::ListAccounts
+            | Request::ListAccountsConfig
+            | Request::GetRule { .. }
+            | Request::GetRuleForm { .. }
+            | Request::DryRunRules { .. }
+            | Request::ListEvents { .. }
+            | Request::GetLogs { .. }
+            | Request::GetDoctorReport
+            | Request::GenerateBugReport { .. }
+            | Request::ListRuleHistory { .. }
+            | Request::Search { .. }
+            | Request::GetSyncStatus { .. }
+            | Request::Count { .. }
+            | Request::GetHeaders { .. }
+            | Request::ListSavedSearches
+            | Request::RunSavedSearch { .. }
+            | Request::ListSnoozed
+            | Request::PrepareReply { .. }
+            | Request::PrepareForward { .. }
+            | Request::ListDrafts
+            | Request::GetStatus
+            | Request::Ping
+    )
 }
 
 /// Send a request to the IPC worker and get the response.
@@ -76,8 +148,9 @@ async fn ipc_call(
 pub async fn run() -> anyhow::Result<()> {
     let socket_path = daemon_socket_path();
     let mut client = Client::connect(&socket_path).await?;
+    let config = load_config()?;
 
-    let mut app = App::new();
+    let mut app = App::from_config(&config);
     app.load(&mut client).await?;
     app.apply(action::Action::GoToInbox);
 
@@ -91,6 +164,57 @@ pub async fn run() -> anyhow::Result<()> {
     let bg = spawn_ipc_worker(socket_path, result_tx.clone());
 
     loop {
+        // Batch any queued body fetches. Current message fetches and window prefetches
+        // share the same path so all state transitions stay consistent.
+        if !app.queued_body_fetches.is_empty() {
+            let ids = std::mem::take(&mut app.queued_body_fetches);
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let requested = ids;
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListBodies {
+                        message_ids: requested.clone(),
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Bodies { bodies },
+                    }) => Ok(bodies),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::Bodies { requested, result });
+            });
+        }
+
+        if let Some(thread_id) = app.pending_thread_fetch.take() {
+            app.in_flight_thread_fetch = Some(thread_id.clone());
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::GetThread {
+                        thread_id: thread_id.clone(),
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Thread { thread, messages },
+                    }) => Ok((thread, messages)),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::Thread { thread_id, result });
+            });
+        }
+
         terminal.draw(|frame| app.draw(frame))?;
 
         let timeout = if app.input_pending() {
@@ -117,6 +241,327 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if app.rules_page.refresh_pending {
+            app.rules_page.refresh_pending = false;
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::ListRules).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Rules { rules },
+                    }) => Ok(rules),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::Rules(result));
+            });
+        }
+
+        if let Some(rule) = app.pending_rule_detail.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::GetRule { rule }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::RuleData { rule },
+                    }) => Ok(rule),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::RuleDetail(result));
+            });
+        }
+
+        if let Some(rule) = app.pending_rule_history.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListRuleHistory {
+                        rule: Some(rule),
+                        limit: 20,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::RuleHistory { entries },
+                    }) => Ok(entries),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::RuleHistory(result));
+            });
+        }
+
+        if let Some(rule) = app.pending_rule_dry_run.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::DryRunRules {
+                        rule: Some(rule),
+                        all: false,
+                        after: None,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::RuleDryRun { results },
+                    }) => Ok(results),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::RuleDryRun(result));
+            });
+        }
+
+        if let Some(rule) = app.pending_rule_form_load.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::GetRuleForm { rule }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::RuleFormData { form },
+                    }) => Ok(form),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::RuleForm(result));
+            });
+        }
+
+        if let Some(rule) = app.pending_rule_delete.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::DeleteRule { rule }).await;
+                let result = match resp {
+                    Ok(Response::Ok { .. }) => Ok(()),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                };
+                let _ = tx.send(AsyncResult::RuleDeleted(result));
+            });
+        }
+
+        if let Some(rule) = app.pending_rule_upsert.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::UpsertRule { rule }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::RuleData { rule },
+                    }) => Ok(rule),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::RuleUpsert(result));
+            });
+        }
+
+        if app.pending_rule_form_save {
+            app.pending_rule_form_save = false;
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            let existing_rule = app.rules_page.form.existing_rule.clone();
+            let name = app.rules_page.form.name.clone();
+            let condition = app.rules_page.form.condition.clone();
+            let action = app.rules_page.form.action.clone();
+            let priority = app
+                .rules_page
+                .form
+                .priority
+                .parse::<i32>()
+                .unwrap_or(100);
+            let enabled = app.rules_page.form.enabled;
+            tokio::spawn(async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::UpsertRuleForm {
+                        existing_rule,
+                        name,
+                        condition,
+                        action,
+                        priority,
+                        enabled,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::RuleData { rule },
+                    }) => Ok(rule),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::RuleUpsert(result));
+            });
+        }
+
+        if app.diagnostics_page.refresh_pending {
+            app.diagnostics_page.refresh_pending = false;
+            for request in [
+                Request::GetStatus,
+                Request::GetDoctorReport,
+                Request::ListEvents {
+                    limit: 20,
+                    level: None,
+                    category: None,
+                },
+                Request::GetLogs {
+                    limit: 50,
+                    level: None,
+                },
+            ] {
+                let bg = bg.clone();
+                let tx = result_tx.clone();
+                tokio::spawn(async move {
+                    let resp = ipc_call(&bg, request).await;
+                    let _ = tx.send(AsyncResult::Diagnostics(Box::new(resp)));
+                });
+            }
+        }
+
+        if app.accounts_page.refresh_pending {
+            app.accounts_page.refresh_pending = false;
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::ListAccounts).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Accounts { accounts },
+                    }) => Ok(accounts),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::Accounts(result));
+            });
+        }
+
+        if let Some(account) = app.pending_account_save.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::UpsertAccountConfig { account }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::AccountStatus { message },
+                    }) => Ok(message),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::AccountOperation(result));
+            });
+        }
+
+        if let Some(account) = app.pending_account_test.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::TestAccountConfig { account }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::AccountStatus { message },
+                    }) => Ok(message),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::AccountOperation(result));
+            });
+        }
+
+        if let Some(key) = app.pending_account_set_default.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::SetDefaultAccount { key }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::AccountStatus { message },
+                    }) => Ok(message),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::AccountOperation(result));
+            });
+        }
+
+        if app.pending_bug_report {
+            app.pending_bug_report = false;
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::GenerateBugReport {
+                        verbose: false,
+                        full_logs: false,
+                        since: None,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::BugReport { content },
+                    }) => Ok(content),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::BugReport(result));
+            });
+        }
+
+        if let Some(pending) = app.pending_attachment_action.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let request = match pending.operation {
+                    AttachmentOperation::Open => Request::OpenAttachment {
+                        message_id: pending.message_id,
+                        attachment_id: pending.attachment_id,
+                    },
+                    AttachmentOperation::Download => Request::DownloadAttachment {
+                        message_id: pending.message_id,
+                        attachment_id: pending.attachment_id,
+                    },
+                };
+                let resp = ipc_call(&bg, request).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::AttachmentFile { file },
+                    }) => Ok(file),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::AttachmentFile {
+                    operation: pending.operation,
+                    result,
+                });
+            });
+        }
+
         // Spawn non-blocking label envelope fetch
         if let Some(label_id) = app.pending_label_fetch.take() {
             let bg = bg.clone();
@@ -132,15 +577,15 @@ pub async fn run() -> anyhow::Result<()> {
                     },
                 )
                 .await;
-                let result = match resp {
+                let envelopes = match resp {
                     Ok(Response::Ok {
-                        data: ResponseData::Envelopes { messages },
-                    }) => Ok(messages),
+                        data: ResponseData::Envelopes { envelopes },
+                    }) => Ok(envelopes),
                     Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::LabelEnvelopes(result));
+                let _ = tx.send(AsyncResult::LabelEnvelopes(envelopes));
             });
         }
 
@@ -162,38 +607,30 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        // Handle thread export
+        // Handle thread export (uses daemon ExportThread which runs mxr-export)
         if let Some(thread_id) = app.pending_export_thread.take() {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::GetThread { thread_id }).await;
+                let resp = ipc_call(
+                    &bg,
+                    Request::ExportThread {
+                        thread_id,
+                        format: mxr_core::types::ExportFormat::Markdown,
+                    },
+                )
+                .await;
                 let result = match resp {
                     Ok(Response::Ok {
-                        data: ResponseData::Thread { thread, messages },
+                        data: ResponseData::ExportResult { content },
                     }) => {
-                        // Format as markdown
-                        let mut md = format!("# {}\n\n", thread.subject);
-                        for msg in &messages {
-                            md.push_str(&format!(
-                                "## From: {} <{}>\n**Date:** {}\n\n",
-                                msg.from.name.as_deref().unwrap_or(""),
-                                msg.from.email,
-                                msg.date.format("%Y-%m-%d %H:%M"),
-                            ));
-                            md.push_str(&format!("{}\n\n---\n\n", msg.snippet));
-                        }
                         // Write to temp file
-                        let sanitized: String = thread
-                            .subject
-                            .chars()
-                            .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
-                            .take(50)
-                            .collect();
-                        let filename =
-                            format!("mxr-export-{}.md", sanitized.trim().replace(' ', "-"));
+                        let filename = format!(
+                            "mxr-export-{}.md",
+                            chrono::Utc::now().format("%Y%m%d-%H%M%S")
+                        );
                         let path = std::env::temp_dir().join(&filename);
-                        match std::fs::write(&path, &md) {
+                        match std::fs::write(&path, &content) {
                             Ok(()) => Ok(format!("Exported to {}", path.display())),
                             Err(e) => Err(MxrError::Ipc(format!("Write failed: {e}"))),
                         }
@@ -230,27 +667,202 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Search(Ok(results)) => {
                             let matched_ids: std::collections::HashSet<_> =
                                 results.iter().map(|r| r.message_id.clone()).collect();
-                            app.envelopes = app
+                            let matched: Vec<_> = app
                                 .all_envelopes
                                 .iter()
                                 .filter(|e| matched_ids.contains(&e.id))
                                 .cloned()
                                 .collect();
-                            app.selected_index = 0;
-                            app.scroll_offset = 0;
+                            if app.screen == app::Screen::Search {
+                                app.search_page.results = matched;
+                                app.search_page.selected_index = 0;
+                                app.search_page.scroll_offset = 0;
+                                app.auto_preview_search();
+                            } else {
+                                app.envelopes = matched;
+                                app.selected_index = 0;
+                                app.scroll_offset = 0;
+                            }
                         }
                         AsyncResult::Search(Err(_)) => {
-                            app.envelopes = app.all_envelopes.clone();
-                        }
-                        AsyncResult::LabelEnvelopes(Ok(messages)) => {
-                            // Cache bodies and extract envelopes
-                            for sm in &messages {
-                                app.body_cache.insert(sm.envelope.id.clone(), sm.body.clone());
+                            if app.screen == app::Screen::Search {
+                                app.search_page.results.clear();
+                            } else {
+                                app.envelopes = app.all_envelopes.clone();
                             }
-                            let envelopes: Vec<_> = messages.into_iter().map(|sm| sm.envelope).collect();
+                        }
+                        AsyncResult::Rules(Ok(rules)) => {
+                            app.rules_page.rules = rules;
+                            app.rules_page.selected_index = app
+                                .rules_page
+                                .selected_index
+                                .min(app.rules_page.rules.len().saturating_sub(1));
+                            if let Some(rule_id) = app
+                                .selected_rule()
+                                .and_then(|rule| rule["id"].as_str())
+                                .map(ToString::to_string)
+                            {
+                                app.pending_rule_detail = Some(rule_id);
+                            }
+                        }
+                        AsyncResult::Rules(Err(e)) => {
+                            app.rules_page.status = Some(format!("Rules error: {e}"));
+                        }
+                        AsyncResult::RuleDetail(Ok(rule)) => {
+                            app.rules_page.detail = Some(rule);
+                            app.rules_page.panel = app::RulesPanel::Details;
+                        }
+                        AsyncResult::RuleDetail(Err(e)) => {
+                            app.rules_page.status = Some(format!("Rule error: {e}"));
+                        }
+                        AsyncResult::RuleHistory(Ok(entries)) => {
+                            app.rules_page.history = entries;
+                        }
+                        AsyncResult::RuleHistory(Err(e)) => {
+                            app.rules_page.status = Some(format!("History error: {e}"));
+                        }
+                        AsyncResult::RuleDryRun(Ok(results)) => {
+                            app.rules_page.dry_run = results;
+                        }
+                        AsyncResult::RuleDryRun(Err(e)) => {
+                            app.rules_page.status = Some(format!("Dry-run error: {e}"));
+                        }
+                        AsyncResult::RuleForm(Ok(form)) => {
+                            app.rules_page.form.visible = true;
+                            app.rules_page.form.existing_rule = form.id;
+                            app.rules_page.form.name = form.name;
+                            app.rules_page.form.condition = form.condition;
+                            app.rules_page.form.action = form.action;
+                            app.rules_page.form.priority = form.priority.to_string();
+                            app.rules_page.form.enabled = form.enabled;
+                            app.rules_page.form.active_field = 0;
+                            app.rules_page.panel = app::RulesPanel::Form;
+                        }
+                        AsyncResult::RuleForm(Err(e)) => {
+                            app.rules_page.status = Some(format!("Form error: {e}"));
+                        }
+                        AsyncResult::RuleDeleted(Ok(())) => {
+                            app.rules_page.status = Some("Rule deleted".into());
+                            app.rules_page.refresh_pending = true;
+                        }
+                        AsyncResult::RuleDeleted(Err(e)) => {
+                            app.rules_page.status = Some(format!("Delete error: {e}"));
+                        }
+                        AsyncResult::RuleUpsert(Ok(rule)) => {
+                            app.rules_page.detail = Some(rule.clone());
+                            app.rules_page.form.visible = false;
+                            app.rules_page.panel = app::RulesPanel::Details;
+                            app.rules_page.status = Some("Rule saved".into());
+                            app.rules_page.refresh_pending = true;
+                        }
+                        AsyncResult::RuleUpsert(Err(e)) => {
+                            app.rules_page.status = Some(format!("Save error: {e}"));
+                        }
+                        AsyncResult::Diagnostics(result) => {
+                            match *result {
+                                Ok(response) => match response {
+                                Response::Ok {
+                                    data:
+                                        ResponseData::Status {
+                                            uptime_secs,
+                                            accounts,
+                                            total_messages,
+                                        },
+                                } => {
+                                    app.diagnostics_page.uptime_secs = Some(uptime_secs);
+                                    app.diagnostics_page.accounts = accounts;
+                                    app.diagnostics_page.total_messages = Some(total_messages);
+                                }
+                                Response::Ok {
+                                    data: ResponseData::DoctorReport { report },
+                                } => {
+                                    app.diagnostics_page.doctor = Some(report);
+                                }
+                                Response::Ok {
+                                    data: ResponseData::EventLogEntries { entries },
+                                } => {
+                                    app.diagnostics_page.events = entries;
+                                }
+                                Response::Ok {
+                                    data: ResponseData::LogLines { lines },
+                                } => {
+                                    app.diagnostics_page.logs = lines;
+                                }
+                                Response::Error { message } => {
+                                    app.diagnostics_page.status = Some(message);
+                                }
+                                _ => {}
+                                },
+                                Err(e) => {
+                                    app.diagnostics_page.status =
+                                        Some(format!("Diagnostics error: {e}"));
+                                }
+                            }
+                        }
+                        AsyncResult::Accounts(Ok(accounts)) => {
+                            app.accounts_page.accounts = accounts;
+                            app.accounts_page.selected_index = app
+                                .accounts_page
+                                .selected_index
+                                .min(app.accounts_page.accounts.len().saturating_sub(1));
+                        }
+                        AsyncResult::Accounts(Err(e)) => {
+                            app.accounts_page.status = Some(format!("Accounts error: {e}"));
+                        }
+                        AsyncResult::AccountOperation(Ok(message)) => {
+                            app.accounts_page.status = Some(message);
+                            app.accounts_page.form.visible = false;
+                            app.accounts_page.refresh_pending = true;
+                        }
+                        AsyncResult::AccountOperation(Err(e)) => {
+                            app.accounts_page.status = Some(format!("Account error: {e}"));
+                        }
+                        AsyncResult::BugReport(Ok(content)) => {
+                            let filename = format!(
+                                "mxr-bug-report-{}.md",
+                                chrono::Utc::now().format("%Y%m%d-%H%M%S")
+                            );
+                            let path = std::env::temp_dir().join(filename);
+                            match std::fs::write(&path, &content) {
+                                Ok(()) => {
+                                    app.diagnostics_page.status =
+                                        Some(format!("Bug report saved to {}", path.display()));
+                                }
+                                Err(e) => {
+                                    app.diagnostics_page.status =
+                                        Some(format!("Bug report write failed: {e}"));
+                                }
+                            }
+                        }
+                        AsyncResult::BugReport(Err(e)) => {
+                            app.diagnostics_page.status = Some(format!("Bug report error: {e}"));
+                        }
+                        AsyncResult::AttachmentFile {
+                            operation,
+                            result: Ok(file),
+                        } => {
+                            app.resolve_attachment_file(&file);
+                            let action = match operation {
+                                AttachmentOperation::Open => "Opened",
+                                AttachmentOperation::Download => "Downloaded",
+                            };
+                            let message = format!("{action} {} -> {}", file.filename, file.path);
+                            app.attachment_panel.status = Some(message.clone());
+                            app.status_message = Some(message);
+                        }
+                        AsyncResult::AttachmentFile {
+                            result: Err(e), ..
+                        } => {
+                            let message = format!("Attachment error: {e}");
+                            app.attachment_panel.status = Some(message.clone());
+                            app.status_message = Some(message);
+                        }
+                        AsyncResult::LabelEnvelopes(Ok(envelopes)) => {
                             // Preserve user's position by tracking selected message ID
                             let selected_id = app.envelopes.get(app.selected_index).map(|e| e.id.clone());
                             app.envelopes = envelopes;
+                            app.active_label = app.pending_active_label.take();
+                            app.queue_body_window();
                             if let Some(ref id) = selected_id {
                                 if let Some(pos) = app.envelopes.iter().position(|e| &e.id == id) {
                                     app.selected_index = pos;
@@ -269,8 +881,43 @@ pub async fn run() -> anyhow::Result<()> {
                                 app.scroll_offset = 0;
                             }
                         }
-                        AsyncResult::LabelEnvelopes(Err(_)) => {
-                            app.envelopes = app.all_envelopes.clone();
+                        AsyncResult::LabelEnvelopes(Err(e)) => {
+                            app.pending_active_label = None;
+                            app.status_message = Some(format!("Label filter failed: {e}"));
+                        }
+                        AsyncResult::Bodies { requested, result: Ok(bodies) } => {
+                            let mut returned = std::collections::HashSet::new();
+                            for body in bodies {
+                                returned.insert(body.message_id.clone());
+                                app.resolve_body_success(body);
+                            }
+                            for message_id in requested {
+                                if !returned.contains(&message_id) {
+                                    app.resolve_body_fetch_error(
+                                        &message_id,
+                                        "body not available".into(),
+                                    );
+                                }
+                            }
+                        }
+                        AsyncResult::Bodies { requested, result: Err(e) } => {
+                            let message = e.to_string();
+                            for message_id in requested {
+                                app.resolve_body_fetch_error(&message_id, message.clone());
+                            }
+                        }
+                        AsyncResult::Thread {
+                            thread_id,
+                            result: Ok((thread, messages)),
+                        } => {
+                            app.resolve_thread_success(thread, messages);
+                            let _ = thread_id;
+                        }
+                        AsyncResult::Thread {
+                            thread_id,
+                            result: Err(_),
+                        } => {
+                            app.resolve_thread_fetch_error(&thread_id);
                         }
                         AsyncResult::MutationResult(Ok(effect)) => {
                             match effect {
@@ -287,10 +934,31 @@ pub async fn run() -> anyhow::Result<()> {
                                         == Some(&id)
                                     {
                                         app.viewing_envelope = None;
-                                        app.message_body = None;
-                                        app.raw_body = None;
+                                        app.body_view_state = app::BodyViewState::Empty { preview: None };
                                         app.layout_mode = app::LayoutMode::TwoPane;
                                         app.active_pane = app::ActivePane::MailList;
+                                    }
+                                    app.status_message = Some("Done".into());
+                                }
+                                app::MutationEffect::RemoveFromListMany(ids) => {
+                                    app.envelopes.retain(|e| !ids.iter().any(|id| id == &e.id));
+                                    app.all_envelopes
+                                        .retain(|e| !ids.iter().any(|id| id == &e.id));
+                                    if let Some(viewing_id) =
+                                        app.viewing_envelope.as_ref().map(|e| e.id.clone())
+                                    {
+                                        if ids.iter().any(|id| id == &viewing_id) {
+                                            app.viewing_envelope = None;
+                                            app.body_view_state =
+                                                app::BodyViewState::Empty { preview: None };
+                                            app.layout_mode = app::LayoutMode::TwoPane;
+                                            app.active_pane = app::ActivePane::MailList;
+                                        }
+                                    }
+                                    if app.selected_index >= app.envelopes.len()
+                                        && app.selected_index > 0
+                                    {
+                                        app.selected_index = app.envelopes.len() - 1;
                                     }
                                     app.status_message = Some("Done".into());
                                 }
@@ -317,6 +985,15 @@ pub async fn run() -> anyhow::Result<()> {
                                     }
                                     app.status_message = Some("Synced".into());
                                 }
+                                app::MutationEffect::ModifyLabels {
+                                    message_ids,
+                                    add,
+                                    remove,
+                                    status,
+                                } => {
+                                    app.apply_local_label_refs(&message_ids, &add, &remove);
+                                    app.status_message = Some(status);
+                                }
                                 app::MutationEffect::StatusOnly(msg) => {
                                     app.status_message = Some(msg);
                                 }
@@ -336,46 +1013,13 @@ pub async fn run() -> anyhow::Result<()> {
                             terminal = ratatui::init();
                             match status {
                                 Ok(s) if s.success() => {
-                                    match std::fs::read_to_string(&data.draft_path) {
-                                        Ok(content) => {
-                                            match mxr_compose::frontmatter::parse_compose_file(
-                                                &content,
-                                            ) {
-                                                Ok((fm, body)) => {
-                                                    let issues =
-                                                        mxr_compose::validate_draft(&fm, &body);
-                                                    let has_errors =
-                                                        issues.iter().any(|i| i.is_error());
-                                                    if has_errors {
-                                                        let msgs: Vec<String> = issues
-                                                            .iter()
-                                                            .map(|i| i.to_string())
-                                                            .collect();
-                                                        app.status_message = Some(format!(
-                                                            "Draft errors: {}",
-                                                            msgs.join("; ")
-                                                        ));
-                                                    } else {
-                                                        // Store parsed draft for confirmation
-                                                        app.pending_send_confirm = Some(PendingSend {
-                                                            fm,
-                                                            body,
-                                                            draft_path: data.draft_path.clone(),
-                                                        });
-                                                        app.status_message = Some(
-                                                            "[s]end  [d]raft  [e]dit again  [Esc] discard".into(),
-                                                        );
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    app.status_message =
-                                                        Some(format!("Parse error: {e}"));
-                                                }
-                                            }
+                                    match pending_send_from_edited_draft(&data) {
+                                        Ok(Some(pending)) => {
+                                            app.pending_send_confirm = Some(pending);
                                         }
-                                        Err(e) => {
-                                            app.status_message =
-                                                Some(format!("Failed to read draft: {e}"));
+                                        Ok(None) => {}
+                                        Err(message) => {
+                                            app.status_message = Some(message);
                                         }
                                     }
                                 }
@@ -448,7 +1092,30 @@ pub async fn run() -> anyhow::Result<()> {
 
 enum AsyncResult {
     Search(Result<Vec<SearchResultItem>, MxrError>),
-    LabelEnvelopes(Result<Vec<mxr_core::types::SyncedMessage>, MxrError>),
+    Rules(Result<Vec<serde_json::Value>, MxrError>),
+    RuleDetail(Result<serde_json::Value, MxrError>),
+    RuleHistory(Result<Vec<serde_json::Value>, MxrError>),
+    RuleDryRun(Result<Vec<serde_json::Value>, MxrError>),
+    RuleForm(Result<mxr_protocol::RuleFormData, MxrError>),
+    RuleDeleted(Result<(), MxrError>),
+    RuleUpsert(Result<serde_json::Value, MxrError>),
+    Diagnostics(Box<Result<Response, MxrError>>),
+    Accounts(Result<Vec<mxr_protocol::AccountSummaryData>, MxrError>),
+    AccountOperation(Result<String, MxrError>),
+    BugReport(Result<String, MxrError>),
+    AttachmentFile {
+        operation: AttachmentOperation,
+        result: Result<mxr_protocol::AttachmentFile, MxrError>,
+    },
+    LabelEnvelopes(Result<Vec<mxr_core::Envelope>, MxrError>),
+    Bodies {
+        requested: Vec<mxr_core::MessageId>,
+        result: Result<Vec<mxr_core::MessageBody>, MxrError>,
+    },
+    Thread {
+        thread_id: mxr_core::ThreadId,
+        result: Result<(mxr_core::Thread, Vec<mxr_core::Envelope>), MxrError>,
+    },
     MutationResult(Result<app::MutationEffect, MxrError>),
     ComposeReady(Result<ComposeReadyData, MxrError>),
     ExportResult(Result<String, MxrError>),
@@ -458,6 +1125,7 @@ enum AsyncResult {
 struct ComposeReadyData {
     draft_path: std::path::PathBuf,
     cursor_line: usize,
+    initial_content: String,
 }
 
 async fn handle_compose_action(
@@ -471,8 +1139,10 @@ async fn handle_compose_action(
             // Re-edit existing draft — skip creating a new file
             let cursor_line = 1;
             return Ok(ComposeReadyData {
-                draft_path: path,
+                draft_path: path.clone(),
                 cursor_line,
+                initial_content: std::fs::read_to_string(&path)
+                    .map_err(|e| MxrError::Ipc(e.to_string()))?,
             });
         }
         ComposeAction::New => mxr_compose::ComposeKind::New,
@@ -542,22 +1212,55 @@ async fn handle_compose_action(
         mxr_compose::create_draft_file(kind, &from).map_err(|e| MxrError::Ipc(e.to_string()))?;
 
     Ok(ComposeReadyData {
-        draft_path: path,
+        draft_path: path.clone(),
         cursor_line,
+        initial_content: std::fs::read_to_string(&path).map_err(|e| MxrError::Ipc(e.to_string()))?,
     })
 }
 
 async fn get_account_email(bg: &mpsc::UnboundedSender<IpcRequest>) -> Result<String, MxrError> {
-    let resp = ipc_call(bg, Request::GetStatus).await?;
+    let resp = ipc_call(bg, Request::ListAccounts).await?;
     match resp {
         Response::Ok {
-            data: ResponseData::Status { accounts, .. },
-        } => Ok(accounts
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| "user@example.com".to_string())),
-        _ => Ok("user@example.com".to_string()),
+            data: ResponseData::Accounts { mut accounts },
+        } => {
+            if let Some(index) = accounts.iter().position(|account| account.is_default) {
+                Ok(accounts.remove(index).email)
+            } else {
+                accounts
+                    .into_iter()
+                    .next()
+                    .map(|account| account.email)
+                    .ok_or_else(|| MxrError::Ipc("No runtime account configured".into()))
+            }
+        }
+        Response::Error { message } => Err(MxrError::Ipc(message)),
+        _ => Err(MxrError::Ipc("Unexpected account response".into())),
     }
+}
+
+fn pending_send_from_edited_draft(
+    data: &ComposeReadyData,
+) -> Result<Option<PendingSend>, String> {
+    let content = std::fs::read_to_string(&data.draft_path)
+        .map_err(|e| format!("Failed to read draft: {e}"))?;
+    let unchanged = content == data.initial_content;
+
+    let (fm, body) = mxr_compose::frontmatter::parse_compose_file(&content)
+        .map_err(|e| format!("Parse error: {e}"))?;
+    let issues = mxr_compose::validate_draft(&fm, &body);
+    let has_errors = issues.iter().any(|issue| issue.is_error());
+    if has_errors {
+        let msgs: Vec<String> = issues.iter().map(|issue| issue.to_string()).collect();
+        return Err(format!("Draft errors: {}", msgs.join("; ")));
+    }
+
+    Ok(Some(PendingSend {
+        fm,
+        body,
+        draft_path: data.draft_path.clone(),
+        allow_send: !unchanged,
+    }))
 }
 
 fn daemon_socket_path() -> std::path::PathBuf {
@@ -575,14 +1278,18 @@ fn daemon_socket_path() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::action::Action;
-    use super::app::{ActivePane, App, LayoutMode, MutationEffect};
+    use super::{pending_send_from_edited_draft, ComposeReadyData, PendingSend};
+    use super::app::{ActivePane, App, BodySource, BodyViewState, LayoutMode, MutationEffect, Screen};
     use super::input::InputHandler;
     use super::ui::command_palette::CommandPalette;
+    use super::ui::command_palette::default_commands;
     use super::ui::search_bar::SearchBar;
     use super::ui::status_bar;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use mxr_config::RenderConfig;
     use mxr_core::id::*;
     use mxr_core::types::*;
+    use mxr_protocol::Request;
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
         (0..count)
@@ -767,6 +1474,22 @@ mod tests {
         let mut app = App::new();
         app.apply(Action::QuitView);
         assert!(app.should_quit);
+    }
+
+    #[test]
+    fn app_new_uses_default_reader_mode() {
+        let app = App::new();
+        assert!(app.reader_mode);
+    }
+
+    #[test]
+    fn app_from_render_config_respects_reader_mode() {
+        let config = RenderConfig {
+            reader_mode: false,
+            ..Default::default()
+        };
+        let app = App::from_render_config(&config);
+        assert!(!app.reader_mode);
     }
 
     #[test]
@@ -1044,25 +1767,17 @@ mod tests {
     // --- Back navigation tests ---
 
     #[test]
-    fn back_in_message_view_returns_to_mail_list() {
+    fn back_in_message_view_closes_preview_pane() {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(3);
         app.all_envelopes = app.envelopes.clone();
         app.apply(Action::OpenSelected);
         assert_eq!(app.active_pane, ActivePane::MessageView);
         assert_eq!(app.layout_mode, LayoutMode::ThreePane);
-        // Esc should move to MailList but keep ThreePane
         app.apply(Action::Back);
         assert_eq!(app.active_pane, ActivePane::MailList);
-        assert_eq!(
-            app.layout_mode,
-            LayoutMode::ThreePane,
-            "Esc in MessageView should keep ThreePane"
-        );
-        assert!(
-            app.viewing_envelope.is_some(),
-            "Message should still be visible"
-        );
+        assert_eq!(app.layout_mode, LayoutMode::TwoPane);
+        assert!(app.viewing_envelope.is_none());
     }
 
     #[test]
@@ -1191,12 +1906,12 @@ mod tests {
         app.all_envelopes = app.envelopes.clone();
         app.labels = make_test_labels();
         app.apply(Action::GoToInbox);
-        assert!(
-            app.active_label.is_some(),
-            "GoToInbox should set active_label"
-        );
         let label = app.labels.iter().find(|l| l.name == "INBOX").unwrap();
-        assert_eq!(app.active_label.as_ref().unwrap(), &label.id);
+        assert!(
+            app.active_label.is_none(),
+            "GoToInbox should wait for fetch success before swapping active label"
+        );
+        assert_eq!(app.pending_active_label.as_ref().unwrap(), &label.id);
         assert!(
             app.pending_label_fetch.is_some(),
             "Should trigger label fetch"
@@ -1305,10 +2020,7 @@ mod tests {
         app.all_envelopes = app.envelopes.clone();
         let title = app.mail_list_title();
         assert!(title.contains("5"), "Title should show message count");
-        assert!(
-            title.contains("Messages"),
-            "Default title should say Messages"
-        );
+        assert!(title.contains("Threads"), "Default title should say Threads");
     }
 
     #[test]
@@ -1351,11 +2063,639 @@ mod tests {
     fn message_view_body_display() {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(3);
+        app.all_envelopes = app.envelopes.clone();
         app.apply(Action::OpenMessageView);
         assert_eq!(app.layout_mode, LayoutMode::ThreePane);
-        app.message_body = Some("Hello".into());
-        assert_eq!(app.message_body.as_deref(), Some("Hello"));
+        app.body_view_state = BodyViewState::Ready {
+            raw: "Hello".into(),
+            rendered: "Hello".into(),
+            source: BodySource::Plain,
+        };
+        assert_eq!(app.body_view_state.display_text(), Some("Hello"));
         app.apply(Action::CloseMessageView);
-        assert!(app.message_body.is_none());
+        assert!(matches!(app.body_view_state, BodyViewState::Empty { .. }));
+    }
+
+    #[test]
+    fn close_message_view_preserves_reader_mode() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        app.apply(Action::OpenMessageView);
+
+        app.apply(Action::CloseMessageView);
+
+        assert!(app.reader_mode);
+    }
+
+    #[test]
+    fn open_selected_populates_visible_thread_messages() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(3);
+        let shared_thread = ThreadId::new();
+        app.envelopes[0].thread_id = shared_thread.clone();
+        app.envelopes[1].thread_id = shared_thread;
+        app.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(5);
+        app.envelopes[1].date = chrono::Utc::now();
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+
+        assert_eq!(app.viewed_thread_messages.len(), 2);
+        assert_eq!(app.viewed_thread_messages[0].id, app.envelopes[0].id);
+        assert_eq!(app.viewed_thread_messages[1].id, app.envelopes[1].id);
+    }
+
+    #[test]
+    fn mail_list_defaults_to_threads() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(3);
+        let shared_thread = ThreadId::new();
+        app.envelopes[0].thread_id = shared_thread.clone();
+        app.envelopes[1].thread_id = shared_thread;
+        app.all_envelopes = app.envelopes.clone();
+
+        assert_eq!(app.mail_list_rows().len(), 2);
+        assert_eq!(app.selected_mail_row().map(|row| row.message_count), Some(2));
+    }
+
+    #[test]
+    fn open_thread_focuses_latest_unread_message() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(3);
+        let shared_thread = ThreadId::new();
+        app.envelopes[0].thread_id = shared_thread.clone();
+        app.envelopes[1].thread_id = shared_thread;
+        app.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(10);
+        app.envelopes[1].date = chrono::Utc::now();
+        app.envelopes[0].flags = MessageFlags::READ;
+        app.envelopes[1].flags = MessageFlags::empty();
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+
+        assert_eq!(app.thread_selected_index, 1);
+        assert_eq!(
+            app.focused_thread_envelope().map(|env| env.id.clone()),
+            Some(app.envelopes[1].id.clone())
+        );
+    }
+
+    #[test]
+    fn thread_move_down_changes_reply_target() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(2);
+        let shared_thread = ThreadId::new();
+        app.envelopes[0].thread_id = shared_thread.clone();
+        app.envelopes[1].thread_id = shared_thread;
+        app.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(5);
+        app.envelopes[1].date = chrono::Utc::now();
+        app.envelopes[0].flags = MessageFlags::empty();
+        app.envelopes[1].flags = MessageFlags::READ;
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+        assert_eq!(
+            app.focused_thread_envelope().map(|env| env.id.clone()),
+            Some(app.envelopes[0].id.clone())
+        );
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+
+        assert_eq!(
+            app.focused_thread_envelope().map(|env| env.id.clone()),
+            Some(app.envelopes[1].id.clone())
+        );
+        app.apply(Action::Reply);
+        assert_eq!(
+            app.pending_compose,
+            Some(super::app::ComposeAction::Reply {
+                message_id: app.envelopes[1].id.clone()
+            })
+        );
+    }
+
+    #[test]
+    fn help_action_toggles_modal_state() {
+        let mut app = App::new();
+
+        app.apply(Action::Help);
+        assert!(app.help_modal_open);
+
+        app.apply(Action::Help);
+        assert!(!app.help_modal_open);
+    }
+
+    #[test]
+    fn open_search_screen_activates_dedicated_search_workspace() {
+        let mut app = App::new();
+        app.apply(Action::OpenSearchScreen);
+        assert_eq!(app.screen, Screen::Search);
+        assert!(app.search_page.editing);
+    }
+
+    #[test]
+    fn open_rules_screen_marks_refresh_pending() {
+        let mut app = App::new();
+        app.apply(Action::OpenRulesScreen);
+        assert_eq!(app.screen, Screen::Rules);
+        assert!(app.rules_page.refresh_pending);
+    }
+
+    #[test]
+    fn open_diagnostics_screen_marks_refresh_pending() {
+        let mut app = App::new();
+        app.apply(Action::OpenDiagnosticsScreen);
+        assert_eq!(app.screen, Screen::Diagnostics);
+        assert!(app.diagnostics_page.refresh_pending);
+    }
+
+    #[test]
+    fn open_accounts_screen_marks_refresh_pending() {
+        let mut app = App::new();
+        app.apply(Action::OpenAccountsScreen);
+        assert_eq!(app.screen, Screen::Accounts);
+        assert!(app.accounts_page.refresh_pending);
+    }
+
+    #[test]
+    fn new_account_form_opens_from_accounts_screen() {
+        let mut app = App::new();
+        app.apply(Action::OpenAccountsScreen);
+        app.apply(Action::OpenAccountFormNew);
+
+        assert_eq!(app.screen, Screen::Accounts);
+        assert!(app.accounts_page.form.visible);
+        assert_eq!(
+            app.accounts_page.form.mode,
+            crate::app::AccountFormMode::ImapSmtp
+        );
+    }
+
+    #[test]
+    fn flattened_sidebar_navigation_reaches_saved_searches() {
+        let mut app = App::new();
+        app.labels = vec![Label {
+            id: LabelId::new(),
+            account_id: AccountId::new(),
+            provider_id: "inbox".into(),
+            name: "INBOX".into(),
+            kind: LabelKind::System,
+            color: None,
+            unread_count: 1,
+            total_count: 3,
+        }];
+        app.saved_searches = vec![SavedSearch {
+            id: SavedSearchId::new(),
+            account_id: None,
+            name: "Unread".into(),
+            query: "is:unread".into(),
+            sort: SortOrder::DateDesc,
+            icon: None,
+            position: 0,
+            created_at: chrono::Utc::now(),
+        }];
+        app.active_pane = ActivePane::Sidebar;
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+
+        assert!(matches!(
+            app.selected_sidebar_item(),
+            Some(super::app::SidebarItem::SavedSearch(_))
+        ));
+    }
+
+    #[test]
+    fn toggle_select_advances_cursor_and_updates_preview() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(2);
+        app.all_envelopes = app.envelopes.clone();
+        app.apply(Action::OpenSelected);
+
+        app.apply(Action::ToggleSelect);
+
+        assert_eq!(app.selected_index, 1);
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(app.envelopes[1].id.clone())
+        );
+        assert!(matches!(
+            app.body_view_state,
+            BodyViewState::Loading { ref preview }
+                if preview.as_deref() == Some("Snippet 1")
+        ));
+    }
+
+    #[test]
+    fn opening_search_result_enters_mailbox_thread_view() {
+        let mut app = App::new();
+        app.screen = Screen::Search;
+        app.search_page.results = make_test_envelopes(2);
+        app.search_page.selected_index = 1;
+
+        app.apply(Action::OpenSelected);
+
+        assert_eq!(app.screen, Screen::Mailbox);
+        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
+        assert_eq!(app.active_pane, ActivePane::MessageView);
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(app.search_page.results[1].id.clone())
+        );
+    }
+
+    #[test]
+    fn attachment_list_opens_modal_for_current_message() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        let env = app.envelopes[0].clone();
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some("hello".into()),
+                text_html: None,
+                attachments: vec![AttachmentMeta {
+                    id: AttachmentId::new(),
+                    message_id: env.id.clone(),
+                    filename: "report.pdf".into(),
+                    mime_type: "application/pdf".into(),
+                    size_bytes: 1024,
+                    local_path: None,
+                    provider_id: "att-1".into(),
+                }],
+                fetched_at: chrono::Utc::now(),
+            },
+        );
+
+        app.apply(Action::OpenSelected);
+        app.apply(Action::AttachmentList);
+
+        assert!(app.attachment_panel.visible);
+        assert_eq!(app.attachment_panel.attachments.len(), 1);
+        assert_eq!(app.attachment_panel.attachments[0].filename, "report.pdf");
+    }
+
+    #[test]
+    fn unchanged_editor_result_disables_send_actions() {
+        let temp = std::env::temp_dir().join(format!(
+            "mxr-compose-test-{}-{}.md",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let content = "---\nto: a@example.com\ncc: \"\"\nbcc: \"\"\nsubject: Hello\nfrom: me@example.com\nattach: []\n---\n\nBody\n";
+        std::fs::write(&temp, content).unwrap();
+
+        let pending = pending_send_from_edited_draft(&ComposeReadyData {
+            draft_path: temp.clone(),
+            cursor_line: 1,
+            initial_content: content.to_string(),
+        })
+        .unwrap()
+        .expect("pending send should exist");
+
+        assert!(!pending.allow_send);
+
+        let _ = std::fs::remove_file(temp);
+    }
+
+    #[test]
+    fn send_key_is_ignored_for_unchanged_draft_confirmation() {
+        let mut app = App::new();
+        app.pending_send_confirm = Some(PendingSend {
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: "a@example.com".into(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "Hello".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                attach: vec![],
+            },
+            body: "Body".into(),
+            draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            allow_send: false,
+        });
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+
+        assert!(app.pending_send_confirm.is_some());
+        assert!(app.pending_mutation_queue.is_empty());
+    }
+
+    #[test]
+    fn mail_list_l_opens_label_picker_not_message() {
+        let mut app = App::new();
+        app.active_pane = ActivePane::MailList;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
+
+        assert_eq!(action, Some(Action::ApplyLabel));
+    }
+
+    #[test]
+    fn back_clears_selection_before_other_mail_list_back_behavior() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(2);
+        app.all_envelopes = app.envelopes.clone();
+        app.selected_set.insert(app.envelopes[0].id.clone());
+
+        app.apply(Action::Back);
+
+        assert!(app.selected_set.is_empty());
+        assert_eq!(app.status_message.as_deref(), Some("Selection cleared"));
+    }
+
+    #[test]
+    fn bulk_archive_requires_confirmation_before_queueing() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(3);
+        app.all_envelopes = app.envelopes.clone();
+        app.selected_set = app.envelopes.iter().map(|env| env.id.clone()).collect();
+
+        app.apply(Action::Archive);
+
+        assert!(app.pending_mutation_queue.is_empty());
+        assert!(app.pending_bulk_confirm.is_some());
+    }
+
+    #[test]
+    fn confirming_bulk_archive_queues_mutation_and_clears_selection() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(3);
+        app.all_envelopes = app.envelopes.clone();
+        app.selected_set = app.envelopes.iter().map(|env| env.id.clone()).collect();
+        app.apply(Action::Archive);
+
+        app.apply(Action::OpenSelected);
+
+        assert!(app.pending_bulk_confirm.is_none());
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        assert!(app.selected_set.is_empty());
+    }
+
+    #[test]
+    fn command_palette_includes_major_mail_actions() {
+        let labels: Vec<String> = default_commands().into_iter().map(|cmd| cmd.label).collect();
+        assert!(labels.contains(&"Reply".to_string()));
+        assert!(labels.contains(&"Reply All".to_string()));
+        assert!(labels.contains(&"Archive".to_string()));
+        assert!(labels.contains(&"Delete".to_string()));
+        assert!(labels.contains(&"Apply Label".to_string()));
+        assert!(labels.contains(&"Snooze".to_string()));
+        assert!(labels.contains(&"Clear Selection".to_string()));
+        assert!(labels.contains(&"Open Accounts Page".to_string()));
+        assert!(labels.contains(&"New IMAP/SMTP Account".to_string()));
+        assert!(labels.contains(&"Set Default Account".to_string()));
+    }
+
+    #[test]
+    fn local_label_changes_update_open_message() {
+        let mut app = App::new();
+        app.labels = make_test_labels();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        app.apply(Action::OpenSelected);
+
+        let user_label = app
+            .labels
+            .iter()
+            .find(|label| label.name == "Work")
+            .unwrap()
+            .clone();
+        let message_id = app.envelopes[0].id.clone();
+
+        app.apply_local_label_refs(
+            std::slice::from_ref(&message_id),
+            std::slice::from_ref(&user_label.name),
+            &[],
+        );
+
+        assert!(app.viewing_envelope.as_ref().unwrap().label_provider_ids.contains(&user_label.provider_id));
+    }
+
+    #[test]
+    fn snooze_action_opens_modal_then_queues_request() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::Snooze);
+        assert!(app.snooze_panel.visible);
+
+        app.apply(Action::Snooze);
+        assert!(!app.snooze_panel.visible);
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        match &app.pending_mutation_queue[0].0 {
+            Request::Snooze { message_id, wake_at } => {
+                assert_eq!(message_id, &app.envelopes[0].id);
+                assert!(*wake_at > chrono::Utc::now());
+            }
+            other => panic!("expected snooze request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn open_selected_cache_miss_enters_loading_with_snippet_preview() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+
+        assert!(matches!(
+            app.body_view_state,
+            BodyViewState::Loading { ref preview }
+                if preview.as_deref() == Some("Snippet 0")
+        ));
+        assert_eq!(app.queued_body_fetches, vec![app.envelopes[0].id.clone()]);
+        assert!(app.in_flight_body_requests.contains(&app.envelopes[0].id));
+    }
+
+    #[test]
+    fn cached_plain_body_resolves_ready_state() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        let env = app.envelopes[0].clone();
+
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some("Plain body".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+            },
+        );
+
+        app.apply(Action::OpenSelected);
+
+        assert!(matches!(
+            app.body_view_state,
+            BodyViewState::Ready {
+                ref raw,
+                ref rendered,
+                source: BodySource::Plain,
+            } if raw == "Plain body" && rendered == "Plain body"
+        ));
+    }
+
+    #[test]
+    fn cached_html_only_body_resolves_ready_state() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        let env = app.envelopes[0].clone();
+
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: None,
+                text_html: Some("<p>Hello html</p>".into()),
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+            },
+        );
+
+        app.apply(Action::OpenSelected);
+
+        assert!(matches!(
+            app.body_view_state,
+            BodyViewState::Ready {
+                ref raw,
+                ref rendered,
+                source: BodySource::Html,
+            } if raw == "<p>Hello html</p>"
+                && rendered.contains("Hello html")
+                && !rendered.contains("<p>")
+        ));
+    }
+
+    #[test]
+    fn cached_empty_body_resolves_empty_not_loading() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        let env = app.envelopes[0].clone();
+
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: None,
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+            },
+        );
+
+        app.apply(Action::OpenSelected);
+
+        assert!(matches!(
+            app.body_view_state,
+            BodyViewState::Empty { ref preview }
+                if preview.as_deref() == Some("Snippet 0")
+        ));
+    }
+
+    #[test]
+    fn body_fetch_error_resolves_error_not_loading() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        app.apply(Action::OpenSelected);
+        let env = app.envelopes[0].clone();
+
+        app.resolve_body_fetch_error(&env.id, "boom".into());
+
+        assert!(matches!(
+            app.body_view_state,
+            BodyViewState::Error { ref message, ref preview }
+                if message == "boom" && preview.as_deref() == Some("Snippet 0")
+        ));
+        assert!(!app.in_flight_body_requests.contains(&env.id));
+    }
+
+    #[test]
+    fn stale_body_response_does_not_clobber_current_view() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(2);
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+        let first = app.envelopes[0].clone();
+        app.active_pane = ActivePane::MailList;
+        app.apply(Action::MoveDown);
+        let second = app.envelopes[1].clone();
+
+        app.resolve_body_success(MessageBody {
+            message_id: first.id.clone(),
+            text_plain: Some("Old body".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+        });
+
+        assert_eq!(app.viewing_envelope.as_ref().map(|env| env.id.clone()), Some(second.id));
+        assert!(matches!(
+            app.body_view_state,
+            BodyViewState::Loading { ref preview }
+                if preview.as_deref() == Some("Snippet 1")
+        ));
+    }
+
+    #[test]
+    fn reader_mode_toggle_shows_raw_html_when_disabled() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        let env = app.envelopes[0].clone();
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: None,
+                text_html: Some("<p>Hello html</p>".into()),
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+            },
+        );
+
+        app.apply(Action::OpenSelected);
+
+        match &app.body_view_state {
+            BodyViewState::Ready { raw, rendered, .. } => {
+                assert_eq!(raw, "<p>Hello html</p>");
+                assert_ne!(rendered, raw);
+                assert!(rendered.contains("Hello html"));
+            }
+            other => panic!("expected ready state, got {other:?}"),
+        }
+
+        app.apply(Action::ToggleReaderMode);
+
+        match &app.body_view_state {
+            BodyViewState::Ready { raw, rendered, .. } => {
+                assert_eq!(raw, "<p>Hello html</p>");
+                assert_eq!(rendered, raw);
+            }
+            other => panic!("expected ready state, got {other:?}"),
+        }
+
+        app.apply(Action::ToggleReaderMode);
+
+        match &app.body_view_state {
+            BodyViewState::Ready { raw, rendered, .. } => {
+                assert_eq!(raw, "<p>Hello html</p>");
+                assert_ne!(rendered, raw);
+                assert!(rendered.contains("Hello html"));
+            }
+            other => panic!("expected ready state, got {other:?}"),
+        }
     }
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                id as \"id!\", account_id as \"account_id!\", provider_id as \"provider_id!\",\n                thread_id as \"thread_id!\", message_id_header, in_reply_to,\n                reference_headers, from_name, from_email as \"from_email!\",\n                to_addrs as \"to_addrs!\", cc_addrs as \"cc_addrs!\", bcc_addrs as \"bcc_addrs!\",\n                subject as \"subject!\", date as \"date!\", flags as \"flags!\",\n                snippet as \"snippet!\", has_attachments as \"has_attachments!: bool\",\n                size_bytes as \"size_bytes!\", unsubscribe_method\n             FROM messages WHERE thread_id = ? ORDER BY date ASC",
+  "query": "SELECT\n                id as \"id!\", account_id as \"account_id!\", provider_id as \"provider_id!\",\n                thread_id as \"thread_id!\", message_id_header, in_reply_to,\n                reference_headers, from_name, from_email as \"from_email!\",\n                to_addrs as \"to_addrs!\", cc_addrs as \"cc_addrs!\", bcc_addrs as \"bcc_addrs!\",\n                subject as \"subject!\", date as \"date!\", flags as \"flags!\",\n                snippet as \"snippet!\", has_attachments as \"has_attachments!: bool\",\n                size_bytes as \"size_bytes!\", unsubscribe_method,\n                COALESCE((\n                    SELECT GROUP_CONCAT(labels.provider_id, char(31))\n                    FROM message_labels\n                    JOIN labels ON labels.id = message_labels.label_id\n                    WHERE message_labels.message_id = messages.id\n                ), '') as \"label_provider_ids!: String\"\n             FROM messages WHERE id = ?",
   "describe": {
     "columns": [
       {
@@ -97,6 +97,11 @@
         "name": "unsubscribe_method",
         "ordinal": 18,
         "type_info": "Text"
+      },
+      {
+        "name": "label_provider_ids!: String",
+        "ordinal": 19,
+        "type_info": "Null"
       }
     ],
     "parameters": {
@@ -121,8 +126,9 @@
       false,
       false,
       false,
-      true
+      true,
+      null
     ]
   },
-  "hash": "b9007871ecea1f7a0a29d54ba23c7424414dcccc5f8a31fd31958c4c9a993df8"
+  "hash": "52bac946105205435dd222f25e12f2d4da0308fd39dbc3f5fdf8da6a8ddd5f4b"
 }

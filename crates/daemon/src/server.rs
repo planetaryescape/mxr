@@ -52,15 +52,12 @@ pub async fn run_daemon() -> anyhow::Result<()> {
         }
     }
 
-    // All syncing happens in the background sync_loop — no blocking initial sync.
-    // The daemon starts accepting clients immediately. The sync_loop detects
+    // All syncing happens in the background sync loops — no blocking initial sync.
+    // The daemon starts accepting clients immediately. The sync loops detect
     // Initial/GmailBackfill cursors and handles them with no startup delay.
 
     // Spawn background loops
-    let sync_state = state.clone();
-    tokio::spawn(async move {
-        loops::sync_loop(sync_state).await;
-    });
+    loops::spawn_sync_loops(state.clone());
 
     let snooze_state = state.clone();
     tokio::spawn(async move {

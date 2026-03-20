@@ -15,6 +15,9 @@ members = [
     "crates/compose",
     "crates/provider-smtp",
     "crates/provider-imap",
+    "crates/export",
+    "crates/rules",
+    "examples/adapter-skeleton",
 ]
 
 [workspace.package]
@@ -22,6 +25,10 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.75"
+repository = "https://github.com/planetaryescape/mxr"
+homepage = "https://github.com/planetaryescape/mxr"
+keywords = ["email", "terminal", "tui", "imap", "gmail"]
+categories = ["email", "command-line-utilities"]
 
 [workspace.dependencies]
 # Internal crates
@@ -37,6 +44,10 @@ mxr-reader = { path = "crates/reader" }
 mxr-compose = { path = "crates/compose" }
 mxr-provider-smtp = { path = "crates/provider-smtp" }
 mxr-provider-imap = { path = "crates/provider-imap" }
+mxr-export = { path = "crates/export" }
+mxr-rules = { path = "crates/rules" }
+glob-match = "0.2"
+which = "7"
 
 # IMAP
 async-imap = "0.10"
@@ -120,3 +131,6 @@ lettre = { version = "0.11", default-features = false, features = ["tokio1-rustl
 tempfile = "3"
 wiremock = "0.6"
 pretty_assertions = "1"
+
+[patch.crates-io]
+async-imap = { path = "vendor/async-imap" }

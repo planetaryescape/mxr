@@ -1,13 +1,21 @@
-use crate::app::ActivePane;
+use crate::app::{ActivePane, BodyViewState};
 use mxr_core::types::Envelope;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+#[derive(Debug, Clone)]
+pub struct ThreadMessageBlock {
+    pub envelope: Envelope,
+    pub body_state: BodyViewState,
+    pub labels: Vec<String>,
+    pub attachments: Vec<String>,
+    pub selected: bool,
+}
+
 pub fn draw(
     frame: &mut Frame,
     area: Rect,
-    body_text: Option<&str>,
-    envelope: Option<&Envelope>,
+    messages: &[ThreadMessageBlock],
     scroll_offset: u16,
     active_pane: &ActivePane,
 ) {
@@ -18,8 +26,13 @@ pub fn draw(
         Style::default().fg(Color::DarkGray)
     };
 
+    let title = if messages.len() > 1 {
+        " Thread "
+    } else {
+        " Message "
+    };
     let block = Block::default()
-        .title(" Message ")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(border_style);
 
@@ -28,28 +41,108 @@ pub fn draw(
 
     let mut lines: Vec<Line> = Vec::new();
 
-    if let Some(env) = envelope {
+    for (index, message) in messages.iter().enumerate() {
+        if index > 0 {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "────────────────────────────────────────",
+                Style::default().fg(Color::DarkGray),
+            )));
+            lines.push(Line::from(""));
+        }
+
+        let env = &message.envelope;
         let from = env.from.name.as_deref().unwrap_or(&env.from.email);
+        let header_style = if message.selected {
+            Style::default().fg(Color::Cyan).bold()
+        } else {
+            Style::default().bold()
+        };
+
         lines.push(Line::from(vec![
-            Span::styled("From: ", Style::default().bold()),
+            Span::styled("From: ", header_style),
             Span::raw(format!("{} <{}>", from, env.from.email)),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("Date: ", Style::default().bold()),
+            Span::styled("Date: ", header_style),
             Span::raw(env.date.format("%Y-%m-%d %H:%M").to_string()),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("Subject: ", Style::default().bold()),
+            Span::styled("Subject: ", header_style),
             Span::raw(env.subject.clone()),
         ]));
+        if !message.labels.is_empty() {
+            let chips = message
+                .labels
+                .iter()
+                .map(|label| {
+                    Span::styled(
+                        format!("[{label}] "),
+                        Style::default().fg(Color::Yellow).bold(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            lines.push(Line::from(chips));
+        }
+        if !message.attachments.is_empty() {
+            let chips = message
+                .attachments
+                .iter()
+                .map(|attachment| {
+                    Span::styled(
+                        format!("[{attachment}] "),
+                        Style::default().fg(Color::Green).bold(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            lines.push(Line::from(vec![
+                Span::styled("Attachments: ", header_style),
+                Span::raw(""),
+            ]));
+            lines.push(Line::from(chips));
+        }
         lines.push(Line::from(""));
+
+        match &message.body_state {
+            BodyViewState::Ready { rendered, .. } => {
+                lines.extend(process_body_lines(rendered));
+            }
+            BodyViewState::Loading { preview } => {
+                if let Some(preview) = preview {
+                    lines.extend(process_body_lines(preview));
+                    lines.push(Line::from(""));
+                }
+                lines.push(Line::from(Span::styled(
+                    "Loading...",
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+            BodyViewState::Empty { preview } => {
+                if let Some(preview) = preview {
+                    lines.extend(process_body_lines(preview));
+                    lines.push(Line::from(""));
+                }
+                lines.push(Line::from(Span::styled(
+                    "(no body available)",
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+            BodyViewState::Error { message, preview } => {
+                if let Some(preview) = preview {
+                    lines.extend(process_body_lines(preview));
+                    lines.push(Line::from(""));
+                }
+                lines.push(Line::from(Span::styled(
+                    format!("Error: {message}"),
+                    Style::default().fg(Color::Red),
+                )));
+            }
+        }
     }
 
-    if let Some(body) = body_text {
-        lines.extend(process_body_lines(body));
-    } else {
+    if messages.is_empty() {
         lines.push(Line::from(Span::styled(
-            "Loading...",
+            "No message selected",
             Style::default().fg(Color::DarkGray),
         )));
     }

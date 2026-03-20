@@ -3,9 +3,13 @@ name = "mxr-tui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Ratatui terminal UI for mxr"
 
 [dependencies]
 mxr-core = { workspace = true }
+mxr-config = { workspace = true }
 mxr-compose = { workspace = true }
 mxr-protocol = { workspace = true }
 mxr-reader = { workspace = true }
@@ -21,3 +25,4 @@ chrono = { workspace = true }
 unicode-width = { workspace = true }
 toml = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }

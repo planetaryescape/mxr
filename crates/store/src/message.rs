@@ -76,7 +76,13 @@ impl super::Store {
                 to_addrs as "to_addrs!", cc_addrs as "cc_addrs!", bcc_addrs as "bcc_addrs!",
                 subject as "subject!", date as "date!", flags as "flags!",
                 snippet as "snippet!", has_attachments as "has_attachments!: bool",
-                size_bytes as "size_bytes!", unsubscribe_method
+                size_bytes as "size_bytes!", unsubscribe_method,
+                COALESCE((
+                    SELECT GROUP_CONCAT(labels.provider_id, char(31))
+                    FROM message_labels
+                    JOIN labels ON labels.id = message_labels.label_id
+                    WHERE message_labels.message_id = messages.id
+                ), '') as "label_provider_ids!: String"
              FROM messages WHERE id = ?"#,
             id_str,
         )
@@ -104,6 +110,7 @@ impl super::Store {
                 r.has_attachments,
                 r.size_bytes,
                 r.unsubscribe_method.as_deref(),
+                &r.label_provider_ids,
             )
         }))
     }
@@ -125,7 +132,13 @@ impl super::Store {
                 m.to_addrs as "to_addrs!", m.cc_addrs as "cc_addrs!", m.bcc_addrs as "bcc_addrs!",
                 m.subject as "subject!", m.date as "date!", m.flags as "flags!",
                 m.snippet as "snippet!", m.has_attachments as "has_attachments!: bool",
-                m.size_bytes as "size_bytes!", m.unsubscribe_method
+                m.size_bytes as "size_bytes!", m.unsubscribe_method,
+                COALESCE((
+                    SELECT GROUP_CONCAT(labels.provider_id, char(31))
+                    FROM message_labels
+                    JOIN labels ON labels.id = message_labels.label_id
+                    WHERE message_labels.message_id = m.id
+                ), '') as "label_provider_ids!: String"
              FROM messages m
              JOIN message_labels ml ON m.id = ml.message_id
              WHERE ml.label_id = ?
@@ -161,6 +174,7 @@ impl super::Store {
                     r.has_attachments,
                     r.size_bytes,
                     r.unsubscribe_method.as_deref(),
+                    &r.label_provider_ids,
                 )
             })
             .collect())
@@ -183,7 +197,13 @@ impl super::Store {
                 to_addrs as "to_addrs!", cc_addrs as "cc_addrs!", bcc_addrs as "bcc_addrs!",
                 subject as "subject!", date as "date!", flags as "flags!",
                 snippet as "snippet!", has_attachments as "has_attachments!: bool",
-                size_bytes as "size_bytes!", unsubscribe_method
+                size_bytes as "size_bytes!", unsubscribe_method,
+                COALESCE((
+                    SELECT GROUP_CONCAT(labels.provider_id, char(31))
+                    FROM message_labels
+                    JOIN labels ON labels.id = message_labels.label_id
+                    WHERE message_labels.message_id = messages.id
+                ), '') as "label_provider_ids!: String"
              FROM messages WHERE account_id = ? ORDER BY date DESC LIMIT ? OFFSET ?"#,
             aid,
             lim,
@@ -215,6 +235,7 @@ impl super::Store {
                     r.has_attachments,
                     r.size_bytes,
                     r.unsubscribe_method.as_deref(),
+                    &r.label_provider_ids,
                 )
             })
             .collect())
@@ -267,6 +288,21 @@ impl super::Store {
         Ok(())
     }
 
+    pub async fn update_message_thread_id(
+        &self,
+        message_id: &MessageId,
+        thread_id: &ThreadId,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE messages SET thread_id = ? WHERE id = ?",
+        )
+        .bind(thread_id.as_str())
+        .bind(message_id.as_str())
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
     pub async fn get_message_id_by_provider_id(
         &self,
         account_id: &AccountId,
@@ -296,6 +332,73 @@ impl super::Store {
         .fetch_one(self.reader())
         .await?;
 
+        Ok(row.cnt as u32)
+    }
+
+    /// List all envelopes across all accounts, paginated. Used for reindexing.
+    pub async fn list_all_envelopes_paginated(
+        &self,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Envelope>, sqlx::Error> {
+        let lim = limit as i64;
+        let off = offset as i64;
+        let rows = sqlx::query!(
+            r#"SELECT
+                id as "id!", account_id as "account_id!", provider_id as "provider_id!",
+                thread_id as "thread_id!", message_id_header, in_reply_to,
+                reference_headers, from_name, from_email as "from_email!",
+                to_addrs as "to_addrs!", cc_addrs as "cc_addrs!", bcc_addrs as "bcc_addrs!",
+                subject as "subject!", date as "date!", flags as "flags!",
+                snippet as "snippet!", has_attachments as "has_attachments!: bool",
+                size_bytes as "size_bytes!", unsubscribe_method,
+                COALESCE((
+                    SELECT GROUP_CONCAT(labels.provider_id, char(31))
+                    FROM message_labels
+                    JOIN labels ON labels.id = message_labels.label_id
+                    WHERE message_labels.message_id = messages.id
+                ), '') as "label_provider_ids!: String"
+             FROM messages ORDER BY date DESC LIMIT ? OFFSET ?"#,
+            lim,
+            off,
+        )
+        .fetch_all(self.reader())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                record_to_envelope(
+                    &r.id,
+                    &r.account_id,
+                    &r.provider_id,
+                    &r.thread_id,
+                    r.message_id_header.as_deref(),
+                    r.in_reply_to.as_deref(),
+                    r.reference_headers.as_deref(),
+                    r.from_name.as_deref(),
+                    &r.from_email,
+                    &r.to_addrs,
+                    &r.cc_addrs,
+                    &r.bcc_addrs,
+                    &r.subject,
+                    r.date,
+                    r.flags,
+                    &r.snippet,
+                    r.has_attachments,
+                    r.size_bytes,
+                    r.unsubscribe_method.as_deref(),
+                    &r.label_provider_ids,
+                )
+            })
+            .collect())
+    }
+
+    /// Count all messages across all accounts. Used for reindexing.
+    pub async fn count_all_messages(&self) -> Result<u32, sqlx::Error> {
+        let row = sqlx::query!(r#"SELECT COUNT(*) as "cnt!: i64" FROM messages"#)
+            .fetch_one(self.reader())
+            .await?;
         Ok(row.cnt as u32)
     }
 
@@ -508,6 +611,7 @@ pub(crate) fn record_to_envelope(
     has_attachments: bool,
     size_bytes: i64,
     unsubscribe_method: Option<&str>,
+    label_provider_ids: &str,
 ) -> Envelope {
     Envelope {
         id: MessageId::from_uuid(uuid::Uuid::parse_str(id).unwrap()),
@@ -535,6 +639,14 @@ pub(crate) fn record_to_envelope(
         unsubscribe: unsubscribe_method
             .map(|u| serde_json::from_str(u).unwrap_or(UnsubscribeMethod::None))
             .unwrap_or(UnsubscribeMethod::None),
-        label_provider_ids: vec![],
+        label_provider_ids: if label_provider_ids.is_empty() {
+            vec![]
+        } else {
+            label_provider_ids
+                .split('\u{1f}')
+                .filter(|provider_id| !provider_id.is_empty())
+                .map(str::to_string)
+                .collect()
+        },
     }
 }

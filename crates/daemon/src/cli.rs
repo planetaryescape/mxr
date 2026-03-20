@@ -42,6 +42,16 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Export a thread or matching search results
+    Export {
+        thread_id: Option<String>,
+        #[arg(long)]
+        search: Option<String>,
+        #[arg(long, default_value = "markdown")]
+        format: String,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Show message headers
     Headers { message_id: String },
     /// Manage saved searches
@@ -64,6 +74,22 @@ pub enum Command {
     Status {
         #[arg(long)]
         format: Option<OutputFormat>,
+        #[arg(long)]
+        watch: bool,
+    },
+    /// Watch daemon events
+    Events {
+        #[arg(long = "type")]
+        event_type: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Unread summary for status bars
+    Notify {
+        #[arg(long)]
+        format: Option<OutputFormat>,
+        #[arg(long)]
+        watch: bool,
     },
     /// View daemon logs
     Logs {
@@ -71,6 +97,29 @@ pub enum Command {
         no_follow: bool,
         #[arg(long)]
         level: Option<String>,
+        #[arg(long)]
+        since: Option<String>,
+        #[arg(long)]
+        purge: bool,
+    },
+    /// Generate a sanitized diagnostic bundle
+    BugReport {
+        #[arg(long)]
+        edit: bool,
+        #[arg(long)]
+        stdout: bool,
+        #[arg(long)]
+        clipboard: bool,
+        #[arg(long)]
+        github: bool,
+        #[arg(long)]
+        output: Option<PathBuf>,
+        #[arg(long)]
+        verbose: bool,
+        #[arg(long)]
+        full_logs: bool,
+        #[arg(long)]
+        no_sanitize: bool,
         #[arg(long)]
         since: Option<String>,
     },
@@ -83,9 +132,29 @@ pub enum Command {
     Doctor {
         #[arg(long)]
         reindex: bool,
+        #[arg(long)]
+        check: bool,
+        #[arg(long)]
+        index_stats: bool,
+        #[arg(long)]
+        store_stats: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
-    /// List labels
-    Labels,
+    /// Manage labels
+    Labels {
+        #[command(subcommand)]
+        action: Option<LabelsAction>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Manage rules
+    Rules {
+        #[command(subcommand)]
+        action: Option<RulesAction>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
 
     // --- Phase 2: Compose ---
     /// Compose a new email
@@ -378,6 +447,84 @@ pub enum AccountsAction {
 }
 
 #[derive(Subcommand)]
+pub enum LabelsAction {
+    /// Create a new label
+    Create {
+        name: String,
+        #[arg(long)]
+        color: Option<String>,
+    },
+    /// Delete a label
+    Delete {
+        name: String,
+    },
+    /// Rename a label
+    Rename {
+        old: String,
+        new: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum RulesAction {
+    List,
+    Show {
+        rule: String,
+    },
+    Add {
+        name: String,
+        #[arg(long = "when")]
+        condition: String,
+        #[arg(long = "then")]
+        action: String,
+        #[arg(long, default_value = "100")]
+        priority: i32,
+    },
+    Edit {
+        rule: String,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long = "when")]
+        condition: Option<String>,
+        #[arg(long = "then")]
+        action: Option<String>,
+        #[arg(long)]
+        priority: Option<i32>,
+        #[arg(long, conflicts_with = "disable")]
+        enable: bool,
+        #[arg(long, conflicts_with = "enable")]
+        disable: bool,
+    },
+    Validate {
+        #[arg(long = "when")]
+        condition: String,
+        #[arg(long = "then")]
+        action: String,
+    },
+    Enable {
+        rule: String,
+    },
+    Disable {
+        rule: String,
+    },
+    Delete {
+        rule: String,
+    },
+    DryRun {
+        rule: Option<String>,
+        #[arg(long)]
+        all: bool,
+        #[arg(long)]
+        after: Option<String>,
+    },
+    History {
+        rule: Option<String>,
+        #[arg(long, default_value = "50")]
+        limit: u32,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum ConfigAction {
     /// Show config file path
     Path,
@@ -405,10 +552,174 @@ pub enum AttachmentAction {
     },
 }
 
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
     Table,
     Json,
     Csv,
     Ids,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_labels_create_subcommand() {
+        let cli = Cli::parse_from(["mxr", "labels", "create", "Urgent", "--color", "#ff6600"]);
+        match cli.command {
+            Some(Command::Labels {
+                action:
+                    Some(LabelsAction::Create {
+                        name,
+                        color: Some(color),
+                    }),
+                ..
+            }) => {
+                assert_eq!(name, "Urgent");
+                assert_eq!(color, "#ff6600");
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_labels_rename_subcommand() {
+        let cli = Cli::parse_from(["mxr", "labels", "rename", "Old", "New"]);
+        match cli.command {
+            Some(Command::Labels {
+                action: Some(LabelsAction::Rename { old, new }),
+                ..
+            }) => {
+                assert_eq!(old, "Old");
+                assert_eq!(new, "New");
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_export_search_subcommand() {
+        let cli = Cli::parse_from(["mxr", "export", "--search", "label:work", "--format", "mbox"]);
+        match cli.command {
+            Some(Command::Export {
+                thread_id: None,
+                search: Some(search),
+                format,
+                output: None,
+            }) => {
+                assert_eq!(search, "label:work");
+                assert_eq!(format, "mbox");
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_rules_add_subcommand() {
+        let cli = Cli::parse_from([
+            "mxr",
+            "rules",
+            "add",
+            "Archive newsletters",
+            "--when",
+            "label:newsletters",
+            "--then",
+            "archive",
+        ]);
+        match cli.command {
+            Some(Command::Rules {
+                action:
+                    Some(RulesAction::Add {
+                        name,
+                        condition,
+                        action,
+                        priority,
+                    }),
+                ..
+            }) => {
+                assert_eq!(name, "Archive newsletters");
+                assert_eq!(condition, "label:newsletters");
+                assert_eq!(action, "archive");
+                assert_eq!(priority, 100);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_bug_report_flags() {
+        let cli = Cli::parse_from([
+            "mxr",
+            "bug-report",
+            "--stdout",
+            "--clipboard",
+            "--since",
+            "2h",
+        ]);
+        match cli.command {
+            Some(Command::BugReport {
+                stdout,
+                clipboard,
+                since,
+                edit,
+                github,
+                output,
+                verbose,
+                full_logs,
+                no_sanitize,
+            }) => {
+                assert!(stdout);
+                assert!(clipboard);
+                assert_eq!(since.as_deref(), Some("2h"));
+                assert!(!edit);
+                assert!(!github);
+                assert!(output.is_none());
+                assert!(!verbose);
+                assert!(!full_logs);
+                assert!(!no_sanitize);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_rules_edit_subcommand() {
+        let cli = Cli::parse_from([
+            "mxr",
+            "rules",
+            "edit",
+            "rule-1",
+            "--when",
+            "label:work",
+            "--then",
+            "archive",
+            "--priority",
+            "50",
+            "--disable",
+        ]);
+        match cli.command {
+            Some(Command::Rules {
+                action:
+                    Some(RulesAction::Edit {
+                        rule,
+                        condition,
+                        action,
+                        priority,
+                        enable,
+                        disable,
+                        ..
+                    }),
+                ..
+            }) => {
+                assert_eq!(rule, "rule-1");
+                assert_eq!(condition.as_deref(), Some("label:work"));
+                assert_eq!(action.as_deref(), Some("archive"));
+                assert_eq!(priority, Some(50));
+                assert!(!enable);
+                assert!(disable);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
 }

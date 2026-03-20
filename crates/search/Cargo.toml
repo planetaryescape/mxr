@@ -3,6 +3,9 @@ name = "mxr-search"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Tantivy-based full-text search for mxr"
 
 [dependencies]
 mxr-core = { workspace = true }

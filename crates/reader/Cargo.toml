@@ -3,6 +3,9 @@ name = "mxr-reader"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Reader mode (HTML to text, signature and quote stripping) for mxr"
 
 [dependencies]
 mxr-core = { workspace = true }
@@ -11,6 +14,7 @@ regex = { workspace = true }
 once_cell = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
+which = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }

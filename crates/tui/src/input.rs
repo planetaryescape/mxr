@@ -195,6 +195,9 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('R'), KeyModifiers::SHIFT) => {
                 Some(Action::ToggleReaderMode)
             }
+            (KeyState::Normal, KeyCode::Char('A'), KeyModifiers::SHIFT) => {
+                Some(Action::AttachmentList)
+            }
             (KeyState::Normal, KeyCode::Char('V'), KeyModifiers::SHIFT) => {
                 Some(Action::VisualLineMode)
             }

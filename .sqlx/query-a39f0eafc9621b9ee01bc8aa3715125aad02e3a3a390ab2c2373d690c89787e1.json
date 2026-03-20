@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                id as \"id!\", account_id as \"account_id!\", provider_id as \"provider_id!\",\n                thread_id as \"thread_id!\", message_id_header, in_reply_to,\n                reference_headers, from_name, from_email as \"from_email!\",\n                to_addrs as \"to_addrs!\", cc_addrs as \"cc_addrs!\", bcc_addrs as \"bcc_addrs!\",\n                subject as \"subject!\", date as \"date!\", flags as \"flags!\",\n                snippet as \"snippet!\", has_attachments as \"has_attachments!: bool\",\n                size_bytes as \"size_bytes!\", unsubscribe_method\n             FROM messages WHERE account_id = ? ORDER BY date DESC LIMIT ? OFFSET ?",
+  "query": "SELECT\n                id as \"id!\", account_id as \"account_id!\", provider_id as \"provider_id!\",\n                thread_id as \"thread_id!\", message_id_header, in_reply_to,\n                reference_headers, from_name, from_email as \"from_email!\",\n                to_addrs as \"to_addrs!\", cc_addrs as \"cc_addrs!\", bcc_addrs as \"bcc_addrs!\",\n                subject as \"subject!\", date as \"date!\", flags as \"flags!\",\n                snippet as \"snippet!\", has_attachments as \"has_attachments!: bool\",\n                size_bytes as \"size_bytes!\", unsubscribe_method,\n                COALESCE((\n                    SELECT GROUP_CONCAT(labels.provider_id, char(31))\n                    FROM message_labels\n                    JOIN labels ON labels.id = message_labels.label_id\n                    WHERE message_labels.message_id = messages.id\n                ), '') as \"label_provider_ids!: String\"\n             FROM messages ORDER BY date DESC LIMIT ? OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -97,10 +97,15 @@
         "name": "unsubscribe_method",
         "ordinal": 18,
         "type_info": "Text"
+      },
+      {
+        "name": "label_provider_ids!: String",
+        "ordinal": 19,
+        "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 2
     },
     "nullable": [
       true,
@@ -121,8 +126,9 @@
       false,
       false,
       false,
-      true
+      true,
+      false
     ]
   },
-  "hash": "2fe81270bfcc6ccbd296545089e0adb7d9268c0b7d178964eee03e8d18a561b5"
+  "hash": "a39f0eafc9621b9ee01bc8aa3715125aad02e3a3a390ab2c2373d690c89787e1"
 }

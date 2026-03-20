@@ -11,6 +11,7 @@ pub struct MxrConfig {
     pub render: RenderConfig,
     pub search: SearchConfig,
     pub snooze: SnoozeConfig,
+    pub logging: LoggingConfig,
     pub appearance: AppearanceConfig,
 }
 
@@ -21,6 +22,7 @@ pub struct GeneralConfig {
     pub editor: Option<String>,
     pub default_account: Option<String>,
     pub sync_interval: u64,
+    pub hook_timeout: u64,
     pub attachment_dir: PathBuf,
 }
 
@@ -41,6 +43,13 @@ pub enum SyncProviderConfig {
         client_id: String,
         client_secret: Option<String>,
         token_ref: String,
+    },
+    Imap {
+        host: String,
+        port: u16,
+        username: String,
+        password_ref: String,
+        use_tls: bool,
     },
 }
 
@@ -92,6 +101,17 @@ pub struct SnoozeConfig {
     pub evening_hour: u8,
     pub weekend_day: String,
     pub weekend_hour: u8,
+}
+
+/// Logging / retention configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LoggingConfig {
+    pub level: String,
+    pub max_size_mb: u32,
+    pub max_files: u32,
+    pub stderr: bool,
+    pub event_retention_days: u32,
 }
 
 /// Appearance / UI configuration.

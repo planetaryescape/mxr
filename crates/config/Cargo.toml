@@ -3,6 +3,9 @@ name = "mxr-config"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Configuration management for mxr"
 
 [dependencies]
 mxr-core = { workspace = true }

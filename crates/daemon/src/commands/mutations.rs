@@ -552,37 +552,45 @@ pub async fn snoozed() -> anyhow::Result<()> {
 // Compose
 // ---------------------------------------------------------------------------
 
-pub async fn compose(
-    to: Option<String>,
-    cc: Option<String>,
-    bcc: Option<String>,
-    subject: Option<String>,
-    body: Option<String>,
-    body_stdin: bool,
-    attach: Vec<PathBuf>,
-    from: Option<String>,
-    _yes: bool,
-    dry_run: bool,
-) -> anyhow::Result<()> {
+pub struct ComposeOptions {
+    pub to: Option<String>,
+    pub cc: Option<String>,
+    pub bcc: Option<String>,
+    pub subject: Option<String>,
+    pub body: Option<String>,
+    pub body_stdin: bool,
+    pub attach: Vec<PathBuf>,
+    pub from: Option<String>,
+    pub dry_run: bool,
+}
+
+pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
 
     // Resolve "from" address from daemon status if not provided
-    let from_addr = if let Some(f) = from {
+    let from_addr = if let Some(f) = options.from {
         f
     } else {
-        let resp = client.request(Request::GetStatus).await?;
+        let resp = client.request(Request::ListAccounts).await?;
         match resp {
             Response::Ok {
-                data: ResponseData::Status { accounts, .. },
-            } => accounts
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "you@example.com".to_string()),
+                data: ResponseData::Accounts { mut accounts },
+            } => {
+                if let Some(index) = accounts.iter().position(|account| account.is_default) {
+                    accounts.remove(index).email
+                } else {
+                    accounts
+                        .into_iter()
+                        .next()
+                        .map(|account| account.email)
+                        .unwrap_or_else(|| "you@example.com".to_string())
+                }
+            }
             _ => "you@example.com".to_string(),
         }
     };
 
-    if dry_run {
+    if options.dry_run {
         println!("Would open $EDITOR to compose new email from {}", from_addr);
         return Ok(());
     }
@@ -591,10 +599,10 @@ pub async fn compose(
         mxr_compose::create_draft_file(mxr_compose::ComposeKind::New, &from_addr)?;
 
     // If inline body provided, append it to the draft file
-    if let Some(b) = &body {
+    if let Some(b) = &options.body {
         let content = std::fs::read_to_string(&path)?;
         std::fs::write(&path, format!("{}{}", content, b))?;
-    } else if body_stdin {
+    } else if options.body_stdin {
         use std::io::Read;
         let mut stdin_body = String::new();
         std::io::stdin().read_to_string(&mut stdin_body)?;
@@ -603,19 +611,24 @@ pub async fn compose(
     }
 
     // Pre-fill frontmatter fields if provided via CLI args
-    if to.is_some() || cc.is_some() || bcc.is_some() || subject.is_some() || !attach.is_empty() {
+    if options.to.is_some()
+        || options.cc.is_some()
+        || options.bcc.is_some()
+        || options.subject.is_some()
+        || !options.attach.is_empty()
+    {
         let content = std::fs::read_to_string(&path)?;
         let mut updated = content;
-        if let Some(to_val) = &to {
+        if let Some(to_val) = &options.to {
             updated = updated.replacen("to: \"\"", &format!("to: \"{}\"", to_val), 1);
         }
-        if let Some(cc_val) = &cc {
+        if let Some(cc_val) = &options.cc {
             updated = updated.replacen("cc: \"\"", &format!("cc: \"{}\"", cc_val), 1);
         }
-        if let Some(bcc_val) = &bcc {
+        if let Some(bcc_val) = &options.bcc {
             updated = updated.replacen("bcc: \"\"", &format!("bcc: \"{}\"", bcc_val), 1);
         }
-        if let Some(subj) = &subject {
+        if let Some(subj) = &options.subject {
             updated = updated.replacen("subject: \"\"", &format!("subject: \"{}\"", subj), 1);
         }
         std::fs::write(&path, updated)?;
@@ -933,6 +946,111 @@ pub async fn attachments_list(message_id: String) -> anyhow::Result<()> {
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
+}
+
+pub async fn attachments_download(
+    message_id: String,
+    index: Option<usize>,
+    dir: Option<PathBuf>,
+) -> anyhow::Result<()> {
+    let id = parse_message_id(&message_id)?;
+    let mut client = IpcClient::connect().await?;
+    let attachments = load_attachments(&mut client, &id).await?;
+
+    let selected: Vec<(usize, &mxr_core::AttachmentMeta)> = match index {
+        Some(index) => vec![(index, attachment_by_index(&attachments, index)?)],
+        None => attachments
+            .iter()
+            .enumerate()
+            .map(|(idx, attachment)| (idx + 1, attachment))
+            .collect(),
+    };
+
+    for (display_index, attachment) in selected {
+        let path = request_attachment_file(
+            &mut client,
+            Request::DownloadAttachment {
+                message_id: id.clone(),
+                attachment_id: attachment.id.clone(),
+            },
+        )
+        .await?;
+        let final_path = if let Some(target_dir) = dir.as_ref() {
+            std::fs::create_dir_all(target_dir)?;
+            let target = target_dir.join(&attachment.filename);
+            std::fs::copy(&path, &target)?;
+            target
+        } else {
+            path
+        };
+        println!("#{} {} -> {}", display_index, attachment.filename, final_path.display());
+    }
+
+    Ok(())
+}
+
+pub async fn attachments_open(message_id: String, index: usize) -> anyhow::Result<()> {
+    let id = parse_message_id(&message_id)?;
+    let mut client = IpcClient::connect().await?;
+    let attachments = load_attachments(&mut client, &id).await?;
+    let attachment = attachment_by_index(&attachments, index)?;
+
+    let path = request_attachment_file(
+        &mut client,
+        Request::OpenAttachment {
+            message_id: id,
+            attachment_id: attachment.id.clone(),
+        },
+    )
+    .await?;
+    println!("Opened {} ({})", attachment.filename, path.display());
+    Ok(())
+}
+
+async fn load_attachments(
+    client: &mut IpcClient,
+    message_id: &MessageId,
+) -> anyhow::Result<Vec<mxr_core::AttachmentMeta>> {
+    let resp = client
+        .request(Request::GetBody {
+            message_id: message_id.clone(),
+        })
+        .await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::Body { body },
+        } => {
+            if body.attachments.is_empty() {
+                anyhow::bail!("No attachments");
+            }
+            Ok(body.attachments)
+        }
+        Response::Error { message } => anyhow::bail!("{}", message),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+}
+
+fn attachment_by_index(
+    attachments: &[mxr_core::AttachmentMeta],
+    index: usize,
+) -> anyhow::Result<&mxr_core::AttachmentMeta> {
+    attachments
+        .get(index.saturating_sub(1))
+        .ok_or_else(|| anyhow::anyhow!("Attachment index {} out of range", index))
+}
+
+async fn request_attachment_file(
+    client: &mut IpcClient,
+    request: Request,
+) -> anyhow::Result<PathBuf> {
+    let resp = client.request(request).await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::AttachmentFile { file },
+        } => Ok(PathBuf::from(file.path)),
+        Response::Error { message } => anyhow::bail!("{}", message),
+        _ => anyhow::bail!("Unexpected response"),
+    }
 }
 
 fn format_bytes(bytes: u64) -> String {

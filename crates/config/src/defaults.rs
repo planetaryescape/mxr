@@ -8,6 +8,7 @@ impl Default for GeneralConfig {
             editor: None,
             default_account: None,
             sync_interval: 60,
+            hook_timeout: 30,
             attachment_dir: dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("~"))
                 .join("mxr")
@@ -54,6 +55,18 @@ impl Default for AppearanceConfig {
             date_format: "%b %d".to_string(),
             date_format_full: "%Y-%m-%d %H:%M".to_string(),
             subject_max_width: 60,
+        }
+    }
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: "info".to_string(),
+            max_size_mb: 250,
+            max_files: 10,
+            stderr: true,
+            event_retention_days: 90,
         }
     }
 }

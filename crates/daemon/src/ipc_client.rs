@@ -49,4 +49,18 @@ impl IpcClient {
             }
         }
     }
+
+    pub async fn next_event(&mut self) -> anyhow::Result<DaemonEvent> {
+        loop {
+            match self.framed.next().await {
+                Some(Ok(msg)) => {
+                    if let IpcPayload::Event(event) = msg.payload {
+                        return Ok(event);
+                    }
+                }
+                Some(Err(e)) => anyhow::bail!("IPC error: {}", e),
+                None => anyhow::bail!("Connection closed"),
+            }
+        }
+    }
 }

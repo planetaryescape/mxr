@@ -6,22 +6,41 @@ export default defineConfig({
     starlight({
       title: 'mxr',
       description: 'A local-first, keyboard-native terminal email client',
-      social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/planetaryescape/mxr' }
-      ],
+      social: {
+        github: 'https://github.com/planetaryescape/mxr',
+      },
       sidebar: [
         {
-          label: 'Getting Started',
+          label: 'Start Here',
           items: [
             { label: 'Installation', slug: 'getting-started/install' },
             { label: 'Gmail Setup', slug: 'getting-started/gmail-setup' },
+            { label: 'First Sync', slug: 'getting-started/first-sync' },
+          ],
+        },
+        {
+          label: 'Guides',
+          items: [
+            { label: 'Mailbox Workflow', slug: 'guides/mailbox' },
+            { label: 'Compose', slug: 'guides/compose' },
+            { label: 'Search Workflow', slug: 'guides/search' },
+            { label: 'Labels and Saved Searches', slug: 'guides/labels-and-saved-searches' },
+            { label: 'Rules', slug: 'guides/rules' },
+            { label: 'Accounts', slug: 'guides/accounts' },
+            { label: 'Observability', slug: 'guides/observability' },
+            { label: 'Adapter Development', slug: 'guides/adapter-development' },
           ],
         },
         {
           label: 'Reference',
           items: [
             { label: 'CLI Commands', slug: 'reference/cli' },
+            { label: 'TUI', slug: 'reference/tui' },
             { label: 'Keybindings', slug: 'reference/keybindings' },
+            { label: 'Config', slug: 'reference/config' },
+            { label: 'Bug Reports', slug: 'reference/bug-report' },
+            { label: 'Adapters', slug: 'reference/adapters' },
+            { label: 'Conformance Tests', slug: 'reference/conformance' },
           ],
         },
       ],

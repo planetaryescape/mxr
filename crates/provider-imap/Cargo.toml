@@ -6,7 +6,6 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "IMAP adapter for mxr"
-publish = false
 
 [dependencies]
 mxr-core = { workspace = true }

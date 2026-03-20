@@ -22,7 +22,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.75"
@@ -33,26 +33,26 @@ categories = ["email", "command-line-utilities"]
 
 [workspace.dependencies]
 # Internal crates
-mxr-core = { path = "crates/core", version = "0.1.1" }
-mxr-store = { path = "crates/store", version = "0.1.1" }
-mxr-search = { path = "crates/search", version = "0.1.1" }
-mxr-test-support = { path = "crates/test-support", version = "0.1.1" }
-mxr-protocol = { path = "crates/protocol", version = "0.1.1" }
-mxr-provider-fake = { path = "crates/provider-fake", version = "0.1.1" }
-mxr-config = { path = "crates/config", version = "0.1.1" }
-mxr-sync = { path = "crates/sync", version = "0.1.1" }
-mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.1.1" }
-mxr-reader = { path = "crates/reader", version = "0.1.1" }
-mxr-compose = { path = "crates/compose", version = "0.1.1" }
-mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.1.1" }
-mxr-provider-imap = { path = "crates/provider-imap", version = "0.1.1" }
-mxr-export = { path = "crates/export", version = "0.1.1" }
-mxr-rules = { path = "crates/rules", version = "0.1.1" }
+mxr-core = { path = "crates/core", version = "0.1.2" }
+mxr-store = { path = "crates/store", version = "0.1.2" }
+mxr-search = { path = "crates/search", version = "0.1.2" }
+mxr-test-support = { path = "crates/test-support", version = "0.1.2" }
+mxr-protocol = { path = "crates/protocol", version = "0.1.2" }
+mxr-provider-fake = { path = "crates/provider-fake", version = "0.1.2" }
+mxr-config = { path = "crates/config", version = "0.1.2" }
+mxr-sync = { path = "crates/sync", version = "0.1.2" }
+mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.1.2" }
+mxr-reader = { path = "crates/reader", version = "0.1.2" }
+mxr-compose = { path = "crates/compose", version = "0.1.2" }
+mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.1.2" }
+mxr-provider-imap = { path = "crates/provider-imap", version = "0.1.2" }
+mxr-export = { path = "crates/export", version = "0.1.2" }
+mxr-rules = { path = "crates/rules", version = "0.1.2" }
 glob-match = "0.2"
 which = "7"
 
-# IMAP
-async-imap = "0.10"
+# IMAP (fork with ENABLE/NAMESPACE support, published as mxr-async-imap)
+async-imap = { package = "mxr-async-imap", path = "vendor/async-imap", version = "0.10.5" }
 async-native-tls = "0.5"
 
 # Async
@@ -137,5 +137,3 @@ insta = { version = "1", features = ["yaml"] }
 assert_cmd = "2"
 predicates = "3"
 
-[patch.crates-io]
-async-imap = { path = "vendor/async-imap" }

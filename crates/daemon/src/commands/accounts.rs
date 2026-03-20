@@ -71,7 +71,6 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                             .unwrap_or(0);
                         println!("Gmail sync ok for '{}': {} labels", name, count);
                     }
-                    #[cfg(feature = "imap")]
                     mxr_config::SyncProviderConfig::Imap {
                         host,
                         port,
@@ -92,10 +91,6 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                         );
                         let folders = provider.sync_labels().await?;
                         println!("IMAP sync ok for '{}': {} folders", name, folders.len());
-                    }
-                    #[cfg(not(feature = "imap"))]
-                    mxr_config::SyncProviderConfig::Imap { .. } => {
-                        println!("IMAP support not compiled in for '{}'", name);
                     }
                 }
             }

@@ -1984,7 +1984,6 @@ async fn test_account_config(account: AccountConfigData) -> Result<String, Strin
                     .unwrap_or(0);
                 Ok(format!("Gmail sync ok: {count} labels"))
             }
-            #[cfg(feature = "imap")]
             AccountSyncConfigData::Imap {
                 host,
                 port,
@@ -2005,10 +2004,6 @@ async fn test_account_config(account: AccountConfigData) -> Result<String, Strin
                 );
                 let folders = provider.sync_labels().await.map_err(|e| e.to_string())?;
                 Ok(format!("IMAP sync ok: {} folders", folders.len()))
-            }
-            #[cfg(not(feature = "imap"))]
-            AccountSyncConfigData::Imap { .. } => {
-                Err("IMAP support not compiled in (enable 'imap' feature)".to_string())
             }
         };
     }

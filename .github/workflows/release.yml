@@ -103,6 +103,7 @@ jobs:
             cargo publish -p "$1" --no-verify --allow-dirty 2>&1 || echo "::warning::Failed to publish $1 (may already exist)"
             sleep 15
           }
+          publish mxr-async-imap
           publish mxr-core
           publish mxr-protocol
           publish mxr-config
@@ -113,6 +114,7 @@ jobs:
           publish mxr-provider-fake
           publish mxr-provider-gmail
           publish mxr-provider-smtp
+          publish mxr-provider-imap
           publish mxr-export
           publish mxr-rules
           publish mxr-sync

@@ -11,18 +11,21 @@
 
 [package]
 edition = "2021"
-name = "async-imap"
-version = "0.10.4"
-authors = ["dignifiedquire <me@dignifiedquire.com>"]
+name = "mxr-async-imap"
+version = "0.10.5"
+authors = [
+    "dignifiedquire <me@dignifiedquire.com>",
+    "mxr contributors"
+]
 build = false
 autolib = false
 autobins = false
 autoexamples = false
 autotests = false
 autobenches = false
-description = "Async IMAP client for Rust"
-homepage = "https://github.com/async-email/async-imap"
-documentation = "https://docs.rs/async-imap/"
+description = "Async IMAP client for Rust (mxr fork with ENABLE/NAMESPACE support)"
+homepage = "https://github.com/planetaryescape/mxr"
+documentation = "https://docs.rs/mxr-async-imap/"
 readme = "README.md"
 keywords = [
     "email",
@@ -33,7 +36,7 @@ categories = [
     "network-programming",
 ]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/async-email/async-imap"
+repository = "https://github.com/planetaryescape/mxr"
 
 [badges.is-it-maintained-issue-resolution]
 repository = "async-email/async-imap"

@@ -6,6 +6,7 @@ use mxr_core::types::MessageFlags;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::HashSet;
+#[cfg(test)]
 use unicode_width::UnicodeWidthStr;
 
 pub struct MailListView<'a> {
@@ -75,7 +76,7 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
                 .borders(Borders::ALL)
                 .border_style(border_style),
         )
-        .highlight_style(
+        .row_highlight_style(
             Style::default()
                 .bg(theme.selection_bg)
                 .fg(theme.selection_fg),
@@ -217,24 +218,16 @@ fn format_date(date: &chrono::DateTime<Utc>) -> String {
     }
 }
 
-fn format_size(bytes: u64) -> String {
-    if bytes >= 1_048_576 {
-        format!("({:.0}M)", bytes as f64 / 1_048_576.0)
-    } else if bytes >= 1024 {
-        format!("({:.0}K)", bytes as f64 / 1024.0)
-    } else {
-        format!("({}B)", bytes)
-    }
-}
-
-fn display_width(text: &str) -> usize {
-    UnicodeWidthStr::width(text)
-}
-
 fn attachment_marker(has_attachments: bool) -> &'static str {
     if has_attachments { "📎" } else { "  " }
 }
 
+#[cfg(test)]
+fn display_width(text: &str) -> usize {
+    UnicodeWidthStr::width(text)
+}
+
+#[cfg(test)]
 fn truncate_display(text: &str, max_width: usize) -> String {
     if max_width == 0 {
         return String::new();
@@ -258,18 +251,6 @@ fn truncate_display(text: &str, max_width: usize) -> String {
     }
     truncated.push_str("...");
     truncated
-}
-
-fn pad_right_display(text: &str, width: usize) -> String {
-    let truncated = truncate_display(text, width);
-    let padding = width.saturating_sub(display_width(&truncated));
-    format!("{truncated}{}", " ".repeat(padding))
-}
-
-fn pad_left_display(text: &str, width: usize) -> String {
-    let truncated = truncate_display(text, width);
-    let padding = width.saturating_sub(display_width(&truncated));
-    format!("{}{truncated}", " ".repeat(padding))
 }
 
 #[cfg(test)]

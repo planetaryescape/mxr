@@ -78,7 +78,23 @@ publish_async_imap() {
 }
 
 wait_for_crate() {
-  return 0
+  local crate="$1"
+  local version="$2"
+  local attempt=1
+  local max_attempts=24
+
+  while (( attempt <= max_attempts )); do
+    if cargo info "${crate}" --registry crates-io >/dev/null 2>&1; then
+      return 0
+    fi
+
+    echo "waiting for ${crate}@${version} to appear in crates.io index (${attempt}/${max_attempts})" >&2
+    sleep 5
+    attempt=$((attempt + 1))
+  done
+
+  echo "timed out waiting for ${crate}@${version} to appear in crates.io index" >&2
+  return 1
 }
 
 publish() {

@@ -28,22 +28,10 @@ publish_or_skip_existing() {
   return 1
 }
 
-crate_published() {
-  local crate="$1"
-  local version="$2"
-
-  cargo info "${crate}" --registry crates-io 2>/dev/null | grep -q "^version: ${version}$"
-}
-
 publish_async_imap() {
   local crate="mxr-async-imap"
   local version="0.10.5"
   local tmpdir
-
-  if crate_published "${crate}" "${version}"; then
-    echo "Skipping ${crate} ${version}; already published."
-    return 0
-  fi
 
   tmpdir="$(mktemp -d)"
   rsync -a \
@@ -60,29 +48,12 @@ publish_async_imap() {
 }
 
 wait_for_crate() {
-  local crate="$1"
-  local version="$2"
-
-  for _ in $(seq 1 30); do
-    if crate_published "${crate}" "${version}"; then
-      return 0
-    fi
-    echo "Waiting for ${crate} ${version} to appear on crates.io..."
-    sleep 10
-  done
-
-  echo "Timed out waiting for ${crate} ${version} on crates.io" >&2
-  exit 1
+  return 0
 }
 
 publish() {
   local crate="$1"
   local version="$2"
-
-  if crate_published "${crate}" "${version}"; then
-    echo "Skipping ${crate} ${version}; already published."
-    return 0
-  fi
 
   echo "Publishing ${crate}..."
   publish_or_skip_existing cargo publish -p "${crate}" --locked

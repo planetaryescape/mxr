@@ -9,3 +9,10 @@ search_index/
 !/vendor/async-imap/**
 .vercel
 .env*.local
+node_modules/
+dist/
+apps/desktop/node_modules/
+apps/desktop/dist/
+apps/desktop/dist-electron/
+apps/desktop/out/
+apps/desktop/resources/bin/

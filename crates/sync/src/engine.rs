@@ -82,7 +82,10 @@ impl SyncEngine {
                 if !synced.envelope.label_provider_ids.is_empty() {
                     let label_ids = self
                         .store
-                        .find_labels_by_provider_ids(account_id, &synced.envelope.label_provider_ids)
+                        .find_labels_by_provider_ids(
+                            account_id,
+                            &synced.envelope.label_provider_ids,
+                        )
                         .await
                         .map_err(|e| MxrError::Store(e.to_string()))?;
                     if !label_ids.is_empty() {
@@ -250,7 +253,11 @@ impl SyncEngine {
             let canonical_thread_id = by_header
                 .get(&thread.root_message_id)
                 .map(|root| root.thread_id.clone())
-                .or_else(|| thread_members.first().map(|member| member.thread_id.clone()))
+                .or_else(|| {
+                    thread_members
+                        .first()
+                        .map(|member| member.thread_id.clone())
+                })
                 .unwrap_or_default();
 
             for member in thread_members {

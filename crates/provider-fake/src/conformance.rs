@@ -10,7 +10,10 @@ pub async fn run_sync_conformance<P>(provider: &P)
 where
     P: MailSyncProvider + ?Sized,
 {
-    let labels = provider.sync_labels().await.expect("sync_labels should succeed");
+    let labels = provider
+        .sync_labels()
+        .await
+        .expect("sync_labels should succeed");
     assert!(
         labels.iter().all(|label| !label.name.trim().is_empty()),
         "labels must have visible names"
@@ -65,7 +68,10 @@ where
     {
         let attachment = &with_attachment.body.attachments[0];
         let bytes = provider
-            .fetch_attachment(&with_attachment.envelope.provider_id, &attachment.provider_id)
+            .fetch_attachment(
+                &with_attachment.envelope.provider_id,
+                &attachment.provider_id,
+            )
             .await
             .expect("attachment fetch should succeed");
         assert!(!bytes.is_empty(), "attachment bytes should not be empty");
@@ -111,7 +117,10 @@ where
         "delta sync should preserve a non-initial cursor"
     );
     assert!(
-        delta.upserted.iter().all(|synced| !synced.envelope.provider_id.is_empty()),
+        delta
+            .upserted
+            .iter()
+            .all(|synced| !synced.envelope.provider_id.is_empty()),
         "delta sync results must preserve provider ids"
     );
 }
@@ -143,6 +152,9 @@ where
             .save_draft(&draft, &from)
             .await
             .expect("save_draft should stay stable across calls");
-        assert!(saved.is_some(), "non-SMTP providers should return a provider draft id");
+        assert!(
+            saved.is_some(),
+            "non-SMTP providers should return a provider draft id"
+        );
     }
 }

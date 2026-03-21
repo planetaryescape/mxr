@@ -8,10 +8,7 @@ pub enum QueryNode {
     Filter(FilterKind),
     Label(String),
     DateRange { bound: DateBound, date: DateValue },
-    Size {
-        op: SizeOp,
-        bytes: u64,
-    },
+    Size { op: SizeOp, bytes: u64 },
     And(Box<QueryNode>, Box<QueryNode>),
     Or(Box<QueryNode>, Box<QueryNode>),
     Not(Box<QueryNode>),

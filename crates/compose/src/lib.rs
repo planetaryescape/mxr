@@ -1,6 +1,6 @@
 pub mod attachments;
-pub mod email;
 pub mod editor;
+pub mod email;
 pub mod frontmatter;
 pub mod parse;
 pub mod render;

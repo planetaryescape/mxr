@@ -140,8 +140,7 @@ mod tests {
 
     #[tokio::test]
     async fn hook_captures_stderr_on_failure() {
-        let result =
-            execute_shell_hook("echo 'oops' >&2; exit 1", &sample_payload(), None).await;
+        let result = execute_shell_hook("echo 'oops' >&2; exit 1", &sample_payload(), None).await;
         match result {
             Err(ShellHookError::NonZeroExit { stderr, .. }) => {
                 assert!(stderr.contains("oops"));
@@ -170,7 +169,11 @@ mod tests {
             None,
         )
         .await;
-        assert!(result.is_ok(), "Hook should receive valid JSON: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Hook should receive valid JSON: {:?}",
+            result
+        );
     }
 
     #[tokio::test]
@@ -188,12 +191,8 @@ mod tests {
     #[tokio::test]
     async fn hook_with_pipe_command() {
         // Test that shell pipes work
-        let result = execute_shell_hook(
-            "cat | head -c 1 > /dev/null",
-            &sample_payload(),
-            None,
-        )
-        .await;
+        let result =
+            execute_shell_hook("cat | head -c 1 > /dev/null", &sample_payload(), None).await;
         assert!(result.is_ok());
     }
 }

@@ -102,9 +102,9 @@ impl GmailAuth {
 
                 if !status.is_success() {
                     return Err(AuthError::OAuth2(
-                        body.error_description
-                            .or(body.error)
-                            .unwrap_or_else(|| format!("token refresh failed with status {status}")),
+                        body.error_description.or(body.error).unwrap_or_else(|| {
+                            format!("token refresh failed with status {status}")
+                        }),
                     ));
                 }
 

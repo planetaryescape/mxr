@@ -31,7 +31,7 @@ mxr-export = { workspace = true }
 mxr-rules = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
-mxr-tui = { path = "../tui", version = "0.3.1" }
+mxr-tui = { path = "../tui", version = "0.4.0" }
 chrono = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

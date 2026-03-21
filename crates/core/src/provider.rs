@@ -37,9 +37,7 @@ pub trait MailSyncProvider: Send + Sync {
     }
 
     async fn rename_label(&self, _provider_label_id: &str, _new_name: &str) -> Result<Label> {
-        Err(MxrError::Provider(
-            "Label rename not supported".to_string(),
-        ))
+        Err(MxrError::Provider("Label rename not supported".to_string()))
     }
 
     async fn delete_label(&self, _provider_label_id: &str) -> Result<()> {

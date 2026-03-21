@@ -5,16 +5,24 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RuleAction {
-    AddLabel { label: String },
-    RemoveLabel { label: String },
+    AddLabel {
+        label: String,
+    },
+    RemoveLabel {
+        label: String,
+    },
     Archive,
     Trash,
     Star,
     MarkRead,
     MarkUnread,
-    Snooze { duration: SnoozeDuration },
+    Snooze {
+        duration: SnoozeDuration,
+    },
     /// Run external command with message JSON on stdin.
-    ShellHook { command: String },
+    ShellHook {
+        command: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

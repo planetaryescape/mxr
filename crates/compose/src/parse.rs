@@ -63,12 +63,9 @@ pub fn parse_address_list(raw: &str) -> Vec<Address> {
         return Vec::new();
     }
 
-    parse_headers_from_pairs(
-        &[("To".to_string(), raw.to_string())],
-        Some(Utc::now()),
-    )
-    .map(|parsed| parsed.to)
-    .unwrap_or_default()
+    parse_headers_from_pairs(&[("To".to_string(), raw.to_string())], Some(Utc::now()))
+        .map(|parsed| parsed.to)
+        .unwrap_or_default()
 }
 
 pub fn parse_message_metadata_from_raw(raw_message: &[u8]) -> Result<MessageMetadata, ParseError> {
@@ -137,10 +134,14 @@ pub fn calendar_metadata_from_text(calendar_text: &str) -> Option<CalendarMetada
     for line in calendar_text.lines() {
         let line = line.trim();
         if method.is_none() {
-            method = line.strip_prefix("METHOD:").map(|value| value.trim().to_string());
+            method = line
+                .strip_prefix("METHOD:")
+                .map(|value| value.trim().to_string());
         }
         if summary.is_none() {
-            summary = line.strip_prefix("SUMMARY:").map(|value| value.trim().to_string());
+            summary = line
+                .strip_prefix("SUMMARY:")
+                .map(|value| value.trim().to_string());
         }
         if method.is_some() && summary.is_some() {
             break;
@@ -221,9 +222,7 @@ fn extract_metadata(message: &Message<'_>, raw_headers: Option<String>) -> Messa
 }
 
 fn parse_text_plain_format(content_type: &mail_parser::ContentType<'_>) -> Option<TextPlainFormat> {
-    if !content_type
-        .ctype()
-        .eq_ignore_ascii_case("text")
+    if !content_type.ctype().eq_ignore_ascii_case("text")
         || !content_type
             .subtype()
             .unwrap_or_default()
@@ -392,7 +391,8 @@ mod tests {
 
     #[test]
     fn parses_address_list_with_comments_and_quotes() {
-        let addresses = parse_address_list("\"Last, First\" <first@example.com>, second@example.com");
+        let addresses =
+            parse_address_list("\"Last, First\" <first@example.com>, second@example.com");
         assert_eq!(addresses.len(), 2);
         assert_eq!(addresses[0].name.as_deref(), Some("Last, First"));
         assert_eq!(addresses[1].email, "second@example.com");
@@ -401,22 +401,24 @@ mod tests {
     #[test]
     fn parses_unsubscribe_mailto_subject() {
         let parsed = parse_headers_from_pairs(
-            &[
-                (
-                    "List-Unsubscribe".to_string(),
-                    "<mailto:list@example.com?subject=unsubscribe>".to_string(),
-                ),
-            ],
+            &[(
+                "List-Unsubscribe".to_string(),
+                "<mailto:list@example.com?subject=unsubscribe>".to_string(),
+            )],
             Some(Utc::now()),
         )
         .unwrap();
-        assert!(matches!(
-            &parsed.unsubscribe,
-            UnsubscribeMethod::Mailto {
-                address,
-                subject: Some(subject)
-            } if address == "list@example.com" && subject == "unsubscribe"
-        ), "{:?}", parsed.unsubscribe);
+        assert!(
+            matches!(
+                &parsed.unsubscribe,
+                UnsubscribeMethod::Mailto {
+                    address,
+                    subject: Some(subject)
+                } if address == "list@example.com" && subject == "unsubscribe"
+            ),
+            "{:?}",
+            parsed.unsubscribe
+        );
     }
 
     #[test]
@@ -441,11 +443,9 @@ mod tests {
     fn standards_fixture_folded_flowed_headers_snapshot() {
         let raw = standards_fixture_bytes("folded-flowed.eml");
         let parsed = parse_message_metadata_from_raw(&raw).unwrap();
-        let headers = parse_headers_from_raw(
-            &extract_raw_header_block(&raw).unwrap(),
-            Some(Utc::now()),
-        )
-        .unwrap();
+        let headers =
+            parse_headers_from_raw(&extract_raw_header_block(&raw).unwrap(), Some(Utc::now()))
+                .unwrap();
 
         insta::assert_yaml_snapshot!(
             "folded_flowed_headers",

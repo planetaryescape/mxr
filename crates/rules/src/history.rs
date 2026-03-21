@@ -82,14 +82,7 @@ mod tests {
     #[test]
     fn entry_timestamp_is_recent() {
         let before = Utc::now();
-        let entry = RuleExecutionLog::entry(
-            &RuleId("r1".into()),
-            "test",
-            "msg",
-            &[],
-            true,
-            None,
-        );
+        let entry = RuleExecutionLog::entry(&RuleId("r1".into()), "test", "msg", &[], true, None);
         let after = Utc::now();
 
         assert!(entry.timestamp >= before);

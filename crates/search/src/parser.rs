@@ -513,15 +513,30 @@ mod tests {
 
     #[test]
     fn parse_additional_is_filters() {
-        assert_eq!(parse_query("is:sent").unwrap(), QueryNode::Filter(FilterKind::Sent));
-        assert_eq!(parse_query("is:draft").unwrap(), QueryNode::Filter(FilterKind::Draft));
-        assert_eq!(parse_query("is:trash").unwrap(), QueryNode::Filter(FilterKind::Trash));
-        assert_eq!(parse_query("is:spam").unwrap(), QueryNode::Filter(FilterKind::Spam));
+        assert_eq!(
+            parse_query("is:sent").unwrap(),
+            QueryNode::Filter(FilterKind::Sent)
+        );
+        assert_eq!(
+            parse_query("is:draft").unwrap(),
+            QueryNode::Filter(FilterKind::Draft)
+        );
+        assert_eq!(
+            parse_query("is:trash").unwrap(),
+            QueryNode::Filter(FilterKind::Trash)
+        );
+        assert_eq!(
+            parse_query("is:spam").unwrap(),
+            QueryNode::Filter(FilterKind::Spam)
+        );
         assert_eq!(
             parse_query("is:answered").unwrap(),
             QueryNode::Filter(FilterKind::Answered)
         );
-        assert_eq!(parse_query("is:inbox").unwrap(), QueryNode::Filter(FilterKind::Inbox));
+        assert_eq!(
+            parse_query("is:inbox").unwrap(),
+            QueryNode::Filter(FilterKind::Inbox)
+        );
         assert_eq!(
             parse_query("is:archived").unwrap(),
             QueryNode::Filter(FilterKind::Archived)

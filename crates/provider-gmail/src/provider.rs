@@ -98,7 +98,10 @@ impl GmailProvider {
                 match gmail_message_to_envelope(msg, &self.account_id) {
                     Ok(env) => {
                         let body = extract_message_body(msg);
-                        all_messages.push(SyncedMessage { envelope: env, body });
+                        all_messages.push(SyncedMessage {
+                            envelope: env,
+                            body,
+                        });
                     }
                     Err(e) => warn!(msg_id = %msg.id, error = %e, "Failed to parse message"),
                 }
@@ -180,7 +183,10 @@ impl GmailProvider {
             match gmail_message_to_envelope(msg, &self.account_id) {
                 Ok(env) => {
                     let body = extract_message_body(msg);
-                    synced.push(SyncedMessage { envelope: env, body });
+                    synced.push(SyncedMessage {
+                        envelope: env,
+                        body,
+                    });
                 }
                 Err(e) => {
                     warn!(msg_id = %msg.id, error = %e, "Failed to parse message in backfill")
@@ -197,11 +203,7 @@ impl GmailProvider {
             None => SyncCursor::Gmail { history_id },
         };
 
-        tracing::info!(
-            fetched = synced.len(),
-            has_more,
-            "Backfill batch complete"
-        );
+        tracing::info!(fetched = synced.len(), has_more, "Backfill batch complete");
 
         Ok(SyncBatch {
             upserted: synced,
@@ -296,7 +298,10 @@ impl GmailProvider {
                 match gmail_message_to_envelope(msg, &self.account_id) {
                     Ok(env) => {
                         let body = extract_message_body(msg);
-                        synced.push(SyncedMessage { envelope: env, body });
+                        synced.push(SyncedMessage {
+                            envelope: env,
+                            body,
+                        });
                     }
                     Err(e) => warn!(msg_id = %msg.id, error = %e, "Failed to parse message"),
                 }
@@ -397,7 +402,11 @@ impl MailSyncProvider for GmailProvider {
             .map_err(MxrError::from)
     }
 
-    async fn create_label(&self, name: &str, color: Option<&str>) -> mxr_core::provider::Result<Label> {
+    async fn create_label(
+        &self,
+        name: &str,
+        color: Option<&str>,
+    ) -> mxr_core::provider::Result<Label> {
         let label = self
             .client
             .create_label(name, color)
@@ -494,8 +503,8 @@ impl MailSendProvider for GmailProvider {
     }
 
     async fn send(&self, draft: &Draft, from: &Address) -> mxr_core::provider::Result<SendReceipt> {
-        let rfc2822 = send::build_rfc2822(draft, from)
-            .map_err(|e| MxrError::Provider(e.to_string()))?;
+        let rfc2822 =
+            send::build_rfc2822(draft, from).map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
 
         let result = self
@@ -517,8 +526,8 @@ impl MailSendProvider for GmailProvider {
         draft: &Draft,
         from: &Address,
     ) -> mxr_core::provider::Result<Option<String>> {
-        let rfc2822 = send::build_rfc2822(draft, from)
-            .map_err(|e| MxrError::Provider(e.to_string()))?;
+        let rfc2822 =
+            send::build_rfc2822(draft, from).map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
 
         let draft_id = self
@@ -536,9 +545,9 @@ mod tests {
     use super::*;
     use crate::error::GmailError;
     use crate::types::*;
+    use serde_json::json;
     use std::collections::HashMap;
     use std::sync::Mutex;
-    use serde_json::json;
     struct MockGmailApi {
         messages: HashMap<String, GmailMessage>,
         labels: Vec<GmailLabel>,
@@ -643,7 +652,10 @@ mod tests {
             Ok(())
         }
 
-        async fn send_message(&self, _raw_base64url: &str) -> Result<serde_json::Value, GmailError> {
+        async fn send_message(
+            &self,
+            _raw_base64url: &str,
+        ) -> Result<serde_json::Value, GmailError> {
             Ok(json!({"id": "sent-1"}))
         }
 
@@ -683,7 +695,11 @@ mod tests {
             })
         }
 
-        async fn rename_label(&self, label_id: &str, new_name: &str) -> Result<GmailLabel, GmailError> {
+        async fn rename_label(
+            &self,
+            label_id: &str,
+            new_name: &str,
+        ) -> Result<GmailLabel, GmailError> {
             Ok(GmailLabel {
                 id: label_id.into(),
                 name: new_name.into(),
@@ -702,10 +718,21 @@ mod tests {
     fn gmail_provider() -> GmailProvider {
         let mut messages = HashMap::new();
         for message in [
-            serde_json::from_value::<GmailMessage>(gmail_message("msg-1", "thread-1", "Welcome")).unwrap(),
+            serde_json::from_value::<GmailMessage>(gmail_message("msg-1", "thread-1", "Welcome"))
+                .unwrap(),
             serde_json::from_value::<GmailMessage>(gmail_attachment_message()).unwrap(),
-            serde_json::from_value::<GmailMessage>(gmail_message("msg-3", "thread-3", "Delta message")).unwrap(),
-            serde_json::from_value::<GmailMessage>(gmail_message("msg-backfill", "thread-backfill", "Backfill message")).unwrap(),
+            serde_json::from_value::<GmailMessage>(gmail_message(
+                "msg-3",
+                "thread-3",
+                "Delta message",
+            ))
+            .unwrap(),
+            serde_json::from_value::<GmailMessage>(gmail_message(
+                "msg-backfill",
+                "thread-backfill",
+                "Backfill message",
+            ))
+            .unwrap(),
         ] {
             messages.insert(message.id.clone(), message);
         }
@@ -824,6 +851,9 @@ mod tests {
         assert_eq!(batch.label_changes.len(), 1);
         assert_eq!(batch.upserted.len(), 1);
         assert_eq!(batch.upserted[0].envelope.provider_id, "msg-3");
-        assert!(matches!(batch.next_cursor, SyncCursor::Gmail { history_id: 23 }));
+        assert!(matches!(
+            batch.next_cursor,
+            SyncCursor::Gmail { history_id: 23 }
+        ));
     }
 }

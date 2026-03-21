@@ -162,7 +162,10 @@ mod tests {
         assert_eq!(parsed_fm.subject, "Re: Meeting");
         assert_eq!(
             parsed_fm.references,
-            vec!["<root@example.com>".to_string(), "<msg-123@example.com>".to_string()]
+            vec![
+                "<root@example.com>".to_string(),
+                "<msg-123@example.com>".to_string()
+            ]
         );
         assert_eq!(parsed_body, "My reply.");
         assert!(!parsed_body.contains("Original message"));

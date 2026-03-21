@@ -1,6 +1,6 @@
-use serde::Serialize;
 use crate::condition::MessageView;
 use crate::{Rule, RuleAction, RuleId};
+use serde::Serialize;
 
 /// The rule engine: evaluates rules against messages.
 pub struct RuleEngine {
@@ -72,10 +72,7 @@ impl RuleEngine {
     }
 
     /// Evaluate all enabled rules against a batch of messages.
-    pub fn evaluate_batch(
-        &self,
-        messages: &[(&dyn MessageView, &str)],
-    ) -> Vec<EvaluationResult> {
+    pub fn evaluate_batch(&self, messages: &[(&dyn MessageView, &str)]) -> Vec<EvaluationResult> {
         messages
             .iter()
             .map(|(msg, id)| self.evaluate(*msg, id))
@@ -239,12 +236,7 @@ mod tests {
                 "newsletter@substack.com",
                 "This Week in Rust",
             ),
-            (
-                &work,
-                "msg_2",
-                "boss@company.com",
-                "Q1 Review",
-            ),
+            (&work, "msg_2", "boss@company.com", "Q1 Review"),
         ];
 
         let result = engine

@@ -106,18 +106,18 @@ impl MailSyncProvider for FakeProvider {
                     .messages
                     .iter()
                     .map(|env| {
-                        let body = self
-                            .bodies
-                            .get(&env.provider_id)
-                            .cloned()
-                            .unwrap_or_else(|| MessageBody {
-                                message_id: env.id.clone(),
-                                text_plain: None,
-                                text_html: None,
-                                attachments: vec![],
-                                fetched_at: chrono::Utc::now(),
-                                metadata: Default::default(),
-                            });
+                        let body =
+                            self.bodies
+                                .get(&env.provider_id)
+                                .cloned()
+                                .unwrap_or_else(|| MessageBody {
+                                    message_id: env.id.clone(),
+                                    text_plain: None,
+                                    text_html: None,
+                                    attachments: vec![],
+                                    fetched_at: chrono::Utc::now(),
+                                    metadata: Default::default(),
+                                });
                         SyncedMessage {
                             envelope: env.clone(),
                             body,
@@ -180,7 +180,11 @@ impl MailSyncProvider for FakeProvider {
         Ok(label)
     }
 
-    async fn rename_label(&self, provider_label_id: &str, new_name: &str) -> Result<Label, MxrError> {
+    async fn rename_label(
+        &self,
+        provider_label_id: &str,
+        new_name: &str,
+    ) -> Result<Label, MxrError> {
         let mut labels = self.labels.lock().unwrap();
         let label = labels
             .iter_mut()

@@ -242,17 +242,13 @@ mod tests {
 
     #[test]
     fn empty_and_is_vacuously_true() {
-        let cond = Conditions::And {
-            conditions: vec![],
-        };
+        let cond = Conditions::And { conditions: vec![] };
         assert!(cond.evaluate(&newsletter_msg()));
     }
 
     #[test]
     fn empty_or_is_false() {
-        let cond = Conditions::Or {
-            conditions: vec![],
-        };
+        let cond = Conditions::Or { conditions: vec![] };
         assert!(!cond.evaluate(&newsletter_msg()));
     }
 

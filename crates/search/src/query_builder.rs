@@ -2,7 +2,9 @@ use crate::ast::*;
 use crate::schema::MxrSchema;
 use chrono::{Datelike, Local, NaiveDate};
 use std::ops::Bound;
-use tantivy::query::{AllQuery, BooleanQuery, BoostQuery, Occur, PhraseQuery, Query, RangeQuery, TermQuery};
+use tantivy::query::{
+    AllQuery, BooleanQuery, BoostQuery, Occur, PhraseQuery, Query, RangeQuery, TermQuery,
+};
 use tantivy::schema::{Field, IndexRecordOption};
 use tantivy::Term;
 
@@ -187,14 +189,17 @@ impl QueryBuilder {
             FilterKind::Inbox => self.build_label_query("INBOX"),
             FilterKind::Archived => Box::new(BooleanQuery::new(vec![
                 (Occur::Should, self.build_label_query("ARCHIVE")),
-                (Occur::Should, Box::new(BooleanQuery::new(vec![
-                    (Occur::MustNot, self.build_label_query("INBOX")),
-                    (Occur::MustNot, self.build_filter_query(&FilterKind::Sent)),
-                    (Occur::MustNot, self.build_filter_query(&FilterKind::Draft)),
-                    (Occur::MustNot, self.build_filter_query(&FilterKind::Trash)),
-                    (Occur::MustNot, self.build_filter_query(&FilterKind::Spam)),
-                    (Occur::Should, Box::new(AllQuery)),
-                ]))),
+                (
+                    Occur::Should,
+                    Box::new(BooleanQuery::new(vec![
+                        (Occur::MustNot, self.build_label_query("INBOX")),
+                        (Occur::MustNot, self.build_filter_query(&FilterKind::Sent)),
+                        (Occur::MustNot, self.build_filter_query(&FilterKind::Draft)),
+                        (Occur::MustNot, self.build_filter_query(&FilterKind::Trash)),
+                        (Occur::MustNot, self.build_filter_query(&FilterKind::Spam)),
+                        (Occur::Should, Box::new(AllQuery)),
+                    ])),
+                ),
             ])),
             FilterKind::HasAttachment => {
                 let term = Term::from_field_bool(self.has_attachments, true);

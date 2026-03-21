@@ -224,7 +224,10 @@ fn merge_subject_fallback_threads(
     merged
 }
 
-fn sort_thread_messages(thread: &mut ThreadTree, message_map: &HashMap<&str, &MessageForThreading>) {
+fn sort_thread_messages(
+    thread: &mut ThreadTree,
+    message_map: &HashMap<&str, &MessageForThreading>,
+) {
     thread.messages.sort_by(|left, right| {
         let left_date = message_map
             .get(left.as_str())
@@ -251,7 +254,9 @@ fn normalize_subject(subject: &str) -> String {
         let prefix = normalized[..prefix_end].trim();
         let lower = prefix.to_ascii_lowercase();
         let base = lower
-            .trim_end_matches(|ch: char| ch.is_ascii_digit() || matches!(ch, '[' | ']' | '(' | ')' | ' '))
+            .trim_end_matches(|ch: char| {
+                ch.is_ascii_digit() || matches!(ch, '[' | ']' | '(' | ')' | ' ')
+            })
             .trim();
 
         if matches!(

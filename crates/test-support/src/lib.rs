@@ -45,8 +45,8 @@ pub fn standards_fixture_string(name: &str) -> String {
 pub fn redact_rfc822(raw: &str) -> String {
     static MESSAGE_ID_RE: OnceLock<Regex> = OnceLock::new();
     static DATE_RE: OnceLock<Regex> = OnceLock::new();
-    let message_id_re = MESSAGE_ID_RE
-        .get_or_init(|| Regex::new(r"(?m)^Message-ID:\s*<[^>\r\n]+>\r?$").unwrap());
+    let message_id_re =
+        MESSAGE_ID_RE.get_or_init(|| Regex::new(r"(?m)^Message-ID:\s*<[^>\r\n]+>\r?$").unwrap());
     let date_re = DATE_RE.get_or_init(|| Regex::new(r"(?m)^Date:\s*[^\r\n]+\r?$").unwrap());
 
     let mut redacted = message_id_re
@@ -60,7 +60,12 @@ pub fn redact_rfc822(raw: &str) -> String {
     let boundaries = boundary_re
         .captures_iter(raw)
         .enumerate()
-        .map(|(index, caps)| (caps[1].to_string(), format!("boundary=\"BOUNDARY_{index}\"")))
+        .map(|(index, caps)| {
+            (
+                caps[1].to_string(),
+                format!("boundary=\"BOUNDARY_{index}\""),
+            )
+        })
         .collect::<Vec<_>>();
 
     for (index, (boundary, replacement)) in boundaries.iter().enumerate() {

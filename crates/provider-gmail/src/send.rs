@@ -4,8 +4,8 @@ use mxr_core::types::{Address, Draft};
 
 /// Build an RFC 5322 message from a Draft and return the raw bytes.
 pub fn build_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
-    let message = build_message(draft, from, true)
-        .map_err(|err| GmailSendError::Build(err.to_string()))?;
+    let message =
+        build_message(draft, from, true).map_err(|err| GmailSendError::Build(err.to_string()))?;
     Ok(format_message_for_gmail(&message))
 }
 

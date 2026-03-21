@@ -355,8 +355,14 @@ mod tests {
         engine.sync_account(&provider).await.unwrap();
 
         let labels_after = store.get_message_label_ids(&msg_id).await.unwrap();
-        assert!(labels_after.contains(&inbox.id), "INBOX should still be present");
-        assert!(labels_after.contains(&starred.id), "STARRED should be added by delta");
+        assert!(
+            labels_after.contains(&inbox.id),
+            "INBOX should still be present"
+        );
+        assert!(
+            labels_after.contains(&starred.id),
+            "STARRED should be added by delta"
+        );
     }
 
     #[tokio::test]

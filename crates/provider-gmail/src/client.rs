@@ -1,7 +1,7 @@
-use async_trait::async_trait;
 use crate::auth::GmailAuth;
 use crate::error::GmailError;
 use crate::types::*;
+use async_trait::async_trait;
 use tracing::debug;
 
 const GMAIL_API_BASE: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -62,11 +62,8 @@ pub trait GmailApi: Send + Sync {
     ) -> Result<Vec<u8>, GmailError>;
     async fn create_draft(&self, raw_base64url: &str) -> Result<String, GmailError>;
     async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError>;
-    async fn create_label(
-        &self,
-        name: &str,
-        color: Option<&str>,
-    ) -> Result<GmailLabel, GmailError>;
+    async fn create_label(&self, name: &str, color: Option<&str>)
+        -> Result<GmailLabel, GmailError>;
     async fn rename_label(&self, label_id: &str, new_name: &str) -> Result<GmailLabel, GmailError>;
     async fn delete_label(&self, label_id: &str) -> Result<(), GmailError>;
 }
@@ -435,7 +432,11 @@ impl GmailClient {
         Ok(resp.json().await?)
     }
 
-    pub async fn rename_label(&self, label_id: &str, new_name: &str) -> Result<GmailLabel, GmailError> {
+    pub async fn rename_label(
+        &self,
+        label_id: &str,
+        new_name: &str,
+    ) -> Result<GmailLabel, GmailError> {
         let url = format!("{}/labels/{label_id}", self.base_url);
         let body = serde_json::json!({
             "name": new_name,

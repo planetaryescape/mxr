@@ -1,10 +1,7 @@
 use crate::attachments::resolve_attachment_paths;
 use crate::frontmatter::ComposeError;
 use crate::render::render_markdown;
-use lettre::message::{
-    header::ContentType,
-    Attachment, Mailbox, Message, MultiPart, SinglePart,
-};
+use lettre::message::{header::ContentType, Attachment, Mailbox, Message, MultiPart, SinglePart};
 use mxr_core::types::{Address, Draft};
 use std::fs;
 
@@ -83,7 +80,8 @@ pub fn build_message(
             let content_type = ContentType::parse(&attachment.mime_type)
                 .unwrap_or(ContentType::parse("application/octet-stream").unwrap());
             let bytes = fs::read(&attachment.path)?;
-            mixed = mixed.singlepart(Attachment::new(attachment.filename).body(bytes, content_type));
+            mixed =
+                mixed.singlepart(Attachment::new(attachment.filename).body(bytes, content_type));
         }
         mixed
     };

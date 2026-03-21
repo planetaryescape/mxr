@@ -42,19 +42,27 @@ impl MailSyncProvider for ExampleSyncProvider {
     }
 
     async fn authenticate(&mut self) -> Result<(), MxrError> {
-        Err(MxrError::Provider("authenticate not implemented".to_string()))
+        Err(MxrError::Provider(
+            "authenticate not implemented".to_string(),
+        ))
     }
 
     async fn refresh_auth(&mut self) -> Result<(), MxrError> {
-        Err(MxrError::Provider("refresh_auth not implemented".to_string()))
+        Err(MxrError::Provider(
+            "refresh_auth not implemented".to_string(),
+        ))
     }
 
     async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
-        Err(MxrError::Provider("sync_labels not implemented".to_string()))
+        Err(MxrError::Provider(
+            "sync_labels not implemented".to_string(),
+        ))
     }
 
     async fn sync_messages(&self, _cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
-        Err(MxrError::Provider("sync_messages not implemented".to_string()))
+        Err(MxrError::Provider(
+            "sync_messages not implemented".to_string(),
+        ))
     }
 
     async fn fetch_attachment(
@@ -62,7 +70,9 @@ impl MailSyncProvider for ExampleSyncProvider {
         _provider_message_id: &str,
         _provider_attachment_id: &str,
     ) -> Result<Vec<u8>, MxrError> {
-        Err(MxrError::Provider("fetch_attachment not implemented".to_string()))
+        Err(MxrError::Provider(
+            "fetch_attachment not implemented".to_string(),
+        ))
     }
 
     async fn modify_labels(
@@ -71,7 +81,9 @@ impl MailSyncProvider for ExampleSyncProvider {
         _add: &[String],
         _remove: &[String],
     ) -> Result<(), MxrError> {
-        Err(MxrError::Provider("modify_labels not implemented".to_string()))
+        Err(MxrError::Provider(
+            "modify_labels not implemented".to_string(),
+        ))
     }
 
     async fn trash(&self, _provider_message_id: &str) -> Result<(), MxrError> {
@@ -87,7 +99,9 @@ impl MailSyncProvider for ExampleSyncProvider {
         _provider_message_id: &str,
         _starred: bool,
     ) -> Result<(), MxrError> {
-        Err(MxrError::Provider("set_starred not implemented".to_string()))
+        Err(MxrError::Provider(
+            "set_starred not implemented".to_string(),
+        ))
     }
 }
 

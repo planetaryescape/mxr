@@ -97,7 +97,7 @@ jobs:
       - name: Publish crates (dependency order)
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: ./scripts/publish_workspace_crates.sh
+        run: bash ./scripts/publish_workspace_crates.sh
 
   github-release:
     name: GitHub Release

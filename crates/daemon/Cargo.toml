@@ -12,7 +12,9 @@ readme = "../../README.md"
 name = "mxr"
 path = "src/main.rs"
 
-
+[features]
+default = ["semantic-local"]
+semantic-local = ["dep:fastembed", "dep:hnsw_rs"]
 
 [dependencies]
 mxr-core = { workspace = true }
@@ -31,7 +33,7 @@ mxr-export = { workspace = true }
 mxr-rules = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
-mxr-tui = { path = "../tui", version = "0.4.1" }
+mxr-tui = { path = "../tui", version = "0.4.2" }
 chrono = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -50,8 +52,8 @@ regex = { workspace = true }
 url = { workspace = true }
 which = { workspace = true }
 keyring = { workspace = true }
-fastembed = "5.13"
-hnsw_rs = "0.3.4"
+fastembed = { version = "5.13", optional = true }
+hnsw_rs = { version = "0.3.4", optional = true }
 sha2 = "0.10"
 
 [dev-dependencies]

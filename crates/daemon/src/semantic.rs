@@ -1,20 +1,33 @@
-use anyhow::{anyhow, Context, Result};
+#[cfg(feature = "semantic-local")]
+use anyhow::Context;
+use anyhow::{anyhow, Result};
+#[cfg(feature = "semantic-local")]
 use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
+#[cfg(feature = "semantic-local")]
 use hnsw_rs::prelude::{DistCosine, Hnsw};
 use mxr_config::SemanticConfig;
-use mxr_core::id::{MessageId, SemanticProfileId};
+use mxr_core::id::MessageId;
+#[cfg(feature = "semantic-local")]
+use mxr_core::id::SemanticProfileId;
+#[cfg(feature = "semantic-local")]
 use mxr_core::types::{
-    AttachmentMeta, Envelope, MessageBody, SearchMode, SemanticChunkRecord,
-    SemanticChunkSourceKind, SemanticEmbeddingRecord, SemanticEmbeddingStatus, SemanticProfile,
-    SemanticProfileRecord, SemanticProfileStatus, SemanticStatusSnapshot,
+    AttachmentMeta, Envelope, MessageBody, SemanticChunkRecord, SemanticChunkSourceKind,
+    SemanticEmbeddingRecord, SemanticEmbeddingStatus, SemanticProfileStatus,
 };
+use mxr_core::types::{SearchMode, SemanticProfile, SemanticProfileRecord, SemanticStatusSnapshot};
+#[cfg(feature = "semantic-local")]
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::Store;
+#[cfg(feature = "semantic-local")]
 use sha2::{Digest, Sha256};
+#[cfg(feature = "semantic-local")]
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(feature = "semantic-local")]
+use std::path::PathBuf;
 use std::sync::Arc;
 
+#[cfg(feature = "semantic-local")]
 const FASTEMBED_REVISION: &str = "fastembed-5.13.0";
 #[derive(Debug, Clone)]
 pub struct SemanticHit {
@@ -22,10 +35,12 @@ pub struct SemanticHit {
     pub score: f32,
 }
 
+#[cfg(feature = "semantic-local")]
 struct IndexedChunk {
     message_id: MessageId,
 }
 
+#[cfg(feature = "semantic-local")]
 struct SemanticIndex {
     hnsw: Hnsw<'static, f32, DistCosine>,
     chunks_by_id: HashMap<usize, IndexedChunk>,
@@ -33,12 +48,16 @@ struct SemanticIndex {
 
 pub struct SemanticEngine {
     store: Arc<Store>,
+    #[cfg(feature = "semantic-local")]
     cache_dir: PathBuf,
     config: SemanticConfig,
+    #[cfg(feature = "semantic-local")]
     models: HashMap<SemanticProfile, TextEmbedding>,
+    #[cfg(feature = "semantic-local")]
     indexes: HashMap<SemanticProfile, SemanticIndex>,
 }
 
+#[cfg(feature = "semantic-local")]
 impl SemanticEngine {
     pub fn new(store: Arc<Store>, data_dir: &Path, config: SemanticConfig) -> Self {
         Self {
@@ -351,10 +370,63 @@ impl SemanticEngine {
     }
 }
 
+#[cfg(not(feature = "semantic-local"))]
+impl SemanticEngine {
+    pub fn new(store: Arc<Store>, data_dir: &Path, config: SemanticConfig) -> Self {
+        let _ = data_dir;
+        Self { store, config }
+    }
+
+    pub fn apply_config(&mut self, config: SemanticConfig) {
+        self.config = config;
+    }
+
+    pub async fn status_snapshot(&self) -> Result<SemanticStatusSnapshot> {
+        Ok(SemanticStatusSnapshot {
+            enabled: false,
+            active_profile: self.config.active_profile,
+            profiles: self.store.list_semantic_profiles().await?,
+        })
+    }
+
+    pub async fn install_profile(
+        &mut self,
+        _profile: SemanticProfile,
+    ) -> Result<SemanticProfileRecord> {
+        Err(semantic_unavailable_error())
+    }
+
+    pub async fn use_profile(
+        &mut self,
+        _profile: SemanticProfile,
+    ) -> Result<SemanticProfileRecord> {
+        Err(semantic_unavailable_error())
+    }
+
+    pub async fn reindex_active(&mut self) -> Result<SemanticProfileRecord> {
+        Err(semantic_unavailable_error())
+    }
+
+    pub async fn reindex_messages(&mut self, _message_ids: &[MessageId]) -> Result<()> {
+        Ok(())
+    }
+
+    pub async fn search(&mut self, _query: &str, _limit: usize) -> Result<Vec<SemanticHit>> {
+        Ok(Vec::new())
+    }
+}
+
+#[cfg(feature = "semantic-local")]
 pub fn should_use_semantic(mode: SearchMode) -> bool {
     matches!(mode, SearchMode::Hybrid | SearchMode::Semantic)
 }
 
+#[cfg(not(feature = "semantic-local"))]
+pub fn should_use_semantic(_mode: SearchMode) -> bool {
+    false
+}
+
+#[cfg(feature = "semantic-local")]
 fn default_profile_record(profile: SemanticProfile, dimensions: u32) -> SemanticProfileRecord {
     SemanticProfileRecord {
         id: semantic_profile_id(profile),
@@ -372,10 +444,17 @@ fn default_profile_record(profile: SemanticProfile, dimensions: u32) -> Semantic
     }
 }
 
+#[cfg(not(feature = "semantic-local"))]
+fn semantic_unavailable_error() -> anyhow::Error {
+    anyhow!("semantic search unavailable in this binary")
+}
+
+#[cfg(feature = "semantic-local")]
 fn semantic_profile_id(profile: SemanticProfile) -> SemanticProfileId {
     SemanticProfileId::from_provider_id("semantic_profile", profile.as_str())
 }
 
+#[cfg(feature = "semantic-local")]
 fn semantic_chunk_id(
     message_id: &str,
     source_kind: &SemanticChunkSourceKind,
@@ -387,6 +466,7 @@ fn semantic_chunk_id(
     )
 }
 
+#[cfg(feature = "semantic-local")]
 fn build_chunks(
     envelope: &Envelope,
     body: Option<&MessageBody>,
@@ -438,6 +518,7 @@ fn build_chunks(
     chunks
 }
 
+#[cfg(feature = "semantic-local")]
 fn read_attachment_text(attachment: &AttachmentMeta) -> Option<String> {
     let path = attachment.local_path.as_ref()?;
     let mime = attachment.mime_type.to_ascii_lowercase();
@@ -461,6 +542,7 @@ fn read_attachment_text(attachment: &AttachmentMeta) -> Option<String> {
     }
 }
 
+#[cfg(feature = "semantic-local")]
 fn embedding_model(profile: SemanticProfile) -> EmbeddingModel {
     match profile {
         SemanticProfile::BgeSmallEnV15 => EmbeddingModel::BGESmallENV15,
@@ -469,6 +551,7 @@ fn embedding_model(profile: SemanticProfile) -> EmbeddingModel {
     }
 }
 
+#[cfg(feature = "semantic-local")]
 fn prefixed_query(profile: SemanticProfile, text: &str) -> String {
     let normalized = normalize_text(text);
     match profile {
@@ -477,6 +560,7 @@ fn prefixed_query(profile: SemanticProfile, text: &str) -> String {
     }
 }
 
+#[cfg(feature = "semantic-local")]
 fn prefixed_document(profile: SemanticProfile, text: &str) -> String {
     let normalized = normalize_text(text);
     match profile {
@@ -485,6 +569,7 @@ fn prefixed_document(profile: SemanticProfile, text: &str) -> String {
     }
 }
 
+#[cfg(feature = "semantic-local")]
 fn normalize_text(text: &str) -> String {
     text.split_whitespace()
         .map(str::trim)
@@ -494,6 +579,7 @@ fn normalize_text(text: &str) -> String {
         .to_lowercase()
 }
 
+#[cfg(feature = "semantic-local")]
 fn chunk_text(text: &str, window_words: usize, overlap_words: usize) -> Vec<String> {
     let normalized = normalize_text(text);
     if normalized.is_empty() {
@@ -521,11 +607,13 @@ fn chunk_text(text: &str, window_words: usize, overlap_words: usize) -> Vec<Stri
     chunks
 }
 
+#[cfg(feature = "semantic-local")]
 fn content_hash(normalized: &str) -> String {
     let digest = Sha256::digest(normalized.as_bytes());
     format!("{digest:x}")
 }
 
+#[cfg(feature = "semantic-local")]
 fn f32s_to_blob(values: &[f32]) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(values.len() * 4);
     for value in values {
@@ -534,6 +622,7 @@ fn f32s_to_blob(values: &[f32]) -> Vec<u8> {
     bytes
 }
 
+#[cfg(feature = "semantic-local")]
 fn blob_to_f32s(bytes: &[u8]) -> Vec<f32> {
     bytes
         .chunks_exact(4)

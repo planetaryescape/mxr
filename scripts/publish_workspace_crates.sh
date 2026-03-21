@@ -66,6 +66,7 @@ publish_async_imap
 publish mxr-core 0.3.1
 publish mxr-protocol 0.3.1
 publish mxr-config 0.3.1
+publish mxr-test-support 0.3.1
 publish mxr-store 0.3.1
 publish mxr-search 0.3.1
 publish mxr-reader 0.3.1

@@ -30,12 +30,17 @@ impl SearchIndex {
     }
 
     pub fn open(index_path: &Path) -> Result<Self, MxrError> {
+        let (index, _) = Self::open_with_rebuild_status(index_path)?;
+        Ok(index)
+    }
+
+    pub fn open_with_rebuild_status(index_path: &Path) -> Result<(Self, bool), MxrError> {
         let schema_def = MxrSchema::build();
         let dir = tantivy::directory::MmapDirectory::open(index_path)
             .map_err(|e| MxrError::Search(e.to_string()))?;
 
-        let index = match Index::open_or_create(dir, schema_def.schema.clone()) {
-            Ok(idx) => idx,
+        let (index, rebuilt) = match Index::open_or_create(dir, schema_def.schema.clone()) {
+            Ok(idx) => (idx, false),
             Err(e) if e.to_string().contains("schema does not match") => {
                 tracing::warn!("Search index schema mismatch, rebuilding: {e}");
                 // Wipe and recreate
@@ -47,8 +52,11 @@ impl SearchIndex {
                 }
                 let dir = tantivy::directory::MmapDirectory::open(index_path)
                     .map_err(|e| MxrError::Search(e.to_string()))?;
-                Index::open_or_create(dir, schema_def.schema.clone())
-                    .map_err(|e| MxrError::Search(e.to_string()))?
+                (
+                    Index::open_or_create(dir, schema_def.schema.clone())
+                        .map_err(|e| MxrError::Search(e.to_string()))?,
+                    true,
+                )
             }
             Err(e) => return Err(MxrError::Search(e.to_string())),
         };
@@ -63,12 +71,15 @@ impl SearchIndex {
             .writer(50_000_000)
             .map_err(|e| MxrError::Search(e.to_string()))?;
 
-        Ok(Self {
-            index,
-            reader,
-            writer,
-            schema: schema_def,
-        })
+        Ok((
+            Self {
+                index,
+                reader,
+                writer,
+                schema: schema_def,
+            },
+            rebuilt,
+        ))
     }
 
     pub fn in_memory() -> Result<Self, MxrError> {

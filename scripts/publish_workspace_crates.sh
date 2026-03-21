@@ -115,6 +115,7 @@ publish mxr-config 0.3.1
 publish mxr-test-support 0.3.1
 publish mxr-store 0.3.1
 publish mxr-search 0.3.1
+publish mxr-semantic 0.4.3
 publish mxr-reader 0.3.1
 publish mxr-compose 0.3.1
 publish mxr-provider-fake 0.3.1

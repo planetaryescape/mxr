@@ -4,6 +4,8 @@
 
 Ratatui + crossterm. This is the standard for Rust TUI apps and gives us full control over rendering, layout, and input handling.
 
+The TUI is a support surface, not the canonical one. It exists to make the daemon and CLI flows fast for humans. It should not become the only place a feature exists.
+
 ## Layout
 
 The TUI has a multi-pane layout:
@@ -57,6 +59,22 @@ When a message is selected, the right pane shows the message body:
 - **Three-pane**: Sidebar + message list + message view (when a message is selected)
 - **Full-screen**: Message view takes full width (toggle with `f`)
 - **Thread view**: Full conversation, messages stacked vertically
+
+## Diagnostics
+
+The diagnostics screen is an operator surface, not decorative chrome. It should answer "what state is the daemon in?" and "what data do I actually have locally?" without making the user leave the TUI.
+
+It should show, at minimum:
+
+- Daemon health class and lifecycle state (`healthy`, `degraded`, `restart_required`, `repair_required`)
+- Sync state per account: in progress, last success, last error, consecutive failures, cursor summary
+- Local data counts: accounts, labels, messages, unread, starred, bodies, attachments, drafts, snoozed, saved searches, rules
+- Telemetry counts: event log, sync log, rule execution log, semantic profile/chunk/embedding counts when enabled
+- Freshness: last successful sync, lexical index freshness, last lexical rebuild time, active semantic profile freshness, last semantic reindex time
+- Storage footprint: database, search index, log sizes
+- Recent sync events and recent error logs
+
+The diagnostics page should never fake "0" or "none" before the daemon replies. It should show loading state first, then render the daemon-backed snapshot.
 
 ## Vim motions and keybindings
 
@@ -354,6 +372,12 @@ The bottom bar shows:
 ## TUI ↔ Daemon communication
 
 The TUI is a client. It connects to the daemon via Unix socket and speaks the JSON protocol defined in the protocol crate.
+
+That client boundary is intentional:
+
+- every meaningful TUI action should map to a daemon request that also exists in the CLI
+- mutation safety should come from the shared daemon/CLI path, not bespoke TUI-only logic
+- the TUI should preserve shell-first product philosophy even when it adds interactive ergonomics
 
 ### Event model
 

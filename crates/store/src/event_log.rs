@@ -13,19 +13,24 @@ pub struct EventLogEntry {
     pub details: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct EventLogRefs<'a> {
+    pub account_id: Option<&'a AccountId>,
+    pub message_id: Option<&'a str>,
+    pub rule_id: Option<&'a str>,
+}
+
 impl super::Store {
     pub async fn insert_event_refs(
         &self,
         level: &str,
         category: &str,
         summary: &str,
-        account_id: Option<&AccountId>,
-        message_id: Option<&str>,
-        rule_id: Option<&str>,
+        refs: EventLogRefs<'_>,
         details: Option<&str>,
     ) -> Result<(), sqlx::Error> {
         let now = chrono::Utc::now().timestamp();
-        let aid = account_id.map(|a| a.as_str());
+        let aid = refs.account_id.map(|account_id| account_id.as_str());
         sqlx::query(
             "INSERT INTO event_log (
                 timestamp,
@@ -42,8 +47,8 @@ impl super::Store {
         .bind(level)
         .bind(category)
         .bind(aid)
-        .bind(message_id)
-        .bind(rule_id)
+        .bind(refs.message_id)
+        .bind(refs.rule_id)
         .bind(summary)
         .bind(details)
         .execute(self.writer())
@@ -59,8 +64,17 @@ impl super::Store {
         account_id: Option<&AccountId>,
         details: Option<&str>,
     ) -> Result<(), sqlx::Error> {
-        self.insert_event_refs(level, category, summary, account_id, None, None, details)
-            .await
+        self.insert_event_refs(
+            level,
+            category,
+            summary,
+            EventLogRefs {
+                account_id,
+                ..EventLogRefs::default()
+            },
+            details,
+        )
+        .await
     }
 
     // Dynamic SQL — kept as runtime query since the WHERE clause is conditionally built
@@ -116,5 +130,27 @@ impl super::Store {
             .execute(self.writer())
             .await?;
         Ok(result.rows_affected())
+    }
+
+    pub async fn latest_event_timestamp(
+        &self,
+        category: &str,
+        summary_prefix: Option<&str>,
+    ) -> Result<Option<chrono::DateTime<chrono::Utc>>, sqlx::Error> {
+        let mut sql = String::from("SELECT timestamp FROM event_log WHERE category = ?");
+        if summary_prefix.is_some() {
+            sql.push_str(" AND summary LIKE ?");
+        }
+        sql.push_str(" ORDER BY timestamp DESC LIMIT 1");
+
+        let mut query = sqlx::query_scalar::<_, i64>(&sql).bind(category);
+        if let Some(prefix) = summary_prefix {
+            query = query.bind(format!("{prefix}%"));
+        }
+
+        Ok(query
+            .fetch_optional(self.reader())
+            .await?
+            .and_then(|timestamp| chrono::DateTime::from_timestamp(timestamp, 0)))
     }
 }

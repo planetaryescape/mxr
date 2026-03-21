@@ -5,6 +5,7 @@ use super::{
 use crate::state::AppState;
 use mxr_core::types::{Address, Draft, Envelope, UnsubscribeMethod};
 use mxr_protocol::{ForwardContext, MutationCommand, ReplyContext, ResponseData};
+use mxr_store::EventLogRefs;
 use std::sync::Arc;
 
 async fn log_mutation(
@@ -20,9 +21,11 @@ async fn log_mutation(
             "info",
             "mutation",
             &summary,
-            Some(&envelope.account_id),
-            Some(message_id.as_str()),
-            None,
+            EventLogRefs {
+                account_id: Some(&envelope.account_id),
+                message_id: Some(message_id.as_str()),
+                rule_id: None,
+            },
             details.as_deref(),
         )
         .await

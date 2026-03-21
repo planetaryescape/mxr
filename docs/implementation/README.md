@@ -55,6 +55,9 @@ These decisions are settled (see [decision log](../blueprint/15-decision-log.md)
 - IMAP is first-party, not community (D048, overrides D015)
 - Every TUI action has a CLI equivalent (D026)
 - Auto-format detection: TTY → table, piped → json (D032)
+- CLI-first product surface, TUI supported by the same daemon requests
+- Mutations are dry-runnable before commit
+- JSON/JSONL output is part of the product surface, not an afterthought
 - Semver + conventional commits + git-cliff for changelogs (D066)
 - Cross-compilation: `cross` for Linux musl, native for macOS (D067)
 - Workspace publish via `cargo-workspaces` (D068)

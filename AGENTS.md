@@ -33,14 +33,17 @@ Single unified binary: `mxr` with subcommands (`mxr` = TUI, `mxr daemon`, `mxr s
 
 1. **Local-first**: SQLite is the canonical state store. Search index is rebuildable from SQLite. Works offline.
 2. **Provider-agnostic internal model**: All app logic speaks one language (the mxr internal model). No provider-specific concepts leak into core code.
-3. **Daemon-backed architecture**: TUI is a client of the daemon, not the system itself. Background sync, indexing, and rules run regardless of TUI state.
-4. **$EDITOR for writing**: Compose opens $EDITOR with markdown + YAML frontmatter. mxr does not compete with your text editor.
-5. **Fast search is first-class**: Tantivy BM25 with field boosts. Search is navigation, not an afterthought.
-6. **Saved searches are a core primitive**: User-programmed inbox lenses in sidebar and command palette.
-7. **Rules engine is deterministic first**: Rules are data (inspectable, replayable, idempotent, dry-runnable). Scripts are escape hatches, not the foundation.
-8. **Shell hooks over premature plugin systems**: Pipe data to shell commands. Unix composition over framework lock-in.
-9. **Adapters are swappable**: No provider-specific logic outside adapter crates. Ever.
-10. **Correctness beats cleverness**: Plain, legible Rust. Compile-time checked SQL. Explicit error types. When in doubt, be boring.
+3. **CLI-first surface**: The CLI is the canonical user and automation surface. New capabilities land in the CLI first or at the same time. The TUI supports the CLI/daemon surface; it does not replace it.
+4. **Daemon-backed architecture**: TUI is a client of the daemon, not the system itself. Background sync, indexing, and rules run regardless of TUI state.
+5. **$EDITOR for writing**: Compose opens $EDITOR with markdown + YAML frontmatter. mxr does not compete with your text editor.
+6. **Fast search is first-class**: Tantivy BM25 with field boosts. Search is navigation, not an afterthought.
+7. **Saved searches are a core primitive**: User-programmed inbox lenses in sidebar and command palette.
+8. **Rules engine is deterministic first**: Rules are data (inspectable, replayable, idempotent, dry-runnable). Scripts are escape hatches, not the foundation.
+9. **Mutations are previewable**: Destructive or batch operations must have a dry-run or equivalent preview path before commit. Selection logic must match the real mutation path.
+10. **Shell hooks over premature plugin systems**: Pipe data to shell commands. Unix composition over framework lock-in.
+11. **Pipeable structured output**: JSON/JSONL output is a product feature, not an afterthought. Shells, scripts, and agents must be able to compose mxr commands cleanly.
+12. **Adapters are swappable**: No provider-specific logic outside adapter crates. Ever.
+13. **Correctness beats cleverness**: Plain, legible Rust. Compile-time checked SQL. Explicit error types. When in doubt, be boring.
 
 ## Data Model Design Philosophy
 
@@ -62,12 +65,17 @@ These are strict. Violations should be caught in code review:
 2. **`protocol` depends only on `core`.** It defines the IPC contract between daemon and clients.
 3. **Provider crates depend only on `core`.** They implement traits defined in core. They do NOT depend on store, search, or sync. This is what makes them swappable and independently buildable.
 4. **`store` and `search` depend only on `core`.** They are storage backends, not business logic.
-5. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
-6. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
+5. **`semantic` owns embeddings and dense retrieval.** It may depend on `core`, `config`, `reader`, and `store`. It must not depend on daemon, TUI, or provider crates.
+6. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
+7. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
    - **`daemon` MUST interact with providers only through `MailSyncProvider` / `MailSendProvider` traits.** Never import or call provider-specific types (e.g. `GmailClient`, `ImapClient`) from daemon handler/loop code. If a capability is needed, add it to the trait in `core` first, then implement it in the adapter. This is what makes providers swappable.
-7. **`tui` depends only on `core` and `protocol`.** It talks to the daemon via IPC, never directly to providers, store, or search. This enforces the client-server boundary.
+8. **`tui` depends only on `core` and `protocol`.** It talks to the daemon via IPC, never directly to providers, store, or search. This enforces the client-server boundary.
 
 ## Development Principles
+
+### CLI first, TUI supported
+
+If a feature only exists in the TUI, it is incomplete. The CLI is the fastest path to verification, scripting, and agent use. The TUI should layer on top of the same daemon request, not invent a separate capability.
 
 ### Test with the real system, not just unit tests
 
@@ -85,6 +93,14 @@ TUI and CLI are both IPC clients of the same daemon. Every `Request` variant in 
 - A CLI subcommand (in `commands/`)
 
 Wiring one and leaving the other as a stub means half the system is broken. The CLI is also the fastest way to smoke-test daemon features.
+
+### Mutations must be dry-runnable
+
+Batch or destructive mutations need a preview path. `--dry-run` should exercise the same selection/query path as the real mutation, then stop before provider or store mutation. Do not ship a mutation flow that can only be executed, not previewed.
+
+### Pipeable JSON is mandatory
+
+Read/list/status/search/export surfaces must keep machine-readable output stable. Prefer structured JSON for single payloads and JSONL for streams. Human-friendly table output is additive, not the only interface.
 
 ### Complete user journeys, not half-flows
 
@@ -108,11 +124,14 @@ Tests that cross component boundaries catch the bugs that actually ship:
 - Local-first by default
 - SQLite is the canonical state store
 - Search index is rebuildable from SQLite
+- CLI-first product surface
 - Provider adapters are replaceable
 - No provider-specific logic outside adapter crates
 - Compose uses $EDITOR
 - Core features do not depend on proprietary services
 - Rules are deterministic before they are intelligent
+- Mutations are dry-runnable before commit
+- JSON/JSONL output must stay pipeable
 - TUI is a client of the daemon, not the system itself
 - Distraction-free rendering: plain text first, reader mode, no inline images
 
@@ -146,6 +165,7 @@ crates/
   core/           # Types, traits, errors (leaf node)
   store/          # SQLite persistence via sqlx
   search/         # Tantivy indexing and query
+  semantic/       # Local embeddings, dense retrieval, attachment extraction
   protocol/       # IPC types (Request, Response, Command)
   providers/
     gmail/        # Gmail API adapter (first-party)

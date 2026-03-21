@@ -1,9 +1,13 @@
 use crate::ipc_client::IpcClient;
-use mxr_protocol::{Request, Response, ResponseData};
+use mxr_protocol::{Request, Response, ResponseData, IPC_PROTOCOL_VERSION};
 
-fn render_sync_status(sync_statuses: &[mxr_protocol::AccountSyncStatus]) {
+fn render_sync_status(sync_statuses: &[mxr_protocol::AccountSyncStatus], protocol_version: u32) {
     if sync_statuses.is_empty() {
-        println!("No sync-capable accounts");
+        if protocol_version < IPC_PROTOCOL_VERSION {
+            println!("Sync status unavailable from legacy daemon");
+        } else {
+            println!("No sync-capable accounts");
+        }
         return;
     }
 
@@ -44,8 +48,21 @@ pub async fn run(_account: Option<String>, status: bool, _history: bool) -> anyh
         let resp = client.request(Request::GetStatus).await?;
         match resp {
             Response::Ok {
-                data: ResponseData::Status { sync_statuses, .. },
-            } => render_sync_status(&sync_statuses),
+                data:
+                    ResponseData::Status {
+                        sync_statuses,
+                        protocol_version,
+                        ..
+                    },
+            } => {
+                render_sync_status(&sync_statuses, protocol_version);
+                if protocol_version < IPC_PROTOCOL_VERSION {
+                    println!(
+                        "\nNote: daemon protocol {} is older than client protocol {}. Restart the daemon after upgrading.",
+                        protocol_version, IPC_PROTOCOL_VERSION
+                    );
+                }
+            }
             Response::Error { message } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),
         }

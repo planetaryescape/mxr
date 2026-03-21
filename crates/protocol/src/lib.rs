@@ -4,6 +4,8 @@ mod types;
 pub use codec::IpcCodec;
 pub use types::*;
 
+pub const IPC_PROTOCOL_VERSION: u32 = 1;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,5 +127,45 @@ mod tests {
 
         // No more messages
         assert!(codec.decode(&mut buf).unwrap().is_none());
+    }
+
+    #[test]
+    fn legacy_status_response_defaults_new_fields() {
+        let json = serde_json::json!({
+            "id": 7,
+            "payload": {
+                "type": "Response",
+                "status": "Ok",
+                "data": {
+                    "kind": "Status",
+                    "uptime_secs": 42,
+                    "accounts": ["personal"],
+                    "total_messages": 123,
+                    "daemon_pid": 999
+                }
+            }
+        });
+
+        let parsed: IpcMessage = serde_json::from_value(json).unwrap();
+        match parsed.payload {
+            IpcPayload::Response(Response::Ok {
+                data:
+                    ResponseData::Status {
+                        sync_statuses,
+                        protocol_version,
+                        daemon_version,
+                        daemon_build_id,
+                        repair_required,
+                        ..
+                    },
+            }) => {
+                assert!(sync_statuses.is_empty());
+                assert_eq!(protocol_version, 0);
+                assert!(daemon_version.is_none());
+                assert!(daemon_build_id.is_none());
+                assert!(!repair_required);
+            }
+            other => panic!("unexpected payload: {other:?}"),
+        }
     }
 }

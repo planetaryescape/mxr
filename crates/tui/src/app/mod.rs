@@ -15,7 +15,7 @@ use mxr_config::RenderConfig;
 use mxr_core::id::{AccountId, AttachmentId, MessageId};
 use mxr_core::types::*;
 use mxr_core::MxrError;
-use mxr_protocol::{MutationCommand, Request};
+use mxr_protocol::{MutationCommand, Request, Response, ResponseData};
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
 
@@ -224,6 +224,7 @@ pub struct DiagnosticsPageState {
     pub logs: Vec<String>,
     pub status: Option<String>,
     pub refresh_pending: bool,
+    pub pending_requests: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -449,6 +450,7 @@ pub struct App {
     pub pending_labels_refresh: bool,
     pub pending_all_envelopes_refresh: bool,
     pub pending_subscriptions_refresh: bool,
+    pub pending_status_refresh: bool,
     pub desired_system_mailbox: Option<String>,
     pub status_message: Option<String>,
     pub pending_mutation_queue: Vec<(Request, MutationEffect)>,
@@ -566,6 +568,7 @@ impl App {
             pending_labels_refresh: false,
             pending_all_envelopes_refresh: false,
             pending_subscriptions_refresh: false,
+            pending_status_refresh: false,
             desired_system_mailbox: None,
             status_message: None,
             pending_mutation_queue: Vec::new(),
@@ -949,9 +952,47 @@ impl App {
         self.labels = client.list_labels().await?;
         self.saved_searches = client.list_saved_searches().await.unwrap_or_default();
         self.set_subscriptions(client.list_subscriptions(500).await.unwrap_or_default());
+        if let Ok(Response::Ok {
+            data:
+                ResponseData::Status {
+                    uptime_secs,
+                    daemon_pid,
+                    accounts,
+                    total_messages,
+                    sync_statuses,
+                    ..
+                },
+        }) = client.raw_request(Request::GetStatus).await
+        {
+            self.apply_status_snapshot(
+                uptime_secs,
+                daemon_pid,
+                accounts,
+                total_messages,
+                sync_statuses,
+            );
+        }
         // Queue body prefetch for first visible window
         self.queue_body_window();
         Ok(())
+    }
+
+    pub fn apply_status_snapshot(
+        &mut self,
+        uptime_secs: u64,
+        daemon_pid: Option<u32>,
+        accounts: Vec<String>,
+        total_messages: u32,
+        sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
+    ) {
+        self.diagnostics_page.uptime_secs = Some(uptime_secs);
+        self.diagnostics_page.daemon_pid = daemon_pid;
+        self.diagnostics_page.accounts = accounts;
+        self.diagnostics_page.total_messages = Some(total_messages);
+        self.diagnostics_page.sync_statuses = sync_statuses;
+        self.last_sync_status = Some(Self::summarize_sync_status(
+            &self.diagnostics_page.sync_statuses,
+        ));
     }
 
     pub fn input_pending(&self) -> bool {
@@ -1137,6 +1178,136 @@ impl App {
             .filter(|envelope| !envelope.flags.contains(MessageFlags::TRASH))
             .cloned()
             .collect()
+    }
+
+    fn active_label_record(&self) -> Option<&Label> {
+        let label_id = self
+            .pending_active_label
+            .as_ref()
+            .or(self.active_label.as_ref())?;
+        self.labels.iter().find(|label| &label.id == label_id)
+    }
+
+    fn global_starred_count(&self) -> usize {
+        self.labels
+            .iter()
+            .find(|label| label.name.eq_ignore_ascii_case("STARRED"))
+            .map(|label| label.total_count as usize)
+            .unwrap_or_else(|| {
+                self.all_envelopes
+                    .iter()
+                    .filter(|envelope| envelope.flags.contains(MessageFlags::STARRED))
+                    .count()
+            })
+    }
+
+    pub fn status_bar_state(&self) -> ui::status_bar::StatusBarState {
+        let starred_count = self.global_starred_count();
+
+        if self.mailbox_view == MailboxView::Subscriptions {
+            let unread_count = self
+                .subscriptions_page
+                .entries
+                .iter()
+                .filter(|entry| !entry.envelope.flags.contains(MessageFlags::READ))
+                .count();
+            return ui::status_bar::StatusBarState {
+                mailbox_name: "SUBSCRIPTIONS".into(),
+                total_count: self.subscriptions_page.entries.len(),
+                unread_count,
+                starred_count,
+                sync_status: self.last_sync_status.clone(),
+                status_message: self.status_message.clone(),
+            };
+        }
+
+        if self.screen == Screen::Search || self.search_active {
+            let results = if self.screen == Screen::Search {
+                &self.search_page.results
+            } else {
+                &self.envelopes
+            };
+            let unread_count = results
+                .iter()
+                .filter(|envelope| !envelope.flags.contains(MessageFlags::READ))
+                .count();
+            return ui::status_bar::StatusBarState {
+                mailbox_name: "SEARCH".into(),
+                total_count: results.len(),
+                unread_count,
+                starred_count,
+                sync_status: self.last_sync_status.clone(),
+                status_message: self.status_message.clone(),
+            };
+        }
+
+        if let Some(label) = self.active_label_record() {
+            return ui::status_bar::StatusBarState {
+                mailbox_name: label.name.clone(),
+                total_count: label.total_count as usize,
+                unread_count: label.unread_count as usize,
+                starred_count,
+                sync_status: self.last_sync_status.clone(),
+                status_message: self.status_message.clone(),
+            };
+        }
+
+        let unread_count = self
+            .envelopes
+            .iter()
+            .filter(|envelope| !envelope.flags.contains(MessageFlags::READ))
+            .count();
+        ui::status_bar::StatusBarState {
+            mailbox_name: "ALL MAIL".into(),
+            total_count: self
+                .diagnostics_page
+                .total_messages
+                .map(|count| count as usize)
+                .unwrap_or_else(|| self.all_envelopes.len()),
+            unread_count,
+            starred_count,
+            sync_status: self.last_sync_status.clone(),
+            status_message: self.status_message.clone(),
+        }
+    }
+
+    fn summarize_sync_status(sync_statuses: &[mxr_protocol::AccountSyncStatus]) -> String {
+        if sync_statuses.is_empty() {
+            return "not synced".into();
+        }
+        if sync_statuses.iter().any(|sync| sync.sync_in_progress) {
+            return "syncing".into();
+        }
+        if sync_statuses
+            .iter()
+            .any(|sync| !sync.healthy || sync.last_error.is_some())
+        {
+            return "degraded".into();
+        }
+        sync_statuses
+            .iter()
+            .filter_map(|sync| sync.last_success_at.as_deref())
+            .filter_map(Self::format_sync_age)
+            .max_by_key(|(_, sort_key)| *sort_key)
+            .map(|(display, _)| format!("synced {display}"))
+            .unwrap_or_else(|| "not synced".into())
+    }
+
+    fn format_sync_age(timestamp: &str) -> Option<(String, i64)> {
+        let parsed = chrono::DateTime::parse_from_rfc3339(timestamp).ok()?;
+        let synced_at = parsed.with_timezone(&chrono::Utc);
+        let elapsed = chrono::Utc::now().signed_duration_since(synced_at);
+        let seconds = elapsed.num_seconds().max(0);
+        let display = if seconds < 60 {
+            "just now".to_string()
+        } else if seconds < 3_600 {
+            format!("{}m ago", seconds / 60)
+        } else if seconds < 86_400 {
+            format!("{}h ago", seconds / 3_600)
+        } else {
+            format!("{}d ago", seconds / 86_400)
+        };
+        Some((display, synced_at.timestamp()))
     }
 
     pub fn resolve_desired_system_mailbox(&mut self) {

@@ -92,12 +92,14 @@ impl App {
                         ui::subscriptions_page::draw(
                             frame,
                             chunks[1],
-                            &self.subscriptions_page.entries,
-                            self.selected_index,
-                            self.scroll_offset,
-                            &self.active_pane,
-                            &self.thread_message_blocks(),
-                            self.message_scroll_offset,
+                            &ui::subscriptions_page::SubscriptionsPageView {
+                                entries: &self.subscriptions_page.entries,
+                                selected_index: self.selected_index,
+                                scroll_offset: self.scroll_offset,
+                                active_pane: &self.active_pane,
+                                preview_blocks: &self.thread_message_blocks(),
+                                message_scroll_offset: self.message_scroll_offset,
+                            },
                             theme,
                         );
                     } else {
@@ -153,12 +155,14 @@ impl App {
                         ui::subscriptions_page::draw(
                             frame,
                             chunks[1],
-                            &self.subscriptions_page.entries,
-                            self.selected_index,
-                            self.scroll_offset,
-                            &self.active_pane,
-                            &self.thread_message_blocks(),
-                            self.message_scroll_offset,
+                            &ui::subscriptions_page::SubscriptionsPageView {
+                                entries: &self.subscriptions_page.entries,
+                                selected_index: self.selected_index,
+                                scroll_offset: self.scroll_offset,
+                                active_pane: &self.active_pane,
+                                preview_blocks: &self.thread_message_blocks(),
+                                message_scroll_offset: self.message_scroll_offset,
+                            },
                             theme,
                         );
                     } else {
@@ -196,12 +200,14 @@ impl App {
                         ui::subscriptions_page::draw(
                             frame,
                             content_area,
-                            &self.subscriptions_page.entries,
-                            self.selected_index,
-                            self.scroll_offset,
-                            &self.active_pane,
-                            &self.thread_message_blocks(),
-                            self.message_scroll_offset,
+                            &ui::subscriptions_page::SubscriptionsPageView {
+                                entries: &self.subscriptions_page.entries,
+                                selected_index: self.selected_index,
+                                scroll_offset: self.scroll_offset,
+                                active_pane: &self.active_pane,
+                                preview_blocks: &self.thread_message_blocks(),
+                                message_scroll_offset: self.message_scroll_offset,
+                            },
                             theme,
                         );
                     } else {
@@ -240,14 +246,8 @@ impl App {
             }
         }
 
-        ui::status_bar::draw(
-            frame,
-            bottom_bar_area,
-            &self.envelopes,
-            self.last_sync_status.as_deref(),
-            self.status_message.as_deref(),
-            theme,
-        );
+        let status_bar = self.status_bar_state();
+        ui::status_bar::draw(frame, bottom_bar_area, &status_bar, theme);
 
         if self.search_bar.active {
             ui::search_bar::draw(frame, area, &self.search_bar, theme);

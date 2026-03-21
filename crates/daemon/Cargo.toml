@@ -14,13 +14,14 @@ path = "src/main.rs"
 
 [features]
 default = ["semantic-local"]
-semantic-local = ["dep:fastembed", "dep:hnsw_rs"]
+semantic-local = ["mxr-semantic/local"]
 
 [dependencies]
 mxr-core = { workspace = true }
 mxr-config = { workspace = true }
 mxr-store = { workspace = true }
 mxr-search = { workspace = true }
+mxr-semantic = { workspace = true, default-features = false }
 mxr-protocol = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-provider-gmail = { workspace = true }
@@ -33,7 +34,7 @@ mxr-export = { workspace = true }
 mxr-rules = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
-mxr-tui = { path = "../tui", version = "0.4.2" }
+mxr-tui = { path = "../tui", version = "0.4.3" }
 chrono = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
@@ -52,9 +53,6 @@ regex = { workspace = true }
 url = { workspace = true }
 which = { workspace = true }
 keyring = { workspace = true }
-fastembed = { version = "5.13", optional = true }
-hnsw_rs = { version = "0.3.4", optional = true }
-sha2 = "0.10"
 
 [dev-dependencies]
 assert_cmd = { workspace = true }

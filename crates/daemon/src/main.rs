@@ -5,7 +5,6 @@ mod ipc_client;
 mod loops;
 mod output;
 pub mod reindex;
-mod semantic;
 mod server;
 pub mod snooze;
 mod state;
@@ -29,6 +28,9 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Daemon { .. }) => {
             crate::server::run_daemon().await?;
         }
+        Some(Command::Restart) => {
+            crate::server::restart_daemon().await?;
+        }
 
         // Local commands (no daemon needed)
         Some(Command::Version) => {
@@ -50,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
             store_stats,
             format,
         }) => {
-            commands::doctor::run(
+            commands::doctor::run(commands::doctor::DoctorRunOptions {
                 reindex,
                 reindex_semantic,
                 check,
@@ -59,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
                 index_stats,
                 store_stats,
                 format,
-            )
+            })
             .await?;
         }
         Some(Command::Logs {
@@ -400,6 +402,7 @@ async fn main() -> anyhow::Result<()> {
 
         None => {
             crate::server::ensure_daemon_running().await?;
+            crate::server::ensure_daemon_supports_tui().await?;
             mxr_tui::run().await?;
         }
     }

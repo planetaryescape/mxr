@@ -9,6 +9,7 @@ Usage: mxr [COMMAND]
 
 Commands:
   daemon         Start the daemon explicitly
+  restart        Restart the daemon with the current binary
   search         Search messages
   count          Count matching messages
   cat            Display a message

@@ -73,7 +73,7 @@ pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> a
             let fmt = resolve_format(format);
             match resp {
                 Response::Ok {
-                    data: ResponseData::SearchResults { results },
+                    data: ResponseData::SearchResults { results, .. },
                 } => match fmt {
                     OutputFormat::Json => {
                         println!("{}", serde_json::to_string_pretty(&results)?);

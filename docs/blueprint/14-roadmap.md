@@ -136,7 +136,7 @@ Ready for public release.
 These are explicitly NOT on the roadmap for v1. They may grow out of the core later:
 
 - **Cloud embedding backends**: Optional remote providers behind the same semantic profile abstraction
-- **Richer attachment extraction**: PDF/OCR/office-doc text extraction for semantic chunks
+- **Richer attachment extraction**: office-doc text extraction and deeper structure-preserving parsing for semantic chunks
 - **Scripting runtime**: Embedded Lua or Rhai for in-process automation
 - **Notifications**: Desktop notifications via notify-rust, terminal bell
 - **Conditional snooze**: "Snooze until reply from X" via rules engine

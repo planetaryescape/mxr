@@ -247,7 +247,7 @@ pub async fn run() -> anyhow::Result<()> {
                 .await
                 {
                     Ok(Response::Ok {
-                        data: ResponseData::SearchResults { results },
+                        data: ResponseData::SearchResults { results, .. },
                     }) => {
                         let mut scores = std::collections::HashMap::new();
                         let message_ids = results
@@ -505,6 +505,8 @@ pub async fn run() -> anyhow::Result<()> {
 
         if app.diagnostics_page.refresh_pending {
             app.diagnostics_page.refresh_pending = false;
+            app.pending_status_refresh = false;
+            app.diagnostics_page.pending_requests = 4;
             for request in [
                 Request::GetStatus,
                 Request::GetDoctorReport,
@@ -525,6 +527,38 @@ pub async fn run() -> anyhow::Result<()> {
                     let _ = tx.send(AsyncResult::Diagnostics(Box::new(resp)));
                 });
             }
+        }
+
+        if app.pending_status_refresh {
+            app.pending_status_refresh = false;
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::GetStatus).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data:
+                            ResponseData::Status {
+                                uptime_secs,
+                                daemon_pid,
+                                accounts,
+                                total_messages,
+                                sync_statuses,
+                                ..
+                            },
+                    }) => Ok(StatusSnapshot {
+                        uptime_secs,
+                        daemon_pid,
+                        accounts,
+                        total_messages,
+                        sync_statuses,
+                    }),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::Status(result));
+            });
         }
 
         if app.accounts_page.refresh_pending {
@@ -892,6 +926,8 @@ pub async fn run() -> anyhow::Result<()> {
                             app.rules_page.status = Some(format!("Save error: {e}"));
                         }
                         AsyncResult::Diagnostics(result) => {
+                            app.diagnostics_page.pending_requests =
+                                app.diagnostics_page.pending_requests.saturating_sub(1);
                             match *result {
                                 Ok(response) => match response {
                                 Response::Ok {
@@ -902,13 +938,16 @@ pub async fn run() -> anyhow::Result<()> {
                                             accounts,
                                             total_messages,
                                             sync_statuses,
+                                            ..
                                         },
                                 } => {
-                                    app.diagnostics_page.uptime_secs = Some(uptime_secs);
-                                    app.diagnostics_page.daemon_pid = daemon_pid;
-                                    app.diagnostics_page.accounts = accounts;
-                                    app.diagnostics_page.total_messages = Some(total_messages);
-                                    app.diagnostics_page.sync_statuses = sync_statuses;
+                                    app.apply_status_snapshot(
+                                        uptime_secs,
+                                        daemon_pid,
+                                        accounts,
+                                        total_messages,
+                                        sync_statuses,
+                                    );
                                 }
                                 Response::Ok {
                                     data: ResponseData::DoctorReport { report },
@@ -935,6 +974,18 @@ pub async fn run() -> anyhow::Result<()> {
                                         Some(format!("Diagnostics error: {e}"));
                                 }
                             }
+                        }
+                        AsyncResult::Status(Ok(snapshot)) => {
+                            app.apply_status_snapshot(
+                                snapshot.uptime_secs,
+                                snapshot.daemon_pid,
+                                snapshot.accounts,
+                                snapshot.total_messages,
+                                snapshot.sync_statuses,
+                            );
+                        }
+                        AsyncResult::Status(Err(e)) => {
+                            app.status_message = Some(format!("Status refresh failed: {e}"));
                         }
                         AsyncResult::Accounts(Ok(accounts)) => {
                             app.accounts_page.accounts = accounts;
@@ -1248,6 +1299,7 @@ enum AsyncResult {
     RuleDeleted(Result<(), MxrError>),
     RuleUpsert(Result<serde_json::Value, MxrError>),
     Diagnostics(Box<Result<Response, MxrError>>),
+    Status(Result<StatusSnapshot, MxrError>),
     Accounts(Result<Vec<mxr_protocol::AccountSummaryData>, MxrError>),
     Labels(Result<Vec<mxr_core::Label>, MxrError>),
     AllEnvelopes(Result<Vec<mxr_core::Envelope>, MxrError>),
@@ -1283,6 +1335,14 @@ struct ComposeReadyData {
 struct SearchResultData {
     envelopes: Vec<mxr_core::types::Envelope>,
     scores: std::collections::HashMap<mxr_core::MessageId, f32>,
+}
+
+struct StatusSnapshot {
+    uptime_secs: u64,
+    daemon_pid: Option<u32>,
+    accounts: Vec<String>,
+    total_messages: u32,
+    sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
 }
 
 struct UnsubscribeResultData {
@@ -1533,6 +1593,7 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.pending_labels_refresh = true;
             app.pending_all_envelopes_refresh = true;
             app.pending_subscriptions_refresh = true;
+            app.pending_status_refresh = true;
             if let Some(label_id) = app.active_label.clone() {
                 app.pending_label_fetch = Some(label_id);
             }
@@ -2137,7 +2198,7 @@ mod tests {
     #[test]
     fn status_bar_sync_formats() {
         assert_eq!(
-            status_bar::format_sync_status(12, Some("2m ago")),
+            status_bar::format_sync_status(12, Some("synced 2m ago")),
             "[INBOX] 12 unread | synced 2m ago"
         );
         assert_eq!(
@@ -2536,8 +2597,39 @@ mod tests {
 
         assert!(app.pending_labels_refresh);
         assert!(app.pending_all_envelopes_refresh);
+        assert!(app.pending_status_refresh);
         assert!(app.pending_label_fetch.is_none());
         assert_eq!(app.status_message.as_deref(), Some("Synced 5 messages"));
+    }
+
+    #[test]
+    fn status_bar_uses_label_counts_instead_of_loaded_window() {
+        let mut app = App::new();
+        let mut envelopes = make_test_envelopes(5);
+        if let Some(first) = envelopes.first_mut() {
+            first.flags.remove(MessageFlags::READ);
+            first.flags.insert(MessageFlags::STARRED);
+        }
+        app.envelopes = envelopes.clone();
+        app.all_envelopes = envelopes;
+        app.labels = make_test_labels();
+        let inbox = app
+            .labels
+            .iter()
+            .find(|label| label.name == "INBOX")
+            .unwrap()
+            .id
+            .clone();
+        app.active_label = Some(inbox);
+        app.last_sync_status = Some("synced just now".into());
+
+        let state = app.status_bar_state();
+
+        assert_eq!(state.mailbox_name, "INBOX");
+        assert_eq!(state.total_count, 10);
+        assert_eq!(state.unread_count, 3);
+        assert_eq!(state.starred_count, 2);
+        assert_eq!(state.sync_status.as_deref(), Some("synced just now"));
     }
 
     #[test]

@@ -137,13 +137,17 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             since,
         } => diagnostics::bug_report(*verbose, *full_logs, since.clone()).await,
         Request::Search {
-            query, limit, mode, ..
+            query,
+            limit,
+            mode,
+            explain,
         } => {
             diagnostics::search(
                 state,
                 query,
                 *limit,
                 mode.unwrap_or(state.config_snapshot().search.default_mode),
+                *explain,
             )
             .await
         }
@@ -962,7 +966,39 @@ async fn collect_doctor_report(
     let database_exists = db_path.exists();
     let index_exists = index_path.exists();
     let socket_exists = socket_path.exists();
-    let (_, _, sync_statuses) = collect_status_snapshot(state).await?;
+    let (_, total_messages, sync_statuses) = collect_status_snapshot(state).await?;
+    let data_stats = doctor_data_stats(
+        state
+            .store
+            .collect_record_counts()
+            .await
+            .map_err(|e| e.to_string())?,
+    );
+    let repair_required = crate::server::search_requires_repair(state, total_messages).await;
+    let restart_required = false;
+    let lexical_index_freshness =
+        lexical_index_freshness(index_exists, repair_required, restart_required);
+    let last_successful_sync_at = latest_successful_sync_at(&sync_statuses);
+    let lexical_last_rebuilt_at = state
+        .store
+        .latest_event_timestamp("search", Some("Lexical index rebuilt"))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(|value| value.to_rfc3339());
+    let semantic_config = state.config_snapshot().search.semantic.clone();
+    let semantic_snapshot = state.semantic.lock().await.status_snapshot().await.ok();
+    let (
+        semantic_enabled,
+        semantic_active_profile,
+        semantic_index_freshness,
+        semantic_last_indexed_at,
+    ) = semantic_freshness_from_snapshot(
+        semantic_snapshot.as_ref(),
+        semantic_config.enabled,
+        semantic_config.active_profile.as_str(),
+    );
+    let health_class =
+        crate::server::classify_health(&sync_statuses, repair_required, restart_required);
     let recent_sync_events = state
         .store
         .list_events(10, None, Some("sync"))
@@ -972,7 +1008,8 @@ async fn collect_doctor_report(
         .map(protocol_event_entry)
         .collect();
     let recent_error_logs = recent_log_lines(10, Some("error")).unwrap_or_default();
-    let recommended_next_steps = if sync_statuses.iter().all(|status| status.healthy) {
+    let recommended_next_steps = if matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy)
+    {
         vec!["mxr status".to_string()]
     } else {
         vec![
@@ -986,10 +1023,19 @@ async fn collect_doctor_report(
         && database_exists
         && index_exists
         && socket_exists
-        && sync_statuses.iter().all(|status| status.healthy);
+        && matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy);
 
     Ok(mxr_protocol::DoctorReport {
         healthy,
+        health_class,
+        lexical_index_freshness,
+        last_successful_sync_at,
+        lexical_last_rebuilt_at,
+        semantic_enabled,
+        semantic_active_profile,
+        semantic_index_freshness,
+        semantic_last_indexed_at,
+        data_stats,
         data_dir_exists,
         database_exists,
         index_exists,
@@ -998,8 +1044,13 @@ async fn collect_doctor_report(
         stale_socket: false,
         daemon_running: true,
         daemon_pid: Some(std::process::id()),
+        daemon_protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
+        daemon_version: Some(crate::server::current_daemon_version().to_string()),
+        daemon_build_id: Some(crate::server::current_build_id()),
         index_lock_held: false,
         index_lock_error: None,
+        restart_required,
+        repair_required,
         database_path: db_path.display().to_string(),
         database_size_bytes: file_size(&db_path),
         index_path: index_path.display().to_string(),
@@ -1015,6 +1066,108 @@ async fn collect_doctor_report(
 
 fn file_size(path: &std::path::Path) -> u64 {
     std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
+}
+
+fn latest_successful_sync_at(sync_statuses: &[mxr_protocol::AccountSyncStatus]) -> Option<String> {
+    sync_statuses
+        .iter()
+        .filter_map(|status| status.last_success_at.as_deref())
+        .filter_map(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .max()
+        .map(|value| value.to_rfc3339())
+}
+
+fn lexical_index_freshness(
+    index_exists: bool,
+    repair_required: bool,
+    restart_required: bool,
+) -> mxr_protocol::IndexFreshness {
+    if repair_required || !index_exists {
+        mxr_protocol::IndexFreshness::RepairRequired
+    } else if restart_required {
+        mxr_protocol::IndexFreshness::Stale
+    } else {
+        mxr_protocol::IndexFreshness::Current
+    }
+}
+
+fn semantic_freshness_from_snapshot(
+    snapshot: Option<&mxr_core::types::SemanticStatusSnapshot>,
+    enabled_fallback: bool,
+    active_profile_fallback: &str,
+) -> (
+    bool,
+    Option<String>,
+    mxr_protocol::IndexFreshness,
+    Option<String>,
+) {
+    let Some(snapshot) = snapshot else {
+        return if enabled_fallback {
+            (
+                true,
+                Some(active_profile_fallback.to_string()),
+                mxr_protocol::IndexFreshness::Unknown,
+                None,
+            )
+        } else {
+            (false, None, mxr_protocol::IndexFreshness::Disabled, None)
+        };
+    };
+
+    if !snapshot.enabled {
+        return (false, None, mxr_protocol::IndexFreshness::Disabled, None);
+    }
+
+    let active_profile = snapshot.active_profile.as_str().to_string();
+    let active_record = snapshot
+        .profiles
+        .iter()
+        .find(|profile| profile.profile == snapshot.active_profile);
+    let freshness = match active_record.map(|profile| profile.status) {
+        Some(mxr_core::types::SemanticProfileStatus::Ready) => {
+            mxr_protocol::IndexFreshness::Current
+        }
+        Some(mxr_core::types::SemanticProfileStatus::Indexing)
+        | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
+            mxr_protocol::IndexFreshness::Indexing
+        }
+        Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
+        None => mxr_protocol::IndexFreshness::Stale,
+    };
+
+    (
+        true,
+        Some(active_profile),
+        freshness,
+        active_record
+            .and_then(|profile| profile.last_indexed_at)
+            .map(|value| value.to_rfc3339()),
+    )
+}
+
+fn doctor_data_stats(counts: mxr_store::StoreRecordCounts) -> mxr_protocol::DoctorDataStats {
+    mxr_protocol::DoctorDataStats {
+        accounts: counts.accounts,
+        labels: counts.labels,
+        messages: counts.messages,
+        unread_messages: counts.unread_messages,
+        starred_messages: counts.starred_messages,
+        messages_with_attachments: counts.messages_with_attachments,
+        message_labels: counts.message_labels,
+        bodies: counts.bodies,
+        attachments: counts.attachments,
+        drafts: counts.drafts,
+        snoozed: counts.snoozed,
+        saved_searches: counts.saved_searches,
+        rules: counts.rules,
+        rule_logs: counts.rule_logs,
+        sync_log: counts.sync_log,
+        sync_runtime_statuses: counts.sync_runtime_statuses,
+        event_log: counts.event_log,
+        semantic_profiles: counts.semantic_profiles,
+        semantic_chunks: counts.semantic_chunks,
+        semantic_embeddings: counts.semantic_embeddings,
+    }
 }
 
 fn dir_size(path: &std::path::Path) -> u64 {
@@ -2695,7 +2848,7 @@ mod tests {
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::SearchResults { results },
+                data: ResponseData::SearchResults { results, .. },
             }) => assert!(!results.is_empty(), "saved search should return results"),
             other => panic!("Expected SearchResults, got {:?}", other),
         }
@@ -2720,11 +2873,19 @@ mod tests {
                         total_messages: _,
                         daemon_pid,
                         sync_statuses,
+                        protocol_version,
+                        daemon_version,
+                        daemon_build_id,
+                        repair_required,
                     },
             }) => {
                 assert!(!accounts.is_empty());
                 assert!(daemon_pid.is_some());
                 assert!(!sync_statuses.is_empty());
+                assert!(protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION);
+                assert!(daemon_version.is_some());
+                assert!(daemon_build_id.is_some());
+                assert!(!repair_required);
             }
             other => panic!("Expected Status, got {:?}", other),
         }
@@ -2745,6 +2906,8 @@ mod tests {
             }) => {
                 assert!(report.database_path.contains("mxr.db"));
                 assert!(report.index_path.contains("search_index"));
+                assert!(report.daemon_version.is_some());
+                assert!(report.daemon_build_id.is_some());
             }
             other => panic!("Expected DoctorReport, got {:?}", other),
         }
@@ -2795,7 +2958,7 @@ mod tests {
 
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::SearchResults { results },
+                data: ResponseData::SearchResults { results, .. },
             }) => {
                 assert!(
                     !results.is_empty(),
@@ -2804,6 +2967,48 @@ mod tests {
                 assert_eq!(results[0].mode, mxr_core::SearchMode::Lexical);
             }
             other => panic!("Expected SearchResults, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_search_explain_returns_execution_details() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+
+        let msg = IpcMessage {
+            id: 11,
+            payload: IpcPayload::Request(Request::Search {
+                query: "deployment".to_string(),
+                limit: 5,
+                mode: Some(mxr_core::SearchMode::Lexical),
+                explain: true,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data:
+                    ResponseData::SearchResults {
+                        results,
+                        explain: Some(explain),
+                    },
+            }) => {
+                assert!(!results.is_empty());
+                assert_eq!(explain.requested_mode, mxr_core::SearchMode::Lexical);
+                assert_eq!(explain.executed_mode, mxr_core::SearchMode::Lexical);
+                assert_eq!(explain.dense_candidates, 0);
+                assert_eq!(explain.final_results as usize, results.len());
+                assert!(!explain.results.is_empty());
+            }
+            other => panic!(
+                "Expected SearchResults with explain payload, got {:?}",
+                other
+            ),
         }
     }
 
@@ -2828,11 +3033,52 @@ mod tests {
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::SearchResults { results },
+                data: ResponseData::SearchResults { results, .. },
             }) => {
                 assert!(!results.is_empty());
             }
             other => panic!("Expected SearchResults, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_structured_search_in_semantic_mode_explains_fallback() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+
+        let msg = IpcMessage {
+            id: 14,
+            payload: IpcPayload::Request(Request::Search {
+                query: "is:unread".to_string(),
+                limit: 10,
+                mode: Some(mxr_core::SearchMode::Semantic),
+                explain: true,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data:
+                    ResponseData::SearchResults {
+                        explain: Some(explain),
+                        ..
+                    },
+            }) => {
+                assert_eq!(explain.requested_mode, mxr_core::SearchMode::Semantic);
+                assert_eq!(explain.executed_mode, mxr_core::SearchMode::Lexical);
+                assert!(explain
+                    .notes
+                    .iter()
+                    .any(|note| note.contains("no semantic text terms")));
+            }
+            other => panic!(
+                "Expected SearchResults with explain payload, got {:?}",
+                other
+            ),
         }
     }
 

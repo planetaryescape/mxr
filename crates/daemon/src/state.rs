@@ -1,8 +1,8 @@
-use crate::semantic::SemanticEngine;
 use mxr_core::id::AccountId;
 use mxr_core::*;
 use mxr_protocol::IpcMessage;
 use mxr_search::SearchIndex;
+use mxr_semantic::SemanticEngine;
 use mxr_store::Store;
 use mxr_sync::SyncEngine;
 use std::collections::{HashMap, HashSet};
@@ -47,7 +47,7 @@ impl AppState {
         std::fs::create_dir_all(&index_path)?;
 
         let store = Arc::new(Store::new(&db_path).await?);
-        let search = Arc::new(Mutex::new(SearchIndex::open(&index_path)?));
+        let search = Arc::new(Mutex::new(open_search_index(&index_path, &store).await?));
         let semantic = Arc::new(Mutex::new(SemanticEngine::new(
             store.clone(),
             &data_dir,
@@ -476,6 +476,58 @@ impl AppState {
             .general
             .attachment_dir = path;
     }
+}
+
+async fn open_search_index(
+    index_path: &std::path::Path,
+    store: &Arc<Store>,
+) -> anyhow::Result<SearchIndex> {
+    match SearchIndex::open_with_rebuild_status(index_path) {
+        Ok((index, rebuilt)) => {
+            if rebuilt {
+                store
+                    .insert_event(
+                        "warn",
+                        "search",
+                        "Lexical index rebuilt",
+                        None,
+                        Some("reason=schema_mismatch"),
+                    )
+                    .await?;
+            }
+            Ok(index)
+        }
+        Err(error) if search_error_requires_repair(&error.to_string()) => {
+            tracing::warn!("Search index open failed, rebuilding from SQLite: {error}");
+            if index_path.exists() {
+                std::fs::remove_dir_all(index_path)?;
+            }
+            std::fs::create_dir_all(index_path)?;
+            let (index, _) = SearchIndex::open_with_rebuild_status(index_path)?;
+            let details = format!("reason=startup_repair error={error}");
+            store
+                .insert_event(
+                    "warn",
+                    "search",
+                    "Lexical index rebuilt",
+                    None,
+                    Some(&details),
+                )
+                .await?;
+            Ok(index)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn search_error_requires_repair(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    !(lower.contains("lockbusy")
+        || lower.contains("lockfile")
+        || lower.contains("failed to acquire index lock")
+        || lower.contains("failed to acquire lockfile")
+        || lower.contains("already an `indexwriter` working")
+        || lower.contains("already an indexwriter working"))
 }
 
 fn sync_provider_kind(sync: Option<&mxr_config::SyncProviderConfig>) -> Option<ProviderKind> {

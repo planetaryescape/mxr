@@ -1,34 +1,30 @@
-use mxr_core::types::{Envelope, MessageFlags};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    envelopes: &[Envelope],
-    sync_status: Option<&str>,
-    status_message: Option<&str>,
-    theme: &crate::theme::Theme,
-) {
-    let total = envelopes.len();
-    let unread_count = envelopes
-        .iter()
-        .filter(|e| !e.flags.contains(MessageFlags::READ))
-        .count();
-    let starred_count = envelopes
-        .iter()
-        .filter(|e| e.flags.contains(MessageFlags::STARRED))
-        .count();
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusBarState {
+    pub mailbox_name: String,
+    pub total_count: usize,
+    pub unread_count: usize,
+    pub starred_count: usize,
+    pub sync_status: Option<String>,
+    pub status_message: Option<String>,
+}
 
-    let sync_part = match sync_status {
-        Some(s) => format!("synced {s}"),
-        None => "not synced".to_string(),
-    };
+pub fn draw(frame: &mut Frame, area: Rect, state: &StatusBarState, theme: &crate::theme::Theme) {
+    let sync_part = state.sync_status.as_deref().unwrap_or("not synced");
 
-    let status = if let Some(msg) = status_message {
+    let status = if let Some(msg) = state.status_message.as_deref() {
         msg.to_string()
     } else {
-        format!("=INBOX [Msgs:{total} New:{unread_count} Starred:{starred_count}]= {sync_part}")
+        format!(
+            "={} [Msgs:{} New:{} Starred:{}]= {}",
+            state.mailbox_name,
+            state.total_count,
+            state.unread_count,
+            state.starred_count,
+            sync_part
+        )
     };
 
     let bar = Paragraph::new(status).style(
@@ -41,10 +37,7 @@ pub fn draw(
 }
 
 /// Format a sync status string for display.
-pub fn format_sync_status(unread: usize, last_sync: Option<&str>) -> String {
-    let sync_part = match last_sync {
-        Some(s) => format!("synced {}", s),
-        None => "not synced".to_string(),
-    };
+pub fn format_sync_status(unread: usize, sync_status: Option<&str>) -> String {
+    let sync_part = sync_status.unwrap_or("not synced");
     format!("[INBOX] {} unread | {}", unread, sync_part)
 }

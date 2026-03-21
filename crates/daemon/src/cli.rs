@@ -16,6 +16,8 @@ pub enum Command {
         #[arg(long)]
         foreground: bool,
     },
+    /// Restart the daemon with the current binary
+    Restart,
     /// Search messages
     Search {
         query: Option<String>,
@@ -675,7 +677,7 @@ pub fn unsupported_command_guidance(args: &[String]) -> Option<String> {
         "start" => Some(
             "Unknown subcommand `start`. Use `mxr daemon` to start the daemon, `mxr daemon --foreground` to debug it, or `mxr status` to inspect it.".to_string(),
         ),
-        "stop" | "restart" => Some(format!(
+        "stop" => Some(format!(
             "Unknown subcommand `{command}`. Use `mxr status`, `mxr logs --level error`, or run `mxr daemon --foreground` in a terminal for diagnosis."
         )),
         "daemon" => match args.get(2).map(String::as_str) {
@@ -688,8 +690,11 @@ pub fn unsupported_command_guidance(args: &[String]) -> Option<String> {
             Some("logs") => Some(
                 "`mxr daemon` has no `logs` verb. Use `mxr logs`.".to_string(),
             ),
-            Some("stop") | Some("restart") => Some(
-                "`mxr daemon` has no lifecycle verbs. Use `mxr status`, `mxr logs --level error`, or `mxr daemon --foreground`.".to_string(),
+            Some("stop") => Some(
+                "`mxr daemon` has no stop verb. Use `mxr status`, `mxr logs --level error`, or `mxr daemon --foreground`.".to_string(),
+            ),
+            Some("restart") => Some(
+                "`mxr daemon` has no restart verb. Use `mxr restart`.".to_string(),
             ),
             _ => None,
         },
@@ -881,5 +886,11 @@ mod tests {
             guidance.as_deref(),
             Some("`mxr daemon` has no `status` verb. Use `mxr status`.")
         );
+    }
+
+    #[test]
+    fn parses_restart_subcommand() {
+        let cli = Cli::parse_from(["mxr", "restart"]);
+        assert!(matches!(cli.command, Some(Command::Restart)));
     }
 }

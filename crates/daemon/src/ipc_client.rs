@@ -44,10 +44,22 @@ impl IpcClient {
                         }
                     }
                 }
-                Some(Err(e)) => anyhow::bail!("IPC error: {}", e),
-                None => anyhow::bail!("Connection closed"),
+                Some(Err(e)) => anyhow::bail!("{}", describe_ipc_failure(&e.to_string())),
+                None => anyhow::bail!(
+                    "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading."
+                ),
             }
         }
+    }
+
+    pub async fn notify(&mut self, req: Request) -> anyhow::Result<()> {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let msg = IpcMessage {
+            id,
+            payload: IpcPayload::Request(req),
+        };
+        self.framed.send(msg).await?;
+        Ok(())
     }
 
     pub async fn next_event(&mut self) -> anyhow::Result<DaemonEvent> {
@@ -58,9 +70,19 @@ impl IpcClient {
                         return Ok(event);
                     }
                 }
-                Some(Err(e)) => anyhow::bail!("IPC error: {}", e),
-                None => anyhow::bail!("Connection closed"),
+                Some(Err(e)) => anyhow::bail!("{}", describe_ipc_failure(&e.to_string())),
+                None => anyhow::bail!(
+                    "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading."
+                ),
             }
         }
+    }
+}
+
+fn describe_ipc_failure(message: &str) -> String {
+    if message.contains("unknown variant") || message.contains("missing field") {
+        format!("IPC protocol mismatch: {message}. Restart the daemon after upgrading.")
+    } else {
+        format!("IPC error: {message}")
     }
 }

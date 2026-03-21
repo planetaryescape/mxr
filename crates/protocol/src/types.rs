@@ -348,6 +348,7 @@ pub enum ResponseData {
     },
     SearchResults {
         results: Vec<SearchResultItem>,
+        explain: Option<SearchExplain>,
     },
     SyncStatus {
         sync: AccountSyncStatus,
@@ -374,8 +375,18 @@ pub enum ResponseData {
         uptime_secs: u64,
         accounts: Vec<String>,
         total_messages: u32,
+        #[serde(default)]
         daemon_pid: Option<u32>,
+        #[serde(default)]
         sync_statuses: Vec<AccountSyncStatus>,
+        #[serde(default)]
+        protocol_version: u32,
+        #[serde(default)]
+        daemon_version: Option<String>,
+        #[serde(default)]
+        daemon_build_id: Option<String>,
+        #[serde(default)]
+        repair_required: bool,
     },
     ReplyContext {
         context: ReplyContext,
@@ -406,6 +417,32 @@ pub struct SearchResultItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchExplain {
+    pub requested_mode: SearchMode,
+    pub executed_mode: SearchMode,
+    pub semantic_query: Option<String>,
+    pub lexical_window: u32,
+    pub dense_window: Option<u32>,
+    pub lexical_candidates: u32,
+    pub dense_candidates: u32,
+    pub final_results: u32,
+    pub rrf_k: Option<u32>,
+    pub notes: Vec<String>,
+    pub results: Vec<SearchExplainResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchExplainResult {
+    pub rank: u32,
+    pub message_id: MessageId,
+    pub final_score: f32,
+    pub lexical_rank: Option<u32>,
+    pub lexical_score: Option<f32>,
+    pub dense_rank: Option<u32>,
+    pub dense_score: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttachmentFile {
     pub attachment_id: AttachmentId,
     pub filename: String,
@@ -422,6 +459,54 @@ pub struct EventLogEntry {
     pub rule_id: Option<String>,
     pub summary: String,
     pub details: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DaemonHealthClass {
+    #[default]
+    Healthy,
+    Degraded,
+    RestartRequired,
+    RepairRequired,
+}
+
+impl DaemonHealthClass {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Healthy => "healthy",
+            Self::Degraded => "degraded",
+            Self::RestartRequired => "restart_required",
+            Self::RepairRequired => "repair_required",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexFreshness {
+    #[default]
+    Unknown,
+    Current,
+    Stale,
+    Disabled,
+    Indexing,
+    Error,
+    RepairRequired,
+}
+
+impl IndexFreshness {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Current => "current",
+            Self::Stale => "stale",
+            Self::Disabled => "disabled",
+            Self::Indexing => "indexing",
+            Self::Error => "error",
+            Self::RepairRequired => "repair_required",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -443,6 +528,24 @@ pub struct AccountSyncStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DoctorReport {
     pub healthy: bool,
+    #[serde(default)]
+    pub health_class: DaemonHealthClass,
+    #[serde(default)]
+    pub lexical_index_freshness: IndexFreshness,
+    #[serde(default)]
+    pub last_successful_sync_at: Option<String>,
+    #[serde(default)]
+    pub lexical_last_rebuilt_at: Option<String>,
+    #[serde(default)]
+    pub semantic_enabled: bool,
+    #[serde(default)]
+    pub semantic_active_profile: Option<String>,
+    #[serde(default)]
+    pub semantic_index_freshness: IndexFreshness,
+    #[serde(default)]
+    pub semantic_last_indexed_at: Option<String>,
+    #[serde(default)]
+    pub data_stats: DoctorDataStats,
     pub data_dir_exists: bool,
     pub database_exists: bool,
     pub index_exists: bool,
@@ -451,8 +554,18 @@ pub struct DoctorReport {
     pub stale_socket: bool,
     pub daemon_running: bool,
     pub daemon_pid: Option<u32>,
+    #[serde(default)]
+    pub daemon_protocol_version: u32,
+    #[serde(default)]
+    pub daemon_version: Option<String>,
+    #[serde(default)]
+    pub daemon_build_id: Option<String>,
     pub index_lock_held: bool,
     pub index_lock_error: Option<String>,
+    #[serde(default)]
+    pub restart_required: bool,
+    #[serde(default)]
+    pub repair_required: bool,
     pub database_path: String,
     pub database_size_bytes: u64,
     pub index_path: String,
@@ -463,6 +576,30 @@ pub struct DoctorReport {
     pub recent_sync_events: Vec<EventLogEntry>,
     pub recent_error_logs: Vec<String>,
     pub recommended_next_steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DoctorDataStats {
+    pub accounts: u32,
+    pub labels: u32,
+    pub messages: u32,
+    pub unread_messages: u32,
+    pub starred_messages: u32,
+    pub messages_with_attachments: u32,
+    pub message_labels: u32,
+    pub bodies: u32,
+    pub attachments: u32,
+    pub drafts: u32,
+    pub snoozed: u32,
+    pub saved_searches: u32,
+    pub rules: u32,
+    pub rule_logs: u32,
+    pub sync_log: u32,
+    pub sync_runtime_statuses: u32,
+    pub event_log: u32,
+    pub semantic_profiles: u32,
+    pub semantic_chunks: u32,
+    pub semantic_embeddings: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -30,6 +30,7 @@ Current release shape:
 - Gmail sync/send
 - IMAP sync
 - SMTP send
+- lexical + hybrid + semantic search
 - CLI, TUI, daemon socket, agent skill
 
 ## Why this feels different
@@ -37,6 +38,14 @@ Current release shape:
 mxr connects to your provider directly, syncs mail into a local SQLite database, and indexes it with Tantivy. No hosted relay. No extra control plane in the middle. Your scripts, your terminal, and your agent all talk to the same local runtime.
 
 That makes it a different tool from a classic terminal client and a different tool from a hosted connector layer. mutt, aerc, himalaya, notmuch, gog, and gws each got an important part of this right. Hosted tools like Nylas CLI, Composio, Zapier MCP, and EmailEngine solve a different problem. mxr sits in the middle: local mail runtime, broad CLI surface, daemon-backed state, and structured output.
+
+Operating rules:
+
+- CLI first. The TUI is built on the same daemon surface and should not be the only way to do something.
+- Mutations should be previewable before commit.
+- JSON is for piping, scripting, and agents, not just debugging.
+- Unix composition beats framework lock-in.
+- Daemon healing is event-driven: stale sockets are cleaned up, mismatched daemon builds are restarted, and bad indexes are repaired or rebuilt. No timed restarts. No self-updates.
 
 ## Use it from a shell or an agent
 
@@ -52,6 +61,8 @@ That same surface is what the agent skill uses. A coding agent can search, read,
 Example prompt:
 
 > "Look through unread mail from the last 24 hours. Tell me what needs a reply, draft answers for the urgent threads, and leave the rest alone."
+
+That works because the CLI is the canonical surface: machine-readable when you need it, interactive when you want it.
 
 ## Local-first, in practice
 
@@ -96,6 +107,7 @@ The short version:
 
 ```bash
 mxr daemon --foreground
+mxr restart
 mxr
 mxr search "is:unread" --format json
 mxr archive --search "older:30d label:notifications" --dry-run

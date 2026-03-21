@@ -90,6 +90,17 @@ pub async fn reindex(
         }
     }
 
+    store
+        .insert_event(
+            "info",
+            "search",
+            "Lexical index rebuilt",
+            None,
+            Some(&format!("reason=full_reindex indexed={indexed}")),
+        )
+        .await
+        .map_err(|e| MxrError::Store(e.to_string()))?;
+
     Ok(indexed)
 }
 

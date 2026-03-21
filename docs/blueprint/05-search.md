@@ -38,6 +38,7 @@ The index is always rebuildable from SQLite. `mxr doctor --reindex` rebuilds it 
 
 Semantic search is local-first:
 
+- the semantic runtime lives in the dedicated `mxr-semantic` crate
 - vectors and chunk metadata are stored in SQLite
 - the in-memory dense ANN index is rebuilt from SQLite at startup or after semantic reindex
 - local model weights are cached on disk, not baked into the binary
@@ -116,6 +117,13 @@ Dense retrieval indexes message chunks, not whole-message blobs. Chunks are buil
 - cleaned body text
 - attachment filename + mime summary
 - extracted attachment text when available locally
+
+Local attachment extraction is format-specific:
+
+- `unpdf` for PDF extraction
+- `undoc` for `.docx`, `.pptx`, and `.xlsx`
+- `calamine` for spreadsheet table extraction and spreadsheet fallback
+- OCR remains the fallback for images and scanned PDFs when local OCR tools are available
 
 Chunk ids are stable per message/source/ordinal. Embeddings are keyed by chunk id + profile id.
 
@@ -268,11 +276,12 @@ Shipped baseline:
 - semantic profiles in SQLite
 - English default profile with opt-in multilingual profiles
 - hybrid search via RRF
+- attachment parsing via `unpdf`, `undoc`, and `calamine`
+- OCR fallback for images and scanned PDFs
 - saved searches with per-search mode
 - CLI/TUI mode selection and semantic status/reindex flows
+- `mxr search --explain` with requested mode, executed mode, candidate windows, fallback notes, and per-result contribution details
 
 Future refinement:
 
-- richer attachment extraction (PDF/OCR/office docs)
-- better semantic explain/debug output
 - optional cloud embedding backends behind the same profile contract

@@ -1,6 +1,5 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 611
 expression: snapshot
 ---
 "                                                                                "
@@ -9,5 +8,5 @@ expression: snapshot
 "                │ Enter submit  Tab mode  Esc cancel           │                "
 "                │                                              │                "
 "                └──────────────────────────────────────────────┘                "
-"=INBOX [Msgs:1 New:0 Starred:1]= synced just now                                "
+"=INBOX [Msgs:6421 New:1833 Starred:96]= synced just now                         "
 "                                                                                "

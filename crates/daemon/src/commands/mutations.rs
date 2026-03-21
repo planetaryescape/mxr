@@ -34,7 +34,7 @@ async fn resolve_message_ids(
                 .await?;
             match resp {
                 Response::Ok {
-                    data: ResponseData::SearchResults { results },
+                    data: ResponseData::SearchResults { results, .. },
                 } => Ok(results.into_iter().map(|r| r.message_id).collect()),
                 Response::Error { message } => anyhow::bail!("{}", message),
                 _ => anyhow::bail!("Unexpected response from search"),
@@ -155,11 +155,7 @@ fn confirm_action(action: &str, selection: &MutationSelection) -> anyhow::Result
 async fn run_simple_mutation<F>(
     client: &mut IpcClient,
     selection: MutationSelection,
-    action: &str,
-    success_message: &str,
-    yes: bool,
-    dry_run: bool,
-    destructive: bool,
+    options: MutationRunOptions<'_>,
     build_request: F,
 ) -> anyhow::Result<()>
 where
@@ -169,24 +165,37 @@ where
         anyhow::bail!("No messages matched");
     }
 
-    if dry_run {
-        print_selection_preview(action, &selection);
+    if options.dry_run {
+        print_selection_preview(options.action, &selection);
         return Ok(());
     }
 
-    if requires_confirmation(destructive, selection.used_search, selection.ids.len(), yes) {
-        confirm_action(action, &selection)?;
+    if requires_confirmation(
+        options.destructive,
+        selection.used_search,
+        selection.ids.len(),
+        options.yes,
+    ) {
+        confirm_action(options.action, &selection)?;
     }
 
     let resp = client.request(build_request(selection.ids)).await?;
     match resp {
         Response::Ok {
             data: ResponseData::Ack,
-        } => println!("{success_message}"),
+        } => println!("{}", options.success_message),
         Response::Error { message } => anyhow::bail!("{}", message),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
+}
+
+struct MutationRunOptions<'a> {
+    action: &'a str,
+    success_message: &'a str,
+    yes: bool,
+    dry_run: bool,
+    destructive: bool,
 }
 
 fn parse_snooze_until(until: &str) -> anyhow::Result<chrono::DateTime<Utc>> {
@@ -263,11 +272,13 @@ pub async fn archive(
     run_simple_mutation(
         &mut client,
         selection,
-        "archive",
-        "Archived",
-        yes,
-        dry_run,
-        false,
+        MutationRunOptions {
+            action: "archive",
+            success_message: "Archived",
+            yes,
+            dry_run,
+            destructive: false,
+        },
         |ids| Request::Mutation(MutationCommand::Archive { message_ids: ids }),
     )
     .await
@@ -284,11 +295,13 @@ pub async fn trash(
     run_simple_mutation(
         &mut client,
         selection,
-        "trash",
-        "Trashed",
-        yes,
-        dry_run,
-        true,
+        MutationRunOptions {
+            action: "trash",
+            success_message: "Trashed",
+            yes,
+            dry_run,
+            destructive: true,
+        },
         |ids| Request::Mutation(MutationCommand::Trash { message_ids: ids }),
     )
     .await
@@ -305,11 +318,13 @@ pub async fn spam(
     run_simple_mutation(
         &mut client,
         selection,
-        "mark as spam",
-        "Marked as spam",
-        yes,
-        dry_run,
-        true,
+        MutationRunOptions {
+            action: "mark as spam",
+            success_message: "Marked as spam",
+            yes,
+            dry_run,
+            destructive: true,
+        },
         |ids| Request::Mutation(MutationCommand::Spam { message_ids: ids }),
     )
     .await
@@ -326,11 +341,13 @@ pub async fn star(
     run_simple_mutation(
         &mut client,
         selection,
-        "star",
-        "Starred",
-        yes,
-        dry_run,
-        false,
+        MutationRunOptions {
+            action: "star",
+            success_message: "Starred",
+            yes,
+            dry_run,
+            destructive: false,
+        },
         |ids| {
             Request::Mutation(MutationCommand::Star {
                 message_ids: ids,
@@ -352,11 +369,13 @@ pub async fn unstar(
     run_simple_mutation(
         &mut client,
         selection,
-        "unstar",
-        "Unstarred",
-        yes,
-        dry_run,
-        false,
+        MutationRunOptions {
+            action: "unstar",
+            success_message: "Unstarred",
+            yes,
+            dry_run,
+            destructive: false,
+        },
         |ids| {
             Request::Mutation(MutationCommand::Star {
                 message_ids: ids,
@@ -378,11 +397,13 @@ pub async fn mark_read(
     run_simple_mutation(
         &mut client,
         selection,
-        "mark as read",
-        "Marked as read",
-        yes,
-        dry_run,
-        false,
+        MutationRunOptions {
+            action: "mark as read",
+            success_message: "Marked as read",
+            yes,
+            dry_run,
+            destructive: false,
+        },
         |ids| {
             Request::Mutation(MutationCommand::SetRead {
                 message_ids: ids,
@@ -404,11 +425,13 @@ pub async fn unread(
     run_simple_mutation(
         &mut client,
         selection,
-        "mark as unread",
-        "Marked as unread",
-        yes,
-        dry_run,
-        false,
+        MutationRunOptions {
+            action: "mark as unread",
+            success_message: "Marked as unread",
+            yes,
+            dry_run,
+            destructive: false,
+        },
         |ids| {
             Request::Mutation(MutationCommand::SetRead {
                 message_ids: ids,
@@ -435,11 +458,13 @@ pub async fn label(
     run_simple_mutation(
         &mut client,
         selection,
-        &format!("add label '{name}'"),
-        &format!("Added label '{name}'"),
-        yes,
-        dry_run,
-        false,
+        MutationRunOptions {
+            action: &format!("add label '{name}'"),
+            success_message: &format!("Added label '{name}'"),
+            yes,
+            dry_run,
+            destructive: false,
+        },
         |ids| {
             Request::Mutation(MutationCommand::ModifyLabels {
                 message_ids: ids,
@@ -463,11 +488,13 @@ pub async fn unlabel(
     run_simple_mutation(
         &mut client,
         selection,
-        &format!("remove label '{name}'"),
-        &format!("Removed label '{name}'"),
-        yes,
-        dry_run,
-        false,
+        MutationRunOptions {
+            action: &format!("remove label '{name}'"),
+            success_message: &format!("Removed label '{name}'"),
+            yes,
+            dry_run,
+            destructive: false,
+        },
         |ids| {
             Request::Mutation(MutationCommand::ModifyLabels {
                 message_ids: ids,
@@ -491,11 +518,13 @@ pub async fn move_msg(
     run_simple_mutation(
         &mut client,
         selection,
-        &format!("move to '{target_label}'"),
-        &format!("Moved to '{target_label}'"),
-        yes,
-        dry_run,
-        false,
+        MutationRunOptions {
+            action: &format!("move to '{target_label}'"),
+            success_message: &format!("Moved to '{target_label}'"),
+            yes,
+            dry_run,
+            destructive: false,
+        },
         |ids| {
             Request::Mutation(MutationCommand::Move {
                 message_ids: ids,

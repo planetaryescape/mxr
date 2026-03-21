@@ -38,7 +38,16 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
     };
 
     // Split area: hints on left, sync status on right
-    let sync_text = state.sync_status.as_deref().unwrap_or("synced");
+    let sync_text = state.sync_status.as_deref().unwrap_or("not synced");
+    let sync_color = if sync_text == "syncing" {
+        theme.accent
+    } else if sync_text.starts_with("synced") {
+        theme.success
+    } else if sync_text == "degraded" {
+        theme.warning
+    } else {
+        theme.error
+    };
     let sync_width = (sync_text.len() + 4) as u16; // "● " + text + padding
 
     let chunks = Layout::default()
@@ -53,7 +62,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
 
     // Sync status indicator
     let sync_line = Line::from(vec![
-        Span::styled("● ", Style::default().fg(theme.success)),
+        Span::styled("● ", Style::default().fg(sync_color)),
         Span::styled(sync_text.to_string(), Style::default().fg(theme.text_muted)),
     ]);
     frame.render_widget(

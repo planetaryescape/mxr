@@ -57,8 +57,12 @@ impl Client {
                     }
                     _ => continue,
                 },
-                Some(Err(e)) => return Err(MxrError::Ipc(e.to_string())),
-                None => return Err(MxrError::Ipc("Connection closed".into())),
+                Some(Err(e)) => return Err(MxrError::Ipc(describe_ipc_failure(&e.to_string()))),
+                None => {
+                    return Err(MxrError::Ipc(
+                        "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading.".into(),
+                    ))
+                }
             }
         }
     }
@@ -114,7 +118,7 @@ impl Client {
             .await?;
         match resp {
             Response::Ok {
-                data: ResponseData::SearchResults { results },
+                data: ResponseData::SearchResults { results, .. },
             } => Ok(results),
             Response::Error { message } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
@@ -204,5 +208,13 @@ impl Client {
             } => Ok(()),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }
+    }
+}
+
+fn describe_ipc_failure(message: &str) -> String {
+    if message.contains("unknown variant") || message.contains("missing field") {
+        format!("IPC protocol mismatch: {message}. Restart the daemon after upgrading.")
+    } else {
+        message.to_string()
     }
 }

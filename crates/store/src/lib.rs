@@ -1,5 +1,6 @@
 mod account;
 mod body;
+mod diagnostics;
 mod draft;
 mod event_log;
 mod label;
@@ -14,7 +15,8 @@ mod sync_log;
 mod sync_runtime_status;
 mod thread;
 
-pub use event_log::EventLogEntry;
+pub use diagnostics::StoreRecordCounts;
+pub use event_log::{EventLogEntry, EventLogRefs};
 pub use pool::Store;
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
 pub use sync_log::{SyncLogEntry, SyncStatus};
@@ -402,9 +404,11 @@ mod tests {
                 "info",
                 "mutation",
                 "Archived a message",
-                Some(&account.id),
-                Some(env_id.as_str()),
-                None,
+                EventLogRefs {
+                    account_id: Some(&account.id),
+                    message_id: Some(env_id.as_str()),
+                    rule_id: None,
+                },
                 Some("from=test@example.com"),
             )
             .await
@@ -426,6 +430,12 @@ mod tests {
             mutation_events[0].message_id.as_deref(),
             Some(env_id.as_str())
         );
+
+        let latest_sync = store
+            .latest_event_timestamp("sync", Some("Sync"))
+            .await
+            .unwrap();
+        assert!(latest_sync.is_some());
     }
 
     #[tokio::test]

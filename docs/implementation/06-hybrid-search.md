@@ -80,12 +80,16 @@ Requirements:
 
 ### 6. Attachment extraction
 
-Start with:
+Implement:
 
 - attachment filename + mime summary
 - text-like local attachments
+- PDF text extraction via `unpdf`
+- office-doc extraction via `undoc` for `.docx`, `.pptx`, and `.xlsx`
+- spreadsheet table extraction via `calamine`
+- OCR fallback for images and scanned PDFs when local OCR tools are available
 
-Then extend to richer extraction later. Do not block hybrid search baseline on PDF/OCR support.
+Do not route everything through one generic parser. Keep the stack format-specific.
 
 ### 7. Optional `bge-m3` support
 
@@ -106,6 +110,7 @@ Wire the public surface:
 - `mxr doctor --reindex-semantic`
 - TUI search mode toggle
 - saved search mode persistence
+- `mxr search --explain` with real execution details
 
 ### 9. Rebuild, status, profile-swap flows
 

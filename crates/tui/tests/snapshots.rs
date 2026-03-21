@@ -4,8 +4,8 @@ use mxr_core::id::{AccountId, MessageId, SavedSearchId, ThreadId};
 use mxr_core::types::{Address, Envelope, Label, LabelKind, MessageFlags, UnsubscribeMethod};
 use mxr_core::types::{SavedSearch, SearchMode, SortOrder};
 use mxr_protocol::{
-    AccountEditModeData, AccountSourceData, AccountSummaryData, DoctorReport, EventLogEntry,
-    MutationCommand, Request,
+    AccountEditModeData, AccountSourceData, AccountSummaryData, DaemonHealthClass, DoctorDataStats,
+    DoctorReport, EventLogEntry, MutationCommand, Request,
 };
 use mxr_test_support::render_to_string;
 use mxr_tui::app::{
@@ -24,7 +24,7 @@ use mxr_tui::ui::search_bar::{draw as draw_search_bar, SearchBar};
 use mxr_tui::ui::search_page::draw as draw_search_page;
 use mxr_tui::ui::send_confirm_modal::draw as draw_send_confirm;
 use mxr_tui::ui::sidebar::{draw as draw_sidebar, SidebarView};
-use mxr_tui::ui::status_bar::draw as draw_status_bar;
+use mxr_tui::ui::status_bar::{draw as draw_status_bar, StatusBarState};
 use mxr_tui::ui::unsubscribe_modal::draw as draw_unsubscribe_modal;
 use mxr_tui::ui::{accounts_page, diagnostics_page};
 use ratatui::layout::Rect;
@@ -420,6 +420,36 @@ fn diagnostics_page_snapshot() {
         }],
         doctor: Some(DoctorReport {
             healthy: true,
+            health_class: DaemonHealthClass::Healthy,
+            lexical_index_freshness: mxr_protocol::IndexFreshness::Current,
+            last_successful_sync_at: Some("2026-03-20T10:59:00+00:00".into()),
+            lexical_last_rebuilt_at: Some("2026-03-20T10:55:00+00:00".into()),
+            semantic_enabled: true,
+            semantic_active_profile: Some("bge-small-en-v1.5".into()),
+            semantic_index_freshness: mxr_protocol::IndexFreshness::Current,
+            semantic_last_indexed_at: Some("2026-03-20T10:57:00+00:00".into()),
+            data_stats: DoctorDataStats {
+                accounts: 1,
+                labels: 12,
+                messages: 42,
+                unread_messages: 7,
+                starred_messages: 3,
+                messages_with_attachments: 5,
+                message_labels: 61,
+                bodies: 40,
+                attachments: 8,
+                drafts: 2,
+                snoozed: 1,
+                saved_searches: 3,
+                rules: 4,
+                rule_logs: 9,
+                sync_log: 14,
+                sync_runtime_statuses: 1,
+                event_log: 22,
+                semantic_profiles: 1,
+                semantic_chunks: 120,
+                semantic_embeddings: 120,
+            },
             data_dir_exists: true,
             database_exists: true,
             index_exists: true,
@@ -428,8 +458,13 @@ fn diagnostics_page_snapshot() {
             stale_socket: false,
             daemon_running: true,
             daemon_pid: Some(4242),
+            daemon_protocol_version: 1,
+            daemon_version: Some("0.4.3".into()),
+            daemon_build_id: Some("0.4.3:/tmp/mxr:123:456".into()),
             index_lock_held: false,
             index_lock_error: None,
+            restart_required: false,
+            repair_required: false,
             database_path: "/tmp/mxr.db".into(),
             database_size_bytes: 1024,
             index_path: "/tmp/index".into(),
@@ -454,6 +489,7 @@ fn diagnostics_page_snapshot() {
         logs: vec!["daemon started".into(), "sync complete".into()],
         status: None,
         refresh_pending: false,
+        pending_requests: 0,
     };
 
     let snapshot = render_to_string(100, 24, |frame| {
@@ -602,9 +638,14 @@ fn bars_snapshot() {
         draw_status_bar(
             frame,
             Rect::new(0, 6, 80, 1),
-            &[sample_envelope()],
-            Some("just now"),
-            None,
+            &StatusBarState {
+                mailbox_name: "INBOX".into(),
+                total_count: 6_421,
+                unread_count: 1_833,
+                starred_count: 96,
+                sync_status: Some("synced just now".into()),
+                status_message: None,
+            },
             &mxr_tui::theme::Theme::default(),
         );
     });

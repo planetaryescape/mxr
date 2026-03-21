@@ -227,6 +227,14 @@ pub enum SearchMode {
 }
 
 impl SearchMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Lexical => "lexical",
+            Self::Hybrid => "hybrid",
+            Self::Semantic => "semantic",
+        }
+    }
+
     pub fn uses_semantic(self) -> bool {
         matches!(self, Self::Hybrid | Self::Semantic)
     }

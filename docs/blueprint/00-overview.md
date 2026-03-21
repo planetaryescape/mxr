@@ -13,6 +13,7 @@ mxr is a fast, distraction-free terminal email client that treats your inbox as 
 ## What mxr is
 
 - A local-first terminal email client
+- A CLI-first local mail runtime with a TUI on top
 - A keyboard-native interface with vim motions
 - A daemon-backed architecture (TUI is a client, not the system)
 - A fast search engine for your email (BM25 via Tantivy)
@@ -72,6 +73,12 @@ All application logic speaks one language: the mxr internal model. Gmail labels,
 
 The daemon is the system. The TUI is a client. The CLI is a client. Scripts are clients. This separation means background sync, indexing, and rule execution happen regardless of whether the TUI is open. It also means future alternate frontends (web dashboard, mobile bridge) are architecturally possible.
 
+Daemon healing should be event-driven, not timer-driven. Clients may clean up stale sockets, restart a mismatched daemon build, or trigger targeted repair when the local search index is bad. The daemon should not reboot itself on a schedule or auto-update its own binary.
+
+### 3a. CLI first, TUI supported
+
+The CLI is the canonical surface for both humans and automation. If a capability cannot be reached from the CLI, it is incomplete. The TUI should make common flows faster, but it should not be the only place a feature exists.
+
 ### 4. $EDITOR for writing
 
 mxr does not compete with your text editor. Compose opens $EDITOR with a markdown file. YAML frontmatter carries metadata (to, cc, subject). The daemon handles the rest: parse frontmatter, convert markdown to multipart (text/plain + text/html), send via provider.
@@ -88,9 +95,13 @@ Saved searches are user-programmed inbox lenses. They live in the sidebar, appea
 
 Rules are data, not scripts. They are inspectable, replayable, idempotent, and dry-runnable. "Show me what this rule would do" must work before "run this rule." Shell hooks and scripting come later as escape hatches, not as the foundation. Users need to trust automation before they rely on it.
 
+The same safety bar applies to user-facing mutations: batch and destructive actions must have a dry-run or preview path before commit.
+
 ### 8. Shell hooks over premature plugin systems
 
 Don't build a plugin framework. Pipe data to shell commands. Let users write automation in whatever language they want. Unix composition over framework lock-in.
+
+Structured JSON/JSONL output is part of this principle. mxr should be easy to compose with `jq`, `xargs`, shell scripts, and agent runtimes.
 
 ### 9. Adapters are swappable
 
@@ -107,11 +118,14 @@ These should be in the README and CONTRIBUTING.md from day one:
 - Local-first by default
 - SQLite is the canonical state store
 - Search index is rebuildable from SQLite
+- CLI-first product surface
 - Provider adapters are replaceable
 - No provider-specific logic outside adapter crates
 - Compose uses $EDITOR
 - Core features do not depend on proprietary services
 - Rules are deterministic before they are intelligent
+- Mutations are dry-runnable before commit
+- JSON/JSONL output must stay pipeable
 - TUI is a client of the daemon, not the system itself
 - Distraction-free rendering: plain text first, reader mode, no inline images
 

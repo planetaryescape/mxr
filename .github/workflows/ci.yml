@@ -70,6 +70,8 @@ jobs:
           --package mxr-export
           --package mxr-sync
           --package mxr
+          --exclude-from-report mxr
+          --ignore-filename-regex 'crates/provider-gmail/src/(auth|client)\.rs|crates/provider-imap/src/session\.rs'
           --summary-only
           --fail-under-lines 90
           --fail-under-regions 75

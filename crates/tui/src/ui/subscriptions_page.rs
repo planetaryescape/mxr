@@ -3,26 +3,26 @@ use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    entries: &[SubscriptionEntry],
-    selected_index: usize,
-    scroll_offset: usize,
-    active_pane: &ActivePane,
-    preview_blocks: &[crate::ui::message_view::ThreadMessageBlock],
-    message_scroll_offset: u16,
-    theme: &Theme,
-) {
+pub struct SubscriptionsPageView<'a> {
+    pub entries: &'a [SubscriptionEntry],
+    pub selected_index: usize,
+    pub scroll_offset: usize,
+    pub active_pane: &'a ActivePane,
+    pub preview_blocks: &'a [crate::ui::message_view::ThreadMessageBlock],
+    pub message_scroll_offset: u16,
+}
+
+pub fn draw(frame: &mut Frame, area: Rect, view: &SubscriptionsPageView<'_>, theme: &Theme) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(42), Constraint::Percentage(58)])
         .split(area);
 
-    let is_focused = *active_pane == ActivePane::MailList;
+    let is_focused = *view.active_pane == ActivePane::MailList;
     let border_style = theme.border_style(is_focused);
 
-    let items = entries
+    let items = view
+        .entries
         .iter()
         .map(|entry| {
             let label = entry
@@ -45,23 +45,23 @@ pub fn draw(
     let list = List::new(items)
         .block(
             Block::bordered()
-                .title(format!(" Subscriptions ({}) ", entries.len()))
+                .title(format!(" Subscriptions ({}) ", view.entries.len()))
                 .border_type(BorderType::Rounded)
                 .border_style(border_style),
         )
         .highlight_style(theme.highlight_style());
 
     let mut state = ListState::default()
-        .with_selected((!entries.is_empty()).then_some(selected_index))
-        .with_offset(scroll_offset);
+        .with_selected((!view.entries.is_empty()).then_some(view.selected_index))
+        .with_offset(view.scroll_offset);
     frame.render_stateful_widget(list, chunks[0], &mut state);
 
     crate::ui::message_view::draw(
         frame,
         chunks[1],
-        preview_blocks,
-        message_scroll_offset,
-        active_pane,
+        view.preview_blocks,
+        view.message_scroll_offset,
+        view.active_pane,
         theme,
     );
 }

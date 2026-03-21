@@ -1,9 +1,14 @@
 use crate::handler::handle_request;
+use crate::ipc_client::IpcClient;
 use crate::loops;
 use crate::state::AppState;
 use futures::{SinkExt, StreamExt};
-use mxr_protocol::{IpcCodec, IpcMessage};
+use mxr_protocol::{
+    AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, Request, Response, ResponseData,
+    IPC_PROTOCOL_VERSION,
+};
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 use tokio::net::UnixListener;
 use tokio::sync::mpsc;
 use tokio_util::codec::Framed;
@@ -16,7 +21,7 @@ pub async fn run_daemon() -> anyhow::Result<()> {
     match inspect_socket_state(&sock_path).await {
         SocketState::Reachable => {
             anyhow::bail!(
-                "Daemon already running at {}. Try `mxr status`, `mxr logs --level error`, or `mxr daemon --foreground`.",
+                "Daemon already running at {}. Use `mxr status` or `mxr logs --level error`, or stop the existing daemon before rerunning `mxr daemon --foreground`.",
                 sock_path.display()
             );
         }
@@ -138,46 +143,117 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
     let sock_path = AppState::socket_path();
 
     match inspect_socket_state(&sock_path).await {
-        SocketState::Reachable => return Ok(()),
+        SocketState::Reachable => {
+            ensure_current_daemon_matches_binary(&sock_path).await?;
+            return Ok(());
+        }
         SocketState::Stale => {
             let _ = std::fs::remove_file(&sock_path);
         }
         SocketState::Missing => {}
     }
 
-    eprint!("Starting daemon...");
+    spawn_daemon_process(&sock_path, "Starting daemon...").await
+}
 
-    let exe = std::env::current_exe()?;
-    std::process::Command::new(exe)
-        .arg("daemon")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()?;
-
-    for i in 0..40 {
-        tokio::time::sleep(std::time::Duration::from_millis(100 * (i + 1))).await;
-        if tokio::net::UnixStream::connect(&sock_path).await.is_ok() {
-            eprintln!(" ready.");
-            return Ok(());
-        }
-    }
-
-    eprintln!(" failed.");
-    let log_path = AppState::data_dir().join("logs/mxr.log");
-    if log_path.exists() {
-        if let Ok(contents) = std::fs::read_to_string(&log_path) {
-            let last_lines: Vec<&str> = contents.lines().rev().take(5).collect();
-            eprintln!("Recent daemon logs:");
-            for line in last_lines.into_iter().rev() {
-                eprintln!("  {line}");
-            }
-        }
-    }
-    anyhow::bail!(
-        "Failed to start daemon. Check logs at {}. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`.",
-        log_path.display()
+pub async fn restart_daemon() -> anyhow::Result<()> {
+    let sock_path = AppState::socket_path();
+    restart_daemon_process(
+        &sock_path,
+        None,
+        "Restarting daemon to match the current binary...",
     )
+    .await
+}
+
+pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let resp = client.request(Request::GetStatus).await?;
+    match resp {
+        Response::Ok {
+            data:
+                ResponseData::Status {
+                    protocol_version, ..
+                },
+        } if protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION => Ok(()),
+        Response::Ok {
+            data:
+                ResponseData::Status {
+                    protocol_version, ..
+                },
+        } => anyhow::bail!(
+            "The running daemon is using IPC protocol {} but this TUI expects {}. Restart the existing daemon after upgrading, then rerun `mxr`.",
+            protocol_version,
+            mxr_protocol::IPC_PROTOCOL_VERSION
+        ),
+        Response::Error { message } => anyhow::bail!("{}", message),
+        _ => anyhow::bail!("Unexpected daemon status response"),
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct DaemonStatusSnapshot {
+    pub daemon_pid: Option<u32>,
+    pub protocol_version: u32,
+    pub daemon_version: Option<String>,
+    pub daemon_build_id: Option<String>,
+}
+
+pub(crate) fn current_daemon_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+pub(crate) fn current_build_id() -> String {
+    let version = current_daemon_version();
+    let Ok(exe) = std::env::current_exe() else {
+        return format!("{version}:unknown");
+    };
+    let path = std::fs::canonicalize(&exe).unwrap_or(exe);
+    let Ok(meta) = std::fs::metadata(&path) else {
+        return format!("{version}:{}", path.display());
+    };
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    format!("{version}:{}:{}:{modified}", path.display(), meta.len())
+}
+
+pub(crate) fn daemon_requires_restart(
+    protocol_version: u32,
+    daemon_version: Option<&str>,
+    daemon_build_id: Option<&str>,
+) -> bool {
+    let current_build_id = current_build_id();
+    protocol_version != IPC_PROTOCOL_VERSION
+        || daemon_version != Some(current_daemon_version())
+        || daemon_build_id != Some(current_build_id.as_str())
+}
+
+pub(crate) fn classify_health(
+    sync_statuses: &[AccountSyncStatus],
+    repair_required: bool,
+    restart_required: bool,
+) -> DaemonHealthClass {
+    if restart_required {
+        DaemonHealthClass::RestartRequired
+    } else if repair_required {
+        DaemonHealthClass::RepairRequired
+    } else if sync_statuses.iter().any(|status| !status.healthy) {
+        DaemonHealthClass::Degraded
+    } else {
+        DaemonHealthClass::Healthy
+    }
+}
+
+pub(crate) async fn search_requires_repair(state: &Arc<AppState>, total_messages: u32) -> bool {
+    let search = state.search.lock().await;
+    match search.search("*", 1) {
+        Ok(results) => total_messages > 0 && results.is_empty(),
+        Err(_) => true,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -209,9 +285,151 @@ fn is_index_lock_error(message: &str) -> bool {
         || lower.contains("already an indexwriter working")
 }
 
+async fn ensure_current_daemon_matches_binary(sock_path: &std::path::Path) -> anyhow::Result<()> {
+    let snapshot = match fetch_daemon_status_snapshot().await {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            eprintln!("Restarting daemon after failed status check: {error}");
+            return restart_daemon_process(
+                sock_path,
+                None,
+                "Restarting daemon to recover from a bad running daemon...",
+            )
+            .await;
+        }
+    };
+
+    if !daemon_requires_restart(
+        snapshot.protocol_version,
+        snapshot.daemon_version.as_deref(),
+        snapshot.daemon_build_id.as_deref(),
+    ) {
+        return Ok(());
+    }
+
+    restart_daemon_process(
+        sock_path,
+        snapshot.daemon_pid,
+        "Restarting daemon to match the current binary...",
+    )
+    .await
+}
+
+async fn fetch_daemon_status_snapshot() -> anyhow::Result<DaemonStatusSnapshot> {
+    let mut client = IpcClient::connect().await?;
+    let resp = client.request(Request::GetStatus).await?;
+    match resp {
+        Response::Ok {
+            data:
+                ResponseData::Status {
+                    daemon_pid,
+                    protocol_version,
+                    daemon_version,
+                    daemon_build_id,
+                    ..
+                },
+        } => Ok(DaemonStatusSnapshot {
+            daemon_pid,
+            protocol_version,
+            daemon_version,
+            daemon_build_id,
+        }),
+        Response::Error { message } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected daemon status response"),
+    }
+}
+
+async fn restart_daemon_process(
+    sock_path: &std::path::Path,
+    daemon_pid: Option<u32>,
+    message: &str,
+) -> anyhow::Result<()> {
+    eprint!("{message}");
+
+    if matches!(
+        inspect_socket_state(sock_path).await,
+        SocketState::Reachable
+    ) {
+        let _ = request_shutdown().await;
+        for _ in 0..30 {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if !matches!(
+                inspect_socket_state(sock_path).await,
+                SocketState::Reachable
+            ) {
+                break;
+            }
+        }
+    }
+
+    match inspect_socket_state(sock_path).await {
+        SocketState::Reachable => {
+            eprintln!(" failed.");
+            let pid_note = daemon_pid
+                .map(|pid| format!(" (pid {pid})"))
+                .unwrap_or_default();
+            anyhow::bail!(
+                "Existing daemon{} did not exit cleanly. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`.",
+                pid_note
+            );
+        }
+        SocketState::Stale => {
+            let _ = std::fs::remove_file(sock_path);
+        }
+        SocketState::Missing => {}
+    }
+
+    spawn_daemon_process(sock_path, "").await
+}
+
+async fn request_shutdown() -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    client.notify(Request::Shutdown).await
+}
+
+async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyhow::Result<()> {
+    if !prefix.is_empty() {
+        eprint!("{prefix}");
+    }
+
+    let exe = std::env::current_exe()?;
+    std::process::Command::new(exe)
+        .arg("daemon")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+
+    for i in 0..40 {
+        tokio::time::sleep(std::time::Duration::from_millis(100 * (i + 1))).await;
+        if tokio::net::UnixStream::connect(sock_path).await.is_ok() {
+            eprintln!(" ready.");
+            return Ok(());
+        }
+    }
+
+    eprintln!(" failed.");
+    let log_path = AppState::data_dir().join("logs/mxr.log");
+    if log_path.exists() {
+        if let Ok(contents) = std::fs::read_to_string(&log_path) {
+            let last_lines: Vec<&str> = contents.lines().rev().take(5).collect();
+            eprintln!("Recent daemon logs:");
+            for line in last_lines.into_iter().rev() {
+                eprintln!("  {line}");
+            }
+        }
+    }
+    anyhow::bail!(
+        "Failed to start daemon. Check logs at {}. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`.",
+        log_path.display()
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::is_index_lock_error;
+    use super::{classify_health, current_build_id, daemon_requires_restart, is_index_lock_error};
+    use mxr_core::AccountId;
+    use mxr_protocol::{AccountSyncStatus, DaemonHealthClass};
 
     #[test]
     fn detects_tantivy_lockbusy_message() {
@@ -222,5 +440,54 @@ mod tests {
     #[test]
     fn ignores_unrelated_search_error() {
         assert!(!is_index_lock_error("Search error: schema does not match"));
+    }
+
+    #[test]
+    fn restart_required_for_build_mismatch() {
+        assert!(daemon_requires_restart(0, Some("0.0.0"), None));
+        assert!(daemon_requires_restart(
+            mxr_protocol::IPC_PROTOCOL_VERSION,
+            Some(env!("CARGO_PKG_VERSION")),
+            Some("other-build"),
+        ));
+        assert!(!daemon_requires_restart(
+            mxr_protocol::IPC_PROTOCOL_VERSION,
+            Some(env!("CARGO_PKG_VERSION")),
+            Some(current_build_id().as_str()),
+        ));
+    }
+
+    #[test]
+    fn health_class_prioritizes_restart_then_repair_then_degraded() {
+        let sync = [AccountSyncStatus {
+            account_id: AccountId::new(),
+            account_name: "main".into(),
+            last_attempt_at: None,
+            last_success_at: Some("2026-03-21T10:00:00+00:00".into()),
+            last_error: None,
+            failure_class: None,
+            consecutive_failures: 0,
+            backoff_until: None,
+            sync_in_progress: false,
+            current_cursor_summary: Some("initial".into()),
+            last_synced_count: 1,
+            healthy: true,
+        }];
+
+        assert_eq!(
+            classify_health(&sync, false, true),
+            DaemonHealthClass::RestartRequired
+        );
+        assert_eq!(
+            classify_health(&sync, true, false),
+            DaemonHealthClass::RepairRequired
+        );
+
+        let mut degraded = sync.to_vec();
+        degraded[0].healthy = false;
+        assert_eq!(
+            classify_health(&degraded, false, false),
+            DaemonHealthClass::Degraded
+        );
     }
 }

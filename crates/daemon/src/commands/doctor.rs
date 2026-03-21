@@ -2,28 +2,31 @@ use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{
-    AccountSyncStatus, DoctorReport, EventLogEntry, Request, Response, ResponseData,
+    AccountSyncStatus, DaemonHealthClass, DoctorDataStats, DoctorReport, EventLogEntry, Request,
+    Response, ResponseData,
 };
 use mxr_search::SearchIndex;
 use mxr_store::Store;
 use std::io::BufRead;
 use tokio::net::UnixStream;
 
-pub async fn run(
-    reindex: bool,
-    reindex_semantic: bool,
-    check: bool,
-    semantic_status: bool,
-    verbose: bool,
-    index_stats: bool,
-    store_stats: bool,
-    format: Option<OutputFormat>,
-) -> anyhow::Result<()> {
-    let fmt = resolve_format(format);
+pub struct DoctorRunOptions {
+    pub reindex: bool,
+    pub reindex_semantic: bool,
+    pub check: bool,
+    pub semantic_status: bool,
+    pub verbose: bool,
+    pub index_stats: bool,
+    pub store_stats: bool,
+    pub format: Option<OutputFormat>,
+}
 
-    if semantic_status || reindex_semantic {
+pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
+    let fmt = resolve_format(options.format);
+
+    if options.semantic_status || options.reindex_semantic {
         let mut client = IpcClient::connect().await?;
-        let request = if reindex_semantic {
+        let request = if options.reindex_semantic {
             Request::ReindexSemantic
         } else {
             Request::GetSemanticStatus
@@ -57,7 +60,7 @@ pub async fn run(
             Response::Error { message } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),
         }
-        if semantic_status && !reindex {
+        if options.semantic_status && !options.reindex {
             return Ok(());
         }
     }
@@ -67,15 +70,15 @@ pub async fn run(
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
 
-    if check {
-        print_report(&report, fmt, verbose)?;
+    if options.check {
+        print_report(&report, fmt, options.verbose)?;
         if report.healthy {
             return Ok(());
         }
         anyhow::bail!("mxr health check failed");
     }
 
-    if index_stats {
+    if options.index_stats {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
@@ -89,7 +92,7 @@ pub async fn run(
         return Ok(());
     }
 
-    if store_stats {
+    if options.store_stats {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
@@ -103,9 +106,9 @@ pub async fn run(
         return Ok(());
     }
 
-    print_report(&report, fmt, verbose)?;
+    print_report(&report, fmt, options.verbose)?;
 
-    if reindex {
+    if options.reindex {
         println!("\nReindex requested - this requires daemon restart to take effect.");
         if index_path.exists() {
             std::fs::remove_dir_all(&index_path)?;
@@ -137,29 +140,91 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
     let mut daemon_pid = None;
     let mut daemon_running = socket_reachable;
     let mut sync_statuses = Vec::new();
+    let mut daemon_protocol_version = 0;
+    let mut daemon_version = None;
+    let mut daemon_build_id = None;
+    let mut repair_required = false;
+    let mut restart_required = false;
+    let mut semantic_enabled = false;
+    let mut semantic_active_profile = None;
+    let mut semantic_index_freshness = mxr_protocol::IndexFreshness::Disabled;
+    let mut semantic_last_indexed_at = None;
 
     if socket_reachable {
         if let Ok(mut client) = IpcClient::connect().await {
-            if let Ok(Response::Ok {
-                data:
-                    ResponseData::Status {
-                        daemon_pid: pid,
-                        sync_statuses: statuses,
-                        ..
-                    },
-            }) = client.request(Request::GetStatus).await
-            {
-                daemon_pid = pid;
-                sync_statuses = statuses;
+            match client.request(Request::GetStatus).await {
+                Ok(Response::Ok {
+                    data:
+                        ResponseData::Status {
+                            daemon_pid: pid,
+                            sync_statuses: statuses,
+                            protocol_version,
+                            daemon_version: version,
+                            daemon_build_id: build_id,
+                            repair_required: repair,
+                            ..
+                        },
+                }) => {
+                    daemon_pid = pid;
+                    sync_statuses = statuses;
+                    daemon_protocol_version = protocol_version;
+                    daemon_version = version;
+                    daemon_build_id = build_id;
+                    repair_required = repair;
+                    restart_required = crate::server::daemon_requires_restart(
+                        daemon_protocol_version,
+                        daemon_version.as_deref(),
+                        daemon_build_id.as_deref(),
+                    );
+                }
+                _ => {
+                    restart_required = true;
+                }
             }
+            if !restart_required {
+                if let Ok(Response::Ok {
+                    data: ResponseData::SemanticStatus { snapshot },
+                }) = client.request(Request::GetSemanticStatus).await
+                {
+                    (
+                        semantic_enabled,
+                        semantic_active_profile,
+                        semantic_index_freshness,
+                        semantic_last_indexed_at,
+                    ) = semantic_freshness_from_snapshot(
+                        Some(&snapshot),
+                        snapshot.enabled,
+                        snapshot.active_profile.as_str(),
+                    );
+                }
+            }
+        } else {
+            restart_required = true;
         }
     }
 
     let mut recent_sync_events = Vec::new();
+    let mut data_stats = DoctorDataStats::default();
     if database_exists {
         let store = Store::new(&db_path).await?;
         if sync_statuses.is_empty() {
             sync_statuses = collect_sync_statuses_from_store(&store).await?;
+        }
+        data_stats = doctor_data_stats(store.collect_record_counts().await?);
+        if semantic_active_profile.is_none() {
+            let config = mxr_config::load_config().unwrap_or_default();
+            let active_profile = config.search.semantic.active_profile;
+            let active_record = store.get_semantic_profile(active_profile).await?;
+            (
+                semantic_enabled,
+                semantic_active_profile,
+                semantic_index_freshness,
+                semantic_last_indexed_at,
+            ) = semantic_freshness_from_store(
+                config.search.semantic.enabled,
+                active_profile,
+                active_record.as_ref(),
+            );
         }
         recent_sync_events = store
             .list_events(10, None, Some("sync"))
@@ -173,17 +238,58 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
 
     let (index_lock_held, index_lock_error) = probe_index_lock(&index_path, socket_reachable);
     let recent_error_logs = recent_log_lines(10, Some("error")).unwrap_or_default();
-    let recommended_next_steps =
-        recommended_next_steps(socket_reachable, stale_socket, &sync_statuses);
+    let lexical_index_freshness =
+        lexical_index_freshness(index_exists, repair_required, restart_required);
+    let last_successful_sync_at = latest_successful_sync_at(&sync_statuses);
+    let lexical_last_rebuilt_at = if database_exists {
+        let store = Store::new(&db_path).await?;
+        store
+            .latest_event_timestamp("search", Some("Lexical index rebuilt"))
+            .await?
+            .map(|value| value.to_rfc3339())
+    } else {
+        None
+    };
+    let health_class = if restart_required {
+        DaemonHealthClass::RestartRequired
+    } else if repair_required
+        || stale_socket
+        || !data_dir_exists
+        || !database_exists
+        || !index_exists
+        || index_lock_held
+    {
+        DaemonHealthClass::RepairRequired
+    } else if !socket_reachable || sync_statuses.iter().any(|status| !status.healthy) {
+        DaemonHealthClass::Degraded
+    } else {
+        DaemonHealthClass::Healthy
+    };
+    let recommended_next_steps = recommended_next_steps(
+        socket_reachable,
+        stale_socket,
+        &sync_statuses,
+        restart_required,
+        repair_required,
+    );
     let healthy = data_dir_exists
         && database_exists
         && index_exists
         && socket_reachable
         && !index_lock_held
-        && sync_statuses.iter().all(|status| status.healthy);
+        && matches!(health_class, DaemonHealthClass::Healthy);
 
     Ok(DoctorReport {
         healthy,
+        health_class,
+        lexical_index_freshness,
+        last_successful_sync_at,
+        lexical_last_rebuilt_at,
+        semantic_enabled,
+        semantic_active_profile,
+        semantic_index_freshness,
+        semantic_last_indexed_at,
+        data_stats,
         data_dir_exists,
         database_exists,
         index_exists,
@@ -192,8 +298,13 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         stale_socket,
         daemon_running,
         daemon_pid,
+        daemon_protocol_version,
+        daemon_version,
+        daemon_build_id,
         index_lock_held,
         index_lock_error,
+        restart_required,
+        repair_required,
         database_path: db_path.display().to_string(),
         database_size_bytes: file_size(&db_path),
         index_path: index_path.display().to_string(),
@@ -273,6 +384,7 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
             println!("{}", serde_json::to_string_pretty(report)?);
         }
         _ => {
+            println!("Health:       {}", report.health_class.as_str());
             println!("Healthy:      {}", report.healthy);
             println!(
                 "Daemon:       {}{}",
@@ -305,6 +417,61 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
                 "Logs:         {} ({} bytes)",
                 report.log_path, report.log_size_bytes
             );
+            println!(
+                "Daemon info:  version={} protocol={} build={}",
+                report.daemon_version.as_deref().unwrap_or("unknown"),
+                report.daemon_protocol_version,
+                report.daemon_build_id.as_deref().unwrap_or("unknown")
+            );
+            println!(
+                "Lifecycle:    restart_required={} repair_required={}",
+                report.restart_required, report.repair_required
+            );
+            println!(
+                "Freshness:    last_sync={} lexical={} rebuilt_at={} semantic={} profile={} indexed_at={}",
+                report.last_successful_sync_at.as_deref().unwrap_or("never"),
+                report.lexical_index_freshness.as_str(),
+                report.lexical_last_rebuilt_at.as_deref().unwrap_or("-"),
+                report.semantic_index_freshness.as_str(),
+                report.semantic_active_profile.as_deref().unwrap_or("-"),
+                report.semantic_last_indexed_at.as_deref().unwrap_or("-"),
+            );
+            println!(
+                "Data:         accounts={} labels={} messages={} unread={} starred={} attachments={}",
+                report.data_stats.accounts,
+                report.data_stats.labels,
+                report.data_stats.messages,
+                report.data_stats.unread_messages,
+                report.data_stats.starred_messages,
+                report.data_stats.attachments,
+            );
+            println!(
+                "Records:      bodies={} message_labels={} drafts={} snoozed={} saved={} rules={}",
+                report.data_stats.bodies,
+                report.data_stats.message_labels,
+                report.data_stats.drafts,
+                report.data_stats.snoozed,
+                report.data_stats.saved_searches,
+                report.data_stats.rules,
+            );
+            println!(
+                "Telemetry:    event_log={} sync_log={} runtime_status={} rule_logs={}",
+                report.data_stats.event_log,
+                report.data_stats.sync_log,
+                report.data_stats.sync_runtime_statuses,
+                report.data_stats.rule_logs,
+            );
+            if report.data_stats.semantic_profiles > 0
+                || report.data_stats.semantic_chunks > 0
+                || report.data_stats.semantic_embeddings > 0
+            {
+                println!(
+                    "Semantic:     profiles={} chunks={} embeddings={}",
+                    report.data_stats.semantic_profiles,
+                    report.data_stats.semantic_chunks,
+                    report.data_stats.semantic_embeddings,
+                );
+            }
 
             if let Some(error) = &report.index_lock_error {
                 println!("Index lock:   {error}");
@@ -388,6 +555,8 @@ fn recommended_next_steps(
     socket_reachable: bool,
     stale_socket: bool,
     sync_statuses: &[AccountSyncStatus],
+    restart_required: bool,
+    repair_required: bool,
 ) -> Vec<String> {
     if stale_socket {
         return vec![
@@ -405,6 +574,18 @@ fn recommended_next_steps(
             "mxr daemon --foreground".to_string(),
             "mxr logs --level error".to_string(),
             "mxr doctor --verbose".to_string(),
+        ];
+    }
+
+    if restart_required {
+        return vec!["mxr restart".to_string(), "mxr status".to_string()];
+    }
+
+    if repair_required {
+        return vec![
+            "mxr doctor --reindex".to_string(),
+            "mxr restart".to_string(),
+            "mxr status".to_string(),
         ];
     }
 
@@ -465,6 +646,144 @@ fn protocol_event_entry(entry: mxr_store::EventLogEntry) -> EventLogEntry {
     }
 }
 
+fn latest_successful_sync_at(sync_statuses: &[AccountSyncStatus]) -> Option<String> {
+    sync_statuses
+        .iter()
+        .filter_map(|status| status.last_success_at.as_deref())
+        .filter_map(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .max()
+        .map(|value| value.to_rfc3339())
+}
+
+fn lexical_index_freshness(
+    index_exists: bool,
+    repair_required: bool,
+    restart_required: bool,
+) -> mxr_protocol::IndexFreshness {
+    if repair_required || !index_exists {
+        mxr_protocol::IndexFreshness::RepairRequired
+    } else if restart_required {
+        mxr_protocol::IndexFreshness::Stale
+    } else {
+        mxr_protocol::IndexFreshness::Current
+    }
+}
+
+fn semantic_freshness_from_snapshot(
+    snapshot: Option<&mxr_core::types::SemanticStatusSnapshot>,
+    enabled_fallback: bool,
+    active_profile_fallback: &str,
+) -> (
+    bool,
+    Option<String>,
+    mxr_protocol::IndexFreshness,
+    Option<String>,
+) {
+    let Some(snapshot) = snapshot else {
+        return if enabled_fallback {
+            (
+                true,
+                Some(active_profile_fallback.to_string()),
+                mxr_protocol::IndexFreshness::Unknown,
+                None,
+            )
+        } else {
+            (false, None, mxr_protocol::IndexFreshness::Disabled, None)
+        };
+    };
+
+    if !snapshot.enabled {
+        return (false, None, mxr_protocol::IndexFreshness::Disabled, None);
+    }
+
+    let active_profile = snapshot.active_profile.as_str().to_string();
+    let active_record = snapshot
+        .profiles
+        .iter()
+        .find(|profile| profile.profile == snapshot.active_profile);
+    let freshness = match active_record.map(|profile| profile.status) {
+        Some(mxr_core::types::SemanticProfileStatus::Ready) => {
+            mxr_protocol::IndexFreshness::Current
+        }
+        Some(mxr_core::types::SemanticProfileStatus::Indexing)
+        | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
+            mxr_protocol::IndexFreshness::Indexing
+        }
+        Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
+        None => mxr_protocol::IndexFreshness::Stale,
+    };
+
+    (
+        true,
+        Some(active_profile),
+        freshness,
+        active_record
+            .and_then(|profile| profile.last_indexed_at)
+            .map(|value| value.to_rfc3339()),
+    )
+}
+
+fn semantic_freshness_from_store(
+    enabled: bool,
+    active_profile: mxr_core::SemanticProfile,
+    active_record: Option<&mxr_core::types::SemanticProfileRecord>,
+) -> (
+    bool,
+    Option<String>,
+    mxr_protocol::IndexFreshness,
+    Option<String>,
+) {
+    if !enabled {
+        return (false, None, mxr_protocol::IndexFreshness::Disabled, None);
+    }
+
+    let freshness = match active_record.map(|profile| profile.status) {
+        Some(mxr_core::types::SemanticProfileStatus::Ready) => {
+            mxr_protocol::IndexFreshness::Current
+        }
+        Some(mxr_core::types::SemanticProfileStatus::Indexing)
+        | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
+            mxr_protocol::IndexFreshness::Indexing
+        }
+        Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
+        None => mxr_protocol::IndexFreshness::Stale,
+    };
+
+    (
+        true,
+        Some(active_profile.as_str().to_string()),
+        freshness,
+        active_record
+            .and_then(|profile| profile.last_indexed_at)
+            .map(|value| value.to_rfc3339()),
+    )
+}
+
+fn doctor_data_stats(counts: mxr_store::StoreRecordCounts) -> DoctorDataStats {
+    DoctorDataStats {
+        accounts: counts.accounts,
+        labels: counts.labels,
+        messages: counts.messages,
+        unread_messages: counts.unread_messages,
+        starred_messages: counts.starred_messages,
+        messages_with_attachments: counts.messages_with_attachments,
+        message_labels: counts.message_labels,
+        bodies: counts.bodies,
+        attachments: counts.attachments,
+        drafts: counts.drafts,
+        snoozed: counts.snoozed,
+        saved_searches: counts.saved_searches,
+        rules: counts.rules,
+        rule_logs: counts.rule_logs,
+        sync_log: counts.sync_log,
+        sync_runtime_statuses: counts.sync_runtime_statuses,
+        event_log: counts.event_log,
+        semantic_profiles: counts.semantic_profiles,
+        semantic_chunks: counts.semantic_chunks,
+        semantic_embeddings: counts.semantic_embeddings,
+    }
+}
+
 fn recent_log_lines(limit: usize, level: Option<&str>) -> Result<Vec<String>, std::io::Error> {
     let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
     if !log_path.exists() {
@@ -515,9 +834,18 @@ mod tests {
 
     #[test]
     fn recommends_foreground_when_socket_unreachable() {
-        let steps = recommended_next_steps(false, false, &[]);
+        let steps = recommended_next_steps(false, false, &[], false, false);
         assert!(steps
             .iter()
             .any(|step| step.contains("daemon --foreground")));
+    }
+
+    #[test]
+    fn recommends_restart_when_daemon_mismatch_detected() {
+        let steps = recommended_next_steps(true, false, &[], true, false);
+        assert_eq!(
+            steps,
+            vec!["mxr restart".to_string(), "mxr status".to_string()]
+        );
     }
 }

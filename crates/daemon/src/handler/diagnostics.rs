@@ -3,18 +3,37 @@ use super::{
     handle_export_search, handle_export_thread, protocol_event_entry, recent_log_lines,
     should_fallback_to_tantivy, HandlerResult,
 };
-use crate::semantic::should_use_semantic;
 use crate::state::AppState;
 use chrono::Datelike;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{ExportFormat, SearchMode, SemanticProfile};
-use mxr_protocol::{ResponseData, SearchResultItem};
+use mxr_protocol::IPC_PROTOCOL_VERSION;
+use mxr_protocol::{ResponseData, SearchExplain, SearchExplainResult, SearchResultItem};
 use mxr_search::{
     ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp},
     parse_query, QueryBuilder, SearchResult,
 };
+use mxr_semantic::{should_use_semantic, SemanticHit};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+#[derive(Debug)]
+struct SearchExecution {
+    results: Vec<SearchResult>,
+    executed_mode: SearchMode,
+    explain: Option<SearchExplain>,
+}
+
+struct ExecutionExplainInput<'a> {
+    include_explain: bool,
+    semantic_query: Option<String>,
+    lexical_window: usize,
+    dense_window: Option<usize>,
+    lexical_results: &'a [SearchResult],
+    dense_results: &'a [SearchResult],
+    rrf_k: Option<usize>,
+    notes: Vec<String>,
+}
 
 pub(super) async fn list_events(
     state: &Arc<AppState>,
@@ -70,17 +89,19 @@ pub(super) async fn search(
     query: &str,
     limit: u32,
     mode: SearchMode,
+    explain: bool,
 ) -> HandlerResult {
-    let results = execute_search(state, query, limit as usize, mode).await?;
+    let execution = execute_search(state, query, limit as usize, mode, explain).await?;
     Ok(ResponseData::SearchResults {
-        results: search_result_items(results, mode),
+        results: search_result_items(execution.results, execution.executed_mode),
+        explain: execution.explain,
     })
 }
 
 pub(super) async fn count(state: &Arc<AppState>, query: &str, mode: SearchMode) -> HandlerResult {
-    let results = execute_search(state, query, 10_000, mode).await;
+    let results = execute_search(state, query, 10_000, mode, false).await;
     Ok(ResponseData::Count {
-        count: results.map_err(|e| e.to_string())?.len() as u32,
+        count: results.map_err(|e| e.to_string())?.results.len() as u32,
     })
 }
 
@@ -282,20 +303,33 @@ pub(super) async fn run_saved_search(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Saved search '{name}' not found"))?;
-    let results = execute_search(state, &saved.query, limit as usize, saved.search_mode).await?;
+    let execution = execute_search(
+        state,
+        &saved.query,
+        limit as usize,
+        saved.search_mode,
+        false,
+    )
+    .await?;
     Ok(ResponseData::SearchResults {
-        results: search_result_items(results, saved.search_mode),
+        results: search_result_items(execution.results, execution.executed_mode),
+        explain: None,
     })
 }
 
 pub(super) async fn get_status(state: &Arc<AppState>) -> HandlerResult {
     let (accounts, total_messages, sync_statuses) = collect_status_snapshot(state).await?;
+    let repair_required = crate::server::search_requires_repair(state, total_messages).await;
     Ok(ResponseData::Status {
         uptime_secs: state.uptime_secs(),
         accounts,
         total_messages,
         daemon_pid: Some(std::process::id()),
         sync_statuses,
+        protocol_version: IPC_PROTOCOL_VERSION,
+        daemon_version: Some(crate::server::current_daemon_version().to_string()),
+        daemon_build_id: Some(crate::server::current_build_id()),
+        repair_required,
     })
 }
 
@@ -356,9 +390,7 @@ fn search_result_items(results: Vec<SearchResult>, mode: SearchMode) -> Vec<Sear
         .into_iter()
         .filter_map(|result| {
             Some(SearchResultItem {
-                message_id: mxr_core::MessageId::from_uuid(
-                    uuid::Uuid::parse_str(&result.message_id).ok()?,
-                ),
+                message_id: parse_message_id(&result.message_id)?,
                 account_id: mxr_core::AccountId::from_uuid(
                     uuid::Uuid::parse_str(&result.account_id).ok()?,
                 ),
@@ -377,13 +409,34 @@ async fn execute_search(
     query: &str,
     limit: usize,
     mode: SearchMode,
-) -> Result<Vec<SearchResult>, String> {
+    explain: bool,
+) -> Result<SearchExecution, String> {
     match parse_query(query) {
-        Ok(ast) => execute_search_ast(state, query, &ast, limit, mode).await,
+        Ok(ast) => execute_search_ast(state, query, &ast, limit, mode, explain).await,
         Err(error) => {
             let search = state.search.lock().await;
             if should_fallback_to_tantivy(query, &error) {
-                search.search(query, limit).map_err(|e| e.to_string())
+                let results = search.search(query, limit).map_err(|e| e.to_string())?;
+                let explain = explain.then(|| SearchExplain {
+                    requested_mode: mode,
+                    executed_mode: SearchMode::Lexical,
+                    semantic_query: None,
+                    lexical_window: limit as u32,
+                    dense_window: None,
+                    lexical_candidates: results.len() as u32,
+                    dense_candidates: 0,
+                    final_results: results.len() as u32,
+                    rrf_k: None,
+                    notes: vec![format!(
+                        "structured parser rejected query ({error}); used Tantivy fallback"
+                    )],
+                    results: build_explain_results(&results, &results, &[]),
+                });
+                Ok(SearchExecution {
+                    results,
+                    executed_mode: SearchMode::Lexical,
+                    explain,
+                })
             } else {
                 Err(format!("Invalid search query: {error}"))
             }
@@ -397,22 +450,116 @@ async fn execute_search_ast(
     ast: &QueryNode,
     limit: usize,
     mode: SearchMode,
-) -> Result<Vec<SearchResult>, String> {
+    explain: bool,
+) -> Result<SearchExecution, String> {
     let lexical_window = if mode == SearchMode::Lexical {
         limit
     } else {
         (limit.saturating_mul(4)).max(100)
     };
     let lexical_results = lexical_search(state, ast, lexical_window).await?;
-    if mode == SearchMode::Lexical || !should_use_semantic(mode) {
-        return Ok(truncate_results(lexical_results, limit));
+    if mode == SearchMode::Lexical {
+        let results = truncate_results(lexical_results.clone(), limit);
+        return Ok(build_execution(
+            mode,
+            SearchMode::Lexical,
+            results,
+            ExecutionExplainInput {
+                include_explain: explain,
+                semantic_query: None,
+                lexical_window,
+                dense_window: None,
+                lexical_results: &lexical_results,
+                dense_results: &[],
+                rrf_k: None,
+                notes: Vec::new(),
+            },
+        ));
     }
 
+    if !should_use_semantic(mode) {
+        let results = truncate_results(lexical_results.clone(), limit);
+        return Ok(build_execution(
+            mode,
+            SearchMode::Lexical,
+            results,
+            ExecutionExplainInput {
+                include_explain: explain,
+                semantic_query: None,
+                lexical_window,
+                dense_window: None,
+                lexical_results: &lexical_results,
+                dense_results: &[],
+                rrf_k: None,
+                notes: vec!["semantic search unavailable in this binary".to_string()],
+            },
+        ));
+    }
+    let semantic_enabled = state.config_snapshot().search.semantic.enabled;
+
     let Some(semantic_query) = semantic_query_text(ast) else {
-        return Ok(truncate_results(lexical_results, limit));
+        let mut notes = vec!["query has no semantic text terms; used lexical ranking".to_string()];
+        if !semantic_enabled {
+            notes.push("semantic search disabled in config".to_string());
+        }
+        let results = truncate_results(lexical_results.clone(), limit);
+        return Ok(build_execution(
+            mode,
+            SearchMode::Lexical,
+            results,
+            ExecutionExplainInput {
+                include_explain: explain,
+                semantic_query: None,
+                lexical_window,
+                dense_window: None,
+                lexical_results: &lexical_results,
+                dense_results: &[],
+                rrf_k: None,
+                notes,
+            },
+        ));
     };
     if semantic_query.is_empty() || has_negated_semantic_terms(ast) {
-        return Ok(truncate_results(lexical_results, limit));
+        let mut notes =
+            vec!["query contains negated semantic terms; used lexical ranking".to_string()];
+        if !semantic_enabled {
+            notes.push("semantic search disabled in config".to_string());
+        }
+        let results = truncate_results(lexical_results.clone(), limit);
+        return Ok(build_execution(
+            mode,
+            SearchMode::Lexical,
+            results,
+            ExecutionExplainInput {
+                include_explain: explain,
+                semantic_query: Some(semantic_query),
+                lexical_window,
+                dense_window: None,
+                lexical_results: &lexical_results,
+                dense_results: &[],
+                rrf_k: None,
+                notes,
+            },
+        ));
+    }
+
+    if !semantic_enabled {
+        let results = truncate_results(lexical_results.clone(), limit);
+        return Ok(build_execution(
+            mode,
+            SearchMode::Lexical,
+            results,
+            ExecutionExplainInput {
+                include_explain: explain,
+                semantic_query: Some(semantic_query),
+                lexical_window,
+                dense_window: None,
+                lexical_results: &lexical_results,
+                dense_results: &[],
+                rrf_k: None,
+                notes: vec!["semantic search disabled in config; used lexical ranking".to_string()],
+            },
+        ));
     }
 
     let dense_window = (limit.saturating_mul(8)).max(200);
@@ -427,17 +574,67 @@ async fn execute_search_ast(
     let dense_results = filter_dense_hits(state, ast, semantic_hits).await?;
     if mode == SearchMode::Semantic {
         if dense_results.is_empty() {
-            return Ok(truncate_results(lexical_results, limit));
+            let results = truncate_results(lexical_results.clone(), limit);
+            return Ok(build_execution(
+                mode,
+                SearchMode::Lexical,
+                results,
+                ExecutionExplainInput {
+                    include_explain: explain,
+                    semantic_query: Some(semantic_query),
+                    lexical_window,
+                    dense_window: Some(dense_window),
+                    lexical_results: &lexical_results,
+                    dense_results: &dense_results,
+                    rrf_k: None,
+                    notes: vec![
+                        "semantic retrieval returned no dense candidates; fell back to lexical"
+                            .into(),
+                    ],
+                },
+            ));
         }
-        return Ok(truncate_results(dense_results, limit));
+        let results = truncate_results(dense_results.clone(), limit);
+        return Ok(build_execution(
+            mode,
+            SearchMode::Semantic,
+            results,
+            ExecutionExplainInput {
+                include_explain: explain,
+                semantic_query: Some(semantic_query),
+                lexical_window,
+                dense_window: Some(dense_window),
+                lexical_results: &lexical_results,
+                dense_results: &dense_results,
+                rrf_k: None,
+                notes: Vec::new(),
+            },
+        ));
     }
 
-    let fused = reciprocal_rank_fusion(&lexical_results, &dense_results, limit, 60);
-    if fused.is_empty() {
-        Ok(truncate_results(lexical_results, limit))
-    } else {
-        Ok(fused)
+    let mut notes = Vec::new();
+    if dense_results.is_empty() {
+        notes.push(
+            "dense retrieval returned no candidates; hybrid ranking used lexical results only"
+                .to_string(),
+        );
     }
+    let results = reciprocal_rank_fusion(&lexical_results, &dense_results, limit, 60);
+    Ok(build_execution(
+        mode,
+        SearchMode::Hybrid,
+        results,
+        ExecutionExplainInput {
+            include_explain: explain,
+            semantic_query: Some(semantic_query),
+            lexical_window,
+            dense_window: Some(dense_window),
+            lexical_results: &lexical_results,
+            dense_results: &dense_results,
+            rrf_k: Some(60),
+            notes,
+        },
+    ))
 }
 
 async fn lexical_search(
@@ -456,7 +653,7 @@ async fn lexical_search(
 async fn filter_dense_hits(
     state: &Arc<AppState>,
     ast: &QueryNode,
-    hits: Vec<crate::semantic::SemanticHit>,
+    hits: Vec<SemanticHit>,
 ) -> Result<Vec<SearchResult>, String> {
     if hits.is_empty() {
         return Ok(Vec::new());
@@ -492,6 +689,82 @@ async fn filter_dense_hits(
         });
     }
     Ok(results)
+}
+
+fn build_execution(
+    requested_mode: SearchMode,
+    executed_mode: SearchMode,
+    results: Vec<SearchResult>,
+    explain_input: ExecutionExplainInput<'_>,
+) -> SearchExecution {
+    let explain = explain_input.include_explain.then(|| SearchExplain {
+        requested_mode,
+        executed_mode,
+        semantic_query: explain_input.semantic_query,
+        lexical_window: explain_input.lexical_window as u32,
+        dense_window: explain_input.dense_window.map(|value| value as u32),
+        lexical_candidates: explain_input.lexical_results.len() as u32,
+        dense_candidates: explain_input.dense_results.len() as u32,
+        final_results: results.len() as u32,
+        rrf_k: explain_input.rrf_k.map(|value| value as u32),
+        notes: explain_input.notes,
+        results: build_explain_results(
+            &results,
+            explain_input.lexical_results,
+            explain_input.dense_results,
+        ),
+    });
+
+    SearchExecution {
+        results,
+        executed_mode,
+        explain,
+    }
+}
+
+fn build_explain_results(
+    final_results: &[SearchResult],
+    lexical_results: &[SearchResult],
+    dense_results: &[SearchResult],
+) -> Vec<SearchExplainResult> {
+    let lexical_lookup = rank_lookup(lexical_results);
+    let dense_lookup = rank_lookup(dense_results);
+
+    final_results
+        .iter()
+        .enumerate()
+        .filter_map(|(index, result)| {
+            let message_id = parse_message_id(&result.message_id)?;
+            let lexical = lexical_lookup.get(&result.message_id);
+            let dense = dense_lookup.get(&result.message_id);
+            Some(SearchExplainResult {
+                rank: (index + 1) as u32,
+                message_id,
+                final_score: result.score,
+                lexical_rank: lexical.map(|entry| entry.0),
+                lexical_score: lexical.map(|entry| entry.1),
+                dense_rank: dense.map(|entry| entry.0),
+                dense_score: dense.map(|entry| entry.1),
+            })
+        })
+        .collect()
+}
+
+fn rank_lookup(results: &[SearchResult]) -> HashMap<String, (u32, f32)> {
+    results
+        .iter()
+        .enumerate()
+        .map(|(index, result)| {
+            (
+                result.message_id.clone(),
+                ((index + 1) as u32, result.score),
+            )
+        })
+        .collect()
+}
+
+fn parse_message_id(value: &str) -> Option<MessageId> {
+    Some(MessageId::from_uuid(uuid::Uuid::parse_str(value).ok()?))
 }
 
 fn reciprocal_rank_fusion(

@@ -11,21 +11,51 @@ require_token() {
 
 publish_or_skip_existing() {
   local logfile
-  logfile="$(mktemp)"
+  local attempt=1
+  local max_attempts=5
 
-  if "$@" 2>&1 | tee "${logfile}"; then
+  while true; do
+    logfile="$(mktemp)"
+
+    if "$@" 2>&1 | tee "${logfile}"; then
+      rm -f "${logfile}"
+      return 0
+    fi
+
+    if grep -q "already exists on crates.io index" "${logfile}"; then
+      rm -f "${logfile}"
+      return 0
+    fi
+
+    if grep -q "429 Too Many Requests" "${logfile}" && (( attempt < max_attempts )); then
+      local retry_after
+      local now
+      local sleep_for
+
+      retry_after="$(sed -nE 's/.*Please try again after (.*) and see.*/\1/p' "${logfile}" | tail -n 1)"
+      rm -f "${logfile}"
+
+      if [[ -n "${retry_after}" ]]; then
+        now="$(date -u +%s)"
+        sleep_for="$(( $(date -u -d "${retry_after}" +%s) - now + 5 ))"
+      else
+        sleep_for=75
+      fi
+
+      if (( sleep_for < 5 )); then
+        sleep_for=5
+      fi
+
+      echo "crates.io rate limit hit; sleeping ${sleep_for}s before retry ${attempt}/${max_attempts}" >&2
+      sleep "${sleep_for}"
+      attempt=$((attempt + 1))
+      continue
+    fi
+
+    cat "${logfile}" >&2
     rm -f "${logfile}"
-    return 0
-  fi
-
-  if grep -q "already exists on crates.io index" "${logfile}"; then
-    rm -f "${logfile}"
-    return 0
-  fi
-
-  cat "${logfile}" >&2
-  rm -f "${logfile}"
-  return 1
+    return 1
+  done
 }
 
 publish_async_imap() {

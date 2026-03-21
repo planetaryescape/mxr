@@ -155,11 +155,27 @@ jobs:
     needs: github-release
     steps:
       - uses: actions/checkout@v4
-      - name: Update tap formula
-        uses: mislav/bump-homebrew-formula-action@v3
+      - uses: actions/download-artifact@v4
         with:
-          formula-name: mxr
-          homebrew-tap: planetaryescape/homebrew-mxr
-          download-url: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/mxr-${{ github.ref_name }}-macos-aarch64.tar.gz
+          path: artifacts
+          merge-multiple: true
+      - name: Render formula
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          bash ./scripts/render_homebrew_formula.sh "$VERSION" artifacts Formula/mxr.rb
+      - name: Update tap formula
         env:
           COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          git clone "https://x-access-token:${COMMITTER_TOKEN}@github.com/planetaryescape/homebrew-mxr.git" tap
+          cp Formula/mxr.rb tap/Formula/mxr.rb
+          if git -C tap diff --quiet -- Formula/mxr.rb; then
+            echo "No Homebrew formula changes"
+            exit 0
+          fi
+          git -C tap config user.name "github-actions[bot]"
+          git -C tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C tap add Formula/mxr.rb
+          git -C tap commit -m "mxr ${VERSION}"
+          git -C tap push origin HEAD:main

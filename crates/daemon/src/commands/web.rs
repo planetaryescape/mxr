@@ -9,7 +9,8 @@ pub async fn run(host: String, port: u16, print_url: bool) -> anyhow::Result<()>
         .map_err(|error| anyhow::anyhow!("invalid host `{host}`: {error}"))?;
     let listener = TcpListener::bind(SocketAddr::new(host, port)).await?;
     let addr = listener.local_addr()?;
-    let auth_token = std::env::var("MXR_WEB_BRIDGE_TOKEN").unwrap_or_else(|_| Uuid::new_v4().to_string());
+    let auth_token =
+        std::env::var("MXR_WEB_BRIDGE_TOKEN").unwrap_or_else(|_| Uuid::new_v4().to_string());
     let config = WebServerConfig::new(mxr_config::socket_path(), auth_token.clone());
     let bridge_url = format!("http://{addr}?token={auth_token}");
 

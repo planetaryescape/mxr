@@ -1,9 +1,9 @@
 use axum::{
+    extract::ws::{Message as WebSocketMessage, WebSocket, WebSocketUpgrade},
     extract::{Path as AxumPath, Query, State},
     http::HeaderMap,
     http::StatusCode,
     response::{IntoResponse, Response},
-    extract::ws::{Message as WebSocketMessage, WebSocket, WebSocketUpgrade},
     routing::{get, post},
     Json, Router,
 };
@@ -95,7 +95,11 @@ impl IntoResponse for BridgeError {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             _ => StatusCode::BAD_GATEWAY,
         };
-        (status, Json(serde_json::json!({ "error": self.to_string() }))).into_response()
+        (
+            status,
+            Json(serde_json::json!({ "error": self.to_string() })),
+        )
+            .into_response()
     }
 }
 
@@ -341,7 +345,9 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
         Err(error) => {
             let _ = socket
                 .send(WebSocketMessage::Text(
-                    serde_json::json!({ "error": error.to_string() }).to_string().into(),
+                    serde_json::json!({ "error": error.to_string() })
+                        .to_string()
+                        .into(),
                 ))
                 .await;
             return;
@@ -387,16 +393,18 @@ fn parse_message_id(value: &str) -> Result<MessageId, BridgeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::{SinkExt, StreamExt};
     use chrono::Utc;
+    use futures::{SinkExt, StreamExt};
     use mxr_core::{
         id::{AccountId, MessageId, ThreadId},
-        types::{Address, Envelope, MessageBody, MessageFlags, MessageMetadata, Thread, UnsubscribeMethod},
+        types::{
+            Address, Envelope, MessageBody, MessageFlags, MessageMetadata, Thread,
+            UnsubscribeMethod,
+        },
     };
     use mxr_protocol::{
         DaemonEvent, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData,
-        SearchResultItem,
-        IPC_PROTOCOL_VERSION,
+        SearchResultItem, IPC_PROTOCOL_VERSION,
     };
     use tempfile::TempDir;
     use tokio::net::UnixListener;
@@ -450,9 +458,7 @@ mod tests {
         })
     }
 
-    async fn spawn_fake_event_server(
-        socket_path: &std::path::Path,
-    ) -> tokio::task::JoinHandle<()> {
+    async fn spawn_fake_event_server(socket_path: &std::path::Path) -> tokio::task::JoinHandle<()> {
         spawn_fake_ipc_server(
             socket_path,
             |_| None,
@@ -546,9 +552,11 @@ mod tests {
         let socket_path = temp.path().join("mxr.sock");
         let _ipc = spawn_fake_ipc_server(
             &socket_path,
-            |_request| Some(Response::Ok {
-                data: ResponseData::Ack,
-            }),
+            |_request| {
+                Some(Response::Ok {
+                    data: ResponseData::Ack,
+                })
+            },
             None,
         )
         .await;
@@ -677,15 +685,17 @@ mod tests {
         let _ipc = spawn_fake_ipc_server(
             &socket_path,
             move |request| match request {
-                Request::GetThread { thread_id: requested } if requested == thread.id => {
-                    Some(Response::Ok {
-                        data: ResponseData::Thread {
-                            thread: thread.clone(),
-                            messages: vec![envelope.clone()],
-                        },
-                    })
-                }
-                Request::ListBodies { message_ids } if message_ids == vec![body.message_id.clone()] => {
+                Request::GetThread {
+                    thread_id: requested,
+                } if requested == thread.id => Some(Response::Ok {
+                    data: ResponseData::Thread {
+                        thread: thread.clone(),
+                        messages: vec![envelope.clone()],
+                    },
+                }),
+                Request::ListBodies { message_ids }
+                    if message_ids == vec![body.message_id.clone()] =>
+                {
                     Some(Response::Ok {
                         data: ResponseData::Bodies {
                             bodies: vec![body.clone()],

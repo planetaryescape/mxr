@@ -456,7 +456,6 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
 
     Ok(())
 }
-
 async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyhow::Result<()> {
     if !prefix.is_empty() {
         eprint!("{prefix}");
@@ -576,7 +575,6 @@ mod tests {
             DaemonHealthClass::Degraded
         );
     }
-
     #[tokio::test]
     async fn startup_maintenance_reindexes_without_blocking_ping_requests() {
         let state = Arc::new(AppState::in_memory().await.expect("state"));
@@ -724,5 +722,78 @@ mod tests {
         assert!(daemon_responds_to_status(&ready_socket_path, Duration::from_secs(1)).await);
         server.await.expect("join status server");
         let _ = std::fs::remove_file(&ready_socket_path);
+    }
+
+    #[tokio::test]
+    async fn startup_maintenance_reindexes_without_blocking_ping_requests() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        let envelope = Envelope {
+            id: MessageId::new(),
+            account_id: state.default_account_id(),
+            provider_id: "provider-msg-1".into(),
+            thread_id: ThreadId::new(),
+            message_id_header: Some("<msg-1@example.com>".into()),
+            in_reply_to: None,
+            references: Vec::new(),
+            from: Address {
+                name: Some("Sender".into()),
+                email: "sender@example.com".into(),
+            },
+            to: vec![Address {
+                name: Some("User".into()),
+                email: "user@example.com".into(),
+            }],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: "startup reindex subject".into(),
+            date: Utc::now(),
+            flags: MessageFlags::empty(),
+            snippet: "startup reindex snippet".into(),
+            has_attachments: false,
+            size_bytes: 128,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: Vec::new(),
+        };
+
+        state
+            .store
+            .upsert_envelope(&envelope)
+            .await
+            .expect("insert envelope");
+        assert!(state
+            .search
+            .lock()
+            .await
+            .search("startup", 10)
+            .expect("empty search")
+            .is_empty());
+
+        let maintenance = spawn_startup_maintenance(state.clone());
+        let ping = handle_request(
+            &state,
+            &IpcMessage {
+                id: 1,
+                payload: IpcPayload::Request(Request::Ping),
+            },
+        )
+        .await;
+
+        match ping.payload {
+            IpcPayload::Response(Response::Ok { .. }) => {}
+            other => panic!("expected ping response, got {other:?}"),
+        }
+
+        maintenance
+            .await
+            .expect("join maintenance task")
+            .expect("maintenance result");
+
+        let results = state
+            .search
+            .lock()
+            .await
+            .search("startup", 10)
+            .expect("search after reindex");
+        assert_eq!(results.len(), 1);
     }
 }

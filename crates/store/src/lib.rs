@@ -244,6 +244,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sync_runtime_status_roundtrip() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let now = chrono::Utc::now();
+        store
+            .upsert_sync_runtime_status(
+                &account.id,
+                &SyncRuntimeStatusUpdate {
+                    last_attempt_at: Some(now),
+                    last_success_at: Some(now),
+                    sync_in_progress: Some(true),
+                    current_cursor_summary: Some(Some("gmail history_id=42".to_string())),
+                    last_synced_count: Some(42),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let fetched = store
+            .get_sync_runtime_status(&account.id)
+            .await
+            .unwrap()
+            .expect("runtime status");
+        assert_eq!(fetched.account_id, account.id);
+        assert_eq!(fetched.last_synced_count, 42);
+        assert!(fetched.sync_in_progress);
+        assert_eq!(
+            fetched.current_cursor_summary.as_deref(),
+            Some("gmail history_id=42")
+        );
+
+        let listed = store.list_sync_runtime_statuses().await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].account_id, account.id);
+    }
+
+    #[tokio::test]
     async fn message_labels_junction() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();

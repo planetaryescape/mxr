@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 91
+expression: stdout
+---
+Start a local HTTP/WebSocket bridge over daemon IPC
+
+Usage: mxr web [OPTIONS]
+
+Options:
+      --host <HOST>  [default: 127.0.0.1]
+      --port <PORT>  [default: 0]
+      --print-url    
+  -h, --help         Print help

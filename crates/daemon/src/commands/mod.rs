@@ -22,3 +22,4 @@ pub mod subscriptions;
 pub mod sync_cmd;
 pub mod thread;
 pub mod version;
+pub mod web;

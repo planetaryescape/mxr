@@ -166,6 +166,14 @@ async fn main() -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::status::run(format, watch).await?;
         }
+        Some(Command::Web {
+            host,
+            port,
+            print_url,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::web::run(host, port, print_url).await?;
+        }
         Some(Command::Events { event_type, format }) => {
             crate::server::ensure_daemon_running().await?;
             commands::events::run(event_type, format).await?;

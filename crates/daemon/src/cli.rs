@@ -103,6 +103,15 @@ pub enum Command {
         #[arg(long)]
         watch: bool,
     },
+    /// Start a local HTTP/WebSocket bridge over daemon IPC
+    Web {
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        #[arg(long, default_value = "0")]
+        port: u16,
+        #[arg(long)]
+        print_url: bool,
+    },
     /// Watch daemon events
     Events {
         #[arg(long = "type")]
@@ -787,6 +796,31 @@ mod tests {
             }) => {
                 assert_eq!(search, "label:work");
                 assert_eq!(format, "mbox");
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_web_subcommand() {
+        let cli = Cli::parse_from([
+            "mxr",
+            "web",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "4321",
+            "--print-url",
+        ]);
+        match cli.command {
+            Some(Command::Web {
+                host,
+                port,
+                print_url,
+            }) => {
+                assert_eq!(host, "127.0.0.1");
+                assert_eq!(port, 4321);
+                assert!(print_url);
             }
             other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
         }

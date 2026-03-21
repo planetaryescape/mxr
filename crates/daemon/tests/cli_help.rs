@@ -87,6 +87,11 @@ fn status_help_snapshot() {
 }
 
 #[test]
+fn web_help_snapshot() {
+    assert_help_snapshot("cli_help_web", &["web", "--help"]);
+}
+
+#[test]
 fn events_help_snapshot() {
     assert_help_snapshot("cli_help_events", &["events", "--help"]);
 }

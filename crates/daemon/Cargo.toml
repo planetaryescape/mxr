@@ -23,6 +23,7 @@ mxr-store = { workspace = true }
 mxr-search = { workspace = true }
 mxr-semantic = { workspace = true, default-features = false }
 mxr-protocol = { workspace = true }
+mxr-web = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-provider-gmail = { workspace = true }
 mxr-provider-imap = { workspace = true }

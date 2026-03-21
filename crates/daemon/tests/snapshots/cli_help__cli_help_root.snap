@@ -21,6 +21,7 @@ Commands:
   subscriptions  List senders with unsubscribe support
   sync           Trigger or query sync
   status         Show daemon status
+  web            Start a local HTTP/WebSocket bridge over daemon IPC
   events         Watch daemon events
   history        Show persisted event history
   notify         Unread summary for status bars

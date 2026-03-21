@@ -7,7 +7,7 @@ expression: snapshot
 "│Health: healthy status=ok                       ││Records: accounts=1 labels=12 saved=3 rules=4   │"
 "│Lifecycle: restart=no repair=no                 ││Mail: msgs=42 unread=7 starred=3 with_att=5     │"
 "│Uptime: 3600s                                   ││Bodies: bodies=40 attachments=8 links=61        │"
-"│Daemon: pid=4242 version=0.4.3 protocol=1       ││Workflow: drafts=2 snoozed=1 runtime=1          │"
+"│Daemon: pid=4242 version=0.4.4 protocol=1       ││Workflow: drafts=2 snoozed=1 runtime=1          │"
 "│Messages: total=42 unread=7 starred=3           ││Events: event_log=22 sync_log=14 rule_logs=9    │"
 "│Freshness: lex=current sync=03-20 10:59Z        ││Semantic: current p=1 e=120 at=03-20 10:57Z     │"
 "│Lexical rebuilt: 03-20 10:55Z                   ││Storage: db=1.0 KB index=2.0 KB logs=512 B      │"

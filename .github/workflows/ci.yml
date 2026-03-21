@@ -102,6 +102,33 @@ jobs:
       - run: npm install
       - run: npm run build
 
+  desktop:
+    name: Desktop Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: cargo build --release -p mxr
+        working-directory: .
+      - run: MXR_DESKTOP_BUNDLED_BINARY=../../target/release/mxr npm run package:dir
+      - run: |
+          BUNDLED_MXR=$(find out -type f \( -path '*resources/bin/mxr' -o -path '*Resources/bin/mxr' \) ! -path '*resources/app/*' ! -path '*Resources/app/*' -print -quit)
+          test -n "$BUNDLED_MXR"
+          "$BUNDLED_MXR" status --format json | grep '"protocol_version"'
+
   build:
     name: Build
     strategy:

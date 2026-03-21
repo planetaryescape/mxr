@@ -22,16 +22,25 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             archive: linux-x86_64.tar.gz
+            desktop_platform: linux
+            desktop_arch: x64
+            desktop_archive: desktop-linux-x86_64.zip
             use_cross: false
             cargo_args: ""
           - os: macos-15-intel
             target: x86_64-apple-darwin
             archive: macos-x86_64.tar.gz
+            desktop_platform: darwin
+            desktop_arch: x64
+            desktop_archive: desktop-macos-x86_64.zip
             use_cross: false
             cargo_args: "--no-default-features"
           - os: macos-15
             target: aarch64-apple-darwin
             archive: macos-aarch64.tar.gz
+            desktop_platform: darwin
+            desktop_arch: arm64
+            desktop_archive: desktop-macos-aarch64.zip
             use_cross: false
             cargo_args: ""
     steps:
@@ -42,6 +51,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
@@ -72,12 +86,43 @@ jobs:
       - name: Generate SHA256 checksum
         run: shasum -a 256 "${{ env.ARCHIVE }}" > "${{ env.ARCHIVE }}.sha256"
 
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Package desktop
+        working-directory: apps/desktop
+        env:
+          MXR_DESKTOP_BUNDLED_BINARY: ../../target/${{ matrix.target }}/release/mxr
+        run: npm run make -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
+
+      - name: Smoke packaged desktop bundle
+        working-directory: apps/desktop
+        run: |
+          BUNDLED_MXR=$(find out -type f \( -path '*resources/bin/mxr' -o -path '*Resources/bin/mxr' \) ! -path '*resources/app/*' ! -path '*Resources/app/*' -print -quit)
+          test -n "$BUNDLED_MXR"
+          "$BUNDLED_MXR" status --format json | grep '"protocol_version"'
+
+      - name: Collect desktop archive
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          DESKTOP_ARCHIVE="mxr-v${VERSION}-${{ matrix.desktop_archive }}"
+          DESKTOP_ZIP=$(find apps/desktop/out/make -name '*.zip' -print -quit)
+          test -n "${DESKTOP_ZIP}"
+          cp "${DESKTOP_ZIP}" "${DESKTOP_ARCHIVE}"
+          echo "DESKTOP_ARCHIVE=${DESKTOP_ARCHIVE}" >> $GITHUB_ENV
+
+      - name: Generate desktop SHA256 checksum
+        run: shasum -a 256 "${{ env.DESKTOP_ARCHIVE }}" > "${{ env.DESKTOP_ARCHIVE }}.sha256"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: |
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
+            ${{ env.DESKTOP_ARCHIVE }}
+            ${{ env.DESKTOP_ARCHIVE }}.sha256
 
   publish-crates:
     name: Publish Crates

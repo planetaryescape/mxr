@@ -17,7 +17,8 @@
         { "type": "style", "section": "Style", "hidden": true }
       ],
       "extra-files": [
-        "Cargo.toml"
+        "Cargo.toml",
+        "apps/desktop/package.json"
       ]
     }
   },

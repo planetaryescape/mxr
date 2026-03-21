@@ -9,6 +9,7 @@ description = "Async IMAP client for Rust"
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 edition = "2021"
+exclude = ["Cargo.toml.orig", ".cargo_vcs_info.json"]
 
 keywords = ["email", "imap"]
 categories = ["email", "network-programming"]

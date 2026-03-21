@@ -37,6 +37,7 @@ categories = [
 ]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/planetaryescape/mxr"
+exclude = ["Cargo.toml.orig", ".cargo_vcs_info.json"]
 
 [badges.is-it-maintained-issue-resolution]
 repository = "async-email/async-imap"

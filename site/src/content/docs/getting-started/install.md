@@ -33,19 +33,14 @@ tar xzf mxr-v*.tar.gz
 cp mxr ~/.local/bin/  # or /usr/local/bin
 ```
 
-## Cargo
-
-```bash
-cargo install mxr
-```
-
 ## Build from source (requires Rust 1.75+)
+
+`cargo install mxr` is temporarily unavailable while the crates.io publish path is being fixed.
 
 ```bash
 git clone https://github.com/planetaryescape/mxr
 cd mxr
-cargo build --release
-cp target/release/mxr ~/.local/bin/
+cargo install --path crates/daemon --locked
 ```
 
 ## Verify installation

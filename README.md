@@ -12,11 +12,16 @@ Today, the shipped surfaces are the CLI, TUI, daemon socket, and agent skill. A 
 # Homebrew
 brew tap planetaryescape/mxr && brew install mxr
 
-# Cargo
-cargo install mxr
-
 # Pre-built binaries
 # https://github.com/planetaryescape/mxr/releases/latest
+```
+
+Cargo install is temporarily unavailable while the crates.io publish path is being fixed. For now, use Homebrew, a release tarball, or build from source:
+
+```bash
+git clone https://github.com/planetaryescape/mxr
+cd mxr
+cargo install --path crates/daemon --locked
 ```
 
 Current release shape:

@@ -43,6 +43,7 @@ impl SavedSearchService {
 mod tests {
     use super::*;
     use mxr_core::types::SortOrder;
+    use mxr_core::SearchMode;
 
     fn make_saved_search(name: &str, query: &str) -> SavedSearch {
         SavedSearch {

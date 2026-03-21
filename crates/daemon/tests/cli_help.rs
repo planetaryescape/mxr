@@ -69,6 +69,19 @@ fn saved_help_snapshot() {
 }
 
 #[test]
+fn semantic_help_snapshot() {
+    assert_help_snapshot("cli_help_semantic", &["semantic", "--help"]);
+}
+
+#[test]
+fn semantic_profile_help_snapshot() {
+    assert_help_snapshot(
+        "cli_help_semantic_profile",
+        &["semantic", "profile", "--help"],
+    );
+}
+
+#[test]
 fn status_help_snapshot() {
     assert_help_snapshot("cli_help_status", &["status", "--help"]);
 }

@@ -1,11 +1,23 @@
+use mxr_core::SearchMode;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-#[derive(Default)]
 pub struct SearchBar {
     pub active: bool,
     pub query: String,
     pub cursor_pos: usize,
+    pub mode: SearchMode,
+}
+
+impl Default for SearchBar {
+    fn default() -> Self {
+        Self {
+            active: false,
+            query: String::new(),
+            cursor_pos: 0,
+            mode: SearchMode::Lexical,
+        }
+    }
 }
 
 impl SearchBar {
@@ -46,6 +58,14 @@ impl SearchBar {
         self.active = false;
         self.query.clone()
     }
+
+    pub fn cycle_mode(&mut self) {
+        self.mode = match self.mode {
+            SearchMode::Lexical => SearchMode::Hybrid,
+            SearchMode::Hybrid => SearchMode::Semantic,
+            SearchMode::Semantic => SearchMode::Lexical,
+        };
+    }
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, search_bar: &SearchBar, theme: &crate::theme::Theme) {
@@ -57,7 +77,7 @@ pub fn draw(frame: &mut Frame, area: Rect, search_bar: &SearchBar, theme: &crate
     frame.render_widget(Clear, modal);
     frame.render_widget(
         Block::default()
-            .title(" Search ")
+            .title(format!(" Search [{}] ", search_mode_label(search_bar.mode)))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme.accent)),
         modal,
@@ -85,9 +105,18 @@ pub fn draw(frame: &mut Frame, area: Rect, search_bar: &SearchBar, theme: &crate
     };
     frame.render_widget(Paragraph::new(Line::from(query)), sections[0]);
     frame.render_widget(
-        Paragraph::new("Enter submit  Esc cancel").style(Style::default().fg(theme.text_muted)),
+        Paragraph::new("Enter submit  Tab mode  Esc cancel")
+            .style(Style::default().fg(theme.text_muted)),
         sections[1],
     );
+}
+
+fn search_mode_label(mode: SearchMode) -> &'static str {
+    match mode {
+        SearchMode::Lexical => "lexical",
+        SearchMode::Hybrid => "hybrid",
+        SearchMode::Semantic => "semantic",
+    }
 }
 
 fn centered_rect(area: Rect) -> Rect {

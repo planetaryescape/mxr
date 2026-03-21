@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 13
 expression: stdout
 ---
 Search messages
@@ -12,4 +13,6 @@ Arguments:
 Options:
       --format <FORMAT>  [possible values: table, json, csv, ids]
       --limit <LIMIT>    [default: 50]
+      --mode <MODE>      [possible values: lexical, hybrid, semantic]
+      --explain          
   -h, --help             Print help

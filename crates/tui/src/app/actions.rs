@@ -259,16 +259,23 @@ impl App {
             Action::SubmitSearch => {
                 if self.screen == Screen::Search {
                     self.search_page.editing = false;
-                    self.pending_search = Some(self.search_page.query.clone());
+                    self.pending_search =
+                        Some((self.search_page.query.clone(), self.search_bar.mode));
                 } else {
                     let query = self.search_bar.query.clone();
                     self.search_bar.deactivate();
                     if !query.is_empty() {
-                        self.pending_search = Some(query);
+                        self.pending_search = Some((query, self.search_bar.mode));
                         self.search_active = true;
                     }
                     // Return focus to mail list so j/k navigates results
                     self.active_pane = ActivePane::MailList;
+                }
+            }
+            Action::CycleSearchMode => {
+                self.search_bar.cycle_mode();
+                if self.search_bar.active {
+                    self.trigger_live_search();
                 }
             }
             Action::CloseSearch => {
@@ -497,7 +504,7 @@ impl App {
                 self.active_pane = ActivePane::MailList;
                 self.screen = Screen::Mailbox;
             }
-            Action::SelectSavedSearch(query) => {
+            Action::SelectSavedSearch(query, mode) => {
                 self.mailbox_view = MailboxView::Messages;
                 if self.screen == Screen::Search {
                     self.search_page.query = query.clone();
@@ -506,7 +513,8 @@ impl App {
                     self.search_active = true;
                     self.active_pane = ActivePane::MailList;
                 }
-                self.pending_search = Some(query);
+                self.search_bar.mode = mode;
+                self.pending_search = Some((query, mode));
             }
             Action::ClearFilter => {
                 self.mailbox_view = MailboxView::Messages;

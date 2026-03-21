@@ -58,3 +58,5 @@ typed_id!(DraftId);
 typed_id!(AttachmentId);
 typed_id!(SavedSearchId);
 typed_id!(RuleId);
+typed_id!(SemanticChunkId);
+typed_id!(SemanticProfileId);

@@ -13,6 +13,7 @@ categories = ["email", "api-bindings"]
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_bytes = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 bitflags = { workspace = true }

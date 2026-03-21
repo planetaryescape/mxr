@@ -23,9 +23,17 @@ pub enum Command {
         format: Option<OutputFormat>,
         #[arg(long, default_value = "50")]
         limit: Option<u32>,
+        #[arg(long, value_enum)]
+        mode: Option<SearchModeArg>,
+        #[arg(long)]
+        explain: bool,
     },
     /// Count matching messages
-    Count { query: String },
+    Count {
+        query: String,
+        #[arg(long, value_enum)]
+        mode: Option<SearchModeArg>,
+    },
     /// Display a message
     Cat {
         message_id: String,
@@ -58,6 +66,13 @@ pub enum Command {
     Saved {
         #[command(subcommand)]
         action: Option<SavedAction>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Manage semantic search profiles and indexing
+    Semantic {
+        #[command(subcommand)]
+        action: Option<SemanticAction>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -151,7 +166,11 @@ pub enum Command {
         #[arg(long)]
         reindex: bool,
         #[arg(long)]
+        reindex_semantic: bool,
+        #[arg(long)]
         check: bool,
+        #[arg(long)]
+        semantic_status: bool,
         #[arg(long)]
         verbose: bool,
         #[arg(long)]
@@ -449,11 +468,86 @@ pub enum SavedAction {
     /// List saved searches
     List,
     /// Add a saved search
-    Add { name: String, query: String },
+    Add {
+        name: String,
+        query: String,
+        #[arg(long, value_enum)]
+        mode: Option<SearchModeArg>,
+    },
     /// Delete a saved search
     Delete { name: String },
     /// Run a saved search
     Run { name: String },
+}
+
+#[derive(Subcommand)]
+pub enum SemanticAction {
+    /// Show semantic status
+    Status,
+    /// Enable semantic search using the active profile
+    Enable,
+    /// Disable semantic search
+    Disable,
+    /// Reindex the active semantic profile
+    Reindex,
+    /// Manage semantic profiles
+    Profile {
+        #[command(subcommand)]
+        action: Option<SemanticProfileAction>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SemanticProfileAction {
+    /// List known semantic profiles
+    List,
+    /// Install a semantic profile without switching to it
+    Install {
+        #[arg(value_enum)]
+        profile: SemanticProfileArg,
+    },
+    /// Switch to a semantic profile and rebuild its index
+    Use {
+        #[arg(value_enum)]
+        profile: SemanticProfileArg,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SearchModeArg {
+    Lexical,
+    Hybrid,
+    Semantic,
+}
+
+impl From<SearchModeArg> for mxr_core::SearchMode {
+    fn from(value: SearchModeArg) -> Self {
+        match value {
+            SearchModeArg::Lexical => Self::Lexical,
+            SearchModeArg::Hybrid => Self::Hybrid,
+            SearchModeArg::Semantic => Self::Semantic,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SemanticProfileArg {
+    #[value(name = "bge-small-en-v1.5")]
+    BgeSmallEnV15,
+    #[value(name = "multilingual-e5-small")]
+    MultilingualE5Small,
+    #[value(name = "bge-m3")]
+    BgeM3,
+}
+
+impl From<SemanticProfileArg> for mxr_core::SemanticProfile {
+    fn from(value: SemanticProfileArg) -> Self {
+        match value {
+            SemanticProfileArg::BgeSmallEnV15 => Self::BgeSmallEnV15,
+            SemanticProfileArg::MultilingualE5Small => Self::MultilingualE5Small,
+            SemanticProfileArg::BgeM3 => Self::BgeM3,
+        }
+    }
 }
 
 #[derive(Subcommand)]

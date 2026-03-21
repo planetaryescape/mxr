@@ -1,3 +1,4 @@
+use crate::semantic::SemanticEngine;
 use mxr_core::id::AccountId;
 use mxr_core::*;
 use mxr_protocol::IpcMessage;
@@ -26,6 +27,7 @@ pub(crate) struct ProviderRuntime {
 pub struct AppState {
     pub store: Arc<Store>,
     pub search: Arc<Mutex<SearchIndex>>,
+    pub semantic: Arc<Mutex<SemanticEngine>>,
     pub sync_engine: Arc<SyncEngine>,
     runtime: RwLock<ProviderRuntime>,
     sync_loop_accounts: StdMutex<HashSet<AccountId>>,
@@ -46,6 +48,11 @@ impl AppState {
 
         let store = Arc::new(Store::new(&db_path).await?);
         let search = Arc::new(Mutex::new(SearchIndex::open(&index_path)?));
+        let semantic = Arc::new(Mutex::new(SemanticEngine::new(
+            store.clone(),
+            &data_dir,
+            config.search.semantic.clone(),
+        )));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
         let provider_setup = Self::create_providers_from_config(&config, &store).await?;
@@ -55,6 +62,7 @@ impl AppState {
         Ok(Self {
             store,
             search,
+            semantic,
             sync_engine,
             runtime: RwLock::new(ProviderRuntime {
                 providers: provider_setup.providers,
@@ -234,6 +242,24 @@ impl AppState {
         self.config_snapshot().general.sync_interval
     }
 
+    pub async fn mutate_config<F>(
+        &self,
+        mutator: F,
+    ) -> std::result::Result<mxr_config::MxrConfig, String>
+    where
+        F: FnOnce(&mut mxr_config::MxrConfig),
+    {
+        let mut config = self.config_snapshot();
+        mutator(&mut config);
+        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+        self.semantic
+            .lock()
+            .await
+            .apply_config(config.search.semantic.clone());
+        *self.config.write().expect("config lock poisoned") = config.clone();
+        Ok(config)
+    }
+
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn default_provider(&self) -> Arc<dyn MailSyncProvider> {
         self.runtime
@@ -334,6 +360,10 @@ impl AppState {
                 default_send_provider: provider_setup.default_send_provider,
             };
         }
+        self.semantic
+            .lock()
+            .await
+            .apply_config(config.search.semantic.clone());
         *self.config.write().expect("config lock poisoned") = config;
         crate::loops::spawn_sync_loops(self.clone());
         Ok(())
@@ -350,12 +380,18 @@ impl AppState {
     pub async fn in_memory_without_accounts() -> anyhow::Result<Self> {
         let store = Arc::new(Store::in_memory().await?);
         let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
+        let semantic = Arc::new(Mutex::new(SemanticEngine::new(
+            store.clone(),
+            &std::env::temp_dir(),
+            mxr_config::MxrConfig::default().search.semantic.clone(),
+        )));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
         let (event_tx, _) = broadcast::channel(256);
 
         Ok(Self {
             store,
             search,
+            semantic,
             sync_engine,
             runtime: RwLock::new(ProviderRuntime {
                 providers: HashMap::new(),
@@ -375,6 +411,11 @@ impl AppState {
     ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
         let store = Arc::new(Store::in_memory().await?);
         let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
+        let semantic = Arc::new(Mutex::new(SemanticEngine::new(
+            store.clone(),
+            &std::env::temp_dir(),
+            mxr_config::MxrConfig::default().search.semantic.clone(),
+        )));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
         let account_id = AccountId::new();
@@ -406,6 +447,7 @@ impl AppState {
             Self {
                 store,
                 search,
+                semantic,
                 sync_engine,
                 runtime: RwLock::new(ProviderRuntime {
                     providers,

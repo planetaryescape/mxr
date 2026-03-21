@@ -5,6 +5,7 @@ mod ipc_client;
 mod loops;
 mod output;
 pub mod reindex;
+mod semantic;
 mod server;
 pub mod snooze;
 mod state;
@@ -41,14 +42,25 @@ async fn main() -> anyhow::Result<()> {
         }
         Some(Command::Doctor {
             reindex,
+            reindex_semantic,
             check,
+            semantic_status,
             verbose,
             index_stats,
             store_stats,
             format,
         }) => {
-            commands::doctor::run(reindex, check, verbose, index_stats, store_stats, format)
-                .await?;
+            commands::doctor::run(
+                reindex,
+                reindex_semantic,
+                check,
+                semantic_status,
+                verbose,
+                index_stats,
+                store_stats,
+                format,
+            )
+            .await?;
         }
         Some(Command::Logs {
             no_follow,
@@ -91,13 +103,15 @@ async fn main() -> anyhow::Result<()> {
             query,
             format,
             limit,
+            mode,
+            explain,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::search::run(query, format, limit).await?;
+            commands::search::run(query, format, limit, mode, explain).await?;
         }
-        Some(Command::Count { query }) => {
+        Some(Command::Count { query, mode }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::count::run(query).await?;
+            commands::count::run(query, mode).await?;
         }
         Some(Command::Cat {
             message_id,
@@ -128,6 +142,10 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Saved { action, format }) => {
             crate::server::ensure_daemon_running().await?;
             commands::saved::run(action, format).await?;
+        }
+        Some(Command::Semantic { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::semantic::run(action, format).await?;
         }
         Some(Command::Subscriptions { limit, format }) => {
             crate::server::ensure_daemon_running().await?;

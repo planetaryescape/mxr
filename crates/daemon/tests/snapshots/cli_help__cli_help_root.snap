@@ -16,6 +16,7 @@ Commands:
   export         Export a thread or matching search results
   headers        Show message headers
   saved          Manage saved searches
+  semantic       Manage semantic search profiles and indexing
   subscriptions  List senders with unsubscribe support
   sync           Trigger or query sync
   status         Show daemon status

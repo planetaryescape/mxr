@@ -356,3 +356,50 @@ Superseded by D049. Bodies and body text are now indexed at sync time.
 - Body prefetch loop removed from daemon
 - `GetBody` handler reads from SQLite only, no provider call
 - Search indexes body text immediately during sync
+
+---
+
+## D050: Hybrid search — English default, multilingual opt-in, lazy model delivery
+
+**Chosen**:
+
+- Tantivy BM25 stays the default lexical path
+- local semantic retrieval is added as an optional second retrieval path
+- `bge-small-en-v1.5` is the default local profile
+- `multilingual-e5-small` is opt-in
+- `bge-m3` is optional advanced install only
+- model weights are lazy-downloaded into the mxr data dir
+- dense ANN state is rebuildable from SQLite, not treated as canonical storage
+- BM25 + dense retrieval fuse with Reciprocal Rank Fusion
+
+**Considered**:
+
+- always-default multilingual profile
+- shipping model weights inside the binary
+- `sqlite-vec` as the primary dense retrieval engine
+- cloud-only embeddings
+
+**Why this choice**:
+
+- English default keeps first-use download and CPU cost smaller for the common case
+- multilingual still matters, but opt-in avoids penalizing every user
+- lazy model delivery preserves the single-binary install story without making the binary huge
+- SQLite remains the canonical store for chunks, embeddings, and profile state
+- a rebuildable sidecar ANN index matches the existing Tantivy pattern
+- RRF gives robust hybrid ranking without forcing incompatible score spaces into fake normalization
+
+**Why not always-default multilingual**:
+
+- larger default footprint
+- slower first enable for users who do not need it
+- weaker product default for the majority-English use case
+
+**Why not bundled model weights**:
+
+- binary size balloons immediately
+- every user pays for every profile whether they use it or not
+
+**Why not cloud-first embeddings**:
+
+- breaks the local-first story
+- adds network latency and privacy concerns to core search

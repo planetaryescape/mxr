@@ -22,6 +22,7 @@ Phased implementation plans for building mxr. Each document is designed to be co
 | 03 | [Phase 2](03-phase-2.md) | 2 | Compose + mutations + reader mode + IMAP. Includes A001 inline compose, A002 markdown rendering, A004 full mutation CLIs + batch --search, A005 Gmail-native keybindings, A007 basic batch ops (x/V select), A008 IMAP first-party adapter. |
 | 04 | [Phase 3](04-phase-3.md) | 3 | Export + rules + polish. Includes A004 remaining CLIs (labels/notify/events), A006 full observability (logs/status/events/doctor --check), A007 advanced batch (pattern select/vim counts). |
 | 05 | [Phase 4](05-phase-4.md) | 4 | Community + release: adapter kit (validates against both Gmail + IMAP), binary releases (musl static + cross-compilation), crates.io workspace publishing, changelog (git-cliff), Homebrew auto-update, install methods, docs site with full CLI/keybinding/observability reference. Integrates release pipeline addendum (D066-D071). |
+| 06 | [Hybrid Search](06-hybrid-search.md) | cross-phase | Lexical search stabilization, semantic schema/profile state, local model delivery, hybrid retrieval, CLI/TUI wiring, rebuild/status/profile flows. |
 
 ## Addendum Feature Distribution
 

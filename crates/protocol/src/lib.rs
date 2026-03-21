@@ -28,6 +28,8 @@ mod tests {
             Request::Search {
                 query: "test".to_string(),
                 limit: 10,
+                mode: None,
+                explain: false,
             },
         ];
 

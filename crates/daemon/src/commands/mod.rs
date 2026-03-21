@@ -16,6 +16,7 @@ pub mod notify;
 pub mod rules;
 pub mod saved;
 pub mod search;
+pub mod semantic;
 pub mod status;
 pub mod subscriptions;
 pub mod sync_cmd;

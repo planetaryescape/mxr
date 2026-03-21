@@ -50,6 +50,7 @@ mod tests {
             account_id: None,
             name: name.to_string(),
             query: query.to_string(),
+            search_mode: SearchMode::Lexical,
             sort: SortOrder::DateDesc,
             icon: None,
             position: 0,

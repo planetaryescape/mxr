@@ -27,6 +27,20 @@ impl Default for SearchConfig {
         Self {
             default_sort: SortOrder::DateDesc,
             max_results: 200,
+            default_mode: mxr_core::SearchMode::Lexical,
+            semantic: SemanticConfig::default(),
+        }
+    }
+}
+
+impl Default for SemanticConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            auto_download_models: true,
+            active_profile: mxr_core::SemanticProfile::BgeSmallEnV15,
+            max_pending_jobs: 256,
+            query_timeout_ms: 1500,
         }
     }
 }

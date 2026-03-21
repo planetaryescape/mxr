@@ -25,7 +25,12 @@ async fn resolve_message_ids(
         (Some(id), _) => Ok(vec![parse_message_id(&id)?]),
         (None, Some(query)) => {
             let resp = client
-                .request(Request::Search { query, limit: 1000 })
+                .request(Request::Search {
+                    query,
+                    limit: 1000,
+                    mode: None,
+                    explain: false,
+                })
                 .await?;
             match resp {
                 Response::Ok {

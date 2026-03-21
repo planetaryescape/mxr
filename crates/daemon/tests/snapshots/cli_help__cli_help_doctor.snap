@@ -8,10 +8,12 @@ Run diagnostics
 Usage: mxr doctor [OPTIONS]
 
 Options:
-      --reindex          
-      --check            
-      --verbose          
-      --index-stats      
-      --store-stats      
-      --format <FORMAT>  [possible values: table, json, csv, ids]
-  -h, --help             Print help
+      --reindex           
+      --reindex-semantic  
+      --check             
+      --semantic-status   
+      --verbose           
+      --index-stats       
+      --store-stats       
+      --format <FORMAT>   [possible values: table, json, csv, ids]
+  -h, --help              Print help

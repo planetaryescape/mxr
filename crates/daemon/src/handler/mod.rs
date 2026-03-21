@@ -136,16 +136,44 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             full_logs,
             since,
         } => diagnostics::bug_report(*verbose, *full_logs, since.clone()).await,
-        Request::Search { query, limit } => diagnostics::search(state, query, *limit).await,
-        Request::Count { query } => diagnostics::count(state, query).await,
+        Request::Search {
+            query, limit, mode, ..
+        } => {
+            diagnostics::search(
+                state,
+                query,
+                *limit,
+                mode.unwrap_or(state.config_snapshot().search.default_mode),
+            )
+            .await
+        }
+        Request::Count { query, mode } => {
+            diagnostics::count(
+                state,
+                query,
+                mode.unwrap_or(state.config_snapshot().search.default_mode),
+            )
+            .await
+        }
         Request::GetHeaders { message_id } => diagnostics::get_headers(state, message_id).await,
         Request::ListSavedSearches => diagnostics::list_saved_searches(state).await,
         Request::ListSubscriptions { limit } => {
             diagnostics::list_subscriptions(state, *limit).await
         }
-        Request::CreateSavedSearch { name, query } => {
-            diagnostics::create_saved_search(state, name, query).await
+        Request::GetSemanticStatus => diagnostics::semantic_status(state).await,
+        Request::EnableSemantic { enabled } => diagnostics::enable_semantic(state, *enabled).await,
+        Request::InstallSemanticProfile { profile } => {
+            diagnostics::install_semantic_profile(state, *profile).await
         }
+        Request::UseSemanticProfile { profile } => {
+            diagnostics::use_semantic_profile(state, *profile).await
+        }
+        Request::ReindexSemantic => diagnostics::reindex_semantic(state).await,
+        Request::CreateSavedSearch {
+            name,
+            query,
+            search_mode,
+        } => diagnostics::create_saved_search(state, name, query, *search_mode).await,
         Request::DeleteSavedSearch { name } => diagnostics::delete_saved_search(state, name).await,
         Request::RunSavedSearch { name, limit } => {
             diagnostics::run_saved_search(state, name, *limit).await
@@ -2529,6 +2557,7 @@ mod tests {
             id: 3,
             payload: IpcPayload::Request(Request::Count {
                 query: "deployment".to_string(),
+                mode: None,
             }),
         };
         let resp = handle_request(&state, &msg).await;
@@ -2573,6 +2602,7 @@ mod tests {
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "Important".to_string(),
                 query: "is:starred".to_string(),
+                search_mode: mxr_core::SearchMode::Lexical,
             }),
         };
         let resp = handle_request(&state, &create_msg).await;
@@ -2582,6 +2612,7 @@ mod tests {
             }) => {
                 assert_eq!(search.name, "Important");
                 assert_eq!(search.query, "is:starred");
+                assert_eq!(search.search_mode, mxr_core::SearchMode::Lexical);
             }
             other => panic!("Expected SavedSearchData, got {:?}", other),
         }
@@ -2598,9 +2629,41 @@ mod tests {
             }) => {
                 assert_eq!(searches.len(), 1);
                 assert_eq!(searches[0].name, "Important");
+                assert_eq!(searches[0].search_mode, mxr_core::SearchMode::Lexical);
             }
             other => panic!("Expected SavedSearches, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn dispatch_create_saved_search_persists_requested_mode() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let create_msg = IpcMessage {
+            id: 51,
+            payload: IpcPayload::Request(Request::CreateSavedSearch {
+                name: "Hybrid".to_string(),
+                query: "deployment".to_string(),
+                search_mode: mxr_core::SearchMode::Hybrid,
+            }),
+        };
+
+        let resp = handle_request(&state, &create_msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SavedSearchData { search },
+            }) => {
+                assert_eq!(search.search_mode, mxr_core::SearchMode::Hybrid);
+            }
+            other => panic!("Expected SavedSearchData, got {:?}", other),
+        }
+
+        let saved = state
+            .store
+            .get_saved_search_by_name("Hybrid")
+            .await
+            .unwrap()
+            .expect("saved search");
+        assert_eq!(saved.search_mode, mxr_core::SearchMode::Hybrid);
     }
 
     #[tokio::test]
@@ -2617,6 +2680,7 @@ mod tests {
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "Deploy".into(),
                 query: "deployment".into(),
+                search_mode: mxr_core::SearchMode::Lexical,
             }),
         };
         handle_request(&state, &create).await;
@@ -2723,6 +2787,8 @@ mod tests {
             payload: IpcPayload::Request(Request::Search {
                 query: "deployment".to_string(),
                 limit: 10,
+                mode: None,
+                explain: false,
             }),
         };
         let resp = handle_request(&state, &msg).await;
@@ -2735,6 +2801,36 @@ mod tests {
                     !results.is_empty(),
                     "Search for 'deployment' should return results"
                 );
+                assert_eq!(results[0].mode, mxr_core::SearchMode::Lexical);
+            }
+            other => panic!("Expected SearchResults, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_structured_search_in_semantic_mode_falls_back_to_lexical() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+
+        let msg = IpcMessage {
+            id: 13,
+            payload: IpcPayload::Request(Request::Search {
+                query: "is:unread".to_string(),
+                limit: 10,
+                mode: Some(mxr_core::SearchMode::Semantic),
+                explain: false,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SearchResults { results },
+            }) => {
+                assert!(!results.is_empty());
             }
             other => panic!("Expected SearchResults, got {:?}", other),
         }
@@ -2748,6 +2844,8 @@ mod tests {
             payload: IpcPayload::Request(Request::Search {
                 query: "older:30q".to_string(),
                 limit: 10,
+                mode: None,
+                explain: false,
             }),
         };
         let resp = handle_request(&state, &msg).await;
@@ -3690,6 +3788,7 @@ mod tests {
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "ToDelete".to_string(),
                 query: "is:unread".to_string(),
+                search_mode: mxr_core::SearchMode::Lexical,
             }),
         };
         let resp = handle_request(&state, &create_msg).await;

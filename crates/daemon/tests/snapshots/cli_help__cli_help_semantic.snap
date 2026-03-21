@@ -1,0 +1,20 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 13
+expression: stdout
+---
+Manage semantic search profiles and indexing
+
+Usage: mxr semantic [OPTIONS] [COMMAND]
+
+Commands:
+  status   Show semantic status
+  enable   Enable semantic search using the active profile
+  disable  Disable semantic search
+  reindex  Reindex the active semantic profile
+  profile  Manage semantic profiles
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  [possible values: table, json, csv, ids]
+  -h, --help             Print help

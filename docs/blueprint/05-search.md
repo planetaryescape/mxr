@@ -2,253 +2,277 @@
 
 ## Philosophy
 
-Search is not an afterthought bolted onto a folder browser. It is a first-class navigation primitive. Power users don't browse folders — they search.
+Search is a navigation primitive, not a mailbox add-on. The default path must stay instant and offline. Semantic retrieval is layered on top of that, not used as an excuse to weaken exact search.
 
-mxr's search should feel as fast and responsive as Spotlight or Alfred: type a query, get results instantly, navigate with keyboard.
+## Retrieval layers
+
+mxr now has three search modes:
+
+- **`lexical`**: Tantivy BM25 only. Default behavior. Fastest path.
+- **`hybrid`**: Tantivy BM25 + dense retrieval fused with Reciprocal Rank Fusion (RRF).
+- **`semantic`**: Dense retrieval only, with the same structured filters applied afterward.
+
+`lexical` remains the default until semantic search is explicitly enabled.
 
 ## Architecture
 
-### Primary engine: Tantivy
+### Lexical engine: Tantivy
 
-Tantivy is a Rust-native full-text search engine inspired by Apache Lucene. It provides:
-- BM25 ranking (the standard relevance algorithm used by search engines)
-- Field-level boosts (weight subject higher than body)
-- Boolean queries (AND, OR, NOT)
-- Phrase queries ("exact phrase matching")
-- Faceted search (filter by label, date range, account)
-- Sub-second results on large corpora (100k+ documents)
+Tantivy remains the primary exact-search engine. It provides:
 
-We considered SQLite FTS5 but rejected it as the primary engine because:
-- FTS5's BM25 implementation is basic (no field boosts, limited query syntax)
-- FTS5 gets slow on large mailboxes (100k+ messages)
-- FTS5 can't do faceted filtering efficiently
-- Tantivy is purpose-built for this; FTS5 is a SQLite feature
+- BM25 ranking
+- field boosts
+- boolean queries
+- phrase queries
+- faceted filtering
+- rebuildable on-disk index
 
-We keep FTS5 as a lightweight fallback (see data model doc) but Tantivy does all primary search work.
+The Tantivy index lives on disk alongside SQLite:
 
-### Index structure
+- Linux: `$XDG_DATA_HOME/mxr/search_index/`
+- macOS: `~/Library/Application Support/mxr/search_index/`
 
-Tantivy index lives on disk alongside the SQLite database.
+The index is always rebuildable from SQLite. `mxr doctor --reindex` rebuilds it from scratch.
 
-Location: `$XDG_DATA_HOME/mxr/search_index/` (Linux) or `~/Library/Application Support/mxr/search_index/` (macOS).
+### Semantic engine: local embeddings + rebuildable ANN
 
-The index is always rebuildable from SQLite. If it gets corrupted or out of sync, `mxr doctor --reindex` rebuilds it from scratch.
+Semantic search is local-first:
 
-### Indexed fields
+- vectors and chunk metadata are stored in SQLite
+- the in-memory dense ANN index is rebuilt from SQLite at startup or after semantic reindex
+- local model weights are cached on disk, not baked into the binary
 
-```rust
-pub fn build_schema() -> tantivy::schema::Schema {
-    let mut builder = Schema::builder();
+Canonical storage stays in SQLite. Dense retrieval is an acceleration layer, not a new source of truth.
 
-    // Stored fields (returned with results)
-    builder.add_text_field("message_id", STRING | STORED);
-    builder.add_text_field("account_id", STRING | STORED);
-    builder.add_text_field("thread_id", STRING | STORED);
+### SQLite semantic tables
 
-    // Searchable fields with BM25 ranking
-    builder.add_text_field("subject", TEXT);       // High boost
-    builder.add_text_field("from_name", TEXT);     // Medium boost
-    builder.add_text_field("from_email", STRING);  // Exact match
-    builder.add_text_field("to_email", STRING);    // Exact match
-    builder.add_text_field("snippet", TEXT);        // Low boost
-    builder.add_text_field("body_text", TEXT);     // Low boost (added when body is fetched)
-
-    // Facet/filter fields
-    builder.add_text_field("labels", STRING);       // Multi-valued
-    builder.add_date_field("date", INDEXED | STORED);
-    builder.add_u64_field("flags", INDEXED);
-    builder.add_bool_field("has_attachments", INDEXED);
-
-    builder.build()
-}
-```
-
-### Field boosts
-
-When scoring results, fields are weighted:
-
-| Field | Boost | Rationale |
-|---|---|---|
-| subject | 3.0 | Most indicative of relevance |
-| from_name | 2.0 | People search by sender often |
-| from_email | 2.0 | Exact sender matches are high intent |
-| snippet | 1.0 | Preview text, moderate signal |
-| body_text | 0.5 | Body contains noise (signatures, quotes, boilerplate) |
-
-These boosts are configurable but these defaults should work well for most users.
-
-### Indexing lifecycle
-
-1. **During sync**: New envelopes are indexed immediately (subject, from, snippet). Body text is NOT indexed at sync time because bodies haven't been fetched yet.
-2. **During body fetch**: When a user opens a message and the body is fetched, the Tantivy document is updated to include `body_text`. This means the index gets richer over time.
-3. **During re-index**: `mxr doctor --reindex` drops the Tantivy index and rebuilds from all data in SQLite (messages + bodies tables).
-
-This progressive indexing strategy means search works immediately after sync (against headers/snippets) and improves as the user reads messages.
-
-## Query syntax
-
-mxr supports a query language that feels natural but is precise when needed:
-
-```
-# Simple text search (searches subject, from, snippet, body)
-invoice
-
-# Exact phrase
-"deployment plan"
-
-# Field-specific
-from:alice@example.com
-to:bob@example.com
-subject:quarterly report
-
-# Boolean
-from:alice AND subject:invoice
-budget OR forecast
-NOT spam
-
-# Labels/filters
-label:work
-label:newsletters
-is:unread
-is:starred
-is:read
-has:attachment
-
-# Date ranges
-after:2026-01-01
-before:2026-03-15
-date:2026-03-17         # Specific date
-date:today
-date:yesterday
-date:this-week
-date:this-month
-
-# Combinations
-from:alice subject:invoice after:2026-01-01 is:unread
-
-# Negation
-from:alice -subject:spam
-label:work -label:archived
-```
-
-The query parser translates this syntax into Tantivy queries. It lives in the `search` crate.
-
-### Implementation note
-
-The query parser should be a separate, well-tested module. It takes a string and produces a `tantivy::query::Query`. This is the kind of thing that accumulates edge cases, so comprehensive test coverage is essential.
-
-## Saved searches
-
-Saved searches are a core primitive, not a nice-to-have. They are user-programmed inbox lenses.
-
-### What they are
-
-A saved search is a stored query string with a name and optional account filter. Results are computed live — they are NOT materialized views.
-
-### Where they appear
-
-1. **Sidebar**: Listed below labels, always visible
-2. **Command palette**: Searchable by name
-3. **CLI**: `mxr search --saved "Unread invoices"`
-
-### Examples
-
-```
-Name: "Unread invoices"
-Query: subject:invoice is:unread
-
-Name: "Newsletters this week"
-Query: label:newsletters date:this-week
-
-Name: "From team"
-Query: from:alice@work.com OR from:bob@work.com OR from:carol@work.com
-
-Name: "Large attachments"
-Query: has:attachment size:>5mb
-
-Name: "Waiting for reply"
-Query: is:sent after:2026-03-10 -label:replied
-```
-
-### Schema
+Semantic search extends the canonical store with:
 
 ```sql
-CREATE TABLE IF NOT EXISTS saved_searches (
-    id          TEXT PRIMARY KEY,
-    account_id  TEXT,              -- NULL = all accounts
-    name        TEXT NOT NULL,
-    query       TEXT NOT NULL,
-    sort_order  TEXT NOT NULL DEFAULT 'date_desc',
-    icon        TEXT,
-    position    INTEGER NOT NULL DEFAULT 0,
-    created_at  INTEGER NOT NULL
+ALTER TABLE saved_searches
+    ADD COLUMN search_mode TEXT NOT NULL DEFAULT '"lexical"';
+
+CREATE TABLE semantic_profiles (
+    id TEXT PRIMARY KEY,
+    profile_name TEXT NOT NULL UNIQUE,
+    backend TEXT NOT NULL,
+    model_revision TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    installed_at INTEGER,
+    activated_at INTEGER,
+    last_indexed_at INTEGER,
+    progress_completed INTEGER NOT NULL DEFAULT 0,
+    progress_total INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT
+);
+
+CREATE TABLE semantic_chunks (
+    id TEXT PRIMARY KEY,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    source_kind TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    normalized TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE semantic_embeddings (
+    chunk_id TEXT NOT NULL REFERENCES semantic_chunks(id) ON DELETE CASCADE,
+    profile_id TEXT NOT NULL REFERENCES semantic_profiles(id) ON DELETE CASCADE,
+    dimensions INTEGER NOT NULL,
+    vector_blob BLOB NOT NULL,
+    status TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (chunk_id, profile_id)
 );
 ```
 
-### CRUD via command palette
+## Indexed content
 
+### Lexical fields
+
+Tantivy indexes:
+
+- subject
+- sender name/email
+- recipient email
+- snippet
+- cleaned body text
+- labels
+- date
+- flags
+- attachment presence
+
+Body text is indexed during sync, not lazily on first open.
+
+### Semantic chunks
+
+Dense retrieval indexes message chunks, not whole-message blobs. Chunks are built from:
+
+- header summary: subject + participants + snippet
+- cleaned body text
+- attachment filename + mime summary
+- extracted attachment text when available locally
+
+Chunk ids are stable per message/source/ordinal. Embeddings are keyed by chunk id + profile id.
+
+## Ranking
+
+### Lexical ranking
+
+Field boosts remain intentionally simple:
+
+| Field | Boost | Why |
+|---|---|---|
+| subject | 3.0 | strongest exact signal |
+| from_name | 2.0 | sender intent matters |
+| from_email | 2.0 | exact sender matches are high-intent |
+| snippet | 1.0 | useful but noisy |
+| body_text | 0.5 | broad recall, lower precision |
+
+### Hybrid ranking
+
+Hybrid mode uses Reciprocal Rank Fusion with `k = 60`.
+
+Candidate windows:
+
+- BM25: `max(limit * 4, 100)`
+- dense: `max(limit * 8, 200)`
+
+Dense retrieval runs on chunks, then collapses to the best hit per message before fusion.
+
+RRF is intentionally used instead of hand-tuned score normalization because BM25 and cosine-like dense scores are not naturally comparable.
+
+### Structured filters stay authoritative
+
+Structured filters are never delegated to embeddings. They apply after candidate generation in `hybrid` and `semantic` modes:
+
+- `label:`
+- `is:`
+- `has:`
+- `after:`
+- `before:`
+- `date:`
+- `size:`
+- account scoping
+
+If a query is purely structured, mxr skips dense retrieval and uses the lexical/filter path only.
+
+## Query syntax
+
+The user-facing query language does not change when semantic search is enabled:
+
+```text
+invoice
+"deployment plan"
+from:alice@example.com
+subject:quarterly report
+from:alice AND subject:invoice
+label:work
+is:unread
+has:attachment
+after:2026-01-01
+before:2026-03-15
+date:today
+from:alice subject:invoice after:2026-01-01 is:unread
+from:alice -subject:spam
 ```
-Ctrl-P → "Create saved search" → Name: "Unread invoices" → Query: subject:invoice is:unread → Done
-Ctrl-P → "Edit saved search" → select → modify → Done
-Ctrl-P → "Delete saved search" → select → confirm → Done
+
+Semantic text is extracted from free text, phrases, and semantic-capable fields such as `subject:` and attachment filename/body text. Structured filters still behave exactly as structured filters.
+
+## Saved searches
+
+Saved searches remain live queries, but now persist their search mode:
+
+```sql
+CREATE TABLE saved_searches (
+    id TEXT PRIMARY KEY,
+    account_id TEXT,
+    name TEXT NOT NULL,
+    query TEXT NOT NULL,
+    search_mode TEXT NOT NULL DEFAULT '"lexical"',
+    sort_order TEXT NOT NULL DEFAULT 'date_desc',
+    icon TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+);
 ```
 
-Or via CLI:
-```
-mxr search --save "Unread invoices" "subject:invoice is:unread"
-```
+This means "Unread invoices" can stay lexical while another saved search uses hybrid mode.
 
-## Search phase roadmap
+## Semantic profiles
 
-### Phase 1 (v0.1) — what we build first
+### Default profile
 
-- Tantivy with BM25
-- Field boosts (subject, from, snippet, body)
-- Query parser supporting: text, phrases, field:value, boolean, date ranges, label/flag filters
-- Saved searches (create, list, delete, execute)
-- Progressive indexing (headers at sync, body on fetch)
-- Command palette integration
-- CLI search (`mxr search "query"`)
-- Reindex command (`mxr doctor --reindex`)
+Default local profile:
 
-### Phase 2 (future) — hybrid search with vector retrieval
+- `bge-small-en-v1.5`
 
-We explicitly decided NOT to build vector search in v0.1. The reasoning:
+Reason: smaller and faster for the majority-English default path.
 
-- Embeddings pipeline, vector persistence, incremental updates, model packaging, local inference performance, and ranking fusion tuning all create a second system before the first is proven
-- BM25 via Tantivy is already better search than any terminal email client ships today
-- Vector search adds significant complexity and binary size (ML model)
+### Opt-in multilingual profile
 
-When we do build it:
+Standard multilingual profile:
 
-- **Embeddings**: Local model via `candle` (Hugging Face's Rust ML framework) with a small model like `all-MiniLM-L6-v2`
-- **Vector index**: `usearch` or `hnsw_rs` (pure Rust ANN indexes)
-- **Fusion**: Reciprocal Rank Fusion (RRF) combining BM25 and vector results
+- `multilingual-e5-small`
 
-```rust
-// RRF is simple to implement once both result sets exist
-fn reciprocal_rank_fusion(
-    bm25: Vec<ScoredDoc>,
-    vector: Vec<ScoredDoc>,
-    limit: usize,
-) -> Vec<SearchResult> {
-    let k = 60.0;  // Standard RRF constant
-    let mut scores: HashMap<MessageId, f64> = HashMap::new();
+It is only downloaded if the user explicitly selects it.
 
-    for (rank, doc) in bm25.iter().enumerate() {
-        *scores.entry(doc.id.clone()).or_default()
-            += 1.0 / (k + rank as f64 + 1.0);
-    }
-    for (rank, doc) in vector.iter().enumerate() {
-        *scores.entry(doc.id.clone()).or_default()
-            += 1.0 / (k + rank as f64 + 1.0);
-    }
+### Optional advanced profile
 
-    let mut results: Vec<_> = scores.into_iter().collect();
-    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-    results.truncate(limit);
-    results.into_iter().map(|(id, score)| SearchResult { id, score }).collect()
-}
-```
+Optional heavier profile:
 
-This gives semantic search ("emails about the deployment issue last month") combined with exact keyword matching ("find invoice INV-2024-0847"). But it's phase 2, after BM25 is proven.
+- `bge-m3`
+
+This is explicit-install only. It is not downloaded automatically.
+
+### Model delivery
+
+Model weights are cached under the mxr data directory:
+
+- Linux: `$XDG_DATA_HOME/mxr/models/`
+- macOS: `~/Library/Application Support/mxr/models/`
+
+Rules:
+
+- enabling semantic search downloads only the active profile if missing
+- switching profiles downloads the new profile if needed, then rebuilds embeddings
+- profile identity is stored with each embedding so model changes do not corrupt ranking
+
+## Indexing lifecycle
+
+1. **During sync**: envelopes and bodies are written to SQLite and indexed in Tantivy immediately.
+2. **After sync**: changed message ids are queued for semantic reindex.
+3. **During semantic reindex**: chunk text is normalized, embedded with the active profile, stored in SQLite, then loaded into the dense ANN index.
+4. **During profile switch**: the new profile is installed if needed, embeddings are rebuilt, then the active profile flips once the new profile is ready.
+5. **During repair**: `mxr doctor --reindex-semantic` rebuilds the active semantic profile from SQLite.
+
+Label, read, and star changes do not trigger re-embedding. Content changes and profile changes do.
+
+## Operator notes
+
+- English semantic search is the default because it is smaller and faster.
+- Multilingual support is first-class, but opt-in.
+- Only configured profiles are downloaded.
+- Local profiles keep message content on-device.
+- A future cloud backend may exist behind the same profile abstraction, but local remains the default product story.
+
+## Current rollout
+
+Shipped baseline:
+
+- Tantivy BM25 lexical search
+- semantic profiles in SQLite
+- English default profile with opt-in multilingual profiles
+- hybrid search via RRF
+- saved searches with per-search mode
+- CLI/TUI mode selection and semantic status/reindex flows
+
+Future refinement:
+
+- richer attachment extraction (PDF/OCR/office docs)
+- better semantic explain/debug output
+- optional cloud embedding backends behind the same profile contract

@@ -420,7 +420,7 @@ pub struct App {
     pub in_flight_body_requests: HashSet<MessageId>,
     pub pending_thread_fetch: Option<mxr_core::ThreadId>,
     pub in_flight_thread_fetch: Option<mxr_core::ThreadId>,
-    pub pending_search: Option<String>,
+    pub pending_search: Option<(String, SearchMode)>,
     pub search_active: bool,
     pub pending_rule_detail: Option<String>,
     pub pending_rule_history: Option<String>,
@@ -1012,7 +1012,9 @@ impl App {
             Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
             Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
             Some(SidebarItem::Label(label)) => Some(Action::SelectLabel(label.id)),
-            Some(SidebarItem::SavedSearch(search)) => Some(Action::SelectSavedSearch(search.query)),
+            Some(SidebarItem::SavedSearch(search)) => {
+                Some(Action::SelectSavedSearch(search.query, search.search_mode))
+            }
             None => None,
         }
     }
@@ -1094,7 +1096,7 @@ impl App {
                 .collect();
             self.search_active = true;
             // Also fire async Tantivy search to catch body matches
-            self.pending_search = Some(self.search_bar.query.clone());
+            self.pending_search = Some((self.search_bar.query.clone(), self.search_bar.mode));
         }
         self.selected_index = 0;
         self.scroll_offset = 0;

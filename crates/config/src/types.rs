@@ -1,3 +1,4 @@
+use mxr_core::{SearchMode as CoreSearchMode, SemanticProfile};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -92,6 +93,8 @@ pub struct RenderConfig {
 pub struct SearchConfig {
     pub default_sort: SortOrder,
     pub max_results: usize,
+    pub default_mode: CoreSearchMode,
+    pub semantic: SemanticConfig,
 }
 
 /// Sort order for search results (config-local, not reusing core's).
@@ -101,6 +104,17 @@ pub enum SortOrder {
     DateDesc,
     DateAsc,
     Relevance,
+}
+
+/// Semantic search configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SemanticConfig {
+    pub enabled: bool,
+    pub auto_download_models: bool,
+    pub active_profile: SemanticProfile,
+    pub max_pending_jobs: usize,
+    pub query_timeout_ms: u64,
 }
 
 /// Snooze timing configuration.

@@ -50,6 +50,9 @@ regex = { workspace = true }
 url = { workspace = true }
 which = { workspace = true }
 keyring = { workspace = true }
+fastembed = "5.13"
+hnsw_rs = "0.3.4"
+sha2 = "0.10"
 
 [dev-dependencies]
 assert_cmd = { workspace = true }

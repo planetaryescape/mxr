@@ -45,8 +45,8 @@ Read real email from Gmail. Search actually works.
 
 ### Deliverables
 
-- [ ] **`mxr-provider-gmail`**: OAuth2 flow (browser redirect, localhost callback, token storage in keyring). Message listing. Delta sync via history.list. Body fetch. Label listing. List-Unsubscribe header parsing.
-- [ ] **`mxr-sync`**: Sync engine orchestrating Gmail provider ↔ store ↔ search. Initial sync (full mailbox). Delta sync (incremental). Body fetch on demand (lazy hydration). Progressive sync (messages appear in TUI as they arrive).
+- [ ] **`mxr-provider-gmail`**: OAuth2 flow (browser redirect, localhost callback, token storage in keyring). Message listing. Delta sync via history.list. Full message fetch. Label listing. List-Unsubscribe header parsing.
+- [ ] **`mxr-sync`**: Sync engine orchestrating Gmail provider ↔ store ↔ search. Initial sync (full mailbox). Delta sync (incremental). Envelope + body fetch during sync. Progressive sync (messages appear in TUI as they arrive).
 - [ ] **Search query parser**: Support for: text, "phrases", field:value (from:, to:, subject:, label:, is:, has:), boolean (AND, OR, NOT), date ranges (after:, before:, date:today). Saved search CRUD.
 - [ ] **TUI enhancements**: Three-pane layout (sidebar + list + message view). Thread view. Search input (/ keybinding). Command palette (Ctrl-P) with nucleo fuzzy matching. Saved searches in sidebar and palette. Sync status in status bar. Label list in sidebar with unread counts.
 - [ ] **Config file**: TOML parsing for accounts, general settings, render settings. XDG paths.
@@ -104,6 +104,8 @@ mxr becomes a productivity platform, not just a client.
 - [ ] **`mxr-rules`**: Declarative rules engine. Conditions + Actions as data. TOML rule definitions. Dry-run mode. Rule evaluation on sync. Execution logging.
 - [ ] **Shell hooks**: ShellHook action type. Message JSON piped to stdin.
 - [ ] **Multi-account**: Support for multiple Gmail accounts + SMTP configs. Account switcher in TUI and command palette.
+- [ ] **Hybrid search baseline**: Local semantic retrieval with English default profile (`bge-small-en-v1.5`), opt-in multilingual profile (`multilingual-e5-small`), optional advanced profile (`bge-m3`), and RRF fusion with Tantivy BM25.
+- [ ] **Semantic operations**: `mxr semantic ...`, `mxr doctor --semantic-status`, `mxr doctor --reindex-semantic`, saved searches with per-search mode, TUI mode toggle/status.
 - [ ] **HTML rendering config**: External html_command support (w3m, lynx).
 - [ ] **`mxr doctor --reindex`**: Full Tantivy reindex from SQLite.
 - [ ] **Shell completions**: bash, zsh, fish.
@@ -112,7 +114,7 @@ mxr becomes a productivity platform, not just a client.
 
 ### Definition of done
 
-You can export threads for AI, define rules that auto-organize your inbox, and use shell hooks for custom automation. Multi-account works. The client handles large mailboxes smoothly.
+You can export threads for AI, define rules that auto-organize your inbox, and switch between lexical, hybrid, and semantic search without giving up the local-first architecture. Multi-account works. The client handles large mailboxes smoothly.
 
 ## Phase 4 — Community & Polish (weeks 16-20)
 
@@ -133,7 +135,8 @@ Ready for public release.
 
 These are explicitly NOT on the roadmap for v1. They may grow out of the core later:
 
-- **Hybrid search**: Local embeddings + vector index + RRF fusion (Phase 2 of search roadmap)
+- **Cloud embedding backends**: Optional remote providers behind the same semantic profile abstraction
+- **Richer attachment extraction**: PDF/OCR/office-doc text extraction for semantic chunks
 - **Scripting runtime**: Embedded Lua or Rhai for in-process automation
 - **Notifications**: Desktop notifications via notify-rust, terminal bell
 - **Conditional snooze**: "Snooze until reply from X" via rules engine

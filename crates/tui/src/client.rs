@@ -108,6 +108,8 @@ impl Client {
             .request(Request::Search {
                 query: query.to_string(),
                 limit,
+                mode: None,
+                explain: false,
             })
             .await?;
         match resp {

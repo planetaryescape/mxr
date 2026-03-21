@@ -2,203 +2,155 @@
 
 ## Config file location
 
-Following XDG Base Directory spec:
+Following XDG:
 
-- **Config**: `$XDG_CONFIG_HOME/mxr/config.toml` (default: `~/.config/mxr/config.toml`)
-- **Data**: `$XDG_DATA_HOME/mxr/` (default: `~/.local/share/mxr/`)
-  - `mxr.db` — SQLite database
-  - `search_index/` — Tantivy index
-  - `attachments/` — Downloaded attachments
-- **Runtime**: `$XDG_RUNTIME_DIR/mxr/mxr.sock` — Daemon socket
+- Config: `$XDG_CONFIG_HOME/mxr/config.toml`
+- Data: `$XDG_DATA_HOME/mxr/`
+- Runtime: `$XDG_RUNTIME_DIR/mxr/mxr.sock`
 
-macOS equivalents:
-- Config: `~/Library/Application Support/mxr/config.toml`
-- Data: `~/Library/Application Support/mxr/`
+Data directory contents:
 
-## Config file structure
+- `mxr.db` — SQLite
+- `search_index/` — Tantivy index
+- `models/` — local semantic model cache
+- `attachments/` — downloaded attachments
+
+macOS equivalents live under `~/Library/Application Support/mxr/`.
+
+## Example config
 
 ```toml
-# ~/.config/mxr/config.toml
-
-# ===========================================================================
-# General
-# ===========================================================================
 [general]
-# Editor for composing. Falls back to $EDITOR, $VISUAL, then "vi"
 editor = "nvim"
-
-# Default account for compose (if multiple accounts configured)
 default_account = "personal"
-
-# Sync interval in seconds (0 = manual only)
 sync_interval = 60
-
-# Download directory for attachments
 attachment_dir = "~/mxr/attachments"
 
-# ===========================================================================
-# Accounts
-# ===========================================================================
-
-# --- Gmail account (sync + send) ---
-[accounts.personal]
-name = "Personal Gmail"
-email = "bk@example.com"
-
-[accounts.personal.sync]
-provider = "gmail"
-client_id = "xxxx.apps.googleusercontent.com"
-# Tokens stored in system keyring, not here.
-# Token ref is auto-generated during `mxr accounts add gmail`
-token_ref = "mxr/personal-gmail"
-
-[accounts.personal.send]
-provider = "gmail"
-# Uses same auth as sync
-
-# --- Gmail sync + SMTP send ---
-[accounts.work]
-name = "Work"
-email = "bk@company.com"
-
-[accounts.work.sync]
-provider = "gmail"
-client_id = "yyyy.apps.googleusercontent.com"
-token_ref = "mxr/work-gmail"
-
-[accounts.work.send]
-provider = "smtp"
-host = "smtp.company.com"
-port = 587
-username = "bk@company.com"
-password_ref = "mxr/work-smtp"  # Stored in system keyring
-use_tls = true
-
-# ===========================================================================
-# Rendering
-# ===========================================================================
 [render]
-# HTML to text conversion. Leave blank for built-in html2text.
-# html_command = "w3m -T text/html -dump"
-
-# Reader mode on by default
 reader_mode = true
-
-# Show stripped line count in status bar
 show_reader_stats = true
 
-# ===========================================================================
-# Search
-# ===========================================================================
 [search]
-# Default sort for search results
-default_sort = "date_desc"  # date_desc | date_asc | relevance
-
-# Maximum results to return
+default_sort = "date_desc"
 max_results = 200
+default_mode = "lexical"   # lexical | hybrid | semantic
 
-# ===========================================================================
-# Snooze defaults
-# ===========================================================================
+[search.semantic]
+enabled = false
+auto_download_models = true
+active_profile = "bge-small-en-v1.5"
+max_pending_jobs = 256
+query_timeout_ms = 1500
+
 [snooze]
-morning_hour = 9      # "tomorrow morning" = 9:00 AM
-evening_hour = 18     # "this evening" = 6:00 PM
+morning_hour = 9
+evening_hour = 18
 weekend_day = "saturday"
 weekend_hour = 10
 
-# ===========================================================================
-# Appearance
-# ===========================================================================
 [appearance]
-# Theme: "default" | "minimal" | path to custom theme TOML
 theme = "default"
-
-# Show sidebar
 sidebar = true
-
-# Date format in message list
-date_format = "%b %d"         # "Mar 17"
-date_format_full = "%Y-%m-%d %H:%M"  # "2026-03-17 09:45"
-
-# Truncate subject in message list
+date_format = "%b %d"
+date_format_full = "%Y-%m-%d %H:%M"
 subject_max_width = 60
-
-# ===========================================================================
-# Rules (see 10-rules-engine.md for full syntax)
-# ===========================================================================
-[[rules]]
-name = "Archive read newsletters"
-enabled = true
-priority = 10
-
-[rules.conditions]
-type = "and"
-conditions = [
-    { type = "field", field = "has_label", label = "newsletters" },
-    { type = "field", field = "is_read" },
-]
-
-[[rules.actions]]
-type = "archive"
 ```
 
-## Keybinding config
+## Search config
 
-Separate file to keep things clean:
+### `[search]`
 
-```toml
-# ~/.config/mxr/keys.toml
+- `default_sort`
+- `max_results`
+- `default_mode`
 
-# See 08-tui.md for full keybinding documentation.
-# Only override what you want to change. Defaults are sensible.
+`default_mode` controls what the daemon uses when a request does not specify a mode explicitly.
 
-[mail_list]
-j = "move_down"
-k = "move_up"
-gg = "jump_top"
-G = "jump_bottom"
-"Ctrl-d" = "page_down"
-"Ctrl-u" = "page_up"
-"/" = "search"
-Enter = "open"
-a = "archive"
-d = "trash"
-s = "star"
-r = "reply"
-c = "compose"
-"Ctrl-p" = "command_palette"
-D = "unsubscribe"
-Z = "snooze"
+### `[search.semantic]`
 
-[message_view]
-j = "scroll_down"
-k = "scroll_up"
-R = "toggle_reader_mode"
-o = "open_in_browser"
+- `enabled`: turn semantic indexing and retrieval on/off
+- `auto_download_models`: allow first-use profile download
+- `active_profile`: one of:
+  - `bge-small-en-v1.5`
+  - `multilingual-e5-small`
+  - `bge-m3`
+- `max_pending_jobs`: bound semantic indexing backlog
+- `query_timeout_ms`: dense search budget
 
-[thread_view]
-j = "next_message"
-k = "prev_message"
-e = "export_thread"
-```
+## Profile strategy
 
-## Credential storage
+Default profile:
 
-Credentials (OAuth2 tokens, SMTP passwords) are NEVER stored in config files. They are stored in the system keyring:
+- `bge-small-en-v1.5`
 
-- **Linux**: `secret-service` (GNOME Keyring, KDE Wallet) via `keyring` crate
-- **macOS**: Keychain
-- **Fallback**: Encrypted file in `$XDG_DATA_HOME/mxr/credentials.enc` (if no keyring available)
+Reason:
 
-The config file only stores a reference key (e.g., `token_ref = "mxr/personal-gmail"`) that the daemon uses to look up the actual credential from the keyring at runtime.
+- smaller download
+- faster local inference
+- good default for a majority-English mailbox
 
-## Config resolution
+Opt-in multilingual profile:
 
-Config values are resolved in this order (later overrides earlier):
+- `multilingual-e5-small`
 
-1. Built-in defaults (compiled into the binary)
-2. Config file (`config.toml`)
-3. Environment variables (`MXR_SYNC_INTERVAL=30`, `MXR_EDITOR=vim`)
-4. CLI flags (`mxr --sync-interval 30`)
+Optional advanced profile:
 
-`mxr config` shows the fully resolved configuration, useful for debugging.
+- `bge-m3`
+
+Rules:
+
+- only the active configured profile is downloaded automatically
+- switching to multilingual does not auto-download `bge-m3`
+- switching profiles triggers semantic rebuild for the new profile
+- existing lexical search keeps working while semantic is unavailable or rebuilding
+
+## Profile cache and lifecycle
+
+Models are cached under:
+
+- Linux: `$XDG_DATA_HOME/mxr/models/`
+- macOS: `~/Library/Application Support/mxr/models/`
+
+Operational behavior:
+
+1. User enables semantic search.
+2. mxr installs the active profile if missing.
+3. Semantic chunks and embeddings are built locally.
+4. If the active profile changes later, mxr installs the new profile if needed and rebuilds semantic embeddings.
+
+Embedding rows store the profile identity, so model switches do not corrupt existing semantic data.
+
+## Privacy
+
+The default semantic path is local:
+
+- message content stays on the machine
+- embeddings are stored in local SQLite
+- model weights are cached locally
+
+If cloud embedding backends are added later, they must be explicit configuration, not the default path.
+
+## Keybindings
+
+Keybindings still live in a separate `keys.toml`. See [08-tui.md](08-tui.md).
+
+## Credentials
+
+Credentials are never stored in `config.toml`.
+
+- Linux: Secret Service / GNOME Keyring / KDE Wallet
+- macOS: Keychain
+- fallback: encrypted file in data dir
+
+The config stores references only, not raw secrets.
+
+## Resolution order
+
+Later wins:
+
+1. built-in defaults
+2. `config.toml`
+3. environment
+4. CLI flags
+
+`mxr config` shows resolved values.

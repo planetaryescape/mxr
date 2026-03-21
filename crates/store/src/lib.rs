@@ -7,6 +7,7 @@ mod message;
 mod pool;
 mod rules;
 mod search;
+mod semantic;
 mod snooze;
 mod sync_cursor;
 mod sync_log;
@@ -636,6 +637,7 @@ mod tests {
             account_id: None,
             name: "Unread".to_string(),
             query: "is:unread".to_string(),
+            search_mode: SearchMode::Lexical,
             sort: SortOrder::DateDesc,
             icon: None,
             position: 0,
@@ -660,6 +662,7 @@ mod tests {
             account_id: None,
             name: "Unread".to_string(),
             query: "is:unread".to_string(),
+            search_mode: SearchMode::Lexical,
             sort: SortOrder::DateDesc,
             icon: None,
             position: 0,
@@ -670,6 +673,7 @@ mod tests {
             account_id: None,
             name: "Starred".to_string(),
             query: "is:starred".to_string(),
+            search_mode: SearchMode::Hybrid,
             sort: SortOrder::DateDesc,
             icon: Some("star".to_string()),
             position: 1,

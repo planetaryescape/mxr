@@ -30,6 +30,7 @@ pub enum Action {
     OpenSearch,
     SubmitSearch,
     CloseSearch,
+    CycleSearchMode,
     NextSearchResult,
     PrevSearchResult,
     // Gmail go-to navigation (A005)
@@ -51,7 +52,7 @@ pub enum Action {
     ToggleMailListMode,
     // Label / saved search selection
     SelectLabel(mxr_core::LabelId),
-    SelectSavedSearch(String),
+    SelectSavedSearch(String, mxr_core::SearchMode),
     ClearFilter,
     RefreshRules,
     ToggleRuleEnabled,

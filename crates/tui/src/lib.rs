@@ -231,11 +231,21 @@ pub async fn run() -> anyhow::Result<()> {
         };
 
         // Spawn non-blocking search
-        if let Some(query) = app.pending_search.take() {
+        if let Some((query, mode)) = app.pending_search.take() {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
-                let results = match ipc_call(&bg, Request::Search { query, limit: 200 }).await {
+                let results = match ipc_call(
+                    &bg,
+                    Request::Search {
+                        query,
+                        limit: 200,
+                        mode: Some(mode),
+                        explain: false,
+                    },
+                )
+                .await
+                {
                     Ok(Response::Ok {
                         data: ResponseData::SearchResults { results },
                     }) => {
@@ -2078,6 +2088,18 @@ mod tests {
     }
 
     #[test]
+    fn search_bar_cycles_modes() {
+        let mut bar = SearchBar::default();
+        assert_eq!(bar.mode, mxr_core::SearchMode::Lexical);
+        bar.cycle_mode();
+        assert_eq!(bar.mode, mxr_core::SearchMode::Hybrid);
+        bar.cycle_mode();
+        assert_eq!(bar.mode, mxr_core::SearchMode::Semantic);
+        bar.cycle_mode();
+        assert_eq!(bar.mode, mxr_core::SearchMode::Lexical);
+    }
+
+    #[test]
     fn reopening_active_search_preserves_query() {
         let mut app = App::new();
         app.search_active = true;
@@ -3134,6 +3156,7 @@ mod tests {
             account_id: None,
             name: "Unread".into(),
             query: "is:unread".into(),
+            search_mode: SearchMode::Lexical,
             sort: SortOrder::DateDesc,
             icon: None,
             position: 0,

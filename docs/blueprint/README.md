@@ -11,17 +11,17 @@
 | 02 | [Data Model](02-data-model.md) | Internal types, SQLite schema, ProviderMeta, typed IDs, UnsubscribeMethod, Snooze |
 | 03 | [Providers](03-providers.md) | Split traits, Gmail API details, SMTP, fake provider, adapter kit, adapter strategy |
 | 04 | [Sync](04-sync.md) | Sync lifecycle, delta sync, body fetch, snooze wake loop, error handling, diagnostics |
-| 05 | [Search](05-search.md) | Tantivy setup, BM25, field boosts, query syntax, saved searches, future hybrid search |
+| 05 | [Search](05-search.md) | Tantivy BM25, semantic profiles, search modes, RRF hybrid search, saved searches, operator notes |
 | 06 | [Compose](06-compose.md) | $EDITOR flow, YAML frontmatter, context block, markdown→multipart, draft management |
 | 07 | [Rendering](07-rendering.md) | Plain text first, reader mode, HTML conversion, unsubscribe feature, distraction-free philosophy |
 | 08 | [TUI](08-tui.md) | Layout, vim motions, keybinding system, command palette, action dispatch, daemon events |
-| 09 | [CLI](09-cli.md) | Subcommands, output formats, shell integration, composability with Unix tools |
+| 09 | [CLI](09-cli.md) | Subcommands, semantic/profile commands, output formats, shell integration |
 | 10 | [Rules Engine](10-rules-engine.md) | Deterministic rules, conditions/actions, dry-run, shell hooks, phasing |
 | 11 | [Export](11-export.md) | Thread export formats: Markdown, JSON, Mbox, LLM Context |
-| 12 | [Config](12-config.md) | TOML structure, accounts, keybindings, credential storage, config resolution |
+| 12 | [Config](12-config.md) | TOML structure, semantic search config, model cache, keybindings, credential storage |
 | 13 | [Open Source](13-open-source.md) | Contributor experience, adapter kit, licensing, CI, repo structure |
 | 14 | [Roadmap](14-roadmap.md) | Phased milestones with checklists: Phase 0-4 + future ideas |
-| 15 | [Decision Log](15-decision-log.md) | Every "we considered X, chose Y because Z" — 24 documented decisions |
+| 15 | [Decision Log](15-decision-log.md) | Every "we considered X, chose Y because Z" decision, including hybrid-search model and delivery choices |
 | 16 | [Addendum](16-addendum.md) | Post-blueprint amendments (A001-A009): inline CLI compose, full CLI surface, vim+Gmail keybindings, daemon observability, TUI batch ops, IMAP first-party, bug reporting |
 | 17 | [Release Pipeline](17-release-pipeline.md) | CI/CD pipeline: PR checks, release automation, crates.io publishing, cross-compiled binaries, Homebrew, changelog, docs deployment (D066-D071) |
 | 18 | [Bug Reporting](18-bug-reporting.md) | `mxr bug-report` command, log sanitization, log retention, diagnostic capture workflow (D072-D074) |

@@ -337,7 +337,7 @@ pub fn system_label_order(name: &str) -> usize {
 mod tests {
     use super::*;
     use mxr_core::id::{AccountId, LabelId, SavedSearchId};
-    use mxr_core::types::SortOrder;
+    use mxr_core::types::{SearchMode, SortOrder};
 
     fn label(name: &str, kind: LabelKind) -> Label {
         Label {
@@ -394,6 +394,7 @@ mod tests {
             account_id: None,
             name: "Unread".into(),
             query: "is:unread".into(),
+            search_mode: SearchMode::Lexical,
             sort: SortOrder::DateDesc,
             icon: None,
             position: 0,

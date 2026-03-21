@@ -11,13 +11,57 @@ use tokio::net::UnixStream;
 
 pub async fn run(
     reindex: bool,
+    reindex_semantic: bool,
     check: bool,
+    semantic_status: bool,
     verbose: bool,
     index_stats: bool,
     store_stats: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let fmt = resolve_format(format);
+
+    if semantic_status || reindex_semantic {
+        let mut client = IpcClient::connect().await?;
+        let request = if reindex_semantic {
+            Request::ReindexSemantic
+        } else {
+            Request::GetSemanticStatus
+        };
+        let response = client.request(request).await?;
+        match response {
+            Response::Ok {
+                data: ResponseData::SemanticStatus { snapshot },
+            } => match fmt {
+                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&snapshot)?),
+                _ => {
+                    println!(
+                        "enabled={} active_profile={}",
+                        snapshot.enabled,
+                        snapshot.active_profile.as_str()
+                    );
+                    for profile in snapshot.profiles {
+                        println!(
+                            "{} status={:?} dims={} indexed_at={}",
+                            profile.profile.as_str(),
+                            profile.status,
+                            profile.dimensions,
+                            profile
+                                .last_indexed_at
+                                .map(|v| v.to_rfc3339())
+                                .unwrap_or_else(|| "-".into())
+                        );
+                    }
+                }
+            },
+            Response::Error { message } => anyhow::bail!("{}", message),
+            _ => anyhow::bail!("Unexpected response"),
+        }
+        if semantic_status && !reindex {
+            return Ok(());
+        }
+    }
+
     let report = collect_report().await?;
     let data_dir = mxr_config::data_dir();
     let db_path = data_dir.join("mxr.db");

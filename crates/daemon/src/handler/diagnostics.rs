@@ -3,11 +3,17 @@ use super::{
     handle_export_search, handle_export_thread, protocol_event_entry, recent_log_lines,
     should_fallback_to_tantivy, HandlerResult,
 };
+use crate::semantic::should_use_semantic;
 use crate::state::AppState;
+use chrono::Datelike;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::ExportFormat;
+use mxr_core::types::{ExportFormat, SearchMode, SemanticProfile};
 use mxr_protocol::{ResponseData, SearchResultItem};
-use mxr_search::{parse_query, QueryBuilder, SearchResult};
+use mxr_search::{
+    ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp},
+    parse_query, QueryBuilder, SearchResult,
+};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(super) async fn list_events(
@@ -59,48 +65,20 @@ pub(super) async fn bug_report(
     Ok(ResponseData::BugReport { content })
 }
 
-pub(super) async fn search(state: &Arc<AppState>, query: &str, limit: u32) -> HandlerResult {
-    let search = state.search.lock().await;
-    let results = match parse_query(query) {
-        Ok(ast) => {
-            let builder = QueryBuilder::new(search.schema());
-            let tantivy_query = builder.build(&ast);
-            search.search_ast(tantivy_query, limit as usize)
-        }
-        Err(error) => {
-            if should_fallback_to_tantivy(query, &error) {
-                search.search(query, limit as usize)
-            } else {
-                Err(mxr_core::MxrError::Search(format!(
-                    "Invalid search query: {error}"
-                )))
-            }
-        }
-    };
-    let results = results.map_err(|e| e.to_string())?;
+pub(super) async fn search(
+    state: &Arc<AppState>,
+    query: &str,
+    limit: u32,
+    mode: SearchMode,
+) -> HandlerResult {
+    let results = execute_search(state, query, limit as usize, mode).await?;
     Ok(ResponseData::SearchResults {
-        results: search_result_items(results),
+        results: search_result_items(results, mode),
     })
 }
 
-pub(super) async fn count(state: &Arc<AppState>, query: &str) -> HandlerResult {
-    let search = state.search.lock().await;
-    let results = match parse_query(query) {
-        Ok(ast) => {
-            let builder = QueryBuilder::new(search.schema());
-            let tantivy_query = builder.build(&ast);
-            search.search_ast(tantivy_query, 10_000)
-        }
-        Err(error) => {
-            if should_fallback_to_tantivy(query, &error) {
-                search.search(query, 10_000)
-            } else {
-                Err(mxr_core::MxrError::Search(format!(
-                    "Invalid search query: {error}"
-                )))
-            }
-        }
-    };
+pub(super) async fn count(state: &Arc<AppState>, query: &str, mode: SearchMode) -> HandlerResult {
+    let results = execute_search(state, query, 10_000, mode).await;
     Ok(ResponseData::Count {
         count: results.map_err(|e| e.to_string())?.len() as u32,
     })
@@ -181,16 +159,93 @@ pub(super) async fn list_subscriptions(state: &Arc<AppState>, limit: u32) -> Han
     Ok(ResponseData::Subscriptions { subscriptions })
 }
 
+pub(super) async fn semantic_status(state: &Arc<AppState>) -> HandlerResult {
+    let snapshot = state
+        .semantic
+        .lock()
+        .await
+        .status_snapshot()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::SemanticStatus { snapshot })
+}
+
+pub(super) async fn enable_semantic(state: &Arc<AppState>, enabled: bool) -> HandlerResult {
+    if enabled {
+        let profile = state.config_snapshot().search.semantic.active_profile;
+        state
+            .semantic
+            .lock()
+            .await
+            .use_profile(profile)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    state
+        .mutate_config(|config| {
+            config.search.semantic.enabled = enabled;
+        })
+        .await?;
+    semantic_status(state).await
+}
+
+pub(super) async fn install_semantic_profile(
+    state: &Arc<AppState>,
+    profile: SemanticProfile,
+) -> HandlerResult {
+    state
+        .semantic
+        .lock()
+        .await
+        .install_profile(profile)
+        .await
+        .map_err(|e| e.to_string())?;
+    semantic_status(state).await
+}
+
+pub(super) async fn use_semantic_profile(
+    state: &Arc<AppState>,
+    profile: SemanticProfile,
+) -> HandlerResult {
+    state
+        .semantic
+        .lock()
+        .await
+        .use_profile(profile)
+        .await
+        .map_err(|e| e.to_string())?;
+    state
+        .mutate_config(|config| {
+            config.search.semantic.enabled = true;
+            config.search.semantic.active_profile = profile;
+        })
+        .await?;
+    semantic_status(state).await
+}
+
+pub(super) async fn reindex_semantic(state: &Arc<AppState>) -> HandlerResult {
+    state
+        .semantic
+        .lock()
+        .await
+        .reindex_active()
+        .await
+        .map_err(|e| e.to_string())?;
+    semantic_status(state).await
+}
+
 pub(super) async fn create_saved_search(
     state: &Arc<AppState>,
     name: &str,
     query: &str,
+    search_mode: SearchMode,
 ) -> HandlerResult {
     let search = mxr_core::types::SavedSearch {
         id: mxr_core::SavedSearchId::new(),
         account_id: None,
         name: name.to_string(),
         query: query.to_string(),
+        search_mode,
         sort: mxr_core::types::SortOrder::DateDesc,
         icon: None,
         position: 0,
@@ -227,12 +282,9 @@ pub(super) async fn run_saved_search(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Saved search '{name}' not found"))?;
-    let search = state.search.lock().await;
-    let results = search
-        .search(&saved.query, limit as usize)
-        .map_err(|e| e.to_string())?;
+    let results = execute_search(state, &saved.query, limit as usize, saved.search_mode).await?;
     Ok(ResponseData::SearchResults {
-        results: search_result_items(results),
+        results: search_result_items(results, saved.search_mode),
     })
 }
 
@@ -252,11 +304,20 @@ pub(super) async fn sync_now(
     account_id: Option<&AccountId>,
 ) -> HandlerResult {
     let provider = state.get_provider(account_id).clone();
-    state
+    let outcome = state
         .sync_engine
-        .sync_account(provider.as_ref())
+        .sync_account_with_outcome(provider.as_ref())
         .await
         .map_err(|e| e.to_string())?;
+    if !outcome.upserted_message_ids.is_empty() {
+        state
+            .semantic
+            .lock()
+            .await
+            .reindex_messages(&outcome.upserted_message_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     Ok(ResponseData::Ack)
 }
 
@@ -290,7 +351,7 @@ pub(super) async fn get_sync_status(
     Ok(ResponseData::SyncStatus { sync })
 }
 
-fn search_result_items(results: Vec<SearchResult>) -> Vec<SearchResultItem> {
+fn search_result_items(results: Vec<SearchResult>, mode: SearchMode) -> Vec<SearchResultItem> {
     results
         .into_iter()
         .filter_map(|result| {
@@ -305,7 +366,343 @@ fn search_result_items(results: Vec<SearchResult>) -> Vec<SearchResultItem> {
                     uuid::Uuid::parse_str(&result.thread_id).ok()?,
                 ),
                 score: result.score,
+                mode,
             })
         })
         .collect()
+}
+
+async fn execute_search(
+    state: &Arc<AppState>,
+    query: &str,
+    limit: usize,
+    mode: SearchMode,
+) -> Result<Vec<SearchResult>, String> {
+    match parse_query(query) {
+        Ok(ast) => execute_search_ast(state, query, &ast, limit, mode).await,
+        Err(error) => {
+            let search = state.search.lock().await;
+            if should_fallback_to_tantivy(query, &error) {
+                search.search(query, limit).map_err(|e| e.to_string())
+            } else {
+                Err(format!("Invalid search query: {error}"))
+            }
+        }
+    }
+}
+
+async fn execute_search_ast(
+    state: &Arc<AppState>,
+    _query: &str,
+    ast: &QueryNode,
+    limit: usize,
+    mode: SearchMode,
+) -> Result<Vec<SearchResult>, String> {
+    let lexical_window = if mode == SearchMode::Lexical {
+        limit
+    } else {
+        (limit.saturating_mul(4)).max(100)
+    };
+    let lexical_results = lexical_search(state, ast, lexical_window).await?;
+    if mode == SearchMode::Lexical || !should_use_semantic(mode) {
+        return Ok(truncate_results(lexical_results, limit));
+    }
+
+    let Some(semantic_query) = semantic_query_text(ast) else {
+        return Ok(truncate_results(lexical_results, limit));
+    };
+    if semantic_query.is_empty() || has_negated_semantic_terms(ast) {
+        return Ok(truncate_results(lexical_results, limit));
+    }
+
+    let dense_window = (limit.saturating_mul(8)).max(200);
+    let semantic_hits = {
+        let mut semantic = state.semantic.lock().await;
+        semantic
+            .search(&semantic_query, dense_window)
+            .await
+            .map_err(|e| e.to_string())?
+    };
+
+    let dense_results = filter_dense_hits(state, ast, semantic_hits).await?;
+    if mode == SearchMode::Semantic {
+        if dense_results.is_empty() {
+            return Ok(truncate_results(lexical_results, limit));
+        }
+        return Ok(truncate_results(dense_results, limit));
+    }
+
+    let fused = reciprocal_rank_fusion(&lexical_results, &dense_results, limit, 60);
+    if fused.is_empty() {
+        Ok(truncate_results(lexical_results, limit))
+    } else {
+        Ok(fused)
+    }
+}
+
+async fn lexical_search(
+    state: &Arc<AppState>,
+    ast: &QueryNode,
+    limit: usize,
+) -> Result<Vec<SearchResult>, String> {
+    let search = state.search.lock().await;
+    let builder = QueryBuilder::new(search.schema());
+    let tantivy_query = builder.build(ast);
+    search
+        .search_ast(tantivy_query, limit)
+        .map_err(|e| e.to_string())
+}
+
+async fn filter_dense_hits(
+    state: &Arc<AppState>,
+    ast: &QueryNode,
+    hits: Vec<crate::semantic::SemanticHit>,
+) -> Result<Vec<SearchResult>, String> {
+    if hits.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let message_ids = hits
+        .iter()
+        .map(|hit| hit.message_id.clone())
+        .collect::<Vec<_>>();
+    let envelopes = state
+        .store
+        .list_envelopes_by_ids(&message_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    let envelopes_by_id = envelopes
+        .into_iter()
+        .map(|envelope| (envelope.id.clone(), envelope))
+        .collect::<HashMap<_, _>>();
+
+    let mut results = Vec::new();
+    for hit in hits {
+        let Some(envelope) = envelopes_by_id.get(&hit.message_id) else {
+            continue;
+        };
+        if !matches_structured_filters(ast, envelope) {
+            continue;
+        }
+        results.push(SearchResult {
+            message_id: envelope.id.as_str(),
+            account_id: envelope.account_id.as_str(),
+            thread_id: envelope.thread_id.as_str(),
+            score: hit.score,
+        });
+    }
+    Ok(results)
+}
+
+fn reciprocal_rank_fusion(
+    lexical: &[SearchResult],
+    dense: &[SearchResult],
+    limit: usize,
+    k: usize,
+) -> Vec<SearchResult> {
+    let mut fused = HashMap::<String, (f32, SearchResult)>::new();
+
+    for (rank, result) in lexical.iter().enumerate() {
+        let score = 1.0 / (k + rank + 1) as f32;
+        fused
+            .entry(result.message_id.clone())
+            .and_modify(|entry| entry.0 += score)
+            .or_insert((score, result.clone()));
+    }
+
+    for (rank, result) in dense.iter().enumerate() {
+        let score = 1.0 / (k + rank + 1) as f32;
+        fused
+            .entry(result.message_id.clone())
+            .and_modify(|entry| entry.0 += score)
+            .or_insert((score, result.clone()));
+    }
+
+    let mut results = fused
+        .into_iter()
+        .map(|(_, (score, mut result))| {
+            result.score = score;
+            result
+        })
+        .collect::<Vec<_>>();
+    results.sort_by(|left, right| right.score.total_cmp(&left.score));
+    truncate_results(results, limit)
+}
+
+fn truncate_results(mut results: Vec<SearchResult>, limit: usize) -> Vec<SearchResult> {
+    if results.len() > limit {
+        results.truncate(limit);
+    }
+    results
+}
+
+fn semantic_query_text(ast: &QueryNode) -> Option<String> {
+    let mut parts = Vec::new();
+    collect_semantic_terms(ast, false, &mut parts);
+    let query = parts.join(" ").trim().to_string();
+    if query.is_empty() {
+        None
+    } else {
+        Some(query)
+    }
+}
+
+fn collect_semantic_terms(node: &QueryNode, negated: bool, parts: &mut Vec<String>) {
+    match node {
+        QueryNode::Text(text) if !negated => parts.push(text.clone()),
+        QueryNode::Phrase(text) if !negated => parts.push(text.clone()),
+        QueryNode::Field { field, value }
+            if !negated
+                && matches!(
+                    field,
+                    QueryField::Subject | QueryField::Body | QueryField::Filename
+                ) =>
+        {
+            parts.push(value.clone());
+        }
+        QueryNode::And(left, right) | QueryNode::Or(left, right) => {
+            collect_semantic_terms(left, negated, parts);
+            collect_semantic_terms(right, negated, parts);
+        }
+        QueryNode::Not(inner) => collect_semantic_terms(inner, true, parts),
+        _ => {}
+    }
+}
+
+fn has_negated_semantic_terms(node: &QueryNode) -> bool {
+    match node {
+        QueryNode::Not(inner) => contains_semantic_term(inner),
+        QueryNode::And(left, right) | QueryNode::Or(left, right) => {
+            has_negated_semantic_terms(left) || has_negated_semantic_terms(right)
+        }
+        _ => false,
+    }
+}
+
+fn contains_semantic_term(node: &QueryNode) -> bool {
+    match node {
+        QueryNode::Text(_) | QueryNode::Phrase(_) => true,
+        QueryNode::Field { field, .. } => matches!(
+            field,
+            QueryField::Subject | QueryField::Body | QueryField::Filename
+        ),
+        QueryNode::And(left, right) | QueryNode::Or(left, right) => {
+            contains_semantic_term(left) || contains_semantic_term(right)
+        }
+        QueryNode::Not(inner) => contains_semantic_term(inner),
+        _ => false,
+    }
+}
+
+fn matches_structured_filters(node: &QueryNode, envelope: &mxr_core::Envelope) -> bool {
+    match node {
+        QueryNode::Text(_) | QueryNode::Phrase(_) => true,
+        QueryNode::Field { field, value } => match field {
+            QueryField::Subject | QueryField::Body | QueryField::Filename => true,
+            QueryField::From => {
+                address_matches(&envelope.from.email, envelope.from.name.as_deref(), value)
+            }
+            QueryField::To => envelope
+                .to
+                .iter()
+                .any(|addr| address_matches(&addr.email, addr.name.as_deref(), value)),
+            QueryField::Cc => envelope
+                .cc
+                .iter()
+                .any(|addr| address_matches(&addr.email, addr.name.as_deref(), value)),
+            QueryField::Bcc => envelope
+                .bcc
+                .iter()
+                .any(|addr| address_matches(&addr.email, addr.name.as_deref(), value)),
+        },
+        QueryNode::Filter(filter) => matches_filter(filter, envelope),
+        QueryNode::Label(label) => envelope
+            .label_provider_ids
+            .iter()
+            .any(|provider_id| provider_id.eq_ignore_ascii_case(label)),
+        QueryNode::DateRange { bound, date } => matches_date(bound, date, envelope),
+        QueryNode::Size { op, bytes } => matches_size(op, *bytes, envelope.size_bytes),
+        QueryNode::And(left, right) => {
+            matches_structured_filters(left, envelope)
+                && matches_structured_filters(right, envelope)
+        }
+        QueryNode::Or(left, right) => {
+            matches_structured_filters(left, envelope)
+                || matches_structured_filters(right, envelope)
+        }
+        QueryNode::Not(inner) => !matches_structured_filters(inner, envelope),
+    }
+}
+
+fn address_matches(email: &str, name: Option<&str>, value: &str) -> bool {
+    let needle = value.to_ascii_lowercase();
+    email.to_ascii_lowercase().contains(&needle)
+        || name
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .contains(&needle)
+}
+
+fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
+    match filter {
+        FilterKind::Unread => !envelope.flags.contains(mxr_core::MessageFlags::READ),
+        FilterKind::Read => envelope.flags.contains(mxr_core::MessageFlags::READ),
+        FilterKind::Starred => envelope.flags.contains(mxr_core::MessageFlags::STARRED),
+        FilterKind::Draft => envelope.flags.contains(mxr_core::MessageFlags::DRAFT),
+        FilterKind::Sent => envelope.flags.contains(mxr_core::MessageFlags::SENT),
+        FilterKind::Trash => envelope.flags.contains(mxr_core::MessageFlags::TRASH),
+        FilterKind::Spam => envelope.flags.contains(mxr_core::MessageFlags::SPAM),
+        FilterKind::Answered => envelope.flags.contains(mxr_core::MessageFlags::ANSWERED),
+        FilterKind::Inbox => envelope
+            .label_provider_ids
+            .iter()
+            .any(|label| label.eq_ignore_ascii_case("INBOX")),
+        FilterKind::Archived => {
+            !envelope
+                .label_provider_ids
+                .iter()
+                .any(|label| label.eq_ignore_ascii_case("INBOX"))
+                && !envelope.flags.contains(mxr_core::MessageFlags::SENT)
+                && !envelope.flags.contains(mxr_core::MessageFlags::DRAFT)
+                && !envelope.flags.contains(mxr_core::MessageFlags::TRASH)
+                && !envelope.flags.contains(mxr_core::MessageFlags::SPAM)
+        }
+        FilterKind::HasAttachment => envelope.has_attachments,
+    }
+}
+
+fn matches_date(bound: &DateBound, date: &DateValue, envelope: &mxr_core::Envelope) -> bool {
+    let message_date = envelope.date.date_naive();
+    let resolved = resolve_date_value(date);
+    match bound {
+        DateBound::After => message_date >= resolved,
+        DateBound::Before => message_date < resolved,
+        DateBound::Exact => message_date == resolved,
+    }
+}
+
+fn resolve_date_value(value: &DateValue) -> chrono::NaiveDate {
+    let today = chrono::Local::now().date_naive();
+    match value {
+        DateValue::Specific(date) => *date,
+        DateValue::Today => today,
+        DateValue::Yesterday => today.pred_opt().unwrap_or(today),
+        DateValue::ThisWeek => {
+            let weekday = today.weekday().num_days_from_monday();
+            today - chrono::Duration::days(weekday as i64)
+        }
+        DateValue::ThisMonth => {
+            chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today)
+        }
+    }
+}
+
+fn matches_size(op: &SizeOp, bytes: u64, actual: u64) -> bool {
+    match op {
+        SizeOp::LessThan => actual < bytes,
+        SizeOp::LessThanOrEqual => actual <= bytes,
+        SizeOp::Equal => actual == bytes,
+        SizeOp::GreaterThan => actual > bytes,
+        SizeOp::GreaterThanOrEqual => actual >= bytes,
+    }
 }

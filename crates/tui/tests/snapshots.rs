@@ -2,7 +2,7 @@ use chrono::{TimeZone, Utc};
 use mxr_compose::frontmatter::ComposeFrontmatter;
 use mxr_core::id::{AccountId, MessageId, SavedSearchId, ThreadId};
 use mxr_core::types::{Address, Envelope, Label, LabelKind, MessageFlags, UnsubscribeMethod};
-use mxr_core::types::{SavedSearch, SortOrder};
+use mxr_core::types::{SavedSearch, SearchMode, SortOrder};
 use mxr_protocol::{
     AccountEditModeData, AccountSourceData, AccountSummaryData, DoctorReport, EventLogEntry,
     MutationCommand, Request,
@@ -215,6 +215,7 @@ fn sidebar_snapshot() {
         account_id: None,
         name: "Unread".into(),
         query: "is:unread".into(),
+        search_mode: SearchMode::Lexical,
         sort: SortOrder::DateDesc,
         icon: None,
         position: 0,

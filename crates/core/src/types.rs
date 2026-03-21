@@ -217,12 +217,125 @@ pub struct Draft {
 
 // -- SavedSearch --------------------------------------------------------------
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchMode {
+    #[default]
+    Lexical,
+    Hybrid,
+    Semantic,
+}
+
+impl SearchMode {
+    pub fn uses_semantic(self) -> bool {
+        matches!(self, Self::Hybrid | Self::Semantic)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SemanticProfile {
+    #[default]
+    #[serde(rename = "bge-small-en-v1.5")]
+    BgeSmallEnV15,
+    #[serde(rename = "multilingual-e5-small")]
+    MultilingualE5Small,
+    #[serde(rename = "bge-m3")]
+    BgeM3,
+}
+
+impl SemanticProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BgeSmallEnV15 => "bge-small-en-v1.5",
+            Self::MultilingualE5Small => "multilingual-e5-small",
+            Self::BgeM3 => "bge-m3",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SemanticProfileStatus {
+    #[default]
+    Pending,
+    Ready,
+    Indexing,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SemanticChunkSourceKind {
+    Header,
+    Body,
+    AttachmentSummary,
+    AttachmentText,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SemanticEmbeddingStatus {
+    #[default]
+    Pending,
+    Ready,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticProfileRecord {
+    pub id: SemanticProfileId,
+    pub profile: SemanticProfile,
+    pub backend: String,
+    pub model_revision: String,
+    pub dimensions: u32,
+    pub status: SemanticProfileStatus,
+    pub installed_at: Option<DateTime<Utc>>,
+    pub activated_at: Option<DateTime<Utc>>,
+    pub last_indexed_at: Option<DateTime<Utc>>,
+    pub progress_completed: u32,
+    pub progress_total: u32,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticChunkRecord {
+    pub id: SemanticChunkId,
+    pub message_id: MessageId,
+    pub source_kind: SemanticChunkSourceKind,
+    pub ordinal: u32,
+    pub normalized: String,
+    pub content_hash: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticEmbeddingRecord {
+    pub chunk_id: SemanticChunkId,
+    pub profile_id: SemanticProfileId,
+    pub dimensions: u32,
+    #[serde(with = "serde_bytes")]
+    pub vector: Vec<u8>,
+    pub status: SemanticEmbeddingStatus,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticStatusSnapshot {
+    pub enabled: bool,
+    pub active_profile: SemanticProfile,
+    pub profiles: Vec<SemanticProfileRecord>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedSearch {
     pub id: SavedSearchId,
     pub account_id: Option<AccountId>,
     pub name: String,
     pub query: String,
+    #[serde(default)]
+    pub search_mode: SearchMode,
     pub sort: SortOrder,
     pub icon: Option<String>,
     pub position: i32,

@@ -1,4 +1,4 @@
-use crate::cli::OutputFormat;
+use crate::cli::{OutputFormat, SearchModeArg};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_core::types::{Envelope, MessageFlags};
@@ -8,6 +8,8 @@ pub async fn run(
     query: Option<String>,
     format: Option<OutputFormat>,
     limit: Option<u32>,
+    mode: Option<SearchModeArg>,
+    explain: bool,
 ) -> anyhow::Result<()> {
     let query = query.unwrap_or_default();
     if query.is_empty() {
@@ -15,7 +17,14 @@ pub async fn run(
     }
     let limit = limit.unwrap_or(50);
     let mut client = IpcClient::connect().await?;
-    let resp = client.request(Request::Search { query, limit }).await?;
+    let resp = client
+        .request(Request::Search {
+            query,
+            limit,
+            mode: mode.map(Into::into),
+            explain,
+        })
+        .await?;
 
     let fmt = resolve_format(format);
     match resp {

@@ -129,6 +129,8 @@ pub enum Request {
     Search {
         query: String,
         limit: u32,
+        mode: Option<SearchMode>,
+        explain: bool,
     },
     SyncNow {
         account_id: Option<AccountId>,
@@ -142,6 +144,7 @@ pub enum Request {
     },
     Count {
         query: String,
+        mode: Option<SearchMode>,
     },
     GetHeaders {
         message_id: MessageId,
@@ -150,9 +153,21 @@ pub enum Request {
     ListSubscriptions {
         limit: u32,
     },
+    GetSemanticStatus,
+    EnableSemantic {
+        enabled: bool,
+    },
+    InstallSemanticProfile {
+        profile: SemanticProfile,
+    },
+    UseSemanticProfile {
+        profile: SemanticProfile,
+    },
+    ReindexSemantic,
     CreateSavedSearch {
         name: String,
         query: String,
+        search_mode: SearchMode,
     },
     DeleteSavedSearch {
         name: String,
@@ -349,6 +364,9 @@ pub enum ResponseData {
     Subscriptions {
         subscriptions: Vec<mxr_core::types::SubscriptionSummary>,
     },
+    SemanticStatus {
+        snapshot: SemanticStatusSnapshot,
+    },
     SavedSearchData {
         search: mxr_core::types::SavedSearch,
     },
@@ -384,6 +402,7 @@ pub struct SearchResultItem {
     pub account_id: AccountId,
     pub thread_id: ThreadId,
     pub score: f32,
+    pub mode: SearchMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -32,9 +32,15 @@ pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> a
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
-        SavedAction::Add { name, query } => {
+        SavedAction::Add { name, query, mode } => {
             let resp = client
-                .request(Request::CreateSavedSearch { name, query })
+                .request(Request::CreateSavedSearch {
+                    name,
+                    query,
+                    search_mode: mode
+                        .map(Into::into)
+                        .unwrap_or(mxr_core::SearchMode::Lexical),
+                })
                 .await?;
             match resp {
                 Response::Ok {

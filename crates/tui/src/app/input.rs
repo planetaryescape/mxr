@@ -55,6 +55,7 @@ impl App {
         if self.search_bar.active {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => return Some(Action::SubmitSearch),
+                (KeyCode::Tab, _) => return Some(Action::CycleSearchMode),
                 (KeyCode::Esc, _) => return Some(Action::CloseSearch),
                 (KeyCode::Backspace, _) => {
                     self.search_bar.on_backspace();

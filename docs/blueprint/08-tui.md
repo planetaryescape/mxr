@@ -102,6 +102,7 @@ Z               Snooze menu (Z t = tomorrow, Z n = next week, etc.)
 o               Open in browser (HTML body or attachment)
 e               Export thread
 /               Search (focus search input)
+Tab (in search) Cycle search mode: lexical → hybrid → semantic
 n               Next search result
 N               Previous search result
 Ctrl-p          Command palette
@@ -220,6 +221,7 @@ pub enum Action {
 
     // Search
     OpenSearch,
+    CycleSearchMode,
     NextResult,
     PrevResult,
     ExecuteSavedSearch(SavedSearchId),
@@ -240,6 +242,21 @@ pub enum Action {
 ```
 
 Keybindings map to Actions. The command palette maps to Actions. CLI subcommands map to Actions. One dispatch system for everything.
+
+## Search UI
+
+The search bar is mode-aware:
+
+- `/` opens search with the current mode
+- `Tab` cycles mode while the search bar is focused
+- the mode is visible in the search UI (`lexical`, `hybrid`, `semantic`)
+- selecting a saved search restores both its query and its saved mode
+
+Semantic status should also be visible somewhere lightweight in the TUI when enabled:
+
+- active profile name
+- indexing/rebuild progress
+- last semantic error, if any
 
 ## Command palette (Ctrl-P)
 
@@ -328,6 +345,7 @@ Uses `nucleo` (extracted from the Helix editor). Faster than skim/fzf matching. 
 
 The bottom bar shows:
 - Current context: `[INBOX]`, `[label:work]`, `[search: "invoice"]`
+- Search mode when a search is active: `[mode: lexical]`, `[mode: hybrid]`, `[mode: semantic]`
 - Unread count
 - Sync status: `synced 2m ago` or `syncing...` or `sync error: auth expired`
 - Reader mode indicator

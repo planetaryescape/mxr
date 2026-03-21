@@ -2,7 +2,12 @@ use crate::app::AttachmentPanelState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, panel: &AttachmentPanelState, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    panel: &AttachmentPanelState,
+    theme: &crate::theme::Theme,
+) {
     if !panel.visible {
         return;
     }
@@ -52,8 +57,9 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &AttachmentPanelState, theme: 
     frame.render_widget(List::new(items), chunks[0]);
 
     if panel.attachments.len() > list_height {
-        let mut scrollbar_state = ScrollbarState::new(panel.attachments.len().saturating_sub(list_height))
-            .position(panel.selected_index);
+        let mut scrollbar_state =
+            ScrollbarState::new(panel.attachments.len().saturating_sub(list_height))
+                .position(panel.selected_index);
         frame.render_stateful_widget(
             Scrollbar::default()
                 .orientation(ScrollbarOrientation::VerticalRight)
@@ -63,9 +69,10 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &AttachmentPanelState, theme: 
         );
     }
 
-    let footer = panel.status.clone().unwrap_or_else(|| {
-        "Enter/o open  d download  j/k move  Esc close".to_string()
-    });
+    let footer = panel
+        .status
+        .clone()
+        .unwrap_or_else(|| "Enter/o open  d download  j/k move  Esc close".to_string());
     frame.render_widget(
         Paragraph::new(footer).style(Style::default().fg(theme.text_secondary)),
         chunks[1],

@@ -56,19 +56,19 @@ publish() {
 require_token
 
 publish_async_imap
-publish mxr-core 0.3.0
-publish mxr-protocol 0.3.0
-publish mxr-config 0.3.0
-publish mxr-store 0.3.0
-publish mxr-search 0.3.0
-publish mxr-reader 0.3.0
-publish mxr-compose 0.3.0
-publish mxr-provider-fake 0.3.0
-publish mxr-provider-gmail 0.3.0
-publish mxr-provider-smtp 0.3.0
-publish mxr-provider-imap 0.3.0
-publish mxr-export 0.3.0
-publish mxr-rules 0.3.0
-publish mxr-sync 0.3.0
-publish mxr-tui 0.3.0
-publish mxr 0.3.0
+publish mxr-core 0.3.1
+publish mxr-protocol 0.3.1
+publish mxr-config 0.3.1
+publish mxr-store 0.3.1
+publish mxr-search 0.3.1
+publish mxr-reader 0.3.1
+publish mxr-compose 0.3.1
+publish mxr-provider-fake 0.3.1
+publish mxr-provider-gmail 0.3.1
+publish mxr-provider-smtp 0.3.1
+publish mxr-provider-imap 0.3.1
+publish mxr-export 0.3.1
+publish mxr-rules 0.3.1
+publish mxr-sync 0.3.1
+publish mxr-tui 0.3.1
+publish mxr 0.3.1

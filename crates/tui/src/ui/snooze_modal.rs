@@ -3,7 +3,13 @@ use mxr_config::SnoozeConfig;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, panel: &SnoozePanelState, config: &SnoozeConfig, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    panel: &SnoozePanelState,
+    config: &SnoozeConfig,
+    theme: &crate::theme::Theme,
+) {
     if !panel.visible {
         return;
     }
@@ -62,7 +68,9 @@ pub fn draw(frame: &mut Frame, area: Rect, panel: &SnoozePanelState, config: &Sn
 
 fn format_preset(preset: SnoozePreset, config: &SnoozeConfig) -> String {
     match preset {
-        SnoozePreset::TomorrowMorning => format!("Tomorrow morning ({:02}:00)", config.morning_hour),
+        SnoozePreset::TomorrowMorning => {
+            format!("Tomorrow morning ({:02}:00)", config.morning_hour)
+        }
         SnoozePreset::Tonight => format!("Tonight ({:02}:00)", config.evening_hour),
         SnoozePreset::Weekend => format!(
             "{} ({:02}:00)",

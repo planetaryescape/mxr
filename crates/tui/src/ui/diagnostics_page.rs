@@ -2,7 +2,12 @@ use crate::app::DiagnosticsPageState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, state: &DiagnosticsPageState, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    state: &DiagnosticsPageState,
+    theme: &crate::theme::Theme,
+) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

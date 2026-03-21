@@ -26,7 +26,10 @@ fn render_labels(labels: &[Label], format: OutputFormat) -> anyhow::Result<Strin
             if labels.is_empty() {
                 "No labels".to_string()
             } else {
-                let mut out = format!("{:<24} {:<10} {:>8} {:>8}\n", "NAME", "KIND", "UNREAD", "TOTAL");
+                let mut out = format!(
+                    "{:<24} {:<10} {:>8} {:>8}\n",
+                    "NAME", "KIND", "UNREAD", "TOTAL"
+                );
                 out.push_str(&format!("{}\n", "-".repeat(56)));
                 for label in labels {
                     let kind = match label.kind {

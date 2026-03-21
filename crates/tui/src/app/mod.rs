@@ -1,0 +1,2180 @@
+mod actions;
+mod draw;
+mod input;
+use crate::action::{Action, PatternKind};
+use crate::client::Client;
+use crate::input::InputHandler;
+use crate::theme::Theme;
+use crate::ui;
+use crate::ui::command_palette::CommandPalette;
+use crate::ui::compose_picker::ComposePicker;
+use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
+use crate::ui::search_bar::SearchBar;
+use crossterm::event::{KeyCode, KeyModifiers};
+use mxr_config::RenderConfig;
+use mxr_core::id::{AccountId, AttachmentId, MessageId};
+use mxr_core::types::*;
+use mxr_core::MxrError;
+use mxr_protocol::{MutationCommand, Request};
+use ratatui::prelude::*;
+use std::collections::{HashMap, HashSet};
+
+#[derive(Debug, Clone)]
+pub enum MutationEffect {
+    RemoveFromList(MessageId),
+    RemoveFromListMany(Vec<MessageId>),
+    UpdateFlags {
+        message_id: MessageId,
+        flags: MessageFlags,
+    },
+    ModifyLabels {
+        message_ids: Vec<MessageId>,
+        add: Vec<String>,
+        remove: Vec<String>,
+        status: String,
+    },
+    RefreshList,
+    StatusOnly(String),
+}
+
+/// Draft waiting for user confirmation after editor closes.
+pub struct PendingSend {
+    pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
+    pub body: String,
+    pub draft_path: std::path::PathBuf,
+    pub allow_send: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ComposeAction {
+    New,
+    NewWithTo(String),
+    EditDraft(std::path::PathBuf),
+    Reply { message_id: MessageId },
+    ReplyAll { message_id: MessageId },
+    Forward { message_id: MessageId },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActivePane {
+    Sidebar,
+    MailList,
+    MessageView,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MailListMode {
+    Threads,
+    Messages,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MailboxView {
+    Messages,
+    Subscriptions,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Screen {
+    Mailbox,
+    Search,
+    Rules,
+    Diagnostics,
+    Accounts,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidebarSection {
+    Labels,
+    SavedSearches,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutMode {
+    TwoPane,
+    ThreePane,
+    FullScreen,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodySource {
+    Plain,
+    Html,
+    Snippet,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BodyViewState {
+    Loading {
+        preview: Option<String>,
+    },
+    Ready {
+        raw: String,
+        rendered: String,
+        source: BodySource,
+    },
+    Empty {
+        preview: Option<String>,
+    },
+    Error {
+        message: String,
+        preview: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct MailListRow {
+    pub thread_id: mxr_core::ThreadId,
+    pub representative: Envelope,
+    pub message_count: usize,
+    pub unread_count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubscriptionEntry {
+    pub summary: SubscriptionSummary,
+    pub envelope: Envelope,
+}
+
+#[derive(Debug, Clone)]
+pub enum SidebarItem {
+    AllMail,
+    Subscriptions,
+    Label(Label),
+    SavedSearch(mxr_core::SavedSearch),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SubscriptionsPageState {
+    pub entries: Vec<SubscriptionEntry>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SearchPageState {
+    pub query: String,
+    pub editing: bool,
+    pub results: Vec<Envelope>,
+    pub scores: HashMap<MessageId, f32>,
+    pub selected_index: usize,
+    pub scroll_offset: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RulesPanel {
+    Details,
+    History,
+    DryRun,
+    Form,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RuleFormState {
+    pub visible: bool,
+    pub existing_rule: Option<String>,
+    pub name: String,
+    pub condition: String,
+    pub action: String,
+    pub priority: String,
+    pub enabled: bool,
+    pub active_field: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct RulesPageState {
+    pub rules: Vec<serde_json::Value>,
+    pub selected_index: usize,
+    pub detail: Option<serde_json::Value>,
+    pub history: Vec<serde_json::Value>,
+    pub dry_run: Vec<serde_json::Value>,
+    pub panel: RulesPanel,
+    pub status: Option<String>,
+    pub refresh_pending: bool,
+    pub form: RuleFormState,
+}
+
+impl Default for RulesPageState {
+    fn default() -> Self {
+        Self {
+            rules: Vec::new(),
+            selected_index: 0,
+            detail: None,
+            history: Vec::new(),
+            dry_run: Vec::new(),
+            panel: RulesPanel::Details,
+            status: None,
+            refresh_pending: false,
+            form: RuleFormState {
+                enabled: true,
+                priority: "100".to_string(),
+                ..RuleFormState::default()
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DiagnosticsPageState {
+    pub uptime_secs: Option<u64>,
+    pub daemon_pid: Option<u32>,
+    pub accounts: Vec<String>,
+    pub total_messages: Option<u32>,
+    pub sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
+    pub doctor: Option<mxr_protocol::DoctorReport>,
+    pub events: Vec<mxr_protocol::EventLogEntry>,
+    pub logs: Vec<String>,
+    pub status: Option<String>,
+    pub refresh_pending: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountFormMode {
+    Gmail,
+    ImapSmtp,
+    SmtpOnly,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccountFormState {
+    pub visible: bool,
+    pub mode: AccountFormMode,
+    pub pending_mode_switch: Option<AccountFormMode>,
+    pub key: String,
+    pub name: String,
+    pub email: String,
+    pub gmail_credential_source: mxr_protocol::GmailCredentialSourceData,
+    pub gmail_client_id: String,
+    pub gmail_client_secret: String,
+    pub gmail_token_ref: String,
+    pub gmail_authorized: bool,
+    pub imap_host: String,
+    pub imap_port: String,
+    pub imap_username: String,
+    pub imap_password_ref: String,
+    pub imap_password: String,
+    pub smtp_host: String,
+    pub smtp_port: String,
+    pub smtp_username: String,
+    pub smtp_password_ref: String,
+    pub smtp_password: String,
+    pub active_field: usize,
+    pub editing_field: bool,
+    pub field_cursor: usize,
+    pub last_result: Option<mxr_protocol::AccountOperationResult>,
+}
+
+impl Default for AccountFormState {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            mode: AccountFormMode::Gmail,
+            pending_mode_switch: None,
+            key: String::new(),
+            name: String::new(),
+            email: String::new(),
+            gmail_credential_source: mxr_protocol::GmailCredentialSourceData::Bundled,
+            gmail_client_id: String::new(),
+            gmail_client_secret: String::new(),
+            gmail_token_ref: String::new(),
+            gmail_authorized: false,
+            imap_host: String::new(),
+            imap_port: "993".into(),
+            imap_username: String::new(),
+            imap_password_ref: String::new(),
+            imap_password: String::new(),
+            smtp_host: String::new(),
+            smtp_port: "587".into(),
+            smtp_username: String::new(),
+            smtp_password_ref: String::new(),
+            smtp_password: String::new(),
+            active_field: 0,
+            editing_field: false,
+            field_cursor: 0,
+            last_result: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AccountsPageState {
+    pub accounts: Vec<mxr_protocol::AccountSummaryData>,
+    pub selected_index: usize,
+    pub status: Option<String>,
+    pub last_result: Option<mxr_protocol::AccountOperationResult>,
+    pub refresh_pending: bool,
+    pub onboarding_required: bool,
+    pub onboarding_modal_open: bool,
+    pub form: AccountFormState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttachmentOperation {
+    Open,
+    Download,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AttachmentPanelState {
+    pub visible: bool,
+    pub message_id: Option<MessageId>,
+    pub attachments: Vec<AttachmentMeta>,
+    pub selected_index: usize,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnoozePreset {
+    TomorrowMorning,
+    Tonight,
+    Weekend,
+    NextMonday,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SnoozePanelState {
+    pub visible: bool,
+    pub selected_index: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingAttachmentAction {
+    pub message_id: MessageId,
+    pub attachment_id: AttachmentId,
+    pub operation: AttachmentOperation,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingBulkConfirm {
+    pub title: String,
+    pub detail: String,
+    pub request: Request,
+    pub effect: MutationEffect,
+    pub status_message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachmentSummary {
+    pub filename: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingUnsubscribeConfirm {
+    pub message_id: MessageId,
+    pub account_id: AccountId,
+    pub sender_email: String,
+    pub method_label: String,
+    pub archive_message_ids: Vec<MessageId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingUnsubscribeAction {
+    pub message_id: MessageId,
+    pub archive_message_ids: Vec<MessageId>,
+    pub sender_email: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SidebarGroup {
+    SystemLabels,
+    UserLabels,
+    SavedSearches,
+}
+
+impl BodyViewState {
+    pub fn display_text(&self) -> Option<&str> {
+        match self {
+            Self::Ready { rendered, .. } => Some(rendered.as_str()),
+            Self::Loading { preview } => preview.as_deref(),
+            Self::Empty { preview } => preview.as_deref(),
+            Self::Error { preview, .. } => preview.as_deref(),
+        }
+    }
+}
+
+pub struct App {
+    pub theme: Theme,
+    pub envelopes: Vec<Envelope>,
+    pub all_envelopes: Vec<Envelope>,
+    pub mailbox_view: MailboxView,
+    pub labels: Vec<Label>,
+    pub screen: Screen,
+    pub mail_list_mode: MailListMode,
+    pub selected_index: usize,
+    pub scroll_offset: usize,
+    pub active_pane: ActivePane,
+    pub should_quit: bool,
+    pub layout_mode: LayoutMode,
+    pub search_bar: SearchBar,
+    pub search_page: SearchPageState,
+    pub command_palette: CommandPalette,
+    pub body_view_state: BodyViewState,
+    pub viewing_envelope: Option<Envelope>,
+    pub viewed_thread: Option<Thread>,
+    pub viewed_thread_messages: Vec<Envelope>,
+    pub thread_selected_index: usize,
+    pub message_scroll_offset: u16,
+    pub last_sync_status: Option<String>,
+    pub visible_height: usize,
+    pub body_cache: HashMap<MessageId, MessageBody>,
+    pub queued_body_fetches: Vec<MessageId>,
+    pub in_flight_body_requests: HashSet<MessageId>,
+    pub pending_thread_fetch: Option<mxr_core::ThreadId>,
+    pub in_flight_thread_fetch: Option<mxr_core::ThreadId>,
+    pub pending_search: Option<String>,
+    pub search_active: bool,
+    pub pending_rule_detail: Option<String>,
+    pub pending_rule_history: Option<String>,
+    pub pending_rule_dry_run: Option<String>,
+    pub pending_rule_delete: Option<String>,
+    pub pending_rule_upsert: Option<serde_json::Value>,
+    pub pending_rule_form_load: Option<String>,
+    pub pending_rule_form_save: bool,
+    pub pending_bug_report: bool,
+    pub pending_account_save: Option<mxr_protocol::AccountConfigData>,
+    pub pending_account_test: Option<mxr_protocol::AccountConfigData>,
+    pub pending_account_authorize: Option<(mxr_protocol::AccountConfigData, bool)>,
+    pub pending_account_set_default: Option<String>,
+    pub sidebar_selected: usize,
+    pub sidebar_section: SidebarSection,
+    pub help_modal_open: bool,
+    pub help_scroll_offset: u16,
+    pub saved_searches: Vec<mxr_core::SavedSearch>,
+    pub subscriptions_page: SubscriptionsPageState,
+    pub rules_page: RulesPageState,
+    pub diagnostics_page: DiagnosticsPageState,
+    pub accounts_page: AccountsPageState,
+    pub active_label: Option<mxr_core::LabelId>,
+    pub pending_label_fetch: Option<mxr_core::LabelId>,
+    pub pending_active_label: Option<mxr_core::LabelId>,
+    pub pending_labels_refresh: bool,
+    pub pending_all_envelopes_refresh: bool,
+    pub pending_subscriptions_refresh: bool,
+    pub desired_system_mailbox: Option<String>,
+    pub status_message: Option<String>,
+    pub pending_mutation_queue: Vec<(Request, MutationEffect)>,
+    pub pending_compose: Option<ComposeAction>,
+    pub pending_send_confirm: Option<PendingSend>,
+    pub pending_bulk_confirm: Option<PendingBulkConfirm>,
+    pub pending_unsubscribe_confirm: Option<PendingUnsubscribeConfirm>,
+    pub pending_unsubscribe_action: Option<PendingUnsubscribeAction>,
+    pub reader_mode: bool,
+    pub signature_expanded: bool,
+    pub label_picker: LabelPicker,
+    pub compose_picker: ComposePicker,
+    pub attachment_panel: AttachmentPanelState,
+    pub snooze_panel: SnoozePanelState,
+    pub pending_attachment_action: Option<PendingAttachmentAction>,
+    pub selected_set: HashSet<MessageId>,
+    pub visual_mode: bool,
+    pub visual_anchor: Option<usize>,
+    pub pending_export_thread: Option<mxr_core::id::ThreadId>,
+    pub snooze_config: mxr_config::SnoozeConfig,
+    pub sidebar_system_expanded: bool,
+    pub sidebar_user_expanded: bool,
+    pub sidebar_saved_searches_expanded: bool,
+    pending_label_action: Option<(LabelPickerMode, String)>,
+    pub url_modal: Option<ui::url_modal::UrlModalState>,
+    input: InputHandler,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl App {
+    pub fn new() -> Self {
+        Self::from_render_and_snooze(
+            &RenderConfig::default(),
+            &mxr_config::SnoozeConfig::default(),
+        )
+    }
+
+    pub fn from_config(config: &mxr_config::MxrConfig) -> Self {
+        let mut app = Self::from_render_and_snooze(&config.render, &config.snooze);
+        app.theme = Theme::from_spec(&config.appearance.theme);
+        if config.accounts.is_empty() {
+            app.enter_account_setup_onboarding();
+        }
+        app
+    }
+
+    pub fn from_render_config(render: &RenderConfig) -> Self {
+        Self::from_render_and_snooze(render, &mxr_config::SnoozeConfig::default())
+    }
+
+    fn from_render_and_snooze(
+        render: &RenderConfig,
+        snooze_config: &mxr_config::SnoozeConfig,
+    ) -> Self {
+        Self {
+            theme: Theme::default(),
+            envelopes: Vec::new(),
+            all_envelopes: Vec::new(),
+            mailbox_view: MailboxView::Messages,
+            labels: Vec::new(),
+            screen: Screen::Mailbox,
+            mail_list_mode: MailListMode::Threads,
+            selected_index: 0,
+            scroll_offset: 0,
+            active_pane: ActivePane::MailList,
+            should_quit: false,
+            layout_mode: LayoutMode::TwoPane,
+            search_bar: SearchBar::default(),
+            search_page: SearchPageState::default(),
+            command_palette: CommandPalette::default(),
+            body_view_state: BodyViewState::Empty { preview: None },
+            viewing_envelope: None,
+            viewed_thread: None,
+            viewed_thread_messages: Vec::new(),
+            thread_selected_index: 0,
+            message_scroll_offset: 0,
+            last_sync_status: None,
+            visible_height: 20,
+            body_cache: HashMap::new(),
+            queued_body_fetches: Vec::new(),
+            in_flight_body_requests: HashSet::new(),
+            pending_thread_fetch: None,
+            in_flight_thread_fetch: None,
+            pending_search: None,
+            search_active: false,
+            pending_rule_detail: None,
+            pending_rule_history: None,
+            pending_rule_dry_run: None,
+            pending_rule_delete: None,
+            pending_rule_upsert: None,
+            pending_rule_form_load: None,
+            pending_rule_form_save: false,
+            pending_bug_report: false,
+            pending_account_save: None,
+            pending_account_test: None,
+            pending_account_authorize: None,
+            pending_account_set_default: None,
+            sidebar_selected: 0,
+            sidebar_section: SidebarSection::Labels,
+            help_modal_open: false,
+            help_scroll_offset: 0,
+            saved_searches: Vec::new(),
+            subscriptions_page: SubscriptionsPageState::default(),
+            rules_page: RulesPageState::default(),
+            diagnostics_page: DiagnosticsPageState::default(),
+            accounts_page: AccountsPageState::default(),
+            active_label: None,
+            pending_label_fetch: None,
+            pending_active_label: None,
+            pending_labels_refresh: false,
+            pending_all_envelopes_refresh: false,
+            pending_subscriptions_refresh: false,
+            desired_system_mailbox: None,
+            status_message: None,
+            pending_mutation_queue: Vec::new(),
+            pending_compose: None,
+            pending_send_confirm: None,
+            pending_bulk_confirm: None,
+            pending_unsubscribe_confirm: None,
+            pending_unsubscribe_action: None,
+            reader_mode: render.reader_mode,
+            signature_expanded: false,
+            label_picker: LabelPicker::default(),
+            compose_picker: ComposePicker::default(),
+            attachment_panel: AttachmentPanelState::default(),
+            snooze_panel: SnoozePanelState::default(),
+            pending_attachment_action: None,
+            selected_set: HashSet::new(),
+            visual_mode: false,
+            visual_anchor: None,
+            pending_export_thread: None,
+            snooze_config: snooze_config.clone(),
+            sidebar_system_expanded: true,
+            sidebar_user_expanded: true,
+            sidebar_saved_searches_expanded: true,
+            pending_label_action: None,
+            url_modal: None,
+            input: InputHandler::new(),
+        }
+    }
+
+    pub fn selected_envelope(&self) -> Option<&Envelope> {
+        if self.mailbox_view == MailboxView::Subscriptions {
+            return self
+                .subscriptions_page
+                .entries
+                .get(self.selected_index)
+                .map(|entry| &entry.envelope);
+        }
+
+        match self.mail_list_mode {
+            MailListMode::Messages => self.envelopes.get(self.selected_index),
+            MailListMode::Threads => self.selected_mail_row().and_then(|row| {
+                self.envelopes
+                    .iter()
+                    .find(|env| env.id == row.representative.id)
+            }),
+        }
+    }
+
+    pub fn mail_list_rows(&self) -> Vec<MailListRow> {
+        Self::build_mail_list_rows(&self.envelopes, self.mail_list_mode)
+    }
+
+    pub fn search_mail_list_rows(&self) -> Vec<MailListRow> {
+        Self::build_mail_list_rows(&self.search_page.results, self.mail_list_mode)
+    }
+
+    pub fn selected_mail_row(&self) -> Option<MailListRow> {
+        if self.mailbox_view == MailboxView::Subscriptions {
+            return None;
+        }
+        self.mail_list_rows().get(self.selected_index).cloned()
+    }
+
+    pub fn selected_subscription_entry(&self) -> Option<&SubscriptionEntry> {
+        self.subscriptions_page.entries.get(self.selected_index)
+    }
+
+    pub fn focused_thread_envelope(&self) -> Option<&Envelope> {
+        self.viewed_thread_messages.get(self.thread_selected_index)
+    }
+
+    pub fn sidebar_items(&self) -> Vec<SidebarItem> {
+        let mut items = vec![SidebarItem::AllMail, SidebarItem::Subscriptions];
+        let mut system_labels = Vec::new();
+        let mut user_labels = Vec::new();
+        for label in self.visible_labels() {
+            if label.kind == LabelKind::System {
+                system_labels.push(label.clone());
+            } else {
+                user_labels.push(label.clone());
+            }
+        }
+        if self.sidebar_system_expanded {
+            items.extend(system_labels.into_iter().map(SidebarItem::Label));
+        }
+        if self.sidebar_user_expanded {
+            items.extend(user_labels.into_iter().map(SidebarItem::Label));
+        }
+        if self.sidebar_saved_searches_expanded {
+            items.extend(
+                self.saved_searches
+                    .iter()
+                    .cloned()
+                    .map(SidebarItem::SavedSearch),
+            );
+        }
+        items
+    }
+
+    pub fn selected_sidebar_item(&self) -> Option<SidebarItem> {
+        self.sidebar_items().get(self.sidebar_selected).cloned()
+    }
+
+    pub fn selected_search_envelope(&self) -> Option<&Envelope> {
+        match self.mail_list_mode {
+            MailListMode::Messages => self
+                .search_page
+                .results
+                .get(self.search_page.selected_index),
+            MailListMode::Threads => self
+                .search_mail_list_rows()
+                .get(self.search_page.selected_index)
+                .and_then(|row| {
+                    self.search_page
+                        .results
+                        .iter()
+                        .find(|env| env.id == row.representative.id)
+                }),
+        }
+    }
+
+    pub fn selected_rule(&self) -> Option<&serde_json::Value> {
+        self.rules_page.rules.get(self.rules_page.selected_index)
+    }
+
+    pub fn selected_account(&self) -> Option<&mxr_protocol::AccountSummaryData> {
+        self.accounts_page
+            .accounts
+            .get(self.accounts_page.selected_index)
+    }
+
+    pub fn enter_account_setup_onboarding(&mut self) {
+        self.screen = Screen::Accounts;
+        self.accounts_page.refresh_pending = true;
+        self.accounts_page.onboarding_required = true;
+        self.accounts_page.onboarding_modal_open = true;
+        self.active_label = None;
+        self.pending_active_label = None;
+        self.pending_label_fetch = None;
+        self.desired_system_mailbox = None;
+    }
+
+    fn complete_account_setup_onboarding(&mut self) {
+        self.accounts_page.onboarding_modal_open = false;
+        self.apply(Action::OpenAccountFormNew);
+    }
+
+    fn selected_account_config(&self) -> Option<mxr_protocol::AccountConfigData> {
+        self.selected_account().and_then(account_summary_to_config)
+    }
+
+    fn account_form_field_count(&self) -> usize {
+        match self.accounts_page.form.mode {
+            AccountFormMode::Gmail => {
+                if self.accounts_page.form.gmail_credential_source
+                    == mxr_protocol::GmailCredentialSourceData::Custom
+                {
+                    8
+                } else {
+                    6
+                }
+            }
+            AccountFormMode::ImapSmtp => 14,
+            AccountFormMode::SmtpOnly => 9,
+        }
+    }
+
+    fn account_form_data(&self, is_default: bool) -> mxr_protocol::AccountConfigData {
+        let form = &self.accounts_page.form;
+        let key = form.key.trim().to_string();
+        let name = if form.name.trim().is_empty() {
+            key.clone()
+        } else {
+            form.name.trim().to_string()
+        };
+        let email = form.email.trim().to_string();
+        let imap_username = if form.imap_username.trim().is_empty() {
+            email.clone()
+        } else {
+            form.imap_username.trim().to_string()
+        };
+        let smtp_username = if form.smtp_username.trim().is_empty() {
+            email.clone()
+        } else {
+            form.smtp_username.trim().to_string()
+        };
+        let gmail_token_ref = if form.gmail_token_ref.trim().is_empty() {
+            format!("mxr/{key}-gmail")
+        } else {
+            form.gmail_token_ref.trim().to_string()
+        };
+        let sync = match form.mode {
+            AccountFormMode::Gmail => Some(mxr_protocol::AccountSyncConfigData::Gmail {
+                credential_source: form.gmail_credential_source.clone(),
+                client_id: form.gmail_client_id.trim().to_string(),
+                client_secret: if form.gmail_client_secret.trim().is_empty() {
+                    None
+                } else {
+                    Some(form.gmail_client_secret.clone())
+                },
+                token_ref: gmail_token_ref,
+            }),
+            AccountFormMode::ImapSmtp => Some(mxr_protocol::AccountSyncConfigData::Imap {
+                host: form.imap_host.trim().to_string(),
+                port: form.imap_port.parse().unwrap_or(993),
+                username: imap_username,
+                password_ref: form.imap_password_ref.trim().to_string(),
+                password: if form.imap_password.is_empty() {
+                    None
+                } else {
+                    Some(form.imap_password.clone())
+                },
+                use_tls: true,
+            }),
+            AccountFormMode::SmtpOnly => None,
+        };
+        let send = match form.mode {
+            AccountFormMode::Gmail => Some(mxr_protocol::AccountSendConfigData::Gmail),
+            AccountFormMode::ImapSmtp | AccountFormMode::SmtpOnly => {
+                Some(mxr_protocol::AccountSendConfigData::Smtp {
+                    host: form.smtp_host.trim().to_string(),
+                    port: form.smtp_port.parse().unwrap_or(587),
+                    username: smtp_username,
+                    password_ref: form.smtp_password_ref.trim().to_string(),
+                    password: if form.smtp_password.is_empty() {
+                        None
+                    } else {
+                        Some(form.smtp_password.clone())
+                    },
+                    use_tls: true,
+                })
+            }
+        };
+        mxr_protocol::AccountConfigData {
+            key,
+            name,
+            email,
+            sync,
+            send,
+            is_default,
+        }
+    }
+
+    fn next_account_form_mode(&self, forward: bool) -> AccountFormMode {
+        match (self.accounts_page.form.mode, forward) {
+            (AccountFormMode::Gmail, true) => AccountFormMode::ImapSmtp,
+            (AccountFormMode::ImapSmtp, true) => AccountFormMode::SmtpOnly,
+            (AccountFormMode::SmtpOnly, true) => AccountFormMode::Gmail,
+            (AccountFormMode::Gmail, false) => AccountFormMode::SmtpOnly,
+            (AccountFormMode::ImapSmtp, false) => AccountFormMode::Gmail,
+            (AccountFormMode::SmtpOnly, false) => AccountFormMode::ImapSmtp,
+        }
+    }
+
+    fn account_form_has_meaningful_input(&self) -> bool {
+        let form = &self.accounts_page.form;
+        [
+            form.key.trim(),
+            form.name.trim(),
+            form.email.trim(),
+            form.gmail_client_id.trim(),
+            form.gmail_client_secret.trim(),
+            form.imap_host.trim(),
+            form.imap_username.trim(),
+            form.imap_password_ref.trim(),
+            form.imap_password.trim(),
+            form.smtp_host.trim(),
+            form.smtp_username.trim(),
+            form.smtp_password_ref.trim(),
+            form.smtp_password.trim(),
+        ]
+        .iter()
+        .any(|value| !value.is_empty())
+    }
+
+    fn apply_account_form_mode(&mut self, mode: AccountFormMode) {
+        self.accounts_page.form.mode = mode;
+        self.accounts_page.form.pending_mode_switch = None;
+        self.accounts_page.form.active_field = self
+            .accounts_page
+            .form
+            .active_field
+            .min(self.account_form_field_count().saturating_sub(1));
+        self.accounts_page.form.editing_field = false;
+        self.accounts_page.form.field_cursor = 0;
+        self.refresh_account_form_derived_fields();
+    }
+
+    fn request_account_form_mode_change(&mut self, forward: bool) {
+        let next_mode = self.next_account_form_mode(forward);
+        if next_mode == self.accounts_page.form.mode {
+            return;
+        }
+        if self.account_form_has_meaningful_input() {
+            self.accounts_page.form.pending_mode_switch = Some(next_mode);
+        } else {
+            self.apply_account_form_mode(next_mode);
+        }
+    }
+
+    fn refresh_account_form_derived_fields(&mut self) {
+        if matches!(self.accounts_page.form.mode, AccountFormMode::Gmail) {
+            let key = self.accounts_page.form.key.trim();
+            let token_ref = if key.is_empty() {
+                String::new()
+            } else {
+                format!("mxr/{key}-gmail")
+            };
+            self.accounts_page.form.gmail_token_ref = token_ref;
+        }
+    }
+
+    fn mail_row_count(&self) -> usize {
+        if self.mailbox_view == MailboxView::Subscriptions {
+            return self.subscriptions_page.entries.len();
+        }
+        self.mail_list_rows().len()
+    }
+
+    fn search_row_count(&self) -> usize {
+        self.search_mail_list_rows().len()
+    }
+
+    fn build_mail_list_rows(envelopes: &[Envelope], mode: MailListMode) -> Vec<MailListRow> {
+        match mode {
+            MailListMode::Messages => envelopes
+                .iter()
+                .map(|envelope| MailListRow {
+                    thread_id: envelope.thread_id.clone(),
+                    representative: envelope.clone(),
+                    message_count: 1,
+                    unread_count: usize::from(!envelope.flags.contains(MessageFlags::READ)),
+                })
+                .collect(),
+            MailListMode::Threads => {
+                let mut order: Vec<mxr_core::ThreadId> = Vec::new();
+                let mut rows: HashMap<mxr_core::ThreadId, MailListRow> = HashMap::new();
+                for envelope in envelopes {
+                    let entry = rows.entry(envelope.thread_id.clone()).or_insert_with(|| {
+                        order.push(envelope.thread_id.clone());
+                        MailListRow {
+                            thread_id: envelope.thread_id.clone(),
+                            representative: envelope.clone(),
+                            message_count: 0,
+                            unread_count: 0,
+                        }
+                    });
+                    entry.message_count += 1;
+                    if !envelope.flags.contains(MessageFlags::READ) {
+                        entry.unread_count += 1;
+                    }
+                    if envelope.date > entry.representative.date {
+                        entry.representative = envelope.clone();
+                    }
+                }
+                order
+                    .into_iter()
+                    .filter_map(|thread_id| rows.remove(&thread_id))
+                    .collect()
+            }
+        }
+    }
+
+    /// Get the contextual envelope: the one being viewed, or the selected one.
+    fn context_envelope(&self) -> Option<&Envelope> {
+        if self.screen == Screen::Search {
+            return self
+                .focused_thread_envelope()
+                .or(self.viewing_envelope.as_ref())
+                .or_else(|| self.selected_search_envelope());
+        }
+
+        self.focused_thread_envelope()
+            .or(self.viewing_envelope.as_ref())
+            .or_else(|| self.selected_envelope())
+    }
+
+    pub async fn load(&mut self, client: &mut Client) -> Result<(), MxrError> {
+        self.all_envelopes = client.list_envelopes(5000, 0).await?;
+        self.envelopes = self.all_mail_envelopes();
+        self.labels = client.list_labels().await?;
+        self.saved_searches = client.list_saved_searches().await.unwrap_or_default();
+        self.set_subscriptions(client.list_subscriptions(500).await.unwrap_or_default());
+        // Queue body prefetch for first visible window
+        self.queue_body_window();
+        Ok(())
+    }
+
+    pub fn input_pending(&self) -> bool {
+        self.input.is_pending()
+    }
+
+    pub fn ordered_visible_labels(&self) -> Vec<&Label> {
+        let mut system: Vec<&Label> = self
+            .labels
+            .iter()
+            .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
+            .filter(|l| l.kind == mxr_core::types::LabelKind::System)
+            .filter(|l| {
+                crate::ui::sidebar::is_primary_system_label(&l.name)
+                    || l.total_count > 0
+                    || l.unread_count > 0
+            })
+            .collect();
+        system.sort_by_key(|l| crate::ui::sidebar::system_label_order(&l.name));
+
+        let mut user: Vec<&Label> = self
+            .labels
+            .iter()
+            .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
+            .filter(|l| l.kind != mxr_core::types::LabelKind::System)
+            .collect();
+        user.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+        let mut result = system;
+        result.extend(user);
+        result
+    }
+
+    /// Number of visible (non-hidden) labels.
+    pub fn visible_label_count(&self) -> usize {
+        self.ordered_visible_labels().len()
+    }
+
+    /// Get the visible (filtered) labels.
+    pub fn visible_labels(&self) -> Vec<&Label> {
+        self.ordered_visible_labels()
+    }
+
+    fn sidebar_move_down(&mut self) {
+        if self.sidebar_selected + 1 < self.sidebar_items().len() {
+            self.sidebar_selected += 1;
+        }
+        self.sync_sidebar_section();
+    }
+
+    fn sidebar_move_up(&mut self) {
+        self.sidebar_selected = self.sidebar_selected.saturating_sub(1);
+        self.sync_sidebar_section();
+    }
+
+    fn sidebar_select(&mut self) -> Option<Action> {
+        match self.selected_sidebar_item() {
+            Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
+            Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
+            Some(SidebarItem::Label(label)) => Some(Action::SelectLabel(label.id)),
+            Some(SidebarItem::SavedSearch(search)) => Some(Action::SelectSavedSearch(search.query)),
+            None => None,
+        }
+    }
+
+    fn sync_sidebar_section(&mut self) {
+        self.sidebar_section = match self.selected_sidebar_item() {
+            Some(SidebarItem::SavedSearch(_)) => SidebarSection::SavedSearches,
+            _ => SidebarSection::Labels,
+        };
+    }
+
+    fn current_sidebar_group(&self) -> SidebarGroup {
+        match self.selected_sidebar_item() {
+            Some(SidebarItem::SavedSearch(_)) => SidebarGroup::SavedSearches,
+            Some(SidebarItem::Label(label)) if label.kind == LabelKind::System => {
+                SidebarGroup::SystemLabels
+            }
+            Some(SidebarItem::Label(_)) => SidebarGroup::UserLabels,
+            Some(SidebarItem::AllMail) | Some(SidebarItem::Subscriptions) | None => {
+                SidebarGroup::SystemLabels
+            }
+        }
+    }
+
+    fn collapse_current_sidebar_section(&mut self) {
+        match self.current_sidebar_group() {
+            SidebarGroup::SystemLabels => self.sidebar_system_expanded = false,
+            SidebarGroup::UserLabels => self.sidebar_user_expanded = false,
+            SidebarGroup::SavedSearches => self.sidebar_saved_searches_expanded = false,
+        }
+        self.sidebar_selected = self
+            .sidebar_selected
+            .min(self.sidebar_items().len().saturating_sub(1));
+        self.sync_sidebar_section();
+    }
+
+    fn expand_current_sidebar_section(&mut self) {
+        match self.current_sidebar_group() {
+            SidebarGroup::SystemLabels => self.sidebar_system_expanded = true,
+            SidebarGroup::UserLabels => self.sidebar_user_expanded = true,
+            SidebarGroup::SavedSearches => self.sidebar_saved_searches_expanded = true,
+        }
+        self.sidebar_selected = self
+            .sidebar_selected
+            .min(self.sidebar_items().len().saturating_sub(1));
+        self.sync_sidebar_section();
+    }
+
+    /// Live filter: instant client-side prefix matching on subject/from/snippet,
+    /// plus async Tantivy search for full-text body matches.
+    fn trigger_live_search(&mut self) {
+        let query = self.search_bar.query.to_lowercase();
+        if query.is_empty() {
+            self.envelopes = self.all_mail_envelopes();
+            self.search_active = false;
+        } else {
+            let query_words: Vec<&str> = query.split_whitespace().collect();
+            // Instant client-side filter: every query word must prefix-match
+            // some word in subject, from, or snippet
+            self.envelopes = self
+                .all_envelopes
+                .iter()
+                .filter(|e| !e.flags.contains(MessageFlags::TRASH))
+                .filter(|e| {
+                    let haystack = format!(
+                        "{} {} {} {}",
+                        e.subject,
+                        e.from.email,
+                        e.from.name.as_deref().unwrap_or(""),
+                        e.snippet
+                    )
+                    .to_lowercase();
+                    query_words.iter().all(|qw| {
+                        haystack.split_whitespace().any(|hw| hw.starts_with(qw))
+                            || haystack.contains(qw)
+                    })
+                })
+                .cloned()
+                .collect();
+            self.search_active = true;
+            // Also fire async Tantivy search to catch body matches
+            self.pending_search = Some(self.search_bar.query.clone());
+        }
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+    }
+
+    /// Compute the mail list title based on active filter/search.
+    pub fn mail_list_title(&self) -> String {
+        if self.mailbox_view == MailboxView::Subscriptions {
+            return format!("Subscriptions ({})", self.subscriptions_page.entries.len());
+        }
+
+        let list_name = match self.mail_list_mode {
+            MailListMode::Threads => "Threads",
+            MailListMode::Messages => "Messages",
+        };
+        let list_count = self.mail_row_count();
+        if self.search_active {
+            format!("Search: {} ({list_count})", self.search_bar.query)
+        } else if let Some(label_id) = self
+            .pending_active_label
+            .as_ref()
+            .or(self.active_label.as_ref())
+        {
+            if let Some(label) = self.labels.iter().find(|l| &l.id == label_id) {
+                let name = crate::ui::sidebar::humanize_label(&label.name);
+                format!("{name} {list_name} ({list_count})")
+            } else {
+                format!("{list_name} ({list_count})")
+            }
+        } else {
+            format!("All Mail {list_name} ({list_count})")
+        }
+    }
+
+    fn all_mail_envelopes(&self) -> Vec<Envelope> {
+        self.all_envelopes
+            .iter()
+            .filter(|envelope| !envelope.flags.contains(MessageFlags::TRASH))
+            .cloned()
+            .collect()
+    }
+
+    pub fn resolve_desired_system_mailbox(&mut self) {
+        let Some(target) = self.desired_system_mailbox.as_deref() else {
+            return;
+        };
+        if self.pending_active_label.is_some() || self.active_label.is_some() {
+            return;
+        }
+        if let Some(label_id) = self
+            .labels
+            .iter()
+            .find(|label| label.name.eq_ignore_ascii_case(target))
+            .map(|label| label.id.clone())
+        {
+            self.apply(Action::SelectLabel(label_id));
+        }
+    }
+
+    /// In ThreePane mode, auto-load the preview for the currently selected envelope.
+    fn auto_preview(&mut self) {
+        if self.mailbox_view == MailboxView::Subscriptions {
+            if let Some(entry) = self.selected_subscription_entry().cloned() {
+                if self.viewing_envelope.as_ref().map(|e| &e.id) != Some(&entry.envelope.id) {
+                    self.open_envelope(entry.envelope);
+                }
+            } else {
+                self.viewing_envelope = None;
+                self.viewed_thread = None;
+                self.viewed_thread_messages.clear();
+                self.body_view_state = BodyViewState::Empty { preview: None };
+            }
+            return;
+        }
+
+        if self.layout_mode == LayoutMode::ThreePane {
+            if let Some(row) = self.selected_mail_row() {
+                if self.viewing_envelope.as_ref().map(|e| &e.id) != Some(&row.representative.id) {
+                    self.open_envelope(row.representative);
+                }
+            }
+        }
+    }
+
+    pub fn auto_preview_search(&mut self) {
+        if let Some(env) = self.selected_search_envelope().cloned() {
+            if self
+                .viewing_envelope
+                .as_ref()
+                .map(|current| current.id.clone())
+                != Some(env.id.clone())
+            {
+                self.open_envelope(env);
+            }
+        }
+    }
+
+    fn ensure_search_visible(&mut self) {
+        let h = self.visible_height.max(1);
+        if self.search_page.selected_index < self.search_page.scroll_offset {
+            self.search_page.scroll_offset = self.search_page.selected_index;
+        } else if self.search_page.selected_index >= self.search_page.scroll_offset + h {
+            self.search_page.scroll_offset = self.search_page.selected_index + 1 - h;
+        }
+    }
+
+    /// Queue body prefetch for messages around the current cursor position.
+    /// Only fetches bodies not already in cache.
+    pub fn queue_body_window(&mut self) {
+        const BUFFER: usize = 50;
+        let source_envelopes: Vec<Envelope> = if self.mailbox_view == MailboxView::Subscriptions {
+            self.subscriptions_page
+                .entries
+                .iter()
+                .map(|entry| entry.envelope.clone())
+                .collect()
+        } else {
+            self.envelopes.clone()
+        };
+        let len = source_envelopes.len();
+        if len == 0 {
+            return;
+        }
+        let start = self.selected_index.saturating_sub(BUFFER / 2);
+        let end = (self.selected_index + BUFFER / 2).min(len);
+        let ids: Vec<MessageId> = source_envelopes[start..end]
+            .iter()
+            .map(|e| e.id.clone())
+            .collect();
+        for id in ids {
+            self.queue_body_fetch(id);
+        }
+    }
+
+    fn open_envelope(&mut self, env: Envelope) {
+        self.close_attachment_panel();
+        self.signature_expanded = false;
+        self.viewed_thread = None;
+        self.viewed_thread_messages = self.optimistic_thread_messages(&env);
+        self.thread_selected_index = self.default_thread_selected_index();
+        self.viewing_envelope = self.focused_thread_envelope().cloned();
+        if let Some(viewing_envelope) = self.viewing_envelope.clone() {
+            self.mark_envelope_read_on_open(&viewing_envelope);
+        }
+        for message in self.viewed_thread_messages.clone() {
+            self.queue_body_fetch(message.id);
+        }
+        self.queue_thread_fetch(env.thread_id.clone());
+        self.message_scroll_offset = 0;
+        self.ensure_current_body_state();
+    }
+
+    fn optimistic_thread_messages(&self, env: &Envelope) -> Vec<Envelope> {
+        let mut messages: Vec<Envelope> = self
+            .all_envelopes
+            .iter()
+            .filter(|candidate| candidate.thread_id == env.thread_id)
+            .cloned()
+            .collect();
+        if messages.is_empty() {
+            messages.push(env.clone());
+        }
+        messages.sort_by_key(|message| message.date);
+        messages
+    }
+
+    fn default_thread_selected_index(&self) -> usize {
+        self.viewed_thread_messages
+            .iter()
+            .rposition(|message| !message.flags.contains(MessageFlags::READ))
+            .or_else(|| self.viewed_thread_messages.len().checked_sub(1))
+            .unwrap_or(0)
+    }
+
+    fn sync_focused_thread_envelope(&mut self) {
+        self.close_attachment_panel();
+        self.viewing_envelope = self.focused_thread_envelope().cloned();
+        if let Some(viewing_envelope) = self.viewing_envelope.clone() {
+            self.mark_envelope_read_on_open(&viewing_envelope);
+        }
+        self.message_scroll_offset = 0;
+        self.ensure_current_body_state();
+    }
+
+    fn mark_envelope_read_on_open(&mut self, envelope: &Envelope) {
+        if envelope.flags.contains(MessageFlags::READ)
+            || self.has_pending_set_read(&envelope.id, true)
+        {
+            return;
+        }
+
+        let mut flags = envelope.flags;
+        flags.insert(MessageFlags::READ);
+        self.apply_local_flags(&envelope.id, flags);
+        self.pending_mutation_queue.push((
+            Request::Mutation(MutationCommand::SetRead {
+                message_ids: vec![envelope.id.clone()],
+                read: true,
+            }),
+            MutationEffect::UpdateFlags {
+                message_id: envelope.id.clone(),
+                flags,
+            },
+        ));
+    }
+
+    fn has_pending_set_read(&self, message_id: &MessageId, read: bool) -> bool {
+        self.pending_mutation_queue.iter().any(|(request, _)| {
+            matches!(
+                request,
+                Request::Mutation(MutationCommand::SetRead { message_ids, read: queued_read })
+                    if *queued_read == read
+                        && message_ids.len() == 1
+                        && message_ids[0] == *message_id
+            )
+        })
+    }
+
+    fn move_thread_focus_down(&mut self) {
+        if self.thread_selected_index + 1 < self.viewed_thread_messages.len() {
+            self.thread_selected_index += 1;
+            self.sync_focused_thread_envelope();
+        }
+    }
+
+    fn move_thread_focus_up(&mut self) {
+        if self.thread_selected_index > 0 {
+            self.thread_selected_index -= 1;
+            self.sync_focused_thread_envelope();
+        }
+    }
+
+    fn ensure_current_body_state(&mut self) {
+        if let Some(env) = self.viewing_envelope.clone() {
+            if !self.body_cache.contains_key(&env.id) {
+                self.queue_body_fetch(env.id.clone());
+            }
+            self.body_view_state = self.resolve_body_view_state(&env);
+        } else {
+            self.body_view_state = BodyViewState::Empty { preview: None };
+        }
+    }
+
+    fn queue_body_fetch(&mut self, message_id: MessageId) {
+        if self.body_cache.contains_key(&message_id)
+            || self.in_flight_body_requests.contains(&message_id)
+            || self.queued_body_fetches.contains(&message_id)
+        {
+            return;
+        }
+
+        self.in_flight_body_requests.insert(message_id.clone());
+        self.queued_body_fetches.push(message_id);
+    }
+
+    fn queue_thread_fetch(&mut self, thread_id: mxr_core::ThreadId) {
+        if self.pending_thread_fetch.as_ref() == Some(&thread_id)
+            || self.in_flight_thread_fetch.as_ref() == Some(&thread_id)
+        {
+            return;
+        }
+        self.pending_thread_fetch = Some(thread_id);
+    }
+
+    fn envelope_preview(envelope: &Envelope) -> Option<String> {
+        let snippet = envelope.snippet.trim();
+        if snippet.is_empty() {
+            None
+        } else {
+            Some(envelope.snippet.clone())
+        }
+    }
+
+    fn render_body(raw: &str, source: BodySource, reader_mode: bool) -> String {
+        if !reader_mode {
+            return raw.to_string();
+        }
+
+        let config = mxr_reader::ReaderConfig::default();
+        match source {
+            BodySource::Plain => mxr_reader::clean(Some(raw), None, &config).content,
+            BodySource::Html => mxr_reader::clean(None, Some(raw), &config).content,
+            BodySource::Snippet => raw.to_string(),
+        }
+    }
+
+    fn resolve_body_view_state(&self, envelope: &Envelope) -> BodyViewState {
+        let preview = Self::envelope_preview(envelope);
+
+        if let Some(body) = self.body_cache.get(&envelope.id) {
+            if let Some(raw) = body.text_plain.clone() {
+                let rendered = Self::render_body(&raw, BodySource::Plain, self.reader_mode);
+                return BodyViewState::Ready {
+                    raw,
+                    rendered,
+                    source: BodySource::Plain,
+                };
+            }
+
+            if let Some(raw) = body.text_html.clone() {
+                let rendered = Self::render_body(&raw, BodySource::Html, self.reader_mode);
+                return BodyViewState::Ready {
+                    raw,
+                    rendered,
+                    source: BodySource::Html,
+                };
+            }
+
+            return BodyViewState::Empty { preview };
+        }
+
+        if self.in_flight_body_requests.contains(&envelope.id) {
+            BodyViewState::Loading { preview }
+        } else {
+            BodyViewState::Empty { preview }
+        }
+    }
+
+    pub fn resolve_body_success(&mut self, body: MessageBody) {
+        let message_id = body.message_id.clone();
+        self.in_flight_body_requests.remove(&message_id);
+        self.body_cache.insert(message_id.clone(), body);
+
+        if self.viewing_envelope.as_ref().map(|env| env.id.clone()) == Some(message_id) {
+            self.ensure_current_body_state();
+        }
+    }
+
+    pub fn resolve_body_fetch_error(&mut self, message_id: &MessageId, message: String) {
+        self.in_flight_body_requests.remove(message_id);
+
+        if let Some(env) = self
+            .viewing_envelope
+            .as_ref()
+            .filter(|env| &env.id == message_id)
+        {
+            self.body_view_state = BodyViewState::Error {
+                message,
+                preview: Self::envelope_preview(env),
+            };
+        }
+    }
+
+    pub fn current_viewing_body(&self) -> Option<&MessageBody> {
+        self.viewing_envelope
+            .as_ref()
+            .and_then(|env| self.body_cache.get(&env.id))
+    }
+
+    pub fn selected_attachment(&self) -> Option<&AttachmentMeta> {
+        self.attachment_panel
+            .attachments
+            .get(self.attachment_panel.selected_index)
+    }
+
+    pub fn open_attachment_panel(&mut self) {
+        let Some(message_id) = self.viewing_envelope.as_ref().map(|env| env.id.clone()) else {
+            self.status_message = Some("No message selected".into());
+            return;
+        };
+        let Some(attachments) = self
+            .current_viewing_body()
+            .map(|body| body.attachments.clone())
+        else {
+            self.status_message = Some("No message body loaded".into());
+            return;
+        };
+        if attachments.is_empty() {
+            self.status_message = Some("No attachments".into());
+            return;
+        }
+
+        self.attachment_panel.visible = true;
+        self.attachment_panel.message_id = Some(message_id);
+        self.attachment_panel.attachments = attachments;
+        self.attachment_panel.selected_index = 0;
+        self.attachment_panel.status = None;
+    }
+
+    pub fn open_url_modal(&mut self) {
+        let body = self.current_viewing_body();
+        let Some(body) = body else {
+            self.status_message = Some("No message body loaded".into());
+            return;
+        };
+        let text_plain = body.text_plain.as_deref();
+        let text_html = body.text_html.as_deref();
+        let urls = ui::url_modal::extract_urls(text_plain, text_html);
+        if urls.is_empty() {
+            self.status_message = Some("No links found".into());
+            return;
+        }
+        self.url_modal = Some(ui::url_modal::UrlModalState::new(urls));
+    }
+
+    pub fn close_attachment_panel(&mut self) {
+        self.attachment_panel = AttachmentPanelState::default();
+        self.pending_attachment_action = None;
+    }
+
+    pub fn queue_attachment_action(&mut self, operation: AttachmentOperation) {
+        let Some(message_id) = self.attachment_panel.message_id.clone() else {
+            return;
+        };
+        let Some(attachment) = self.selected_attachment().cloned() else {
+            return;
+        };
+
+        self.attachment_panel.status = Some(match operation {
+            AttachmentOperation::Open => format!("Opening {}...", attachment.filename),
+            AttachmentOperation::Download => format!("Downloading {}...", attachment.filename),
+        });
+        self.pending_attachment_action = Some(PendingAttachmentAction {
+            message_id,
+            attachment_id: attachment.id,
+            operation,
+        });
+    }
+
+    pub fn resolve_attachment_file(&mut self, file: &mxr_protocol::AttachmentFile) {
+        let path = std::path::PathBuf::from(&file.path);
+        for attachment in &mut self.attachment_panel.attachments {
+            if attachment.id == file.attachment_id {
+                attachment.local_path = Some(path.clone());
+            }
+        }
+        for body in self.body_cache.values_mut() {
+            for attachment in &mut body.attachments {
+                if attachment.id == file.attachment_id {
+                    attachment.local_path = Some(path.clone());
+                }
+            }
+        }
+    }
+
+    fn label_chips_for_envelope(&self, envelope: &Envelope) -> Vec<String> {
+        envelope
+            .label_provider_ids
+            .iter()
+            .filter_map(|provider_id| {
+                self.labels
+                    .iter()
+                    .find(|label| &label.provider_id == provider_id)
+                    .map(|label| crate::ui::sidebar::humanize_label(&label.name).to_string())
+            })
+            .collect()
+    }
+
+    fn attachment_summaries_for_envelope(&self, envelope: &Envelope) -> Vec<AttachmentSummary> {
+        self.body_cache
+            .get(&envelope.id)
+            .map(|body| {
+                body.attachments
+                    .iter()
+                    .map(|attachment| AttachmentSummary {
+                        filename: attachment.filename.clone(),
+                        size_bytes: attachment.size_bytes,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn thread_message_blocks(&self) -> Vec<ui::message_view::ThreadMessageBlock> {
+        self.viewed_thread_messages
+            .iter()
+            .map(|message| ui::message_view::ThreadMessageBlock {
+                envelope: message.clone(),
+                body_state: self.resolve_body_view_state(message),
+                labels: self.label_chips_for_envelope(message),
+                attachments: self.attachment_summaries_for_envelope(message),
+                selected: self.viewing_envelope.as_ref().map(|env| env.id.clone())
+                    == Some(message.id.clone()),
+                has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
+                signature_expanded: self.signature_expanded,
+            })
+            .collect()
+    }
+
+    pub fn apply_local_label_refs(
+        &mut self,
+        message_ids: &[MessageId],
+        add: &[String],
+        remove: &[String],
+    ) {
+        let add_provider_ids = self.resolve_label_provider_ids(add);
+        let remove_provider_ids = self.resolve_label_provider_ids(remove);
+        for envelope in self
+            .envelopes
+            .iter_mut()
+            .chain(self.all_envelopes.iter_mut())
+            .chain(self.search_page.results.iter_mut())
+            .chain(self.viewed_thread_messages.iter_mut())
+        {
+            if message_ids
+                .iter()
+                .any(|message_id| message_id == &envelope.id)
+            {
+                apply_provider_label_changes(
+                    &mut envelope.label_provider_ids,
+                    &add_provider_ids,
+                    &remove_provider_ids,
+                );
+            }
+        }
+        if let Some(ref mut envelope) = self.viewing_envelope {
+            if message_ids
+                .iter()
+                .any(|message_id| message_id == &envelope.id)
+            {
+                apply_provider_label_changes(
+                    &mut envelope.label_provider_ids,
+                    &add_provider_ids,
+                    &remove_provider_ids,
+                );
+            }
+        }
+    }
+
+    pub fn apply_local_flags(&mut self, message_id: &MessageId, flags: MessageFlags) {
+        for envelope in self
+            .envelopes
+            .iter_mut()
+            .chain(self.all_envelopes.iter_mut())
+            .chain(self.search_page.results.iter_mut())
+            .chain(self.viewed_thread_messages.iter_mut())
+        {
+            if &envelope.id == message_id {
+                envelope.flags = flags;
+            }
+        }
+        if let Some(envelope) = self.viewing_envelope.as_mut() {
+            if &envelope.id == message_id {
+                envelope.flags = flags;
+            }
+        }
+    }
+
+    fn resolve_label_provider_ids(&self, refs: &[String]) -> Vec<String> {
+        refs.iter()
+            .filter_map(|label_ref| {
+                self.labels
+                    .iter()
+                    .find(|label| label.provider_id == *label_ref || label.name == *label_ref)
+                    .map(|label| label.provider_id.clone())
+                    .or_else(|| Some(label_ref.clone()))
+            })
+            .collect()
+    }
+
+    pub fn resolve_thread_success(&mut self, thread: Thread, mut messages: Vec<Envelope>) {
+        let thread_id = thread.id.clone();
+        self.in_flight_thread_fetch = None;
+        messages.sort_by_key(|message| message.date);
+
+        if self
+            .viewing_envelope
+            .as_ref()
+            .map(|env| env.thread_id.clone())
+            == Some(thread_id)
+        {
+            let focused_message_id = self.focused_thread_envelope().map(|env| env.id.clone());
+            for message in &messages {
+                self.queue_body_fetch(message.id.clone());
+            }
+            self.viewed_thread = Some(thread);
+            self.viewed_thread_messages = messages;
+            self.thread_selected_index = focused_message_id
+                .and_then(|message_id| {
+                    self.viewed_thread_messages
+                        .iter()
+                        .position(|message| message.id == message_id)
+                })
+                .unwrap_or_else(|| self.default_thread_selected_index());
+            self.sync_focused_thread_envelope();
+        }
+    }
+
+    pub fn resolve_thread_fetch_error(&mut self, thread_id: &mxr_core::ThreadId) {
+        if self.in_flight_thread_fetch.as_ref() == Some(thread_id) {
+            self.in_flight_thread_fetch = None;
+        }
+    }
+
+    /// Get IDs to mutate: selected_set if non-empty, else context_envelope.
+    fn mutation_target_ids(&self) -> Vec<MessageId> {
+        if !self.selected_set.is_empty() {
+            self.selected_set.iter().cloned().collect()
+        } else if let Some(env) = self.context_envelope() {
+            vec![env.id.clone()]
+        } else {
+            vec![]
+        }
+    }
+
+    fn clear_selection(&mut self) {
+        self.selected_set.clear();
+        self.visual_mode = false;
+        self.visual_anchor = None;
+    }
+
+    fn queue_or_confirm_bulk_action(
+        &mut self,
+        title: impl Into<String>,
+        detail: impl Into<String>,
+        request: Request,
+        effect: MutationEffect,
+        status_message: String,
+        count: usize,
+    ) {
+        if count > 1 {
+            self.pending_bulk_confirm = Some(PendingBulkConfirm {
+                title: title.into(),
+                detail: detail.into(),
+                request,
+                effect,
+                status_message,
+            });
+        } else {
+            self.pending_mutation_queue.push((request, effect));
+            self.status_message = Some(status_message);
+            self.clear_selection();
+        }
+    }
+
+    /// Update visual selection range when moving in visual mode.
+    fn update_visual_selection(&mut self) {
+        if self.visual_mode {
+            if let Some(anchor) = self.visual_anchor {
+                let start = anchor.min(self.selected_index);
+                let end = anchor.max(self.selected_index);
+                self.selected_set.clear();
+                for env in self.envelopes.iter().skip(start).take(end - start + 1) {
+                    self.selected_set.insert(env.id.clone());
+                }
+            }
+        }
+    }
+
+    /// Ensure selected_index is visible within the scroll viewport.
+    fn ensure_visible(&mut self) {
+        let h = self.visible_height.max(1);
+        if self.selected_index < self.scroll_offset {
+            self.scroll_offset = self.selected_index;
+        } else if self.selected_index >= self.scroll_offset + h {
+            self.scroll_offset = self.selected_index + 1 - h;
+        }
+        // Prefetch bodies for messages near the cursor
+        self.queue_body_window();
+    }
+
+    pub fn set_subscriptions(&mut self, subscriptions: Vec<SubscriptionSummary>) {
+        let selected_id = self
+            .selected_subscription_entry()
+            .map(|entry| entry.summary.latest_message_id.clone());
+        self.subscriptions_page.entries = subscriptions
+            .into_iter()
+            .map(|summary| SubscriptionEntry {
+                envelope: subscription_summary_to_envelope(&summary),
+                summary,
+            })
+            .collect();
+
+        if self.subscriptions_page.entries.is_empty() {
+            if self.mailbox_view == MailboxView::Subscriptions {
+                self.selected_index = 0;
+                self.scroll_offset = 0;
+                self.viewing_envelope = None;
+                self.viewed_thread = None;
+                self.viewed_thread_messages.clear();
+                self.body_view_state = BodyViewState::Empty { preview: None };
+            }
+            return;
+        }
+
+        if let Some(selected_id) = selected_id {
+            if let Some(position) = self
+                .subscriptions_page
+                .entries
+                .iter()
+                .position(|entry| entry.summary.latest_message_id == selected_id)
+            {
+                self.selected_index = position;
+            } else {
+                self.selected_index = self
+                    .selected_index
+                    .min(self.subscriptions_page.entries.len().saturating_sub(1));
+            }
+        } else {
+            self.selected_index = self
+                .selected_index
+                .min(self.subscriptions_page.entries.len().saturating_sub(1));
+        }
+
+        if self.mailbox_view == MailboxView::Subscriptions {
+            self.ensure_visible();
+            self.auto_preview();
+        }
+    }
+}
+
+fn apply_provider_label_changes(
+    label_provider_ids: &mut Vec<String>,
+    add_provider_ids: &[String],
+    remove_provider_ids: &[String],
+) {
+    label_provider_ids.retain(|provider_id| {
+        !remove_provider_ids
+            .iter()
+            .any(|remove| remove == provider_id)
+    });
+    for provider_id in add_provider_ids {
+        if !label_provider_ids
+            .iter()
+            .any(|existing| existing == provider_id)
+        {
+            label_provider_ids.push(provider_id.clone());
+        }
+    }
+}
+
+fn unsubscribe_method_label(method: &UnsubscribeMethod) -> &'static str {
+    match method {
+        UnsubscribeMethod::OneClick { .. } => "one-click",
+        UnsubscribeMethod::Mailto { .. } => "mailto",
+        UnsubscribeMethod::HttpLink { .. } => "browser link",
+        UnsubscribeMethod::BodyLink { .. } => "body link",
+        UnsubscribeMethod::None => "none",
+    }
+}
+
+fn remove_from_list_effect(ids: &[MessageId]) -> MutationEffect {
+    if ids.len() == 1 {
+        MutationEffect::RemoveFromList(ids[0].clone())
+    } else {
+        MutationEffect::RemoveFromListMany(ids.to_vec())
+    }
+}
+
+fn pluralize_messages(count: usize) -> &'static str {
+    if count == 1 {
+        "message"
+    } else {
+        "messages"
+    }
+}
+
+fn bulk_message_detail(verb: &str, count: usize) -> String {
+    format!(
+        "You are about to {verb} these {count} {}.",
+        pluralize_messages(count)
+    )
+}
+
+fn subscription_summary_to_envelope(summary: &SubscriptionSummary) -> Envelope {
+    Envelope {
+        id: summary.latest_message_id.clone(),
+        account_id: summary.account_id.clone(),
+        provider_id: summary.latest_provider_id.clone(),
+        thread_id: summary.latest_thread_id.clone(),
+        message_id_header: None,
+        in_reply_to: None,
+        references: vec![],
+        from: Address {
+            name: summary.sender_name.clone(),
+            email: summary.sender_email.clone(),
+        },
+        to: vec![],
+        cc: vec![],
+        bcc: vec![],
+        subject: summary.latest_subject.clone(),
+        date: summary.latest_date,
+        flags: summary.latest_flags,
+        snippet: summary.latest_snippet.clone(),
+        has_attachments: summary.latest_has_attachments,
+        size_bytes: summary.latest_size_bytes,
+        unsubscribe: summary.unsubscribe.clone(),
+        label_provider_ids: vec![],
+    }
+}
+
+fn account_summary_to_config(
+    account: &mxr_protocol::AccountSummaryData,
+) -> Option<mxr_protocol::AccountConfigData> {
+    Some(mxr_protocol::AccountConfigData {
+        key: account.key.clone()?,
+        name: account.name.clone(),
+        email: account.email.clone(),
+        sync: account.sync.clone(),
+        send: account.send.clone(),
+        is_default: account.is_default,
+    })
+}
+
+fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> AccountFormState {
+    let mut form = AccountFormState {
+        visible: true,
+        key: account.key,
+        name: account.name,
+        email: account.email,
+        ..AccountFormState::default()
+    };
+
+    if let Some(sync) = account.sync {
+        match sync {
+            mxr_protocol::AccountSyncConfigData::Gmail {
+                credential_source,
+                client_id,
+                client_secret,
+                token_ref,
+            } => {
+                form.mode = AccountFormMode::Gmail;
+                form.gmail_credential_source = credential_source;
+                form.gmail_client_id = client_id;
+                form.gmail_client_secret = client_secret.unwrap_or_default();
+                form.gmail_token_ref = token_ref;
+            }
+            mxr_protocol::AccountSyncConfigData::Imap {
+                host,
+                port,
+                username,
+                password_ref,
+                ..
+            } => {
+                form.mode = AccountFormMode::ImapSmtp;
+                form.imap_host = host;
+                form.imap_port = port.to_string();
+                form.imap_username = username;
+                form.imap_password_ref = password_ref;
+            }
+        }
+    } else {
+        form.mode = AccountFormMode::SmtpOnly;
+    }
+
+    match account.send {
+        Some(mxr_protocol::AccountSendConfigData::Smtp {
+            host,
+            port,
+            username,
+            password_ref,
+            ..
+        }) => {
+            form.smtp_host = host;
+            form.smtp_port = port.to_string();
+            form.smtp_username = username;
+            form.smtp_password_ref = password_ref;
+        }
+        Some(mxr_protocol::AccountSendConfigData::Gmail) => {
+            if form.gmail_token_ref.is_empty() {
+                form.gmail_token_ref = format!("mxr/{}-gmail", form.key);
+            }
+        }
+        None => {}
+    }
+
+    form
+}
+
+fn account_form_field_value(form: &AccountFormState) -> Option<&str> {
+    match (form.mode, form.active_field) {
+        (_, 0) => None,
+        (_, 1) => Some(form.key.as_str()),
+        (_, 2) => Some(form.name.as_str()),
+        (_, 3) => Some(form.email.as_str()),
+        (AccountFormMode::Gmail, 4) => None,
+        (AccountFormMode::Gmail, 5)
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+        {
+            Some(form.gmail_client_id.as_str())
+        }
+        (AccountFormMode::Gmail, 6)
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+        {
+            Some(form.gmail_client_secret.as_str())
+        }
+        (AccountFormMode::Gmail, 5 | 6) => None,
+        (AccountFormMode::Gmail, 7) => None,
+        (AccountFormMode::ImapSmtp, 4) => Some(form.imap_host.as_str()),
+        (AccountFormMode::ImapSmtp, 5) => Some(form.imap_port.as_str()),
+        (AccountFormMode::ImapSmtp, 6) => Some(form.imap_username.as_str()),
+        (AccountFormMode::ImapSmtp, 7) => Some(form.imap_password_ref.as_str()),
+        (AccountFormMode::ImapSmtp, 8) => Some(form.imap_password.as_str()),
+        (AccountFormMode::ImapSmtp, 9) => Some(form.smtp_host.as_str()),
+        (AccountFormMode::ImapSmtp, 10) => Some(form.smtp_port.as_str()),
+        (AccountFormMode::ImapSmtp, 11) => Some(form.smtp_username.as_str()),
+        (AccountFormMode::ImapSmtp, 12) => Some(form.smtp_password_ref.as_str()),
+        (AccountFormMode::ImapSmtp, 13) => Some(form.smtp_password.as_str()),
+        (AccountFormMode::SmtpOnly, 4) => Some(form.smtp_host.as_str()),
+        (AccountFormMode::SmtpOnly, 5) => Some(form.smtp_port.as_str()),
+        (AccountFormMode::SmtpOnly, 6) => Some(form.smtp_username.as_str()),
+        (AccountFormMode::SmtpOnly, 7) => Some(form.smtp_password_ref.as_str()),
+        (AccountFormMode::SmtpOnly, 8) => Some(form.smtp_password.as_str()),
+        _ => None,
+    }
+}
+
+fn account_form_field_is_editable(form: &AccountFormState) -> bool {
+    account_form_field_value(form).is_some()
+}
+
+fn with_account_form_field_mut<F>(form: &mut AccountFormState, mut update: F)
+where
+    F: FnMut(&mut String),
+{
+    let field = match (form.mode, form.active_field) {
+        (_, 1) => &mut form.key,
+        (_, 2) => &mut form.name,
+        (_, 3) => &mut form.email,
+        (AccountFormMode::Gmail, 5)
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+        {
+            &mut form.gmail_client_id
+        }
+        (AccountFormMode::Gmail, 6)
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+        {
+            &mut form.gmail_client_secret
+        }
+        (AccountFormMode::ImapSmtp, 4) => &mut form.imap_host,
+        (AccountFormMode::ImapSmtp, 5) => &mut form.imap_port,
+        (AccountFormMode::ImapSmtp, 6) => &mut form.imap_username,
+        (AccountFormMode::ImapSmtp, 7) => &mut form.imap_password_ref,
+        (AccountFormMode::ImapSmtp, 8) => &mut form.imap_password,
+        (AccountFormMode::ImapSmtp, 9) => &mut form.smtp_host,
+        (AccountFormMode::ImapSmtp, 10) => &mut form.smtp_port,
+        (AccountFormMode::ImapSmtp, 11) => &mut form.smtp_username,
+        (AccountFormMode::ImapSmtp, 12) => &mut form.smtp_password_ref,
+        (AccountFormMode::ImapSmtp, 13) => &mut form.smtp_password,
+        (AccountFormMode::SmtpOnly, 4) => &mut form.smtp_host,
+        (AccountFormMode::SmtpOnly, 5) => &mut form.smtp_port,
+        (AccountFormMode::SmtpOnly, 6) => &mut form.smtp_username,
+        (AccountFormMode::SmtpOnly, 7) => &mut form.smtp_password_ref,
+        (AccountFormMode::SmtpOnly, 8) => &mut form.smtp_password,
+        _ => return,
+    };
+    update(field);
+}
+
+fn insert_account_form_char(form: &mut AccountFormState, c: char) {
+    let cursor = form.field_cursor;
+    with_account_form_field_mut(form, |value| {
+        let insert_at = char_to_byte_index(value, cursor);
+        value.insert(insert_at, c);
+    });
+    form.field_cursor = form.field_cursor.saturating_add(1);
+}
+
+fn delete_account_form_char(form: &mut AccountFormState, backspace: bool) {
+    let cursor = form.field_cursor;
+    with_account_form_field_mut(form, |value| {
+        if backspace {
+            if cursor == 0 {
+                return;
+            }
+            let start = char_to_byte_index(value, cursor - 1);
+            let end = char_to_byte_index(value, cursor);
+            value.replace_range(start..end, "");
+        } else {
+            let len = value.chars().count();
+            if cursor >= len {
+                return;
+            }
+            let start = char_to_byte_index(value, cursor);
+            let end = char_to_byte_index(value, cursor + 1);
+            value.replace_range(start..end, "");
+        }
+    });
+    if backspace {
+        form.field_cursor = form.field_cursor.saturating_sub(1);
+    }
+}
+
+fn char_to_byte_index(value: &str, char_index: usize) -> usize {
+    value
+        .char_indices()
+        .nth(char_index)
+        .map(|(index, _)| index)
+        .unwrap_or(value.len())
+}
+
+fn next_gmail_credential_source(
+    current: mxr_protocol::GmailCredentialSourceData,
+    forward: bool,
+) -> mxr_protocol::GmailCredentialSourceData {
+    match (current, forward) {
+        (mxr_protocol::GmailCredentialSourceData::Bundled, true) => {
+            mxr_protocol::GmailCredentialSourceData::Custom
+        }
+        (mxr_protocol::GmailCredentialSourceData::Custom, true) => {
+            mxr_protocol::GmailCredentialSourceData::Bundled
+        }
+        (mxr_protocol::GmailCredentialSourceData::Bundled, false) => {
+            mxr_protocol::GmailCredentialSourceData::Custom
+        }
+        (mxr_protocol::GmailCredentialSourceData::Custom, false) => {
+            mxr_protocol::GmailCredentialSourceData::Bundled
+        }
+    }
+}
+
+pub fn snooze_presets() -> [SnoozePreset; 4] {
+    [
+        SnoozePreset::TomorrowMorning,
+        SnoozePreset::Tonight,
+        SnoozePreset::Weekend,
+        SnoozePreset::NextMonday,
+    ]
+}
+
+pub fn resolve_snooze_preset(
+    preset: SnoozePreset,
+    config: &mxr_config::SnoozeConfig,
+) -> chrono::DateTime<chrono::Utc> {
+    use chrono::{Datelike, Duration, Local, NaiveTime, Weekday};
+
+    let now = Local::now();
+    match preset {
+        SnoozePreset::TomorrowMorning => {
+            let tomorrow = now.date_naive() + Duration::days(1);
+            let time = NaiveTime::from_hms_opt(config.morning_hour as u32, 0, 0).unwrap();
+            tomorrow
+                .and_time(time)
+                .and_local_timezone(now.timezone())
+                .single()
+                .unwrap()
+                .with_timezone(&chrono::Utc)
+        }
+        SnoozePreset::Tonight => {
+            let today = now.date_naive();
+            let time = NaiveTime::from_hms_opt(config.evening_hour as u32, 0, 0).unwrap();
+            let tonight = today
+                .and_time(time)
+                .and_local_timezone(now.timezone())
+                .single()
+                .unwrap()
+                .with_timezone(&chrono::Utc);
+            if tonight <= chrono::Utc::now() {
+                tonight + Duration::days(1)
+            } else {
+                tonight
+            }
+        }
+        SnoozePreset::Weekend => {
+            let target_day = match config.weekend_day.as_str() {
+                "sunday" => Weekday::Sun,
+                _ => Weekday::Sat,
+            };
+            let days_until = (target_day.num_days_from_monday() as i64
+                - now.weekday().num_days_from_monday() as i64
+                + 7)
+                % 7;
+            let days = if days_until == 0 { 7 } else { days_until };
+            let weekend = now.date_naive() + Duration::days(days);
+            let time = NaiveTime::from_hms_opt(config.weekend_hour as u32, 0, 0).unwrap();
+            weekend
+                .and_time(time)
+                .and_local_timezone(now.timezone())
+                .single()
+                .unwrap()
+                .with_timezone(&chrono::Utc)
+        }
+        SnoozePreset::NextMonday => {
+            let days_until_monday = (Weekday::Mon.num_days_from_monday() as i64
+                - now.weekday().num_days_from_monday() as i64
+                + 7)
+                % 7;
+            let days = if days_until_monday == 0 {
+                7
+            } else {
+                days_until_monday
+            };
+            let monday = now.date_naive() + Duration::days(days);
+            let time = NaiveTime::from_hms_opt(config.morning_hour as u32, 0, 0).unwrap();
+            monday
+                .and_time(time)
+                .and_local_timezone(now.timezone())
+                .single()
+                .unwrap()
+                .with_timezone(&chrono::Utc)
+        }
+    }
+}

@@ -298,7 +298,8 @@ impl super::Store {
                 row.get::<String, _>("snippet").as_str(),
                 row.get::<bool, _>("has_attachments"),
                 row.get::<i64, _>("size_bytes"),
-                row.get::<Option<String>, _>("unsubscribe_method").as_deref(),
+                row.get::<Option<String>, _>("unsubscribe_method")
+                    .as_deref(),
                 row.get::<String, _>("label_provider_ids").as_str(),
             );
             by_id.insert(envelope.id.clone(), envelope);
@@ -362,13 +363,11 @@ impl super::Store {
         message_id: &MessageId,
         thread_id: &ThreadId,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE messages SET thread_id = ? WHERE id = ?",
-        )
-        .bind(thread_id.as_str())
-        .bind(message_id.as_str())
-        .execute(self.writer())
-        .await?;
+        sqlx::query("UPDATE messages SET thread_id = ? WHERE id = ?")
+            .bind(thread_id.as_str())
+            .bind(message_id.as_str())
+            .execute(self.writer())
+            .await?;
         Ok(())
     }
 
@@ -653,6 +652,104 @@ impl super::Store {
         .fetch_all(self.reader())
         .await?;
         Ok(rows)
+    }
+
+    pub async fn list_subscriptions(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<SubscriptionSummary>, sqlx::Error> {
+        let none_unsubscribe = serde_json::to_string(&UnsubscribeMethod::None).unwrap();
+        let trash_flag = MessageFlags::TRASH.bits() as i64;
+        let spam_flag = MessageFlags::SPAM.bits() as i64;
+        let lim = limit as i64;
+
+        let rows = sqlx::query(
+            r#"WITH ranked AS (
+                SELECT
+                    id,
+                    account_id,
+                    provider_id,
+                    thread_id,
+                    from_name,
+                    from_email,
+                    subject,
+                    snippet,
+                    date,
+                    flags,
+                    has_attachments,
+                    size_bytes,
+                    unsubscribe_method,
+                    COUNT(*) OVER (
+                        PARTITION BY account_id, LOWER(from_email)
+                    ) AS message_count,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY account_id, LOWER(from_email)
+                        ORDER BY date DESC, id DESC
+                    ) AS rn
+                FROM messages
+                WHERE from_email != ''
+                  AND unsubscribe_method IS NOT NULL
+                  AND unsubscribe_method != ?
+                  AND (flags & ?) = 0
+                  AND (flags & ?) = 0
+            )
+            SELECT
+                id,
+                account_id,
+                provider_id,
+                thread_id,
+                from_name,
+                from_email,
+                subject,
+                snippet,
+                date,
+                flags,
+                has_attachments,
+                size_bytes,
+                unsubscribe_method,
+                message_count
+            FROM ranked
+            WHERE rn = 1
+            ORDER BY date DESC, id DESC
+            LIMIT ?"#,
+        )
+        .bind(none_unsubscribe)
+        .bind(trash_flag)
+        .bind(spam_flag)
+        .bind(lim)
+        .fetch_all(self.reader())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| SubscriptionSummary {
+                account_id: AccountId::from_uuid(
+                    uuid::Uuid::parse_str(&row.get::<String, _>("account_id")).unwrap(),
+                ),
+                sender_name: row.get::<Option<String>, _>("from_name"),
+                sender_email: row.get::<String, _>("from_email"),
+                message_count: row.get::<i64, _>("message_count") as u32,
+                latest_message_id: MessageId::from_uuid(
+                    uuid::Uuid::parse_str(&row.get::<String, _>("id")).unwrap(),
+                ),
+                latest_provider_id: row.get::<String, _>("provider_id"),
+                latest_thread_id: ThreadId::from_uuid(
+                    uuid::Uuid::parse_str(&row.get::<String, _>("thread_id")).unwrap(),
+                ),
+                latest_subject: row.get::<String, _>("subject"),
+                latest_snippet: row.get::<String, _>("snippet"),
+                latest_date: chrono::DateTime::from_timestamp(row.get::<i64, _>("date"), 0)
+                    .unwrap_or_default(),
+                latest_flags: MessageFlags::from_bits_truncate(row.get::<i64, _>("flags") as u32),
+                latest_has_attachments: row.get::<bool, _>("has_attachments"),
+                latest_size_bytes: row.get::<i64, _>("size_bytes") as u64,
+                unsubscribe: row
+                    .get::<Option<String>, _>("unsubscribe_method")
+                    .as_deref()
+                    .map(|value| serde_json::from_str(value).unwrap_or(UnsubscribeMethod::None))
+                    .unwrap_or(UnsubscribeMethod::None),
+            })
+            .collect())
     }
 }
 

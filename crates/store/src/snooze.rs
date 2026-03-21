@@ -81,13 +81,15 @@ impl super::Store {
         .fetch_optional(self.reader())
         .await?;
 
-        Ok(row.map(|(message_id, account_id, snoozed_at, wake_at, original_labels)| Snoozed {
-            message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&message_id).unwrap()),
-            account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&account_id).unwrap()),
-            snoozed_at: DateTime::from_timestamp(snoozed_at, 0).unwrap_or_default(),
-            wake_at: DateTime::from_timestamp(wake_at, 0).unwrap_or_default(),
-            original_labels: serde_json::from_str(&original_labels).unwrap_or_default(),
-        }))
+        Ok(row.map(
+            |(message_id, account_id, snoozed_at, wake_at, original_labels)| Snoozed {
+                message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&message_id).unwrap()),
+                account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&account_id).unwrap()),
+                snoozed_at: DateTime::from_timestamp(snoozed_at, 0).unwrap_or_default(),
+                wake_at: DateTime::from_timestamp(wake_at, 0).unwrap_or_default(),
+                original_labels: serde_json::from_str(&original_labels).unwrap_or_default(),
+            },
+        ))
     }
 
     pub async fn remove_snooze(&self, message_id: &MessageId) -> Result<(), sqlx::Error> {

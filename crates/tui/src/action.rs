@@ -38,6 +38,7 @@ pub enum Action {
     GoToSent,
     GoToDrafts,
     GoToAllMail,
+    OpenSubscriptions,
     GoToLabel,
     // Command palette
     OpenCommandPalette,

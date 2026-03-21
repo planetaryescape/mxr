@@ -102,9 +102,8 @@ pub fn draw(frame: &mut Frame, area: Rect, state: Option<&UrlModalState>, theme:
 
     let list_height = chunks[0].height as usize;
     if state.urls.len() > list_height {
-        let mut scrollbar_state =
-            ScrollbarState::new(state.urls.len().saturating_sub(list_height))
-                .position(state.selected);
+        let mut scrollbar_state = ScrollbarState::new(state.urls.len().saturating_sub(list_height))
+            .position(state.selected);
         frame.render_stateful_widget(
             Scrollbar::default()
                 .orientation(ScrollbarOrientation::VerticalRight)
@@ -187,7 +186,7 @@ fn extract_plain_urls(text: &str, urls: &mut Vec<UrlEntry>, seen: &mut HashSet<S
                     || c == '\''
             })
             .unwrap_or(url_rest.len());
-        let url = url_rest[..end].trim_end_matches(|c: char| matches!(c, '.' | ',' | ';' | ':' | '!' | '?'));
+        let url = url_rest[..end].trim_end_matches(['.', ',', ';', ':', '!', '?']);
 
         if seen.insert(url.to_string()) {
             urls.push(UrlEntry {
@@ -259,7 +258,10 @@ mod tests {
 
     #[test]
     fn extract_plain_text_urls() {
-        let urls = extract_urls(Some("Check out https://example.com and http://test.org/page"), None);
+        let urls = extract_urls(
+            Some("Check out https://example.com and http://test.org/page"),
+            None,
+        );
         assert_eq!(urls.len(), 2);
         assert_eq!(urls[0].url, "https://example.com");
         assert_eq!(urls[1].url, "http://test.org/page");
@@ -293,9 +295,18 @@ mod tests {
     #[test]
     fn modal_state_navigation() {
         let mut state = UrlModalState::new(vec![
-            UrlEntry { label: "A".into(), url: "https://a.com".into() },
-            UrlEntry { label: "B".into(), url: "https://b.com".into() },
-            UrlEntry { label: "C".into(), url: "https://c.com".into() },
+            UrlEntry {
+                label: "A".into(),
+                url: "https://a.com".into(),
+            },
+            UrlEntry {
+                label: "B".into(),
+                url: "https://b.com".into(),
+            },
+            UrlEntry {
+                label: "C".into(),
+                url: "https://c.com".into(),
+            },
         ]);
         assert_eq!(state.selected, 0);
         state.next();

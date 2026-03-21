@@ -147,6 +147,9 @@ pub enum Request {
         message_id: MessageId,
     },
     ListSavedSearches,
+    ListSubscriptions {
+        limit: u32,
+    },
     CreateSavedSearch {
         name: String,
         query: String,
@@ -342,6 +345,9 @@ pub enum ResponseData {
     },
     SavedSearches {
         searches: Vec<mxr_core::types::SavedSearch>,
+    },
+    Subscriptions {
+        subscriptions: Vec<mxr_core::types::SubscriptionSummary>,
     },
     SavedSearchData {
         search: mxr_core::types::SavedSearch,

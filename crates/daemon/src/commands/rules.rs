@@ -72,34 +72,38 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
         QueryNode::Label(label) => Conditions::Field(FieldCondition::HasLabel { label }),
         QueryNode::Filter(FilterKind::Unread) => Conditions::Field(FieldCondition::IsUnread),
         QueryNode::Filter(FilterKind::Starred) => Conditions::Field(FieldCondition::IsStarred),
-        QueryNode::Filter(FilterKind::HasAttachment) => Conditions::Field(FieldCondition::HasAttachment),
+        QueryNode::Filter(FilterKind::HasAttachment) => {
+            Conditions::Field(FieldCondition::HasAttachment)
+        }
         QueryNode::Filter(FilterKind::Read) => Conditions::Not {
             condition: Box::new(Conditions::Field(FieldCondition::IsUnread)),
         },
-        QueryNode::Filter(FilterKind::Draft) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "DRAFT".to_string() })
-        }
-        QueryNode::Filter(FilterKind::Sent) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "SENT".to_string() })
-        }
-        QueryNode::Filter(FilterKind::Trash) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "TRASH".to_string() })
-        }
-        QueryNode::Filter(FilterKind::Spam) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "SPAM".to_string() })
-        }
-        QueryNode::Filter(FilterKind::Inbox) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "INBOX".to_string() })
-        }
-        QueryNode::Filter(FilterKind::Archived) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "ARCHIVE".to_string() })
-        }
+        QueryNode::Filter(FilterKind::Draft) => Conditions::Field(FieldCondition::HasLabel {
+            label: "DRAFT".to_string(),
+        }),
+        QueryNode::Filter(FilterKind::Sent) => Conditions::Field(FieldCondition::HasLabel {
+            label: "SENT".to_string(),
+        }),
+        QueryNode::Filter(FilterKind::Trash) => Conditions::Field(FieldCondition::HasLabel {
+            label: "TRASH".to_string(),
+        }),
+        QueryNode::Filter(FilterKind::Spam) => Conditions::Field(FieldCondition::HasLabel {
+            label: "SPAM".to_string(),
+        }),
+        QueryNode::Filter(FilterKind::Inbox) => Conditions::Field(FieldCondition::HasLabel {
+            label: "INBOX".to_string(),
+        }),
+        QueryNode::Filter(FilterKind::Archived) => Conditions::Field(FieldCondition::HasLabel {
+            label: "ARCHIVE".to_string(),
+        }),
         QueryNode::Filter(FilterKind::Answered) => {
             anyhow::bail!("is:answered is not supported in rules conditions yet")
         }
-        QueryNode::Text(value) | QueryNode::Phrase(value) => Conditions::Field(FieldCondition::BodyContains {
-            pattern: StringMatch::Contains(value),
-        }),
+        QueryNode::Text(value) | QueryNode::Phrase(value) => {
+            Conditions::Field(FieldCondition::BodyContains {
+                pattern: StringMatch::Contains(value),
+            })
+        }
         QueryNode::DateRange { bound, date } => {
             let date = match date {
                 mxr_search::ast::DateValue::Specific(date) => {
@@ -111,8 +115,12 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
                 _ => anyhow::bail!("Relative dates are not supported in rules add yet"),
             };
             match bound {
-                mxr_search::ast::DateBound::After => Conditions::Field(FieldCondition::DateAfter { date }),
-                mxr_search::ast::DateBound::Before => Conditions::Field(FieldCondition::DateBefore { date }),
+                mxr_search::ast::DateBound::After => {
+                    Conditions::Field(FieldCondition::DateAfter { date })
+                }
+                mxr_search::ast::DateBound::Before => {
+                    Conditions::Field(FieldCondition::DateBefore { date })
+                }
                 mxr_search::ast::DateBound::Exact => Conditions::And {
                     conditions: vec![
                         Conditions::Field(FieldCondition::DateAfter { date }),
@@ -153,7 +161,10 @@ fn render_rules(rules: &[serde_json::Value], format: OutputFormat) -> anyhow::Re
             if rules.is_empty() {
                 "No rules".to_string()
             } else {
-                let mut out = format!("{:<36} {:<8} {:<8} {}\n", "ID", "ENABLED", "PRIORITY", "NAME");
+                let mut out = format!(
+                    "{:<36} {:<8} {:<8} {}\n",
+                    "ID", "ENABLED", "PRIORITY", "NAME"
+                );
                 out.push_str(&format!("{}\n", "-".repeat(80)));
                 for rule in rules {
                     out.push_str(&format!(
@@ -337,7 +348,10 @@ mod tests {
 
     #[test]
     fn parse_action_archive() {
-        assert!(matches!(parse_action("archive").unwrap(), RuleAction::Archive));
+        assert!(matches!(
+            parse_action("archive").unwrap(),
+            RuleAction::Archive
+        ));
     }
 
     #[test]

@@ -130,7 +130,10 @@ impl AppState {
                         client,
                     ));
                     let sync_provider: Arc<dyn MailSyncProvider> = provider.clone();
-                    if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Gmail)) {
+                    if matches!(
+                        acct_config.send,
+                        Some(mxr_config::SendProviderConfig::Gmail)
+                    ) {
                         let send_provider: Arc<dyn MailSendProvider> = provider.clone();
                         send_providers.insert(account_id.clone(), send_provider.clone());
                         if requested_default == Some(key.as_str())
@@ -167,8 +170,10 @@ impl AppState {
                 providers.insert(account_id.clone(), sync_provider);
             }
 
-            if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Gmail))
-                && !send_providers.contains_key(&account_id)
+            if matches!(
+                acct_config.send,
+                Some(mxr_config::SendProviderConfig::Gmail)
+            ) && !send_providers.contains_key(&account_id)
             {
                 anyhow::bail!("Account '{key}' uses gmail send without gmail sync");
             }
@@ -314,9 +319,7 @@ impl AppState {
             .insert(account_id.clone())
     }
 
-    pub async fn reload_accounts_from_disk(
-        self: &Arc<Self>,
-    ) -> std::result::Result<(), String> {
+    pub async fn reload_accounts_from_disk(self: &Arc<Self>) -> std::result::Result<(), String> {
         let config = mxr_config::load_config().map_err(|e| e.to_string())?;
         let provider_setup = Self::create_providers_from_config(&config, &self.store)
             .await
@@ -368,7 +371,8 @@ impl AppState {
     }
 
     #[cfg(test)]
-    pub async fn in_memory_with_fake() -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
+    pub async fn in_memory_with_fake(
+    ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
         let store = Arc::new(Store::in_memory().await?);
         let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
@@ -398,21 +402,24 @@ impl AppState {
 
         let (event_tx, _) = broadcast::channel(256);
 
-        Ok((Self {
-            store,
-            search,
-            sync_engine,
-            runtime: RwLock::new(ProviderRuntime {
-                providers,
-                send_providers,
-                default_provider: Some(provider),
-                default_send_provider: send_provider,
-            }),
-            sync_loop_accounts: StdMutex::new(HashSet::new()),
-            event_tx,
-            start_time: Instant::now(),
-            config: RwLock::new(mxr_config::MxrConfig::default()),
-        }, fake))
+        Ok((
+            Self {
+                store,
+                search,
+                sync_engine,
+                runtime: RwLock::new(ProviderRuntime {
+                    providers,
+                    send_providers,
+                    default_provider: Some(provider),
+                    default_send_provider: send_provider,
+                }),
+                sync_loop_accounts: StdMutex::new(HashSet::new()),
+                event_tx,
+                start_time: Instant::now(),
+                config: RwLock::new(mxr_config::MxrConfig::default()),
+            },
+            fake,
+        ))
     }
 
     pub fn socket_path() -> std::path::PathBuf {
@@ -512,7 +519,8 @@ use_tls = true
         assert_eq!(setup.providers.len(), 2);
         assert_eq!(setup.send_providers.len(), 1);
         assert_eq!(
-            setup.default_provider
+            setup
+                .default_provider
                 .as_ref()
                 .expect("default provider")
                 .account_id()
@@ -532,7 +540,10 @@ use_tls = true
         let accounts = store.list_accounts().await.expect("list accounts");
         assert_eq!(accounts.len(), 2);
         assert!(accounts.iter().any(|account| {
-            account.sync_backend.as_ref().map(|backend| &backend.provider_kind)
+            account
+                .sync_backend
+                .as_ref()
+                .map(|backend| &backend.provider_kind)
                 == Some(&ProviderKind::Imap)
         }));
     }
@@ -548,7 +559,8 @@ use_tls = true
 
         let default_account = store
             .get_account(
-                setup.default_provider
+                setup
+                    .default_provider
                     .as_ref()
                     .expect("default provider")
                     .account_id(),

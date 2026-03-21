@@ -58,11 +58,20 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AccountsPageState, theme: &cr
             Line::from(format!("Name: {}", account.name)),
             Line::from(format!("Email: {}", account.email)),
             Line::from(format!("Provider: {}", account.provider_kind)),
-            Line::from(format!("Sync: {}", account.sync_kind.as_deref().unwrap_or("none"))),
-            Line::from(format!("Send: {}", account.send_kind.as_deref().unwrap_or("none"))),
+            Line::from(format!(
+                "Sync: {}",
+                account.sync_kind.as_deref().unwrap_or("none")
+            )),
+            Line::from(format!(
+                "Send: {}",
+                account.send_kind.as_deref().unwrap_or("none")
+            )),
             Line::from(format!("Source: {source}")),
             Line::from(format!("Editable: {editability}")),
-            Line::from(format!("Default: {}", if account.is_default { "yes" } else { "no" })),
+            Line::from(format!(
+                "Default: {}",
+                if account.is_default { "yes" } else { "no" }
+            )),
         ]
     } else {
         let mut lines = vec![
@@ -106,7 +115,12 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AccountsPageState, theme: &cr
     }
 }
 
-fn draw_form(frame: &mut Frame, area: Rect, form: &crate::app::AccountFormState, theme: &crate::theme::Theme) {
+fn draw_form(
+    frame: &mut Frame,
+    area: Rect,
+    form: &crate::app::AccountFormState,
+    theme: &crate::theme::Theme,
+) {
     let titles = ["Gmail", "IMAP + SMTP", "SMTP only"]
         .into_iter()
         .map(Line::from)
@@ -119,7 +133,11 @@ fn draw_form(frame: &mut Frame, area: Rect, form: &crate::app::AccountFormState,
 
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(2)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(2),
+        ])
         .split(area);
 
     let tabs = Tabs::new(titles)
@@ -337,11 +355,7 @@ fn draw_onboarding_modal(frame: &mut Frame, area: Rect, theme: &crate::theme::Th
     frame.render_widget(paragraph, popup);
 }
 
-fn draw_mode_switch_confirm_modal(
-    frame: &mut Frame,
-    area: Rect,
-    theme: &crate::theme::Theme,
-) {
+fn draw_mode_switch_confirm_modal(frame: &mut Frame, area: Rect, theme: &crate::theme::Theme) {
     let popup = centered_rect(58, 28, area);
     frame.render_widget(Clear, popup);
 

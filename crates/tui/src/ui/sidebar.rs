@@ -10,6 +10,8 @@ pub struct SidebarView<'a> {
     pub saved_searches: &'a [SavedSearch],
     pub sidebar_selected: usize,
     pub all_mail_active: bool,
+    pub subscriptions_active: bool,
+    pub subscription_count: usize,
     pub system_expanded: bool,
     pub user_expanded: bool,
     pub saved_searches_expanded: bool,
@@ -19,11 +21,9 @@ pub struct SidebarView<'a> {
 #[derive(Debug, Clone)]
 enum SidebarEntry<'a> {
     Separator,
-    Header {
-        title: &'static str,
-        expanded: bool,
-    },
+    Header { title: &'static str, expanded: bool },
     AllMail,
+    Subscriptions { count: usize },
     Label(&'a Label),
     SavedSearch(&'a SavedSearch),
 }
@@ -36,6 +36,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
     let entries = build_sidebar_entries(
         view.labels,
         view.saved_searches,
+        view.subscription_count,
         view.system_expanded,
         view.user_expanded,
         view.saved_searches_expanded,
@@ -60,7 +61,12 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
                 Span::styled(*title, Style::default().fg(theme.accent).bold()),
             ])),
             SidebarEntry::AllMail => render_all_mail_item(inner_width, view.all_mail_active, theme),
-            SidebarEntry::Label(label) => render_label_item(label, inner_width, view.active_label, theme),
+            SidebarEntry::Subscriptions { count } => {
+                render_subscriptions_item(inner_width, *count, view.subscriptions_active, theme)
+            }
+            SidebarEntry::Label(label) => {
+                render_label_item(label, inner_width, view.active_label, theme)
+            }
             SidebarEntry::SavedSearch(search) => ListItem::new(format!("  {}", search.name)),
         })
         .collect::<Vec<_>>();
@@ -85,6 +91,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
 fn build_sidebar_entries<'a>(
     labels: &'a [Label],
     saved_searches: &'a [SavedSearch],
+    subscription_count: usize,
     system_expanded: bool,
     user_expanded: bool,
     saved_searches_expanded: bool,
@@ -117,6 +124,9 @@ fn build_sidebar_entries<'a>(
             expanded: system_expanded,
         },
         SidebarEntry::AllMail,
+        SidebarEntry::Subscriptions {
+            count: subscription_count,
+        },
     ];
     if system_expanded {
         entries.extend(system_labels.into_iter().map(SidebarEntry::Label));
@@ -151,11 +161,17 @@ fn build_sidebar_entries<'a>(
     entries
 }
 
-fn visual_index_for_selection(entries: &[SidebarEntry<'_>], sidebar_selected: usize) -> Option<usize> {
+fn visual_index_for_selection(
+    entries: &[SidebarEntry<'_>],
+    sidebar_selected: usize,
+) -> Option<usize> {
     let mut selectable = 0usize;
     for (visual_index, entry) in entries.iter().enumerate() {
         match entry {
-            SidebarEntry::AllMail | SidebarEntry::Label(_) | SidebarEntry::SavedSearch(_) => {
+            SidebarEntry::AllMail
+            | SidebarEntry::Subscriptions { .. }
+            | SidebarEntry::Label(_)
+            | SidebarEntry::SavedSearch(_) => {
                 if selectable == sidebar_selected {
                     return Some(visual_index);
                 }
@@ -168,10 +184,41 @@ fn visual_index_for_selection(entries: &[SidebarEntry<'_>], sidebar_selected: us
 }
 
 fn render_all_mail_item<'a>(inner_width: usize, is_active: bool, theme: &Theme) -> ListItem<'a> {
-    let name = "All Mail";
+    render_sidebar_link(inner_width, "All Mail", None, is_active, theme)
+}
+
+fn render_subscriptions_item<'a>(
+    inner_width: usize,
+    count: usize,
+    is_active: bool,
+    theme: &Theme,
+) -> ListItem<'a> {
+    let count_str = (count > 0).then(|| count.to_string());
+    render_sidebar_link(
+        inner_width,
+        "Subscriptions",
+        count_str.as_deref(),
+        is_active,
+        theme,
+    )
+}
+
+fn render_sidebar_link<'a>(
+    inner_width: usize,
+    name: &str,
+    count: Option<&str>,
+    is_active: bool,
+    theme: &Theme,
+) -> ListItem<'a> {
     let line = format!("  {:<width$}", name, width = inner_width.saturating_sub(2));
+    let line = if let Some(count) = count {
+        let name_part = format!("  {}", name);
+        let padding = inner_width.saturating_sub(name_part.len() + count.len());
+        format!("{}{}{}", name_part, " ".repeat(padding), count)
+    } else {
+        line
+    };
     let style = if is_active {
-        // Full-width highlight bar for active label
         Style::default()
             .bg(theme.selection_bg)
             .fg(theme.accent)
@@ -188,7 +235,9 @@ fn render_label_item<'a>(
     active_label: Option<&mxr_core::LabelId>,
     theme: &Theme,
 ) -> ListItem<'a> {
-    let is_active = active_label.map(|current| current == &label.id).unwrap_or(false);
+    let is_active = active_label
+        .map(|current| current == &label.id)
+        .unwrap_or(false);
     let display_name = humanize_label(&label.name);
 
     let count_str = if label.unread_count > 0 {
@@ -305,19 +354,41 @@ mod tests {
 
     #[test]
     fn sidebar_entries_insert_labels_header_before_user_labels() {
-        let labels = vec![label("INBOX", LabelKind::System), label("Work", LabelKind::User)];
-        let entries = build_sidebar_entries(&labels, &[], true, true, true);
-        assert!(matches!(entries[0], SidebarEntry::Header { title: "System", .. }));
+        let labels = vec![
+            label("INBOX", LabelKind::System),
+            label("Work", LabelKind::User),
+        ];
+        let entries = build_sidebar_entries(&labels, &[], 3, true, true, true);
+        assert!(matches!(
+            entries[0],
+            SidebarEntry::Header {
+                title: "System",
+                ..
+            }
+        ));
         assert!(matches!(entries[1], SidebarEntry::AllMail));
-        assert!(matches!(entries[2], SidebarEntry::Label(label) if label.name == "INBOX"));
-        assert!(matches!(entries[3], SidebarEntry::Separator));
-        assert!(matches!(entries[4], SidebarEntry::Header { title: "Labels", .. }));
-        assert!(matches!(entries[5], SidebarEntry::Label(label) if label.name == "Work"));
+        assert!(matches!(
+            entries[2],
+            SidebarEntry::Subscriptions { count: 3 }
+        ));
+        assert!(matches!(entries[3], SidebarEntry::Label(label) if label.name == "INBOX"));
+        assert!(matches!(entries[4], SidebarEntry::Separator));
+        assert!(matches!(
+            entries[5],
+            SidebarEntry::Header {
+                title: "Labels",
+                ..
+            }
+        ));
+        assert!(matches!(entries[6], SidebarEntry::Label(label) if label.name == "Work"));
     }
 
     #[test]
     fn sidebar_selection_skips_headers_and_spacers() {
-        let labels = vec![label("INBOX", LabelKind::System), label("Work", LabelKind::User)];
+        let labels = vec![
+            label("INBOX", LabelKind::System),
+            label("Work", LabelKind::User),
+        ];
         let searches = vec![SavedSearch {
             id: SavedSearchId::new(),
             account_id: None,
@@ -328,10 +399,11 @@ mod tests {
             position: 0,
             created_at: chrono::Utc::now(),
         }];
-        let entries = build_sidebar_entries(&labels, &searches, true, true, true);
+        let entries = build_sidebar_entries(&labels, &searches, 2, true, true, true);
         assert_eq!(visual_index_for_selection(&entries, 0), Some(1));
         assert_eq!(visual_index_for_selection(&entries, 1), Some(2));
-        assert_eq!(visual_index_for_selection(&entries, 2), Some(5));
-        assert_eq!(visual_index_for_selection(&entries, 3), Some(8));
+        assert_eq!(visual_index_for_selection(&entries, 2), Some(3));
+        assert_eq!(visual_index_for_selection(&entries, 3), Some(6));
+        assert_eq!(visual_index_for_selection(&entries, 4), Some(9));
     }
 }

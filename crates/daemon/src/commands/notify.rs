@@ -33,7 +33,10 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
             Response::Ok {
                 data: ResponseData::Labels { labels },
             } => {
-                println!("{}", render_notify(inbox_unread_count(&labels), fmt.clone())?);
+                println!(
+                    "{}",
+                    render_notify(inbox_unread_count(&labels), fmt.clone())?
+                );
             }
             Response::Error { message } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),
@@ -52,8 +55,8 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::{AccountId, LabelId};
     use mxr_core::types::{Label, LabelKind};
+    use mxr_core::{AccountId, LabelId};
 
     #[test]
     fn inbox_unread_uses_inbox_label() {

@@ -2,7 +2,12 @@ use crate::app::PendingSend;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, pending: Option<&PendingSend>, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    pending: Option<&PendingSend>,
+    theme: &crate::theme::Theme,
+) {
     let Some(pending) = pending else {
         return;
     };

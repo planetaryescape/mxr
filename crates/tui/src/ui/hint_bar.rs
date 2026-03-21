@@ -14,24 +14,27 @@ pub struct HintBarState<'a> {
     pub sync_status: Option<String>,
 }
 
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    state: HintBarState<'_>,
-    theme: &Theme,
-) {
+pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Theme) {
     let lines = if state.bulk_confirm_open {
-        vec![hint_line(&[("Enter", "Confirm"), ("y", "Confirm"), ("Esc", "Cancel")], theme)]
+        vec![hint_line(
+            &[("Enter", "Confirm"), ("y", "Confirm"), ("Esc", "Cancel")],
+            theme,
+        )]
     } else if state.help_modal_open {
-        vec![hint_line(&[("Esc", "Close Help"), ("?", "Toggle Help")], theme)]
+        vec![hint_line(
+            &[("Esc", "Close Help"), ("?", "Toggle Help")],
+            theme,
+        )]
     } else if state.search_active {
-        vec![hint_line(&[("Enter", "Confirm Search"), ("Esc", "Cancel Search")], theme)]
+        vec![hint_line(
+            &[("Enter", "Confirm Search"), ("Esc", "Cancel Search")],
+            theme,
+        )]
     } else {
-        build_lines(&hints_for_state(
-            state.screen,
-            state.active_pane,
-            state.selected_count,
-        ), theme)
+        build_lines(
+            &hints_for_state(state.screen, state.active_pane, state.selected_count),
+            theme,
+        )
     };
 
     // Split area: hints on left, sync status on right
@@ -51,10 +54,7 @@ pub fn draw(
     // Sync status indicator
     let sync_line = Line::from(vec![
         Span::styled("● ", Style::default().fg(theme.success)),
-        Span::styled(
-            sync_text.to_string(),
-            Style::default().fg(theme.text_muted),
-        ),
+        Span::styled(sync_text.to_string(), Style::default().fg(theme.text_muted)),
     ]);
     frame.render_widget(
         Paragraph::new(sync_line).style(Style::default().bg(theme.hint_bar_bg)),
@@ -179,7 +179,10 @@ pub fn hints_for_state(
 
 fn build_lines(hints: &[(String, String)], theme: &Theme) -> Vec<Line<'static>> {
     let mid = hints.len().div_ceil(2);
-    vec![hint_line_owned(&hints[..mid], theme), hint_line_owned(&hints[mid..], theme)]
+    vec![
+        hint_line_owned(&hints[..mid], theme),
+        hint_line_owned(&hints[mid..], theme),
+    ]
 }
 
 fn hint_line(hints: &[(&str, &str)], theme: &Theme) -> Line<'static> {
@@ -188,8 +191,14 @@ fn hint_line(hints: &[(&str, &str)], theme: &Theme) -> Line<'static> {
             .iter()
             .flat_map(|(key, action)| {
                 [
-                    Span::styled(format!(" {key}"), Style::default().fg(theme.text_primary).bold()),
-                    Span::styled(format!(":{action}  "), Style::default().fg(theme.text_secondary)),
+                    Span::styled(
+                        format!(" {key}"),
+                        Style::default().fg(theme.text_primary).bold(),
+                    ),
+                    Span::styled(
+                        format!(":{action}  "),
+                        Style::default().fg(theme.text_secondary),
+                    ),
                 ]
             })
             .collect::<Vec<_>>(),
@@ -202,8 +211,14 @@ fn hint_line_owned(hints: &[(String, String)], theme: &Theme) -> Line<'static> {
             .iter()
             .flat_map(|(key, action)| {
                 [
-                    Span::styled(format!(" {key}"), Style::default().fg(theme.text_primary).bold()),
-                    Span::styled(format!(":{action}  "), Style::default().fg(theme.text_secondary)),
+                    Span::styled(
+                        format!(" {key}"),
+                        Style::default().fg(theme.text_primary).bold(),
+                    ),
+                    Span::styled(
+                        format!(":{action}  "),
+                        Style::default().fg(theme.text_secondary),
+                    ),
                 ]
             })
             .collect::<Vec<_>>(),

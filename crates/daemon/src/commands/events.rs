@@ -27,7 +27,10 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
             DaemonEvent::SyncCompleted {
                 account_id,
                 messages_synced,
-            } => format!("sync account={} messages_synced={messages_synced}", account_id),
+            } => format!(
+                "sync account={} messages_synced={messages_synced}",
+                account_id
+            ),
             DaemonEvent::SyncError { account_id, error } => {
                 format!("error account={} {error}", account_id)
             }

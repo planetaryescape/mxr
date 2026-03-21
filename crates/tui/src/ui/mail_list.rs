@@ -19,6 +19,10 @@ pub struct MailListView<'a> {
     pub mode: MailListMode,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "TUI draw entrypoint keeps call sites explicit"
+)]
 pub fn draw(
     frame: &mut Frame,
     area: Rect,
@@ -66,7 +70,7 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         Constraint::Length(2),  // star
         Constraint::Length(2),  // unsubscribe
         Constraint::Length(22), // sender
-        Constraint::Fill(1),   // subject (+ thread count badge)
+        Constraint::Fill(1),    // subject (+ thread count badge)
         Constraint::Length(8),  // date
         Constraint::Length(2),  // attachment icon
     ];
@@ -90,8 +94,9 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
 
     // Scrollbar
     if view.rows.len() > visible_height {
-        let mut scrollbar_state = ScrollbarState::new(view.rows.len().saturating_sub(visible_height))
-            .position(view.scroll_offset);
+        let mut scrollbar_state =
+            ScrollbarState::new(view.rows.len().saturating_sub(visible_height))
+                .position(view.scroll_offset);
         frame.render_stateful_widget(
             Scrollbar::default()
                 .orientation(ScrollbarOrientation::VerticalRight)
@@ -183,7 +188,9 @@ fn build_row<'a>(
     ));
 
     let base_style = if is_selected {
-        Style::default().bg(theme.selection_bg).fg(theme.selection_fg)
+        Style::default()
+            .bg(theme.selection_bg)
+            .fg(theme.selection_fg)
     } else if is_in_set {
         Style::default().bg(theme.label_bg).fg(theme.text_primary)
     } else if is_unread {
@@ -234,7 +241,11 @@ fn format_date(date: &chrono::DateTime<Utc>) -> String {
 }
 
 fn attachment_marker(has_attachments: bool) -> &'static str {
-    if has_attachments { "📎" } else { "  " }
+    if has_attachments {
+        "📎"
+    } else {
+        "  "
+    }
 }
 
 fn unsubscribe_marker(unsubscribe: &mxr_core::types::UnsubscribeMethod) -> &'static str {
@@ -317,7 +328,10 @@ mod tests {
 
     #[test]
     fn sender_text_inlines_thread_count_without_brackets() {
-        assert_eq!(sender_parts(&row(1, false), MailListMode::Threads), ("Matt".into(), None));
+        assert_eq!(
+            sender_parts(&row(1, false), MailListMode::Threads),
+            ("Matt".into(), None)
+        );
         assert_eq!(
             sender_parts(&row(4, false), MailListMode::Threads),
             ("Matt".into(), Some(4))

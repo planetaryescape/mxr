@@ -44,8 +44,7 @@ pub async fn run(_account: Option<String>, status: bool, _history: bool) -> anyh
         let resp = client.request(Request::GetStatus).await?;
         match resp {
             Response::Ok {
-                data:
-                    ResponseData::Status { sync_statuses, .. },
+                data: ResponseData::Status { sync_statuses, .. },
             } => render_sync_status(&sync_statuses),
             Response::Error { message } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),

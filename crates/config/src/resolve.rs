@@ -24,6 +24,9 @@ pub enum ConfigError {
 
 /// Returns the mxr config directory (e.g. `~/.config/mxr` on Linux/macOS).
 pub fn config_dir() -> PathBuf {
+    if let Some(path) = env_path("MXR_CONFIG_DIR") {
+        return path;
+    }
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("mxr")
@@ -57,6 +60,9 @@ pub fn config_file_path() -> PathBuf {
 
 /// Returns the mxr data directory (e.g. `~/.local/share/mxr` on Linux).
 pub fn data_dir() -> PathBuf {
+    if let Some(path) = env_path("MXR_DATA_DIR") {
+        return path;
+    }
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(app_instance_name())
@@ -64,6 +70,9 @@ pub fn data_dir() -> PathBuf {
 
 /// Returns the IPC socket path for the current instance.
 pub fn socket_path() -> PathBuf {
+    if let Some(path) = env_path("MXR_SOCKET_PATH") {
+        return path;
+    }
     if cfg!(target_os = "macos") {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -77,6 +86,12 @@ pub fn socket_path() -> PathBuf {
             .join(app_instance_name())
             .join("mxr.sock")
     }
+}
+
+fn env_path(key: &str) -> Option<PathBuf> {
+    std::env::var_os(key)
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
 }
 
 /// Load config from the default config file path, falling back to defaults.

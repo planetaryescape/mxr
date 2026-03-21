@@ -2,8 +2,8 @@ use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::types::SyncCursor;
 use mxr_core::MailSyncProvider;
-use mxr_rules::{Rule, RuleAction, RuleEngine, RuleExecutionLog};
 use mxr_protocol::*;
+use mxr_rules::{Rule, RuleAction, RuleEngine, RuleExecutionLog};
 use mxr_store::{SyncRuntimeStatusUpdate, SyncStatus as StoreSyncStatus};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
@@ -45,8 +45,18 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
         }
 
         let started_at = chrono::Utc::now();
-        let existing_status = state.store.get_sync_runtime_status(&account_id).await.ok().flatten();
-        let pre_sync_cursor = state.store.get_sync_cursor(&account_id).await.ok().flatten();
+        let existing_status = state
+            .store
+            .get_sync_runtime_status(&account_id)
+            .await
+            .ok()
+            .flatten();
+        let pre_sync_cursor = state
+            .store
+            .get_sync_cursor(&account_id)
+            .await
+            .ok()
+            .flatten();
         let sync_log_id = state
             .store
             .insert_sync_log(&account_id, &StoreSyncStatus::Running)
@@ -61,17 +71,28 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
                     last_error: Some(None),
                     failure_class: Some(None),
                     sync_in_progress: Some(true),
-                    current_cursor_summary: Some(Some(describe_sync_cursor(pre_sync_cursor.as_ref()))),
+                    current_cursor_summary: Some(Some(describe_sync_cursor(
+                        pre_sync_cursor.as_ref(),
+                    ))),
                     ..Default::default()
                 },
             )
             .await;
 
-        match state.sync_engine.sync_account_with_outcome(provider.as_ref()).await {
+        match state
+            .sync_engine
+            .sync_account_with_outcome(provider.as_ref())
+            .await
+        {
             Ok(outcome) => {
                 let count = outcome.synced_count;
                 backoff_secs = 0;
-                let post_sync_cursor = state.store.get_sync_cursor(&account_id).await.ok().flatten();
+                let post_sync_cursor = state
+                    .store
+                    .get_sync_cursor(&account_id)
+                    .await
+                    .ok()
+                    .flatten();
                 let _ = state
                     .store
                     .upsert_sync_runtime_status(
@@ -83,7 +104,9 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
                             consecutive_failures: Some(0),
                             backoff_until: Some(None),
                             sync_in_progress: Some(false),
-                            current_cursor_summary: Some(Some(describe_sync_cursor(post_sync_cursor.as_ref()))),
+                            current_cursor_summary: Some(Some(describe_sync_cursor(
+                                post_sync_cursor.as_ref(),
+                            ))),
                             last_synced_count: Some(count),
                             ..Default::default()
                         },
@@ -109,9 +132,13 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
                     )
                     .await;
                 if count > 0 {
-                    if let Err(error) =
-                        apply_rules_to_messages(&state, &account_id, provider.as_ref(), &outcome.upserted_message_ids)
-                            .await
+                    if let Err(error) = apply_rules_to_messages(
+                        &state,
+                        &account_id,
+                        provider.as_ref(),
+                        &outcome.upserted_message_ids,
+                    )
+                    .await
                     {
                         tracing::error!(account = %account_id, "Rule execution failed: {error}");
                     }
@@ -166,11 +193,17 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
                         .and_then(|s| s.trim_end_matches('s').parse::<u64>().ok())
                         .unwrap_or(120);
                     backoff_secs = secs + 10;
-                    backoff_until = Some(chrono::Utc::now() + chrono::Duration::seconds(backoff_secs as i64));
+                    backoff_until =
+                        Some(chrono::Utc::now() + chrono::Duration::seconds(backoff_secs as i64));
                 } else {
                     backoff_secs = (backoff_secs * 2).clamp(30, 300);
                 }
-                let post_error_cursor = state.store.get_sync_cursor(&account_id).await.ok().flatten();
+                let post_error_cursor = state
+                    .store
+                    .get_sync_cursor(&account_id)
+                    .await
+                    .ok()
+                    .flatten();
                 let _ = state
                     .store
                     .upsert_sync_runtime_status(
@@ -181,7 +214,9 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
                             consecutive_failures: Some(consecutive_failures),
                             backoff_until: Some(backoff_until),
                             sync_in_progress: Some(false),
-                            current_cursor_summary: Some(Some(describe_sync_cursor(post_error_cursor.as_ref()))),
+                            current_cursor_summary: Some(Some(describe_sync_cursor(
+                                post_error_cursor.as_ref(),
+                            ))),
                             ..Default::default()
                         },
                     )
@@ -290,7 +325,9 @@ async fn apply_rules_to_messages(
 
     let rules: Vec<Rule> = rows
         .iter()
-        .map(|row| serde_json::from_value(mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string()))
+        .map(|row| {
+            serde_json::from_value(mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string())
+        })
         .collect::<Result<_, _>>()?;
     let engine = RuleEngine::new(rules.clone());
     let labels = state
@@ -308,7 +345,11 @@ async fn apply_rules_to_messages(
         else {
             continue;
         };
-        let body = state.store.get_body(message_id).await.map_err(|e| e.to_string())?;
+        let body = state
+            .store
+            .get_body(message_id)
+            .await
+            .map_err(|e| e.to_string())?;
         let label_ids = state
             .store
             .get_message_label_ids(message_id)
@@ -330,7 +371,9 @@ async fn apply_rules_to_messages(
         let mut error = None;
         for action in &result.actions {
             action_names.push(format!("{action:?}"));
-            if let Err(err) = execute_rule_action(state, account_id, provider, message_id, action, &labels).await {
+            if let Err(err) =
+                execute_rule_action(state, account_id, provider, message_id, action, &labels).await
+            {
                 error = Some(err);
                 break;
             }
@@ -346,7 +389,8 @@ async fn apply_rules_to_messages(
                     error.is_none(),
                     error.as_deref(),
                 );
-                let actions_json = serde_json::to_string(&entry.actions_applied).map_err(|e| e.to_string())?;
+                let actions_json =
+                    serde_json::to_string(&entry.actions_applied).map_err(|e| e.to_string())?;
                 state
                     .store
                     .insert_rule_log(mxr_store::RuleLogInput {
@@ -399,7 +443,10 @@ async fn execute_rule_action(
                 .modify_labels(&provider_message_id, std::slice::from_ref(label), &[])
                 .await
                 .map_err(|e| e.to_string())?;
-            if let Some(found) = labels.iter().find(|candidate| candidate.provider_id == *label || candidate.name == *label) {
+            if let Some(found) = labels
+                .iter()
+                .find(|candidate| candidate.provider_id == *label || candidate.name == *label)
+            {
                 state
                     .store
                     .add_message_label(message_id, &found.id)
@@ -412,7 +459,10 @@ async fn execute_rule_action(
                 .modify_labels(&provider_message_id, &[], std::slice::from_ref(label))
                 .await
                 .map_err(|e| e.to_string())?;
-            if let Some(found) = labels.iter().find(|candidate| candidate.provider_id == *label || candidate.name == *label) {
+            if let Some(found) = labels
+                .iter()
+                .find(|candidate| candidate.provider_id == *label || candidate.name == *label)
+            {
                 state
                     .store
                     .remove_message_label(message_id, &found.id)
@@ -427,34 +477,57 @@ async fn execute_rule_action(
                 .map_err(|e| e.to_string())?;
         }
         RuleAction::Trash => {
-            provider.trash(&provider_message_id).await.map_err(|e| e.to_string())?;
-            state.store.move_to_trash(message_id).await.map_err(|e| e.to_string())?;
+            provider
+                .trash(&provider_message_id)
+                .await
+                .map_err(|e| e.to_string())?;
+            state
+                .store
+                .move_to_trash(message_id)
+                .await
+                .map_err(|e| e.to_string())?;
         }
         RuleAction::Star => {
             provider
                 .set_starred(&provider_message_id, true)
                 .await
                 .map_err(|e| e.to_string())?;
-            state.store.set_starred(message_id, true).await.map_err(|e| e.to_string())?;
+            state
+                .store
+                .set_starred(message_id, true)
+                .await
+                .map_err(|e| e.to_string())?;
         }
         RuleAction::MarkRead => {
             provider
                 .set_read(&provider_message_id, true)
                 .await
                 .map_err(|e| e.to_string())?;
-            state.store.set_read(message_id, true).await.map_err(|e| e.to_string())?;
+            state
+                .store
+                .set_read(message_id, true)
+                .await
+                .map_err(|e| e.to_string())?;
         }
         RuleAction::MarkUnread => {
             provider
                 .set_read(&provider_message_id, false)
                 .await
                 .map_err(|e| e.to_string())?;
-            state.store.set_read(message_id, false).await.map_err(|e| e.to_string())?;
+            state
+                .store
+                .set_read(message_id, false)
+                .await
+                .map_err(|e| e.to_string())?;
         }
         RuleAction::Snooze { duration } => {
             let wake_at = match duration {
-                mxr_rules::SnoozeDuration::Hours { count } => chrono::Utc::now() + chrono::Duration::hours(*count as i64),
-                mxr_rules::SnoozeDuration::Days { count } => chrono::Utc::now() + chrono::Duration::days(*count as i64),
+                mxr_rules::SnoozeDuration::Hours { count } => {
+                    chrono::Utc::now() + chrono::Duration::hours(*count as i64)
+                }
+                mxr_rules::SnoozeDuration::Days { count } => {
+                    chrono::Utc::now() + chrono::Duration::days(*count as i64)
+                }
                 mxr_rules::SnoozeDuration::Until { date } => *date,
             };
             let original_labels = state
@@ -481,8 +554,11 @@ async fn execute_rule_action(
             });
             mxr_rules::shell_hook::execute_shell_hook(
                 command,
-                    &mxr_rules::shell_hook::ShellHookPayload {
-                    id: payload["message_id"].as_str().unwrap_or_default().to_string(),
+                &mxr_rules::shell_hook::ShellHookPayload {
+                    id: payload["message_id"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
                     from: mxr_rules::shell_hook::ShellHookAddress {
                         name: None,
                         email: String::new(),
@@ -532,24 +608,49 @@ impl RuleMessage {
             date: envelope.date,
             is_unread: !envelope.flags.contains(mxr_core::MessageFlags::READ),
             is_starred: envelope.flags.contains(mxr_core::MessageFlags::STARRED),
-            has_unsubscribe: !matches!(envelope.unsubscribe, mxr_core::types::UnsubscribeMethod::None),
+            has_unsubscribe: !matches!(
+                envelope.unsubscribe,
+                mxr_core::types::UnsubscribeMethod::None
+            ),
             body_text: body.and_then(|body| body.text_plain.or(body.text_html)),
         }
     }
 }
 
 impl mxr_rules::MessageView for RuleMessage {
-    fn sender_email(&self) -> &str { &self.from }
-    fn to_emails(&self) -> &[String] { &self.to }
-    fn subject(&self) -> &str { &self.subject }
-    fn labels(&self) -> &[String] { &self.labels }
-    fn has_attachment(&self) -> bool { self.has_attachment }
-    fn size_bytes(&self) -> u64 { self.size_bytes }
-    fn date(&self) -> chrono::DateTime<chrono::Utc> { self.date }
-    fn is_unread(&self) -> bool { self.is_unread }
-    fn is_starred(&self) -> bool { self.is_starred }
-    fn has_unsubscribe(&self) -> bool { self.has_unsubscribe }
-    fn body_text(&self) -> Option<&str> { self.body_text.as_deref() }
+    fn sender_email(&self) -> &str {
+        &self.from
+    }
+    fn to_emails(&self) -> &[String] {
+        &self.to
+    }
+    fn subject(&self) -> &str {
+        &self.subject
+    }
+    fn labels(&self) -> &[String] {
+        &self.labels
+    }
+    fn has_attachment(&self) -> bool {
+        self.has_attachment
+    }
+    fn size_bytes(&self) -> u64 {
+        self.size_bytes
+    }
+    fn date(&self) -> chrono::DateTime<chrono::Utc> {
+        self.date
+    }
+    fn is_unread(&self) -> bool {
+        self.is_unread
+    }
+    fn is_starred(&self) -> bool {
+        self.is_starred
+    }
+    fn has_unsubscribe(&self) -> bool {
+        self.has_unsubscribe
+    }
+    fn body_text(&self) -> Option<&str> {
+        self.body_text.as_deref()
+    }
 }
 
 pub async fn snooze_loop(state: Arc<AppState>) {

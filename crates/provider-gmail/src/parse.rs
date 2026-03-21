@@ -8,7 +8,7 @@ use mxr_compose::parse::{
 };
 use mxr_core::{
     AccountId, Address, AttachmentId, AttachmentMeta, Envelope, MessageBody, MessageFlags,
-    MessageId, MessageMetadata, TextPlainFormat, ThreadId, UnsubscribeMethod,
+    MessageId, TextPlainFormat, ThreadId, UnsubscribeMethod,
 };
 use thiserror::Error;
 
@@ -130,10 +130,13 @@ pub fn parse_list_unsubscribe(headers: &[GmailHeader]) -> UnsubscribeMethod {
 }
 
 pub fn parse_address(raw: &str) -> Address {
-    parse_rfc_address_list(raw).into_iter().next().unwrap_or(Address {
-        name: None,
-        email: raw.trim().to_string(),
-    })
+    parse_rfc_address_list(raw)
+        .into_iter()
+        .next()
+        .unwrap_or(Address {
+            name: None,
+            email: raw.trim().to_string(),
+        })
 }
 
 pub fn parse_address_list(raw: &str) -> Vec<Address> {
@@ -188,7 +191,11 @@ struct ExtractedBodyData {
 /// Extract text_plain and text_html from a GmailMessage payload.
 pub fn extract_body(msg: &GmailMessage) -> (Option<String>, Option<String>, Vec<AttachmentMeta>) {
     let body_data = extract_body_data(msg);
-    (body_data.text_plain, body_data.text_html, body_data.attachments)
+    (
+        body_data.text_plain,
+        body_data.text_html,
+        body_data.attachments,
+    )
 }
 
 fn extract_body_data(msg: &GmailMessage) -> ExtractedBodyData {
@@ -199,11 +206,7 @@ fn extract_body_data(msg: &GmailMessage) -> ExtractedBodyData {
     data
 }
 
-fn walk_parts(
-    payload: &GmailPayload,
-    provider_msg_id: &str,
-    body_data: &mut ExtractedBodyData,
-) {
+fn walk_parts(payload: &GmailPayload, provider_msg_id: &str, body_data: &mut ExtractedBodyData) {
     let mime = payload
         .mime_type
         .as_deref()
@@ -298,7 +301,7 @@ pub fn extract_message_body(msg: &GmailMessage) -> MessageBody {
     let body_data = extract_body_data(msg);
     let mut metadata = parsed_headers
         .map(|parsed| parsed.metadata)
-        .unwrap_or_else(MessageMetadata::default);
+        .unwrap_or_default();
     metadata.calendar = body_data.calendar.clone();
     let text_plain = match (&body_data.text_plain, &metadata.text_plain_format) {
         (Some(text_plain), Some(TextPlainFormat::Flowed { delsp })) => {

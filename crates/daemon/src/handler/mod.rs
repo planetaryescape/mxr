@@ -140,6 +140,9 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::Count { query } => diagnostics::count(state, query).await,
         Request::GetHeaders { message_id } => diagnostics::get_headers(state, message_id).await,
         Request::ListSavedSearches => diagnostics::list_saved_searches(state).await,
+        Request::ListSubscriptions { limit } => {
+            diagnostics::list_subscriptions(state, *limit).await
+        }
         Request::CreateSavedSearch { name, query } => {
             diagnostics::create_saved_search(state, name, query).await
         }
@@ -3047,7 +3050,11 @@ mod tests {
             other => panic!("Expected Ack, got {:?}", other),
         }
 
-        let events = state.store.list_events(10, None, Some("mutation")).await.unwrap();
+        let events = state
+            .store
+            .list_events(10, None, Some("mutation"))
+            .await
+            .unwrap();
         let id_str = id.as_str();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].message_id.as_deref(), Some(id_str.as_str()));

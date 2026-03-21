@@ -7,7 +7,8 @@ use std::process::{Command, Stdio};
 
 const DEFAULT_LOG_LINES: usize = 100;
 const VERBOSE_LOG_LINES: usize = 500;
-const GITHUB_ISSUE_URL: &str = "https://github.com/planetaryescape/mxr/issues/new?template=bug_report.yml";
+const GITHUB_ISSUE_URL: &str =
+    "https://github.com/planetaryescape/mxr/issues/new?template=bug_report.yml";
 const GITHUB_BODY_LIMIT: usize = 8_000;
 
 #[derive(Debug, Clone)]
@@ -58,13 +59,15 @@ pub async fn run(options: BugReportOptions) -> anyhow::Result<()> {
         print!("{report}");
     }
 
-    let output_path = if options.stdout && options.output.is_none() && !options.edit && !options.clipboard && !options.github {
+    let output_path = if options.stdout
+        && options.output.is_none()
+        && !options.edit
+        && !options.clipboard
+        && !options.github
+    {
         None
     } else {
-        let path = options
-            .output
-            .clone()
-            .unwrap_or_else(default_report_path);
+        let path = options.output.clone().unwrap_or_else(default_report_path);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -88,7 +91,10 @@ pub async fn run(options: BugReportOptions) -> anyhow::Result<()> {
         open_url(&url)?;
         if url == GITHUB_ISSUE_URL {
             if let Some(path) = output_path.as_ref() {
-                eprintln!("Report saved to {} — paste it into the issue.", path.display());
+                eprintln!(
+                    "Report saved to {} — paste it into the issue.",
+                    path.display()
+                );
             }
         }
     }
@@ -130,17 +136,27 @@ async fn generate_report(options: &BugReportOptions) -> anyhow::Result<String> {
         Vec::new()
     };
     let snoozed_count = if let Some(store) = store.as_ref() {
-        store.list_snoozed().await.map(|items| items.len()).unwrap_or(0)
+        store
+            .list_snoozed()
+            .await
+            .map(|items| items.len())
+            .unwrap_or(0)
     } else {
         0
     };
     let sync_events = if let Some(store) = store.as_ref() {
-        store.list_events(10, None, Some("sync")).await.unwrap_or_default()
+        store
+            .list_events(10, None, Some("sync"))
+            .await
+            .unwrap_or_default()
     } else {
         Vec::new()
     };
     let error_events = if let Some(store) = store.as_ref() {
-        store.list_events(20, Some("error"), None).await.unwrap_or_default()
+        store
+            .list_events(20, Some("error"), None)
+            .await
+            .unwrap_or_default()
     } else {
         Vec::new()
     };
@@ -181,7 +197,11 @@ async fn generate_report(options: &BugReportOptions) -> anyhow::Result<String> {
             .map(|account| {
                 format!(
                     "- {}: {} unread, {} messages, sync={}, send={}",
-                    account.name, account.unread_count, account.total_messages, account.sync, account.send
+                    account.name,
+                    account.unread_count,
+                    account.total_messages,
+                    account.sync,
+                    account.send
                 )
             })
             .collect(),
@@ -269,13 +289,19 @@ async fn collect_account_summaries(
     let accounts = store.list_accounts().await?;
     let mut summaries = Vec::with_capacity(accounts.len());
     for account in accounts {
-        let labels = store.list_labels_by_account(&account.id).await.unwrap_or_default();
+        let labels = store
+            .list_labels_by_account(&account.id)
+            .await
+            .unwrap_or_default();
         let unread_count = labels
             .iter()
             .find(|label| label.name == "INBOX")
             .map(|label| label.unread_count)
             .unwrap_or(0);
-        let total_messages = store.count_messages_by_account(&account.id).await.unwrap_or(0);
+        let total_messages = store
+            .count_messages_by_account(&account.id)
+            .await
+            .unwrap_or(0);
         summaries.push(AccountSummary {
             name: account.name,
             sync: account
@@ -297,7 +323,10 @@ async fn collect_account_summaries(
 
 fn build_daemon_lines(daemon: &DaemonSummary) -> Vec<String> {
     vec![
-        format!("- Status: {}", if daemon.running { "running" } else { "stopped" }),
+        format!(
+            "- Status: {}",
+            if daemon.running { "running" } else { "stopped" }
+        ),
         format!(
             "- Uptime: {}",
             daemon
@@ -429,7 +458,11 @@ fn read_recent_logs(
         lines.retain(|line| line_timestamp(line).map(|ts| ts >= cutoff).unwrap_or(true));
     } else if full_logs {
         let today = chrono::Utc::now().date_naive();
-        lines.retain(|line| line_timestamp(line).map(|ts| ts.date_naive() == today).unwrap_or(true));
+        lines.retain(|line| {
+            line_timestamp(line)
+                .map(|ts| ts.date_naive() == today)
+                .unwrap_or(true)
+        });
     } else {
         let keep = if verbose {
             VERBOSE_LOG_LINES

@@ -109,10 +109,7 @@ pub fn draw(
 
         if message.has_unsubscribe {
             lines.push(Line::from(vec![
-                Span::styled(
-                    format!("{:<label_width$}", "List:"),
-                    label_style,
-                ),
+                Span::styled(format!("{:<label_width$}", "List:"), label_style),
                 Span::styled(
                     " unsubscribe ",
                     Style::default().bg(theme.warning).fg(Color::Black).bold(),
@@ -129,7 +126,10 @@ pub fn draw(
             for attachment in &message.attachments {
                 lines.push(Line::from(vec![
                     Span::raw(" ".repeat(label_width)),
-                    Span::styled(&attachment.filename, Style::default().fg(theme.success).bold()),
+                    Span::styled(
+                        &attachment.filename,
+                        Style::default().fg(theme.success).bold(),
+                    ),
                     Span::styled(
                         format!(" ({})", human_size(attachment.size_bytes)),
                         Style::default().fg(theme.text_muted),
@@ -175,7 +175,10 @@ pub fn draw(
                     Style::default().fg(theme.text_muted),
                 )));
             }
-            BodyViewState::Error { message: err_msg, preview } => {
+            BodyViewState::Error {
+                message: err_msg,
+                preview,
+            } => {
                 if let Some(preview) = preview {
                     lines.extend(process_body_lines(
                         preview,
@@ -360,7 +363,7 @@ fn style_line_with_links(line: &str, theme: &Theme) -> Line<'static> {
 
         let url = &url_rest[..end];
         // Strip trailing punctuation that's probably not part of the URL
-        let url_trimmed = url.trim_end_matches(|c: char| matches!(c, '.' | ',' | ';' | ':' | '!' | '?'));
+        let url_trimmed = url.trim_end_matches(['.', ',', ';', ':', '!', '?']);
         let trimmed_len = url_trimmed.len();
 
         spans.push(Span::styled(url_trimmed.to_string(), link_style));

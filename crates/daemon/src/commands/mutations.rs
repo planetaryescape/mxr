@@ -87,15 +87,16 @@ fn requires_confirmation(
 
 fn render_selection_preview_lines(action: &str, selection: &MutationSelection) -> Vec<String> {
     let preview_limit = 8usize;
-    let mut lines = vec![format!(
-        "Would {action} {} message(s)",
-        selection.ids.len()
-    )];
+    let mut lines = vec![format!("Would {action} {} message(s)", selection.ids.len())];
 
     if !selection.envelopes.is_empty() {
         lines.push(String::new());
         for envelope in selection.envelopes.iter().take(preview_limit) {
-            let from = envelope.from.name.as_deref().unwrap_or(&envelope.from.email);
+            let from = envelope
+                .from
+                .name
+                .as_deref()
+                .unwrap_or(&envelope.from.email);
             let subject = if envelope.subject.is_empty() {
                 "(no subject)"
             } else {
@@ -262,11 +263,7 @@ pub async fn archive(
         yes,
         dry_run,
         false,
-        |ids| {
-            Request::Mutation(MutationCommand::Archive {
-                message_ids: ids,
-            })
-        },
+        |ids| Request::Mutation(MutationCommand::Archive { message_ids: ids }),
     )
     .await
 }
@@ -529,7 +526,10 @@ pub async fn snooze(
         return Ok(());
     }
     if requires_confirmation(false, selection.used_search, selection.ids.len(), yes) {
-        confirm_action(&format!("snooze until {}", wake_at.to_rfc3339()), &selection)?;
+        confirm_action(
+            &format!("snooze until {}", wake_at.to_rfc3339()),
+            &selection,
+        )?;
     }
     for id in &selection.ids {
         let resp = client

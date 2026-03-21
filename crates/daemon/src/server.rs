@@ -89,8 +89,7 @@ pub async fn run_daemon() -> anyhow::Result<()> {
         let mut event_rx = state.event_tx.subscribe();
 
         tokio::spawn(async move {
-            let (mut sink, mut stream) =
-                Framed::new(stream, IpcCodec::new()).split();
+            let (mut sink, mut stream) = Framed::new(stream, IpcCodec::new()).split();
             let (resp_tx, mut resp_rx) = mpsc::unbounded_channel::<IpcMessage>();
 
             loop {

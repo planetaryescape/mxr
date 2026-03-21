@@ -113,7 +113,7 @@ impl SearchIndex {
         }
         doc.add_text(s.snippet, &envelope.snippet);
         for label in &envelope.label_provider_ids {
-            doc.add_text(s.labels, &label.to_lowercase());
+            doc.add_text(s.labels, label.to_lowercase());
         }
         doc.add_u64(s.size_bytes, envelope.size_bytes);
         doc.add_u64(s.flags, envelope.flags.bits() as u64);
@@ -124,7 +124,10 @@ impl SearchIndex {
         doc.add_bool(s.is_sent, envelope.flags.contains(MessageFlags::SENT));
         doc.add_bool(s.is_trash, envelope.flags.contains(MessageFlags::TRASH));
         doc.add_bool(s.is_spam, envelope.flags.contains(MessageFlags::SPAM));
-        doc.add_bool(s.is_answered, envelope.flags.contains(MessageFlags::ANSWERED));
+        doc.add_bool(
+            s.is_answered,
+            envelope.flags.contains(MessageFlags::ANSWERED),
+        );
 
         let dt = tantivy::DateTime::from_timestamp_secs(envelope.date.timestamp());
         doc.add_date(s.date, dt);
@@ -158,13 +161,13 @@ impl SearchIndex {
         }
         doc.add_text(s.snippet, &envelope.snippet);
         for label in &envelope.label_provider_ids {
-            doc.add_text(s.labels, &label.to_lowercase());
+            doc.add_text(s.labels, label.to_lowercase());
         }
 
         let body_text = body.text_plain.as_deref().unwrap_or("");
         doc.add_text(s.body_text, body_text);
         for attachment in &body.attachments {
-            doc.add_text(s.attachment_filenames, &attachment.filename.to_lowercase());
+            doc.add_text(s.attachment_filenames, attachment.filename.to_lowercase());
         }
 
         doc.add_u64(s.size_bytes, envelope.size_bytes);
@@ -176,7 +179,10 @@ impl SearchIndex {
         doc.add_bool(s.is_sent, envelope.flags.contains(MessageFlags::SENT));
         doc.add_bool(s.is_trash, envelope.flags.contains(MessageFlags::TRASH));
         doc.add_bool(s.is_spam, envelope.flags.contains(MessageFlags::SPAM));
-        doc.add_bool(s.is_answered, envelope.flags.contains(MessageFlags::ANSWERED));
+        doc.add_bool(
+            s.is_answered,
+            envelope.flags.contains(MessageFlags::ANSWERED),
+        );
         let dt = tantivy::DateTime::from_timestamp_secs(envelope.date.timestamp());
         doc.add_date(s.date, dt);
 

@@ -31,7 +31,11 @@ pub fn draw(
         format!("=INBOX [Msgs:{total} New:{unread_count} Starred:{starred_count}]= {sync_part}")
     };
 
-    let bar = Paragraph::new(status).style(Style::default().bg(theme.hint_bar_bg).fg(theme.text_primary));
+    let bar = Paragraph::new(status).style(
+        Style::default()
+            .bg(theme.hint_bar_bg)
+            .fg(theme.text_primary),
+    );
 
     frame.render_widget(bar, area);
 }

@@ -229,6 +229,26 @@ pub struct SavedSearch {
     pub created_at: DateTime<Utc>,
 }
 
+// -- Subscriptions ------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionSummary {
+    pub account_id: AccountId,
+    pub sender_name: Option<String>,
+    pub sender_email: String,
+    pub message_count: u32,
+    pub latest_message_id: MessageId,
+    pub latest_provider_id: String,
+    pub latest_thread_id: ThreadId,
+    pub latest_subject: String,
+    pub latest_snippet: String,
+    pub latest_date: DateTime<Utc>,
+    pub latest_flags: MessageFlags,
+    pub latest_has_attachments: bool,
+    pub latest_size_bytes: u64,
+    pub unsubscribe: UnsubscribeMethod,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SortOrder {
     DateDesc,
@@ -273,8 +293,13 @@ pub struct ImapCapabilityState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SyncCursor {
-    Gmail { history_id: u64 },
-    GmailBackfill { history_id: u64, page_token: String },
+    Gmail {
+        history_id: u64,
+    },
+    GmailBackfill {
+        history_id: u64,
+        page_token: String,
+    },
     Imap {
         uid_validity: u32,
         uid_next: u32,

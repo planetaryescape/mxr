@@ -42,8 +42,9 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>, theme: &cr
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, inner);
 
-    let mut scrollbar_state = ScrollbarState::new(content_height.saturating_sub(inner.height as usize))
-        .position(state.scroll_offset as usize);
+    let mut scrollbar_state =
+        ScrollbarState::new(content_height.saturating_sub(inner.height as usize))
+            .position(state.scroll_offset as usize);
     frame.render_stateful_widget(
         Scrollbar::default()
             .orientation(ScrollbarOrientation::VerticalRight)
@@ -127,8 +128,14 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 ("Compose Picker".into(), "Type, Tab, Enter, Esc".into()),
                 ("Attachments".into(), "j/k, Enter/o, d, Esc".into()),
                 ("Links".into(), "j/k, Enter/o open, y copy, Esc".into()),
-                ("Unsubscribe".into(), "Enter unsubscribe, a archive sender, Esc cancel".into()),
-                ("Bulk Confirm".into(), "Enter/y confirm, Esc/n cancel".into()),
+                (
+                    "Unsubscribe".into(),
+                    "Enter unsubscribe, a archive sender, Esc cancel".into(),
+                ),
+                (
+                    "Bulk Confirm".into(),
+                    "Enter/y confirm, Esc/n cancel".into(),
+                ),
             ],
         },
     ];
@@ -212,7 +219,10 @@ fn render_sections(sections: &[HelpSection], theme: &crate::theme::Theme) -> Vec
         )));
         for (key, action) in &section.entries {
             lines.push(Line::from(vec![
-                Span::styled(format!("{key:<20}"), Style::default().fg(theme.text_primary).bold()),
+                Span::styled(
+                    format!("{key:<20}"),
+                    Style::default().fg(theme.text_primary).bold(),
+                ),
                 Span::styled(action.clone(), Style::default().fg(theme.text_secondary)),
             ]));
         }
@@ -255,9 +265,16 @@ mod tests {
             selected_count: 2,
             scroll_offset: 0,
         };
-        let titles: Vec<String> = help_sections(&state).into_iter().map(|section| section.title).collect();
+        let titles: Vec<String> = help_sections(&state)
+            .into_iter()
+            .map(|section| section.title)
+            .collect();
         assert!(titles.contains(&"Accounts Page".to_string()));
-        assert!(titles.iter().any(|title| title.starts_with("Commands: Accounts")));
-        assert!(titles.iter().any(|title| title.starts_with("Commands: Mail")));
+        assert!(titles
+            .iter()
+            .any(|title| title.starts_with("Commands: Accounts")));
+        assert!(titles
+            .iter()
+            .any(|title| title.starts_with("Commands: Mail")));
     }
 }

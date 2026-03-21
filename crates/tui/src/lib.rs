@@ -121,6 +121,7 @@ fn request_supports_retry(request: &Request) -> bool {
             | Request::Count { .. }
             | Request::GetHeaders { .. }
             | Request::ListSavedSearches
+            | Request::ListSubscriptions { .. }
             | Request::RunSavedSearch { .. }
             | Request::ListSnoozed
             | Request::PrepareReply { .. }
@@ -311,8 +312,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 archived_ids: pending.archive_message_ids,
                                 message: format!(
                                     "Unsubscribed and archived {} messages from {}",
-                                    archived_count,
-                                    pending.sender_email
+                                    archived_count, pending.sender_email
                                 ),
                             }),
                             Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
@@ -466,12 +466,7 @@ pub async fn run() -> anyhow::Result<()> {
             let name = app.rules_page.form.name.clone();
             let condition = app.rules_page.form.condition.clone();
             let action = app.rules_page.form.action.clone();
-            let priority = app
-                .rules_page
-                .form
-                .priority
-                .parse::<i32>()
-                .unwrap_or(100);
+            let priority = app.rules_page.form.priority.parse::<i32>().unwrap_or(100);
             let enabled = app.rules_page.form.enabled;
             tokio::spawn(async move {
                 let resp = ipc_call(
@@ -577,6 +572,24 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if app.pending_subscriptions_refresh {
+            app.pending_subscriptions_refresh = false;
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let resp = ipc_call(&bg, Request::ListSubscriptions { limit: 500 }).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Subscriptions { subscriptions },
+                    }) => Ok(subscriptions),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::Subscriptions(result));
+            });
+        }
+
         if let Some(account) = app.pending_account_save.take() {
             let bg = bg.clone();
             let tx = result_tx.clone();
@@ -590,7 +603,8 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
-                let result = request_account_operation(&bg, Request::TestAccountConfig { account }).await;
+                let result =
+                    request_account_operation(&bg, Request::TestAccountConfig { account }).await;
                 let _ = tx.send(AsyncResult::AccountOperation(result));
             });
         }
@@ -601,7 +615,10 @@ pub async fn run() -> anyhow::Result<()> {
             tokio::spawn(async move {
                 let result = request_account_operation(
                     &bg,
-                    Request::AuthorizeAccountConfig { account, reauthorize },
+                    Request::AuthorizeAccountConfig {
+                        account,
+                        reauthorize,
+                    },
                 )
                 .await;
                 let _ = tx.send(AsyncResult::AccountOperation(result));
@@ -1062,6 +1079,7 @@ pub async fn run() -> anyhow::Result<()> {
                                         app.active_pane = app::ActivePane::MailList;
                                     }
                                     app.status_message = Some("Done".into());
+                                    app.pending_subscriptions_refresh = true;
                                 }
                                 app::MutationEffect::RemoveFromListMany(ids) => {
                                     app.envelopes.retain(|e| !ids.iter().any(|id| id == &e.id));
@@ -1084,6 +1102,7 @@ pub async fn run() -> anyhow::Result<()> {
                                         app.selected_index = app.envelopes.len() - 1;
                                     }
                                     app.status_message = Some("Done".into());
+                                    app.pending_subscriptions_refresh = true;
                                 }
                                 app::MutationEffect::UpdateFlags { message_id, flags } => {
                                     app.apply_local_flags(&message_id, flags);
@@ -1093,6 +1112,7 @@ pub async fn run() -> anyhow::Result<()> {
                                     if let Some(label_id) = app.active_label.clone() {
                                         app.pending_label_fetch = Some(label_id);
                                     }
+                                    app.pending_subscriptions_refresh = true;
                                     app.status_message = Some("Synced".into());
                                 }
                                 app::MutationEffect::ModifyLabels {
@@ -1179,9 +1199,16 @@ pub async fn run() -> anyhow::Result<()> {
                                 }
                             }
                             app.status_message = Some(result.message);
+                            app.pending_subscriptions_refresh = true;
                         }
                         AsyncResult::Unsubscribe(Err(e)) => {
                             app.status_message = Some(format!("Unsubscribe failed: {e}"));
+                        }
+                        AsyncResult::Subscriptions(Ok(subscriptions)) => {
+                            app.set_subscriptions(subscriptions);
+                        }
+                        AsyncResult::Subscriptions(Err(e)) => {
+                            app.status_message = Some(format!("Subscriptions error: {e}"));
                         }
                         AsyncResult::DaemonEvent(event) => handle_daemon_event(&mut app, event),
                     }
@@ -1214,6 +1241,7 @@ enum AsyncResult {
     Accounts(Result<Vec<mxr_protocol::AccountSummaryData>, MxrError>),
     Labels(Result<Vec<mxr_core::Label>, MxrError>),
     AllEnvelopes(Result<Vec<mxr_core::Envelope>, MxrError>),
+    Subscriptions(Result<Vec<mxr_core::types::SubscriptionSummary>, MxrError>),
     AccountOperation(Result<mxr_protocol::AccountOperationResult, MxrError>),
     BugReport(Result<String, MxrError>),
     AttachmentFile {
@@ -1340,7 +1368,8 @@ async fn handle_compose_action(
     Ok(ComposeReadyData {
         draft_path: path.clone(),
         cursor_line,
-        initial_content: std::fs::read_to_string(&path).map_err(|e| MxrError::Ipc(e.to_string()))?,
+        initial_content: std::fs::read_to_string(&path)
+            .map_err(|e| MxrError::Ipc(e.to_string()))?,
     })
 }
 
@@ -1365,9 +1394,7 @@ async fn get_account_email(bg: &mpsc::UnboundedSender<IpcRequest>) -> Result<Str
     }
 }
 
-fn pending_send_from_edited_draft(
-    data: &ComposeReadyData,
-) -> Result<Option<PendingSend>, String> {
+fn pending_send_from_edited_draft(data: &ComposeReadyData) -> Result<Option<PendingSend>, String> {
     let content = std::fs::read_to_string(&data.draft_path)
         .map_err(|e| format!("Failed to read draft: {e}"))?;
     let unchanged = content == data.initial_content;
@@ -1432,16 +1459,20 @@ async fn run_account_save_workflow(
         return Ok(result);
     }
 
-    let save_result =
-        request_account_operation(bg, Request::UpsertAccountConfig { account: account.clone() }).await?;
+    let save_result = request_account_operation(
+        bg,
+        Request::UpsertAccountConfig {
+            account: account.clone(),
+        },
+    )
+    .await?;
     merge_account_operation_result(&mut result, save_result);
 
     if result.save.as_ref().is_some_and(|step| !step.ok) {
         return Ok(result);
     }
 
-    let test_result =
-        request_account_operation(bg, Request::TestAccountConfig { account }).await?;
+    let test_result = request_account_operation(bg, Request::TestAccountConfig { account }).await?;
     merge_account_operation_result(&mut result, test_result);
 
     Ok(result)
@@ -1486,9 +1517,12 @@ fn merge_account_operation_result(
 
 fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
     match event {
-        DaemonEvent::SyncCompleted { messages_synced, .. } => {
+        DaemonEvent::SyncCompleted {
+            messages_synced, ..
+        } => {
             app.pending_labels_refresh = true;
             app.pending_all_envelopes_refresh = true;
+            app.pending_subscriptions_refresh = true;
             if let Some(label_id) = app.active_label.clone() {
                 app.pending_label_fetch = Some(label_id);
             }
@@ -1498,7 +1532,11 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         }
         DaemonEvent::LabelCountsUpdated { counts } => {
             for count in &counts {
-                if let Some(label) = app.labels.iter_mut().find(|label| label.id == count.label_id) {
+                if let Some(label) = app
+                    .labels
+                    .iter_mut()
+                    .find(|label| label.id == count.label_id)
+                {
                     label.unread_count = count.unread_count;
                     label.total_count = count.total_count;
                 }
@@ -1509,7 +1547,6 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
 }
 
 fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>) {
-    let selected_id = app.selected_mail_row().map(|row| row.representative.id);
     app.all_envelopes = envelopes;
     if app.active_label.is_none() && !app.search_active {
         app.envelopes = app
@@ -1518,7 +1555,14 @@ fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>
             .filter(|envelope| !envelope.flags.contains(mxr_core::MessageFlags::TRASH))
             .cloned()
             .collect();
-        restore_mail_list_selection(app, selected_id);
+        if app.mailbox_view == app::MailboxView::Messages {
+            let selected_id = app.selected_mail_row().map(|row| row.representative.id);
+            restore_mail_list_selection(app, selected_id);
+        } else {
+            app.selected_index = app
+                .selected_index
+                .min(app.subscriptions_page.entries.len().saturating_sub(1));
+        }
         app.queue_body_window();
     }
 }
@@ -1630,16 +1674,18 @@ fn account_send_kind_label(send: &mxr_protocol::AccountSendConfigData) -> String
 #[cfg(test)]
 mod tests {
     use super::action::Action;
+    use super::app::{
+        ActivePane, App, BodySource, BodyViewState, LayoutMode, MutationEffect, Screen,
+    };
+    use super::input::InputHandler;
+    use super::ui::command_palette::default_commands;
+    use super::ui::command_palette::CommandPalette;
+    use super::ui::search_bar::SearchBar;
+    use super::ui::status_bar;
     use super::{
         apply_all_envelopes_refresh, handle_daemon_event, pending_send_from_edited_draft,
         ComposeReadyData, PendingSend,
     };
-    use super::app::{ActivePane, App, BodySource, BodyViewState, LayoutMode, MutationEffect, Screen};
-    use super::input::InputHandler;
-    use super::ui::command_palette::CommandPalette;
-    use super::ui::command_palette::default_commands;
-    use super::ui::search_bar::SearchBar;
-    use super::ui::status_bar;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use mxr_config::RenderConfig;
     use mxr_core::id::*;
@@ -1946,11 +1992,8 @@ mod tests {
             "news@example.com",
             UnsubscribeMethod::None,
         );
-        let different_sender_same_account = make_unsubscribe_envelope(
-            account_id,
-            "other@example.com",
-            UnsubscribeMethod::None,
-        );
+        let different_sender_same_account =
+            make_unsubscribe_envelope(account_id, "other@example.com", UnsubscribeMethod::None);
 
         app.envelopes = vec![target.clone()];
         app.all_envelopes = vec![
@@ -1970,7 +2013,9 @@ mod tests {
         assert_eq!(pending.method_label, "browser link");
         assert_eq!(pending.archive_message_ids.len(), 2);
         assert!(pending.archive_message_ids.contains(&target.id));
-        assert!(pending.archive_message_ids.contains(&same_sender_same_account.id));
+        assert!(pending
+            .archive_message_ids
+            .contains(&same_sender_same_account.id));
     }
 
     #[test]
@@ -2627,7 +2672,10 @@ mod tests {
         app.all_envelopes = app.envelopes.clone();
         let title = app.mail_list_title();
         assert!(title.contains("5"), "Title should show message count");
-        assert!(title.contains("Threads"), "Default title should say Threads");
+        assert!(
+            title.contains("Threads"),
+            "Default title should say Threads"
+        );
     }
 
     #[test]
@@ -2723,7 +2771,10 @@ mod tests {
         app.all_envelopes = app.envelopes.clone();
 
         assert_eq!(app.mail_list_rows().len(), 2);
-        assert_eq!(app.selected_mail_row().map(|row| row.message_count), Some(2));
+        assert_eq!(
+            app.selected_mail_row().map(|row| row.message_count),
+            Some(2)
+        );
     }
 
     #[test]
@@ -2759,8 +2810,15 @@ mod tests {
 
         assert!(app.envelopes[0].flags.contains(MessageFlags::READ));
         assert!(app.all_envelopes[0].flags.contains(MessageFlags::READ));
-        assert!(app.viewed_thread_messages[0].flags.contains(MessageFlags::READ));
-        assert!(app.viewing_envelope.as_ref().unwrap().flags.contains(MessageFlags::READ));
+        assert!(app.viewed_thread_messages[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(app
+            .viewing_envelope
+            .as_ref()
+            .unwrap()
+            .flags
+            .contains(MessageFlags::READ));
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].0 {
             Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
@@ -2850,8 +2908,15 @@ mod tests {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
 
         assert_eq!(app.thread_selected_index, 0);
-        assert!(app.viewed_thread_messages[0].flags.contains(MessageFlags::READ));
-        assert!(app.viewing_envelope.as_ref().unwrap().flags.contains(MessageFlags::READ));
+        assert!(app.viewed_thread_messages[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(app
+            .viewing_envelope
+            .as_ref()
+            .unwrap()
+            .flags
+            .contains(MessageFlags::READ));
         assert_eq!(app.pending_mutation_queue.len(), 2);
         match &app.pending_mutation_queue[1].0 {
             Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
@@ -2943,6 +3008,16 @@ mod tests {
     }
 
     #[test]
+    fn onboarding_q_quits() {
+        let config = mxr_config::MxrConfig::default();
+        let mut app = App::from_config(&config);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE));
+
+        assert_eq!(action, Some(Action::QuitView));
+    }
+
+    #[test]
     fn onboarding_blocks_mailbox_screen_until_account_exists() {
         let config = mxr_config::MxrConfig::default();
         let mut app = App::from_config(&config);
@@ -2960,10 +3035,16 @@ mod tests {
         app.accounts_page.form.active_field = 2;
 
         app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
-        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::ImapSmtp);
+        assert_eq!(
+            app.accounts_page.form.mode,
+            crate::app::AccountFormMode::ImapSmtp
+        );
 
         app.handle_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE));
-        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::Gmail);
+        assert_eq!(
+            app.accounts_page.form.mode,
+            crate::app::AccountFormMode::Gmail
+        );
     }
 
     #[test]
@@ -2973,10 +3054,16 @@ mod tests {
         app.accounts_page.form.active_field = 0;
 
         app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::ImapSmtp);
+        assert_eq!(
+            app.accounts_page.form.mode,
+            crate::app::AccountFormMode::ImapSmtp
+        );
 
         app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
-        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::Gmail);
+        assert_eq!(
+            app.accounts_page.form.mode,
+            crate::app::AccountFormMode::Gmail
+        );
     }
 
     #[test]
@@ -2987,7 +3074,10 @@ mod tests {
 
         app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
 
-        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::Gmail);
+        assert_eq!(
+            app.accounts_page.form.mode,
+            crate::app::AccountFormMode::Gmail
+        );
         assert_eq!(
             app.accounts_page.form.pending_mode_switch,
             Some(crate::app::AccountFormMode::ImapSmtp)
@@ -3003,7 +3093,10 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::ImapSmtp);
+        assert_eq!(
+            app.accounts_page.form.mode,
+            crate::app::AccountFormMode::ImapSmtp
+        );
         assert!(app.accounts_page.form.pending_mode_switch.is_none());
     }
 
@@ -3016,7 +3109,10 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
         app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
 
-        assert_eq!(app.accounts_page.form.mode, crate::app::AccountFormMode::Gmail);
+        assert_eq!(
+            app.accounts_page.form.mode,
+            crate::app::AccountFormMode::Gmail
+        );
         assert!(app.accounts_page.form.pending_mode_switch.is_none());
     }
 
@@ -3045,6 +3141,7 @@ mod tests {
         }];
         app.active_pane = ActivePane::Sidebar;
 
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
 
@@ -3228,7 +3325,10 @@ mod tests {
 
     #[test]
     fn command_palette_includes_major_mail_actions() {
-        let labels: Vec<String> = default_commands().into_iter().map(|cmd| cmd.label).collect();
+        let labels: Vec<String> = default_commands()
+            .into_iter()
+            .map(|cmd| cmd.label)
+            .collect();
         assert!(labels.contains(&"Reply".to_string()));
         assert!(labels.contains(&"Reply All".to_string()));
         assert!(labels.contains(&"Archive".to_string()));
@@ -3263,7 +3363,12 @@ mod tests {
             &[],
         );
 
-        assert!(app.viewing_envelope.as_ref().unwrap().label_provider_ids.contains(&user_label.provider_id));
+        assert!(app
+            .viewing_envelope
+            .as_ref()
+            .unwrap()
+            .label_provider_ids
+            .contains(&user_label.provider_id));
     }
 
     #[test]
@@ -3279,7 +3384,10 @@ mod tests {
         assert!(!app.snooze_panel.visible);
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].0 {
-            Request::Snooze { message_id, wake_at } => {
+            Request::Snooze {
+                message_id,
+                wake_at,
+            } => {
                 assert_eq!(message_id, &app.envelopes[0].id);
                 assert!(*wake_at > chrono::Utc::now());
             }
@@ -3435,7 +3543,10 @@ mod tests {
             metadata: Default::default(),
         });
 
-        assert_eq!(app.viewing_envelope.as_ref().map(|env| env.id.clone()), Some(second.id));
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(second.id)
+        );
         assert!(matches!(
             app.body_view_state,
             BodyViewState::Loading { ref preview }

@@ -60,8 +60,11 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                         token_ref,
                     } => {
                         let secret = client_secret.as_deref().unwrap_or("");
-                        let mut auth =
-                            GmailAuth::new(client_id.clone(), secret.to_string(), token_ref.clone());
+                        let mut auth = GmailAuth::new(
+                            client_id.clone(),
+                            secret.to_string(),
+                            token_ref.clone(),
+                        );
                         auth.load_existing().await?;
                         let gmail_client = mxr_provider_gmail::client::GmailClient::new(auth);
                         let count = gmail_client
@@ -130,19 +133,28 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
 async fn add_gmail() -> anyhow::Result<()> {
     println!("Adding Gmail account\n");
 
-    let (credential_source, client_id, client_secret) = match (BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET) {
-        (Some(id), Some(secret)) => {
-            println!("Using bundled OAuth credentials.");
-            (mxr_config::GmailCredentialSource::Bundled, id.to_string(), secret.to_string())
-        }
-        _ => {
-            println!("No bundled OAuth credentials. You'll need your own Google Cloud project.");
-            println!("See: https://console.cloud.google.com/apis/library/gmail.googleapis.com\n");
-            let id = prompt("Client ID: ")?;
-            let secret = prompt("Client Secret: ")?;
-            (mxr_config::GmailCredentialSource::Custom, id, secret)
-        }
-    };
+    let (credential_source, client_id, client_secret) =
+        match (BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET) {
+            (Some(id), Some(secret)) => {
+                println!("Using bundled OAuth credentials.");
+                (
+                    mxr_config::GmailCredentialSource::Bundled,
+                    id.to_string(),
+                    secret.to_string(),
+                )
+            }
+            _ => {
+                println!(
+                    "No bundled OAuth credentials. You'll need your own Google Cloud project."
+                );
+                println!(
+                    "See: https://console.cloud.google.com/apis/library/gmail.googleapis.com\n"
+                );
+                let id = prompt("Client ID: ")?;
+                let secret = prompt("Client Secret: ")?;
+                (mxr_config::GmailCredentialSource::Custom, id, secret)
+            }
+        };
 
     let account_name = prompt("\nAccount name (e.g. personal, work): ")?;
     let email = prompt("Gmail address: ")?;
@@ -169,7 +181,10 @@ async fn add_gmail() -> anyhow::Result<()> {
         },
     )?;
 
-    println!("Account '{}' saved. Restart daemon to load it.", account_name);
+    println!(
+        "Account '{}' saved. Restart daemon to load it.",
+        account_name
+    );
     Ok(())
 }
 
@@ -221,7 +236,10 @@ async fn add_imap(include_smtp: bool) -> anyhow::Result<()> {
         },
     )?;
 
-    println!("Account '{}' saved. Restart daemon to load it.", account_name);
+    println!(
+        "Account '{}' saved. Restart daemon to load it.",
+        account_name
+    );
     Ok(())
 }
 
@@ -254,7 +272,10 @@ async fn add_smtp_only() -> anyhow::Result<()> {
         },
     )?;
 
-    println!("Account '{}' saved. Restart daemon to load it.", account_name);
+    println!(
+        "Account '{}' saved. Restart daemon to load it.",
+        account_name
+    );
     Ok(())
 }
 

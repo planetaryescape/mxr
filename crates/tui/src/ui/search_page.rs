@@ -3,6 +3,10 @@ use crate::ui::{mail_list, message_view};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "TUI draw entrypoint keeps call sites explicit"
+)]
 pub fn draw(
     frame: &mut Frame,
     area: Rect,

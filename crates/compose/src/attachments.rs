@@ -1,5 +1,5 @@
 use crate::frontmatter::ComposeError;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Resolve and validate attachment paths from frontmatter.
 /// Supports tilde expansion.
@@ -7,8 +7,14 @@ pub fn resolve_attachments(paths: &[String]) -> Result<Vec<ResolvedAttachment>, 
     paths.iter().map(|p| resolve_one_str(p)).collect()
 }
 
-pub fn resolve_attachment_paths(paths: &[PathBuf]) -> Result<Vec<ResolvedAttachment>, ComposeError> {
-    paths.iter().map(|p| resolve_one_path(p)).collect()
+pub fn resolve_attachment_paths(
+    paths: &[PathBuf],
+) -> Result<Vec<ResolvedAttachment>, ComposeError> {
+    paths
+        .iter()
+        .map(PathBuf::as_path)
+        .map(resolve_one_path)
+        .collect()
 }
 
 #[derive(Debug)]
@@ -22,13 +28,15 @@ fn resolve_one_str(path_str: &str) -> Result<ResolvedAttachment, ComposeError> {
     let expanded = expand_tilde(path_str);
     let path = PathBuf::from(&expanded);
     resolve_one_path(&path).map_err(|err| match err {
-        ComposeError::AttachmentNotFound(_) => ComposeError::AttachmentNotFound(path_str.to_string()),
+        ComposeError::AttachmentNotFound(_) => {
+            ComposeError::AttachmentNotFound(path_str.to_string())
+        }
         other => other,
     })
 }
 
-fn resolve_one_path(path: &PathBuf) -> Result<ResolvedAttachment, ComposeError> {
-    let path = path.clone();
+fn resolve_one_path(path: &Path) -> Result<ResolvedAttachment, ComposeError> {
+    let path = path.to_path_buf();
 
     if !path.exists() {
         return Err(ComposeError::AttachmentNotFound(path.display().to_string()));

@@ -1,7 +1,9 @@
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
-use mxr_protocol::{AccountSyncStatus, DoctorReport, EventLogEntry, Request, Response, ResponseData};
+use mxr_protocol::{
+    AccountSyncStatus, DoctorReport, EventLogEntry, Request, Response, ResponseData,
+};
 use mxr_search::SearchIndex;
 use mxr_store::Store;
 use std::io::BufRead;
@@ -127,7 +129,8 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
 
     let (index_lock_held, index_lock_error) = probe_index_lock(&index_path, socket_reachable);
     let recent_error_logs = recent_log_lines(10, Some("error")).unwrap_or_default();
-    let recommended_next_steps = recommended_next_steps(socket_reachable, stale_socket, &sync_statuses);
+    let recommended_next_steps =
+        recommended_next_steps(socket_reachable, stale_socket, &sync_statuses);
     let healthy = data_dir_exists
         && database_exists
         && index_exists
@@ -210,7 +213,10 @@ async fn collect_sync_statuses_from_store(store: &Store) -> anyhow::Result<Vec<A
             healthy: !sync_in_progress
                 && backoff_until.is_none()
                 && last_success_at.is_some()
-                && runtime.as_ref().and_then(|row| row.last_error.as_ref()).is_none(),
+                && runtime
+                    .as_ref()
+                    .and_then(|row| row.last_error.as_ref())
+                    .is_none(),
         });
     }
 
@@ -224,10 +230,22 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
         }
         _ => {
             println!("Healthy:      {}", report.healthy);
-            println!("Daemon:       {}{}", if report.daemon_running { "running" } else { "down" }, daemon_pid_suffix(report.daemon_pid));
+            println!(
+                "Daemon:       {}{}",
+                if report.daemon_running {
+                    "running"
+                } else {
+                    "down"
+                },
+                daemon_pid_suffix(report.daemon_pid)
+            );
             println!(
                 "Socket:       {} (exists: {}, stale: {})",
-                if report.socket_reachable { "reachable" } else { "unreachable" },
+                if report.socket_reachable {
+                    "reachable"
+                } else {
+                    "unreachable"
+                },
                 report.socket_exists,
                 report.stale_socket
             );
@@ -239,7 +257,10 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
                 "Database:     {} (exists: {})",
                 report.database_path, report.database_exists
             );
-            println!("Logs:         {} ({} bytes)", report.log_path, report.log_size_bytes);
+            println!(
+                "Logs:         {} ({} bytes)",
+                report.log_path, report.log_size_bytes
+            );
 
             if let Some(error) = &report.index_lock_error {
                 println!("Index lock:   {error}");
@@ -326,7 +347,10 @@ fn recommended_next_steps(
 ) -> Vec<String> {
     if stale_socket {
         return vec![
-            format!("rm {}", shell_escape_path(&crate::state::AppState::socket_path())),
+            format!(
+                "rm {}",
+                shell_escape_path(&crate::state::AppState::socket_path())
+            ),
             "mxr daemon --foreground".to_string(),
             "mxr status".to_string(),
         ];
@@ -448,6 +472,8 @@ mod tests {
     #[test]
     fn recommends_foreground_when_socket_unreachable() {
         let steps = recommended_next_steps(false, false, &[]);
-        assert!(steps.iter().any(|step| step.contains("daemon --foreground")));
+        assert!(steps
+            .iter()
+            .any(|step| step.contains("daemon --foreground")));
     }
 }

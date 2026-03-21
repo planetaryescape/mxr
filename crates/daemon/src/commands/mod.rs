@@ -17,6 +17,7 @@ pub mod rules;
 pub mod saved;
 pub mod search;
 pub mod status;
+pub mod subscriptions;
 pub mod sync_cmd;
 pub mod thread;
 pub mod version;

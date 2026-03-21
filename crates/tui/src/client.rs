@@ -180,6 +180,20 @@ impl Client {
         }
     }
 
+    pub async fn list_subscriptions(
+        &mut self,
+        limit: u32,
+    ) -> Result<Vec<mxr_core::types::SubscriptionSummary>, MxrError> {
+        let resp = self.request(Request::ListSubscriptions { limit }).await?;
+        match resp {
+            Response::Ok {
+                data: ResponseData::Subscriptions { subscriptions },
+            } => Ok(subscriptions),
+            Response::Error { message } => Err(MxrError::Ipc(message)),
+            _ => Err(MxrError::Ipc("Unexpected response".into())),
+        }
+    }
+
     pub async fn ping(&mut self) -> Result<(), MxrError> {
         let resp = self.request(Request::Ping).await?;
         match resp {

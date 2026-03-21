@@ -143,7 +143,10 @@ impl ImapSession for RealImapSession {
             .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
         Ok(Some(NamespaceInfo {
             personal_prefix: namespace.personal.first().map(|entry| entry.prefix.clone()),
-            delimiter: namespace.personal.first().and_then(|entry| entry.delimiter.clone()),
+            delimiter: namespace
+                .personal
+                .first()
+                .and_then(|entry| entry.delimiter.clone()),
         }))
     }
 

@@ -61,6 +61,13 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// List senders with unsubscribe support
+    Subscriptions {
+        #[arg(long, default_value = "200")]
+        limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Trigger or query sync
     Sync {
         #[arg(long)]
@@ -468,14 +475,9 @@ pub enum LabelsAction {
         color: Option<String>,
     },
     /// Delete a label
-    Delete {
-        name: String,
-    },
+    Delete { name: String },
     /// Rename a label
-    Rename {
-        old: String,
-        new: String,
-    },
+    Rename { old: String, new: String },
 }
 
 #[derive(Subcommand)]
@@ -641,7 +643,14 @@ mod tests {
 
     #[test]
     fn parses_export_search_subcommand() {
-        let cli = Cli::parse_from(["mxr", "export", "--search", "label:work", "--format", "mbox"]);
+        let cli = Cli::parse_from([
+            "mxr",
+            "export",
+            "--search",
+            "label:work",
+            "--format",
+            "mbox",
+        ]);
         match cli.command {
             Some(Command::Export {
                 thread_id: None,
@@ -774,6 +783,9 @@ mod tests {
     fn suggests_daemon_status_replacement() {
         let guidance =
             unsupported_command_guidance(&["mxr".into(), "daemon".into(), "status".into()]);
-        assert_eq!(guidance.as_deref(), Some("`mxr daemon` has no `status` verb. Use `mxr status`."));
+        assert_eq!(
+            guidance.as_deref(),
+            Some("`mxr daemon` has no `status` verb. Use `mxr status`.")
+        );
     }
 }

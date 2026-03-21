@@ -245,6 +245,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_subscriptions_groups_by_sender_and_skips_trash() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let mut latest = test_envelope(&account.id);
+        latest.from.name = Some("Readwise".into());
+        latest.from.email = "hello@readwise.io".into();
+        latest.subject = "Latest digest".into();
+        latest.unsubscribe = UnsubscribeMethod::HttpLink {
+            url: "https://example.com/unsub".into(),
+        };
+        latest.date = chrono::Utc::now();
+
+        let mut older = latest.clone();
+        older.id = MessageId::new();
+        older.provider_id = "fake-older".into();
+        older.subject = "Older digest".into();
+        older.date = latest.date - chrono::Duration::days(3);
+
+        let mut trashed = latest.clone();
+        trashed.id = MessageId::new();
+        trashed.provider_id = "fake-trash".into();
+        trashed.subject = "Trashed digest".into();
+        trashed.date = latest.date + chrono::Duration::hours(1);
+        trashed.flags.insert(MessageFlags::TRASH);
+
+        let mut no_unsub = test_envelope(&account.id);
+        no_unsub.from.email = "plain@example.com".into();
+        no_unsub.provider_id = "fake-none".into();
+        no_unsub.unsubscribe = UnsubscribeMethod::None;
+
+        store.upsert_envelope(&older).await.unwrap();
+        store.upsert_envelope(&latest).await.unwrap();
+        store.upsert_envelope(&trashed).await.unwrap();
+        store.upsert_envelope(&no_unsub).await.unwrap();
+
+        let subscriptions = store.list_subscriptions(10).await.unwrap();
+        assert_eq!(subscriptions.len(), 1);
+        assert_eq!(subscriptions[0].sender_email, "hello@readwise.io");
+        assert_eq!(subscriptions[0].message_count, 2);
+        assert_eq!(subscriptions[0].latest_subject, "Latest digest");
+    }
+
+    #[tokio::test]
     async fn draft_crud() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();
@@ -530,7 +575,11 @@ mod tests {
             .unwrap();
         assert_eq!(by_new_label.len(), 1);
         assert_eq!(by_new_label[0].id, env.id);
-        assert!(store.list_envelopes_by_label(&original.id, 100, 0).await.unwrap().is_empty());
+        assert!(store
+            .list_envelopes_by_label(&original.id, 100, 0)
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]

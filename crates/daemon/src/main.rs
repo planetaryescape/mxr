@@ -129,6 +129,10 @@ async fn main() -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::saved::run(action, format).await?;
         }
+        Some(Command::Subscriptions { limit, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::subscriptions::run(limit, format).await?;
+        }
         Some(Command::Sync {
             account,
             status,

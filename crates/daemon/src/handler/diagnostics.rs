@@ -172,6 +172,15 @@ pub(super) async fn list_saved_searches(state: &Arc<AppState>) -> HandlerResult 
     Ok(ResponseData::SavedSearches { searches })
 }
 
+pub(super) async fn list_subscriptions(state: &Arc<AppState>, limit: u32) -> HandlerResult {
+    let subscriptions = state
+        .store
+        .list_subscriptions(limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Subscriptions { subscriptions })
+}
+
 pub(super) async fn create_saved_search(
     state: &Arc<AppState>,
     name: &str,

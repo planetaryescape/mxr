@@ -1491,7 +1491,9 @@ fn split_namespace_sections(payload: &str) -> Result<Vec<&str>> {
     if sections.len() == 3 {
         Ok(sections)
     } else {
-        Err(Error::Parse(ParseError::Invalid(payload.as_bytes().to_vec())))
+        Err(Error::Parse(ParseError::Invalid(
+            payload.as_bytes().to_vec(),
+        )))
     }
 }
 
@@ -1504,15 +1506,22 @@ fn parse_namespace_group(section: &str) -> Vec<NamespaceEntry> {
     let mut rest = section;
     while let Some(start) = rest.find("(\"") {
         let slice = &rest[start + 2..];
-        let Some(prefix_end) = slice.find('"') else { break };
+        let Some(prefix_end) = slice.find('"') else {
+            break;
+        };
         let prefix = &slice[..prefix_end];
         let slice = &slice[prefix_end + 1..].trim_start();
 
         let (delimiter, next_rest) = if let Some(stripped) = slice.strip_prefix("NIL") {
             (None, stripped)
         } else if let Some(stripped) = slice.strip_prefix('"') {
-            let Some(delim_end) = stripped.find('"') else { break };
-            (Some(stripped[..delim_end].to_string()), &stripped[delim_end + 1..])
+            let Some(delim_end) = stripped.find('"') else {
+                break;
+            };
+            (
+                Some(stripped[..delim_end].to_string()),
+                &stripped[delim_end + 1..],
+            )
         } else {
             break;
         };
@@ -1632,13 +1641,10 @@ impl<T: Read + Write + Unpin + fmt::Debug> Connection<T> {
                 "code: {:?}, info: {:?}",
                 code, information
             ))),
-            _ => Err(Error::Io(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "status: {:?}, code: {:?}, information: {:?}",
-                    status, code, information
-                ),
-            ))),
+            _ => Err(Error::Io(io::Error::other(format!(
+                "status: {:?}, code: {:?}, information: {:?}",
+                status, code, information
+            )))),
         }
     }
 }

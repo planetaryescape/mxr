@@ -195,12 +195,7 @@ pub fn display_bindings_for_actions(
         .filter_map(|action| {
             map.iter()
                 .find(|(_, name)| name == action)
-                .map(|(binding, _)| {
-                    (
-                        format_keybinding(binding),
-                        action_display_name(action),
-                    )
-                })
+                .map(|(binding, _)| (format_keybinding(binding), action_display_name(action)))
         })
         .collect()
 }
@@ -269,9 +264,7 @@ fn action_display_name(action: &str) -> String {
             .map(|part| {
                 let mut chars = part.chars();
                 match chars.next() {
-                    Some(first) => {
-                        first.to_uppercase().collect::<String>() + chars.as_str()
-                    }
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
                     None => String::new(),
                 }
             })

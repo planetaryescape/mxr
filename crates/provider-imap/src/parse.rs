@@ -6,8 +6,8 @@ use mxr_compose::parse::{
 };
 use mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};
 use mxr_core::types::{
-    Address, AttachmentMeta, Envelope, MessageBody, MessageFlags, SyncedMessage,
-    TextPlainFormat, UnsubscribeMethod,
+    Address, AttachmentMeta, Envelope, MessageBody, MessageFlags, SyncedMessage, TextPlainFormat,
+    UnsubscribeMethod,
 };
 
 use crate::error::ImapProviderError;
@@ -79,7 +79,10 @@ pub fn imap_fetch_to_synced_message(
     let parsed = mail_parser::MessageParser::default().parse(raw);
 
     let parsed_msg = parsed.ok_or_else(|| {
-        ImapProviderError::Parse(format!("Failed to parse RFC822 message for UID {}", msg.uid))
+        ImapProviderError::Parse(format!(
+            "Failed to parse RFC822 message for UID {}",
+            msg.uid
+        ))
     })?;
     let raw_headers = extract_raw_header_block(raw)
         .ok_or_else(|| ImapProviderError::Parse("Missing RFC822 header block".into()))?;

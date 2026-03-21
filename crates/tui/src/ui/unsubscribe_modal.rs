@@ -27,11 +27,17 @@ pub fn draw(
     let lines = vec![
         Line::from(vec![
             Span::styled("Sender: ", Style::default().fg(theme.text_muted)),
-            Span::styled(&pending.sender_email, Style::default().fg(theme.text_primary)),
+            Span::styled(
+                &pending.sender_email,
+                Style::default().fg(theme.text_primary),
+            ),
         ]),
         Line::from(vec![
             Span::styled("Method: ", Style::default().fg(theme.text_muted)),
-            Span::styled(&pending.method_label, Style::default().fg(theme.text_primary)),
+            Span::styled(
+                &pending.method_label,
+                Style::default().fg(theme.text_primary),
+            ),
         ]),
         Line::from(""),
         Line::from("Choose what to do:"),

@@ -174,7 +174,11 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
                 )),
             ),
             MutationCommand::Move { target_label, .. } => (
-                format!("Moved {} to {}", quoted_subject(&envelope.subject), target_label),
+                format!(
+                    "Moved {} to {}",
+                    quoted_subject(&envelope.subject),
+                    target_label
+                ),
                 Some(format!("from={}", envelope.from.email)),
             ),
         };
@@ -201,7 +205,11 @@ pub(super) async fn snooze(
         if let Err(error) = log_mutation(
             state,
             &envelope,
-            format!("Snoozed {} until {}", quoted_subject(&envelope.subject), wake_at),
+            format!(
+                "Snoozed {} until {}",
+                quoted_subject(&envelope.subject),
+                wake_at
+            ),
             Some(format!("from={}", envelope.from.email)),
         )
         .await
@@ -449,7 +457,10 @@ pub(super) async fn unsubscribe(
             if let Err(error) = log_mutation(
                 state,
                 &envelope,
-                format!("Sent unsubscribe request for {}", quoted_subject(&envelope.subject)),
+                format!(
+                    "Sent unsubscribe request for {}",
+                    quoted_subject(&envelope.subject)
+                ),
                 Some(format!("mailto={address} from={}", envelope.from.email)),
             )
             .await

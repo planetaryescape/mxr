@@ -54,28 +54,36 @@ impl super::Store {
                 .last_error
                 .clone()
                 .unwrap_or_else(|| existing.as_ref().and_then(|row| row.last_error.clone())),
-            failure_class: update.failure_class.clone().unwrap_or_else(|| {
+            failure_class: update
+                .failure_class
+                .clone()
+                .unwrap_or_else(|| existing.as_ref().and_then(|row| row.failure_class.clone())),
+            consecutive_failures: update.consecutive_failures.unwrap_or_else(|| {
                 existing
                     .as_ref()
-                    .and_then(|row| row.failure_class.clone())
+                    .map(|row| row.consecutive_failures)
+                    .unwrap_or(0)
             }),
-            consecutive_failures: update
-                .consecutive_failures
-                .unwrap_or_else(|| existing.as_ref().map(|row| row.consecutive_failures).unwrap_or(0)),
             backoff_until: update
                 .backoff_until
                 .unwrap_or_else(|| existing.as_ref().and_then(|row| row.backoff_until)),
-            sync_in_progress: update
-                .sync_in_progress
-                .unwrap_or_else(|| existing.as_ref().map(|row| row.sync_in_progress).unwrap_or(false)),
+            sync_in_progress: update.sync_in_progress.unwrap_or_else(|| {
+                existing
+                    .as_ref()
+                    .map(|row| row.sync_in_progress)
+                    .unwrap_or(false)
+            }),
             current_cursor_summary: update.current_cursor_summary.clone().unwrap_or_else(|| {
                 existing
                     .as_ref()
                     .and_then(|row| row.current_cursor_summary.clone())
             }),
-            last_synced_count: update
-                .last_synced_count
-                .unwrap_or_else(|| existing.as_ref().map(|row| row.last_synced_count).unwrap_or(0)),
+            last_synced_count: update.last_synced_count.unwrap_or_else(|| {
+                existing
+                    .as_ref()
+                    .map(|row| row.last_synced_count)
+                    .unwrap_or(0)
+            }),
             updated_at: now,
         };
 
@@ -184,7 +192,7 @@ impl super::Store {
                 updated_at as "updated_at!"
             FROM sync_runtime_status
             ORDER BY updated_at DESC, account_id ASC
-            "#
+            "#,
         )
         .fetch_all(self.reader())
         .await?;

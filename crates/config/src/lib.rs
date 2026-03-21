@@ -183,6 +183,32 @@ editor = "emacs"
     }
 
     #[test]
+    fn path_overrides_can_be_set_via_env() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let tmp = TempDir::new().expect("create temp dir");
+        let config_dir_override = tmp.path().join("cfg");
+        let data_dir_override = tmp.path().join("data");
+        let socket_path_override = tmp.path().join("sock").join("mxr.sock");
+
+        unsafe {
+            std::env::set_var("MXR_CONFIG_DIR", &config_dir_override);
+            std::env::set_var("MXR_DATA_DIR", &data_dir_override);
+            std::env::set_var("MXR_SOCKET_PATH", &socket_path_override);
+        }
+
+        assert_eq!(config_dir(), config_dir_override);
+        assert_eq!(config_file_path(), config_dir_override.join("config.toml"));
+        assert_eq!(data_dir(), data_dir_override);
+        assert_eq!(socket_path(), socket_path_override);
+
+        unsafe {
+            std::env::remove_var("MXR_CONFIG_DIR");
+            std::env::remove_var("MXR_DATA_DIR");
+            std::env::remove_var("MXR_SOCKET_PATH");
+        }
+    }
+
+    #[test]
     fn missing_file_returns_defaults() {
         let _guard = ENV_LOCK.lock().unwrap();
         let tmp = TempDir::new().expect("create temp dir");
@@ -194,6 +220,9 @@ editor = "emacs"
             std::env::remove_var("MXR_SYNC_INTERVAL");
             std::env::remove_var("MXR_DEFAULT_ACCOUNT");
             std::env::remove_var("MXR_ATTACHMENT_DIR");
+            std::env::remove_var("MXR_CONFIG_DIR");
+            std::env::remove_var("MXR_DATA_DIR");
+            std::env::remove_var("MXR_SOCKET_PATH");
         }
 
         let config = load_config_from_path(&config_path).expect("load missing file");

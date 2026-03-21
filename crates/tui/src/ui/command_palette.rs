@@ -513,7 +513,10 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
                 )
             };
             Row::new(vec![
-                Cell::from(Span::styled(icon, Style::default().fg(category_color).bold())),
+                Cell::from(Span::styled(
+                    icon,
+                    Style::default().fg(category_color).bold(),
+                )),
                 Cell::from(Line::from(vec![
                     Span::styled(
                         format!(" {} ", cmd.category),

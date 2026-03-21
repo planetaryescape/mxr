@@ -175,7 +175,9 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate
                 vec![
                     Span::styled(
                         format!(" {} ", r),
-                        Style::default().bg(theme.selection_bg).fg(theme.text_primary),
+                        Style::default()
+                            .bg(theme.selection_bg)
+                            .fg(theme.text_primary),
                     ),
                     Span::raw(" "),
                 ]
@@ -186,8 +188,8 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate
 
     // Input line
     let input_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
-    let input_line =
-        Paragraph::new(format!("> {}", picker.input)).style(Style::default().fg(theme.text_primary));
+    let input_line = Paragraph::new(format!("> {}", picker.input))
+        .style(Style::default().fg(theme.text_primary));
     frame.render_widget(input_line, input_area);
 
     // Contact suggestions

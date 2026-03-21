@@ -22,7 +22,12 @@ fn render_status(
         _ => {
             let mut lines = vec![
                 format!("Uptime: {uptime_secs}s"),
-                format!("Daemon PID: {}", daemon_pid.map(|pid| pid.to_string()).unwrap_or_else(|| "unknown".to_string())),
+                format!(
+                    "Daemon PID: {}",
+                    daemon_pid
+                        .map(|pid| pid.to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                ),
                 format!("Accounts: {}", accounts.join(", ")),
                 format!("Total messages: {total_messages}"),
                 "Sync:".to_string(),

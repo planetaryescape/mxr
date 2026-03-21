@@ -101,15 +101,18 @@ impl super::Store {
         Ok(())
     }
 
-    pub async fn replace_label(&self, old_label_id: &LabelId, new_label: &Label) -> Result<(), sqlx::Error> {
+    pub async fn replace_label(
+        &self,
+        old_label_id: &LabelId,
+        new_label: &Label,
+    ) -> Result<(), sqlx::Error> {
         let mut tx = self.writer().begin().await?;
 
-        let existing: Option<(i64, i64)> = sqlx::query_as(
-            "SELECT unread_count, total_count FROM labels WHERE id = ?",
-        )
-        .bind(old_label_id.as_str())
-        .fetch_optional(&mut *tx)
-        .await?;
+        let existing: Option<(i64, i64)> =
+            sqlx::query_as("SELECT unread_count, total_count FROM labels WHERE id = ?")
+                .bind(old_label_id.as_str())
+                .fetch_optional(&mut *tx)
+                .await?;
 
         let (unread_count, total_count) = existing.unwrap_or((0, 0));
         let kind = match new_label.kind {

@@ -85,8 +85,7 @@ pub fn draw(frame: &mut Frame, area: Rect, search_bar: &SearchBar, theme: &crate
     };
     frame.render_widget(Paragraph::new(Line::from(query)), sections[0]);
     frame.render_widget(
-        Paragraph::new("Enter submit  Esc cancel")
-            .style(Style::default().fg(theme.text_muted)),
+        Paragraph::new("Enter submit  Esc cancel").style(Style::default().fg(theme.text_muted)),
         sections[1],
     );
 }

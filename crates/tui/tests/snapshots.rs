@@ -3,15 +3,19 @@ use mxr_compose::frontmatter::ComposeFrontmatter;
 use mxr_core::id::{AccountId, MessageId, SavedSearchId, ThreadId};
 use mxr_core::types::{Address, Envelope, Label, LabelKind, MessageFlags, UnsubscribeMethod};
 use mxr_core::types::{SavedSearch, SortOrder};
+use mxr_protocol::{
+    AccountEditModeData, AccountSourceData, AccountSummaryData, DoctorReport, EventLogEntry,
+    MutationCommand, Request,
+};
 use mxr_test_support::render_to_string;
 use mxr_tui::app::{
-    AccountFormState, AccountsPageState, ActivePane, AttachmentPanelState,
-    BodySource, BodyViewState, DiagnosticsPageState, MailListMode, MailListRow, MutationEffect,
-    PendingBulkConfirm, PendingSend, SearchPageState, Screen,
+    AccountFormState, AccountsPageState, ActivePane, AttachmentPanelState, BodySource,
+    BodyViewState, DiagnosticsPageState, MailListMode, MailListRow, MutationEffect,
+    PendingBulkConfirm, PendingSend, Screen, SearchPageState,
 };
-use mxr_tui::ui::command_palette::{draw as draw_command_palette, CommandPalette};
 use mxr_tui::ui::attachment_modal::draw as draw_attachment_modal;
 use mxr_tui::ui::bulk_confirm_modal::draw as draw_bulk_confirm_modal;
+use mxr_tui::ui::command_palette::{draw as draw_command_palette, CommandPalette};
 use mxr_tui::ui::compose_picker::{draw as draw_compose_picker, ComposePicker, Contact};
 use mxr_tui::ui::help_modal::{draw as draw_help_modal, HelpModalState};
 use mxr_tui::ui::label_picker::{draw as draw_label_picker, LabelPicker, LabelPickerMode};
@@ -23,7 +27,6 @@ use mxr_tui::ui::sidebar::{draw as draw_sidebar, SidebarView};
 use mxr_tui::ui::status_bar::draw as draw_status_bar;
 use mxr_tui::ui::unsubscribe_modal::draw as draw_unsubscribe_modal;
 use mxr_tui::ui::{accounts_page, diagnostics_page};
-use mxr_protocol::{AccountEditModeData, AccountSourceData, AccountSummaryData, DoctorReport, EventLogEntry, MutationCommand, Request};
 use ratatui::layout::Rect;
 
 fn sample_envelope() -> Envelope {
@@ -228,6 +231,8 @@ fn sidebar_snapshot() {
                 saved_searches: &searches,
                 sidebar_selected: 0,
                 all_mail_active: false,
+                subscriptions_active: false,
+                subscription_count: 2,
                 system_expanded: true,
                 user_expanded: true,
                 saved_searches_expanded: true,

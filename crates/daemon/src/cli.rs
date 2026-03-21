@@ -84,6 +84,17 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Show persisted event history
+    History {
+        #[arg(long)]
+        category: Option<String>,
+        #[arg(long)]
+        level: Option<String>,
+        #[arg(long, default_value = "50")]
+        limit: u32,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Unread summary for status bars
     Notify {
         #[arg(long)]

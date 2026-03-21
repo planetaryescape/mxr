@@ -33,6 +33,17 @@ mxr events --type sync,rule --format json
 
 Use the event stream when you want structured, low-noise runtime signals instead of raw log lines.
 
+## History
+
+```bash
+mxr history
+mxr history --category mutation
+mxr history --category mutation --format json
+mxr history --level error --limit 20
+```
+
+Use history when you want persisted event records instead of the live stream. This is the easiest way to review recent mutation activity after a batch command or agent workflow.
+
 ## Logs
 
 ```bash

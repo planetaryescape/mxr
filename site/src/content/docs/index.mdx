@@ -1,12 +1,12 @@
 ---
-title: "The CLI for your email."
-description: "mxr is a programmable, agent-native email client. One CLI across all your providers. Hackable with any language."
+title: "Local-first email infrastructure."
+description: "Sync email into SQLite on your machine. Read it in the TUI. Script it from the CLI. Let an agent use the same local runtime."
 template: splash
 hero:
   title: |
-    The CLI
-    <span class="hero-accent">for your email.</span>
-  tagline: "A programmable, agent-native email client that works across every provider. One binary. Full CLI. Hackable with any language you already use."
+    Local-first email
+    <span class="hero-accent">infrastructure.</span>
+  tagline: "mxr syncs Gmail and IMAP into SQLite on your machine. Read mail in the TUI. Script it from the CLI. Let an agent use the same local runtime."
   actions:
     - text: Get started
       link: /getting-started/install/
@@ -19,6 +19,29 @@ hero:
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<div class="landing-section problem-section">
+
+## Local first, by default
+
+mxr talks to Gmail or IMAP directly, stores mail in SQLite, and indexes it with Tantivy. No hosted relay. No extra control plane in the middle. Your terminal, your scripts, and your agent all work against the same local state.
+
+Try this with an agent:
+
+> "Look through unread mail from the last day. Tell me what needs a reply, draft answers for the urgent threads, and leave the rest alone."
+
+```text
+Gmail / IMAP / SMTP
+        |
+        v
+      daemon
+     /      \
+  SQLite   Tantivy
+   / |  \
+CLI TUI agents
+```
+
+</div>
 
 <div class="landing-section install-section">
 
@@ -47,58 +70,33 @@ cargo install mxr
 
 macOS (Intel + Apple Silicon) and Linux x86_64.
 
-[Download v0.1.0 ->](https://github.com/planetaryescape/mxr/releases/latest)
+[Download latest release ->](https://github.com/planetaryescape/mxr/releases/latest)
 
 </div>
 </div>
 
-Works with Gmail, IMAP, and SMTP out of the box. One local database, one CLI, all your accounts.
-
-</div>
-
-<div class="landing-section problem-section">
-
-## A CLI for all your email
-
-Tools like mutt and aerc pioneered terminal email. himalaya brought a clean CLI-first approach. [gog](https://github.com/steipete/gogcli) and [Google Workspace CLI](https://github.com/googleworkspace/cli) made Gmail fully scriptable. [notmuch](https://notmuchmail.org/) proved that local indexing and search changes everything. mxr combines these ideas: a single CLI that works across Gmail, IMAP, and SMTP, backed by a local database and a real search engine.
-
-One binary. One CLI that can search, compose, reply, label, archive, snooze, unsubscribe, and export across all your accounts. One interface your scripts and agents can talk to, regardless of what provider sits behind it.
-
-A real CLI with `--format json`, `--dry-run`, `--search` for batch operations, and every output piped through stdout. Hack it with Python, Bash, Go, TypeScript, whatever you already use.
+Today, the shipped surfaces are the CLI, TUI, daemon socket, and agent skill. A first-party MCP server is still on the roadmap.
 
 </div>
 
 <div class="landing-section agent-section">
 
-## Agent-native email
+## Shell first. Agent-friendly.
 
-Your coding agent can already write code, run tests, and commit to git. Now it can manage your email too. Install the [mxr skill](/guides/agent-skill/) and ask:
+No SDK. No custom DSL. If a tool can run a command and parse JSON, it can work with mxr.
 
-<div class="agent-examples">
-<div class="agent-example">
-<div class="agent-prompt">"Go through my unread emails from the last 24 hours. For each one, tell me who it's from, one-line summary, and whether it needs a response. Draft replies for anything urgent."</div>
-</div>
-<div class="agent-example">
-<div class="agent-prompt">"Find all emails from our CI system that are build failures. Extract the failing test names, cross-reference with my recent commits, and archive the ones that have since been fixed."</div>
-</div>
-<div class="agent-example">
-<div class="agent-prompt">"I'm prepping for my 1-on-1 with Sarah. Pull up all email threads between us from the last two weeks, summarize the open items, and draft an agenda."</div>
-</div>
-<div class="agent-example">
-<div class="agent-prompt">"Export the thread about the Q2 roadmap as markdown, summarize the key decisions, and create a TODO list from the action items."</div>
-</div>
-<div class="agent-example">
-<div class="agent-prompt">"Search my inbox for recurring newsletters I haven't opened in 3 months. Show me the list, and unsubscribe from the ones I confirm."</div>
-</div>
-</div>
+```bash
+mxr search "is:unread from:buildkite" --format json \
+  | jq -r '.[].message_id'
+```
 
-This works because the CLI *is* the interface. Every operation supports structured JSON output, safe dry-runs, and batch operations via search queries. Your agent doesn't need screen scraping, browser automation, or a provider-specific SDK. Just `mxr`.
+Today, agents use mxr through the CLI and the skill guide. That keeps the current story simple and honest. A first-party MCP server is not shipped yet.
 
 </div>
 
 <div class="landing-section speed-section">
 
-## Local-first, fast
+## Local mail stays fast
 
 <div class="speed-grid">
 <div class="speed-card">
@@ -107,40 +105,40 @@ This works because the CLI *is* the interface. Every operation supports structur
 </div>
 <div class="speed-card">
 <span class="speed-number">0ms</span>
-<span class="speed-label">Open any message (local SQLite)</span>
+<span class="speed-label">Open a synced message from SQLite</span>
 </div>
 <div class="speed-card">
 <span class="speed-number">Instant</span>
-<span class="speed-label">Start composing (your $EDITOR)</span>
+<span class="speed-label">Start a draft in your $EDITOR</span>
 </div>
 </div>
 
-mxr syncs your email to a local SQLite database and indexes it with Tantivy, the same engine behind [Quickwit](https://quickwit.io). Opening a message is a local read, not a network call. Search uses BM25 ranking with field-level boosts. Works offline. Your data lives on your machine. No spinners. No loading states.
+Search happens through Tantivy. Reads come from SQLite. Reader mode keeps noisy HTML mail readable in the terminal, and when you need the original layout you can open it in the browser and move on.
 
 </div>
 
 <div class="landing-section features-section">
 
-## Everything else
+## What is here today
 
 <CardGrid stagger>
   <Card title="Compose in your editor" icon="pencil">
-    `$EDITOR` opens with markdown and YAML frontmatter. Your keybindings, your plugins, your muscle memory. mxr handles parsing, markdown-to-multipart conversion, and sending.
-  </Card>
-  <Card title="Real search engine" icon="magnifier">
-    Tantivy gives you BM25-ranked, sub-second full-text search. Saved searches live in the sidebar as programmable lenses. Search is navigation, not a bolt-on filter.
+    `$EDITOR` opens with markdown and YAML frontmatter. Your normal editing setup stays in charge.
   </Card>
   <Card title="Daemon-backed" icon="setting">
-    The daemon is the system. The TUI is a thin client. Sync, indexing, rules, and snooze run in the background. Close the TUI, nothing stops.
+    The daemon is the system. The TUI, CLI, scripts, and future clients all talk to the same local runtime.
   </Card>
-  <Card title="Provider-agnostic" icon="random">
-    Gmail, IMAP, SMTP all normalize into one internal model. Mix providers freely. Add new ones with a clean Rust trait. The conformance suite validates your adapter.
+  <Card title="Provider adapters" icon="random">
+    Gmail, IMAP, SMTP, and fake adapters normalize into one internal model. The adapter surface is backed by a conformance suite.
   </Card>
-  <Card title="Distraction-free" icon="open-book">
-    Reader mode strips tracking pixels, banners, signatures, and quoted text. You see what the email says, not what it's selling you. One key to unsubscribe.
+  <Card title="Reader mode" icon="open-book">
+    Plain text first. Tracking junk, signatures, and quoted walls get stripped down. If the original HTML matters, open it in the browser.
+  </Card>
+  <Card title="Saved searches and batch ops" icon="magnifier">
+    Search is not a side filter. It is the navigation model, and it also drives batch work in the CLI.
   </Card>
   <Card title="Build your own client" icon="puzzle">
-    The daemon speaks JSON over a Unix socket. The TUI is one client. Build a web dashboard, a mobile bridge, a Raycast extension, anything that can open a socket.
+    The daemon speaks JSON over a Unix socket. The TUI is one client, not the only client.
   </Card>
 </CardGrid>
 
@@ -148,24 +146,22 @@ mxr syncs your email to a local SQLite database and indexes it with Tantivy, the
 
 <div class="landing-section comparison-section">
 
-## Where mxr fits in
+## Where mxr fits
 
-| | gog / gws | notmuch | mutt | aerc | himalaya | meli | **mxr** |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Works beyond Google | no | **yes** | **yes** | **yes** | **yes** | **yes** | **yes** |
-| Full CLI for every action | **yes** (Gmail) | most | partial | partial | **yes** | no | **yes** |
-| JSON output for scripting | **yes** | **yes** | no | no | **yes** | no | **yes** |
-| Compose and send from CLI | **yes** | no | **yes** | partial | **yes** | no | **yes** |
-| Batch operations via search | partial | tag only | no | no | no | no | **yes** |
-| Daemon architecture | no | no | no | no | no | no | **yes** |
-| Local database | no | **Xapian** | no | no | no | optional | **SQLite** |
-| Full-text search engine | no | **yes** | no | no | no | optional | **yes** |
-| Compose in $EDITOR | no | via Emacs | **yes** | **yes** | **yes** | partial | **yes** |
-| Markdown to multipart | no | no | no | no | no | no | **yes** |
-| One-key unsubscribe | no | no | no | no | no | no | **yes** |
-| Rules with dry-run | no | no | **procmail** | no | no | no | **yes** |
-| Pluggable provider adapters | no | no | no | partial | partial | partial | **yes** |
-| Custom client support | no | **yes** | no | no | no | no | **yes** |
+mxr grows out of work that earlier tools already proved mattered. mutt and neomutt showed how good keyboard mail can feel. aerc pushed the terminal UI forward. himalaya made the CLI feel cleaner. notmuch made local indexing hard to ignore. gog and gws made Gmail scripting practical.
+
+Hosted connector layers such as Nylas CLI, Composio, Zapier MCP, and EmailEngine are useful when you want managed auth, remote workflows, or cross-app automation. Nearby local projects like Post and `email-mcp` are closer in spirit. mxr is for a different center of gravity: keep the mail runtime local, keep the CLI broad, keep the daemon as the shared system.
+
+| Tool | Good fit when you want... | mxr angle |
+|---|---|---|
+| mutt / neomutt | a long-established terminal workflow | mxr puts a local daemon and structured CLI behind the workflow |
+| aerc | a modern terminal UI | mxr leans harder into local state and scriptability |
+| himalaya | a clean CLI-first mail client | mxr adds the daemon/runtime layer |
+| notmuch | local indexing over local maildirs | mxr also owns sync and mutations |
+| Nylas CLI / Composio / Zapier MCP | hosted connector workflows | mxr keeps the runtime on your machine |
+| Post / `email-mcp` | local mail runtime or bridge work | mxr aims for a broader local mail platform |
+
+More detail, including capability matrices, lives on [Why mxr](/guides/why-mxr/).
 
 </div>
 
@@ -173,14 +169,14 @@ mxr syncs your email to a local SQLite database and indexes it with Tantivy, the
 
 ## Open source
 
-mxr is MIT / Apache-2.0 dual-licensed. The entire codebase is open. Built with Rust, one binary, no runtime, runs on every platform. No telemetry, no analytics, no "phone home."
+mxr is MIT / Apache-2.0 dual-licensed. The code is open. There is no telemetry in the core architecture. Provider adapters are meant to be readable and replaceable.
 
-The architecture is built for contribution: clean crate boundaries, compile-time checked SQL, a conformance test suite for provider adapters, and thorough documentation. Bug fixes, new provider adapters, CLI improvements, ideas, all welcome.
+If you want the design logic behind the daemon, the local store, and the provider model, read [Architecture](/guides/architecture/).
 
 <div class="cta-buttons">
   <a href="/getting-started/install/" class="cta-primary">Get started</a>
   <a href="https://github.com/planetaryescape/mxr" class="cta-secondary">Contribute on GitHub</a>
-  <a href="/guides/agent-skill/" class="cta-secondary">Install the AI skill</a>
+  <a href="/guides/for-agents/" class="cta-secondary">For agents</a>
 </div>
 
 </div>

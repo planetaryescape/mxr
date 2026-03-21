@@ -145,6 +145,15 @@ async fn main() -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::events::run(event_type, format).await?;
         }
+        Some(Command::History {
+            category,
+            level,
+            limit,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::history::run(category, level, limit, format).await?;
+        }
         Some(Command::Notify { format, watch }) => {
             crate::server::ensure_daemon_running().await?;
             commands::notify::run(format, watch).await?;

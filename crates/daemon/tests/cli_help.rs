@@ -79,6 +79,11 @@ fn events_help_snapshot() {
 }
 
 #[test]
+fn history_help_snapshot() {
+    assert_help_snapshot("cli_help_history", &["history", "--help"]);
+}
+
+#[test]
 fn notify_help_snapshot() {
     assert_help_snapshot("cli_help_notify", &["notify", "--help"]);
 }

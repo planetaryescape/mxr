@@ -1,13 +1,25 @@
+mod accounts;
+mod diagnostics;
+mod mailbox;
+mod mutations;
+mod rules;
+
 use crate::state::AppState;
 use mxr_core::provider::MailSyncProvider;
-use mxr_core::types::{Address, Draft, ExportFormat, Snoozed, UnsubscribeMethod};
+#[cfg(test)]
+use mxr_core::types::UnsubscribeMethod;
+use mxr_core::types::{ExportFormat, Snoozed};
 use mxr_export::{ExportAttachment, ExportMessage, ExportThread};
 use mxr_protocol::*;
 use mxr_reader::ReaderConfig;
-use mxr_rules::{Conditions, DryRunResult, FieldCondition, Rule, RuleAction, RuleEngine, StringMatch};
-use mxr_search::{parse_query, QueryBuilder};
+use mxr_rules::{
+    Conditions, DryRunResult, FieldCondition, Rule, RuleAction, RuleEngine, StringMatch,
+};
+use mxr_search::parse_query;
 use std::io::{BufRead, BufReader};
 use std::sync::Arc;
+
+type HandlerResult = Result<ResponseData, String>;
 
 pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessage {
     let response_data = match &msg.payload {
@@ -24,412 +36,69 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
 }
 
 async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
-    match req {
+    let result = match req {
         Request::ListEnvelopes {
             label_id,
             account_id,
             limit,
             offset,
         } => {
-            let result = if let Some(lid) = label_id {
-                tracing::debug!(label_id = %lid, limit, offset, "listing envelopes by label");
-                state
-                    .store
-                    .list_envelopes_by_label(lid, *limit, *offset)
-                    .await
-            } else {
-                let default_account_id = state.default_account_id();
-                state
-                    .store
-                    .list_envelopes_by_account(
-                        account_id.as_ref().unwrap_or(&default_account_id),
-                        *limit,
-                        *offset,
-                    )
-                    .await
-            };
-            match result {
-                Ok(mut envelopes) => {
-                    for envelope in &mut envelopes {
-                        if let Ok(labels) = state
-                            .store
-                            .list_labels_by_account(&envelope.account_id)
-                            .await
-                        {
-                            let _ =
-                                populate_envelope_label_provider_ids(state, envelope, &labels)
-                                    .await;
-                        }
-                    }
-                    tracing::debug!(
-                        count = envelopes.len(),
-                        by_label = label_id.is_some(),
-                        "listed envelopes"
-                    );
-                    Response::Ok {
-                        data: ResponseData::Envelopes { envelopes },
-                    }
-                }
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
+            mailbox::list_envelopes(
+                state,
+                label_id.as_ref(),
+                account_id.as_ref(),
+                *limit,
+                *offset,
+            )
+            .await
         }
-
-        Request::ListEnvelopesByIds { message_ids } => match state.store.list_envelopes_by_ids(message_ids).await {
-            Ok(mut envelopes) => {
-                for envelope in &mut envelopes {
-                    if let Ok(labels) = state
-                        .store
-                        .list_labels_by_account(&envelope.account_id)
-                        .await
-                    {
-                        let _ =
-                            populate_envelope_label_provider_ids(state, envelope, &labels)
-                                .await;
-                    }
-                }
-                Response::Ok {
-                    data: ResponseData::Envelopes { envelopes },
-                }
-            }
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::GetEnvelope { message_id } => match state.store.get_envelope(message_id).await {
-            Ok(Some(mut envelope)) => {
-                if let Ok(labels) = state
-                    .store
-                    .list_labels_by_account(&envelope.account_id)
-                    .await
-                {
-                    let _ = populate_envelope_label_provider_ids(state, &mut envelope, &labels).await;
-                }
-                Response::Ok {
-                    data: ResponseData::Envelope { envelope },
-                }
-            }
-            Ok(None) => Response::Error {
-                message: "Not found".to_string(),
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::GetBody { message_id } => {
-            match state.sync_engine.get_body(message_id).await {
-                Ok(body) => Response::Ok {
-                    data: ResponseData::Body { body },
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
+        Request::ListEnvelopesByIds { message_ids } => {
+            mailbox::list_envelopes_by_ids(state, message_ids).await
         }
-
+        Request::GetEnvelope { message_id } => mailbox::get_envelope(state, message_id).await,
+        Request::GetBody { message_id } => mailbox::get_body(state, message_id).await,
         Request::DownloadAttachment {
             message_id,
             attachment_id,
-        } => match materialize_attachment_file(state, message_id, attachment_id).await {
-            Ok(file) => Response::Ok {
-                data: ResponseData::AttachmentFile { file },
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
+        } => mailbox::download_attachment(state, message_id, attachment_id).await,
         Request::OpenAttachment {
             message_id,
             attachment_id,
-        } => match materialize_attachment_file(state, message_id, attachment_id).await {
-            Ok(file) => match open_local_file(&file.path) {
-                Ok(()) => Response::Ok {
-                    data: ResponseData::AttachmentFile { file },
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::ListBodies { message_ids } => {
-            tracing::debug!(count = message_ids.len(), "ListBodies: fetching bodies");
-            let mut bodies = Vec::with_capacity(message_ids.len());
-            for id in message_ids {
-                if let Ok(Some(full)) = state.store.get_body(id).await {
-                    // Send text_plain if available, otherwise text_html as fallback.
-                    // Strip attachments to keep payload small.
-                    let (plain, html) = if full.text_plain.is_some() {
-                        (full.text_plain, None)
-                    } else {
-                        (None, full.text_html)
-                    };
-                    bodies.push(mxr_core::types::MessageBody {
-                        message_id: full.message_id,
-                        text_plain: plain,
-                        text_html: html,
-                        attachments: vec![],
-                        fetched_at: full.fetched_at,
-                        metadata: full.metadata,
-                    });
-                }
-            }
-            Response::Ok {
-                data: ResponseData::Bodies { bodies },
-            }
-        }
-
-        Request::GetThread { thread_id } => match state.store.get_thread(thread_id).await {
-            Ok(Some(thread)) => {
-                let mut messages = state
-                    .store
-                    .get_thread_envelopes(thread_id)
-                    .await
-                    .unwrap_or_default();
-                if let Ok(labels) = state.store.list_labels_by_account(&thread.account_id).await {
-                    for message in &mut messages {
-                        let _ = populate_envelope_label_provider_ids(state, message, &labels).await;
-                    }
-                }
-                Response::Ok {
-                    data: ResponseData::Thread { thread, messages },
-                }
-            }
-            Ok(None) => Response::Error {
-                message: "Thread not found".to_string(),
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
+        } => mailbox::open_attachment(state, message_id, attachment_id).await,
+        Request::ListBodies { message_ids } => mailbox::list_bodies(state, message_ids).await,
+        Request::GetThread { thread_id } => mailbox::get_thread(state, thread_id).await,
         Request::ListLabels { account_id } => {
-            let default_account_id = state.default_account_id();
-            let aid = account_id.as_ref().unwrap_or(&default_account_id);
-            match state.store.list_labels_by_account(aid).await {
-                Ok(labels) => Response::Ok {
-                    data: ResponseData::Labels { labels },
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
+            mailbox::list_labels(state, account_id.as_ref()).await
         }
-
         Request::CreateLabel {
             name,
             color,
             account_id,
-        } => {
-            let provider = state.get_provider(account_id.as_ref());
-            match provider.create_label(name, color.as_deref()).await {
-                Ok(label) => match state.store.upsert_label(&label).await {
-                    Ok(()) => Response::Ok {
-                        data: ResponseData::Label { label },
-                    },
-                    Err(e) => Response::Error {
-                        message: e.to_string(),
-                    },
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
-        }
-
+        } => mailbox::create_label(state, name, color.as_deref(), account_id.as_ref()).await,
         Request::DeleteLabel { name, account_id } => {
-            let default_account_id = state.default_account_id();
-            let aid = account_id.as_ref().unwrap_or(&default_account_id);
-            match find_label_by_name(state, aid, name).await {
-                Ok(label) => {
-                    let provider = state.get_provider(Some(aid));
-                    match provider.delete_label(&label.provider_id).await {
-                        Ok(()) => match state.store.delete_label(&label.id).await {
-                            Ok(()) => Response::Ok {
-                                data: ResponseData::Ack,
-                            },
-                            Err(e) => Response::Error {
-                                message: e.to_string(),
-                            },
-                        },
-                        Err(e) => Response::Error {
-                            message: e.to_string(),
-                        },
-                    }
-                }
-                Err(message) => Response::Error { message },
-            }
+            mailbox::delete_label(state, name, account_id.as_ref()).await
         }
-
         Request::RenameLabel {
             old,
             new,
             account_id,
-        } => {
-            let default_account_id = state.default_account_id();
-            let aid = account_id.as_ref().unwrap_or(&default_account_id);
-            match find_label_by_name(state, aid, old).await {
-                Ok(existing) => {
-                    let provider = state.get_provider(Some(aid));
-                    match provider.rename_label(&existing.provider_id, new).await {
-                        Ok(mut label) => {
-                            if label.account_id != *aid {
-                                label.account_id = aid.clone();
-                            }
-                            match state.store.replace_label(&existing.id, &label).await {
-                                Ok(()) => Response::Ok {
-                                    data: ResponseData::Label { label },
-                                },
-                                Err(e) => Response::Error {
-                                    message: e.to_string(),
-                                },
-                            }
-                        }
-                        Err(e) => Response::Error {
-                            message: e.to_string(),
-                        },
-                    }
-                }
-                Err(message) => Response::Error { message },
-            }
-        }
-
-        Request::ListRules => match state.store.list_rules().await {
-            Ok(rows) => Response::Ok {
-                data: ResponseData::Rules {
-                    rules: rows.iter().map(mxr_store::row_to_rule_json).collect(),
-                },
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::ListAccounts => match list_runtime_accounts(state).await {
-            Ok(accounts) => Response::Ok {
-                data: ResponseData::Accounts { accounts },
-            },
-            Err(message) => Response::Error { message },
-        },
-
-        Request::ListAccountsConfig => match list_account_configs() {
-            Ok(accounts) => Response::Ok {
-                data: ResponseData::AccountsConfig { accounts },
-            },
-            Err(message) => Response::Error { message },
-        },
-
+        } => mailbox::rename_label(state, old, new, account_id.as_ref()).await,
+        Request::ListRules => rules::list_rules(state).await,
+        Request::ListAccounts => accounts::list_accounts(state).await,
+        Request::ListAccountsConfig => accounts::list_accounts_config(),
         Request::AuthorizeAccountConfig {
             account,
             reauthorize,
-        } => Response::Ok {
-            data: ResponseData::AccountOperation {
-                result: authorize_account_config(account.clone(), *reauthorize).await,
-            },
-        },
-
-        Request::UpsertAccountConfig { account } => Response::Ok {
-            data: ResponseData::AccountOperation {
-                result: upsert_account_config(state, account.clone()).await,
-            },
-        },
-
-        Request::SetDefaultAccount { key } => match set_default_account(state, key).await {
-            Ok(_) => Response::Ok {
-                data: ResponseData::AccountOperation {
-                    result: account_operation_result(
-                        true,
-                        format!("Default account set to '{key}'."),
-                        Some(account_step(true, format!("Default account set to '{key}'."))),
-                        None,
-                        None,
-                        None,
-                    ),
-                },
-            },
-            Err(message) => Response::Error { message },
-        },
-
-        Request::TestAccountConfig { account } => Response::Ok {
-            data: ResponseData::AccountOperation {
-                result: test_account_config(account.clone()).await,
-            },
-        },
-
-        Request::GetRule { rule } => match state.store.get_rule_by_id_or_name(rule).await {
-            Ok(Some(row)) => Response::Ok {
-                data: ResponseData::RuleData {
-                    rule: mxr_store::row_to_rule_json(&row),
-                },
-            },
-            Ok(None) => Response::Error {
-                message: format!("Rule not found: {rule}"),
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::GetRuleForm { rule } => match state.store.get_rule_by_id_or_name(rule).await {
-            Ok(Some(row)) => match serde_json::from_value::<Rule>(mxr_store::row_to_rule_json(&row)) {
-                Ok(parsed) => match rule_to_form_data(&parsed) {
-                    Ok(form) => Response::Ok {
-                        data: ResponseData::RuleFormData { form },
-                    },
-                    Err(message) => Response::Error { message },
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            },
-            Ok(None) => Response::Error {
-                message: format!("Rule not found: {rule}"),
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::UpsertRule { rule } => match parse_rule_value(rule.clone()) {
-            Ok(parsed) => match persist_rule(state, &parsed).await {
-                Ok(()) => Response::Ok {
-                    data: ResponseData::RuleData { rule: rule.clone() },
-                },
-                Err(message) => Response::Error { message },
-            },
-            Err(message) => Response::Error { message },
-        },
-
-        Request::DeleteRule { rule } => match state.store.get_rule_by_id_or_name(rule).await {
-            Ok(Some(row)) => {
-                let id = mxr_store::row_to_rule_json(&row)["id"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
-                match state.store.delete_rule(&id).await {
-                    Ok(()) => Response::Ok {
-                        data: ResponseData::Ack,
-                    },
-                    Err(e) => Response::Error {
-                        message: e.to_string(),
-                    },
-                }
-            }
-            Ok(None) => Response::Error {
-                message: format!("Rule not found: {rule}"),
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
+        } => accounts::authorize_account(account.clone(), *reauthorize).await,
+        Request::UpsertAccountConfig { account } => {
+            accounts::upsert_account(state, account.clone()).await
+        }
+        Request::SetDefaultAccount { key } => accounts::set_default_account_key(state, key).await,
+        Request::TestAccountConfig { account } => accounts::test_account(account.clone()).await,
+        Request::GetRule { rule } => rules::get_rule(state, rule).await,
+        Request::GetRuleForm { rule } => rules::get_rule_form(state, rule).await,
+        Request::UpsertRule { rule } => rules::upsert_rule_value(state, rule.clone()).await,
+        Request::DeleteRule { rule } => rules::delete_rule(state, rule).await,
         Request::UpsertRuleForm {
             existing_rule,
             name,
@@ -437,843 +106,88 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             action,
             priority,
             enabled,
-        } => match build_rule_from_form(
-            state,
-            existing_rule.as_ref(),
-            name,
-            condition,
-            action,
-            *priority,
-            *enabled,
-        )
-        .await
-        {
-            Ok(rule) => match serde_json::to_value(&rule) {
-                Ok(value) => match persist_rule(state, &rule).await {
-                    Ok(()) => Response::Ok {
-                        data: ResponseData::RuleData { rule: value },
-                    },
-                    Err(message) => Response::Error { message },
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            },
-            Err(message) => Response::Error { message },
-        },
-
+        } => {
+            rules::upsert_rule_form(
+                state,
+                existing_rule.as_ref(),
+                name,
+                condition,
+                action,
+                *priority,
+                *enabled,
+            )
+            .await
+        }
         Request::ListRuleHistory { rule, limit } => {
-            let resolved_rule_id = if let Some(rule) = rule {
-                match state.store.get_rule_by_id_or_name(rule).await {
-                    Ok(Some(row)) => Some(
-                        mxr_store::row_to_rule_json(&row)["id"]
-                            .as_str()
-                            .unwrap_or_default()
-                            .to_string(),
-                    ),
-                    Ok(None) => {
-                        return Response::Error {
-                            message: format!("Rule not found: {rule}"),
-                        };
-                    }
-                    Err(e) => {
-                        return Response::Error {
-                            message: e.to_string(),
-                        };
-                    }
-                }
-            } else {
-                None
-            };
-
-            match state
-                .store
-                .list_rule_logs(resolved_rule_id.as_deref(), *limit)
-                .await
-            {
-                Ok(rows) => Response::Ok {
-                    data: ResponseData::RuleHistory {
-                        entries: rows.iter().map(mxr_store::row_to_rule_log_json).collect(),
-                    },
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
+            rules::list_rule_history(state, rule.as_ref(), *limit).await
         }
-
         Request::DryRunRules { rule, all, after } => {
-            match dry_run_rules(state, rule.clone(), *all, after.clone()).await {
-                Ok(results) => Response::Ok {
-                    data: ResponseData::RuleDryRun {
-                        results: results
-                            .into_iter()
-                            .map(|result| {
-                                serde_json::to_value(result).unwrap_or(serde_json::Value::Null)
-                            })
-                            .collect(),
-                    },
-                },
-                Err(message) => Response::Error { message },
-            }
+            rules::dry_run(state, rule.as_ref(), *all, after.as_ref()).await
         }
-
         Request::ListEvents {
             limit,
             level,
             category,
-        } => match state
-            .store
-            .list_events(*limit, level.as_deref(), category.as_deref())
-            .await
-        {
-            Ok(entries) => Response::Ok {
-                data: ResponseData::EventLogEntries {
-                    entries: entries.into_iter().map(protocol_event_entry).collect(),
-                },
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::GetLogs { limit, level } => match recent_log_lines(*limit as usize, level.as_deref()) {
-            Ok(lines) => Response::Ok {
-                data: ResponseData::LogLines { lines },
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::GetDoctorReport => match collect_doctor_report(state).await {
-            Ok(report) => Response::Ok {
-                data: ResponseData::DoctorReport { report },
-            },
-            Err(message) => Response::Error { message },
-        },
-
+        } => diagnostics::list_events(state, *limit, level.as_deref(), category.as_deref()).await,
+        Request::GetLogs { limit, level } => diagnostics::get_logs(*limit, level.as_deref()),
+        Request::GetDoctorReport => diagnostics::doctor_report(state).await,
         Request::GenerateBugReport {
             verbose,
             full_logs,
             since,
-        } => match crate::commands::bug_report::generate_report_markdown(
-            &crate::commands::bug_report::BugReportOptions {
-                edit: false,
-                stdout: false,
-                clipboard: false,
-                github: false,
-                output: None,
-                verbose: *verbose,
-                full_logs: *full_logs,
-                no_sanitize: false,
-                since: since.clone(),
-            },
-        )
-        .await
-        {
-            Ok(content) => Response::Ok {
-                data: ResponseData::BugReport { content },
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::Search { query, limit } => {
-            let search = state.search.lock().await;
-            // Try custom parser first, fall back to Tantivy's built-in parser
-            let results = match parse_query(query) {
-                Ok(ast) => {
-                    let builder = QueryBuilder::new(search.schema());
-                    let tantivy_query = builder.build(&ast);
-                    search.search_ast(tantivy_query, *limit as usize)
-                }
-                Err(error) => {
-                    if should_fallback_to_tantivy(query, &error) {
-                        search.search(query, *limit as usize)
-                    } else {
-                        Err(mxr_core::MxrError::Search(format!(
-                            "Invalid search query: {error}"
-                        )))
-                    }
-                }
-            };
-            match results {
-                Ok(results) => {
-                    let items: Vec<SearchResultItem> = results
-                        .into_iter()
-                        .filter_map(|r| {
-                            Some(SearchResultItem {
-                                message_id: mxr_core::MessageId::from_uuid(
-                                    uuid::Uuid::parse_str(&r.message_id).ok()?,
-                                ),
-                                account_id: mxr_core::AccountId::from_uuid(
-                                    uuid::Uuid::parse_str(&r.account_id).ok()?,
-                                ),
-                                thread_id: mxr_core::ThreadId::from_uuid(
-                                    uuid::Uuid::parse_str(&r.thread_id).ok()?,
-                                ),
-                                score: r.score,
-                            })
-                        })
-                        .collect();
-                    Response::Ok {
-                        data: ResponseData::SearchResults { results: items },
-                    }
-                }
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
-        }
-
-        Request::Count { query } => {
-            let search = state.search.lock().await;
-            let results = match parse_query(query) {
-                Ok(ast) => {
-                    let builder = QueryBuilder::new(search.schema());
-                    let tantivy_query = builder.build(&ast);
-                    search.search_ast(tantivy_query, 10_000)
-                }
-                Err(error) => {
-                    if should_fallback_to_tantivy(query, &error) {
-                        search.search(query, 10_000)
-                    } else {
-                        Err(mxr_core::MxrError::Search(format!(
-                            "Invalid search query: {error}"
-                        )))
-                    }
-                }
-            };
-            match results {
-                Ok(results) => Response::Ok {
-                    data: ResponseData::Count {
-                        count: results.len() as u32,
-                    },
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
-        }
-
-        Request::GetHeaders { message_id } => match state.store.get_envelope(message_id).await {
-            Ok(Some(envelope)) => {
-                let mut headers = Vec::new();
-                headers.push((
-                    "From".to_string(),
-                    format!(
-                        "{} <{}>",
-                        envelope.from.name.as_deref().unwrap_or(""),
-                        envelope.from.email
-                    ),
-                ));
-                headers.push(("Subject".to_string(), envelope.subject.clone()));
-                headers.push(("Date".to_string(), envelope.date.to_rfc3339()));
-                for addr in &envelope.to {
-                    headers.push((
-                        "To".to_string(),
-                        format!("{} <{}>", addr.name.as_deref().unwrap_or(""), addr.email),
-                    ));
-                }
-                for addr in &envelope.cc {
-                    headers.push((
-                        "Cc".to_string(),
-                        format!("{} <{}>", addr.name.as_deref().unwrap_or(""), addr.email),
-                    ));
-                }
-                if let Some(ref mid) = envelope.message_id_header {
-                    headers.push(("Message-ID".to_string(), mid.clone()));
-                }
-                if let Some(ref irt) = envelope.in_reply_to {
-                    headers.push(("In-Reply-To".to_string(), irt.clone()));
-                }
-                if let Ok(Some(body)) = state.store.get_body(message_id).await {
-                    if let Some(list_id) = body.metadata.list_id {
-                        headers.push(("List-Id".to_string(), list_id));
-                    }
-                    for auth_result in body.metadata.auth_results {
-                        headers.push(("Authentication-Results".to_string(), auth_result));
-                    }
-                    if !body.metadata.content_language.is_empty() {
-                        headers.push((
-                            "Content-Language".to_string(),
-                            body.metadata.content_language.join(", "),
-                        ));
-                    }
-                }
-                Response::Ok {
-                    data: ResponseData::Headers { headers },
-                }
-            }
-            Ok(None) => Response::Error {
-                message: "Not found".to_string(),
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::ListSavedSearches => match state.store.list_saved_searches().await {
-            Ok(searches) => Response::Ok {
-                data: ResponseData::SavedSearches { searches },
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
+        } => diagnostics::bug_report(*verbose, *full_logs, since.clone()).await,
+        Request::Search { query, limit } => diagnostics::search(state, query, *limit).await,
+        Request::Count { query } => diagnostics::count(state, query).await,
+        Request::GetHeaders { message_id } => diagnostics::get_headers(state, message_id).await,
+        Request::ListSavedSearches => diagnostics::list_saved_searches(state).await,
         Request::CreateSavedSearch { name, query } => {
-            let search = mxr_core::types::SavedSearch {
-                id: mxr_core::SavedSearchId::new(),
-                account_id: None,
-                name: name.clone(),
-                query: query.clone(),
-                sort: mxr_core::types::SortOrder::DateDesc,
-                icon: None,
-                position: 0,
-                created_at: chrono::Utc::now(),
-            };
-            match state.store.insert_saved_search(&search).await {
-                Ok(()) => Response::Ok {
-                    data: ResponseData::SavedSearchData { search },
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
+            diagnostics::create_saved_search(state, name, query).await
         }
-
-        Request::DeleteSavedSearch { name } => {
-            match state.store.delete_saved_search_by_name(name).await {
-                Ok(true) => Response::Ok {
-                    data: ResponseData::Ack,
-                },
-                Ok(false) => Response::Error {
-                    message: format!("Saved search '{}' not found", name),
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
-        }
-
+        Request::DeleteSavedSearch { name } => diagnostics::delete_saved_search(state, name).await,
         Request::RunSavedSearch { name, limit } => {
-            match state.store.get_saved_search_by_name(name).await {
-                Ok(Some(saved)) => {
-                    let search = state.search.lock().await;
-                    match search.search(&saved.query, *limit as usize) {
-                        Ok(results) => {
-                            let items: Vec<SearchResultItem> = results
-                                .into_iter()
-                                .filter_map(|r| {
-                                    Some(SearchResultItem {
-                                        message_id: mxr_core::MessageId::from_uuid(
-                                            uuid::Uuid::parse_str(&r.message_id).ok()?,
-                                        ),
-                                        account_id: mxr_core::AccountId::from_uuid(
-                                            uuid::Uuid::parse_str(&r.account_id).ok()?,
-                                        ),
-                                        thread_id: mxr_core::ThreadId::from_uuid(
-                                            uuid::Uuid::parse_str(&r.thread_id).ok()?,
-                                        ),
-                                        score: r.score,
-                                    })
-                                })
-                                .collect();
-                            Response::Ok {
-                                data: ResponseData::SearchResults { results: items },
-                            }
-                        }
-                        Err(e) => Response::Error {
-                            message: e.to_string(),
-                        },
-                    }
-                }
-                Ok(None) => Response::Error {
-                    message: format!("Saved search '{}' not found", name),
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
+            diagnostics::run_saved_search(state, name, *limit).await
         }
-
-        Request::GetStatus => match collect_status_snapshot(state).await {
-            Ok((accounts, total_messages, sync_statuses)) => Response::Ok {
-                data: ResponseData::Status {
-                    uptime_secs: state.uptime_secs(),
-                    accounts,
-                    total_messages,
-                    daemon_pid: Some(std::process::id()),
-                    sync_statuses,
-                },
-            },
-            Err(message) => Response::Error { message },
-        },
-
-        Request::SyncNow { account_id } => {
-            let provider = state.get_provider(account_id.as_ref()).clone();
-            match state.sync_engine.sync_account(provider.as_ref()).await {
-                Ok(_) => Response::Ok {
-                    data: ResponseData::Ack,
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
-        }
-
+        Request::GetStatus => diagnostics::get_status(state).await,
+        Request::SyncNow { account_id } => diagnostics::sync_now(state, account_id.as_ref()).await,
         Request::ExportThread { thread_id, format } => {
-            handle_export_thread(state, thread_id, format).await
+            diagnostics::export_thread(state, thread_id, format).await
         }
-
         Request::ExportSearch { query, format } => {
-            handle_export_search(state, query, format).await
+            diagnostics::export_search(state, query, format).await
         }
-
-        Request::Ping => Response::Ok {
-            data: ResponseData::Pong,
-        },
-
-        Request::Shutdown => {
-            std::process::exit(0);
-        }
-
-        Request::Mutation(cmd) => {
-            let message_ids = match cmd {
-                MutationCommand::Archive { message_ids }
-                | MutationCommand::Trash { message_ids }
-                | MutationCommand::Spam { message_ids }
-                | MutationCommand::Star { message_ids, .. }
-                | MutationCommand::SetRead { message_ids, .. }
-                | MutationCommand::ModifyLabels { message_ids, .. }
-                | MutationCommand::Move { message_ids, .. } => message_ids,
-            };
-
-            for msg_id in message_ids {
-                let envelope = match state.store.get_envelope(msg_id).await {
-                    Ok(Some(env)) => env,
-                    Ok(None) => {
-                        return Response::Error {
-                            message: format!("Message not found: {}", msg_id),
-                        };
-                    }
-                    Err(e) => {
-                        return Response::Error {
-                            message: e.to_string(),
-                        };
-                    }
-                };
-                let provider_id = &envelope.provider_id;
-                let provider = state.get_provider(Some(&envelope.account_id)).clone();
-
-                let result = match cmd {
-                    MutationCommand::Archive { .. } => {
-                        if let Err(e) =
-                            provider.modify_labels(provider_id, &[], &["INBOX".to_string()]).await
-                        {
-                            return Response::Error {
-                                message: e.to_string(),
-                            };
-                        }
-                        // Remove INBOX label locally
-                        let mut label_ids = state
-                            .store
-                            .get_message_label_ids(msg_id)
-                            .await
-                            .unwrap_or_default();
-                        label_ids.retain(|l| l.as_str() != "INBOX");
-                        state.store.set_message_labels(msg_id, &label_ids).await
-                    }
-                    MutationCommand::Trash { .. } => {
-                        if let Err(e) = provider.trash(provider_id).await {
-                            return Response::Error {
-                                message: e.to_string(),
-                            };
-                        }
-                        Ok(())
-                    }
-                    MutationCommand::Spam { .. } => {
-                        if let Err(e) = provider
-                            .modify_labels(provider_id, &["SPAM".to_string()], &["INBOX".to_string()])
-                            .await
-                        {
-                            return Response::Error {
-                                message: e.to_string(),
-                            };
-                        }
-                        Ok(())
-                    }
-                    MutationCommand::Star { starred, .. } => {
-                        if let Err(e) = provider.set_starred(provider_id, *starred).await {
-                            return Response::Error {
-                                message: e.to_string(),
-                            };
-                        }
-                        state.store.set_starred(msg_id, *starred).await
-                    }
-                    MutationCommand::SetRead { read, .. } => {
-                        if let Err(e) = provider.set_read(provider_id, *read).await {
-                            return Response::Error {
-                                message: e.to_string(),
-                            };
-                        }
-                        state.store.set_read(msg_id, *read).await
-                    }
-                    MutationCommand::ModifyLabels { add, remove, .. } => {
-                        if let Err(e) = provider.modify_labels(provider_id, add, remove).await {
-                            return Response::Error {
-                                message: e.to_string(),
-                            };
-                        }
-                        persist_local_label_changes(state, msg_id, add, remove).await
-                    }
-                    MutationCommand::Move { target_label, .. } => {
-                        if let Err(e) = provider
-                            .modify_labels(
-                                provider_id,
-                                std::slice::from_ref(target_label),
-                                &["INBOX".to_string()],
-                            )
-                            .await
-                        {
-                            return Response::Error {
-                                message: e.to_string(),
-                            };
-                        }
-                        persist_local_label_changes(
-                            state,
-                            msg_id,
-                            std::slice::from_ref(target_label),
-                            &["INBOX".to_string()],
-                        )
-                        .await
-                    }
-                };
-
-                if let Err(e) = result {
-                    return Response::Error {
-                        message: e.to_string(),
-                    };
-                }
-            }
-
-            Response::Ok {
-                data: ResponseData::Ack,
-            }
-        }
-
+        Request::Ping => Ok(ResponseData::Pong),
+        Request::Shutdown => std::process::exit(0),
+        Request::Mutation(cmd) => mutations::mutation(state, cmd).await,
         Request::Snooze {
             message_id,
             wake_at,
-        } => match apply_snooze(state, message_id, wake_at).await {
-            Ok(()) => Response::Ok {
-                data: ResponseData::Ack,
-            },
-            Err(message) => Response::Error { message },
-        },
-
-        Request::Unsnooze { message_id } => {
-            let snoozed = match state.store.get_snooze(message_id).await {
-                Ok(snoozed) => snoozed,
-                Err(e) => {
-                    return Response::Error {
-                        message: e.to_string(),
-                    };
-                }
-            };
-            match snoozed {
-                Some(snoozed) => match restore_snoozed_message(state, &snoozed).await {
-                    Ok(()) => Response::Ok {
-                        data: ResponseData::Ack,
-                    },
-                    Err(message) => Response::Error { message },
-                },
-                None => Response::Ok {
-                    data: ResponseData::Ack,
-                },
-            }
-        }
-
-        Request::ListSnoozed => match state.store.list_snoozed().await {
-            Ok(snoozed) => Response::Ok {
-                data: ResponseData::SnoozedMessages { snoozed },
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
-        Request::ListDrafts => {
-            let default_account_id = state.default_account_id();
-            match state.store.list_drafts(&default_account_id).await {
-            Ok(drafts) => Response::Ok {
-                data: ResponseData::Drafts { drafts },
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        }
-        },
-
+        } => mutations::snooze(state, message_id, wake_at).await,
+        Request::Unsnooze { message_id } => mutations::unsnooze(state, message_id).await,
+        Request::ListSnoozed => mutations::list_snoozed(state).await,
+        Request::ListDrafts => mutations::list_drafts(state).await,
         Request::PrepareReply {
             message_id,
             reply_all,
-        } => {
-            let envelope = match state.store.get_envelope(message_id).await {
-                Ok(Some(env)) => env,
-                Ok(None) => {
-                    return Response::Error {
-                        message: "Message not found".to_string(),
-                    };
-                }
-                Err(e) => {
-                    return Response::Error {
-                        message: e.to_string(),
-                    };
-                }
-            };
-
-            let from = state
-                .store
-                .get_account(&envelope.account_id)
-                .await
-                .ok()
-                .flatten()
-                .map(|a| a.email)
-                .unwrap_or_default();
-
-            let thread_context = match state.sync_engine.get_body(message_id).await {
-                Ok(body) => render_message_context(&body),
-                Err(_) => String::new(),
-            };
-
-            let cc = if *reply_all {
-                envelope
-                    .cc
-                    .iter()
-                    .map(|a| a.email.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            } else {
-                String::new()
-            };
-
-            let context = ReplyContext {
-                in_reply_to: envelope.message_id_header.clone().unwrap_or_default(),
-                references: build_reply_references(&envelope),
-                reply_to: envelope.from.email.clone(),
-                cc,
-                subject: envelope.subject.clone(),
-                from,
-                thread_context,
-            };
-
-            Response::Ok {
-                data: ResponseData::ReplyContext { context },
-            }
-        }
-
+        } => mutations::prepare_reply(state, message_id, *reply_all).await,
         Request::PrepareForward { message_id } => {
-            let envelope = match state.store.get_envelope(message_id).await {
-                Ok(Some(env)) => env,
-                Ok(None) => {
-                    return Response::Error {
-                        message: "Message not found".to_string(),
-                    };
-                }
-                Err(e) => {
-                    return Response::Error {
-                        message: e.to_string(),
-                    };
-                }
-            };
-
-            let from = state
-                .store
-                .get_account(&envelope.account_id)
-                .await
-                .ok()
-                .flatten()
-                .map(|a| a.email)
-                .unwrap_or_default();
-
-            let forwarded_content = match state.sync_engine.get_body(message_id).await {
-                Ok(body) => render_message_context(&body),
-                Err(_) => String::new(),
-            };
-
-            let context = ForwardContext {
-                subject: envelope.subject.clone(),
-                from,
-                forwarded_content,
-            };
-
-            Response::Ok {
-                data: ResponseData::ForwardContext { context },
-            }
+            mutations::prepare_forward(state, message_id).await
         }
-
-        Request::SendDraft { draft } => match state.get_send_provider(Some(&draft.account_id)) {
-            Some(sender) => {
-                let account = state
-                    .store
-                    .get_account(&draft.account_id)
-                    .await
-                    .ok()
-                    .flatten();
-                let from = mxr_core::types::Address {
-                    name: account.as_ref().map(|a| a.name.clone()),
-                    email: account
-                        .as_ref()
-                        .map(|a| a.email.clone())
-                        .unwrap_or_else(|| "user@example.com".to_string()),
-                };
-                match sender.send(draft, &from).await {
-                    Ok(_receipt) => Response::Ok {
-                        data: ResponseData::Ack,
-                    },
-                    Err(e) => Response::Error {
-                        message: e.to_string(),
-                    },
-                }
-            }
-            None => Response::Error {
-                message: "No send provider configured".to_string(),
-            },
-        },
-
-        Request::SaveDraftToServer { draft } => match state.get_send_provider(Some(&draft.account_id)) {
-            Some(sender) => {
-                let account = state
-                    .store
-                    .get_account(&draft.account_id)
-                    .await
-                    .ok()
-                    .flatten();
-                let from = mxr_core::types::Address {
-                    name: account.as_ref().map(|a| a.name.clone()),
-                    email: account
-                        .as_ref()
-                        .map(|a| a.email.clone())
-                        .unwrap_or_else(|| "user@example.com".to_string()),
-                };
-                match sender.save_draft(draft, &from).await {
-                    Ok(Some(draft_id)) => {
-                        tracing::info!(draft_id, "Draft saved to server");
-                        Response::Ok {
-                            data: ResponseData::Ack,
-                        }
-                    }
-                    Ok(None) => Response::Error {
-                        message: "Provider does not support server-side drafts".to_string(),
-                    },
-                    Err(e) => Response::Error {
-                        message: format!("Failed to save draft: {e}"),
-                    },
-                }
-            }
-            None => Response::Error {
-                message: "No send provider configured".to_string(),
-            },
-        },
-
-        Request::Unsubscribe { message_id } => match state.store.get_envelope(message_id).await {
-            Ok(Some(envelope)) => match &envelope.unsubscribe {
-                UnsubscribeMethod::Mailto { address, subject } => {
-                    match state.get_send_provider(Some(&envelope.account_id)) {
-                        Some(sender) => {
-                            let account = state
-                                .store
-                                .get_account(&envelope.account_id)
-                                .await
-                                .ok()
-                                .flatten();
-                            let from = Address {
-                                name: account.as_ref().map(|a| a.name.clone()),
-                                email: account
-                                    .as_ref()
-                                    .map(|a| a.email.clone())
-                                    .unwrap_or_else(|| "user@example.com".to_string()),
-                            };
-                            let now = chrono::Utc::now();
-                            let draft = Draft {
-                                id: mxr_core::DraftId::new(),
-                                account_id: envelope.account_id.clone(),
-                                reply_headers: None,
-                                to: vec![Address {
-                                    name: None,
-                                    email: address.clone(),
-                                }],
-                                cc: vec![],
-                                bcc: vec![],
-                                subject: subject.clone().unwrap_or_else(|| "unsubscribe".to_string()),
-                                body_markdown: "unsubscribe".to_string(),
-                                attachments: vec![],
-                                created_at: now,
-                                updated_at: now,
-                            };
-                            match sender.send(&draft, &from).await {
-                                Ok(_) => Response::Ok {
-                                    data: ResponseData::Ack,
-                                },
-                                Err(error) => Response::Error {
-                                    message: error.to_string(),
-                                },
-                            }
-                        }
-                        None => Response::Error {
-                            message: "No send provider configured".to_string(),
-                        },
-                    }
-                }
-                _ => {
-                    let client = reqwest::Client::new();
-                    let result =
-                        crate::unsubscribe::execute_unsubscribe(&envelope.unsubscribe, &client).await;
-                    match result {
-                        crate::unsubscribe::UnsubscribeResult::Success(_) => Response::Ok {
-                            data: ResponseData::Ack,
-                        },
-                        crate::unsubscribe::UnsubscribeResult::Failed(msg) => {
-                            Response::Error { message: msg }
-                        }
-                        crate::unsubscribe::UnsubscribeResult::NoMethod => Response::Error {
-                            message: "No unsubscribe method available for this message".to_string(),
-                        },
-                    }
-                }
-            },
-            Ok(None) => Response::Error {
-                message: "Message not found".to_string(),
-            },
-            Err(e) => Response::Error {
-                message: e.to_string(),
-            },
-        },
-
+        Request::SendDraft { draft } => mutations::send_draft(state, draft).await,
+        Request::SaveDraftToServer { draft } => mutations::save_draft_to_server(state, draft).await,
+        Request::Unsubscribe { message_id } => mutations::unsubscribe(state, message_id).await,
         Request::SetFlags { message_id, flags } => {
-            match state.store.update_flags(message_id, *flags).await {
-                Ok(()) => Response::Ok {
-                    data: ResponseData::Ack,
-                },
-                Err(e) => Response::Error {
-                    message: e.to_string(),
-                },
-            }
+            mutations::set_flags(state, message_id, *flags).await
         }
+        Request::GetSyncStatus { account_id } => {
+            diagnostics::get_sync_status(state, account_id).await
+        }
+    };
 
-        Request::GetSyncStatus { account_id } => match build_account_sync_status(state, account_id).await {
-            Ok(sync) => Response::Ok {
-                data: ResponseData::SyncStatus { sync },
-            },
-            Err(message) => Response::Error { message },
-        },
+    match result {
+        Ok(data) => Response::Ok { data },
+        Err(message) => Response::Error { message },
     }
 }
-
 fn build_reply_references(envelope: &mxr_core::types::Envelope) -> Vec<String> {
     let mut references = envelope.references.clone();
     if let Some(message_id) = &envelope.message_id_header {
@@ -1319,9 +233,7 @@ async fn build_export_thread(
             subject: env.subject.clone(),
             body_text: body.as_ref().and_then(|b| b.text_plain.clone()),
             body_html: body.as_ref().and_then(|b| b.text_html.clone()),
-            headers_raw: body
-                .as_ref()
-                .and_then(|b| b.metadata.raw_headers.clone()),
+            headers_raw: body.as_ref().and_then(|b| b.metadata.raw_headers.clone()),
             attachments: body
                 .as_ref()
                 .map(|b| {
@@ -1397,13 +309,12 @@ async fn persist_local_label_changes(
     let envelope = state
         .store
         .get_envelope(message_id)
-        .await
-        ?.ok_or(sqlx::Error::RowNotFound)?;
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?;
     let labels = state
         .store
         .list_labels_by_account(&envelope.account_id)
-        .await
-        ?;
+        .await?;
     let mut label_ids = state.store.get_message_label_ids(message_id).await?;
 
     for label_ref in remove {
@@ -1542,7 +453,10 @@ async fn build_rule_from_form(
             .get_rule_by_id_or_name(rule)
             .await
             .map_err(|e| e.to_string())?
-            .map(|row| serde_json::from_value::<Rule>(mxr_store::row_to_rule_json(&row)).map_err(|e| e.to_string()))
+            .map(|row| {
+                serde_json::from_value::<Rule>(mxr_store::row_to_rule_json(&row))
+                    .map_err(|e| e.to_string())
+            })
             .transpose()?
     } else {
         None
@@ -1559,10 +473,7 @@ async fn build_rule_from_form(
         priority,
         conditions: parse_rule_condition_string(condition)?,
         actions: vec![parse_rule_action_string(action)?],
-        created_at: existing
-            .as_ref()
-            .map(|rule| rule.created_at)
-            .unwrap_or(now),
+        created_at: existing.as_ref().map(|rule| rule.created_at).unwrap_or(now),
         updated_at: now,
     })
 }
@@ -1577,10 +488,16 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
 
     Ok(match node {
         QueryNode::And(left, right) => Conditions::And {
-            conditions: vec![query_ast_to_conditions(*left)?, query_ast_to_conditions(*right)?],
+            conditions: vec![
+                query_ast_to_conditions(*left)?,
+                query_ast_to_conditions(*right)?,
+            ],
         },
         QueryNode::Or(left, right) => Conditions::Or {
-            conditions: vec![query_ast_to_conditions(*left)?, query_ast_to_conditions(*right)?],
+            conditions: vec![
+                query_ast_to_conditions(*left)?,
+                query_ast_to_conditions(*right)?,
+            ],
         },
         QueryNode::Not(node) => Conditions::Not {
             condition: Box::new(query_ast_to_conditions(*node)?),
@@ -1605,40 +522,47 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
         QueryNode::Label(label) => Conditions::Field(FieldCondition::HasLabel { label }),
         QueryNode::Filter(FilterKind::Unread) => Conditions::Field(FieldCondition::IsUnread),
         QueryNode::Filter(FilterKind::Starred) => Conditions::Field(FieldCondition::IsStarred),
-        QueryNode::Filter(FilterKind::HasAttachment) => Conditions::Field(FieldCondition::HasAttachment),
+        QueryNode::Filter(FilterKind::HasAttachment) => {
+            Conditions::Field(FieldCondition::HasAttachment)
+        }
         QueryNode::Filter(FilterKind::Read) => Conditions::Not {
             condition: Box::new(Conditions::Field(FieldCondition::IsUnread)),
         },
-        QueryNode::Filter(FilterKind::Draft) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "DRAFT".to_string() })
-        }
-        QueryNode::Filter(FilterKind::Sent) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "SENT".to_string() })
-        }
-        QueryNode::Filter(FilterKind::Trash) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "TRASH".to_string() })
-        }
-        QueryNode::Filter(FilterKind::Spam) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "SPAM".to_string() })
-        }
-        QueryNode::Filter(FilterKind::Inbox) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "INBOX".to_string() })
-        }
-        QueryNode::Filter(FilterKind::Archived) => {
-            Conditions::Field(FieldCondition::HasLabel { label: "ARCHIVE".to_string() })
-        }
+        QueryNode::Filter(FilterKind::Draft) => Conditions::Field(FieldCondition::HasLabel {
+            label: "DRAFT".to_string(),
+        }),
+        QueryNode::Filter(FilterKind::Sent) => Conditions::Field(FieldCondition::HasLabel {
+            label: "SENT".to_string(),
+        }),
+        QueryNode::Filter(FilterKind::Trash) => Conditions::Field(FieldCondition::HasLabel {
+            label: "TRASH".to_string(),
+        }),
+        QueryNode::Filter(FilterKind::Spam) => Conditions::Field(FieldCondition::HasLabel {
+            label: "SPAM".to_string(),
+        }),
+        QueryNode::Filter(FilterKind::Inbox) => Conditions::Field(FieldCondition::HasLabel {
+            label: "INBOX".to_string(),
+        }),
+        QueryNode::Filter(FilterKind::Archived) => Conditions::Field(FieldCondition::HasLabel {
+            label: "ARCHIVE".to_string(),
+        }),
         QueryNode::Filter(FilterKind::Answered) => {
             return Err("is:answered is not supported in rules form".to_string())
         }
-        QueryNode::Text(value) | QueryNode::Phrase(value) => Conditions::Field(FieldCondition::BodyContains {
-            pattern: StringMatch::Contains(value),
-        }),
+        QueryNode::Text(value) | QueryNode::Phrase(value) => {
+            Conditions::Field(FieldCondition::BodyContains {
+                pattern: StringMatch::Contains(value),
+            })
+        }
         QueryNode::DateRange { bound, date } => {
             let date = match date {
-                DateValue::Specific(date) => chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                    date.and_hms_opt(0, 0, 0).ok_or_else(|| "invalid date".to_string())?,
-                    chrono::Utc,
-                ),
+                DateValue::Specific(date) => {
+                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                        date.and_hms_opt(0, 0, 0)
+                            .ok_or_else(|| "invalid date".to_string())?,
+                        chrono::Utc,
+                    )
+                }
                 _ => return Err("relative dates are not supported in rules form".to_string()),
             };
             match bound {
@@ -1738,7 +662,9 @@ fn rule_action_to_string(action: &RuleAction) -> Result<String, String> {
         RuleAction::AddLabel { label } => Ok(format!("add-label:{label}")),
         RuleAction::RemoveLabel { label } => Ok(format!("remove-label:{label}")),
         RuleAction::ShellHook { command } => Ok(format!("shell:{command}")),
-        RuleAction::Snooze { .. } => Err("snooze rules are not editable in the TUI yet".to_string()),
+        RuleAction::Snooze { .. } => {
+            Err("snooze rules are not editable in the TUI yet".to_string())
+        }
     }
 }
 
@@ -1785,7 +711,9 @@ fn field_condition_to_query(field: &FieldCondition) -> Result<String, String> {
         FieldCondition::BodyContains { pattern } => string_match_to_query("", pattern),
         FieldCondition::SizeGreaterThan { .. }
         | FieldCondition::SizeLessThan { .. }
-        | FieldCondition::HasUnsubscribe => Err("condition not editable in the TUI yet".to_string()),
+        | FieldCondition::HasUnsubscribe => {
+            Err("condition not editable in the TUI yet".to_string())
+        }
     }
 }
 
@@ -1864,7 +792,11 @@ fn looks_structured_query(query: &str) -> bool {
 async fn collect_status_snapshot(
     state: &Arc<AppState>,
 ) -> Result<(Vec<String>, u32, Vec<AccountSyncStatus>), String> {
-    let accounts = state.store.list_accounts().await.map_err(|e| e.to_string())?;
+    let accounts = state
+        .store
+        .list_accounts()
+        .await
+        .map_err(|e| e.to_string())?;
     let mut names = Vec::new();
     let mut total_messages = 0;
     let mut sync_statuses = Vec::new();
@@ -1928,8 +860,10 @@ async fn build_account_sync_status(
         .as_ref()
         .map(|row| row.consecutive_failures)
         .unwrap_or(0);
-    let healthy =
-        !sync_in_progress && last_error.is_none() && backoff_until.is_none() && last_success_at.is_some();
+    let healthy = !sync_in_progress
+        && last_error.is_none()
+        && backoff_until.is_none()
+        && last_success_at.is_some();
 
     Ok(AccountSyncStatus {
         account_id: account.id,
@@ -1984,7 +918,9 @@ fn describe_cursor_for_status(cursor: Option<&mxr_core::types::SyncCursor>) -> S
     }
 }
 
-async fn collect_doctor_report(state: &Arc<AppState>) -> Result<mxr_protocol::DoctorReport, String> {
+async fn collect_doctor_report(
+    state: &Arc<AppState>,
+) -> Result<mxr_protocol::DoctorReport, String> {
     let data_dir = mxr_config::data_dir();
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
@@ -2095,16 +1031,18 @@ fn row_to_rule(row: &sqlx::sqlite::SqliteRow) -> Result<Rule, String> {
     serde_json::from_value(mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string())
 }
 
-async fn list_runtime_accounts(
-    state: &Arc<AppState>,
-) -> Result<Vec<AccountSummaryData>, String> {
+async fn list_runtime_accounts(state: &Arc<AppState>) -> Result<Vec<AccountSummaryData>, String> {
     use std::collections::BTreeMap;
 
     let config = state.config_snapshot();
     let default_config_key = config.general.default_account.clone();
     let runtime_ids = state.runtime_account_ids();
     let default_account_id = state.default_account_id_opt();
-    let runtime_accounts = state.store.list_accounts().await.map_err(|e| e.to_string())?;
+    let runtime_accounts = state
+        .store
+        .list_accounts()
+        .await
+        .map_err(|e| e.to_string())?;
 
     let mut accounts: BTreeMap<String, AccountSummaryData> = BTreeMap::new();
 
@@ -2116,7 +1054,12 @@ async fn list_runtime_accounts(
             .sync_backend
             .as_ref()
             .map(|backend| backend.config_key.clone())
-            .or_else(|| account.send_backend.as_ref().map(|backend| backend.config_key.clone()));
+            .or_else(|| {
+                account
+                    .send_backend
+                    .as_ref()
+                    .map(|backend| backend.config_key.clone())
+            });
         let sync_kind = account
             .sync_backend
             .as_ref()
@@ -2153,21 +1096,23 @@ async fn list_runtime_accounts(
 
     for (key, account) in config.accounts {
         let account_id = config_account_id(&key, &account);
-        let summary = accounts.entry(key.clone()).or_insert_with(|| AccountSummaryData {
-            account_id: account_id.clone(),
-            key: Some(key.clone()),
-            name: account.name.clone(),
-            email: account.email.clone(),
-            provider_kind: account_primary_provider_kind(&account),
-            sync_kind: account.sync.as_ref().map(config_sync_kind_label),
-            send_kind: account.send.as_ref().map(config_send_kind_label),
-            enabled: true,
-            is_default: false,
-            source: AccountSourceData::Config,
-            editable: AccountEditModeData::Full,
-            sync: None,
-            send: None,
-        });
+        let summary = accounts
+            .entry(key.clone())
+            .or_insert_with(|| AccountSummaryData {
+                account_id: account_id.clone(),
+                key: Some(key.clone()),
+                name: account.name.clone(),
+                email: account.email.clone(),
+                provider_kind: account_primary_provider_kind(&account),
+                sync_kind: account.sync.as_ref().map(config_sync_kind_label),
+                send_kind: account.send.as_ref().map(config_send_kind_label),
+                enabled: true,
+                is_default: false,
+                source: AccountSourceData::Config,
+                editable: AccountEditModeData::Full,
+                sync: None,
+                send: None,
+            });
 
         summary.account_id = account_id;
         summary.key = Some(key.clone());
@@ -2255,7 +1200,10 @@ async fn upsert_account_config(
             ),
             Err(error) => account_operation_result(
                 false,
-                format!("Saved account '{}' but failed to reload runtime.", account.key),
+                format!(
+                    "Saved account '{}' but failed to reload runtime.",
+                    account.key
+                ),
                 Some(account_step(
                     false,
                     format!("{save_detail} Reload failed: {error}"),
@@ -2392,23 +1340,25 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                 client_secret,
                 token_ref,
             } => {
-                let creds =
-                    resolve_gmail_credentials(credential_source, client_id, client_secret);
+                let creds = resolve_gmail_credentials(credential_source, client_id, client_secret);
                 match creds {
                     Ok((client_id, client_secret)) => {
-                        let mut gmail_auth =
-                            mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
+                        let mut gmail_auth = mxr_provider_gmail::auth::GmailAuth::new(
+                            client_id,
+                            client_secret,
+                            token_ref,
+                        );
                         let auth_result = match gmail_auth.load_existing().await {
                             Ok(()) => Ok("Existing OAuth token loaded.".to_string()),
-                            Err(_) => gmail_auth
-                                .interactive_auth()
-                                .await
-                                .map(|_| "Browser authorization completed and token stored.".to_string()),
+                            Err(_) => gmail_auth.interactive_auth().await.map(|_| {
+                                "Browser authorization completed and token stored.".to_string()
+                            }),
                         };
                         match auth_result {
                             Ok(detail) => {
                                 auth = Some(account_step(true, detail));
-                                let client = mxr_provider_gmail::client::GmailClient::new(gmail_auth);
+                                let client =
+                                    mxr_provider_gmail::client::GmailClient::new(gmail_auth);
                                 match client.list_labels().await {
                                     Ok(response) => {
                                         let count =
@@ -2490,15 +1440,14 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
             use_tls,
             ..
         }) => {
-            let provider = mxr_provider_smtp::SmtpSendProvider::new(
-                mxr_provider_smtp::config::SmtpConfig {
+            let provider =
+                mxr_provider_smtp::SmtpSendProvider::new(mxr_provider_smtp::config::SmtpConfig {
                     host,
                     port,
                     username,
                     password_ref,
                     use_tls,
-                },
-            );
+                });
             match provider.test_connection().await {
                 Ok(()) => {
                     send = Some(account_step(true, "SMTP send ok".into()));
@@ -2511,7 +1460,10 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
         }
         None if account.sync.is_none() => {
             ok = false;
-            send = Some(account_step(false, "No sync or send configuration provided.".into()));
+            send = Some(account_step(
+                false,
+                "No sync or send configuration provided.".into(),
+            ));
         }
         None => {}
     }
@@ -2565,7 +1517,9 @@ fn resolve_gmail_credentials(
             ) {
                 (Some(id), Some(secret)) => Ok((id.to_string(), secret.to_string())),
                 _ => {
-                    if client_id.trim().is_empty() || client_secret.as_deref().unwrap_or("").trim().is_empty() {
+                    if client_id.trim().is_empty()
+                        || client_secret.as_deref().unwrap_or("").trim().is_empty()
+                    {
                         Err("Bundled Gmail OAuth credentials are unavailable. Switch Credential source to Custom and enter your client ID/client secret.".into())
                     } else {
                         Ok((client_id, client_secret.unwrap_or_default()))
@@ -2574,7 +1528,9 @@ fn resolve_gmail_credentials(
             }
         }
         GmailCredentialSourceData::Custom => {
-            if client_id.trim().is_empty() || client_secret.as_deref().unwrap_or("").trim().is_empty() {
+            if client_id.trim().is_empty()
+                || client_secret.as_deref().unwrap_or("").trim().is_empty()
+            {
                 Err("Custom Gmail OAuth requires both client ID and client secret.".into())
             } else {
                 Ok((client_id, client_secret.unwrap_or_default()))
@@ -2678,7 +1634,9 @@ fn send_config_to_data(send: mxr_config::SendProviderConfig) -> AccountSendConfi
     }
 }
 
-fn sync_data_to_config(data: AccountSyncConfigData) -> Result<mxr_config::SyncProviderConfig, String> {
+fn sync_data_to_config(
+    data: AccountSyncConfigData,
+) -> Result<mxr_config::SyncProviderConfig, String> {
     match data {
         AccountSyncConfigData::Gmail {
             credential_source,
@@ -2711,7 +1669,9 @@ fn sync_data_to_config(data: AccountSyncConfigData) -> Result<mxr_config::SyncPr
     }
 }
 
-fn send_data_to_config(data: AccountSendConfigData) -> Result<mxr_config::SendProviderConfig, String> {
+fn send_data_to_config(
+    data: AccountSendConfigData,
+) -> Result<mxr_config::SendProviderConfig, String> {
     match data {
         AccountSendConfigData::Gmail => Ok(mxr_config::SendProviderConfig::Gmail),
         AccountSendConfigData::Smtp {
@@ -2791,7 +1751,12 @@ async fn dry_run_rules(
         .transpose()?;
 
     let mut owned_messages = Vec::new();
-    for account in state.store.list_accounts().await.map_err(|e| e.to_string())? {
+    for account in state
+        .store
+        .list_accounts()
+        .await
+        .map_err(|e| e.to_string())?
+    {
         let labels = state
             .store
             .list_labels_by_account(&account.id)
@@ -2884,7 +1849,10 @@ impl DryRunMessage {
             date: envelope.date,
             is_unread: !envelope.flags.contains(mxr_core::MessageFlags::READ),
             is_starred: envelope.flags.contains(mxr_core::MessageFlags::STARRED),
-            has_unsubscribe: !matches!(envelope.unsubscribe, mxr_core::types::UnsubscribeMethod::None),
+            has_unsubscribe: !matches!(
+                envelope.unsubscribe,
+                mxr_core::types::UnsubscribeMethod::None
+            ),
             body_text: body.and_then(|body| body.text_plain.or(body.text_html)),
         }
     }
@@ -3069,10 +2037,7 @@ async fn materialize_attachment_file(
     })
 }
 
-fn sanitized_attachment_filename(
-    filename: &str,
-    attachment_id: &mxr_core::AttachmentId,
-) -> String {
+fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::AttachmentId) -> String {
     let candidate = std::path::Path::new(filename)
         .file_name()
         .and_then(|name| name.to_str())
@@ -3229,12 +2194,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_list_labels_without_accounts_returns_empty() {
+        let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+
+        let msg = IpcMessage {
+            id: 12,
+            payload: IpcPayload::Request(Request::ListLabels { account_id: None }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Labels { labels },
+            }) => assert!(labels.is_empty()),
+            other => panic!("Expected Labels, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_list_envelopes_without_accounts_returns_empty() {
+        let state = Arc::new(AppState::in_memory_without_accounts().await.unwrap());
+
+        let msg = IpcMessage {
+            id: 13,
+            payload: IpcPayload::Request(Request::ListEnvelopes {
+                label_id: None,
+                account_id: None,
+                limit: 100,
+                offset: 0,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Envelopes { envelopes },
+            }) => assert!(envelopes.is_empty()),
+            other => panic!("Expected Envelopes, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn dispatch_create_label_persists_and_returns_label() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let account_id = state.default_account_id();
 
         let create_msg = IpcMessage {
-            id: 12,
+            id: 14,
             payload: IpcPayload::Request(Request::CreateLabel {
                 name: "Urgent".to_string(),
                 color: Some("#ff6600".to_string()),
@@ -3253,7 +2259,7 @@ mod tests {
         assert_eq!(created.account_id, account_id);
 
         let list_msg = IpcMessage {
-            id: 13,
+            id: 15,
             payload: IpcPayload::Request(Request::ListLabels {
                 account_id: Some(account_id),
             }),
@@ -4030,7 +3036,7 @@ mod tests {
         let msg = IpcMessage {
             id: 1,
             payload: IpcPayload::Request(Request::Mutation(MutationCommand::Archive {
-                message_ids: vec![id],
+                message_ids: vec![id.clone()],
             })),
         };
         let resp = handle_request(&state, &msg).await;
@@ -4040,6 +3046,12 @@ mod tests {
             }) => {}
             other => panic!("Expected Ack, got {:?}", other),
         }
+
+        let events = state.store.list_events(10, None, Some("mutation")).await.unwrap();
+        let id_str = id.as_str();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].message_id.as_deref(), Some(id_str.as_str()));
+        assert!(events[0].summary.contains("Archived"));
     }
 
     #[tokio::test]
@@ -4272,13 +3284,14 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::Thread { messages, .. },
             }) => {
-                let message = messages.into_iter().find(|message| message.id == id).unwrap();
-                assert!(
-                    message
-                        .label_provider_ids
-                        .iter()
-                        .any(|provider_id| provider_id == &label.provider_id)
-                );
+                let message = messages
+                    .into_iter()
+                    .find(|message| message.id == id)
+                    .unwrap();
+                assert!(message
+                    .label_provider_ids
+                    .iter()
+                    .any(|provider_id| provider_id == &label.provider_id));
             }
             other => panic!("Expected Thread response, got {:?}", other),
         }
@@ -4320,13 +3333,14 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::Envelopes { envelopes },
             }) => {
-                let envelope = envelopes.into_iter().find(|envelope| envelope.id == id).unwrap();
-                assert!(
-                    envelope
-                        .label_provider_ids
-                        .iter()
-                        .any(|provider_id| provider_id == &label.provider_id)
-                );
+                let envelope = envelopes
+                    .into_iter()
+                    .find(|envelope| envelope.id == id)
+                    .unwrap();
+                assert!(envelope
+                    .label_provider_ids
+                    .iter()
+                    .any(|provider_id| provider_id == &label.provider_id));
             }
             other => panic!("Expected Envelopes response, got {:?}", other),
         }
@@ -4773,7 +3787,11 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::ExportResult { content },
             }) => {
-                assert!(content.starts_with("# Thread:"), "Should be markdown: {}", content);
+                assert!(
+                    content.starts_with("# Thread:"),
+                    "Should be markdown: {}",
+                    content
+                );
                 assert!(content.contains("Exported from mxr"));
             }
             other => panic!("Expected ExportResult, got {:?}", other),
@@ -4836,8 +3854,8 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::ExportResult { content },
             }) => {
-                let parsed: serde_json::Value = serde_json::from_str(content)
-                    .expect("Export JSON should be valid");
+                let parsed: serde_json::Value =
+                    serde_json::from_str(content).expect("Export JSON should be valid");
                 assert!(parsed["message_count"].as_u64().unwrap() >= 1);
                 assert!(parsed["subject"].is_string());
             }
@@ -4873,17 +3891,15 @@ mod tests {
 
         assert!(headers.iter().any(|(name, _)| name == "From"));
         assert!(headers.iter().any(|(name, _)| name == "Subject"));
-        assert!(
-            headers
-                .iter()
-                .any(|(name, value)| name == "List-Id" && value == "fixtures.example.com")
-        );
+        assert!(headers
+            .iter()
+            .any(|(name, value)| name == "List-Id" && value == "fixtures.example.com"));
         assert!(headers.iter().any(|(name, value)| {
             name == "Authentication-Results" && value == "mx.example.net; dkim=pass"
         }));
-        assert!(headers.iter().any(|(name, value)| {
-            name == "Content-Language" && value == "en, fr"
-        }));
+        assert!(headers
+            .iter()
+            .any(|(name, value)| { name == "Content-Language" && value == "en, fr" }));
     }
 
     #[tokio::test]

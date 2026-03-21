@@ -1,7 +1,9 @@
 use crate::ipc_client::IpcClient;
 use chrono::{Datelike, Duration, NaiveTime, TimeZone, Utc, Weekday};
 use mxr_core::id::MessageId;
+use mxr_core::types::Envelope;
 use mxr_protocol::*;
+use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
@@ -35,6 +37,150 @@ async fn resolve_message_ids(
         }
         (None, None) => anyhow::bail!("Provide a message ID or --search query"),
     }
+}
+
+struct MutationSelection {
+    ids: Vec<MessageId>,
+    envelopes: Vec<Envelope>,
+    used_search: bool,
+}
+
+async fn resolve_mutation_selection(
+    client: &mut IpcClient,
+    message_id: Option<String>,
+    search: Option<String>,
+) -> anyhow::Result<MutationSelection> {
+    let used_search = message_id.is_none() && search.is_some();
+    let ids = resolve_message_ids(client, message_id, search).await?;
+    let envelopes = if ids.is_empty() {
+        Vec::new()
+    } else {
+        let resp = client
+            .request(Request::ListEnvelopesByIds {
+                message_ids: ids.clone(),
+            })
+            .await?;
+        match resp {
+            Response::Ok {
+                data: ResponseData::Envelopes { envelopes },
+            } => envelopes,
+            Response::Error { message } => anyhow::bail!("{}", message),
+            _ => anyhow::bail!("Unexpected response from envelope lookup"),
+        }
+    };
+
+    Ok(MutationSelection {
+        ids,
+        envelopes,
+        used_search,
+    })
+}
+
+fn requires_confirmation(
+    destructive: bool,
+    used_search: bool,
+    matched_count: usize,
+    yes: bool,
+) -> bool {
+    !yes && (destructive || used_search || matched_count > 1)
+}
+
+fn render_selection_preview_lines(action: &str, selection: &MutationSelection) -> Vec<String> {
+    let preview_limit = 8usize;
+    let mut lines = vec![format!(
+        "Would {action} {} message(s)",
+        selection.ids.len()
+    )];
+
+    if !selection.envelopes.is_empty() {
+        lines.push(String::new());
+        for envelope in selection.envelopes.iter().take(preview_limit) {
+            let from = envelope.from.name.as_deref().unwrap_or(&envelope.from.email);
+            let subject = if envelope.subject.is_empty() {
+                "(no subject)"
+            } else {
+                &envelope.subject
+            };
+            lines.push(format!(
+                "- {} | {} | {}",
+                envelope.id.as_str(),
+                from,
+                subject
+            ));
+        }
+        if selection.envelopes.len() > preview_limit {
+            lines.push(format!(
+                "... and {} more",
+                selection.envelopes.len() - preview_limit
+            ));
+        }
+    }
+
+    lines
+}
+
+fn print_selection_preview(action: &str, selection: &MutationSelection) {
+    for line in render_selection_preview_lines(action, selection) {
+        println!("{line}");
+    }
+}
+
+fn confirm_action(action: &str, selection: &MutationSelection) -> anyhow::Result<()> {
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        anyhow::bail!(
+            "Confirmation required for `{action}`. Re-run with --yes or inspect with --dry-run."
+        );
+    }
+
+    print_selection_preview(action, selection);
+    print!("\nContinue? [y/N] ");
+    std::io::stdout().flush()?;
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    let answer = input.trim().to_ascii_lowercase();
+    if answer == "y" || answer == "yes" {
+        return Ok(());
+    }
+
+    anyhow::bail!("Aborted")
+}
+
+async fn run_simple_mutation<F>(
+    client: &mut IpcClient,
+    selection: MutationSelection,
+    action: &str,
+    success_message: &str,
+    yes: bool,
+    dry_run: bool,
+    destructive: bool,
+    build_request: F,
+) -> anyhow::Result<()>
+where
+    F: FnOnce(Vec<MessageId>) -> Request,
+{
+    if selection.ids.is_empty() {
+        anyhow::bail!("No messages matched");
+    }
+
+    if dry_run {
+        print_selection_preview(action, &selection);
+        return Ok(());
+    }
+
+    if requires_confirmation(destructive, selection.used_search, selection.ids.len(), yes) {
+        confirm_action(action, &selection)?;
+    }
+
+    let resp = client.request(build_request(selection.ids)).await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => println!("{success_message}"),
+        Response::Error { message } => anyhow::bail!("{}", message),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+    Ok(())
 }
 
 fn parse_snooze_until(until: &str) -> anyhow::Result<chrono::DateTime<Utc>> {
@@ -103,215 +249,172 @@ fn next_weekday(now: chrono::DateTime<Utc>, target: Weekday, hour: u32) -> chron
 pub async fn archive(
     message_id: Option<String>,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if dry_run {
-        println!("Would archive {} message(s)", ids.len());
-        return Ok(());
-    }
-    let resp = client
-        .request(Request::Mutation(MutationCommand::Archive {
-            message_ids: ids,
-        }))
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => println!("Archived"),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
-    Ok(())
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        "archive",
+        "Archived",
+        yes,
+        dry_run,
+        false,
+        |ids| {
+            Request::Mutation(MutationCommand::Archive {
+                message_ids: ids,
+            })
+        },
+    )
+    .await
 }
 
 pub async fn trash(
     message_id: Option<String>,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if dry_run {
-        println!("Would trash {} message(s)", ids.len());
-        return Ok(());
-    }
-    let resp = client
-        .request(Request::Mutation(MutationCommand::Trash {
-            message_ids: ids,
-        }))
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => println!("Trashed"),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
-    Ok(())
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        "trash",
+        "Trashed",
+        yes,
+        dry_run,
+        true,
+        |ids| Request::Mutation(MutationCommand::Trash { message_ids: ids }),
+    )
+    .await
 }
 
 pub async fn spam(
     message_id: Option<String>,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if dry_run {
-        println!("Would mark {} message(s) as spam", ids.len());
-        return Ok(());
-    }
-    let resp = client
-        .request(Request::Mutation(MutationCommand::Spam {
-            message_ids: ids,
-        }))
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => println!("Marked as spam"),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
-    Ok(())
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        "mark as spam",
+        "Marked as spam",
+        yes,
+        dry_run,
+        true,
+        |ids| Request::Mutation(MutationCommand::Spam { message_ids: ids }),
+    )
+    .await
 }
 
 pub async fn star(
     message_id: Option<String>,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if dry_run {
-        println!("Would star {} message(s)", ids.len());
-        return Ok(());
-    }
-    let resp = client
-        .request(Request::Mutation(MutationCommand::Star {
-            message_ids: ids,
-            starred: true,
-        }))
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => println!("Starred"),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
-    Ok(())
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        "star",
+        "Starred",
+        yes,
+        dry_run,
+        false,
+        |ids| {
+            Request::Mutation(MutationCommand::Star {
+                message_ids: ids,
+                starred: true,
+            })
+        },
+    )
+    .await
 }
 
 pub async fn unstar(
     message_id: Option<String>,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if dry_run {
-        println!("Would unstar {} message(s)", ids.len());
-        return Ok(());
-    }
-    let resp = client
-        .request(Request::Mutation(MutationCommand::Star {
-            message_ids: ids,
-            starred: false,
-        }))
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => println!("Unstarred"),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
-    Ok(())
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        "unstar",
+        "Unstarred",
+        yes,
+        dry_run,
+        false,
+        |ids| {
+            Request::Mutation(MutationCommand::Star {
+                message_ids: ids,
+                starred: false,
+            })
+        },
+    )
+    .await
 }
 
 pub async fn mark_read(
     message_id: Option<String>,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if dry_run {
-        println!("Would mark {} message(s) as read", ids.len());
-        return Ok(());
-    }
-    let resp = client
-        .request(Request::Mutation(MutationCommand::SetRead {
-            message_ids: ids,
-            read: true,
-        }))
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => println!("Marked as read"),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
-    Ok(())
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        "mark as read",
+        "Marked as read",
+        yes,
+        dry_run,
+        false,
+        |ids| {
+            Request::Mutation(MutationCommand::SetRead {
+                message_ids: ids,
+                read: true,
+            })
+        },
+    )
+    .await
 }
 
 pub async fn unread(
     message_id: Option<String>,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if dry_run {
-        println!("Would mark {} message(s) as unread", ids.len());
-        return Ok(());
-    }
-    let resp = client
-        .request(Request::Mutation(MutationCommand::SetRead {
-            message_ids: ids,
-            read: false,
-        }))
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => println!("Marked as unread"),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
-    Ok(())
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        "mark as unread",
+        "Marked as unread",
+        yes,
+        dry_run,
+        false,
+        |ids| {
+            Request::Mutation(MutationCommand::SetRead {
+                message_ids: ids,
+                read: false,
+            })
+        },
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -322,102 +425,83 @@ pub async fn label(
     name: String,
     message_id: Option<String>,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if dry_run {
-        println!("Would add label '{}' to {} message(s)", name, ids.len());
-        return Ok(());
-    }
-    let resp = client
-        .request(Request::Mutation(MutationCommand::ModifyLabels {
-            message_ids: ids,
-            add: vec![name.clone()],
-            remove: vec![],
-        }))
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => println!("Added label '{}'", name),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
-    Ok(())
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        &format!("add label '{name}'"),
+        &format!("Added label '{name}'"),
+        yes,
+        dry_run,
+        false,
+        |ids| {
+            Request::Mutation(MutationCommand::ModifyLabels {
+                message_ids: ids,
+                add: vec![name.clone()],
+                remove: vec![],
+            })
+        },
+    )
+    .await
 }
 
 pub async fn unlabel(
     name: String,
     message_id: Option<String>,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if dry_run {
-        println!(
-            "Would remove label '{}' from {} message(s)",
-            name,
-            ids.len()
-        );
-        return Ok(());
-    }
-    let resp = client
-        .request(Request::Mutation(MutationCommand::ModifyLabels {
-            message_ids: ids,
-            add: vec![],
-            remove: vec![name.clone()],
-        }))
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => println!("Removed label '{}'", name),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
-    Ok(())
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        &format!("remove label '{name}'"),
+        &format!("Removed label '{name}'"),
+        yes,
+        dry_run,
+        false,
+        |ids| {
+            Request::Mutation(MutationCommand::ModifyLabels {
+                message_ids: ids,
+                add: vec![],
+                remove: vec![name.clone()],
+            })
+        },
+    )
+    .await
 }
 
 pub async fn move_msg(
     target_label: String,
     message_id: Option<String>,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
-        anyhow::bail!("No messages matched");
-    }
-    if dry_run {
-        println!("Would move {} message(s) to '{}'", ids.len(), target_label);
-        return Ok(());
-    }
-    let resp = client
-        .request(Request::Mutation(MutationCommand::Move {
-            message_ids: ids,
-            target_label: target_label.clone(),
-        }))
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Ack,
-        } => println!("Moved to '{}'", target_label),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
-    Ok(())
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        &format!("move to '{target_label}'"),
+        &format!("Moved to '{target_label}'"),
+        yes,
+        dry_run,
+        false,
+        |ids| {
+            Request::Mutation(MutationCommand::Move {
+                message_ids: ids,
+                target_label: target_label.clone(),
+            })
+        },
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -428,24 +512,26 @@ pub async fn snooze(
     message_id: Option<String>,
     until: String,
     search: Option<String>,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let wake_at = parse_snooze_until(&until)?;
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    if selection.ids.is_empty() {
         anyhow::bail!("No messages matched");
     }
     if dry_run {
-        println!(
-            "Would snooze {} message(s) until {}",
-            ids.len(),
-            wake_at.to_rfc3339()
+        print_selection_preview(
+            &format!("snooze until {}", wake_at.to_rfc3339()),
+            &selection,
         );
         return Ok(());
     }
-    for id in &ids {
+    if requires_confirmation(false, selection.used_search, selection.ids.len(), yes) {
+        confirm_action(&format!("snooze until {}", wake_at.to_rfc3339()), &selection)?;
+    }
+    for id in &selection.ids {
         let resp = client
             .request(Request::Snooze {
                 message_id: id.clone(),
@@ -462,7 +548,7 @@ pub async fn snooze(
     }
     println!(
         "Snoozed {} message(s) until {}",
-        ids.len(),
+        selection.ids.len(),
         wake_at.to_rfc3339()
     );
     Ok(())
@@ -639,8 +725,18 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::items_after_test_module,
+    reason = "Command tests live near the helper they cover; moving them is out of scope here"
+)]
 mod tests {
-    use super::resolve_compose_from_address;
+    use super::{
+        render_selection_preview_lines, requires_confirmation, resolve_compose_from_address,
+        MutationSelection,
+    };
+    use chrono::Utc;
+    use mxr_core::id::{AccountId, ThreadId};
+    use mxr_core::types::{Address, Envelope, MessageFlags, UnsubscribeMethod};
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -655,7 +751,8 @@ mod tests {
     fn compose_from_falls_back_when_no_config() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
-        let temp_home = std::env::temp_dir().join(format!("mxr-compose-test-{}", std::process::id()));
+        let temp_home =
+            std::env::temp_dir().join(format!("mxr-compose-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&temp_home);
         std::fs::create_dir_all(&temp_home).unwrap();
         unsafe { std::env::set_var("HOME", &temp_home) };
@@ -669,6 +766,59 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_home);
 
         assert_eq!(resolved, "you@example.com");
+    }
+
+    fn test_envelope(subject: &str) -> Envelope {
+        Envelope {
+            id: mxr_core::MessageId::new(),
+            account_id: AccountId::new(),
+            provider_id: format!("provider-{subject}"),
+            thread_id: ThreadId::new(),
+            message_id_header: None,
+            in_reply_to: None,
+            references: Vec::new(),
+            from: Address {
+                name: Some("Buildkite".into()),
+                email: "buildkite@example.com".into(),
+            },
+            to: Vec::new(),
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: subject.into(),
+            date: Utc::now(),
+            flags: MessageFlags::empty(),
+            snippet: String::new(),
+            has_attachments: false,
+            size_bytes: 0,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn confirmation_required_for_destructive_or_batch_actions() {
+        assert!(requires_confirmation(true, false, 1, false));
+        assert!(requires_confirmation(false, true, 1, false));
+        assert!(requires_confirmation(false, false, 2, false));
+        assert!(!requires_confirmation(false, false, 1, false));
+        assert!(!requires_confirmation(true, true, 5, true));
+    }
+
+    #[test]
+    fn preview_render_caps_output() {
+        let envelopes = (0..10)
+            .map(|i| test_envelope(&format!("Subject {i}")))
+            .collect::<Vec<_>>();
+        let selection = MutationSelection {
+            ids: envelopes.iter().map(|env| env.id.clone()).collect(),
+            envelopes,
+            used_search: true,
+        };
+
+        let lines = render_selection_preview_lines("archive", &selection);
+        assert!(lines[0].contains("Would archive 10 message(s)"));
+        assert!(lines.iter().any(|line| line.contains("Subject 0")));
+        assert!(lines.iter().any(|line| line.contains("... and 2 more")));
     }
 }
 
@@ -890,20 +1040,23 @@ pub async fn send_draft(_draft_id: String) -> anyhow::Result<()> {
 
 pub async fn unsubscribe(
     message_id: Option<String>,
-    _yes: bool,
+    yes: bool,
     search: Option<String>,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let ids = resolve_message_ids(&mut client, message_id, search).await?;
-    if ids.is_empty() {
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    if selection.ids.is_empty() {
         anyhow::bail!("No messages matched");
     }
     if dry_run {
-        println!("Would unsubscribe from {} message(s)", ids.len());
+        print_selection_preview("unsubscribe", &selection);
         return Ok(());
     }
-    for id in &ids {
+    if requires_confirmation(true, selection.used_search, selection.ids.len(), yes) {
+        confirm_action("unsubscribe", &selection)?;
+    }
+    for id in &selection.ids {
         let resp = client
             .request(Request::Unsubscribe {
                 message_id: id.clone(),
@@ -917,7 +1070,7 @@ pub async fn unsubscribe(
             _ => anyhow::bail!("Unexpected response"),
         }
     }
-    println!("Unsubscribed from {} message(s)", ids.len());
+    println!("Unsubscribed from {} message(s)", selection.ids.len());
     Ok(())
 }
 
@@ -1016,7 +1169,12 @@ pub async fn attachments_download(
         } else {
             path
         };
-        println!("#{} {} -> {}", display_index, attachment.filename, final_path.display());
+        println!(
+            "#{} {} -> {}",
+            display_index,
+            attachment.filename,
+            final_path.display()
+        );
     }
 
     Ok(())

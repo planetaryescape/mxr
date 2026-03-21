@@ -1,8 +1,10 @@
 # mxr
 
-**The CLI for your email.**
+**Local-first email infrastructure.**
 
-A programmable, agent-native email client that works across every provider. One binary, full CLI, hackable with any language you already use.
+mxr syncs Gmail and IMAP into SQLite on your machine. You read mail in the TUI, script it from the CLI, and hand it to an agent when that helps. Same local data. Same daemon. Same commands.
+
+Today, the shipped surfaces are the CLI, TUI, daemon socket, and agent skill. A first-party MCP server is still on the roadmap.
 
 ## Install
 
@@ -13,91 +15,103 @@ brew tap planetaryescape/mxr && brew install mxr
 # Cargo
 cargo install mxr
 
-# Pre-built binaries: macOS (Intel + Apple Silicon), Linux x86_64
+# Pre-built binaries
 # https://github.com/planetaryescape/mxr/releases/latest
 ```
 
-Works with Gmail, IMAP, and SMTP out of the box. One local database, one CLI, all your accounts.
+Current release shape:
 
-## A CLI for all your email
+- macOS and Linux
+- Gmail sync/send
+- IMAP sync
+- SMTP send
+- CLI, TUI, daemon socket, agent skill
 
-Tools like mutt and aerc pioneered terminal email. himalaya brought a clean CLI-first approach. [gog](https://github.com/steipete/gogcli) and [Google Workspace CLI](https://github.com/googleworkspace/cli) made Gmail fully scriptable. [notmuch](https://notmuchmail.org/) proved that local indexing and search changes everything. mxr combines these ideas: a single CLI that works across Gmail, IMAP, and SMTP, backed by a local database and a real search engine.
+## Why this feels different
 
-One binary. One CLI that can search, compose, reply, label, archive, snooze, unsubscribe, and export across all your accounts. One interface your scripts and agents can talk to, regardless of what provider sits behind it.
+mxr connects to your provider directly, syncs mail into a local SQLite database, and indexes it with Tantivy. No hosted relay. No extra control plane in the middle. Your scripts, your terminal, and your agent all talk to the same local runtime.
 
-A real CLI with `--format json`, `--dry-run`, `--search` for batch operations, and every output piped through stdout. Hack it with Python, Bash, Go, TypeScript, whatever you already use.
+That makes it a different tool from a classic terminal client and a different tool from a hosted connector layer. mutt, aerc, himalaya, notmuch, gog, and gws each got an important part of this right. Hosted tools like Nylas CLI, Composio, Zapier MCP, and EmailEngine solve a different problem. mxr sits in the middle: local mail runtime, broad CLI surface, daemon-backed state, and structured output.
 
-## Agent-native email
+## Use it from a shell or an agent
 
-Your coding agent can already write code, run tests, and commit to git. Now it can manage your email too. Install the [mxr skill](https://mxr-mail.vercel.app/guides/agent-skill/) and ask:
+No SDK. No custom DSL. If a tool can run a command and parse JSON, it can work with mxr.
 
-> "Go through my unread emails from the last 24 hours. Summarize each one, flag anything that needs a response, and draft replies for the urgent ones."
+```bash
+mxr search "is:unread from:buildkite" --format json \
+  | jq -r '.[].message_id'
+```
 
-> "Find all CI failure emails, extract failing test names, cross-reference with my recent commits, and archive the ones that have since been fixed."
+That same surface is what the agent skill uses. A coding agent can search, read, draft, export, and batch-mutate mail through the CLI that already exists.
 
-> "I'm prepping for my 1-on-1 with Sarah. Pull up all threads between us from the last two weeks, summarize open items, and draft an agenda."
+Example prompt:
 
-> "Export the thread about the Q2 roadmap as markdown, summarize key decisions, and create a TODO list from the action items."
+> "Look through unread mail from the last 24 hours. Tell me what needs a reply, draft answers for the urgent threads, and leave the rest alone."
 
-This works because the CLI *is* the interface. Every operation supports `--format json`, `--dry-run`, and `--search` for batch operations. Your agent doesn't need screen scraping or browser automation, just `mxr`.
+## Local-first, in practice
 
-## Local-first, fast
+- Search stays local after sync.
+- Opening a message is a SQLite read, not a network round trip.
+- Reader mode keeps HTML-heavy mail readable in the terminal.
+- When you need the original rendering, open it in the browser and keep going.
+- Provider adapters go through a conformance suite instead of one-off glue.
 
-- **<50ms** to search across 10,000+ messages (Tantivy BM25 with field boosts)
-- **0ms** to open any message (local SQLite, no network call)
-- **Instant** compose, your `$EDITOR` launches immediately with markdown + YAML frontmatter
+Read [ARCHITECTURE.md](ARCHITECTURE.md) for the design principles behind the daemon, store, provider model, and trust boundary.
 
-SQLite is the canonical store. Your email lives on your machine. Works offline. No spinners. No loading states.
+## Where mxr fits
 
-## Everything else
+The short version:
 
-**Compose in your editor.** `$EDITOR` opens with markdown and YAML frontmatter. Your keybindings, your plugins, your muscle memory.
+- Use mxr if you want local mail state, a broad CLI, a daemon, and one surface that works for both people and agents.
+- Use a classic terminal client if you mostly want an interactive mail UI and don't need a local mail runtime behind it.
+- Use a hosted connector layer if you want managed auth, remote workflows, or lots of SaaS tools behind one endpoint.
 
-**Daemon-backed.** The daemon is the system. The TUI is a thin client. Sync, indexing, rules, and snooze run in the background. Close the TUI, nothing stops.
+### Direct mail tools
 
-**Provider-agnostic.** Gmail, IMAP, SMTP all normalize into one internal model. Mix providers freely. Write new adapters with a clean Rust trait.
+| Tool | Good fit when you want... | Less central there |
+|---|---|---|
+| mutt / neomutt | a long-established terminal workflow | local daemon + structured CLI |
+| aerc | a modern terminal UI | local database + agent-oriented CLI surface |
+| himalaya | a clean CLI-first mail client | daemon-backed local runtime |
+| notmuch | local indexing and search over maildirs | provider sync + broad mutation CLI |
+| gog / gws | Gmail scripting | non-Google provider support |
+| **mxr** | one local runtime for CLI, TUI, scripts, and agents | hosted connector workflows |
 
-**Distraction-free.** Reader mode strips tracking pixels, banners, and quoted text. One key to unsubscribe.
+### Connector layers and nearby tools
 
-**Build your own client.** The daemon speaks JSON over a Unix socket. Build a web dashboard, a mobile bridge, a Raycast extension, anything that can open a socket.
-
-## Where mxr fits in
-
-| | gog / gws | notmuch | mutt | aerc | himalaya | meli | **mxr** |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| Works beyond Google | no | **yes** | **yes** | **yes** | **yes** | **yes** | **yes** |
-| Full CLI for every action | **yes** (Gmail) | most | partial | partial | **yes** | no | **yes** |
-| JSON output for scripting | **yes** | **yes** | no | no | **yes** | no | **yes** |
-| Compose and send from CLI | **yes** | no | **yes** | partial | **yes** | no | **yes** |
-| Batch operations via search | partial | tag only | no | no | no | no | **yes** |
-| Daemon architecture | no | no | no | no | no | no | **yes** |
-| Local database | no | **Xapian** | no | no | no | optional | **SQLite** |
-| Full-text search engine | no | **yes** | no | no | no | optional | **yes** |
-| Compose in $EDITOR | no | via Emacs | **yes** | **yes** | **yes** | partial | **yes** |
-| Pluggable provider adapters | no | no | no | partial | partial | partial | **yes** |
-| Custom client support | no | **yes** | no | no | no | no | **yes** |
+| Tool | Good fit when you want... | mxr difference |
+|---|---|---|
+| Nylas CLI | managed provider access + CLI/MCP workflow | mxr keeps the runtime local |
+| Composio / Zapier MCP | hosted auth + cross-app automation | mxr is mail-first, local, and daemon-backed |
+| EmailEngine | self-hosted email API for backend systems | mxr is for local human + agent workflows |
+| Post | a local mail daemon + CLI on macOS | mxr aims for cross-provider Rust tooling |
+| email-mcp | local MCP access to IMAP/SMTP | mxr is a broader mail platform than the bridge alone |
 
 ## Quick start
 
 ```bash
-mxr daemon --foreground    # start the daemon
-mxr                        # open the TUI
+mxr daemon --foreground
+mxr
 mxr search "is:unread" --format json
-mxr compose --to alice@example.com --subject "Hello"
 mxr archive --search "older:30d label:notifications" --dry-run
+mxr history --category mutation
 ```
 
-See the [docs](https://mxr-mail.vercel.app) for setup guides, CLI reference, and the full feature set.
+## Docs
+
+- Site: [mxr-mail.vercel.app](https://mxr-mail.vercel.app)
+- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Blueprint: [docs/blueprint/README.md](docs/blueprint/README.md)
 
 ## Open source
 
-mxr is MIT / Apache-2.0 dual-licensed. Built with Rust, one binary, no runtime, runs on every platform. No telemetry, no analytics, no "phone home."
+mxr is MIT / Apache-2.0 dual-licensed. The codebase is open. There is no telemetry or phone-home service in the core architecture.
 
-Contributions welcome: bug fixes, new provider adapters, CLI improvements, documentation, ideas. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
+Contributions are welcome, especially around adapters, CLI ergonomics, docs, and tests. The adapter surface is meant to be readable and replaceable, not magical.
 
 ## Built with
 
-Rust, SQLite (sqlx), Tantivy, Ratatui, Tokio, Stalwart mail-parser, Lettre
+Rust, SQLite via sqlx, Tantivy, Ratatui, Tokio, Stalwart mail-parser, Lettre
 
 ## License
 

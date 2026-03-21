@@ -14,6 +14,43 @@ pub struct EventLogEntry {
 }
 
 impl super::Store {
+    pub async fn insert_event_refs(
+        &self,
+        level: &str,
+        category: &str,
+        summary: &str,
+        account_id: Option<&AccountId>,
+        message_id: Option<&str>,
+        rule_id: Option<&str>,
+        details: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        let now = chrono::Utc::now().timestamp();
+        let aid = account_id.map(|a| a.as_str());
+        sqlx::query(
+            "INSERT INTO event_log (
+                timestamp,
+                level,
+                category,
+                account_id,
+                message_id,
+                rule_id,
+                summary,
+                details
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(now)
+        .bind(level)
+        .bind(category)
+        .bind(aid)
+        .bind(message_id)
+        .bind(rule_id)
+        .bind(summary)
+        .bind(details)
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
     pub async fn insert_event(
         &self,
         level: &str,
@@ -22,21 +59,8 @@ impl super::Store {
         account_id: Option<&AccountId>,
         details: Option<&str>,
     ) -> Result<(), sqlx::Error> {
-        let now = chrono::Utc::now().timestamp();
-        let aid = account_id.map(|a| a.as_str());
-        sqlx::query!(
-            "INSERT INTO event_log (timestamp, level, category, account_id, summary, details)
-             VALUES (?, ?, ?, ?, ?, ?)",
-            now,
-            level,
-            category,
-            aid,
-            summary,
-            details,
-        )
-        .execute(self.writer())
-        .await?;
-        Ok(())
+        self.insert_event_refs(level, category, summary, account_id, None, None, details)
+            .await
     }
 
     // Dynamic SQL — kept as runtime query since the WHERE clause is conditionally built

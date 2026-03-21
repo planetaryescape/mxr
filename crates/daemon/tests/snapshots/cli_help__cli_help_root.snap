@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 13
 expression: stdout
 ---
 Terminal email client
@@ -18,6 +19,7 @@ Commands:
   sync         Trigger or query sync
   status       Show daemon status
   events       Watch daemon events
+  history      Show persisted event history
   notify       Unread summary for status bars
   logs         View daemon logs
   bug-report   Generate a sanitized diagnostic bundle

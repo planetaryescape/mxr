@@ -5,7 +5,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'mxr',
-      description: 'A local-first, keyboard-native terminal email client',
+      description: 'Local-first email infrastructure for humans and agents',
       social: {
         github: 'https://github.com/planetaryescape/mxr',
       },
@@ -25,6 +25,10 @@ export default defineConfig({
         {
           label: 'Guides',
           items: [
+            { label: 'Why mxr', slug: 'guides/why-mxr' },
+            { label: 'Architecture', slug: 'guides/architecture' },
+            { label: 'For Agents', slug: 'guides/for-agents' },
+            { label: 'Security & Privacy', slug: 'guides/security-and-privacy' },
             { label: 'Mailbox Workflow', slug: 'guides/mailbox' },
             { label: 'Compose', slug: 'guides/compose' },
             { label: 'Search Workflow', slug: 'guides/search' },

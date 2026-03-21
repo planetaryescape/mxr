@@ -8,6 +8,7 @@ pub mod doctor;
 pub mod events;
 pub mod export;
 pub mod headers;
+pub mod history;
 pub mod labels;
 pub mod logs;
 pub mod mutations;

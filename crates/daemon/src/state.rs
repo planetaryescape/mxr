@@ -229,6 +229,7 @@ impl AppState {
         self.config_snapshot().general.sync_interval
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn default_provider(&self) -> Arc<dyn MailSyncProvider> {
         self.runtime
             .read()
@@ -247,6 +248,7 @@ impl AppState {
             .map(|provider| provider.account_id().clone())
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn default_account_id(&self) -> AccountId {
         self.default_provider().account_id().clone()
     }
@@ -339,6 +341,30 @@ impl AppState {
     pub async fn in_memory() -> anyhow::Result<Self> {
         let (state, _) = Self::in_memory_with_fake().await?;
         Ok(state)
+    }
+
+    #[cfg(test)]
+    pub async fn in_memory_without_accounts() -> anyhow::Result<Self> {
+        let store = Arc::new(Store::in_memory().await?);
+        let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
+        let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
+        let (event_tx, _) = broadcast::channel(256);
+
+        Ok(Self {
+            store,
+            search,
+            sync_engine,
+            runtime: RwLock::new(ProviderRuntime {
+                providers: HashMap::new(),
+                send_providers: HashMap::new(),
+                default_provider: None,
+                default_send_provider: None,
+            }),
+            sync_loop_accounts: StdMutex::new(HashSet::new()),
+            event_tx,
+            start_time: Instant::now(),
+            config: RwLock::new(mxr_config::MxrConfig::default()),
+        })
     }
 
     #[cfg(test)]

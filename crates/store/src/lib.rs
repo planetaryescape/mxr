@@ -329,6 +329,9 @@ mod tests {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();
         store.insert_account(&account).await.unwrap();
+        let env = test_envelope(&account.id);
+        let env_id = env.id.as_str();
+        store.upsert_envelope(&env).await.unwrap();
 
         store
             .insert_event("info", "sync", "Sync completed", Some(&account.id), None)
@@ -348,9 +351,21 @@ mod tests {
             .insert_event("info", "rule", "Rule applied", None, None)
             .await
             .unwrap();
+        store
+            .insert_event_refs(
+                "info",
+                "mutation",
+                "Archived a message",
+                Some(&account.id),
+                Some(env_id.as_str()),
+                None,
+                Some("from=test@example.com"),
+            )
+            .await
+            .unwrap();
 
         let all = store.list_events(10, None, None).await.unwrap();
-        assert_eq!(all.len(), 3);
+        assert_eq!(all.len(), 4);
 
         let errors = store.list_events(10, Some("error"), None).await.unwrap();
         assert_eq!(errors.len(), 1);
@@ -358,6 +373,13 @@ mod tests {
 
         let sync_events = store.list_events(10, None, Some("sync")).await.unwrap();
         assert_eq!(sync_events.len(), 2);
+
+        let mutation_events = store.list_events(10, None, Some("mutation")).await.unwrap();
+        assert_eq!(mutation_events.len(), 1);
+        assert_eq!(
+            mutation_events[0].message_id.as_deref(),
+            Some(env_id.as_str())
+        );
     }
 
     #[tokio::test]

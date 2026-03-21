@@ -9,6 +9,25 @@ require_token() {
   fi
 }
 
+publish_or_skip_existing() {
+  local logfile
+  logfile="$(mktemp)"
+
+  if "$@" 2>&1 | tee "${logfile}"; then
+    rm -f "${logfile}"
+    return 0
+  fi
+
+  if grep -q "already exists on crates.io index" "${logfile}"; then
+    rm -f "${logfile}"
+    return 0
+  fi
+
+  cat "${logfile}" >&2
+  rm -f "${logfile}"
+  return 1
+}
+
 crate_published() {
   local crate="$1"
   local version="$2"
@@ -35,7 +54,7 @@ publish_async_imap() {
   echo "Publishing ${crate}..."
   (
     cd "${tmpdir}"
-    cargo publish --locked
+    publish_or_skip_existing cargo publish --locked
   )
   wait_for_crate "${crate}" "${version}"
 }
@@ -66,7 +85,7 @@ publish() {
   fi
 
   echo "Publishing ${crate}..."
-  cargo publish -p "${crate}" --locked
+  publish_or_skip_existing cargo publish -p "${crate}" --locked
   wait_for_crate "${crate}" "${version}"
 }
 

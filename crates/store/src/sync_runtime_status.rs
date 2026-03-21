@@ -34,6 +34,24 @@ fn ts_or_default(ts: Option<i64>) -> Option<DateTime<Utc>> {
     ts.and_then(|value| DateTime::from_timestamp(value, 0))
 }
 
+fn row_to_sync_runtime_status(row: &sqlx::sqlite::SqliteRow) -> SyncRuntimeStatus {
+    SyncRuntimeStatus {
+        account_id: AccountId::from_uuid(
+            uuid::Uuid::parse_str(&row.get::<String, _>(0)).expect("valid account uuid"),
+        ),
+        last_attempt_at: ts_or_default(row.get(1)),
+        last_success_at: ts_or_default(row.get(2)),
+        last_error: row.get(3),
+        failure_class: row.get(4),
+        consecutive_failures: row.get::<i64, _>(5) as u32,
+        backoff_until: ts_or_default(row.get(6)),
+        sync_in_progress: row.get::<i64, _>(7) != 0,
+        current_cursor_summary: row.get(8),
+        last_synced_count: row.get::<i64, _>(9) as u32,
+        updated_at: DateTime::from_timestamp(row.get(10), 0).unwrap_or_default(),
+    }
+}
+
 impl super::Store {
     pub async fn upsert_sync_runtime_status(
         &self,
@@ -139,17 +157,17 @@ impl super::Store {
         let row = sqlx::query(
             r#"
             SELECT
-                account_id as "account_id!",
+                account_id,
                 last_attempt_at,
                 last_success_at,
                 last_error,
                 failure_class,
-                consecutive_failures as "consecutive_failures!",
+                consecutive_failures,
                 backoff_until,
-                sync_in_progress as "sync_in_progress!: bool",
+                sync_in_progress,
                 current_cursor_summary,
-                last_synced_count as "last_synced_count!",
-                updated_at as "updated_at!"
+                last_synced_count,
+                updated_at
             FROM sync_runtime_status
             WHERE account_id = ?
             "#,
@@ -158,38 +176,24 @@ impl super::Store {
         .fetch_optional(self.reader())
         .await?;
 
-        Ok(row.map(|row| SyncRuntimeStatus {
-            account_id: AccountId::from_uuid(
-                uuid::Uuid::parse_str(&row.get::<String, _>("account_id")).unwrap(),
-            ),
-            last_attempt_at: ts_or_default(row.get("last_attempt_at")),
-            last_success_at: ts_or_default(row.get("last_success_at")),
-            last_error: row.get("last_error"),
-            failure_class: row.get("failure_class"),
-            consecutive_failures: row.get::<i64, _>("consecutive_failures") as u32,
-            backoff_until: ts_or_default(row.get("backoff_until")),
-            sync_in_progress: row.get("sync_in_progress"),
-            current_cursor_summary: row.get("current_cursor_summary"),
-            last_synced_count: row.get::<i64, _>("last_synced_count") as u32,
-            updated_at: DateTime::from_timestamp(row.get("updated_at"), 0).unwrap_or_default(),
-        }))
+        Ok(row.map(|row| row_to_sync_runtime_status(&row)))
     }
 
     pub async fn list_sync_runtime_statuses(&self) -> Result<Vec<SyncRuntimeStatus>, sqlx::Error> {
         let rows = sqlx::query(
             r#"
             SELECT
-                account_id as "account_id!",
+                account_id,
                 last_attempt_at,
                 last_success_at,
                 last_error,
                 failure_class,
-                consecutive_failures as "consecutive_failures!",
+                consecutive_failures,
                 backoff_until,
-                sync_in_progress as "sync_in_progress!: bool",
+                sync_in_progress,
                 current_cursor_summary,
-                last_synced_count as "last_synced_count!",
-                updated_at as "updated_at!"
+                last_synced_count,
+                updated_at
             FROM sync_runtime_status
             ORDER BY updated_at DESC, account_id ASC
             "#,
@@ -199,21 +203,7 @@ impl super::Store {
 
         Ok(rows
             .into_iter()
-            .map(|row| SyncRuntimeStatus {
-                account_id: AccountId::from_uuid(
-                    uuid::Uuid::parse_str(&row.get::<String, _>("account_id")).unwrap(),
-                ),
-                last_attempt_at: ts_or_default(row.get("last_attempt_at")),
-                last_success_at: ts_or_default(row.get("last_success_at")),
-                last_error: row.get("last_error"),
-                failure_class: row.get("failure_class"),
-                consecutive_failures: row.get::<i64, _>("consecutive_failures") as u32,
-                backoff_until: ts_or_default(row.get("backoff_until")),
-                sync_in_progress: row.get("sync_in_progress"),
-                current_cursor_summary: row.get("current_cursor_summary"),
-                last_synced_count: row.get::<i64, _>("last_synced_count") as u32,
-                updated_at: DateTime::from_timestamp(row.get("updated_at"), 0).unwrap_or_default(),
-            })
+            .map(|row| row_to_sync_runtime_status(&row))
             .collect())
     }
 }

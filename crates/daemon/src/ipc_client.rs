@@ -1,6 +1,7 @@
 use crate::state::AppState;
 use futures::{SinkExt, StreamExt};
 use mxr_protocol::*;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
@@ -12,7 +13,10 @@ pub struct IpcClient {
 
 impl IpcClient {
     pub async fn connect() -> anyhow::Result<Self> {
-        let socket_path = AppState::socket_path();
+        Self::connect_to(&AppState::socket_path()).await
+    }
+
+    pub async fn connect_to(socket_path: &Path) -> anyhow::Result<Self> {
         let stream = UnixStream::connect(&socket_path).await.map_err(|e| {
             anyhow::anyhow!(
                 "Cannot connect to daemon at {}: {}. Is the daemon running? Try: mxr daemon",

@@ -2,16 +2,20 @@ use crate::handler::handle_request;
 use crate::ipc_client::IpcClient;
 use crate::loops;
 use crate::state::AppState;
-use futures::{SinkExt, StreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use mxr_protocol::{
-    AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, Request, Response, ResponseData,
-    IPC_PROTOCOL_VERSION,
+    AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
+    ResponseData, IPC_PROTOCOL_VERSION,
 };
+use std::any::Any;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 use tokio::net::UnixListener;
 use tokio::sync::mpsc;
 use tokio_util::codec::Framed;
+
+const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub async fn run_daemon() -> anyhow::Result<()> {
     let sock_path = AppState::socket_path();
@@ -106,7 +110,10 @@ pub async fn run_daemon() -> anyhow::Result<()> {
                                 let state = state.clone();
                                 let resp_tx = resp_tx.clone();
                                 tokio::spawn(async move {
-                                    let response = handle_request(&state, &ipc_msg).await;
+                                    let response = guard_ipc_response(ipc_msg.id, async {
+                                        handle_request(&state, &ipc_msg).await
+                                    })
+                                    .await;
                                     let _ = resp_tx.send(response);
                                 });
                             }
@@ -167,27 +174,18 @@ pub async fn restart_daemon() -> anyhow::Result<()> {
 }
 
 pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
-    let mut client = IpcClient::connect().await?;
-    let resp = client.request(Request::GetStatus).await?;
-    match resp {
-        Response::Ok {
-            data:
-                ResponseData::Status {
-                    protocol_version, ..
-                },
-        } if protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION => Ok(()),
-        Response::Ok {
-            data:
-                ResponseData::Status {
-                    protocol_version, ..
-                },
-        } => anyhow::bail!(
+    let snapshot =
+        fetch_daemon_status_snapshot_from_path(&AppState::socket_path(), STATUS_REQUEST_TIMEOUT)
+            .await?;
+
+    if snapshot.protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION {
+        Ok(())
+    } else {
+        anyhow::bail!(
             "The running daemon is using IPC protocol {} but this TUI expects {}. Restart the existing daemon after upgrading, then rerun `mxr`.",
-            protocol_version,
+            snapshot.protocol_version,
             mxr_protocol::IPC_PROTOCOL_VERSION
-        ),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected daemon status response"),
+        )
     }
 }
 
@@ -286,18 +284,19 @@ fn is_index_lock_error(message: &str) -> bool {
 }
 
 async fn ensure_current_daemon_matches_binary(sock_path: &std::path::Path) -> anyhow::Result<()> {
-    let snapshot = match fetch_daemon_status_snapshot().await {
-        Ok(snapshot) => snapshot,
-        Err(error) => {
-            eprintln!("Restarting daemon after failed status check: {error}");
-            return restart_daemon_process(
-                sock_path,
-                None,
-                "Restarting daemon to recover from a bad running daemon...",
-            )
-            .await;
-        }
-    };
+    let snapshot =
+        match fetch_daemon_status_snapshot_from_path(sock_path, STATUS_REQUEST_TIMEOUT).await {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                eprintln!("Restarting daemon after failed status check: {error}");
+                return restart_daemon_process(
+                    sock_path,
+                    None,
+                    "Restarting daemon to recover from a bad running daemon...",
+                )
+                .await;
+            }
+        };
 
     if !daemon_requires_restart(
         snapshot.protocol_version,
@@ -315,9 +314,23 @@ async fn ensure_current_daemon_matches_binary(sock_path: &std::path::Path) -> an
     .await
 }
 
-async fn fetch_daemon_status_snapshot() -> anyhow::Result<DaemonStatusSnapshot> {
-    let mut client = IpcClient::connect().await?;
-    let resp = client.request(Request::GetStatus).await?;
+async fn fetch_daemon_status_snapshot_from_path(
+    sock_path: &std::path::Path,
+    timeout: Duration,
+) -> anyhow::Result<DaemonStatusSnapshot> {
+    let resp = tokio::time::timeout(timeout, async {
+        let mut client = IpcClient::connect_to(sock_path).await?;
+        client.request(Request::GetStatus).await
+    })
+    .await
+    .map_err(|_| {
+        anyhow::anyhow!(
+            "Timed out waiting for daemon status from {} after {}s",
+            sock_path.display(),
+            timeout.as_secs()
+        )
+    })??;
+
     match resp {
         Response::Ok {
             data:
@@ -336,6 +349,40 @@ async fn fetch_daemon_status_snapshot() -> anyhow::Result<DaemonStatusSnapshot> 
         }),
         Response::Error { message } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected daemon status response"),
+    }
+}
+
+async fn guard_ipc_response<F>(msg_id: u64, future: F) -> IpcMessage
+where
+    F: std::future::Future<Output = IpcMessage>,
+{
+    match AssertUnwindSafe(future).catch_unwind().await {
+        Ok(response) => response,
+        Err(panic_payload) => {
+            let panic_message = panic_payload_message(&*panic_payload);
+            tracing::error!(
+                request_id = msg_id,
+                "Daemon handler panicked: {panic_message}"
+            );
+            IpcMessage {
+                id: msg_id,
+                payload: IpcPayload::Response(Response::Error {
+                    message: format!(
+                        "Daemon handler panicked while processing the request: {panic_message}"
+                    ),
+                }),
+            }
+        }
+    }
+}
+
+fn panic_payload_message(panic_payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = panic_payload.downcast_ref::<&'static str>() {
+        (*message).to_string()
+    } else if let Some(message) = panic_payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "unknown panic".to_string()
     }
 }
 
@@ -387,6 +434,12 @@ async fn request_shutdown() -> anyhow::Result<()> {
     client.notify(Request::Shutdown).await
 }
 
+async fn daemon_responds_to_status(sock_path: &std::path::Path, timeout: Duration) -> bool {
+    fetch_daemon_status_snapshot_from_path(sock_path, timeout)
+        .await
+        .is_ok()
+}
+
 async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyhow::Result<()> {
     if !prefix.is_empty() {
         eprint!("{prefix}");
@@ -402,7 +455,7 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
 
     for i in 0..40 {
         tokio::time::sleep(std::time::Duration::from_millis(100 * (i + 1))).await;
-        if tokio::net::UnixStream::connect(sock_path).await.is_ok() {
+        if daemon_responds_to_status(sock_path, Duration::from_millis(250)).await {
             eprintln!(" ready.");
             return Ok(());
         }
@@ -427,9 +480,19 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_health, current_build_id, daemon_requires_restart, is_index_lock_error};
+    use super::{
+        classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_status,
+        guard_ipc_response, is_index_lock_error,
+    };
+    use futures::{SinkExt, StreamExt};
     use mxr_core::AccountId;
-    use mxr_protocol::{AccountSyncStatus, DaemonHealthClass};
+    use mxr_protocol::{
+        AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Response,
+        ResponseData, IPC_PROTOCOL_VERSION,
+    };
+    use std::time::Duration;
+    use tokio::net::UnixListener;
+    use tokio_util::codec::Framed;
 
     #[test]
     fn detects_tantivy_lockbusy_message() {
@@ -489,5 +552,80 @@ mod tests {
             classify_health(&degraded, false, false),
             DaemonHealthClass::Degraded
         );
+    }
+
+    #[tokio::test]
+    async fn handler_panic_returns_error_response() {
+        let response = guard_ipc_response(7, async {
+            panic!("boom");
+            #[allow(unreachable_code)]
+            IpcMessage {
+                id: 7,
+                payload: IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Pong,
+                }),
+            }
+        })
+        .await;
+
+        match response.payload {
+            IpcPayload::Response(Response::Error { message }) => {
+                assert!(message.contains("boom"));
+            }
+            other => panic!("expected error response, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn daemon_status_probe_requires_an_actual_response() {
+        let unready_socket_path = std::path::PathBuf::from(format!(
+            "/tmp/mxr-unready-{}.sock",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::remove_file(&unready_socket_path);
+        let _listener = UnixListener::bind(&unready_socket_path).expect("bind unready socket");
+
+        assert!(
+            !daemon_responds_to_status(&unready_socket_path, Duration::from_millis(50)).await,
+            "bound socket without an accept loop should not count as ready"
+        );
+        let _ = std::fs::remove_file(&unready_socket_path);
+
+        let ready_socket_path = std::path::PathBuf::from(format!(
+            "/tmp/mxr-ready-{}.sock",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::remove_file(&ready_socket_path);
+        let listener = UnixListener::bind(&ready_socket_path).expect("bind ready socket");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            if let Some(Ok(message)) = framed.next().await {
+                framed
+                    .send(IpcMessage {
+                        id: message.id,
+                        payload: IpcPayload::Response(Response::Ok {
+                            data: ResponseData::Status {
+                                uptime_secs: 1,
+                                accounts: vec!["personal".to_string()],
+                                total_messages: 1,
+                                daemon_pid: Some(42),
+                                sync_statuses: Vec::new(),
+                                protocol_version: IPC_PROTOCOL_VERSION,
+                                daemon_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                                daemon_build_id: Some("test-build".to_string()),
+                                repair_required: false,
+                            },
+                        }),
+                    })
+                    .await
+                    .expect("send status");
+            }
+        });
+
+        assert!(daemon_responds_to_status(&ready_socket_path, Duration::from_secs(1)).await);
+        server.await.expect("join status server");
+        let _ = std::fs::remove_file(&ready_socket_path);
     }
 }

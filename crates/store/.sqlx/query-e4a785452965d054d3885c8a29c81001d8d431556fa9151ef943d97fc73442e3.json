@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR REPLACE INTO bodies (message_id, text_plain, text_html, fetched_at) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "e4a785452965d054d3885c8a29c81001d8d431556fa9151ef943d97fc73442e3"
+}

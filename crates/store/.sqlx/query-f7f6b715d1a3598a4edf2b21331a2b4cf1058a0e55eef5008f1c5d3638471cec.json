@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO snoozed (message_id, account_id, snoozed_at, wake_at, original_labels)\n             VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "f7f6b715d1a3598a4edf2b21331a2b4cf1058a0e55eef5008f1c5d3638471cec"
+}

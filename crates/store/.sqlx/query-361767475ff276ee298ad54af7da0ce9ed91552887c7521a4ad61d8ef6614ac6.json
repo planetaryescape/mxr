@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO event_log (timestamp, level, category, account_id, summary, details)\n             VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "361767475ff276ee298ad54af7da0ce9ed91552887c7521a4ad61d8ef6614ac6"
+}

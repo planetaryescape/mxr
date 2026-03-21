@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!\", name as \"name!\", email as \"email!\", sync_config, send_config, enabled as \"enabled!: bool\" FROM accounts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "email!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "sync_config",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "send_config",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "enabled!: bool",
+        "ordinal": 5,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "8784d9722320bc773c4c09250a24ae52dd3823c84fba9f0fe3df66a04efec77e"
+}

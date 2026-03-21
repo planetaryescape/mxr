@@ -1,0 +1,134 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                m.id as \"id!\", m.account_id as \"account_id!\", m.provider_id as \"provider_id!\",\n                m.thread_id as \"thread_id!\", m.message_id_header, m.in_reply_to,\n                m.reference_headers, m.from_name, m.from_email as \"from_email!\",\n                m.to_addrs as \"to_addrs!\", m.cc_addrs as \"cc_addrs!\", m.bcc_addrs as \"bcc_addrs!\",\n                m.subject as \"subject!\", m.date as \"date!\", m.flags as \"flags!\",\n                m.snippet as \"snippet!\", m.has_attachments as \"has_attachments!: bool\",\n                m.size_bytes as \"size_bytes!\", m.unsubscribe_method,\n                COALESCE((\n                    SELECT GROUP_CONCAT(labels.provider_id, char(31))\n                    FROM message_labels\n                    JOIN labels ON labels.id = message_labels.label_id\n                    WHERE message_labels.message_id = m.id\n                ), '') as \"label_provider_ids!: String\"\n             FROM messages m\n             JOIN message_labels ml ON m.id = ml.message_id\n             WHERE ml.label_id = ?\n             ORDER BY m.date DESC\n             LIMIT ? OFFSET ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "provider_id!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "thread_id!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "message_id_header",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "in_reply_to",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "reference_headers",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_name",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_email!",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "to_addrs!",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "cc_addrs!",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "bcc_addrs!",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "subject!",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "date!",
+        "ordinal": 13,
+        "type_info": "Integer"
+      },
+      {
+        "name": "flags!",
+        "ordinal": 14,
+        "type_info": "Integer"
+      },
+      {
+        "name": "snippet!",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "has_attachments!: bool",
+        "ordinal": 16,
+        "type_info": "Integer"
+      },
+      {
+        "name": "size_bytes!",
+        "ordinal": 17,
+        "type_info": "Integer"
+      },
+      {
+        "name": "unsubscribe_method",
+        "ordinal": 18,
+        "type_info": "Text"
+      },
+      {
+        "name": "label_provider_ids!: String",
+        "ordinal": 19,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      null
+    ]
+  },
+  "hash": "325789a5cadff06f7de405f14bd334462224ca3660db4273e49178005b1e20cc"
+}

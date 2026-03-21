@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT DISTINCT from_name, from_email as \"from_email!\" FROM messages WHERE thread_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "from_name",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_email!",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "b2ab77a5329ed4e032bca099215f27e8be7f4cdc816131540f73621b674e704f"
+}

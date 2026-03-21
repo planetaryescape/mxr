@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT message_id as \"message_id!\", account_id as \"account_id!\",\n                      snoozed_at as \"snoozed_at!\", wake_at as \"wake_at!\",\n                      original_labels as \"original_labels!\"\n               FROM snoozed WHERE wake_at <= ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "message_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "snoozed_at!",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "wake_at!",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "original_labels!",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c3d0a1cb89e71eae249ae297dca811c795d9824dc4c29683b0472e79ce8c62c4"
+}

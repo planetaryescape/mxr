@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT label_id as \"label_id!\" FROM message_labels WHERE message_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "label_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bbf4e6028b4d9fe91d963ef91a6536947657f36b7dc9db7ed3ea339ea9673713"
+}

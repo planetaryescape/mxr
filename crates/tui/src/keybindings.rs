@@ -361,6 +361,7 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("a", "reply_all"),
         ("f", "forward"),
         ("e", "archive"),
+        ("m", "mark_read_archive"),
         ("#", "trash"),
         ("!", "spam"),
         ("s", "star"),
@@ -413,6 +414,7 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("a", "reply_all"),
         ("f", "forward"),
         ("e", "archive"),
+        ("m", "mark_read_archive"),
         ("#", "trash"),
         ("!", "spam"),
         ("s", "star"),
@@ -447,6 +449,7 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("E", "export_thread"),
         ("O", "open_in_browser"),
         ("e", "archive"),
+        ("m", "mark_read_archive"),
         ("#", "trash"),
         ("!", "spam"),
         ("s", "star"),
@@ -528,6 +531,7 @@ mod tests {
         assert!(actions.contains(&"reply"));
         assert!(actions.contains(&"reply_all"));
         assert!(actions.contains(&"archive"));
+        assert!(actions.contains(&"mark_read_archive"));
         assert!(actions.contains(&"trash"));
         assert!(actions.contains(&"spam"));
         assert!(actions.contains(&"star"));
@@ -547,6 +551,7 @@ mod tests {
         assert!(action_from_name("reply_all").is_some());
         assert!(action_from_name("forward").is_some());
         assert!(action_from_name("archive").is_some());
+        assert!(action_from_name("mark_read_archive").is_some());
         assert!(action_from_name("trash").is_some());
         assert!(action_from_name("spam").is_some());
         assert!(action_from_name("star").is_some());

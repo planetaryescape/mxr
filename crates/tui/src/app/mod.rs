@@ -1454,22 +1454,16 @@ impl App {
                 .cloned()
                 .collect();
             if self.screen == Screen::Search {
-                let mut filtered = filtered;
-                filtered.sort_by(|left, right| {
-                    sane_mail_sort_timestamp(&right.date)
-                        .cmp(&sane_mail_sort_timestamp(&left.date))
-                        .then_with(|| right.id.as_str().cmp(&left.id.as_str()))
-                });
-                self.search_page.results = filtered
-                    .into_iter()
-                    .take(SEARCH_PAGE_SIZE as usize)
-                    .collect();
+                self.search_page.results.clear();
                 self.search_page.scores.clear();
                 self.search_page.has_more = false;
                 self.search_page.loading_more = true;
                 self.search_page.load_to_end = false;
                 self.search_page.session_active = true;
                 self.search_page.active_pane = SearchPane::Results;
+                self.search_page.selected_index = 0;
+                self.search_page.scroll_offset = 0;
+                self.clear_message_view_state();
                 let session_id = Self::bump_search_session_id(&mut self.search_page.session_id);
                 self.queue_search_request(
                     SearchTarget::SearchPage,
@@ -2250,6 +2244,12 @@ impl App {
 
     fn apply_local_mutation_effect(&mut self, effect: &MutationEffect) {
         match effect {
+            MutationEffect::RemoveFromList(message_id) => {
+                self.apply_removed_message_ids(std::slice::from_ref(message_id));
+            }
+            MutationEffect::RemoveFromListMany(message_ids) => {
+                self.apply_removed_message_ids(message_ids);
+            }
             MutationEffect::UpdateFlags { message_id, flags } => {
                 self.apply_local_flags(message_id, *flags);
             }
@@ -2264,10 +2264,7 @@ impl App {
             } => {
                 self.apply_local_label_refs(message_ids, add, remove);
             }
-            MutationEffect::RemoveFromList(_)
-            | MutationEffect::RemoveFromListMany(_)
-            | MutationEffect::RefreshList
-            | MutationEffect::StatusOnly(_) => {}
+            MutationEffect::RefreshList | MutationEffect::StatusOnly(_) => {}
         }
     }
 

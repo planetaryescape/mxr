@@ -228,6 +228,120 @@ fn build_row<'a>(
     .style(base_style)
 }
 
+fn row_base_style(theme: &Theme, is_selected: bool, is_in_set: bool, is_unread: bool) -> Style {
+    match (is_selected, is_in_set) {
+        (true, true) => {
+            let bg = blend_bg(theme.selection_bg, theme.accent, 96);
+            let fg = contrast_foreground(bg, theme.selection_fg);
+            Style::default()
+                .bg(bg)
+                .fg(fg)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+        }
+        (true, false) => {
+            let fg = contrast_foreground(theme.selection_bg, theme.selection_fg);
+            Style::default()
+                .bg(theme.selection_bg)
+                .fg(fg)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+        }
+        (false, true) => {
+            let bg = blend_bg(theme.selection_bg, theme.accent_dim, 72);
+            let fg = contrast_foreground(bg, theme.selection_fg);
+            Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD)
+        }
+        (false, false) if is_unread => theme.unread_style(),
+        (false, false) => Style::default().fg(theme.text_secondary),
+    }
+}
+
+fn contrast_foreground(bg: Color, fallback: Color) -> Color {
+    let Some((r, g, b)) = color_rgb(bg) else {
+        return fallback;
+    };
+    let luminance = (u32::from(r) * 299 + u32::from(g) * 587 + u32::from(b) * 114) / 1000;
+    if luminance >= 140 {
+        Color::Black
+    } else {
+        Color::White
+    }
+}
+
+fn blend_bg(base: Color, tint: Color, tint_weight: u8) -> Color {
+    let Some((base_r, base_g, base_b)) = color_rgb(base) else {
+        return base;
+    };
+    let Some((tint_r, tint_g, tint_b)) = color_rgb(tint) else {
+        return base;
+    };
+    let tint_weight = u16::from(tint_weight);
+    let base_weight = 255u16.saturating_sub(tint_weight);
+    let mix = |base: u8, tint: u8| -> u8 {
+        (((u16::from(base) * base_weight) + (u16::from(tint) * tint_weight)) / 255) as u8
+    };
+    Color::Rgb(
+        mix(base_r, tint_r),
+        mix(base_g, tint_g),
+        mix(base_b, tint_b),
+    )
+}
+
+fn color_rgb(color: Color) -> Option<(u8, u8, u8)> {
+    match color {
+        Color::Reset => None,
+        Color::Black => Some((0, 0, 0)),
+        Color::Red => Some((205, 49, 49)),
+        Color::Green => Some((13, 188, 121)),
+        Color::Yellow => Some((229, 229, 16)),
+        Color::Blue => Some((36, 114, 200)),
+        Color::Magenta => Some((188, 63, 188)),
+        Color::Cyan => Some((17, 168, 205)),
+        Color::Gray => Some((229, 229, 229)),
+        Color::DarkGray => Some((102, 102, 102)),
+        Color::LightRed => Some((241, 76, 76)),
+        Color::LightGreen => Some((35, 209, 139)),
+        Color::LightYellow => Some((245, 245, 67)),
+        Color::LightBlue => Some((59, 142, 234)),
+        Color::LightMagenta => Some((214, 112, 214)),
+        Color::LightCyan => Some((41, 184, 219)),
+        Color::White => Some((255, 255, 255)),
+        Color::Rgb(r, g, b) => Some((r, g, b)),
+        Color::Indexed(idx) => Some(indexed_color_rgb(idx)),
+    }
+}
+
+fn indexed_color_rgb(idx: u8) -> (u8, u8, u8) {
+    match idx {
+        0 => (0, 0, 0),
+        1 => (128, 0, 0),
+        2 => (0, 128, 0),
+        3 => (128, 128, 0),
+        4 => (0, 0, 128),
+        5 => (128, 0, 128),
+        6 => (0, 128, 128),
+        7 => (192, 192, 192),
+        8 => (128, 128, 128),
+        9 => (255, 0, 0),
+        10 => (0, 255, 0),
+        11 => (255, 255, 0),
+        12 => (0, 0, 255),
+        13 => (255, 0, 255),
+        14 => (0, 255, 255),
+        15 => (255, 255, 255),
+        16..=231 => {
+            let idx = idx - 16;
+            let r = idx / 36;
+            let g = (idx % 36) / 6;
+            let b = idx % 6;
+            let to_channel = |v: u8| if v == 0 { 0 } else { 55 + v * 40 };
+            (to_channel(r), to_channel(g), to_channel(b))
+        }
+        232..=255 => {
+            let shade = 8 + (idx - 232) * 10;
+            (shade, shade, shade)
+        }
+    }
+}
 fn sender_parts(row: &MailListRow, mode: MailListMode) -> (String, Option<usize>) {
     let from_raw = row
         .representative
@@ -395,5 +509,22 @@ mod tests {
 
         assert!(snapshot.contains(">  1"));
         assert!(snapshot.contains("+  2"));
+    }
+    #[test]
+    fn bulk_selection_uses_tinted_background_for_contrast() {
+        let theme = Theme::default();
+        let style = row_base_style(
+            &Theme {
+                selection_bg: Color::Rgb(40, 44, 52),
+                accent_dim: Color::Rgb(160, 200, 255),
+                ..theme
+            },
+            false,
+            true,
+            false,
+        );
+
+        assert_eq!(style.bg, Some(Color::Rgb(73, 88, 109)));
+        assert_eq!(style.fg, Some(Color::White));
     }
 }

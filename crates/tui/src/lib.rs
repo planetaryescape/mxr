@@ -14,7 +14,10 @@ use futures::StreamExt;
 use mxr_config::{load_config, socket_path as config_socket_path};
 use mxr_core::MxrError;
 use mxr_protocol::{DaemonEvent, Request, Response, ResponseData};
+use std::path::Path;
+use std::process::Stdio;
 use tokio::sync::{mpsc, oneshot};
+use tokio::time::{sleep, Duration, Instant};
 
 /// A request sent from the main loop to the background IPC worker.
 struct IpcRequest {
@@ -80,19 +83,83 @@ async fn connect_ipc_client(
     socket_path: &std::path::Path,
     event_tx: mpsc::UnboundedSender<DaemonEvent>,
 ) -> Result<Client, MxrError> {
-    Client::connect(socket_path)
-        .await
-        .map(|client| client.with_event_channel(event_tx))
-        .map_err(|e| MxrError::Ipc(e.to_string()))
+    match Client::connect(socket_path).await {
+        Ok(client) => Ok(client.with_event_channel(event_tx)),
+        Err(error) if should_autostart_daemon(&error) => {
+            start_daemon_process(socket_path).await?;
+            wait_for_daemon_client(socket_path, START_DAEMON_TIMEOUT)
+                .await
+                .map(|client| client.with_event_channel(event_tx))
+        }
+        Err(error) => Err(MxrError::Ipc(error.to_string())),
+    }
 }
 
 fn should_reconnect_ipc(result: &Result<Response, MxrError>) -> bool {
     match result {
         Err(MxrError::Ipc(message)) => {
             let lower = message.to_lowercase();
-            lower.contains("broken pipe") || lower.contains("connection closed")
+            lower.contains("broken pipe")
+                || lower.contains("connection closed")
+                || lower.contains("connection refused")
+                || lower.contains("connection reset")
         }
         _ => false,
+    }
+}
+
+const START_DAEMON_TIMEOUT: Duration = Duration::from_secs(5);
+const START_DAEMON_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+fn should_autostart_daemon(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
+    )
+}
+
+async fn start_daemon_process(socket_path: &Path) -> Result<(), MxrError> {
+    let exe = std::env::current_exe()
+        .map_err(|error| MxrError::Ipc(format!("failed to locate mxr binary: {error}")))?;
+    std::process::Command::new(exe)
+        .arg("daemon")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| {
+            MxrError::Ipc(format!(
+                "failed to start daemon for {}: {error}",
+                socket_path.display()
+            ))
+        })?;
+    Ok(())
+}
+
+async fn wait_for_daemon_client(socket_path: &Path, timeout: Duration) -> Result<Client, MxrError> {
+    let deadline = Instant::now() + timeout;
+    let mut last_error: Option<MxrError> = None;
+
+    loop {
+        if Instant::now() >= deadline {
+            let detail =
+                last_error.unwrap_or_else(|| MxrError::Ipc("daemon did not become ready".into()));
+            return Err(MxrError::Ipc(format!(
+                "daemon restart did not become ready for {}: {}",
+                socket_path.display(),
+                detail
+            )));
+        }
+
+        match Client::connect(socket_path).await {
+            Ok(mut client) => match client.raw_request(Request::GetStatus).await {
+                Ok(_) => return Ok(client),
+                Err(error) => last_error = Some(error),
+            },
+            Err(error) => last_error = Some(MxrError::Ipc(error.to_string())),
+        }
+
+        sleep(START_DAEMON_POLL_INTERVAL).await;
     }
 }
 
@@ -3006,21 +3073,14 @@ mod tests {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(5);
         app.all_envelopes = app.envelopes.clone();
-        let _id = app.envelopes[2].id.clone();
-        // Simulate archive action
+        let removed_id = app.envelopes[0].id.clone();
         app.apply(Action::Archive);
-        // The mutation queue should have the request
         assert!(!app.pending_mutation_queue.is_empty());
-        // Simulate the mutation result
-        let (_, effect) = app.pending_mutation_queue.remove(0);
-        // Apply the effect as if it succeeded
-        match effect {
-            MutationEffect::RemoveFromList(remove_id) => {
-                app.apply_removed_message_ids(&[remove_id]);
-            }
-            _ => panic!("Expected RemoveFromList"),
-        }
         assert_eq!(app.envelopes.len(), 4);
+        assert!(!app
+            .envelopes
+            .iter()
+            .any(|envelope| envelope.id == removed_id));
     }
 
     #[test]
@@ -3095,23 +3155,56 @@ mod tests {
     }
 
     #[test]
-    fn mark_read_and_archive_marks_read_optimistically_and_queues_combined_mutation() {
+    fn mark_read_and_archive_removes_message_optimistically_and_queues_mutation() {
         let mut app = App::new();
         let mut envelopes = make_test_envelopes(1);
         envelopes[0].flags.remove(MessageFlags::READ);
         app.envelopes = envelopes.clone();
         app.all_envelopes = envelopes;
+        let message_id = app.envelopes[0].id.clone();
 
         app.apply(Action::MarkReadAndArchive);
 
-        assert!(app.envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(app.envelopes.is_empty());
+        assert!(app.all_envelopes.is_empty());
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].0 {
             Request::Mutation(MutationCommand::ReadAndArchive { message_ids }) => {
-                assert_eq!(message_ids, &vec![app.envelopes[0].id.clone()]);
+                assert_eq!(message_ids, &vec![message_id]);
             }
             other => panic!("expected read-and-archive mutation, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn bulk_mark_read_and_archive_removes_messages_when_confirmed() {
+        let mut app = App::new();
+        let mut envelopes = make_test_envelopes(3);
+        for envelope in &mut envelopes {
+            envelope.flags.remove(MessageFlags::READ);
+        }
+        app.envelopes = envelopes.clone();
+        app.all_envelopes = envelopes.clone();
+        app.selected_set = envelopes
+            .iter()
+            .map(|envelope| envelope.id.clone())
+            .collect();
+
+        app.apply(Action::MarkReadAndArchive);
+        assert!(app.pending_bulk_confirm.is_some());
+        assert_eq!(app.envelopes.len(), 3);
+
+        app.apply(Action::OpenSelected);
+
+        assert!(app.pending_bulk_confirm.is_none());
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        assert_eq!(app.pending_mutation_count, 1);
+        assert!(app.envelopes.is_empty());
+        assert!(app.all_envelopes.is_empty());
+        assert_eq!(
+            app.pending_mutation_status.as_deref(),
+            Some("Marking 3 messages as read and archiving...")
+        );
     }
 
     #[test]
@@ -3584,8 +3677,8 @@ mod tests {
         }
 
         assert_eq!(app.search_page.query, "crate");
-        assert_eq!(app.search_page.results.len(), 1);
-        assert_eq!(app.search_page.results[0].subject, "crates.io release");
+        assert!(app.search_page.results.is_empty());
+        assert!(app.search_page.loading_more);
         assert_eq!(
             app.pending_search,
             Some(PendingSearchRequest {
@@ -4040,6 +4133,35 @@ mod tests {
             h.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT)),
             Some(Action::OpenLogs)
         );
+    }
+
+    #[test]
+    fn input_m_marks_read_and_archives() {
+        let mut app = App::new();
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE));
+
+        assert_eq!(action, Some(Action::MarkReadAndArchive));
+    }
+
+    #[test]
+    fn reconnect_detection_treats_connection_refused_as_recoverable() {
+        let result = Err(MxrError::Ipc(
+            "IPC error: Connection refused (os error 61)".into(),
+        ));
+
+        assert!(crate::should_reconnect_ipc(&result));
+    }
+
+    #[test]
+    fn autostart_detection_handles_refused_and_missing_socket() {
+        let refused = std::io::Error::from(std::io::ErrorKind::ConnectionRefused);
+        let missing = std::io::Error::from(std::io::ErrorKind::NotFound);
+        let other = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+
+        assert!(crate::should_autostart_daemon(&refused));
+        assert!(crate::should_autostart_daemon(&missing));
+        assert!(!crate::should_autostart_daemon(&other));
     }
 
     #[test]

@@ -659,8 +659,8 @@ impl App {
                         Request::Mutation(MutationCommand::Archive {
                             message_ids: ids.clone(),
                         }),
-                        effect,
-                        None,
+                        effect.clone(),
+                        Some(effect),
                         "Archiving...".into(),
                         ids.len(),
                     );
@@ -669,19 +669,15 @@ impl App {
             Action::MarkReadAndArchive => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
-                    let updates = self.flag_updates_for_ids(&ids, |mut flags| {
-                        flags.insert(MessageFlags::READ);
-                        flags
-                    });
+                    let effect = remove_from_list_effect(&ids);
                     self.queue_or_confirm_bulk_action(
                         "Mark messages as read and archive",
                         bulk_message_detail("mark as read and archive", ids.len()),
                         Request::Mutation(MutationCommand::ReadAndArchive {
                             message_ids: ids.clone(),
                         }),
-                        remove_from_list_effect(&ids),
-                        (!updates.is_empty())
-                            .then_some(MutationEffect::UpdateFlagsMany { updates }),
+                        effect.clone(),
+                        Some(effect),
                         format!(
                             "Marking {} {} as read and archiving...",
                             ids.len(),
@@ -701,8 +697,8 @@ impl App {
                         Request::Mutation(MutationCommand::Trash {
                             message_ids: ids.clone(),
                         }),
-                        effect,
-                        None,
+                        effect.clone(),
+                        Some(effect),
                         "Trashing...".into(),
                         ids.len(),
                     );
@@ -718,8 +714,8 @@ impl App {
                         Request::Mutation(MutationCommand::Spam {
                             message_ids: ids.clone(),
                         }),
-                        effect,
-                        None,
+                        effect.clone(),
+                        Some(effect),
                         "Marking as spam...".into(),
                         ids.len(),
                     );

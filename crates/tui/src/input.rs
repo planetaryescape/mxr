@@ -196,6 +196,9 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('a'), KeyModifiers::NONE) => Some(Action::ReplyAll),
             (KeyState::Normal, KeyCode::Char('f'), KeyModifiers::NONE) => Some(Action::Forward),
             (KeyState::Normal, KeyCode::Char('e'), KeyModifiers::NONE) => Some(Action::Archive),
+            (KeyState::Normal, KeyCode::Char('m'), KeyModifiers::NONE) => {
+                Some(Action::MarkReadAndArchive)
+            }
             (KeyState::Normal, KeyCode::Char('#'), _) => Some(Action::Trash),
             (KeyState::Normal, KeyCode::Char('!'), _) => Some(Action::Spam),
             (KeyState::Normal, KeyCode::Char('s'), KeyModifiers::NONE) => Some(Action::Star),

@@ -143,6 +143,7 @@ pub fn hints_for_state(
                     context,
                     &[
                         "archive",
+                        "mark_read_archive",
                         "trash",
                         "apply_label",
                         "move_to_label",
@@ -250,6 +251,7 @@ mod tests {
         let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
         assert!(labels.contains(&"Clear Sel".to_string()));
         assert!(labels.contains(&"Archive".to_string()));
+        assert!(labels.contains(&"Read + Archive".to_string()));
         assert!(labels.contains(&"Apply Label".to_string()));
     }
 }

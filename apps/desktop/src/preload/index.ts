@@ -6,6 +6,8 @@ const api: DesktopApi = {
   retryBridge: () => ipcRenderer.invoke("mxr:retryBridge"),
   useBundledMxr: () => ipcRenderer.invoke("mxr:useBundledMxr"),
   setExternalBinaryPath: (path) => ipcRenderer.invoke("mxr:setExternalBinaryPath", path),
+  openDraftInEditor: (request) => ipcRenderer.invoke("mxr:openDraftInEditor", request),
+  openExternalUrl: (url) => ipcRenderer.invoke("mxr:openExternalUrl", url),
 };
 
 contextBridge.exposeInMainWorld("mxrDesktop", api);

@@ -6,7 +6,11 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
 import type { BridgeState, MxrStatusSnapshot } from "../shared/types.js";
-import { evaluateCompatibility, parseStatusOutput } from "./compatibility.js";
+import {
+  assertBridgeMailboxContract,
+  evaluateCompatibility,
+  parseStatusOutput,
+} from "./compatibility.js";
 
 interface DesktopSettings {
   externalBinaryPath?: string;
@@ -97,6 +101,7 @@ export class BridgeManager {
 
     try {
       const connection = await this.startBridge(binaryPath);
+      await this.verifyBridgeContract(connection);
       this.state = {
         kind: "ready",
         baseUrl: connection.baseUrl,
@@ -108,6 +113,7 @@ export class BridgeManager {
       };
       return this.state;
     } catch (error) {
+      await this.stopBridge();
       this.state = {
         kind: "error",
         binaryPath,
@@ -136,14 +142,10 @@ export class BridgeManager {
 
   private async startBridge(binaryPath: string): Promise<BridgeConnection> {
     const authToken = randomBytes(24).toString("hex");
-    const child = spawn(
-      binaryPath,
-      ["web", "--host", "127.0.0.1", "--port", "0", "--print-url"],
-      {
-        env: { ...process.env, MXR_WEB_BRIDGE_TOKEN: authToken },
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
+    const child = spawn(binaryPath, ["web", "--host", "127.0.0.1", "--port", "0", "--print-url"], {
+      env: { ...process.env, MXR_WEB_BRIDGE_TOKEN: authToken },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     this.bridgeProcess = child;
 
     const stderr: string[] = [];
@@ -197,6 +199,26 @@ export class BridgeManager {
     return parseStatusOutput(stdout);
   }
 
+  private async verifyBridgeContract(connection: BridgeConnection): Promise<void> {
+    const response = await fetch(new URL("/mailbox", `${connection.baseUrl}/`), {
+      headers: {
+        "x-mxr-bridge-token": connection.authToken,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`bridge validation failed with ${response.status}`);
+    }
+
+    try {
+      assertBridgeMailboxContract(await response.json());
+    } catch (error) {
+      throw new Error(
+        `This mxr binary exposes a legacy desktop web bridge. Rebuild mxr and try again. (${formatError(error)})`,
+      );
+    }
+  }
+
   private settingsPath(): string {
     return join(app.getPath("userData"), "desktop-settings.json");
   }
@@ -226,7 +248,10 @@ function parseBridgeConnection(line: string, authToken: string): BridgeConnectio
   };
 }
 
-async function runBinary(binaryPath: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+async function runBinary(
+  binaryPath: string,
+  args: string[],
+): Promise<{ stdout: string; stderr: string }> {
   return await new Promise((resolve, reject) => {
     const child = spawn(binaryPath, args, { stdio: ["ignore", "pipe", "pipe"] });
     const stdout: string[] = [];

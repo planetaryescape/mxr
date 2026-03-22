@@ -52,10 +52,7 @@ export async function syncDesktopVersion({
   return { changed, version };
 }
 
-export async function stageBundledBinary({
-  sourcePath,
-  resourcesDir,
-}) {
+export async function stageBundledBinary({ sourcePath, resourcesDir }) {
   const resolvedSourcePath = resolve(sourcePath);
   const targetPath = join(resolve(resourcesDir), "bin", "mxr");
   await mkdir(join(resolve(resourcesDir), "bin"), { recursive: true });

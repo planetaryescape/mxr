@@ -9,6 +9,17 @@ require_token() {
   fi
 }
 
+workspace_version() {
+  awk -F'"' '/^\[workspace.package\]/{flag=1; next} flag && /^version = /{print $2; exit}' Cargo.toml
+}
+
+sync_store_sqlx_cache() {
+  if [[ -d .sqlx ]]; then
+    mkdir -p crates/store/.sqlx
+    rsync -a --delete .sqlx/ crates/store/.sqlx/
+  fi
+}
+
 publish_or_skip_existing() {
   local logfile
   local attempt=1
@@ -108,22 +119,30 @@ publish() {
 
 require_token
 
+VERSION="$(workspace_version)"
+if [[ -z "${VERSION}" ]]; then
+  echo "failed to read workspace version from Cargo.toml" >&2
+  exit 1
+fi
+
+sync_store_sqlx_cache
+
 publish_async_imap
-publish mxr-core 0.4.6
-publish mxr-protocol 0.4.6
-publish mxr-config 0.4.6
-publish mxr-test-support 0.4.6
-publish mxr-store 0.4.6
-publish mxr-search 0.4.6
-publish mxr-reader 0.4.6
-publish mxr-semantic 0.4.6
-publish mxr-compose 0.4.6
-publish mxr-provider-fake 0.4.6
-publish mxr-provider-gmail 0.4.6
-publish mxr-provider-smtp 0.4.6
-publish mxr-provider-imap 0.4.6
-publish mxr-export 0.4.6
-publish mxr-rules 0.4.6
-publish mxr-sync 0.4.6
-publish mxr-tui 0.4.6
-publish mxr 0.4.6
+publish mxr-core "${VERSION}"
+publish mxr-protocol "${VERSION}"
+publish mxr-config "${VERSION}"
+publish mxr-test-support "${VERSION}"
+publish mxr-store "${VERSION}"
+publish mxr-search "${VERSION}"
+publish mxr-reader "${VERSION}"
+publish mxr-semantic "${VERSION}"
+publish mxr-compose "${VERSION}"
+publish mxr-provider-fake "${VERSION}"
+publish mxr-provider-gmail "${VERSION}"
+publish mxr-provider-smtp "${VERSION}"
+publish mxr-provider-imap "${VERSION}"
+publish mxr-export "${VERSION}"
+publish mxr-rules "${VERSION}"
+publish mxr-sync "${VERSION}"
+publish mxr-tui "${VERSION}"
+publish mxr "${VERSION}"

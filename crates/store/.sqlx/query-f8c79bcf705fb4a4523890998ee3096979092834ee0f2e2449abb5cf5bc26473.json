@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                id as \"id!\", account_id as \"account_id!\", provider_id as \"provider_id!\",\n                thread_id as \"thread_id!\", message_id_header, in_reply_to,\n                reference_headers, from_name, from_email as \"from_email!\",\n                to_addrs as \"to_addrs!\", cc_addrs as \"cc_addrs!\", bcc_addrs as \"bcc_addrs!\",\n                subject as \"subject!\", date as \"date!\", flags as \"flags!\",\n                snippet as \"snippet!\", has_attachments as \"has_attachments!: bool\",\n                size_bytes as \"size_bytes!\", unsubscribe_method,\n                COALESCE((\n                    SELECT GROUP_CONCAT(labels.provider_id, char(31))\n                    FROM message_labels\n                    JOIN labels ON labels.id = message_labels.label_id\n                    WHERE message_labels.message_id = messages.id\n                ), '') as \"label_provider_ids!: String\"\n             FROM messages WHERE account_id = ? ORDER BY date DESC LIMIT ? OFFSET ?",
+  "query": "SELECT\n                id as \"id!\", account_id as \"account_id!\", provider_id as \"provider_id!\",\n                thread_id as \"thread_id!\", message_id_header, in_reply_to,\n                reference_headers, from_name, from_email as \"from_email!\",\n                to_addrs as \"to_addrs!\", cc_addrs as \"cc_addrs!\", bcc_addrs as \"bcc_addrs!\",\n                subject as \"subject!\", date as \"date!\", flags as \"flags!\",\n                snippet as \"snippet!\", has_attachments as \"has_attachments!: bool\",\n                size_bytes as \"size_bytes!\", unsubscribe_method,\n                COALESCE((\n                    SELECT GROUP_CONCAT(labels.provider_id, char(31))\n                    FROM message_labels\n                    JOIN labels ON labels.id = message_labels.label_id\n                    WHERE message_labels.message_id = messages.id\n                ), '') as \"label_provider_ids!: String\"\n             FROM messages\n             ORDER BY CASE WHEN date > ? THEN 0 ELSE date END DESC, id DESC\n             LIMIT ? OFFSET ?",
   "describe": {
     "columns": [
       {
@@ -101,7 +101,7 @@
       {
         "name": "label_provider_ids!: String",
         "ordinal": 19,
-        "type_info": "Null"
+        "type_info": "Text"
       }
     ],
     "parameters": {
@@ -127,8 +127,8 @@
       false,
       false,
       true,
-      null
+      false
     ]
   },
-  "hash": "1a5ce7567e9a1240421f4727028e1678537c20b8fc679a5d7a3756230f70c3e1"
+  "hash": "f8c79bcf705fb4a4523890998ee3096979092834ee0f2e2449abb5cf5bc26473"
 }

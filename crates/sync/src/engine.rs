@@ -33,6 +33,7 @@ impl SyncEngine {
         provider: &dyn MailSyncProvider,
     ) -> Result<SyncOutcome, MxrError> {
         let account_id = provider.account_id();
+        let mut recovered_gmail_cursor_not_found = false;
 
         loop {
             let cursor = self
@@ -56,7 +57,30 @@ impl SyncEngine {
 
             // Sync messages
             tracing::info!(cursor = ?cursor, "sync_account: dispatching with cursor");
-            let batch = provider.sync_messages(&cursor).await?;
+            let batch = match provider.sync_messages(&cursor).await {
+                Ok(batch) => batch,
+                Err(MxrError::NotFound(error))
+                    if !recovered_gmail_cursor_not_found
+                        && matches!(
+                            cursor,
+                            SyncCursor::Gmail { .. } | SyncCursor::GmailBackfill { .. }
+                        ) =>
+                {
+                    tracing::warn!(
+                        account = %account_id,
+                        cursor = ?cursor,
+                        error = %error,
+                        "provider sync hit not-found on gmail cursor; resetting to initial sync"
+                    );
+                    self.store
+                        .set_sync_cursor(account_id, &SyncCursor::Initial)
+                        .await
+                        .map_err(|e| MxrError::Store(e.to_string()))?;
+                    recovered_gmail_cursor_not_found = true;
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
             let synced_count = batch.upserted.len() as u32;
             let upserted_message_ids = batch
                 .upserted

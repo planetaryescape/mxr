@@ -70,6 +70,8 @@ pub enum Action {
     ReauthorizeAccountForm,
     SetDefaultAccount,
     GenerateBugReport,
+    OpenLogs,
+    OpenDiagnosticsPaneDetails,
 
     // --- Phase 2: Email actions (Gmail-native A005) ---
     Compose,

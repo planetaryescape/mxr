@@ -1,9 +1,8 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 496
 expression: snapshot
 ---
-"┌ Status / Doctor ───────────────────────────────┐┌ Data / Storage ────────────────────────────────┐"
+"┌ > Status / Doctor ─────────────────────────────┐┌ Data / Storage ────────────────────────────────┐"
 "│Health: healthy status=ok                       ││Records: accounts=1 labels=12 saved=3 rules=4   │"
 "│Lifecycle: restart=no repair=no                 ││Mail: msgs=42 unread=7 starred=3 with_att=5     │"
 "│Uptime: 3600s                                   ││Bodies: bodies=40 attachments=8 links=61        │"

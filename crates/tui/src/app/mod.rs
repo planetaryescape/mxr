@@ -228,6 +228,38 @@ impl Default for RulesPageState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DiagnosticsPaneKind {
+    #[default]
+    Status,
+    Data,
+    Sync,
+    Events,
+    Logs,
+}
+
+impl DiagnosticsPaneKind {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Status => Self::Data,
+            Self::Data => Self::Sync,
+            Self::Sync => Self::Events,
+            Self::Events => Self::Logs,
+            Self::Logs => Self::Status,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        match self {
+            Self::Status => Self::Logs,
+            Self::Data => Self::Status,
+            Self::Sync => Self::Data,
+            Self::Events => Self::Sync,
+            Self::Logs => Self::Events,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DiagnosticsPageState {
     pub uptime_secs: Option<u64>,
@@ -241,6 +273,46 @@ pub struct DiagnosticsPageState {
     pub status: Option<String>,
     pub refresh_pending: bool,
     pub pending_requests: u8,
+    pub selected_pane: DiagnosticsPaneKind,
+    pub fullscreen_pane: Option<DiagnosticsPaneKind>,
+    pub status_scroll_offset: u16,
+    pub data_scroll_offset: u16,
+    pub sync_scroll_offset: u16,
+    pub events_scroll_offset: u16,
+    pub logs_scroll_offset: u16,
+}
+
+impl DiagnosticsPageState {
+    pub fn active_pane(&self) -> DiagnosticsPaneKind {
+        self.fullscreen_pane.unwrap_or(self.selected_pane)
+    }
+
+    pub fn toggle_fullscreen(&mut self) {
+        self.fullscreen_pane = match self.fullscreen_pane {
+            Some(pane) if pane == self.selected_pane => None,
+            _ => Some(self.selected_pane),
+        };
+    }
+
+    pub fn scroll_offset(&self, pane: DiagnosticsPaneKind) -> u16 {
+        match pane {
+            DiagnosticsPaneKind::Status => self.status_scroll_offset,
+            DiagnosticsPaneKind::Data => self.data_scroll_offset,
+            DiagnosticsPaneKind::Sync => self.sync_scroll_offset,
+            DiagnosticsPaneKind::Events => self.events_scroll_offset,
+            DiagnosticsPaneKind::Logs => self.logs_scroll_offset,
+        }
+    }
+
+    pub fn scroll_offset_mut(&mut self, pane: DiagnosticsPaneKind) -> &mut u16 {
+        match pane {
+            DiagnosticsPaneKind::Status => &mut self.status_scroll_offset,
+            DiagnosticsPaneKind::Data => &mut self.data_scroll_offset,
+            DiagnosticsPaneKind::Sync => &mut self.sync_scroll_offset,
+            DiagnosticsPaneKind::Events => &mut self.events_scroll_offset,
+            DiagnosticsPaneKind::Logs => &mut self.logs_scroll_offset,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -460,6 +532,8 @@ pub struct App {
     pub pending_rule_form_load: Option<String>,
     pub pending_rule_form_save: bool,
     pub pending_bug_report: bool,
+    pub pending_log_open: bool,
+    pub pending_diagnostics_details: Option<DiagnosticsPaneKind>,
     pub pending_account_save: Option<mxr_protocol::AccountConfigData>,
     pub pending_account_test: Option<mxr_protocol::AccountConfigData>,
     pub pending_account_authorize: Option<(mxr_protocol::AccountConfigData, bool)>,
@@ -582,6 +656,8 @@ impl App {
             pending_rule_form_load: None,
             pending_rule_form_save: false,
             pending_bug_report: false,
+            pending_log_open: false,
+            pending_diagnostics_details: None,
             pending_account_save: None,
             pending_account_test: None,
             pending_account_authorize: None,
@@ -1200,15 +1276,26 @@ impl App {
     /// Live filter: instant client-side prefix matching on subject/from/snippet,
     /// plus async Tantivy search for full-text body matches.
     fn trigger_live_search(&mut self) {
-        let query = self.search_bar.query.to_lowercase();
+        let query_source = if self.screen == Screen::Search {
+            self.search_page.query.clone()
+        } else {
+            self.search_bar.query.clone()
+        };
+        self.search_bar.query = query_source.clone();
+        let query = query_source.to_lowercase();
         if query.is_empty() {
-            self.envelopes = self.all_mail_envelopes();
-            self.search_active = false;
+            if self.screen == Screen::Search {
+                self.search_page.results = self.all_mail_envelopes();
+                self.search_page.scores.clear();
+            } else {
+                self.envelopes = self.all_mail_envelopes();
+                self.search_active = false;
+            }
         } else {
             let query_words: Vec<&str> = query.split_whitespace().collect();
             // Instant client-side filter: every query word must prefix-match
             // some word in subject, from, or snippet
-            self.envelopes = self
+            let filtered: Vec<Envelope> = self
                 .all_envelopes
                 .iter()
                 .filter(|e| !e.flags.contains(MessageFlags::TRASH))
@@ -1228,12 +1315,22 @@ impl App {
                 })
                 .cloned()
                 .collect();
-            self.search_active = true;
+            if self.screen == Screen::Search {
+                self.search_page.results = filtered;
+            } else {
+                self.envelopes = filtered;
+                self.search_active = true;
+            }
             // Also fire async Tantivy search to catch body matches
-            self.pending_search = Some((self.search_bar.query.clone(), self.search_bar.mode));
+            self.pending_search = Some((query_source, self.search_bar.mode));
         }
-        self.selected_index = 0;
-        self.scroll_offset = 0;
+        if self.screen == Screen::Search {
+            self.search_page.selected_index = 0;
+            self.search_page.scroll_offset = 0;
+        } else {
+            self.selected_index = 0;
+            self.scroll_offset = 0;
+        }
     }
 
     /// Compute the mail list title based on active filter/search.

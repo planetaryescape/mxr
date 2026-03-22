@@ -120,6 +120,12 @@ mod tests {
         messages: Vec<SyncedMessage>,
     }
 
+    struct RecoveringNotFoundProvider {
+        account_id: AccountId,
+        message: SyncedMessage,
+        calls: std::sync::Mutex<Vec<SyncCursor>>,
+    }
+
     #[async_trait::async_trait]
     impl MailSyncProvider for ThreadingProvider {
         fn name(&self) -> &str {
@@ -160,6 +166,81 @@ mod tests {
                 label_changes: vec![],
                 next_cursor: SyncCursor::Initial,
             })
+        }
+
+        async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
+            Err(MxrError::NotFound("no attachment".into()))
+        }
+
+        async fn modify_labels(
+            &self,
+            _id: &str,
+            _add: &[String],
+            _rm: &[String],
+        ) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn trash(&self, _id: &str) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn set_read(&self, _id: &str, _read: bool) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn set_starred(&self, _id: &str, _starred: bool) -> Result<(), MxrError> {
+            Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MailSyncProvider for RecoveringNotFoundProvider {
+        fn name(&self) -> &str {
+            "recovering-not-found"
+        }
+
+        fn account_id(&self) -> &AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> SyncCapabilities {
+            SyncCapabilities {
+                labels: false,
+                server_search: false,
+                delta_sync: true,
+                push: false,
+                batch_operations: false,
+                native_thread_ids: true,
+            }
+        }
+
+        async fn authenticate(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
+            Ok(vec![])
+        }
+
+        async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
+            self.calls.lock().unwrap().push(cursor.clone());
+            match cursor {
+                SyncCursor::Gmail { .. } => {
+                    Err(MxrError::NotFound("Requested entity was not found.".into()))
+                }
+                SyncCursor::Initial => Ok(SyncBatch {
+                    upserted: vec![self.message.clone()],
+                    deleted_provider_ids: vec![],
+                    label_changes: vec![],
+                    next_cursor: SyncCursor::Gmail { history_id: 22 },
+                }),
+                other => panic!("unexpected cursor in test: {other:?}"),
+            }
         }
 
         async fn fetch_attachment(&self, _mid: &str, _aid: &str) -> Result<Vec<u8>, MxrError> {
@@ -1326,6 +1407,79 @@ mod tests {
             body2.attachments.len(),
             "Body attachments count should be consistent"
         );
+    }
+
+    #[tokio::test]
+    async fn gmail_not_found_cursor_resets_to_initial_and_recovers() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let engine = SyncEngine::new(store.clone(), search.clone());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+        store
+            .set_sync_cursor(
+                &account_id,
+                &SyncCursor::Gmail {
+                    history_id: 27_697_494,
+                },
+            )
+            .await
+            .unwrap();
+
+        let message_id = MessageId::new();
+        let provider = RecoveringNotFoundProvider {
+            account_id: account_id.clone(),
+            message: SyncedMessage {
+                envelope: Envelope {
+                    id: message_id.clone(),
+                    account_id: account_id.clone(),
+                    provider_id: "recovered-1".into(),
+                    thread_id: ThreadId::new(),
+                    message_id_header: None,
+                    in_reply_to: None,
+                    references: vec![],
+                    from: Address {
+                        name: Some("Recovered".into()),
+                        email: "recovered@example.com".into(),
+                    },
+                    to: vec![],
+                    cc: vec![],
+                    bcc: vec![],
+                    subject: "Recovered after cursor reset".into(),
+                    date: chrono::Utc::now(),
+                    flags: MessageFlags::empty(),
+                    snippet: "Recovered".into(),
+                    has_attachments: false,
+                    size_bytes: 42,
+                    unsubscribe: UnsubscribeMethod::None,
+                    label_provider_ids: vec![],
+                },
+                body: make_empty_body(&message_id),
+            },
+            calls: std::sync::Mutex::new(Vec::new()),
+        };
+
+        let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
+
+        assert_eq!(outcome.synced_count, 1);
+        let calls = provider.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert!(matches!(
+            calls[0],
+            SyncCursor::Gmail {
+                history_id: 27_697_494
+            }
+        ));
+        assert!(matches!(calls[1], SyncCursor::Initial));
+        let stored_cursor = store.get_sync_cursor(&account_id).await.unwrap();
+        assert!(matches!(
+            stored_cursor,
+            Some(SyncCursor::Gmail { history_id: 22 })
+        ));
     }
 
     #[tokio::test]

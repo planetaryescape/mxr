@@ -149,6 +149,80 @@ async fn ipc_call(
         .map_err(|_| MxrError::Ipc("IPC worker dropped".into()))?
 }
 
+fn open_tui_log_file() -> Result<String, MxrError> {
+    let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
+    if !log_path.exists() {
+        return Err(MxrError::Ipc(format!(
+            "log file not found at {}",
+            log_path.display()
+        )));
+    }
+
+    let editor = load_config()
+        .ok()
+        .and_then(|config| config.general.editor)
+        .map(|editor| mxr_compose::editor::resolve_editor(Some(editor.as_str())))
+        .unwrap_or_else(|| mxr_compose::editor::resolve_editor(None));
+    let status = std::process::Command::new(&editor)
+        .arg(&log_path)
+        .status()
+        .map_err(|error| MxrError::Ipc(format!("failed to launch editor: {error}")))?;
+
+    if !status.success() {
+        return Ok("Log open cancelled".into());
+    }
+
+    Ok(format!("Opened logs at {}", log_path.display()))
+}
+
+fn open_temp_text_buffer(name: &str, content: &str) -> Result<String, MxrError> {
+    let path = std::env::temp_dir().join(format!(
+        "mxr-{}-{}.txt",
+        name,
+        chrono::Utc::now().format("%Y%m%d-%H%M%S")
+    ));
+    std::fs::write(&path, content)
+        .map_err(|error| MxrError::Ipc(format!("failed to write temp file: {error}")))?;
+
+    let editor = load_config()
+        .ok()
+        .and_then(|config| config.general.editor)
+        .map(|editor| mxr_compose::editor::resolve_editor(Some(editor.as_str())))
+        .unwrap_or_else(|| mxr_compose::editor::resolve_editor(None));
+    let status = std::process::Command::new(&editor)
+        .arg(&path)
+        .status()
+        .map_err(|error| MxrError::Ipc(format!("failed to launch editor: {error}")))?;
+
+    if !status.success() {
+        return Ok(format!(
+            "Diagnostics detail open cancelled ({})",
+            path.display()
+        ));
+    }
+
+    Ok(format!("Opened diagnostics details at {}", path.display()))
+}
+
+fn open_diagnostics_pane_details(
+    state: &app::DiagnosticsPageState,
+    pane: app::DiagnosticsPaneKind,
+) -> Result<String, MxrError> {
+    if pane == app::DiagnosticsPaneKind::Logs {
+        return open_tui_log_file();
+    }
+
+    let name = match pane {
+        app::DiagnosticsPaneKind::Status => "doctor",
+        app::DiagnosticsPaneKind::Data => "storage",
+        app::DiagnosticsPaneKind::Sync => "sync-health",
+        app::DiagnosticsPaneKind::Events => "events",
+        app::DiagnosticsPaneKind::Logs => "logs",
+    };
+    let content = crate::ui::diagnostics_page::pane_details_text(state, pane);
+    open_temp_text_buffer(name, &content)
+}
+
 pub async fn run() -> anyhow::Result<()> {
     let socket_path = daemon_socket_path();
     let mut client = Client::connect(&socket_path).await?;
@@ -171,6 +245,46 @@ pub async fn run() -> anyhow::Result<()> {
     let bg = spawn_ipc_worker(socket_path, result_tx.clone());
 
     loop {
+        if app.pending_log_open {
+            app.pending_log_open = false;
+            ratatui::restore();
+            let result = open_tui_log_file();
+            terminal = ratatui::init();
+            match result {
+                Ok(message) => {
+                    app.status_message = Some(message);
+                }
+                Err(error) => {
+                    app.error_modal = Some(app::ErrorModalState {
+                        title: "Open Logs Failed".into(),
+                        detail: format!(
+                            "The log file could not be opened.\n\n{error}\n\nCheck that the daemon has created the log file and try again."
+                        ),
+                    });
+                    app.status_message = Some(format!("Open logs failed: {error}"));
+                }
+            }
+        }
+        if let Some(pane) = app.pending_diagnostics_details.take() {
+            ratatui::restore();
+            let result = open_diagnostics_pane_details(&app.diagnostics_page, pane);
+            terminal = ratatui::init();
+            match result {
+                Ok(message) => {
+                    app.status_message = Some(message);
+                }
+                Err(error) => {
+                    app.error_modal = Some(app::ErrorModalState {
+                        title: "Diagnostics Open Failed".into(),
+                        detail: format!(
+                            "The diagnostics source could not be opened.\n\n{error}\n\nTry refresh first, then open details again."
+                        ),
+                    });
+                    app.status_message = Some(format!("Open diagnostics failed: {error}"));
+                }
+            }
+        }
+
         // Batch any queued body fetches. Current message fetches and window prefetches
         // share the same path so all state transitions stay consistent.
         if !app.queued_body_fetches.is_empty() {
@@ -851,13 +965,14 @@ pub async fn run() -> anyhow::Result<()> {
                                 app.scroll_offset = 0;
                             }
                         }
-                        AsyncResult::Search(Err(_)) => {
+                        AsyncResult::Search(Err(error)) => {
                             if app.screen == app::Screen::Search {
                                 app.search_page.results.clear();
                                 app.search_page.scores.clear();
                             } else {
                                 app.envelopes = app.all_envelopes.clone();
                             }
+                            app.status_message = Some(format!("Search failed: {error}"));
                         }
                         AsyncResult::Rules(Ok(rules)) => {
                             app.rules_page.rules = rules;
@@ -3250,6 +3365,35 @@ mod tests {
     }
 
     #[test]
+    fn search_screen_typing_updates_results_and_queues_search() {
+        let mut app = App::new();
+        let mut envelopes = make_test_envelopes(2);
+        envelopes[0].subject = "crates.io release".into();
+        envelopes[0].snippet = "mxr publish".into();
+        envelopes[1].subject = "support request".into();
+        envelopes[1].snippet = "billing".into();
+        app.envelopes = envelopes.clone();
+        app.all_envelopes = envelopes;
+
+        app.apply(Action::OpenSearchScreen);
+        app.search_page.query.clear();
+        app.search_page.results = app.all_envelopes.clone();
+
+        for ch in "crate".chars() {
+            let action = app.handle_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
+            assert!(action.is_none());
+        }
+
+        assert_eq!(app.search_page.query, "crate");
+        assert_eq!(app.search_page.results.len(), 1);
+        assert_eq!(app.search_page.results[0].subject, "crates.io release");
+        assert_eq!(
+            app.pending_search,
+            Some(("crate".into(), mxr_core::SearchMode::Lexical))
+        );
+    }
+
+    #[test]
     fn open_rules_screen_marks_refresh_pending() {
         let mut app = App::new();
         app.apply(Action::OpenRulesScreen);
@@ -3263,6 +3407,60 @@ mod tests {
         app.apply(Action::OpenDiagnosticsScreen);
         assert_eq!(app.screen, Screen::Diagnostics);
         assert!(app.diagnostics_page.refresh_pending);
+    }
+
+    #[test]
+    fn diagnostics_shift_l_opens_logs() {
+        let mut app = App::new();
+        app.screen = Screen::Diagnostics;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT));
+
+        assert_eq!(action, Some(Action::OpenLogs));
+    }
+
+    #[test]
+    fn diagnostics_tab_cycles_selected_pane() {
+        let mut app = App::new();
+        app.screen = Screen::Diagnostics;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+
+        assert!(action.is_none());
+        assert_eq!(
+            app.diagnostics_page.selected_pane,
+            crate::app::DiagnosticsPaneKind::Data
+        );
+    }
+
+    #[test]
+    fn diagnostics_enter_toggles_fullscreen_for_selected_pane() {
+        let mut app = App::new();
+        app.screen = Screen::Diagnostics;
+        app.diagnostics_page.selected_pane = crate::app::DiagnosticsPaneKind::Logs;
+
+        assert!(app
+            .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .is_none());
+        assert_eq!(
+            app.diagnostics_page.fullscreen_pane,
+            Some(crate::app::DiagnosticsPaneKind::Logs)
+        );
+        assert!(app
+            .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .is_none());
+        assert_eq!(app.diagnostics_page.fullscreen_pane, None);
+    }
+
+    #[test]
+    fn diagnostics_d_opens_selected_pane_details() {
+        let mut app = App::new();
+        app.screen = Screen::Diagnostics;
+        app.diagnostics_page.selected_pane = crate::app::DiagnosticsPaneKind::Events;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+
+        assert_eq!(action, Some(Action::OpenDiagnosticsPaneDetails));
     }
 
     #[test]

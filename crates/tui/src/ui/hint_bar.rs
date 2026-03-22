@@ -25,7 +25,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
             &[("Esc", "Close Help"), ("?", "Toggle Help")],
             theme,
         )]
-    } else if state.search_active {
+    } else if state.search_active && state.screen == Screen::Mailbox {
         vec![hint_line(
             &[("Enter", "Confirm Search"), ("Esc", "Cancel Search")],
             theme,
@@ -107,8 +107,13 @@ pub fn hints_for_state(
             ("?".to_string(), "Help".to_string()),
         ],
         Screen::Diagnostics => vec![
+            ("Tab".to_string(), "Next Pane".to_string()),
+            ("Shift-Tab".to_string(), "Prev Pane".to_string()),
+            ("Enter/o".to_string(), "Full".to_string()),
+            ("d".to_string(), "Details".to_string()),
             ("r".to_string(), "Refresh".to_string()),
             ("b".to_string(), "Bug Report".to_string()),
+            ("L".to_string(), "Logs".to_string()),
             ("Esc".to_string(), "Mailbox".to_string()),
             ("?".to_string(), "Help".to_string()),
         ],

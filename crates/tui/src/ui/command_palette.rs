@@ -363,6 +363,18 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Diagnostics".into(),
         },
         PaletteCommand {
+            label: "Open Diagnostics Details".into(),
+            shortcut: "d".into(),
+            action: Action::OpenDiagnosticsPaneDetails,
+            category: "Diagnostics".into(),
+        },
+        PaletteCommand {
+            label: "Open Logs".into(),
+            shortcut: "L".into(),
+            action: Action::OpenLogs,
+            category: "Diagnostics".into(),
+        },
+        PaletteCommand {
             label: "Refresh Accounts".into(),
             shortcut: "".into(),
             action: Action::RefreshAccounts,

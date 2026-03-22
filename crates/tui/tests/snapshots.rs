@@ -10,7 +10,7 @@ use mxr_protocol::{
 use mxr_test_support::render_to_string;
 use mxr_tui::app::{
     AccountFormState, AccountsPageState, ActivePane, AttachmentPanelState, BodySource,
-    BodyViewState, DiagnosticsPageState, MailListMode, MailListRow, MutationEffect,
+    BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, MailListMode, MailListRow, MutationEffect,
     PendingBulkConfirm, PendingSend, Screen, SearchPageState,
 };
 use mxr_tui::ui::attachment_modal::draw as draw_attachment_modal;
@@ -490,6 +490,13 @@ fn diagnostics_page_snapshot() {
         status: None,
         refresh_pending: false,
         pending_requests: 0,
+        selected_pane: DiagnosticsPaneKind::Status,
+        fullscreen_pane: None,
+        status_scroll_offset: 0,
+        data_scroll_offset: 0,
+        sync_scroll_offset: 0,
+        events_scroll_offset: 0,
+        logs_scroll_offset: 0,
     };
 
     let snapshot = render_to_string(100, 24, |frame| {

@@ -2,7 +2,7 @@ use crate::auth::GmailAuth;
 use crate::error::GmailError;
 use crate::types::*;
 use async_trait::async_trait;
-use tracing::debug;
+use tracing::{debug, warn};
 
 const GMAIL_API_BASE: &str = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -189,7 +189,16 @@ impl GmailClient {
                 .collect();
             let results = futures::future::join_all(futs).await;
             for result in results {
-                messages.push(result?);
+                match result {
+                    Ok(message) => messages.push(message),
+                    Err(GmailError::NotFound(body)) => {
+                        warn!(
+                            error = %body,
+                            "gmail message vanished before fetch during sync; skipping"
+                        );
+                    }
+                    Err(error) => return Err(error),
+                }
             }
         }
 

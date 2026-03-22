@@ -30,13 +30,7 @@ impl App {
                 self.screen = Screen::Search;
                 self.search_page.editing = true;
                 self.search_page.query = self.search_bar.query.clone();
-                self.search_page.results = if self.search_page.query.is_empty() {
-                    self.all_envelopes.clone()
-                } else {
-                    self.search_page.results.clone()
-                };
-                self.search_page.selected_index = 0;
-                self.search_page.scroll_offset = 0;
+                self.trigger_live_search();
             }
             Action::OpenRulesScreen => {
                 self.pending_preview_read = None;
@@ -265,6 +259,7 @@ impl App {
             Action::SubmitSearch => {
                 if self.screen == Screen::Search {
                     self.search_page.editing = false;
+                    self.search_bar.query = self.search_page.query.clone();
                     self.pending_search =
                         Some((self.search_page.query.clone(), self.search_bar.mode));
                 } else {
@@ -280,7 +275,7 @@ impl App {
             }
             Action::CycleSearchMode => {
                 self.search_bar.cycle_mode();
-                if self.search_bar.active {
+                if self.screen == Screen::Search || self.search_bar.active {
                     self.trigger_live_search();
                 }
             }
@@ -504,6 +499,14 @@ impl App {
                 self.diagnostics_page.status = Some("Generating bug report...".into());
                 self.pending_bug_report = true;
             }
+            Action::OpenLogs => {
+                self.pending_log_open = true;
+                self.status_message = Some("Opening log file in editor...".into());
+            }
+            Action::OpenDiagnosticsPaneDetails => {
+                self.pending_diagnostics_details = Some(self.diagnostics_page.active_pane());
+                self.status_message = Some("Opening diagnostics details...".into());
+            }
             Action::SelectLabel(label_id) => {
                 self.mailbox_view = MailboxView::Messages;
                 self.pending_label_fetch = Some(label_id);
@@ -521,6 +524,7 @@ impl App {
                     self.search_active = true;
                     self.active_pane = ActivePane::MailList;
                 }
+                self.search_bar.query = query.clone();
                 self.search_bar.mode = mode;
                 self.pending_search = Some((query, mode));
             }

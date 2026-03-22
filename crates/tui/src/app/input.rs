@@ -522,10 +522,12 @@ impl App {
                 }
                 (KeyCode::Backspace, _) => {
                     self.search_page.query.pop();
+                    self.trigger_live_search();
                     None
                 }
                 (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                     self.search_page.query.push(c);
+                    self.trigger_live_search();
                     None
                 }
                 _ => None,
@@ -650,8 +652,46 @@ impl App {
 
     fn handle_diagnostics_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         match (key.code, key.modifiers) {
+            (KeyCode::Tab | KeyCode::Right, _) => {
+                self.diagnostics_page.selected_pane = self.diagnostics_page.selected_pane.next();
+                None
+            }
+            (KeyCode::BackTab | KeyCode::Left, _) => {
+                self.diagnostics_page.selected_pane = self.diagnostics_page.selected_pane.prev();
+                None
+            }
+            (KeyCode::Char('j') | KeyCode::Down, _) => {
+                let pane = self.diagnostics_page.active_pane();
+                *self.diagnostics_page.scroll_offset_mut(pane) =
+                    self.diagnostics_page.scroll_offset(pane).saturating_add(1);
+                None
+            }
+            (KeyCode::Char('k') | KeyCode::Up, _) => {
+                let pane = self.diagnostics_page.active_pane();
+                *self.diagnostics_page.scroll_offset_mut(pane) =
+                    self.diagnostics_page.scroll_offset(pane).saturating_sub(1);
+                None
+            }
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+                let pane = self.diagnostics_page.active_pane();
+                *self.diagnostics_page.scroll_offset_mut(pane) =
+                    self.diagnostics_page.scroll_offset(pane).saturating_add(8);
+                None
+            }
+            (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
+                let pane = self.diagnostics_page.active_pane();
+                *self.diagnostics_page.scroll_offset_mut(pane) =
+                    self.diagnostics_page.scroll_offset(pane).saturating_sub(8);
+                None
+            }
+            (KeyCode::Enter | KeyCode::Char('o'), _) => {
+                self.diagnostics_page.toggle_fullscreen();
+                None
+            }
+            (KeyCode::Char('d'), _) => Some(Action::OpenDiagnosticsPaneDetails),
             (KeyCode::Char('r'), _) => Some(Action::RefreshDiagnostics),
             (KeyCode::Char('b'), _) => Some(Action::GenerateBugReport),
+            (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLogs),
             (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
             _ => self.input.handle_key(key),
         }

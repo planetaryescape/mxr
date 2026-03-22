@@ -106,8 +106,13 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
         HelpSection {
             title: "Diagnostics Page".into(),
             entries: vec![
+                ("Tab / Shift-Tab".into(), "Select Pane".into()),
+                ("j / k Ctrl-d/u".into(), "Scroll Selected Pane".into()),
+                ("Enter / o".into(), "Toggle Fullscreen Pane".into()),
+                ("d".into(), "Open Selected Pane Details".into()),
                 ("r".into(), "Refresh".into()),
                 ("b".into(), "Generate Bug Report".into()),
+                ("L".into(), "Open Log File".into()),
             ],
         },
         HelpSection {

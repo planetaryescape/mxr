@@ -9,6 +9,8 @@ description = "HTTP/WebSocket bridge for mxr daemon IPC"
 
 [dependencies]
 mxr-core = { workspace = true }
+mxr-config = { workspace = true }
+mxr-compose = { workspace = true }
 mxr-protocol = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }

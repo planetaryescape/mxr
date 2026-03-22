@@ -3252,6 +3252,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "tempfile",
  "tokio",
  "tokio-util",
  "tracing",
@@ -3596,12 +3597,14 @@ dependencies = [
 
 [[package]]
 name = "mxr-web"
-version = "0.4.4"
+version = "0.4.9"
 dependencies = [
  "axum",
  "bytes",
  "chrono",
  "futures",
+ "mxr-compose",
+ "mxr-config",
  "mxr-core",
  "mxr-protocol",
  "reqwest",

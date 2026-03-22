@@ -230,9 +230,9 @@ mod tests {
         async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
             self.calls.lock().unwrap().push(cursor.clone());
             match cursor {
-                SyncCursor::Gmail { .. } => {
-                    Err(MxrError::NotFound("Requested entity was not found.".into()))
-                }
+                SyncCursor::Gmail { .. } => Err(MxrError::NotFound(
+                    "Requested entity was not found.".into(),
+                )),
                 SyncCursor::Initial => Ok(SyncBatch {
                     upserted: vec![self.message.clone()],
                     deleted_provider_ids: vec![],
@@ -1421,12 +1421,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_sync_cursor(
-                &account_id,
-                &SyncCursor::Gmail {
-                    history_id: 27_697_494,
-                },
-            )
+            .set_sync_cursor(&account_id, &SyncCursor::Gmail { history_id: 27_697_494 })
             .await
             .unwrap();
 
@@ -1470,9 +1465,7 @@ mod tests {
         assert_eq!(calls.len(), 2);
         assert!(matches!(
             calls[0],
-            SyncCursor::Gmail {
-                history_id: 27_697_494
-            }
+            SyncCursor::Gmail { history_id: 27_697_494 }
         ));
         assert!(matches!(calls[1], SyncCursor::Initial));
         let stored_cursor = store.get_sync_cursor(&account_id).await.unwrap();

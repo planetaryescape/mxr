@@ -106,10 +106,11 @@ async fn main() -> anyhow::Result<()> {
             format,
             limit,
             mode,
+            sort,
             explain,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::search::run(query, format, limit, mode, explain).await?;
+            commands::search::run(query, format, limit, mode, sort, explain).await?;
         }
         Some(Command::Count { query, mode }) => {
             crate::server::ensure_daemon_running().await?;

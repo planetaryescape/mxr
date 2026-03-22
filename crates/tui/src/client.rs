@@ -112,7 +112,9 @@ impl Client {
             .request(Request::Search {
                 query: query.to_string(),
                 limit,
+                offset: 0,
                 mode: None,
+                sort: Some(mxr_core::types::SortOrder::DateDesc),
                 explain: false,
             })
             .await?;

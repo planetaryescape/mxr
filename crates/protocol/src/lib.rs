@@ -30,7 +30,9 @@ mod tests {
             Request::Search {
                 query: "test".to_string(),
                 limit: 10,
+                offset: 0,
                 mode: None,
+                sort: None,
                 explain: false,
             },
         ];

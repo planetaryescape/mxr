@@ -21,6 +21,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 const PREVIEW_MARK_READ_DELAY: Duration = Duration::from_secs(5);
+pub const SEARCH_PAGE_SIZE: u32 = 200;
 
 fn sane_mail_sort_timestamp(date: &chrono::DateTime<chrono::Utc>) -> i64 {
     let cutoff = (chrono::Utc::now() + chrono::Duration::days(1)).timestamp();
@@ -76,6 +77,13 @@ pub enum ActivePane {
     Sidebar,
     MailList,
     MessageView,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SearchPane {
+    #[default]
+    Results,
+    Preview,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,14 +173,49 @@ pub struct SubscriptionsPageState {
     pub entries: Vec<SubscriptionEntry>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SearchPageState {
     pub query: String,
     pub editing: bool,
     pub results: Vec<Envelope>,
     pub scores: HashMap<MessageId, f32>,
+    pub mode: SearchMode,
+    pub sort: SortOrder,
+    pub has_more: bool,
+    pub loading_more: bool,
+    pub session_active: bool,
+    pub load_to_end: bool,
+    pub session_id: u64,
+    pub active_pane: SearchPane,
     pub selected_index: usize,
     pub scroll_offset: usize,
+}
+
+impl SearchPageState {
+    pub fn has_session(&self) -> bool {
+        self.session_active || !self.query.is_empty() || !self.results.is_empty()
+    }
+}
+
+impl Default for SearchPageState {
+    fn default() -> Self {
+        Self {
+            query: String::new(),
+            editing: false,
+            results: Vec::new(),
+            scores: HashMap::new(),
+            mode: SearchMode::Lexical,
+            sort: SortOrder::DateDesc,
+            has_more: false,
+            loading_more: false,
+            session_active: false,
+            load_to_end: false,
+            session_id: 0,
+            active_pane: SearchPane::Results,
+            selected_index: 0,
+            scroll_offset: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -493,6 +536,24 @@ struct PendingPreviewRead {
     due_at: Instant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchTarget {
+    Mailbox,
+    SearchPage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingSearchRequest {
+    pub query: String,
+    pub mode: SearchMode,
+    pub sort: SortOrder,
+    pub limit: u32,
+    pub offset: u32,
+    pub target: SearchTarget,
+    pub append: bool,
+    pub session_id: u64,
+}
+
 pub struct App {
     pub theme: Theme,
     pub envelopes: Vec<Envelope>,
@@ -522,7 +583,8 @@ pub struct App {
     pub in_flight_body_requests: HashSet<MessageId>,
     pub pending_thread_fetch: Option<mxr_core::ThreadId>,
     pub in_flight_thread_fetch: Option<mxr_core::ThreadId>,
-    pub pending_search: Option<(String, SearchMode)>,
+    pub pending_search: Option<PendingSearchRequest>,
+    pub mailbox_search_session_id: u64,
     pub search_active: bool,
     pub pending_rule_detail: Option<String>,
     pub pending_rule_history: Option<String>,
@@ -532,6 +594,7 @@ pub struct App {
     pub pending_rule_form_load: Option<String>,
     pub pending_rule_form_save: bool,
     pub pending_bug_report: bool,
+    pub pending_config_edit: bool,
     pub pending_log_open: bool,
     pub pending_diagnostics_details: Option<DiagnosticsPaneKind>,
     pub pending_account_save: Option<mxr_protocol::AccountConfigData>,
@@ -602,11 +665,17 @@ impl App {
 
     pub fn from_config(config: &mxr_config::MxrConfig) -> Self {
         let mut app = Self::from_render_and_snooze(&config.render, &config.snooze);
-        app.theme = Theme::from_spec(&config.appearance.theme);
+        app.apply_runtime_config(config);
         if config.accounts.is_empty() {
             app.enter_account_setup_onboarding();
         }
         app
+    }
+
+    pub fn apply_runtime_config(&mut self, config: &mxr_config::MxrConfig) {
+        self.theme = Theme::from_spec(&config.appearance.theme);
+        self.reader_mode = config.render.reader_mode;
+        self.snooze_config = config.snooze.clone();
     }
 
     pub fn from_render_config(render: &RenderConfig) -> Self {
@@ -647,6 +716,7 @@ impl App {
             pending_thread_fetch: None,
             in_flight_thread_fetch: None,
             pending_search: None,
+            mailbox_search_session_id: 0,
             search_active: false,
             pending_rule_detail: None,
             pending_rule_history: None,
@@ -656,6 +726,7 @@ impl App {
             pending_rule_form_load: None,
             pending_rule_form_save: false,
             pending_bug_report: false,
+            pending_config_edit: false,
             pending_log_open: false,
             pending_diagnostics_details: None,
             pending_account_save: None,
@@ -1003,7 +1074,7 @@ impl App {
         self.mail_list_rows().len()
     }
 
-    fn search_row_count(&self) -> usize {
+    pub(crate) fn search_row_count(&self) -> usize {
         self.search_mail_list_rows().len()
     }
 
@@ -1229,6 +1300,65 @@ impl App {
         }
     }
 
+    fn bump_search_session_id(current: &mut u64) -> u64 {
+        *current = current.saturating_add(1).max(1);
+        *current
+    }
+
+    fn queue_search_request(
+        &mut self,
+        target: SearchTarget,
+        append: bool,
+        query: String,
+        mode: SearchMode,
+        sort: SortOrder,
+        offset: u32,
+        session_id: u64,
+    ) {
+        self.pending_search = Some(PendingSearchRequest {
+            query,
+            mode,
+            sort,
+            limit: SEARCH_PAGE_SIZE,
+            offset,
+            target,
+            append,
+            session_id,
+        });
+    }
+
+    pub(crate) fn load_more_search_results(&mut self) {
+        if self.search_page.loading_more
+            || !self.search_page.has_more
+            || self.search_page.query.is_empty()
+        {
+            return;
+        }
+        self.search_page.loading_more = true;
+        self.queue_search_request(
+            SearchTarget::SearchPage,
+            true,
+            self.search_page.query.clone(),
+            self.search_page.mode,
+            self.search_page.sort.clone(),
+            self.search_page.results.len() as u32,
+            self.search_page.session_id,
+        );
+    }
+
+    pub fn maybe_load_more_search_results(&mut self) {
+        if self.screen != Screen::Search || self.search_page.active_pane != SearchPane::Results {
+            return;
+        }
+        let row_count = self.search_row_count();
+        if row_count == 0 || !self.search_page.has_more || self.search_page.loading_more {
+            return;
+        }
+        if self.search_page.selected_index.saturating_add(3) >= row_count {
+            self.load_more_search_results();
+        }
+    }
+
     fn sync_sidebar_section(&mut self) {
         self.sidebar_section = match self.selected_sidebar_item() {
             Some(SidebarItem::SavedSearch(_)) => SidebarSection::SavedSearches,
@@ -1282,12 +1412,20 @@ impl App {
             self.search_bar.query.clone()
         };
         self.search_bar.query = query_source.clone();
+        self.search_page.mode = self.search_bar.mode;
+        self.search_page.sort = SortOrder::DateDesc;
         let query = query_source.to_lowercase();
         if query.is_empty() {
             if self.screen == Screen::Search {
-                self.search_page.results = self.all_mail_envelopes();
+                Self::bump_search_session_id(&mut self.search_page.session_id);
+                self.search_page.results.clear();
                 self.search_page.scores.clear();
+                self.search_page.has_more = false;
+                self.search_page.loading_more = false;
+                self.search_page.load_to_end = false;
+                self.search_page.session_active = false;
             } else {
+                Self::bump_search_session_id(&mut self.mailbox_search_session_id);
                 self.envelopes = self.all_mail_envelopes();
                 self.search_active = false;
             }
@@ -1316,17 +1454,57 @@ impl App {
                 .cloned()
                 .collect();
             if self.screen == Screen::Search {
-                self.search_page.results = filtered;
+                let mut filtered = filtered;
+                filtered.sort_by(|left, right| {
+                    sane_mail_sort_timestamp(&right.date)
+                        .cmp(&sane_mail_sort_timestamp(&left.date))
+                        .then_with(|| right.id.as_str().cmp(&left.id.as_str()))
+                });
+                self.search_page.results = filtered
+                    .into_iter()
+                    .take(SEARCH_PAGE_SIZE as usize)
+                    .collect();
+                self.search_page.scores.clear();
+                self.search_page.has_more = false;
+                self.search_page.loading_more = true;
+                self.search_page.load_to_end = false;
+                self.search_page.session_active = true;
+                self.search_page.active_pane = SearchPane::Results;
+                let session_id = Self::bump_search_session_id(&mut self.search_page.session_id);
+                self.queue_search_request(
+                    SearchTarget::SearchPage,
+                    false,
+                    query_source,
+                    self.search_page.mode,
+                    self.search_page.sort.clone(),
+                    0,
+                    session_id,
+                );
             } else {
+                let mut filtered = filtered;
+                filtered.sort_by(|left, right| {
+                    sane_mail_sort_timestamp(&right.date)
+                        .cmp(&sane_mail_sort_timestamp(&left.date))
+                        .then_with(|| right.id.as_str().cmp(&left.id.as_str()))
+                });
                 self.envelopes = filtered;
                 self.search_active = true;
+                let session_id = Self::bump_search_session_id(&mut self.mailbox_search_session_id);
+                self.queue_search_request(
+                    SearchTarget::Mailbox,
+                    false,
+                    query_source,
+                    self.search_bar.mode,
+                    SortOrder::DateDesc,
+                    0,
+                    session_id,
+                );
             }
-            // Also fire async Tantivy search to catch body matches
-            self.pending_search = Some((query_source, self.search_bar.mode));
         }
         if self.screen == Screen::Search {
             self.search_page.selected_index = 0;
             self.search_page.scroll_offset = 0;
+            self.auto_preview_search();
         } else {
             self.selected_index = 0;
             self.scroll_offset = 0;
@@ -1561,10 +1739,12 @@ impl App {
             {
                 self.open_envelope(env);
             }
+        } else if self.screen == Screen::Search {
+            self.clear_message_view_state();
         }
     }
 
-    fn ensure_search_visible(&mut self) {
+    pub(crate) fn ensure_search_visible(&mut self) {
         let h = self.visible_height.max(1);
         if self.search_page.selected_index < self.search_page.scroll_offset {
             self.search_page.scroll_offset = self.search_page.selected_index;
@@ -2125,6 +2305,82 @@ impl App {
         }
     }
 
+    fn clear_message_view_state(&mut self) {
+        self.pending_preview_read = None;
+        self.viewing_envelope = None;
+        self.viewed_thread = None;
+        self.viewed_thread_messages.clear();
+        self.thread_selected_index = 0;
+        self.pending_thread_fetch = None;
+        self.in_flight_thread_fetch = None;
+        self.message_scroll_offset = 0;
+        self.body_view_state = BodyViewState::Empty { preview: None };
+    }
+
+    pub(crate) fn apply_removed_message_ids(&mut self, ids: &[MessageId]) {
+        if ids.is_empty() {
+            return;
+        }
+
+        let viewing_removed = self
+            .viewing_envelope
+            .as_ref()
+            .is_some_and(|envelope| ids.iter().any(|id| id == &envelope.id));
+        let reader_was_open =
+            self.layout_mode == LayoutMode::ThreePane && self.viewing_envelope.is_some();
+
+        self.envelopes
+            .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
+        self.all_envelopes
+            .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
+        self.search_page
+            .results
+            .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
+        self.viewed_thread_messages
+            .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
+        self.selected_set
+            .retain(|message_id| !ids.iter().any(|id| id == message_id));
+
+        self.selected_index = self
+            .selected_index
+            .min(self.mail_row_count().saturating_sub(1));
+        self.search_page.selected_index = self
+            .search_page
+            .selected_index
+            .min(self.search_row_count().saturating_sub(1));
+
+        if viewing_removed {
+            self.clear_message_view_state();
+
+            if reader_was_open {
+                match self.screen {
+                    Screen::Search if self.search_row_count() > 0 => {
+                        self.ensure_search_visible();
+                        self.auto_preview_search();
+                    }
+                    Screen::Mailbox if self.mail_row_count() > 0 => {
+                        self.ensure_visible();
+                        self.auto_preview();
+                    }
+                    _ => {}
+                }
+            }
+
+            if self.viewing_envelope.is_none() && self.layout_mode == LayoutMode::ThreePane {
+                self.layout_mode = LayoutMode::TwoPane;
+                if self.active_pane == ActivePane::MessageView {
+                    self.active_pane = ActivePane::MailList;
+                }
+            }
+        } else {
+            if self.screen == Screen::Mailbox && self.mail_row_count() > 0 {
+                self.ensure_visible();
+            } else if self.screen == Screen::Search && self.search_row_count() > 0 {
+                self.ensure_search_visible();
+            }
+        }
+    }
+
     fn message_flags(&self, message_id: &MessageId) -> Option<MessageFlags> {
         self.envelopes
             .iter()
@@ -2253,10 +2509,15 @@ impl App {
     fn update_visual_selection(&mut self) {
         if self.visual_mode {
             if let Some(anchor) = self.visual_anchor {
-                let start = anchor.min(self.selected_index);
-                let end = anchor.max(self.selected_index);
+                let (cursor, source) = if self.screen == Screen::Search {
+                    (self.search_page.selected_index, &self.search_page.results)
+                } else {
+                    (self.selected_index, &self.envelopes)
+                };
+                let start = anchor.min(cursor);
+                let end = anchor.max(cursor);
                 self.selected_set.clear();
-                for env in self.envelopes.iter().skip(start).take(end - start + 1) {
+                for env in source.iter().skip(start).take(end - start + 1) {
                     self.selected_set.insert(env.id.clone());
                 }
             }

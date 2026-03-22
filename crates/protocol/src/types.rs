@@ -129,7 +129,11 @@ pub enum Request {
     Search {
         query: String,
         limit: u32,
+        #[serde(default)]
+        offset: u32,
         mode: Option<SearchMode>,
+        #[serde(default)]
+        sort: Option<SortOrder>,
         explain: bool,
     },
     SyncNow {
@@ -351,6 +355,8 @@ pub enum ResponseData {
     },
     SearchResults {
         results: Vec<SearchResultItem>,
+        #[serde(default)]
+        has_more: bool,
         explain: Option<SearchExplain>,
     },
     SyncStatus {

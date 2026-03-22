@@ -112,7 +112,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 ("d".into(), "Open Selected Pane Details".into()),
                 ("r".into(), "Refresh".into()),
                 ("b".into(), "Generate Bug Report".into()),
-                ("L".into(), "Open Log File".into()),
+                ("L / gL".into(), "Open Log File".into()),
             ],
         },
         HelpSection {

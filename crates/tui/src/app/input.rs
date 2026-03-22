@@ -534,38 +534,71 @@ impl App {
             };
         }
 
-        match (key.code, key.modifiers) {
-            (KeyCode::Char('/'), _) => {
-                self.search_page.editing = true;
-                None
-            }
-            (KeyCode::Char('j') | KeyCode::Down, _) => {
-                if self.search_page.selected_index + 1 < self.search_row_count() {
-                    self.search_page.selected_index += 1;
-                    self.ensure_search_visible();
-                    self.auto_preview_search();
+        match self.search_page.active_pane {
+            SearchPane::Results => match (key.code, key.modifiers) {
+                (KeyCode::Char('/'), _) => {
+                    self.search_page.editing = true;
+                    None
                 }
-                None
-            }
-            (KeyCode::Char('k') | KeyCode::Up, _) => {
-                if self.search_page.selected_index > 0 {
-                    self.search_page.selected_index -= 1;
-                    self.ensure_search_visible();
-                    self.auto_preview_search();
+                (KeyCode::Char('j') | KeyCode::Down, _) => {
+                    if self.search_page.selected_index + 1 < self.search_row_count() {
+                        self.search_page.selected_index += 1;
+                        self.ensure_search_visible();
+                        self.auto_preview_search();
+                    }
+                    self.maybe_load_more_search_results();
+                    None
                 }
-                None
-            }
-            (KeyCode::Enter | KeyCode::Char('o'), _) => {
-                if let Some(env) = self.selected_search_envelope().cloned() {
-                    self.open_envelope(env);
-                    self.screen = Screen::Mailbox;
-                    self.layout_mode = LayoutMode::ThreePane;
-                    self.active_pane = ActivePane::MessageView;
+                (KeyCode::Char('k') | KeyCode::Up, _) => {
+                    if self.search_page.selected_index > 0 {
+                        self.search_page.selected_index -= 1;
+                        self.ensure_search_visible();
+                        self.auto_preview_search();
+                    }
+                    None
                 }
-                None
-            }
-            (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
-            _ => self.input.handle_key(key),
+                (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE)
+                | (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::OpenSelected),
+                (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
+                _ => self.input.handle_key(key),
+            },
+            SearchPane::Preview => match (key.code, key.modifiers) {
+                (KeyCode::Char('/'), _) => {
+                    self.search_page.editing = true;
+                    None
+                }
+                (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
+                    self.search_page.active_pane = SearchPane::Results;
+                    None
+                }
+                (KeyCode::Char('j') | KeyCode::Down, _) => {
+                    self.move_thread_focus_down();
+                    None
+                }
+                (KeyCode::Char('k') | KeyCode::Up, _) => {
+                    self.move_thread_focus_up();
+                    None
+                }
+                (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+                    self.message_scroll_offset = self.message_scroll_offset.saturating_add(20);
+                    None
+                }
+                (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
+                    self.message_scroll_offset = self.message_scroll_offset.saturating_sub(20);
+                    None
+                }
+                (KeyCode::Char('G'), KeyModifiers::SHIFT) => {
+                    self.message_scroll_offset = u16::MAX;
+                    None
+                }
+                (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::OpenInBrowser),
+                (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLinks),
+                (KeyCode::Esc, _) => {
+                    self.search_page.active_pane = SearchPane::Results;
+                    None
+                }
+                _ => self.input.handle_key(key),
+            },
         }
     }
 

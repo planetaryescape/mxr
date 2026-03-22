@@ -27,6 +27,8 @@ pub enum Command {
         limit: Option<u32>,
         #[arg(long, value_enum)]
         mode: Option<SearchModeArg>,
+        #[arg(long, value_enum)]
+        sort: Option<SearchSortArg>,
         #[arg(long)]
         explain: bool,
     },
@@ -533,12 +535,27 @@ pub enum SearchModeArg {
     Semantic,
 }
 
+#[derive(Clone, Debug, ValueEnum)]
+pub enum SearchSortArg {
+    Date,
+    Relevance,
+}
+
 impl From<SearchModeArg> for mxr_core::SearchMode {
     fn from(value: SearchModeArg) -> Self {
         match value {
             SearchModeArg::Lexical => Self::Lexical,
             SearchModeArg::Hybrid => Self::Hybrid,
             SearchModeArg::Semantic => Self::Semantic,
+        }
+    }
+}
+
+impl From<SearchSortArg> for mxr_core::types::SortOrder {
+    fn from(value: SearchSortArg) -> Self {
+        match value {
+            SearchSortArg::Date => mxr_core::types::SortOrder::DateDesc,
+            SearchSortArg::Relevance => mxr_core::types::SortOrder::Relevance,
         }
     }
 }

@@ -1,12 +1,12 @@
 use crate::schema::MxrSchema;
 use mxr_core::id::MessageId;
 use mxr_core::types::MessageFlags;
-use mxr_core::types::{Envelope, MessageBody};
+use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
 use std::path::Path;
 use tantivy::{
     collector::TopDocs, query::Query, query::QueryParser, schema::Value, Index, IndexReader,
-    IndexWriter, ReloadPolicy, TantivyDocument,
+    IndexWriter, Order, ReloadPolicy, TantivyDocument,
 };
 
 pub struct SearchIndex {
@@ -22,6 +22,21 @@ pub struct SearchResult {
     pub account_id: String,
     pub thread_id: String,
     pub score: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct SearchPage {
+    pub results: Vec<SearchResult>,
+    pub has_more: bool,
+}
+
+fn sane_search_sort_timestamp(timestamp: i64) -> i64 {
+    let cutoff = (chrono::Utc::now() + chrono::Duration::days(1)).timestamp();
+    if timestamp > cutoff {
+        0
+    } else {
+        timestamp
+    }
 }
 
 impl SearchIndex {
@@ -140,8 +155,10 @@ impl SearchIndex {
             envelope.flags.contains(MessageFlags::ANSWERED),
         );
 
-        let dt = tantivy::DateTime::from_timestamp_secs(envelope.date.timestamp());
+        let timestamp = envelope.date.timestamp();
+        let dt = tantivy::DateTime::from_timestamp_secs(timestamp);
         doc.add_date(s.date, dt);
+        doc.add_i64(s.sort_date_ts, sane_search_sort_timestamp(timestamp));
 
         self.writer
             .add_document(doc)
@@ -194,8 +211,10 @@ impl SearchIndex {
             s.is_answered,
             envelope.flags.contains(MessageFlags::ANSWERED),
         );
-        let dt = tantivy::DateTime::from_timestamp_secs(envelope.date.timestamp());
+        let timestamp = envelope.date.timestamp();
+        let dt = tantivy::DateTime::from_timestamp_secs(timestamp);
         doc.add_date(s.date, dt);
+        doc.add_i64(s.sort_date_ts, sane_search_sort_timestamp(timestamp));
 
         self.writer
             .add_document(doc)
@@ -218,7 +237,13 @@ impl SearchIndex {
         Ok(())
     }
 
-    pub fn search(&self, query_str: &str, limit: usize) -> Result<Vec<SearchResult>, MxrError> {
+    pub fn search(
+        &self,
+        query_str: &str,
+        limit: usize,
+        offset: usize,
+        sort: SortOrder,
+    ) -> Result<SearchPage, MxrError> {
         let s = &self.schema;
 
         let mut query_parser = QueryParser::for_index(
@@ -242,12 +267,41 @@ impl SearchIndex {
             .map_err(|e| MxrError::Search(e.to_string()))?;
 
         let searcher = self.reader.searcher();
-        let top_docs = searcher
-            .search(&query, &TopDocs::with_limit(limit))
-            .map_err(|e| MxrError::Search(e.to_string()))?;
+        let fetch_limit = limit.saturating_add(1);
+        let top_docs = match sort {
+            SortOrder::Relevance => searcher
+                .search(&query, &TopDocs::with_limit(fetch_limit).and_offset(offset))
+                .map_err(|e| MxrError::Search(e.to_string()))?
+                .into_iter()
+                .map(|(score, doc_address)| (score, doc_address))
+                .collect::<Vec<_>>(),
+            SortOrder::DateDesc => searcher
+                .search(
+                    &query,
+                    &TopDocs::with_limit(fetch_limit)
+                        .and_offset(offset)
+                        .order_by_fast_field::<i64>("sort_date_ts", Order::Desc),
+                )
+                .map_err(|e| MxrError::Search(e.to_string()))?
+                .into_iter()
+                .map(|(sort_score, doc_address)| (sort_score as f32, doc_address))
+                .collect::<Vec<_>>(),
+            SortOrder::DateAsc => searcher
+                .search(
+                    &query,
+                    &TopDocs::with_limit(fetch_limit)
+                        .and_offset(offset)
+                        .order_by_fast_field::<i64>("sort_date_ts", Order::Asc),
+                )
+                .map_err(|e| MxrError::Search(e.to_string()))?
+                .into_iter()
+                .map(|(sort_score, doc_address)| (sort_score as f32, doc_address))
+                .collect::<Vec<_>>(),
+        };
 
-        let mut results = Vec::with_capacity(top_docs.len());
-        for (score, doc_address) in top_docs {
+        let has_more = top_docs.len() > limit;
+        let mut results = Vec::with_capacity(top_docs.len().min(limit));
+        for (score, doc_address) in top_docs.into_iter().take(limit) {
             let doc: TantivyDocument = searcher
                 .doc(doc_address)
                 .map_err(|e| MxrError::Search(e.to_string()))?;
@@ -276,7 +330,7 @@ impl SearchIndex {
             });
         }
 
-        Ok(results)
+        Ok(SearchPage { results, has_more })
     }
 
     /// Number of indexed documents.
@@ -297,15 +351,49 @@ impl SearchIndex {
         &self,
         query: Box<dyn Query>,
         limit: usize,
-    ) -> Result<Vec<SearchResult>, MxrError> {
+        offset: usize,
+        sort: SortOrder,
+    ) -> Result<SearchPage, MxrError> {
         let s = &self.schema;
         let searcher = self.reader.searcher();
-        let top_docs = searcher
-            .search(&*query, &TopDocs::with_limit(limit))
-            .map_err(|e| MxrError::Search(e.to_string()))?;
+        let fetch_limit = limit.saturating_add(1);
+        let top_docs = match sort {
+            SortOrder::Relevance => searcher
+                .search(
+                    &*query,
+                    &TopDocs::with_limit(fetch_limit).and_offset(offset),
+                )
+                .map_err(|e| MxrError::Search(e.to_string()))?
+                .into_iter()
+                .map(|(score, doc_address)| (score, doc_address))
+                .collect::<Vec<_>>(),
+            SortOrder::DateDesc => searcher
+                .search(
+                    &*query,
+                    &TopDocs::with_limit(fetch_limit)
+                        .and_offset(offset)
+                        .order_by_fast_field::<i64>("sort_date_ts", Order::Desc),
+                )
+                .map_err(|e| MxrError::Search(e.to_string()))?
+                .into_iter()
+                .map(|(sort_score, doc_address)| (sort_score as f32, doc_address))
+                .collect::<Vec<_>>(),
+            SortOrder::DateAsc => searcher
+                .search(
+                    &*query,
+                    &TopDocs::with_limit(fetch_limit)
+                        .and_offset(offset)
+                        .order_by_fast_field::<i64>("sort_date_ts", Order::Asc),
+                )
+                .map_err(|e| MxrError::Search(e.to_string()))?
+                .into_iter()
+                .map(|(sort_score, doc_address)| (sort_score as f32, doc_address))
+                .collect::<Vec<_>>(),
+        };
 
-        let mut results = Vec::with_capacity(top_docs.len());
-        for (score, doc_address) in top_docs {
+        let has_more = top_docs.len() > limit;
+        let mut results = Vec::with_capacity(top_docs.len().min(limit));
+        for (score, doc_address) in top_docs.into_iter().take(limit) {
             let doc: TantivyDocument = searcher
                 .doc(doc_address)
                 .map_err(|e| MxrError::Search(e.to_string()))?;
@@ -334,6 +422,6 @@ impl SearchIndex {
             });
         }
 
-        Ok(results)
+        Ok(SearchPage { results, has_more })
     }
 }

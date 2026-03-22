@@ -10,8 +10,8 @@ use mxr_protocol::{
 use mxr_test_support::render_to_string;
 use mxr_tui::app::{
     AccountFormState, AccountsPageState, ActivePane, AttachmentPanelState, BodySource,
-    BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, MailListMode, MailListRow, MutationEffect,
-    PendingBulkConfirm, PendingSend, Screen, SearchPageState,
+    BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, MailListMode, MailListRow,
+    MutationEffect, PendingBulkConfirm, PendingSend, Screen, SearchPageState,
 };
 use mxr_tui::ui::attachment_modal::draw as draw_attachment_modal;
 use mxr_tui::ui::bulk_confirm_modal::draw as draw_bulk_confirm_modal;
@@ -252,6 +252,14 @@ fn search_page_snapshot() {
         editing: false,
         results: vec![sample_envelope()],
         scores: std::collections::HashMap::new(),
+        mode: mxr_core::SearchMode::Lexical,
+        sort: mxr_core::SortOrder::DateDesc,
+        has_more: false,
+        loading_more: false,
+        session_active: true,
+        load_to_end: false,
+        session_id: 1,
+        active_pane: mxr_tui::app::SearchPane::Results,
         selected_index: 0,
         scroll_offset: 0,
     };
@@ -276,6 +284,7 @@ fn search_page_snapshot() {
             Rect::new(0, 0, 90, 24),
             &state,
             &rows,
+            &std::collections::HashSet::new(),
             MailListMode::Threads,
             &preview,
             0,
@@ -459,8 +468,8 @@ fn diagnostics_page_snapshot() {
             daemon_running: true,
             daemon_pid: Some(4242),
             daemon_protocol_version: 1,
-            daemon_version: Some("0.4.6".into()),
-            daemon_build_id: Some("0.4.6:/tmp/mxr:123:456".into()),
+            daemon_version: Some("0.4.4".into()),
+            daemon_build_id: Some("0.4.4:/tmp/mxr:123:456".into()),
             index_lock_held: false,
             index_lock_error: None,
             restart_required: false,

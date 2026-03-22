@@ -241,6 +241,7 @@ impl App {
                     content_area,
                     &self.search_page,
                     &rows,
+                    &self.selected_set,
                     self.mail_list_mode,
                     &self.thread_message_blocks(),
                     self.message_scroll_offset,

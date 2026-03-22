@@ -70,6 +70,7 @@ pub enum Action {
     ReauthorizeAccountForm,
     SetDefaultAccount,
     GenerateBugReport,
+    EditConfig,
     OpenLogs,
     OpenDiagnosticsPaneDetails,
 

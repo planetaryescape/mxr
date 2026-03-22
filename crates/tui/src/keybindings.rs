@@ -148,6 +148,8 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "go_drafts" => Some(Action::GoToDrafts),
         "go_all_mail" => Some(Action::GoToAllMail),
         "go_label" => Some(Action::GoToLabel),
+        "edit_config" => Some(Action::EditConfig),
+        "open_logs" => Some(Action::OpenLogs),
         "open_tab_1" => Some(Action::OpenTab1),
         "open_tab_2" => Some(Action::OpenTab2),
         "open_tab_3" => Some(Action::OpenTab3),
@@ -251,6 +253,8 @@ fn action_display_name(action: &str) -> String {
         "toggle_fullscreen" => "Toggle Fullscreen".into(),
         "toggle_select" => "Toggle Select".into(),
         "go_inbox" => "Go Inbox".into(),
+        "edit_config" => "Edit Config".into(),
+        "open_logs" => "Open Logs".into(),
         "switch_panes" => "Switch Pane".into(),
         "next_message" => "Next Msg".into(),
         "prev_message" => "Prev Msg".into(),
@@ -388,6 +392,8 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("gd", "go_drafts"),
         ("ga", "go_all_mail"),
         ("gl", "go_label"),
+        ("gc", "edit_config"),
+        ("gL", "open_logs"),
     ];
     for (key, action) in ml_defaults {
         if let Ok(kb) = parse_key_string(key) {
@@ -419,6 +425,8 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("3", "open_tab_3"),
         ("4", "open_tab_4"),
         ("5", "open_tab_5"),
+        ("gc", "edit_config"),
+        ("gL", "open_logs"),
     ];
     for (key, action) in mv_defaults {
         if let Ok(kb) = parse_key_string(key) {
@@ -451,6 +459,8 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("3", "open_tab_3"),
         ("4", "open_tab_4"),
         ("5", "open_tab_5"),
+        ("gc", "edit_config"),
+        ("gL", "open_logs"),
     ];
     for (key, action) in tv_defaults {
         if let Ok(kb) = parse_key_string(key) {
@@ -549,6 +559,8 @@ mod tests {
         assert!(action_from_name("visual_line_mode").is_some());
         assert!(action_from_name("go_inbox").is_some());
         assert!(action_from_name("go_starred").is_some());
+        assert!(action_from_name("edit_config").is_some());
+        assert!(action_from_name("open_logs").is_some());
         assert!(action_from_name("nonexistent").is_none());
     }
 
@@ -577,6 +589,7 @@ mod tests {
         assert!(labels.contains(&"Toggle Fullscreen".to_string()));
         assert!(labels.contains(&"Visual Line Mode".to_string()));
         assert!(labels.contains(&"Go Inbox".to_string()));
+        assert!(labels.contains(&"Edit Config".to_string()));
     }
 
     #[test]

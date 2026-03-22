@@ -48,43 +48,13 @@ pub async fn run_daemon() -> anyhow::Result<()> {
     let listener = UnixListener::bind(&sock_path)?;
     tracing::info!("Daemon listening on {}", sock_path.display());
 
-    // Reindex search if empty but DB has messages
-    {
-        let search = state.search.lock().await;
-        let test_results = search.search("*", 1);
-        let index_empty = test_results.map(|r| r.is_empty()).unwrap_or(true);
-        drop(search);
-
-        if index_empty {
-            let accounts = state.store.list_accounts().await.unwrap_or_default();
-            for account in &accounts {
-                let envelopes = state
-                    .store
-                    .list_envelopes_by_account(&account.id, 10000, 0)
-                    .await
-                    .unwrap_or_default();
-                if !envelopes.is_empty() {
-                    tracing::info!(
-                        "Reindexing {} existing messages for {}",
-                        envelopes.len(),
-                        account.email
-                    );
-                    let mut search = state.search.lock().await;
-                    for env in &envelopes {
-                        let _ = search.index_envelope(env);
-                    }
-                    let _ = search.commit();
-                }
-            }
-        }
-    }
-
     // All syncing happens in the background sync loops — no blocking initial sync.
     // The daemon starts accepting clients immediately. The sync loops detect
     // Initial/GmailBackfill cursors and handles them with no startup delay.
 
     // Spawn background loops
     loops::spawn_sync_loops(state.clone());
+    spawn_startup_maintenance(state.clone());
 
     let snooze_state = state.clone();
     tokio::spawn(async move {
@@ -247,9 +217,16 @@ pub(crate) fn classify_health(
 }
 
 pub(crate) async fn search_requires_repair(state: &Arc<AppState>, total_messages: u32) -> bool {
-    let search = state.search.lock().await;
-    match search.search("*", 1) {
-        Ok(results) => total_messages > 0 && results.is_empty(),
+    if total_messages == 0 {
+        return false;
+    }
+
+    let Ok(search) = state.search.try_lock() else {
+        return false;
+    };
+
+    match search.search("*", 1, 0, mxr_core::types::SortOrder::DateDesc) {
+        Ok(results) => results.results.is_empty(),
         Err(_) => true,
     }
 }
@@ -440,6 +417,46 @@ async fn daemon_responds_to_status(sock_path: &std::path::Path, timeout: Duratio
         .is_ok()
 }
 
+fn spawn_startup_maintenance(state: Arc<AppState>) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    tokio::spawn(async move { run_startup_maintenance(state).await })
+}
+
+async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
+    let search = state.search.lock().await;
+    let test_results = search.search("*", 1, 0, mxr_core::types::SortOrder::DateDesc);
+    let index_empty = test_results.map(|r| r.results.is_empty()).unwrap_or(true);
+    drop(search);
+
+    if !index_empty {
+        return Ok(());
+    }
+
+    let accounts = state.store.list_accounts().await.unwrap_or_default();
+    for account in &accounts {
+        let envelopes = state
+            .store
+            .list_envelopes_by_account(&account.id, 10000, 0)
+            .await
+            .unwrap_or_default();
+        if envelopes.is_empty() {
+            continue;
+        }
+
+        tracing::info!(
+            "Reindexing {} existing messages for {}",
+            envelopes.len(),
+            account.email
+        );
+        let mut search = state.search.lock().await;
+        for env in &envelopes {
+            let _ = search.index_envelope(env);
+        }
+        let _ = search.commit();
+    }
+
+    Ok(())
+}
+
 async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyhow::Result<()> {
     if !prefix.is_empty() {
         eprint!("{prefix}");
@@ -482,14 +499,20 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
 mod tests {
     use super::{
         classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_status,
-        guard_ipc_response, is_index_lock_error,
+        guard_ipc_response, is_index_lock_error, spawn_startup_maintenance,
     };
+    use crate::{handler::handle_request, state::AppState};
+    use chrono::Utc;
     use futures::{SinkExt, StreamExt};
-    use mxr_core::AccountId;
+    use mxr_core::{
+        id::{AccountId, MessageId, ThreadId},
+        types::{Address, Envelope, MessageFlags, UnsubscribeMethod},
+    };
     use mxr_protocol::{
-        AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Response,
+        AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
         ResponseData, IPC_PROTOCOL_VERSION,
     };
+    use std::sync::Arc;
     use std::time::Duration;
     use tokio::net::UnixListener;
     use tokio_util::codec::Framed;
@@ -552,6 +575,80 @@ mod tests {
             classify_health(&degraded, false, false),
             DaemonHealthClass::Degraded
         );
+    }
+
+    #[tokio::test]
+    async fn startup_maintenance_reindexes_without_blocking_ping_requests() {
+        let state = Arc::new(AppState::in_memory().await.expect("state"));
+        let envelope = Envelope {
+            id: MessageId::new(),
+            account_id: state.default_account_id(),
+            provider_id: "provider-msg-1".into(),
+            thread_id: ThreadId::new(),
+            message_id_header: Some("<msg-1@example.com>".into()),
+            in_reply_to: None,
+            references: Vec::new(),
+            from: Address {
+                name: Some("Sender".into()),
+                email: "sender@example.com".into(),
+            },
+            to: vec![Address {
+                name: Some("User".into()),
+                email: "user@example.com".into(),
+            }],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: "startup reindex subject".into(),
+            date: Utc::now(),
+            flags: MessageFlags::empty(),
+            snippet: "startup reindex snippet".into(),
+            has_attachments: false,
+            size_bytes: 128,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: Vec::new(),
+        };
+
+        state
+            .store
+            .upsert_envelope(&envelope)
+            .await
+            .expect("insert envelope");
+        assert!(state
+            .search
+            .lock()
+            .await
+            .search("startup", 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .expect("empty search")
+            .results
+            .is_empty());
+
+        let maintenance = spawn_startup_maintenance(state.clone());
+        let ping = handle_request(
+            &state,
+            &IpcMessage {
+                id: 1,
+                payload: IpcPayload::Request(Request::Ping),
+            },
+        )
+        .await;
+
+        match ping.payload {
+            IpcPayload::Response(Response::Ok { .. }) => {}
+            other => panic!("expected ping response, got {other:?}"),
+        }
+
+        maintenance
+            .await
+            .expect("join maintenance task")
+            .expect("maintenance result");
+
+        let results = state
+            .search
+            .lock()
+            .await
+            .search("startup", 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .expect("search after reindex");
+        assert_eq!(results.results.len(), 1);
     }
 
     #[tokio::test]

@@ -6,12 +6,12 @@ use super::{
 use crate::state::AppState;
 use chrono::Datelike;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::{ExportFormat, SearchMode, SemanticProfile};
+use mxr_core::types::{ExportFormat, SearchMode, SemanticProfile, SortOrder};
 use mxr_protocol::IPC_PROTOCOL_VERSION;
 use mxr_protocol::{ResponseData, SearchExplain, SearchExplainResult, SearchResultItem};
 use mxr_search::{
     ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp},
-    parse_query, QueryBuilder, SearchResult,
+    parse_query, QueryBuilder, SearchPage, SearchResult,
 };
 use mxr_semantic::{should_use_semantic, SemanticHit};
 use std::collections::HashMap;
@@ -20,6 +20,7 @@ use std::sync::Arc;
 #[derive(Debug)]
 struct SearchExecution {
     results: Vec<SearchResult>,
+    has_more: bool,
     executed_mode: SearchMode,
     explain: Option<SearchExplain>,
 }
@@ -88,18 +89,30 @@ pub(super) async fn search(
     state: &Arc<AppState>,
     query: &str,
     limit: u32,
+    offset: u32,
     mode: SearchMode,
+    sort: SortOrder,
     explain: bool,
 ) -> HandlerResult {
-    let execution = execute_search(state, query, limit as usize, mode, explain).await?;
+    let execution = execute_search(
+        state,
+        query,
+        limit as usize,
+        offset as usize,
+        mode,
+        sort,
+        explain,
+    )
+    .await?;
     Ok(ResponseData::SearchResults {
         results: search_result_items(execution.results, execution.executed_mode),
+        has_more: execution.has_more,
         explain: execution.explain,
     })
 }
 
 pub(super) async fn count(state: &Arc<AppState>, query: &str, mode: SearchMode) -> HandlerResult {
-    let results = execute_search(state, query, 10_000, mode, false).await;
+    let results = execute_search(state, query, 10_000, 0, mode, SortOrder::DateDesc, false).await;
     Ok(ResponseData::Count {
         count: results.map_err(|e| e.to_string())?.results.len() as u32,
     })
@@ -307,12 +320,15 @@ pub(super) async fn run_saved_search(
         state,
         &saved.query,
         limit as usize,
+        0,
         saved.search_mode,
+        SortOrder::DateDesc,
         false,
     )
     .await?;
     Ok(ResponseData::SearchResults {
         results: search_result_items(execution.results, execution.executed_mode),
+        has_more: execution.has_more,
         explain: None,
     })
 }
@@ -408,32 +424,37 @@ async fn execute_search(
     state: &Arc<AppState>,
     query: &str,
     limit: usize,
+    offset: usize,
     mode: SearchMode,
+    sort: SortOrder,
     explain: bool,
 ) -> Result<SearchExecution, String> {
     match parse_query(query) {
-        Ok(ast) => execute_search_ast(state, query, &ast, limit, mode, explain).await,
+        Ok(ast) => execute_search_ast(state, query, &ast, limit, offset, mode, sort, explain).await,
         Err(error) => {
             let search = state.search.lock().await;
             if should_fallback_to_tantivy(query, &error) {
-                let results = search.search(query, limit).map_err(|e| e.to_string())?;
+                let page = search
+                    .search(query, limit, offset, sort)
+                    .map_err(|e| e.to_string())?;
                 let explain = explain.then(|| SearchExplain {
                     requested_mode: mode,
                     executed_mode: SearchMode::Lexical,
                     semantic_query: None,
                     lexical_window: limit as u32,
                     dense_window: None,
-                    lexical_candidates: results.len() as u32,
+                    lexical_candidates: page.results.len() as u32,
                     dense_candidates: 0,
-                    final_results: results.len() as u32,
+                    final_results: page.results.len() as u32,
                     rrf_k: None,
                     notes: vec![format!(
                         "structured parser rejected query ({error}); used Tantivy fallback"
                     )],
-                    results: build_explain_results(&results, &results, &[]),
+                    results: build_explain_results(&page.results, &page.results, &[]),
                 });
                 Ok(SearchExecution {
-                    results,
+                    results: page.results,
+                    has_more: page.has_more,
                     executed_mode: SearchMode::Lexical,
                     explain,
                 })
@@ -449,21 +470,45 @@ async fn execute_search_ast(
     _query: &str,
     ast: &QueryNode,
     limit: usize,
+    offset: usize,
     mode: SearchMode,
+    sort: SortOrder,
     explain: bool,
 ) -> Result<SearchExecution, String> {
+    let requested_window = limit.saturating_add(offset).saturating_add(1);
     let lexical_window = if mode == SearchMode::Lexical {
         limit
     } else {
-        (limit.saturating_mul(4)).max(100)
+        requested_window.saturating_mul(4).max(100)
     };
-    let lexical_results = lexical_search(state, ast, lexical_window).await?;
+    let lexical_page = lexical_search(
+        state,
+        ast,
+        if mode == SearchMode::Lexical {
+            limit
+        } else {
+            lexical_window
+        },
+        if mode == SearchMode::Lexical {
+            offset
+        } else {
+            0
+        },
+        if mode == SearchMode::Lexical {
+            sort.clone()
+        } else {
+            SortOrder::Relevance
+        },
+    )
+    .await?;
+    let lexical_results = lexical_page.results.clone();
+
     if mode == SearchMode::Lexical {
-        let results = truncate_results(lexical_results.clone(), limit);
         return Ok(build_execution(
             mode,
             SearchMode::Lexical,
-            results,
+            lexical_page.results,
+            lexical_page.has_more,
             ExecutionExplainInput {
                 include_explain: explain,
                 semantic_query: None,
@@ -478,11 +523,12 @@ async fn execute_search_ast(
     }
 
     if !should_use_semantic(mode) {
-        let results = truncate_results(lexical_results.clone(), limit);
+        let page = paginate_results(lexical_results.clone(), offset, limit);
         return Ok(build_execution(
             mode,
             SearchMode::Lexical,
-            results,
+            page.results,
+            page.has_more,
             ExecutionExplainInput {
                 include_explain: explain,
                 semantic_query: None,
@@ -502,11 +548,12 @@ async fn execute_search_ast(
         if !semantic_enabled {
             notes.push("semantic search disabled in config".to_string());
         }
-        let results = truncate_results(lexical_results.clone(), limit);
+        let page = paginate_results(lexical_results.clone(), offset, limit);
         return Ok(build_execution(
             mode,
             SearchMode::Lexical,
-            results,
+            page.results,
+            page.has_more,
             ExecutionExplainInput {
                 include_explain: explain,
                 semantic_query: None,
@@ -525,11 +572,12 @@ async fn execute_search_ast(
         if !semantic_enabled {
             notes.push("semantic search disabled in config".to_string());
         }
-        let results = truncate_results(lexical_results.clone(), limit);
+        let page = paginate_results(lexical_results.clone(), offset, limit);
         return Ok(build_execution(
             mode,
             SearchMode::Lexical,
-            results,
+            page.results,
+            page.has_more,
             ExecutionExplainInput {
                 include_explain: explain,
                 semantic_query: Some(semantic_query),
@@ -544,11 +592,12 @@ async fn execute_search_ast(
     }
 
     if !semantic_enabled {
-        let results = truncate_results(lexical_results.clone(), limit);
+        let page = paginate_results(lexical_results.clone(), offset, limit);
         return Ok(build_execution(
             mode,
             SearchMode::Lexical,
-            results,
+            page.results,
+            page.has_more,
             ExecutionExplainInput {
                 include_explain: explain,
                 semantic_query: Some(semantic_query),
@@ -562,7 +611,7 @@ async fn execute_search_ast(
         ));
     }
 
-    let dense_window = (limit.saturating_mul(8)).max(200);
+    let dense_window = requested_window.saturating_mul(8).max(200);
     let semantic_hits = {
         let mut semantic = state.semantic.lock().await;
         semantic
@@ -574,11 +623,12 @@ async fn execute_search_ast(
     let dense_results = filter_dense_hits(state, ast, semantic_hits).await?;
     if mode == SearchMode::Semantic {
         if dense_results.is_empty() {
-            let results = truncate_results(lexical_results.clone(), limit);
+            let page = paginate_results(lexical_results.clone(), offset, limit);
             return Ok(build_execution(
                 mode,
                 SearchMode::Lexical,
-                results,
+                page.results,
+                page.has_more,
                 ExecutionExplainInput {
                     include_explain: explain,
                     semantic_query: Some(semantic_query),
@@ -594,11 +644,13 @@ async fn execute_search_ast(
                 },
             ));
         }
-        let results = truncate_results(dense_results.clone(), limit);
+        let dense_results = sort_results(state, dense_results, sort).await?;
+        let page = paginate_results(dense_results.clone(), offset, limit);
         return Ok(build_execution(
             mode,
             SearchMode::Semantic,
-            results,
+            page.results,
+            page.has_more,
             ExecutionExplainInput {
                 include_explain: explain,
                 semantic_query: Some(semantic_query),
@@ -619,11 +671,14 @@ async fn execute_search_ast(
                 .to_string(),
         );
     }
-    let results = reciprocal_rank_fusion(&lexical_results, &dense_results, limit, 60);
+    let fused_results = reciprocal_rank_fusion(&lexical_results, &dense_results, 60);
+    let fused_results = sort_results(state, fused_results, sort).await?;
+    let page = paginate_results(fused_results.clone(), offset, limit);
     Ok(build_execution(
         mode,
         SearchMode::Hybrid,
-        results,
+        page.results,
+        page.has_more,
         ExecutionExplainInput {
             include_explain: explain,
             semantic_query: Some(semantic_query),
@@ -641,12 +696,14 @@ async fn lexical_search(
     state: &Arc<AppState>,
     ast: &QueryNode,
     limit: usize,
-) -> Result<Vec<SearchResult>, String> {
+    offset: usize,
+    sort: SortOrder,
+) -> Result<SearchPage, String> {
     let search = state.search.lock().await;
     let builder = QueryBuilder::new(search.schema());
     let tantivy_query = builder.build(ast);
     search
-        .search_ast(tantivy_query, limit)
+        .search_ast(tantivy_query, limit, offset, sort)
         .map_err(|e| e.to_string())
 }
 
@@ -695,6 +752,7 @@ fn build_execution(
     requested_mode: SearchMode,
     executed_mode: SearchMode,
     results: Vec<SearchResult>,
+    has_more: bool,
     explain_input: ExecutionExplainInput<'_>,
 ) -> SearchExecution {
     let explain = explain_input.include_explain.then(|| SearchExplain {
@@ -717,6 +775,7 @@ fn build_execution(
 
     SearchExecution {
         results,
+        has_more,
         executed_mode,
         explain,
     }
@@ -770,7 +829,6 @@ fn parse_message_id(value: &str) -> Option<MessageId> {
 fn reciprocal_rank_fusion(
     lexical: &[SearchResult],
     dense: &[SearchResult],
-    limit: usize,
     k: usize,
 ) -> Vec<SearchResult> {
     let mut fused = HashMap::<String, (f32, SearchResult)>::new();
@@ -799,14 +857,69 @@ fn reciprocal_rank_fusion(
         })
         .collect::<Vec<_>>();
     results.sort_by(|left, right| right.score.total_cmp(&left.score));
-    truncate_results(results, limit)
+    results
 }
 
-fn truncate_results(mut results: Vec<SearchResult>, limit: usize) -> Vec<SearchResult> {
-    if results.len() > limit {
-        results.truncate(limit);
+async fn sort_results(
+    state: &Arc<AppState>,
+    mut results: Vec<SearchResult>,
+    sort: SortOrder,
+) -> Result<Vec<SearchResult>, String> {
+    if matches!(sort, SortOrder::Relevance) || results.len() <= 1 {
+        return Ok(results);
     }
-    results
+
+    let message_ids = results
+        .iter()
+        .filter_map(|result| parse_message_id(&result.message_id))
+        .collect::<Vec<_>>();
+    let envelopes = state
+        .store
+        .list_envelopes_by_ids(&message_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    let by_id = envelopes
+        .into_iter()
+        .map(|envelope| (envelope.id.as_str(), envelope))
+        .collect::<HashMap<_, _>>();
+
+    results.sort_by(|left, right| {
+        let left_ts = by_id
+            .get(&left.message_id)
+            .map(|envelope| sane_search_sort_timestamp(envelope.date.timestamp()))
+            .unwrap_or_default();
+        let right_ts = by_id
+            .get(&right.message_id)
+            .map(|envelope| sane_search_sort_timestamp(envelope.date.timestamp()))
+            .unwrap_or_default();
+        match sort {
+            SortOrder::DateDesc => right_ts
+                .cmp(&left_ts)
+                .then_with(|| right.message_id.cmp(&left.message_id)),
+            SortOrder::DateAsc => left_ts
+                .cmp(&right_ts)
+                .then_with(|| left.message_id.cmp(&right.message_id)),
+            SortOrder::Relevance => right.score.total_cmp(&left.score),
+        }
+    });
+    Ok(results)
+}
+
+fn paginate_results(results: Vec<SearchResult>, offset: usize, limit: usize) -> SearchPage {
+    let total = results.len();
+    SearchPage {
+        has_more: total > offset.saturating_add(limit),
+        results: results.into_iter().skip(offset).take(limit).collect(),
+    }
+}
+
+fn sane_search_sort_timestamp(timestamp: i64) -> i64 {
+    let cutoff = (chrono::Utc::now() + chrono::Duration::days(1)).timestamp();
+    if timestamp > cutoff {
+        0
+    } else {
+        timestamp
+    }
 }
 
 fn semantic_query_text(ast: &QueryNode) -> Option<String> {

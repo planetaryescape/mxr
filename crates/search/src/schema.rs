@@ -16,6 +16,7 @@ pub struct MxrSchema {
     pub attachment_filenames: Field,
     pub labels: Field,
     pub date: Field,
+    pub sort_date_ts: Field,
     pub size_bytes: Field,
     pub flags: Field,
     pub has_attachments: Field,
@@ -47,7 +48,8 @@ impl MxrSchema {
         let attachment_filenames = builder.add_text_field("attachment_filenames", TEXT);
 
         let labels = builder.add_text_field("labels", STRING);
-        let date = builder.add_date_field("date", INDEXED | STORED);
+        let date = builder.add_date_field("date", INDEXED | STORED | FAST);
+        let sort_date_ts = builder.add_i64_field("sort_date_ts", FAST);
         let size_bytes = builder.add_u64_field("size_bytes", INDEXED | STORED);
         let flags = builder.add_u64_field("flags", INDEXED);
         let has_attachments = builder.add_bool_field("has_attachments", INDEXED);
@@ -77,6 +79,7 @@ impl MxrSchema {
             attachment_filenames,
             labels,
             date,
+            sort_date_ts,
             size_bytes,
             flags,
             has_attachments,

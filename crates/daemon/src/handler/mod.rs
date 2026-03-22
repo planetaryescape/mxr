@@ -139,14 +139,18 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::Search {
             query,
             limit,
+            offset,
             mode,
+            sort,
             explain,
         } => {
             diagnostics::search(
                 state,
                 query,
                 *limit,
+                *offset,
                 mode.unwrap_or(state.config_snapshot().search.default_mode),
+                sort.clone().unwrap_or(mxr_core::types::SortOrder::DateDesc),
                 *explain,
             )
             .await
@@ -2111,7 +2115,7 @@ async fn handle_export_search(
     format: &ExportFormat,
 ) -> Response {
     let search = state.search.lock().await;
-    let search_results = match search.search(query, 100) {
+    let search_results = match search.search(query, 100, 0, mxr_core::types::SortOrder::DateDesc) {
         Ok(results) => results,
         Err(e) => {
             return Response::Error {
@@ -2125,6 +2129,7 @@ async fn handle_export_search(
     let thread_ids: Vec<mxr_core::ThreadId> = {
         let mut seen = std::collections::HashSet::new();
         search_results
+            .results
             .iter()
             .filter_map(|r| {
                 let tid = mxr_core::ThreadId::from_uuid(uuid::Uuid::parse_str(&r.thread_id).ok()?);
@@ -2892,6 +2897,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_status_does_not_block_when_search_is_busy() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let _search_guard = state.search.lock().await;
+
+        let msg = IpcMessage {
+            id: 8,
+            payload: IpcPayload::Request(Request::GetStatus),
+        };
+
+        let resp = tokio::time::timeout(
+            std::time::Duration::from_millis(250),
+            handle_request(&state, &msg),
+        )
+        .await
+        .expect("status should not block on a busy search index");
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Status { .. },
+            }) => {}
+            other => panic!("Expected Status, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn dispatch_doctor_report() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
 
@@ -2950,7 +2980,9 @@ mod tests {
             payload: IpcPayload::Request(Request::Search {
                 query: "deployment".to_string(),
                 limit: 10,
+                offset: 0,
                 mode: None,
+                sort: None,
                 explain: false,
             }),
         };
@@ -2984,7 +3016,9 @@ mod tests {
             payload: IpcPayload::Request(Request::Search {
                 query: "deployment".to_string(),
                 limit: 5,
+                offset: 0,
                 mode: Some(mxr_core::SearchMode::Lexical),
+                sort: Some(mxr_core::types::SortOrder::DateDesc),
                 explain: true,
             }),
         };
@@ -2996,6 +3030,7 @@ mod tests {
                     ResponseData::SearchResults {
                         results,
                         explain: Some(explain),
+                        ..
                     },
             }) => {
                 assert!(!results.is_empty());
@@ -3026,7 +3061,9 @@ mod tests {
             payload: IpcPayload::Request(Request::Search {
                 query: "is:unread".to_string(),
                 limit: 10,
+                offset: 0,
                 mode: Some(mxr_core::SearchMode::Semantic),
+                sort: Some(mxr_core::types::SortOrder::DateDesc),
                 explain: false,
             }),
         };
@@ -3055,7 +3092,9 @@ mod tests {
             payload: IpcPayload::Request(Request::Search {
                 query: "is:unread".to_string(),
                 limit: 10,
+                offset: 0,
                 mode: Some(mxr_core::SearchMode::Semantic),
+                sort: Some(mxr_core::types::SortOrder::DateDesc),
                 explain: true,
             }),
         };
@@ -3090,7 +3129,9 @@ mod tests {
             payload: IpcPayload::Request(Request::Search {
                 query: "older:30q".to_string(),
                 limit: 10,
+                offset: 0,
                 mode: None,
+                sort: None,
                 explain: false,
             }),
         };
@@ -3403,6 +3444,46 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].message_id.as_deref(), Some(id_str.as_str()));
         assert!(events[0].summary.contains("Archived"));
+    }
+
+    #[tokio::test]
+    async fn dispatch_mutation_read_and_archive() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let id = sync_and_get_first_id(&state).await;
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Mutation(MutationCommand::ReadAndArchive {
+                message_ids: vec![id.clone()],
+            })),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("Expected Ack, got {:?}", other),
+        }
+
+        let envelope = state
+            .store
+            .get_envelope(&id)
+            .await
+            .unwrap()
+            .expect("message should still exist");
+        assert!(envelope.flags.contains(mxr_core::types::MessageFlags::READ));
+
+        let label_ids = state.store.get_message_label_ids(&id).await.unwrap();
+        assert!(!label_ids
+            .iter()
+            .any(|label_id| label_id.as_str() == "INBOX"));
+
+        let events = state
+            .store
+            .list_events(10, None, Some("mutation"))
+            .await
+            .unwrap();
+        assert!(events[0].summary.contains("read and archived"));
     }
 
     #[tokio::test]

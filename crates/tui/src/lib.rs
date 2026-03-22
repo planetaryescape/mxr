@@ -149,6 +149,33 @@ async fn ipc_call(
         .map_err(|_| MxrError::Ipc("IPC worker dropped".into()))?
 }
 
+fn edit_tui_config(app: &mut App) -> Result<String, MxrError> {
+    let config_path = mxr_config::config_file_path();
+    let current_config = load_config().map_err(|error| MxrError::Ipc(error.to_string()))?;
+
+    if !config_path.exists() {
+        mxr_config::save_config(&current_config)
+            .map_err(|error| MxrError::Ipc(error.to_string()))?;
+    }
+
+    let editor = mxr_compose::editor::resolve_editor(current_config.general.editor.as_deref());
+    let status = std::process::Command::new(&editor)
+        .arg(&config_path)
+        .status()
+        .map_err(|error| MxrError::Ipc(format!("failed to launch editor: {error}")))?;
+
+    if !status.success() {
+        return Ok("Config edit cancelled".into());
+    }
+
+    let reloaded = load_config().map_err(|error| MxrError::Ipc(error.to_string()))?;
+    app.apply_runtime_config(&reloaded);
+    app.accounts_page.refresh_pending = true;
+    app.pending_status_refresh = true;
+
+    Ok("Config reloaded. Restart daemon for account/provider changes.".into())
+}
+
 fn open_tui_log_file() -> Result<String, MxrError> {
     let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
     if !log_path.exists() {
@@ -245,6 +272,26 @@ pub async fn run() -> anyhow::Result<()> {
     let bg = spawn_ipc_worker(socket_path, result_tx.clone());
 
     loop {
+        if app.pending_config_edit {
+            app.pending_config_edit = false;
+            ratatui::restore();
+            let result = edit_tui_config(&mut app);
+            terminal = ratatui::init();
+            match result {
+                Ok(message) => {
+                    app.status_message = Some(message);
+                }
+                Err(error) => {
+                    app.error_modal = Some(app::ErrorModalState {
+                        title: "Config Reload Failed".into(),
+                        detail: format!(
+                            "Config could not be reloaded after editing.\n\n{error}\n\nFix the file and run Edit Config again."
+                        ),
+                    });
+                    app.status_message = Some(format!("Config reload failed: {error}"));
+                }
+            }
+        }
         if app.pending_log_open {
             app.pending_log_open = false;
             ratatui::restore();
@@ -346,23 +393,32 @@ pub async fn run() -> anyhow::Result<()> {
         let timeout = app.next_background_timeout(timeout);
 
         // Spawn non-blocking search
-        if let Some((query, mode)) = app.pending_search.take() {
+        if let Some(pending) = app.pending_search.take() {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
+                let query = pending.query.clone();
+                let target = pending.target;
+                let append = pending.append;
+                let session_id = pending.session_id;
                 let results = match ipc_call(
                     &bg,
                     Request::Search {
                         query,
-                        limit: 200,
-                        mode: Some(mode),
+                        limit: pending.limit,
+                        offset: pending.offset,
+                        mode: Some(pending.mode),
+                        sort: Some(pending.sort),
                         explain: false,
                     },
                 )
                 .await
                 {
                     Ok(Response::Ok {
-                        data: ResponseData::SearchResults { results, .. },
+                        data:
+                            ResponseData::SearchResults {
+                                results, has_more, ..
+                            },
                     }) => {
                         let mut scores = std::collections::HashMap::new();
                         let message_ids = results
@@ -376,12 +432,17 @@ pub async fn run() -> anyhow::Result<()> {
                             Ok(SearchResultData {
                                 envelopes: Vec::new(),
                                 scores,
+                                has_more,
                             })
                         } else {
                             match ipc_call(&bg, Request::ListEnvelopesByIds { message_ids }).await {
                                 Ok(Response::Ok {
                                     data: ResponseData::Envelopes { envelopes },
-                                }) => Ok(SearchResultData { envelopes, scores }),
+                                }) => Ok(SearchResultData {
+                                    envelopes,
+                                    scores,
+                                    has_more,
+                                }),
                                 Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
                                 Err(e) => Err(e),
                                 _ => Err(MxrError::Ipc("unexpected response".into())),
@@ -392,7 +453,12 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::Search(results));
+                let _ = tx.send(AsyncResult::Search {
+                    target,
+                    append,
+                    session_id,
+                    result: results,
+                });
             });
         }
 
@@ -952,25 +1018,85 @@ pub async fn run() -> anyhow::Result<()> {
             result = result_rx.recv() => {
                 if let Some(msg) = result {
                     match msg {
-                        AsyncResult::Search(Ok(results)) => {
-                            if app.screen == app::Screen::Search {
-                                app.search_page.results = results.envelopes;
-                                app.search_page.scores = results.scores;
-                                app.search_page.selected_index = 0;
-                                app.search_page.scroll_offset = 0;
-                                app.auto_preview_search();
-                            } else {
+                        AsyncResult::Search {
+                            target,
+                            append,
+                            session_id,
+                            result: Ok(results),
+                        } => match target {
+                            app::SearchTarget::SearchPage => {
+                                if session_id != app.search_page.session_id {
+                                    continue;
+                                }
+
+                                if append {
+                                    app.search_page.results.extend(results.envelopes);
+                                    app.search_page.scores.extend(results.scores);
+                                } else {
+                                    app.search_page.results = results.envelopes;
+                                    app.search_page.scores = results.scores;
+                                    app.search_page.selected_index = 0;
+                                    app.search_page.scroll_offset = 0;
+                                }
+
+                                app.search_page.has_more = results.has_more;
+                                app.search_page.loading_more = false;
+                                app.search_page.session_active =
+                                    !app.search_page.query.is_empty()
+                                        || !app.search_page.results.is_empty();
+
+                                if app.search_page.load_to_end {
+                                    if app.search_page.has_more {
+                                        app.load_more_search_results();
+                                    } else {
+                                        app.search_page.load_to_end = false;
+                                        if app.search_row_count() > 0 {
+                                            app.search_page.selected_index =
+                                                app.search_row_count() - 1;
+                                            app.ensure_search_visible();
+                                            app.auto_preview_search();
+                                        }
+                                    }
+                                } else {
+                                    app.search_page.selected_index = app
+                                        .search_page
+                                        .selected_index
+                                        .min(app.search_row_count().saturating_sub(1));
+                                    if app.screen == app::Screen::Search {
+                                        app.ensure_search_visible();
+                                        app.auto_preview_search();
+                                    }
+                                }
+                            }
+                            app::SearchTarget::Mailbox => {
+                                if session_id != app.mailbox_search_session_id {
+                                    continue;
+                                }
                                 app.envelopes = results.envelopes;
                                 app.selected_index = 0;
                                 app.scroll_offset = 0;
                             }
-                        }
-                        AsyncResult::Search(Err(error)) => {
-                            if app.screen == app::Screen::Search {
-                                app.search_page.results.clear();
-                                app.search_page.scores.clear();
-                            } else {
-                                app.envelopes = app.all_envelopes.clone();
+                        },
+                        AsyncResult::Search {
+                            target,
+                            append: _,
+                            session_id,
+                            result: Err(error),
+                        } => {
+                            match target {
+                                app::SearchTarget::SearchPage => {
+                                    if session_id != app.search_page.session_id {
+                                        continue;
+                                    }
+                                    app.search_page.loading_more = false;
+                                    app.search_page.load_to_end = false;
+                                }
+                                app::SearchTarget::Mailbox => {
+                                    if session_id != app.mailbox_search_session_id {
+                                        continue;
+                                    }
+                                    app.envelopes = app.all_envelopes.clone();
+                                }
                             }
                             app.status_message = Some(format!("Search failed: {error}"));
                         }
@@ -1241,47 +1367,14 @@ pub async fn run() -> anyhow::Result<()> {
                             let show_completion_status = app.pending_mutation_count == 0;
                             match effect {
                                 app::MutationEffect::RemoveFromList(id) => {
-                                    app.envelopes.retain(|e| e.id != id);
-                                    app.all_envelopes.retain(|e| e.id != id);
-                                    if app.selected_index >= app.envelopes.len()
-                                        && app.selected_index > 0
-                                    {
-                                        app.selected_index -= 1;
-                                    }
-                                    // Close message view if viewing the removed message
-                                    if app.viewing_envelope.as_ref().map(|e| &e.id)
-                                        == Some(&id)
-                                    {
-                                        app.viewing_envelope = None;
-                                        app.body_view_state = app::BodyViewState::Empty { preview: None };
-                                        app.layout_mode = app::LayoutMode::TwoPane;
-                                        app.active_pane = app::ActivePane::MailList;
-                                    }
+                                    app.apply_removed_message_ids(std::slice::from_ref(&id));
                                     if show_completion_status {
                                         app.status_message = Some("Done".into());
                                     }
                                     app.pending_subscriptions_refresh = true;
                                 }
                                 app::MutationEffect::RemoveFromListMany(ids) => {
-                                    app.envelopes.retain(|e| !ids.iter().any(|id| id == &e.id));
-                                    app.all_envelopes
-                                        .retain(|e| !ids.iter().any(|id| id == &e.id));
-                                    if let Some(viewing_id) =
-                                        app.viewing_envelope.as_ref().map(|e| e.id.clone())
-                                    {
-                                        if ids.iter().any(|id| id == &viewing_id) {
-                                            app.viewing_envelope = None;
-                                            app.body_view_state =
-                                                app::BodyViewState::Empty { preview: None };
-                                            app.layout_mode = app::LayoutMode::TwoPane;
-                                            app.active_pane = app::ActivePane::MailList;
-                                        }
-                                    }
-                                    if app.selected_index >= app.envelopes.len()
-                                        && app.selected_index > 0
-                                    {
-                                        app.selected_index = app.envelopes.len() - 1;
-                                    }
+                                    app.apply_removed_message_ids(&ids);
                                     if show_completion_status {
                                         app.status_message = Some("Done".into());
                                     }
@@ -1374,28 +1467,7 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::Unsubscribe(Ok(result)) => {
                             if !result.archived_ids.is_empty() {
-                                app.envelopes
-                                    .retain(|e| !result.archived_ids.iter().any(|id| id == &e.id));
-                                app.all_envelopes.retain(|e| {
-                                    !result.archived_ids.iter().any(|id| id == &e.id)
-                                });
-                                app.search_page.results.retain(|e| {
-                                    !result.archived_ids.iter().any(|id| id == &e.id)
-                                });
-                                if let Some(viewing_id) =
-                                    app.viewing_envelope.as_ref().map(|e| e.id.clone())
-                                {
-                                    if result.archived_ids.iter().any(|id| id == &viewing_id) {
-                                        app.viewing_envelope = None;
-                                        app.body_view_state =
-                                            app::BodyViewState::Empty { preview: None };
-                                        app.layout_mode = app::LayoutMode::TwoPane;
-                                        app.active_pane = app::ActivePane::MailList;
-                                    }
-                                }
-                                if app.selected_index >= app.envelopes.len() && app.selected_index > 0 {
-                                    app.selected_index = app.envelopes.len() - 1;
-                                }
+                                app.apply_removed_message_ids(&result.archived_ids);
                             }
                             app.status_message = Some(result.message);
                             app.pending_subscriptions_refresh = true;
@@ -1428,7 +1500,12 @@ pub async fn run() -> anyhow::Result<()> {
 }
 
 enum AsyncResult {
-    Search(Result<SearchResultData, MxrError>),
+    Search {
+        target: app::SearchTarget,
+        append: bool,
+        session_id: u64,
+        result: Result<SearchResultData, MxrError>,
+    },
     Rules(Result<Vec<serde_json::Value>, MxrError>),
     RuleDetail(Result<serde_json::Value, MxrError>),
     RuleHistory(Result<Vec<serde_json::Value>, MxrError>),
@@ -1473,6 +1550,7 @@ struct ComposeReadyData {
 struct SearchResultData {
     envelopes: Vec<mxr_core::types::Envelope>,
     scores: std::collections::HashMap<mxr_core::MessageId, f32>,
+    has_more: bool,
 }
 
 struct StatusSnapshot {
@@ -1884,7 +1962,8 @@ fn account_send_kind_label(send: &mxr_protocol::AccountSendConfigData) -> String
 mod tests {
     use super::action::Action;
     use super::app::{
-        ActivePane, App, BodySource, BodyViewState, LayoutMode, MutationEffect, Screen, SidebarItem,
+        ActivePane, App, BodySource, BodyViewState, LayoutMode, MutationEffect,
+        PendingSearchRequest, Screen, SearchPane, SearchTarget, SidebarItem, SEARCH_PAGE_SIZE,
     };
     use super::input::InputHandler;
     use super::ui::command_palette::default_commands;
@@ -2135,6 +2214,50 @@ mod tests {
     }
 
     #[test]
+    fn apply_runtime_config_updates_tui_settings() {
+        let mut app = App::new();
+        let mut config = mxr_config::MxrConfig::default();
+        config.render.reader_mode = false;
+        config.snooze.morning_hour = 7;
+        config.appearance.theme = "light".into();
+
+        app.apply_runtime_config(&config);
+
+        assert!(!app.reader_mode);
+        assert_eq!(app.snooze_config.morning_hour, 7);
+        assert_eq!(
+            app.theme.selection_fg,
+            crate::theme::Theme::light().selection_fg
+        );
+    }
+
+    #[test]
+    fn edit_config_action_sets_pending_flag() {
+        let mut app = App::new();
+
+        app.apply(Action::EditConfig);
+
+        assert!(app.pending_config_edit);
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Opening config in editor...")
+        );
+    }
+
+    #[test]
+    fn open_logs_action_sets_pending_flag() {
+        let mut app = App::new();
+
+        app.apply(Action::OpenLogs);
+
+        assert!(app.pending_log_open);
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Opening log file in editor...")
+        );
+    }
+
+    #[test]
     fn app_move_down_bounds() {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(3);
@@ -2178,6 +2301,20 @@ mod tests {
             .map(|&i| p.commands[i].label.as_str())
             .collect();
         assert!(labels.contains(&"Go to Inbox"));
+    }
+
+    #[test]
+    fn command_palette_shortcut_filter_finds_edit_config() {
+        let mut p = CommandPalette::default();
+        p.toggle();
+        p.on_char('g');
+        p.on_char('c');
+        let labels: Vec<&str> = p
+            .filtered
+            .iter()
+            .map(|&i| p.commands[i].label.as_str())
+            .collect();
+        assert!(labels.contains(&"Edit Config"));
     }
 
     #[test]
@@ -2879,8 +3016,7 @@ mod tests {
         // Apply the effect as if it succeeded
         match effect {
             MutationEffect::RemoveFromList(remove_id) => {
-                app.envelopes.retain(|e| e.id != remove_id);
-                app.all_envelopes.retain(|e| e.id != remove_id);
+                app.apply_removed_message_ids(&[remove_id]);
             }
             _ => panic!("Expected RemoveFromList"),
         }
@@ -3016,6 +3152,69 @@ mod tests {
             }
             _ => panic!("Expected RemoveFromList"),
         }
+    }
+
+    #[test]
+    fn archive_keeps_reader_open_and_selects_next_message() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(3);
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+        let removed_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+        let next_id = app.envelopes[1].id.clone();
+
+        app.apply_removed_message_ids(&[removed_id]);
+
+        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
+        assert_eq!(app.selected_index, 0);
+        assert_eq!(app.active_pane, ActivePane::MessageView);
+        assert_eq!(
+            app.viewing_envelope
+                .as_ref()
+                .map(|envelope| envelope.id.clone()),
+            Some(next_id)
+        );
+    }
+
+    #[test]
+    fn archive_keeps_mail_list_focus_when_reader_was_visible() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(3);
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+        app.active_pane = ActivePane::MailList;
+        let removed_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+        let next_id = app.envelopes[1].id.clone();
+
+        app.apply_removed_message_ids(&[removed_id]);
+
+        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
+        assert_eq!(app.active_pane, ActivePane::MailList);
+        assert_eq!(
+            app.viewing_envelope
+                .as_ref()
+                .map(|envelope| envelope.id.clone()),
+            Some(next_id)
+        );
+    }
+
+    #[test]
+    fn archive_last_visible_message_closes_reader() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+        let removed_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+
+        app.apply_removed_message_ids(&[removed_id]);
+
+        assert_eq!(app.layout_mode, LayoutMode::TwoPane);
+        assert_eq!(app.active_pane, ActivePane::MailList);
+        assert!(app.viewing_envelope.is_none());
+        assert!(app.envelopes.is_empty());
     }
 
     // --- Mail list title tests ---
@@ -3389,7 +3588,93 @@ mod tests {
         assert_eq!(app.search_page.results[0].subject, "crates.io release");
         assert_eq!(
             app.pending_search,
-            Some(("crate".into(), mxr_core::SearchMode::Lexical))
+            Some(PendingSearchRequest {
+                query: "crate".into(),
+                mode: mxr_core::SearchMode::Lexical,
+                sort: mxr_core::SortOrder::DateDesc,
+                limit: SEARCH_PAGE_SIZE,
+                offset: 0,
+                target: SearchTarget::SearchPage,
+                append: false,
+                session_id: app.search_page.session_id,
+            })
+        );
+    }
+
+    #[test]
+    fn open_search_screen_preserves_existing_search_session() {
+        let mut app = App::new();
+        let results = make_test_envelopes(2);
+        app.search_bar.query = "stale overlay".into();
+        app.search_page.query = "deploy".into();
+        app.search_page.results = results.clone();
+        app.search_page.session_active = true;
+        app.search_page.selected_index = 1;
+        app.search_page.active_pane = SearchPane::Preview;
+        app.viewing_envelope = Some(results[1].clone());
+
+        app.apply(Action::OpenRulesScreen);
+        app.apply(Action::OpenSearchScreen);
+
+        assert_eq!(app.screen, Screen::Search);
+        assert_eq!(app.search_page.query, "deploy");
+        assert_eq!(app.search_page.results.len(), 2);
+        assert_eq!(app.search_page.selected_index, 1);
+        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(results[1].id.clone())
+        );
+        assert!(app.pending_search.is_none());
+    }
+
+    #[test]
+    fn search_open_selected_keeps_search_screen_and_focuses_preview() {
+        let mut app = App::new();
+        let results = make_test_envelopes(2);
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = results.clone();
+        app.search_page.session_active = true;
+        app.search_page.selected_index = 1;
+
+        app.apply(Action::OpenSelected);
+
+        assert_eq!(app.screen, Screen::Search);
+        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(results[1].id.clone())
+        );
+    }
+
+    #[test]
+    fn search_jump_bottom_loads_remaining_pages() {
+        let mut app = App::new();
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = make_test_envelopes(3);
+        app.search_page.session_active = true;
+        app.search_page.has_more = true;
+        app.search_page.loading_more = false;
+        app.search_page.session_id = 9;
+
+        app.apply(Action::JumpBottom);
+
+        assert!(app.search_page.load_to_end);
+        assert!(app.search_page.loading_more);
+        assert_eq!(
+            app.pending_search,
+            Some(PendingSearchRequest {
+                query: "deploy".into(),
+                mode: mxr_core::SearchMode::Lexical,
+                sort: mxr_core::SortOrder::DateDesc,
+                limit: SEARCH_PAGE_SIZE,
+                offset: 3,
+                target: SearchTarget::SearchPage,
+                append: true,
+                session_id: 9,
+            })
         );
     }
 
@@ -3407,60 +3692,6 @@ mod tests {
         app.apply(Action::OpenDiagnosticsScreen);
         assert_eq!(app.screen, Screen::Diagnostics);
         assert!(app.diagnostics_page.refresh_pending);
-    }
-
-    #[test]
-    fn diagnostics_shift_l_opens_logs() {
-        let mut app = App::new();
-        app.screen = Screen::Diagnostics;
-
-        let action = app.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT));
-
-        assert_eq!(action, Some(Action::OpenLogs));
-    }
-
-    #[test]
-    fn diagnostics_tab_cycles_selected_pane() {
-        let mut app = App::new();
-        app.screen = Screen::Diagnostics;
-
-        let action = app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-
-        assert!(action.is_none());
-        assert_eq!(
-            app.diagnostics_page.selected_pane,
-            crate::app::DiagnosticsPaneKind::Data
-        );
-    }
-
-    #[test]
-    fn diagnostics_enter_toggles_fullscreen_for_selected_pane() {
-        let mut app = App::new();
-        app.screen = Screen::Diagnostics;
-        app.diagnostics_page.selected_pane = crate::app::DiagnosticsPaneKind::Logs;
-
-        assert!(app
-            .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
-            .is_none());
-        assert_eq!(
-            app.diagnostics_page.fullscreen_pane,
-            Some(crate::app::DiagnosticsPaneKind::Logs)
-        );
-        assert!(app
-            .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
-            .is_none());
-        assert_eq!(app.diagnostics_page.fullscreen_pane, None);
-    }
-
-    #[test]
-    fn diagnostics_d_opens_selected_pane_details() {
-        let mut app = App::new();
-        app.screen = Screen::Diagnostics;
-        app.diagnostics_page.selected_pane = crate::app::DiagnosticsPaneKind::Events;
-
-        let action = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
-
-        assert_eq!(action, Some(Action::OpenDiagnosticsPaneDetails));
     }
 
     #[test]
@@ -3675,7 +3906,7 @@ mod tests {
     }
 
     #[test]
-    fn opening_search_result_enters_mailbox_thread_view() {
+    fn opening_search_result_keeps_search_workspace_open() {
         let mut app = App::new();
         app.screen = Screen::Search;
         app.search_page.results = make_test_envelopes(2);
@@ -3683,9 +3914,8 @@ mod tests {
 
         app.apply(Action::OpenSelected);
 
-        assert_eq!(app.screen, Screen::Mailbox);
-        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
-        assert_eq!(app.active_pane, ActivePane::MessageView);
+        assert_eq!(app.screen, Screen::Search);
+        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
         assert_eq!(
             app.viewing_envelope.as_ref().map(|env| env.id.clone()),
             Some(app.search_page.results[1].id.clone())
@@ -3785,6 +4015,88 @@ mod tests {
     }
 
     #[test]
+    fn input_gc_opens_config_editor() {
+        let mut h = InputHandler::new();
+
+        assert_eq!(
+            h.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+            None
+        );
+        assert_eq!(
+            h.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
+            Some(Action::EditConfig)
+        );
+    }
+
+    #[test]
+    fn input_g_shift_l_opens_logs() {
+        let mut h = InputHandler::new();
+
+        assert_eq!(
+            h.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+            None
+        );
+        assert_eq!(
+            h.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT)),
+            Some(Action::OpenLogs)
+        );
+    }
+
+    #[test]
+    fn diagnostics_shift_l_opens_logs() {
+        let mut app = App::new();
+        app.screen = Screen::Diagnostics;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT));
+
+        assert_eq!(action, Some(Action::OpenLogs));
+    }
+
+    #[test]
+    fn diagnostics_tab_cycles_selected_pane() {
+        let mut app = App::new();
+        app.screen = Screen::Diagnostics;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+
+        assert!(action.is_none());
+        assert_eq!(
+            app.diagnostics_page.selected_pane,
+            crate::app::DiagnosticsPaneKind::Data
+        );
+    }
+
+    #[test]
+    fn diagnostics_enter_toggles_fullscreen_for_selected_pane() {
+        let mut app = App::new();
+        app.screen = Screen::Diagnostics;
+        app.diagnostics_page.selected_pane = crate::app::DiagnosticsPaneKind::Logs;
+
+        assert!(app
+            .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .is_none());
+        assert_eq!(
+            app.diagnostics_page.fullscreen_pane,
+            Some(crate::app::DiagnosticsPaneKind::Logs)
+        );
+        assert!(app
+            .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .is_none());
+        assert_eq!(app.diagnostics_page.fullscreen_pane, None);
+    }
+
+    #[test]
+    fn diagnostics_d_opens_selected_pane_details() {
+        let mut app = App::new();
+        app.screen = Screen::Diagnostics;
+        app.diagnostics_page.selected_pane = crate::app::DiagnosticsPaneKind::Events;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+
+        assert_eq!(action, Some(Action::OpenDiagnosticsPaneDetails));
+    }
+
+    #[test]
     fn back_clears_selection_before_other_mail_list_back_behavior() {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(2);
@@ -3841,6 +4153,7 @@ mod tests {
         assert!(labels.contains(&"Open Accounts Page".to_string()));
         assert!(labels.contains(&"New IMAP/SMTP Account".to_string()));
         assert!(labels.contains(&"Set Default Account".to_string()));
+        assert!(labels.contains(&"Edit Config".to_string()));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use crate::ipc_client::IpcClient;
 use chrono::{Datelike, Duration, NaiveTime, TimeZone, Utc, Weekday};
 use mxr_core::id::MessageId;
-use mxr_core::types::Envelope;
+use mxr_core::types::{Envelope, SortOrder};
 use mxr_protocol::*;
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
@@ -28,7 +28,9 @@ async fn resolve_message_ids(
                 .request(Request::Search {
                     query,
                     limit: 1000,
+                    offset: 0,
                     mode: None,
+                    sort: Some(SortOrder::DateDesc),
                     explain: false,
                 })
                 .await?;

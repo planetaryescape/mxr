@@ -28,9 +28,18 @@ impl App {
             Action::OpenSearchScreen => {
                 self.pending_preview_read = None;
                 self.screen = Screen::Search;
-                self.search_page.editing = true;
-                self.search_page.query = self.search_bar.query.clone();
-                self.trigger_live_search();
+                if self.search_page.has_session() {
+                    self.search_page.editing = false;
+                    self.auto_preview_search();
+                } else {
+                    self.search_page.editing = true;
+                    self.search_page.query = self.search_bar.query.clone();
+                    self.search_page.mode = self.search_bar.mode;
+                    self.search_page.sort = SortOrder::DateDesc;
+                    if !self.search_page.query.is_empty() {
+                        self.trigger_live_search();
+                    }
+                }
             }
             Action::OpenRulesScreen => {
                 self.pending_preview_read = None;
@@ -107,6 +116,7 @@ impl App {
                         self.ensure_search_visible();
                         self.auto_preview_search();
                     }
+                    self.maybe_load_more_search_results();
                     return;
                 }
                 if self.selected_index + 1 < self.mail_row_count() {
@@ -133,11 +143,28 @@ impl App {
                 self.auto_preview();
             }
             Action::JumpTop => {
+                if self.screen == Screen::Search {
+                    self.search_page.selected_index = 0;
+                    self.search_page.scroll_offset = 0;
+                    self.auto_preview_search();
+                    return;
+                }
                 self.selected_index = 0;
                 self.scroll_offset = 0;
                 self.auto_preview();
             }
             Action::JumpBottom => {
+                if self.screen == Screen::Search {
+                    if self.search_page.has_more {
+                        self.search_page.load_to_end = true;
+                        self.load_more_search_results();
+                    } else if self.search_row_count() > 0 {
+                        self.search_page.selected_index = self.search_row_count() - 1;
+                        self.ensure_search_visible();
+                        self.auto_preview_search();
+                    }
+                    return;
+                }
                 if self.mail_row_count() > 0 {
                     self.selected_index = self.mail_row_count() - 1;
                 }
@@ -145,6 +172,15 @@ impl App {
                 self.auto_preview();
             }
             Action::PageDown => {
+                if self.screen == Screen::Search {
+                    let page = self.visible_height.max(1);
+                    self.search_page.selected_index = (self.search_page.selected_index + page)
+                        .min(self.search_row_count().saturating_sub(1));
+                    self.ensure_search_visible();
+                    self.auto_preview_search();
+                    self.maybe_load_more_search_results();
+                    return;
+                }
                 let page = self.visible_height.max(1);
                 self.selected_index =
                     (self.selected_index + page).min(self.mail_row_count().saturating_sub(1));
@@ -152,6 +188,14 @@ impl App {
                 self.auto_preview();
             }
             Action::PageUp => {
+                if self.screen == Screen::Search {
+                    let page = self.visible_height.max(1);
+                    self.search_page.selected_index =
+                        self.search_page.selected_index.saturating_sub(page);
+                    self.ensure_search_visible();
+                    self.auto_preview_search();
+                    return;
+                }
                 let page = self.visible_height.max(1);
                 self.selected_index = self.selected_index.saturating_sub(page);
                 self.ensure_visible();
@@ -178,6 +222,13 @@ impl App {
                 self.scroll_offset = self.selected_index.saturating_sub(visible_height / 2);
             }
             Action::SwitchPane => {
+                if self.screen == Screen::Search {
+                    self.search_page.active_pane = match self.search_page.active_pane {
+                        SearchPane::Results => SearchPane::Preview,
+                        SearchPane::Preview => SearchPane::Results,
+                    };
+                    return;
+                }
                 self.active_pane = match (self.layout_mode, self.active_pane) {
                     // ThreePane: Sidebar → MailList → MessageView → Sidebar
                     (LayoutMode::ThreePane, ActivePane::Sidebar) => ActivePane::MailList,
@@ -201,9 +252,7 @@ impl App {
                 if self.screen == Screen::Search {
                     if let Some(env) = self.selected_search_envelope().cloned() {
                         self.open_envelope(env);
-                        self.screen = Screen::Mailbox;
-                        self.layout_mode = LayoutMode::ThreePane;
-                        self.active_pane = ActivePane::MessageView;
+                        self.search_page.active_pane = SearchPane::Preview;
                     }
                     return;
                 }
@@ -260,14 +309,12 @@ impl App {
                 if self.screen == Screen::Search {
                     self.search_page.editing = false;
                     self.search_bar.query = self.search_page.query.clone();
-                    self.pending_search =
-                        Some((self.search_page.query.clone(), self.search_bar.mode));
+                    self.trigger_live_search();
                 } else {
-                    let query = self.search_bar.query.clone();
                     self.search_bar.deactivate();
-                    if !query.is_empty() {
-                        self.pending_search = Some((query, self.search_bar.mode));
+                    if !self.search_bar.query.is_empty() {
                         self.search_active = true;
+                        self.trigger_live_search();
                     }
                     // Return focus to mail list so j/k navigates results
                     self.active_pane = ActivePane::MailList;
@@ -275,6 +322,9 @@ impl App {
             }
             Action::CycleSearchMode => {
                 self.search_bar.cycle_mode();
+                if self.screen == Screen::Search {
+                    self.search_page.mode = self.search_bar.mode;
+                }
                 if self.screen == Screen::Search || self.search_bar.active {
                     self.trigger_live_search();
                 }
@@ -282,6 +332,7 @@ impl App {
             Action::CloseSearch => {
                 self.search_bar.deactivate();
                 self.search_active = false;
+                Self::bump_search_session_id(&mut self.mailbox_search_session_id);
                 // Restore full envelope list
                 self.envelopes = self.all_mail_envelopes();
                 self.selected_index = 0;
@@ -389,6 +440,13 @@ impl App {
             }
             // Message view
             Action::OpenMessageView => {
+                if self.screen == Screen::Search {
+                    if let Some(env) = self.selected_search_envelope().cloned() {
+                        self.open_envelope(env);
+                        self.search_page.active_pane = SearchPane::Preview;
+                    }
+                    return;
+                }
                 if self.mailbox_view == MailboxView::Subscriptions {
                     if let Some(entry) = self.selected_subscription_entry().cloned() {
                         self.open_envelope(entry.envelope);
@@ -400,6 +458,10 @@ impl App {
                 }
             }
             Action::CloseMessageView => {
+                if self.screen == Screen::Search {
+                    self.search_page.active_pane = SearchPane::Results;
+                    return;
+                }
                 self.close_attachment_panel();
                 self.layout_mode = LayoutMode::TwoPane;
                 self.active_pane = ActivePane::MailList;
@@ -499,6 +561,10 @@ impl App {
                 self.diagnostics_page.status = Some("Generating bug report...".into());
                 self.pending_bug_report = true;
             }
+            Action::EditConfig => {
+                self.pending_config_edit = true;
+                self.status_message = Some("Opening config in editor...".into());
+            }
             Action::OpenLogs => {
                 self.pending_log_open = true;
                 self.status_message = Some("Opening log file in editor...".into());
@@ -520,13 +586,19 @@ impl App {
                 if self.screen == Screen::Search {
                     self.search_page.query = query.clone();
                     self.search_page.editing = false;
+                    self.search_page.mode = mode;
+                    self.search_page.sort = SortOrder::DateDesc;
+                    self.search_page.active_pane = SearchPane::Results;
+                    self.search_bar.query = query.clone();
+                    self.search_bar.mode = mode;
+                    self.trigger_live_search();
                 } else {
                     self.search_active = true;
                     self.active_pane = ActivePane::MailList;
+                    self.search_bar.query = query.clone();
+                    self.search_bar.mode = mode;
+                    self.trigger_live_search();
                 }
-                self.search_bar.query = query.clone();
-                self.search_bar.mode = mode;
-                self.pending_search = Some((query, mode));
             }
             Action::ClearFilter => {
                 self.mailbox_view = MailboxView::Messages;
@@ -944,7 +1016,7 @@ impl App {
 
             // Phase 2: Batch operations (A007)
             Action::ToggleSelect => {
-                if let Some(env) = self.selected_envelope() {
+                if let Some(env) = self.context_envelope() {
                     let id = env.id.clone();
                     if self.selected_set.contains(&id) {
                         self.selected_set.remove(&id);
@@ -952,7 +1024,14 @@ impl App {
                         self.selected_set.insert(id);
                     }
                     // Move to next after toggling
-                    if self.selected_index + 1 < self.mail_row_count() {
+                    if self.screen == Screen::Search {
+                        if self.search_page.selected_index + 1 < self.search_row_count() {
+                            self.search_page.selected_index += 1;
+                            self.ensure_search_visible();
+                            self.auto_preview_search();
+                            self.maybe_load_more_search_results();
+                        }
+                    } else if self.selected_index + 1 < self.mail_row_count() {
                         self.selected_index += 1;
                         self.ensure_visible();
                         self.auto_preview();
@@ -969,18 +1048,27 @@ impl App {
                     self.status_message = Some("Visual mode off".into());
                 } else {
                     self.visual_mode = true;
-                    self.visual_anchor = Some(self.selected_index);
+                    self.visual_anchor = Some(if self.screen == Screen::Search {
+                        self.search_page.selected_index
+                    } else {
+                        self.selected_index
+                    });
                     // Add current to selection
-                    if let Some(env) = self.selected_envelope() {
+                    if let Some(env) = self.context_envelope() {
                         self.selected_set.insert(env.id.clone());
                     }
                     self.status_message = Some("-- VISUAL LINE --".into());
                 }
             }
             Action::PatternSelect(pattern) => {
+                let envelopes = if self.screen == Screen::Search {
+                    &self.search_page.results
+                } else {
+                    &self.envelopes
+                };
                 match pattern {
                     PatternKind::All => {
-                        self.selected_set = self.envelopes.iter().map(|e| e.id.clone()).collect();
+                        self.selected_set = envelopes.iter().map(|e| e.id.clone()).collect();
                     }
                     PatternKind::None => {
                         self.selected_set.clear();
@@ -988,24 +1076,21 @@ impl App {
                         self.visual_anchor = None;
                     }
                     PatternKind::Read => {
-                        self.selected_set = self
-                            .envelopes
+                        self.selected_set = envelopes
                             .iter()
                             .filter(|e| e.flags.contains(MessageFlags::READ))
                             .map(|e| e.id.clone())
                             .collect();
                     }
                     PatternKind::Unread => {
-                        self.selected_set = self
-                            .envelopes
+                        self.selected_set = envelopes
                             .iter()
                             .filter(|e| !e.flags.contains(MessageFlags::READ))
                             .map(|e| e.id.clone())
                             .collect();
                     }
                     PatternKind::Starred => {
-                        self.selected_set = self
-                            .envelopes
+                        self.selected_set = envelopes
                             .iter()
                             .filter(|e| e.flags.contains(MessageFlags::STARRED))
                             .map(|e| e.id.clone())
@@ -1014,8 +1099,7 @@ impl App {
                     PatternKind::Thread => {
                         if let Some(env) = self.context_envelope() {
                             let tid = env.thread_id.clone();
-                            self.selected_set = self
-                                .envelopes
+                            self.selected_set = envelopes
                                 .iter()
                                 .filter(|e| e.thread_id == tid)
                                 .map(|e| e.id.clone())

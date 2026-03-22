@@ -113,7 +113,7 @@ pub fn hints_for_state(
             ("d".to_string(), "Details".to_string()),
             ("r".to_string(), "Refresh".to_string()),
             ("b".to_string(), "Bug Report".to_string()),
-            ("L".to_string(), "Logs".to_string()),
+            ("L/gL".to_string(), "Logs".to_string()),
             ("Esc".to_string(), "Mailbox".to_string()),
             ("?".to_string(), "Help".to_string()),
         ],

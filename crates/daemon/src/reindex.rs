@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(idx.num_docs(), total as u64);
 
         // Should be able to find messages
-        let results = idx.search("deployment", 10).unwrap_or_default();
+        let results = idx.search("deployment", 10, 0, mxr_core::types::SortOrder::DateDesc);
         // FakeProvider messages may or may not contain "deployment",
         // but search itself should not error
         drop(results);

@@ -188,6 +188,7 @@ fn action_name(action: &Action) -> Option<&'static str> {
         Action::RefreshDiagnostics => Some("refresh_diagnostics"),
         Action::RefreshAccounts => Some("refresh_accounts"),
         Action::GenerateBugReport => Some("generate_bug_report"),
+        Action::EditConfig => Some("edit_config"),
         Action::OpenLogs => Some("open_logs"),
         Action::OpenDiagnosticsPaneDetails => Some("open_diagnostics_pane_details"),
         Action::OpenRuleFormNew => Some("open_rule_form_new"),

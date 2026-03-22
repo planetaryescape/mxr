@@ -435,9 +435,9 @@ mod tests {
 
         let node = QueryNode::Text("deployment".to_string());
         let query = qb.build(&node);
-        let results = idx.search_ast(query, 10).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].message_id, envelopes[0].id.as_str());
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
     }
 
     #[test]
@@ -451,9 +451,9 @@ mod tests {
             value: "alice@example.com".to_string(),
         };
         let query = qb.build(&node);
-        let results = idx.search_ast(query, 10).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].message_id, envelopes[0].id.as_str());
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
     }
 
     #[test]
@@ -465,9 +465,9 @@ mod tests {
         // Search for unread messages
         let node = QueryNode::Filter(FilterKind::Unread);
         let query = qb.build(&node);
-        let results = idx.search_ast(query, 10).unwrap();
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
         // Only the first envelope is unread (flags empty)
-        assert_eq!(results.len(), 1);
+        assert_eq!(results.results.len(), 1);
     }
 
     #[test]
@@ -483,8 +483,8 @@ mod tests {
             date: DateValue::Specific(yesterday),
         };
         let query = qb.build(&node);
-        let results = idx.search_ast(query, 10).unwrap();
-        assert_eq!(results.len(), 4);
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 4);
     }
 
     #[test]
@@ -502,9 +502,9 @@ mod tests {
             Box::new(QueryNode::Filter(FilterKind::Starred)),
         );
         let query = qb.build(&node);
-        let results = idx.search_ast(query, 10).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].message_id, envelopes[1].id.as_str());
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].message_id, envelopes[1].id.as_str());
     }
 
     #[test]
@@ -515,9 +515,9 @@ mod tests {
 
         let ast = parse_query("from:alice@example.com").unwrap();
         let query = qb.build(&ast);
-        let results = idx.search_ast(query, 10).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].message_id, envelopes[0].id.as_str());
+        let results = idx.search_ast(query, 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].message_id, envelopes[0].id.as_str());
     }
 
     #[test]
@@ -528,14 +528,24 @@ mod tests {
 
         let crates_ast = parse_query("crates.io").unwrap();
         let crates_query = qb.build(&crates_ast);
-        let crates_results = idx.search_ast(crates_query, 10).unwrap();
-        assert_eq!(crates_results.len(), 1);
-        assert_eq!(crates_results[0].message_id, envelopes[3].id.as_str());
+        let crates_results = idx
+            .search_ast(crates_query, 10, 0, SortOrder::Relevance)
+            .unwrap();
+        assert_eq!(crates_results.results.len(), 1);
+        assert_eq!(
+            crates_results.results[0].message_id,
+            envelopes[3].id.as_str()
+        );
 
         let version_ast = parse_query("mxr@0.4.6").unwrap();
         let version_query = qb.build(&version_ast);
-        let version_results = idx.search_ast(version_query, 10).unwrap();
-        assert_eq!(version_results.len(), 1);
-        assert_eq!(version_results[0].message_id, envelopes[3].id.as_str());
+        let version_results = idx
+            .search_ast(version_query, 10, 0, SortOrder::Relevance)
+            .unwrap();
+        assert_eq!(version_results.results.len(), 1);
+        assert_eq!(
+            version_results.results[0].message_id,
+            envelopes[3].id.as_str()
+        );
     }
 }

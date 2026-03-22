@@ -267,6 +267,18 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Navigation".into(),
         },
         PaletteCommand {
+            label: "Edit Config".into(),
+            shortcut: "gc".into(),
+            action: Action::EditConfig,
+            category: "System".into(),
+        },
+        PaletteCommand {
+            label: "Open Logs".into(),
+            shortcut: "gL".into(),
+            action: Action::OpenLogs,
+            category: "System".into(),
+        },
+        PaletteCommand {
             label: "Search".into(),
             shortcut: "/".into(),
             action: Action::OpenSearch,
@@ -366,12 +378,6 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             label: "Open Diagnostics Details".into(),
             shortcut: "d".into(),
             action: Action::OpenDiagnosticsPaneDetails,
-            category: "Diagnostics".into(),
-        },
-        PaletteCommand {
-            label: "Open Logs".into(),
-            shortcut: "L".into(),
-            action: Action::OpenLogs,
             category: "Diagnostics".into(),
         },
         PaletteCommand {

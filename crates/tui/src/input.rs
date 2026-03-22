@@ -109,6 +109,22 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::GoToLabel)
             }
+            (
+                KeyState::WaitingForSecond { first: 'g', .. },
+                KeyCode::Char('c'),
+                KeyModifiers::NONE,
+            ) => {
+                self.state = KeyState::Normal;
+                Some(Action::EditConfig)
+            }
+            (
+                KeyState::WaitingForSecond { first: 'g', .. },
+                KeyCode::Char('L'),
+                KeyModifiers::SHIFT,
+            ) => {
+                self.state = KeyState::Normal;
+                Some(Action::OpenLogs)
+            }
 
             // Multi-key: zz
             (KeyState::Normal, KeyCode::Char('z'), KeyModifiers::NONE) => {

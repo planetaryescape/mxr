@@ -6,7 +6,7 @@ mod saved;
 mod schema;
 
 pub use ast::*;
-pub use index::{SearchIndex, SearchResult};
+pub use index::{SearchIndex, SearchPage, SearchResult};
 pub use parser::{parse_query, ParseError};
 pub use query_builder::QueryBuilder;
 pub use saved::SavedSearchService;
@@ -97,9 +97,11 @@ mod tests {
         }
         idx.commit().unwrap();
 
-        let results = idx.search("deployment", 10).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].message_id, target_id);
+        let results = idx
+            .search("deployment", 10, 0, SortOrder::Relevance)
+            .unwrap();
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].message_id, target_id);
     }
 
     #[test]
@@ -115,10 +117,12 @@ mod tests {
         idx.index_envelope(&env_snippet).unwrap();
         idx.commit().unwrap();
 
-        let results = idx.search("deployment", 10).unwrap();
-        assert_eq!(results.len(), 2);
+        let results = idx
+            .search("deployment", 10, 0, SortOrder::Relevance)
+            .unwrap();
+        assert_eq!(results.results.len(), 2);
         // Subject match should rank higher due to 3.0 boost vs 1.0 snippet
-        assert_eq!(results[0].message_id, subject_id);
+        assert_eq!(results.results[0].message_id, subject_id);
     }
 
     #[test]
@@ -132,8 +136,8 @@ mod tests {
         idx.commit().unwrap();
 
         // Search for body-only keyword should find nothing yet
-        let results = idx.search("canary", 10).unwrap();
-        assert_eq!(results.len(), 0);
+        let results = idx.search("canary", 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 0);
 
         // Now index with body
         let body = MessageBody {
@@ -147,9 +151,9 @@ mod tests {
         idx.index_body(&env, &body).unwrap();
         idx.commit().unwrap();
 
-        let results = idx.search("canary", 10).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].message_id, env_id);
+        let results = idx.search("canary", 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 1);
+        assert_eq!(results.results[0].message_id, env_id);
     }
 
     #[test]
@@ -160,21 +164,74 @@ mod tests {
         idx.index_envelope(&env).unwrap();
         idx.commit().unwrap();
 
-        let results = idx.search("remove", 10).unwrap();
-        assert_eq!(results.len(), 1);
+        let results = idx.search("remove", 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 1);
 
         idx.remove_document(&env.id);
         idx.commit().unwrap();
 
-        let results = idx.search("remove", 10).unwrap();
-        assert_eq!(results.len(), 0);
+        let results = idx.search("remove", 10, 0, SortOrder::Relevance).unwrap();
+        assert_eq!(results.results.len(), 0);
     }
 
     #[test]
     fn empty_search() {
         let idx = SearchIndex::in_memory().unwrap();
-        let results = idx.search("nonexistent", 10).unwrap();
-        assert!(results.is_empty());
+        let results = idx
+            .search("nonexistent", 10, 0, SortOrder::Relevance)
+            .unwrap();
+        assert!(results.results.is_empty());
+    }
+
+    #[test]
+    fn date_desc_search_returns_newest_first_and_sinks_future_dates() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+
+        let mut newest = make_envelope("crates.io newest", "release", "Alice");
+        newest.date = chrono::Utc::now();
+        let mut older = make_envelope("crates.io older", "release", "Bob");
+        older.date = chrono::Utc::now() - chrono::Duration::days(2);
+        let mut poisoned_future = make_envelope("crates.io future", "release", "Mallory");
+        poisoned_future.date = chrono::Utc::now() + chrono::Duration::days(400);
+
+        idx.index_envelope(&older).unwrap();
+        idx.index_envelope(&poisoned_future).unwrap();
+        idx.index_envelope(&newest).unwrap();
+        idx.commit().unwrap();
+
+        let results = idx.search("crates.io", 10, 0, SortOrder::DateDesc).unwrap();
+        let ids = results
+            .results
+            .iter()
+            .map(|result| result.message_id.as_str().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(ids[0], newest.id.as_str());
+        assert_eq!(ids[1], older.id.as_str());
+        assert_eq!(ids[2], poisoned_future.id.as_str());
+    }
+
+    #[test]
+    fn search_paginates_with_offset_and_has_more() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        for i in 0..5 {
+            let mut env = make_envelope(&format!("deployment {i}"), "rollout", "Alice");
+            env.date = chrono::Utc::now() - chrono::Duration::minutes(i);
+            idx.index_envelope(&env).unwrap();
+        }
+        idx.commit().unwrap();
+
+        let first_page = idx.search("deployment", 2, 0, SortOrder::DateDesc).unwrap();
+        let second_page = idx.search("deployment", 2, 2, SortOrder::DateDesc).unwrap();
+
+        assert_eq!(first_page.results.len(), 2);
+        assert!(first_page.has_more);
+        assert_eq!(second_page.results.len(), 2);
+        assert!(second_page.has_more);
+        assert_ne!(
+            first_page.results[0].message_id,
+            second_page.results[0].message_id
+        );
     }
 
     // -- E2E: parse → build → search integration tests --
@@ -227,8 +284,9 @@ mod tests {
         let schema = MxrSchema::build();
         let qb = QueryBuilder::new(&schema);
         let query = qb.build(&ast);
-        idx.search_ast(query, 10)
+        idx.search_ast(query, 10, 0, SortOrder::Relevance)
             .unwrap()
+            .results
             .into_iter()
             .map(|r| r.message_id)
             .collect()

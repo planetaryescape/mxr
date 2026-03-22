@@ -1,7 +1,7 @@
-use crate::cli::{OutputFormat, SearchModeArg};
+use crate::cli::{OutputFormat, SearchModeArg, SearchSortArg};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
-use mxr_core::types::{Envelope, MessageFlags};
+use mxr_core::types::{Envelope, MessageFlags, SortOrder};
 use mxr_protocol::{Request, Response, ResponseData, SearchExplain};
 
 pub async fn run(
@@ -9,6 +9,7 @@ pub async fn run(
     format: Option<OutputFormat>,
     limit: Option<u32>,
     mode: Option<SearchModeArg>,
+    sort: Option<SearchSortArg>,
     explain: bool,
 ) -> anyhow::Result<()> {
     let query = query.unwrap_or_default();
@@ -21,7 +22,9 @@ pub async fn run(
         .request(Request::Search {
             query,
             limit,
+            offset: 0,
             mode: mode.map(Into::into),
+            sort: Some(sort.map(Into::into).unwrap_or(SortOrder::DateDesc)),
             explain,
         })
         .await?;
@@ -32,6 +35,7 @@ pub async fn run(
             data:
                 ResponseData::SearchResults {
                     results,
+                    has_more: _,
                     explain: explain_payload,
                 },
         } => {

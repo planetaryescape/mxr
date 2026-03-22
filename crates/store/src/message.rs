@@ -265,19 +265,19 @@ impl super::Store {
         let placeholders: Vec<String> = message_ids.iter().map(|_| "?".to_string()).collect();
         let sql = format!(
             r#"SELECT
-                m.id as "id!", m.account_id as "account_id!", m.provider_id as "provider_id!",
-                m.thread_id as "thread_id!", m.message_id_header, m.in_reply_to,
-                m.reference_headers, m.from_name, m.from_email as "from_email!",
-                m.to_addrs as "to_addrs!", m.cc_addrs as "cc_addrs!", m.bcc_addrs as "bcc_addrs!",
-                m.subject as "subject!", m.date as "date!", m.flags as "flags!",
-                m.snippet as "snippet!", m.has_attachments as "has_attachments!: bool",
-                m.size_bytes as "size_bytes!", m.unsubscribe_method,
+                m.id as id, m.account_id as account_id, m.provider_id as provider_id,
+                m.thread_id as thread_id, m.message_id_header, m.in_reply_to,
+                m.reference_headers, m.from_name, m.from_email as from_email,
+                m.to_addrs as to_addrs, m.cc_addrs as cc_addrs, m.bcc_addrs as bcc_addrs,
+                m.subject as subject, m.date as date, m.flags as flags,
+                m.snippet as snippet, m.has_attachments as has_attachments,
+                m.size_bytes as size_bytes, m.unsubscribe_method,
                 COALESCE((
                     SELECT GROUP_CONCAT(labels.provider_id, char(31))
                     FROM message_labels
                     JOIN labels ON labels.id = message_labels.label_id
                     WHERE message_labels.message_id = m.id
-                ), '') as "label_provider_ids!: String"
+                ), '') as label_provider_ids
              FROM messages m
              WHERE m.id IN ({})"#,
             placeholders.join(", ")

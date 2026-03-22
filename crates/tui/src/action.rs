@@ -77,6 +77,7 @@ pub enum Action {
     ReplyAll,
     Forward,
     Archive,
+    MarkReadAndArchive,
     Trash,
     Spam,
     Star,

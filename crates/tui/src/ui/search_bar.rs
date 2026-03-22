@@ -2,6 +2,8 @@ use mxr_core::SearchMode;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+use crate::ui::search_query::highlight_search_query;
+
 pub struct SearchBar {
     pub active: bool,
     pub query: String,
@@ -93,17 +95,16 @@ pub fn draw(frame: &mut Frame, area: Rect, search_bar: &SearchBar, theme: &crate
         .split(inner);
 
     let query = if search_bar.query.is_empty() {
-        Span::styled(
+        Line::from(Span::styled(
             "> Type to search mail",
             Style::default().fg(theme.text_muted),
-        )
+        ))
     } else {
-        Span::styled(
-            format!("> {}", search_bar.query),
-            Style::default().fg(theme.text_primary),
-        )
+        let mut spans = vec![Span::styled("> ", Style::default().fg(theme.text_muted))];
+        spans.extend(highlight_search_query(&search_bar.query, theme).spans);
+        Line::from(spans)
     };
-    frame.render_widget(Paragraph::new(Line::from(query)), sections[0]);
+    frame.render_widget(Paragraph::new(query), sections[0]);
     frame.render_widget(
         Paragraph::new("Enter submit  Tab mode  Esc cancel")
             .style(Style::default().fg(theme.text_muted)),

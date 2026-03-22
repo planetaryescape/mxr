@@ -129,6 +129,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Mail".into(),
         },
         PaletteCommand {
+            label: "Mark Read and Archive".into(),
+            shortcut: "".into(),
+            action: Action::MarkReadAndArchive,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
             label: "Delete".into(),
             shortcut: "#".into(),
             action: Action::Trash,

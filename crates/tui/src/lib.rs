@@ -1,6 +1,7 @@
 pub mod action;
 pub mod app;
 pub mod client;
+pub mod desktop_manifest;
 pub mod input;
 pub mod keybindings;
 pub mod theme;
@@ -158,7 +159,6 @@ pub async fn run() -> anyhow::Result<()> {
         app.accounts_page.refresh_pending = true;
     } else {
         app.load(&mut client).await?;
-        app.apply(action::Action::GoToInbox);
     }
 
     let mut terminal = ratatui::init();
@@ -229,6 +229,7 @@ pub async fn run() -> anyhow::Result<()> {
         } else {
             std::time::Duration::from_secs(60)
         };
+        let timeout = app.next_background_timeout(timeout);
 
         // Spawn non-blocking search
         if let Some((query, mode)) = app.pending_search.take() {
@@ -1121,6 +1122,8 @@ pub async fn run() -> anyhow::Result<()> {
                             app.resolve_thread_fetch_error(&thread_id);
                         }
                         AsyncResult::MutationResult(Ok(effect)) => {
+                            app.finish_pending_mutation();
+                            let show_completion_status = app.pending_mutation_count == 0;
                             match effect {
                                 app::MutationEffect::RemoveFromList(id) => {
                                     app.envelopes.retain(|e| e.id != id);
@@ -1139,7 +1142,9 @@ pub async fn run() -> anyhow::Result<()> {
                                         app.layout_mode = app::LayoutMode::TwoPane;
                                         app.active_pane = app::ActivePane::MailList;
                                     }
-                                    app.status_message = Some("Done".into());
+                                    if show_completion_status {
+                                        app.status_message = Some("Done".into());
+                                    }
                                     app.pending_subscriptions_refresh = true;
                                 }
                                 app::MutationEffect::RemoveFromListMany(ids) => {
@@ -1162,19 +1167,31 @@ pub async fn run() -> anyhow::Result<()> {
                                     {
                                         app.selected_index = app.envelopes.len() - 1;
                                     }
-                                    app.status_message = Some("Done".into());
+                                    if show_completion_status {
+                                        app.status_message = Some("Done".into());
+                                    }
                                     app.pending_subscriptions_refresh = true;
                                 }
                                 app::MutationEffect::UpdateFlags { message_id, flags } => {
                                     app.apply_local_flags(&message_id, flags);
-                                    app.status_message = Some("Done".into());
+                                    if show_completion_status {
+                                        app.status_message = Some("Done".into());
+                                    }
+                                }
+                                app::MutationEffect::UpdateFlagsMany { updates } => {
+                                    app.apply_local_flags_many(&updates);
+                                    if show_completion_status {
+                                        app.status_message = Some("Done".into());
+                                    }
                                 }
                                 app::MutationEffect::RefreshList => {
                                     if let Some(label_id) = app.active_label.clone() {
                                         app.pending_label_fetch = Some(label_id);
                                     }
                                     app.pending_subscriptions_refresh = true;
-                                    app.status_message = Some("Synced".into());
+                                    if show_completion_status {
+                                        app.status_message = Some("Synced".into());
+                                    }
                                 }
                                 app::MutationEffect::ModifyLabels {
                                     message_ids,
@@ -1183,15 +1200,21 @@ pub async fn run() -> anyhow::Result<()> {
                                     status,
                                 } => {
                                     app.apply_local_label_refs(&message_ids, &add, &remove);
-                                    app.status_message = Some(status);
+                                    if show_completion_status {
+                                        app.status_message = Some(status);
+                                    }
                                 }
                                 app::MutationEffect::StatusOnly(msg) => {
-                                    app.status_message = Some(msg);
+                                    if show_completion_status {
+                                        app.status_message = Some(msg);
+                                    }
                                 }
                             }
                         }
                         AsyncResult::MutationResult(Err(e)) => {
-                            app.status_message = Some(format!("Error: {e}"));
+                            app.finish_pending_mutation();
+                            app.refresh_mailbox_after_mutation_failure();
+                            app.show_mutation_failure(&e);
                         }
                         AsyncResult::ComposeReady(Ok(data)) => {
                             // Restore terminal, spawn editor, then re-init terminal
@@ -1746,7 +1769,7 @@ fn account_send_kind_label(send: &mxr_protocol::AccountSendConfigData) -> String
 mod tests {
     use super::action::Action;
     use super::app::{
-        ActivePane, App, BodySource, BodyViewState, LayoutMode, MutationEffect, Screen,
+        ActivePane, App, BodySource, BodyViewState, LayoutMode, MutationEffect, Screen, SidebarItem,
     };
     use super::input::InputHandler;
     use super::ui::command_palette::default_commands;
@@ -1761,6 +1784,7 @@ mod tests {
     use mxr_config::RenderConfig;
     use mxr_core::id::*;
     use mxr_core::types::*;
+    use mxr_core::MxrError;
     use mxr_protocol::{DaemonEvent, MutationCommand, Request};
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
@@ -2481,6 +2505,24 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_items_put_inbox_before_all_mail() {
+        let mut app = App::new();
+        app.labels = make_test_labels();
+
+        let items = app.sidebar_items();
+        let all_mail_index = items
+            .iter()
+            .position(|item| matches!(item, SidebarItem::AllMail))
+            .unwrap();
+
+        assert!(matches!(
+            items.first(),
+            Some(SidebarItem::Label(label)) if label.name == "INBOX"
+        ));
+        assert!(all_mail_index > 0);
+    }
+
+    #[test]
     fn sidebar_hidden_labels_not_shown() {
         let mut app = App::new();
         app.labels = make_test_labels();
@@ -2739,20 +2781,104 @@ mod tests {
         assert!(!app.envelopes[0].flags.contains(MessageFlags::STARRED));
         app.apply(Action::Star);
         assert!(!app.pending_mutation_queue.is_empty());
-        let (_, effect) = app.pending_mutation_queue.remove(0);
-        match effect {
-            MutationEffect::UpdateFlags { message_id, flags } => {
-                assert!(flags.contains(MessageFlags::STARRED));
-                // Apply effect
-                for e in app.envelopes.iter_mut() {
-                    if e.id == message_id {
-                        e.flags = flags;
-                    }
-                }
-            }
-            _ => panic!("Expected UpdateFlags"),
-        }
+        assert_eq!(app.pending_mutation_count, 1);
         assert!(app.envelopes[0].flags.contains(MessageFlags::STARRED));
+    }
+
+    #[test]
+    fn bulk_mark_read_applies_flags_when_confirmed() {
+        let mut app = App::new();
+        let mut envelopes = make_test_envelopes(3);
+        for envelope in &mut envelopes {
+            envelope.flags.remove(MessageFlags::READ);
+        }
+        app.envelopes = envelopes.clone();
+        app.all_envelopes = envelopes.clone();
+        app.selected_set = envelopes
+            .iter()
+            .map(|envelope| envelope.id.clone())
+            .collect();
+
+        app.apply(Action::MarkRead);
+        assert!(app.pending_mutation_queue.is_empty());
+        assert!(app.pending_bulk_confirm.is_some());
+        assert!(app
+            .envelopes
+            .iter()
+            .all(|envelope| !envelope.flags.contains(MessageFlags::READ)));
+
+        app.apply(Action::OpenSelected);
+
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        assert_eq!(app.pending_mutation_count, 1);
+        assert!(app.pending_bulk_confirm.is_none());
+        assert!(app
+            .envelopes
+            .iter()
+            .all(|envelope| envelope.flags.contains(MessageFlags::READ)));
+        assert_eq!(
+            app.pending_mutation_status.as_deref(),
+            Some("Marking 3 messages as read...")
+        );
+    }
+
+    #[test]
+    fn status_bar_shows_pending_mutation_indicator_after_other_actions() {
+        let mut app = App::new();
+        let mut envelopes = make_test_envelopes(2);
+        for envelope in &mut envelopes {
+            envelope.flags.remove(MessageFlags::READ);
+        }
+        app.envelopes = envelopes.clone();
+        app.all_envelopes = envelopes;
+
+        app.apply(Action::MarkRead);
+        app.apply(Action::MoveDown);
+
+        let state = app.status_bar_state();
+        assert_eq!(state.pending_mutation_count, 1);
+        assert_eq!(
+            state.pending_mutation_status.as_deref(),
+            Some("Marking 1 message as read...")
+        );
+    }
+
+    #[test]
+    fn mark_read_and_archive_marks_read_optimistically_and_queues_combined_mutation() {
+        let mut app = App::new();
+        let mut envelopes = make_test_envelopes(1);
+        envelopes[0].flags.remove(MessageFlags::READ);
+        app.envelopes = envelopes.clone();
+        app.all_envelopes = envelopes;
+
+        app.apply(Action::MarkReadAndArchive);
+
+        assert!(app.envelopes[0].flags.contains(MessageFlags::READ));
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        match &app.pending_mutation_queue[0].0 {
+            Request::Mutation(MutationCommand::ReadAndArchive { message_ids }) => {
+                assert_eq!(message_ids, &vec![app.envelopes[0].id.clone()]);
+            }
+            other => panic!("expected read-and-archive mutation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mutation_failure_opens_error_modal_and_refreshes_mailbox() {
+        let mut app = App::new();
+
+        app.show_mutation_failure(&MxrError::Ipc("boom".into()));
+        app.refresh_mailbox_after_mutation_failure();
+
+        assert!(app.error_modal.is_some());
+        assert_eq!(
+            app.error_modal.as_ref().map(|modal| modal.title.as_str()),
+            Some("Mutation Failed")
+        );
+        assert!(app.pending_labels_refresh);
+        assert!(app.pending_all_envelopes_refresh);
+        assert!(app.pending_status_refresh);
+        assert!(app.pending_subscriptions_refresh);
     }
 
     #[test]
@@ -2914,13 +3040,29 @@ mod tests {
     }
 
     #[test]
-    fn open_selected_marks_unread_message_read_and_queues_mutation() {
+    fn open_selected_marks_unread_message_read_after_dwell() {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(1);
         app.envelopes[0].flags = MessageFlags::empty();
         app.all_envelopes = app.envelopes.clone();
 
         app.apply(Action::OpenSelected);
+
+        assert!(!app.envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(!app.all_envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(!app.viewed_thread_messages[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(!app
+            .viewing_envelope
+            .as_ref()
+            .unwrap()
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(app.pending_mutation_queue.is_empty());
+
+        app.expire_pending_preview_read_for_tests();
+        app.tick();
 
         assert!(app.envelopes[0].flags.contains(MessageFlags::READ));
         assert!(app.all_envelopes[0].flags.contains(MessageFlags::READ));
@@ -2951,6 +3093,8 @@ mod tests {
         app.all_envelopes = app.envelopes.clone();
 
         app.apply(Action::OpenSelected);
+        app.expire_pending_preview_read_for_tests();
+        app.tick();
 
         assert!(app.pending_mutation_queue.is_empty());
     }
@@ -2965,6 +3109,9 @@ mod tests {
         app.apply(Action::OpenSelected);
         app.apply(Action::OpenSelected);
 
+        assert!(app.pending_mutation_queue.is_empty());
+        app.expire_pending_preview_read_for_tests();
+        app.tick();
         assert_eq!(app.pending_mutation_queue.len(), 1);
     }
 
@@ -3003,7 +3150,7 @@ mod tests {
     }
 
     #[test]
-    fn thread_focus_change_marks_newly_focused_unread_message_read() {
+    fn thread_focus_change_marks_newly_focused_unread_message_read_after_dwell() {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(2);
         let shared_thread = ThreadId::new();
@@ -3017,11 +3164,19 @@ mod tests {
 
         app.apply(Action::OpenSelected);
         assert_eq!(app.thread_selected_index, 1);
-        assert_eq!(app.pending_mutation_queue.len(), 1);
+        assert!(app.pending_mutation_queue.is_empty());
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
 
         assert_eq!(app.thread_selected_index, 0);
+        assert!(!app.viewed_thread_messages[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(app.pending_mutation_queue.is_empty());
+
+        app.expire_pending_preview_read_for_tests();
+        app.tick();
+
         assert!(app.viewed_thread_messages[0]
             .flags
             .contains(MessageFlags::READ));
@@ -3031,11 +3186,45 @@ mod tests {
             .unwrap()
             .flags
             .contains(MessageFlags::READ));
-        assert_eq!(app.pending_mutation_queue.len(), 2);
-        match &app.pending_mutation_queue[1].0 {
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        match &app.pending_mutation_queue[0].0 {
             Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
                 assert!(*read);
                 assert_eq!(message_ids, &vec![app.envelopes[0].id.clone()]);
+            }
+            other => panic!("expected set-read mutation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn preview_navigation_only_marks_message_read_after_settling() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(2);
+        app.envelopes[0].flags = MessageFlags::empty();
+        app.envelopes[1].flags = MessageFlags::empty();
+        app.envelopes[0].thread_id = ThreadId::new();
+        app.envelopes[1].thread_id = ThreadId::new();
+        app.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(1);
+        app.envelopes[1].date = chrono::Utc::now();
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+        app.apply(Action::MoveDown);
+
+        assert!(!app.envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(!app.envelopes[1].flags.contains(MessageFlags::READ));
+        assert!(app.pending_mutation_queue.is_empty());
+
+        app.expire_pending_preview_read_for_tests();
+        app.tick();
+
+        assert!(!app.envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(app.envelopes[1].flags.contains(MessageFlags::READ));
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        match &app.pending_mutation_queue[0].0 {
+            Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
+                assert!(*read);
+                assert_eq!(message_ids, &vec![app.envelopes[1].id.clone()]);
             }
             other => panic!("expected set-read mutation, got {other:?}"),
         }

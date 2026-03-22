@@ -119,6 +119,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "reply_all" => Some(Action::ReplyAll),
         "forward" => Some(Action::Forward),
         "archive" => Some(Action::Archive),
+        "mark_read_archive" => Some(Action::MarkReadAndArchive),
         "trash" => Some(Action::Trash),
         "spam" => Some(Action::Spam),
         "star" => Some(Action::Star),
@@ -193,9 +194,15 @@ pub fn display_bindings_for_actions(
     actions
         .iter()
         .filter_map(|action| {
-            map.iter()
-                .find(|(_, name)| name == action)
-                .map(|(binding, _)| (format_keybinding(binding), action_display_name(action)))
+            let mut bindings: Vec<String> = map
+                .iter()
+                .filter(|(_, name)| name == action)
+                .map(|(binding, _)| format_keybinding(binding))
+                .collect();
+            bindings.sort();
+            bindings.dedup();
+
+            (!bindings.is_empty()).then(|| (bindings.join("/"), action_display_name(action)))
         })
         .collect()
 }
@@ -234,6 +241,7 @@ fn action_display_name(action: &str) -> String {
         "reply_all" => "Reply All".into(),
         "forward" => "Forward".into(),
         "archive" => "Archive".into(),
+        "mark_read_archive" => "Read + Archive".into(),
         "star" => "Star".into(),
         "mark_read" => "Mark Read".into(),
         "mark_unread" => "Mark Unread".into(),
@@ -569,6 +577,12 @@ mod tests {
         assert!(labels.contains(&"Toggle Fullscreen".to_string()));
         assert!(labels.contains(&"Visual Line Mode".to_string()));
         assert!(labels.contains(&"Go Inbox".to_string()));
+    }
+
+    #[test]
+    fn display_bindings_for_actions_joins_aliases_stably() {
+        let bindings = display_bindings_for_actions(ViewContext::MailList, &["open"]);
+        assert_eq!(bindings, vec![("Enter/o".to_string(), "Open".to_string())]);
     }
 
     #[test]

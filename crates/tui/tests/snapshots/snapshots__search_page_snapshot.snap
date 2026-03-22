@@ -1,13 +1,13 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 279
+assertion_line: 285
 expression: snapshot
 ---
 "╭ Search Results (1) ────────────────────────────────────────────────────────────────────╮"
 "│deployment                                                                              │"
 "╰────────────────────────────────────────────────────────────────────────────────────────╯"
 "┌ Search Results ───────────────────────┐╭ Message ──────────────────────────────────────╮"
-"│  1    ★  U  Alice Example  03/15/24 📎││From:     Alice Example <alice@example.com>    │" Hidden by multi-width symbols: [(39, " ")]
+"│>  1   ★  U  Alice Example  03/15/24 📎││From:     Alice Example <alice@example.com>    │" Hidden by multi-width symbols: [(39, " ")]
 "│                                       ││To:       Bob Example <bob@example.com>        │"
 "│                                       ││Date:     2024-03-15 09:30                     │"
 "│                                       ││Subject:  Snapshot fixture                     │"

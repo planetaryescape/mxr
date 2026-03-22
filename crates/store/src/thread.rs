@@ -1,11 +1,12 @@
 use mxr_core::id::*;
 use mxr_core::types::*;
 
-use crate::message::record_to_envelope;
+use crate::message::{future_date_cutoff_timestamp, record_to_envelope};
 
 impl super::Store {
     pub async fn get_thread(&self, thread_id: &ThreadId) -> Result<Option<Thread>, sqlx::Error> {
         let tid = thread_id.as_str();
+        let cutoff = future_date_cutoff_timestamp();
         let row = sqlx::query!(
             r#"SELECT
                 thread_id as "thread_id!",
@@ -13,11 +14,12 @@ impl super::Store {
                 MIN(subject) as "subject!: String",
                 COUNT(*) as "message_count!: i64",
                 SUM(CASE WHEN (flags & 1) = 0 THEN 1 ELSE 0 END) as "unread_count!: i64",
-                MAX(date) as "latest_date!: i64",
+                MAX(CASE WHEN date > ? THEN 0 ELSE date END) as "latest_date!: i64",
                 snippet as "snippet!"
              FROM messages
              WHERE thread_id = ?
              GROUP BY thread_id"#,
+            cutoff,
             tid,
         )
         .fetch_optional(self.reader())
@@ -62,6 +64,7 @@ impl super::Store {
         thread_id: &ThreadId,
     ) -> Result<Vec<Envelope>, sqlx::Error> {
         let tid = thread_id.as_str();
+        let cutoff = future_date_cutoff_timestamp();
         let rows = sqlx::query!(
             r#"SELECT
                 id as "id!", account_id as "account_id!", provider_id as "provider_id!",
@@ -77,8 +80,11 @@ impl super::Store {
                     JOIN labels ON labels.id = message_labels.label_id
                     WHERE message_labels.message_id = messages.id
                 ), '') as "label_provider_ids!: String"
-             FROM messages WHERE thread_id = ? ORDER BY date ASC"#,
+             FROM messages
+             WHERE thread_id = ?
+             ORDER BY CASE WHEN date > ? THEN 0 ELSE date END ASC, id ASC"#,
             tid,
+            cutoff,
         )
         .fetch_all(self.reader())
         .await?;

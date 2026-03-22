@@ -266,6 +266,15 @@ async fn main() -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::archive(message_id, search, yes, dry_run).await?;
         }
+        Some(Command::ReadArchive {
+            message_id,
+            search,
+            yes,
+            dry_run,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::mutations::read_archive(message_id, search, yes, dry_run).await?;
+        }
         Some(Command::Trash {
             message_id,
             search,

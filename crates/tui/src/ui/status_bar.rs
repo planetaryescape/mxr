@@ -9,12 +9,27 @@ pub struct StatusBarState {
     pub starred_count: usize,
     pub sync_status: Option<String>,
     pub status_message: Option<String>,
+    pub pending_mutation_count: usize,
+    pub pending_mutation_status: Option<String>,
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &StatusBarState, theme: &crate::theme::Theme) {
     let sync_part = state.sync_status.as_deref().unwrap_or("not synced");
 
-    let status = if let Some(msg) = state.status_message.as_deref() {
+    let status = if state
+        .status_message
+        .as_deref()
+        .is_some_and(|message| message.starts_with("Error:"))
+    {
+        state.status_message.clone().unwrap_or_default()
+    } else if state.pending_mutation_count > 0 {
+        let message = state
+            .pending_mutation_status
+            .as_deref()
+            .or(state.status_message.as_deref())
+            .unwrap_or("Working...");
+        format!("[pending:{}] {}", state.pending_mutation_count, message)
+    } else if let Some(msg) = state.status_message.as_deref() {
         msg.to_string()
     } else {
         format!(

@@ -38,23 +38,12 @@ pub fn gmail_message_to_envelope(
         .map(|h| h.as_slice())
         .unwrap_or(&[]);
 
-    let fallback_date = if let Some(ref internal_date) = msg.internal_date {
-        let millis: i64 = internal_date
-            .parse()
-            .map_err(|_| ParseError::InvalidDate(internal_date.clone()))?;
-        Some(
-            Utc.timestamp_millis_opt(millis)
-                .single()
-                .unwrap_or_else(Utc::now),
-        )
-    } else {
-        None
-    };
+    let internal_date = parse_internal_date(msg.internal_date.as_deref())?;
     let header_pairs: Vec<(String, String)> = headers
         .iter()
         .map(|header| (header.name.clone(), header.value.clone()))
         .collect();
-    let parsed_headers = parse_headers_from_pairs(&header_pairs, fallback_date)
+    let parsed_headers = parse_headers_from_pairs(&header_pairs, internal_date)
         .map_err(|err| ParseError::Headers(err.to_string()))?;
     let body_data = extract_body_data(msg);
 
@@ -86,7 +75,9 @@ pub fn gmail_message_to_envelope(
         cc: parsed_headers.cc,
         bcc: parsed_headers.bcc,
         subject: parsed_headers.subject,
-        date: parsed_headers.date,
+        // Gmail's internalDate is the canonical received timestamp and matches
+        // Gmail mailbox ordering better than arbitrary sender-controlled Date headers.
+        date: internal_date.unwrap_or(parsed_headers.date),
         flags,
         snippet: msg.snippet.clone().unwrap_or_default(),
         has_attachments,
@@ -94,6 +85,23 @@ pub fn gmail_message_to_envelope(
         unsubscribe,
         label_provider_ids: msg.label_ids.clone().unwrap_or_default(),
     })
+}
+
+fn parse_internal_date(
+    internal_date: Option<&str>,
+) -> Result<Option<chrono::DateTime<Utc>>, ParseError> {
+    let Some(internal_date) = internal_date else {
+        return Ok(None);
+    };
+
+    let millis: i64 = internal_date
+        .parse()
+        .map_err(|_| ParseError::InvalidDate(internal_date.to_string()))?;
+    Ok(Some(
+        Utc.timestamp_millis_opt(millis)
+            .single()
+            .unwrap_or_else(Utc::now),
+    ))
 }
 
 pub fn labels_to_flags(label_ids: &[String]) -> MessageFlags {
@@ -325,6 +333,7 @@ mod tests {
     use super::*;
     use crate::types::GmailBody;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use chrono::Datelike;
     use mail_parser::MessageParser;
     use mxr_compose::parse::extract_raw_header_block;
     use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
@@ -451,6 +460,12 @@ mod tests {
         assert_eq!(env.references.len(), 2);
         assert_eq!(env.snippet, "Hello world preview");
         assert_eq!(env.size_bytes, 2048);
+        assert_eq!(
+            env.date,
+            Utc.timestamp_millis_opt(1_700_000_000_000)
+                .single()
+                .unwrap()
+        );
         // UNREAD present → not read
         assert!(!env.flags.contains(MessageFlags::READ));
         // Deterministic IDs
@@ -719,6 +734,47 @@ mod tests {
         assert_eq!(attachments.len(), 1);
         assert_eq!(attachments[0].filename, "screenshot.png");
         assert_eq!(attachments[0].mime_type, "image/png");
+    }
+
+    #[test]
+    fn gmail_envelope_prefers_internal_date_over_header_date() {
+        let mut msg = make_test_message();
+        msg.internal_date = Some("1710495000000".to_string());
+        msg.payload.as_mut().unwrap().headers = Some(make_headers(&[
+            ("From", "Alice <alice@example.com>"),
+            ("To", "Bob <bob@example.com>"),
+            ("Subject", "Timestamp sanity"),
+            ("Date", "Sun, 15 Jun 2025 09:08:00 +0000"),
+        ]));
+
+        let account_id = AccountId::from_provider_id("gmail", "test-account");
+        let env = gmail_message_to_envelope(&msg, &account_id).unwrap();
+
+        assert_eq!(
+            env.date,
+            Utc.timestamp_millis_opt(1_710_495_000_000)
+                .single()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn gmail_envelope_falls_back_to_header_date_when_internal_date_missing() {
+        let mut msg = make_test_message();
+        msg.internal_date = None;
+        msg.payload.as_mut().unwrap().headers = Some(make_headers(&[
+            ("From", "Alice <alice@example.com>"),
+            ("To", "Bob <bob@example.com>"),
+            ("Subject", "Header date fallback"),
+            ("Date", "Sun, 15 Jun 2025 09:08:00 +0000"),
+        ]));
+
+        let account_id = AccountId::from_provider_id("gmail", "test-account");
+        let env = gmail_message_to_envelope(&msg, &account_id).unwrap();
+
+        assert_eq!(env.date.year(), 2025);
+        assert_eq!(env.date.month(), 6);
+        assert_eq!(env.date.day(), 15);
     }
 
     #[test]

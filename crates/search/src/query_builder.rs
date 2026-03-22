@@ -96,20 +96,27 @@ impl QueryBuilder {
             (self.from_email, 2.0),
             (self.snippet, 1.0),
             (self.body_text, 0.5),
+            (self.attachment_filenames, 0.75),
         ];
 
-        let text_lower = text.to_lowercase();
-        let subqueries: Vec<(Occur, Box<dyn Query>)> = fields_boosts
+        let tokens = tokenize_text_value(text);
+        if tokens.is_empty() {
+            return self.build_text_token_query(&fields_boosts, &text.to_lowercase());
+        }
+        if tokens.len() == 1 {
+            return self.build_text_token_query(&fields_boosts, &tokens[0]);
+        }
+
+        let token_groups = tokens
             .into_iter()
-            .map(|(field, boost)| {
-                let term = Term::from_field_text(field, &text_lower);
-                let tq = TermQuery::new(term, IndexRecordOption::WithFreqs);
-                let boosted: Box<dyn Query> = Box::new(BoostQuery::new(Box::new(tq), boost));
-                (Occur::Should, boosted)
+            .map(|token| {
+                (
+                    Occur::Must,
+                    self.build_text_token_query(&fields_boosts, &token),
+                )
             })
             .collect();
-
-        Box::new(BooleanQuery::new(subqueries))
+        Box::new(BooleanQuery::new(token_groups))
     }
 
     fn build_phrase_query(&self, phrase: &str) -> Box<dyn Query> {
@@ -289,6 +296,23 @@ impl QueryBuilder {
         Box::new(PhraseQuery::new(terms))
     }
 
+    fn build_text_token_query(
+        &self,
+        fields_boosts: &[(Field, f32)],
+        token: &str,
+    ) -> Box<dyn Query> {
+        let subqueries = fields_boosts
+            .iter()
+            .map(|(field, boost)| {
+                let term = Term::from_field_text(*field, token);
+                let tq = TermQuery::new(term, IndexRecordOption::WithFreqs);
+                let boosted: Box<dyn Query> = Box::new(BoostQuery::new(Box::new(tq), *boost));
+                (Occur::Should, boosted)
+            })
+            .collect();
+        Box::new(BooleanQuery::new(subqueries))
+    }
+
     fn date_to_tantivy(&self, date: NaiveDate) -> tantivy::DateTime {
         let dt = date.and_hms_opt(0, 0, 0).unwrap();
         let ts = dt.and_utc().timestamp();
@@ -388,6 +412,13 @@ mod tests {
                 MessageFlags::READ,
                 false,
             ),
+            make_test_envelope(
+                "crates.io: Successfully published mxr@0.4.6",
+                "noreply@crates.io",
+                "crates.io",
+                MessageFlags::READ,
+                false,
+            ),
         ];
         for env in &envelopes {
             idx.index_envelope(env).unwrap();
@@ -453,7 +484,7 @@ mod tests {
         };
         let query = qb.build(&node);
         let results = idx.search_ast(query, 10).unwrap();
-        assert_eq!(results.len(), 3);
+        assert_eq!(results.len(), 4);
     }
 
     #[test]
@@ -487,5 +518,24 @@ mod tests {
         let results = idx.search_ast(query, 10).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].message_id, envelopes[0].id.as_str());
+    }
+
+    #[test]
+    fn build_text_query_tokenizes_punctuation_heavy_terms() {
+        let (idx, envelopes) = build_test_index();
+        let schema = MxrSchema::build();
+        let qb = QueryBuilder::new(&schema);
+
+        let crates_ast = parse_query("crates.io").unwrap();
+        let crates_query = qb.build(&crates_ast);
+        let crates_results = idx.search_ast(crates_query, 10).unwrap();
+        assert_eq!(crates_results.len(), 1);
+        assert_eq!(crates_results[0].message_id, envelopes[3].id.as_str());
+
+        let version_ast = parse_query("mxr@0.4.6").unwrap();
+        let version_query = qb.build(&version_ast);
+        let version_results = idx.search_ast(version_query, 10).unwrap();
+        assert_eq!(version_results.len(), 1);
+        assert_eq!(version_results[0].message_id, envelopes[3].id.as_str());
     }
 }

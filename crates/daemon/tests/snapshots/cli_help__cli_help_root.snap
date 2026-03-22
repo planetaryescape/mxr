@@ -37,6 +37,7 @@ Commands:
   drafts         List drafts
   send           Send a draft by ID
   archive        Archive a message (remove from inbox)
+  read-archive   Mark message as read and archive it
   trash          Move message to trash
   spam           Report message as spam
   star           Star a message

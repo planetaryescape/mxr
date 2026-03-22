@@ -18,6 +18,19 @@ use mxr_core::MxrError;
 use mxr_protocol::{MutationCommand, Request, Response, ResponseData};
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
+
+const PREVIEW_MARK_READ_DELAY: Duration = Duration::from_secs(5);
+
+fn sane_mail_sort_timestamp(date: &chrono::DateTime<chrono::Utc>) -> i64 {
+    let cutoff = (chrono::Utc::now() + chrono::Duration::days(1)).timestamp();
+    let timestamp = date.timestamp();
+    if timestamp > cutoff {
+        0
+    } else {
+        timestamp
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum MutationEffect {
@@ -26,6 +39,9 @@ pub enum MutationEffect {
     UpdateFlags {
         message_id: MessageId,
         flags: MessageFlags,
+    },
+    UpdateFlagsMany {
+        updates: Vec<(MessageId, MessageFlags)>,
     },
     ModifyLabels {
         message_ids: Vec<MessageId>,
@@ -349,7 +365,14 @@ pub struct PendingBulkConfirm {
     pub detail: String,
     pub request: Request,
     pub effect: MutationEffect,
+    pub optimistic_effect: Option<MutationEffect>,
     pub status_message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ErrorModalState {
+    pub title: String,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -390,6 +413,12 @@ impl BodyViewState {
             Self::Error { preview, .. } => preview.as_deref(),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct PendingPreviewRead {
+    message_id: MessageId,
+    due_at: Instant,
 }
 
 pub struct App {
@@ -453,10 +482,14 @@ pub struct App {
     pub pending_status_refresh: bool,
     pub desired_system_mailbox: Option<String>,
     pub status_message: Option<String>,
+    pending_preview_read: Option<PendingPreviewRead>,
+    pub pending_mutation_count: usize,
+    pub pending_mutation_status: Option<String>,
     pub pending_mutation_queue: Vec<(Request, MutationEffect)>,
     pub pending_compose: Option<ComposeAction>,
     pub pending_send_confirm: Option<PendingSend>,
     pub pending_bulk_confirm: Option<PendingBulkConfirm>,
+    pub error_modal: Option<ErrorModalState>,
     pub pending_unsubscribe_confirm: Option<PendingUnsubscribeConfirm>,
     pub pending_unsubscribe_action: Option<PendingUnsubscribeAction>,
     pub reader_mode: bool,
@@ -571,10 +604,14 @@ impl App {
             pending_status_refresh: false,
             desired_system_mailbox: None,
             status_message: None,
+            pending_preview_read: None,
+            pending_mutation_count: 0,
+            pending_mutation_status: None,
             pending_mutation_queue: Vec::new(),
             pending_compose: None,
             pending_send_confirm: None,
             pending_bulk_confirm: None,
+            error_modal: None,
             pending_unsubscribe_confirm: None,
             pending_unsubscribe_action: None,
             reader_mode: render.reader_mode,
@@ -641,7 +678,7 @@ impl App {
     }
 
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
-        let mut items = vec![SidebarItem::AllMail, SidebarItem::Subscriptions];
+        let mut items = Vec::new();
         let mut system_labels = Vec::new();
         let mut user_labels = Vec::new();
         for label in self.visible_labels() {
@@ -654,6 +691,8 @@ impl App {
         if self.sidebar_system_expanded {
             items.extend(system_labels.into_iter().map(SidebarItem::Label));
         }
+        items.push(SidebarItem::AllMail);
+        items.push(SidebarItem::Subscriptions);
         if self.sidebar_user_expanded {
             items.extend(user_labels.into_iter().map(SidebarItem::Label));
         }
@@ -920,7 +959,9 @@ impl App {
                     if !envelope.flags.contains(MessageFlags::READ) {
                         entry.unread_count += 1;
                     }
-                    if envelope.date > entry.representative.date {
+                    if sane_mail_sort_timestamp(&envelope.date)
+                        > sane_mail_sort_timestamp(&entry.representative.date)
+                    {
                         entry.representative = envelope.clone();
                     }
                 }
@@ -947,9 +988,9 @@ impl App {
     }
 
     pub async fn load(&mut self, client: &mut Client) -> Result<(), MxrError> {
-        self.all_envelopes = client.list_envelopes(5000, 0).await?;
-        self.envelopes = self.all_mail_envelopes();
         self.labels = client.list_labels().await?;
+        self.all_envelopes = client.list_envelopes(5000, 0).await?;
+        self.load_initial_mailbox(client).await?;
         self.saved_searches = client.list_saved_searches().await.unwrap_or_default();
         self.set_subscriptions(client.list_subscriptions(500).await.unwrap_or_default());
         if let Ok(Response::Ok {
@@ -975,6 +1016,58 @@ impl App {
         // Queue body prefetch for first visible window
         self.queue_body_window();
         Ok(())
+    }
+
+    async fn load_initial_mailbox(&mut self, client: &mut Client) -> Result<(), MxrError> {
+        let Some(inbox_id) = self
+            .labels
+            .iter()
+            .find(|label| label.name == "INBOX")
+            .map(|label| label.id.clone())
+        else {
+            self.envelopes = self.all_mail_envelopes();
+            self.active_label = None;
+            return Ok(());
+        };
+
+        match client
+            .raw_request(Request::ListEnvelopes {
+                label_id: Some(inbox_id.clone()),
+                account_id: None,
+                limit: 5000,
+                offset: 0,
+            })
+            .await
+        {
+            Ok(Response::Ok {
+                data: ResponseData::Envelopes { envelopes },
+            }) => {
+                self.envelopes = envelopes;
+                self.active_label = Some(inbox_id);
+                self.pending_active_label = None;
+                self.pending_label_fetch = None;
+                self.sidebar_selected = 0;
+                Ok(())
+            }
+            Ok(Response::Error { message }) => {
+                self.envelopes = self.all_mail_envelopes();
+                self.active_label = None;
+                self.status_message = Some(format!("Inbox load failed: {message}"));
+                Ok(())
+            }
+            Ok(_) => {
+                self.envelopes = self.all_mail_envelopes();
+                self.active_label = None;
+                self.status_message = Some("Inbox load failed: unexpected response".into());
+                Ok(())
+            }
+            Err(error) => {
+                self.envelopes = self.all_mail_envelopes();
+                self.active_label = None;
+                self.status_message = Some(format!("Inbox load failed: {error}"));
+                Ok(())
+            }
+        }
     }
 
     pub fn apply_status_snapshot(
@@ -1218,6 +1311,8 @@ impl App {
                 starred_count,
                 sync_status: self.last_sync_status.clone(),
                 status_message: self.status_message.clone(),
+                pending_mutation_count: self.pending_mutation_count,
+                pending_mutation_status: self.pending_mutation_status.clone(),
             };
         }
 
@@ -1238,6 +1333,8 @@ impl App {
                 starred_count,
                 sync_status: self.last_sync_status.clone(),
                 status_message: self.status_message.clone(),
+                pending_mutation_count: self.pending_mutation_count,
+                pending_mutation_status: self.pending_mutation_status.clone(),
             };
         }
 
@@ -1249,6 +1346,8 @@ impl App {
                 starred_count,
                 sync_status: self.last_sync_status.clone(),
                 status_message: self.status_message.clone(),
+                pending_mutation_count: self.pending_mutation_count,
+                pending_mutation_status: self.pending_mutation_status.clone(),
             };
         }
 
@@ -1268,6 +1367,8 @@ impl App {
             starred_count,
             sync_status: self.last_sync_status.clone(),
             status_message: self.status_message.clone(),
+            pending_mutation_count: self.pending_mutation_count,
+            pending_mutation_status: self.pending_mutation_status.clone(),
         }
     }
 
@@ -1335,6 +1436,7 @@ impl App {
                     self.open_envelope(entry.envelope);
                 }
             } else {
+                self.pending_preview_read = None;
                 self.viewing_envelope = None;
                 self.viewed_thread = None;
                 self.viewed_thread_messages.clear();
@@ -1410,7 +1512,7 @@ impl App {
         self.thread_selected_index = self.default_thread_selected_index();
         self.viewing_envelope = self.focused_thread_envelope().cloned();
         if let Some(viewing_envelope) = self.viewing_envelope.clone() {
-            self.mark_envelope_read_on_open(&viewing_envelope);
+            self.schedule_preview_read(&viewing_envelope);
         }
         for message in self.viewed_thread_messages.clone() {
             self.queue_body_fetch(message.id);
@@ -1446,32 +1548,34 @@ impl App {
         self.close_attachment_panel();
         self.viewing_envelope = self.focused_thread_envelope().cloned();
         if let Some(viewing_envelope) = self.viewing_envelope.clone() {
-            self.mark_envelope_read_on_open(&viewing_envelope);
+            self.schedule_preview_read(&viewing_envelope);
+        } else {
+            self.pending_preview_read = None;
         }
         self.message_scroll_offset = 0;
         self.ensure_current_body_state();
     }
 
-    fn mark_envelope_read_on_open(&mut self, envelope: &Envelope) {
+    fn schedule_preview_read(&mut self, envelope: &Envelope) {
         if envelope.flags.contains(MessageFlags::READ)
             || self.has_pending_set_read(&envelope.id, true)
+        {
+            self.pending_preview_read = None;
+            return;
+        }
+
+        if self
+            .pending_preview_read
+            .as_ref()
+            .is_some_and(|pending| pending.message_id == envelope.id)
         {
             return;
         }
 
-        let mut flags = envelope.flags;
-        flags.insert(MessageFlags::READ);
-        self.apply_local_flags(&envelope.id, flags);
-        self.pending_mutation_queue.push((
-            Request::Mutation(MutationCommand::SetRead {
-                message_ids: vec![envelope.id.clone()],
-                read: true,
-            }),
-            MutationEffect::UpdateFlags {
-                message_id: envelope.id.clone(),
-                flags,
-            },
-        ));
+        self.pending_preview_read = Some(PendingPreviewRead {
+            message_id: envelope.id.clone(),
+            due_at: Instant::now() + PREVIEW_MARK_READ_DELAY,
+        });
     }
 
     fn has_pending_set_read(&self, message_id: &MessageId, read: bool) -> bool {
@@ -1484,6 +1588,61 @@ impl App {
                         && message_ids[0] == *message_id
             )
         })
+    }
+
+    fn process_pending_preview_read(&mut self) {
+        let Some(pending) = self.pending_preview_read.clone() else {
+            return;
+        };
+        if Instant::now() < pending.due_at {
+            return;
+        }
+        self.pending_preview_read = None;
+
+        let Some(envelope) = self
+            .viewing_envelope
+            .clone()
+            .filter(|envelope| envelope.id == pending.message_id)
+        else {
+            return;
+        };
+
+        if envelope.flags.contains(MessageFlags::READ)
+            || self.has_pending_set_read(&envelope.id, true)
+        {
+            return;
+        }
+
+        let mut flags = envelope.flags;
+        flags.insert(MessageFlags::READ);
+        self.apply_local_flags(&envelope.id, flags);
+        self.queue_mutation(
+            Request::Mutation(MutationCommand::SetRead {
+                message_ids: vec![envelope.id.clone()],
+                read: true,
+            }),
+            MutationEffect::StatusOnly("Marked message as read".into()),
+            "Marking message as read...".into(),
+        );
+    }
+
+    pub fn next_background_timeout(&self, fallback: Duration) -> Duration {
+        let Some(pending) = self.pending_preview_read.as_ref() else {
+            return fallback;
+        };
+        fallback.min(
+            pending
+                .due_at
+                .checked_duration_since(Instant::now())
+                .unwrap_or(Duration::ZERO),
+        )
+    }
+
+    #[cfg(test)]
+    pub fn expire_pending_preview_read_for_tests(&mut self) {
+        if let Some(pending) = self.pending_preview_read.as_mut() {
+            pending.due_at = Instant::now();
+        }
     }
 
     fn move_thread_focus_down(&mut self) {
@@ -1806,6 +1965,102 @@ impl App {
         }
     }
 
+    pub fn apply_local_flags_many(&mut self, updates: &[(MessageId, MessageFlags)]) {
+        for (message_id, flags) in updates {
+            self.apply_local_flags(message_id, *flags);
+        }
+    }
+
+    fn apply_local_mutation_effect(&mut self, effect: &MutationEffect) {
+        match effect {
+            MutationEffect::UpdateFlags { message_id, flags } => {
+                self.apply_local_flags(message_id, *flags);
+            }
+            MutationEffect::UpdateFlagsMany { updates } => {
+                self.apply_local_flags_many(updates);
+            }
+            MutationEffect::ModifyLabels {
+                message_ids,
+                add,
+                remove,
+                ..
+            } => {
+                self.apply_local_label_refs(message_ids, add, remove);
+            }
+            MutationEffect::RemoveFromList(_)
+            | MutationEffect::RemoveFromListMany(_)
+            | MutationEffect::RefreshList
+            | MutationEffect::StatusOnly(_) => {}
+        }
+    }
+
+    fn queue_mutation(&mut self, request: Request, effect: MutationEffect, status_message: String) {
+        self.pending_mutation_queue.push((request, effect));
+        self.pending_mutation_count += 1;
+        self.pending_mutation_status = Some(status_message.clone());
+        self.status_message = Some(status_message);
+    }
+
+    pub fn finish_pending_mutation(&mut self) {
+        self.pending_mutation_count = self.pending_mutation_count.saturating_sub(1);
+        if self.pending_mutation_count == 0 {
+            self.pending_mutation_status = None;
+        }
+    }
+
+    pub fn show_mutation_failure(&mut self, error: &MxrError) {
+        self.error_modal = Some(ErrorModalState {
+            title: "Mutation Failed".into(),
+            detail: format!(
+                "Optimistic changes could not be applied.\nMailbox is refreshing to reconcile state.\n\n{error}"
+            ),
+        });
+        self.status_message = Some(format!("Error: {error}"));
+    }
+
+    pub fn refresh_mailbox_after_mutation_failure(&mut self) {
+        self.pending_labels_refresh = true;
+        self.pending_all_envelopes_refresh = true;
+        self.pending_status_refresh = true;
+        self.pending_subscriptions_refresh = true;
+        if let Some(label_id) = self.active_label.clone() {
+            self.pending_label_fetch = Some(label_id);
+        }
+    }
+
+    fn message_flags(&self, message_id: &MessageId) -> Option<MessageFlags> {
+        self.envelopes
+            .iter()
+            .chain(self.all_envelopes.iter())
+            .chain(self.search_page.results.iter())
+            .chain(self.viewed_thread_messages.iter())
+            .find(|envelope| &envelope.id == message_id)
+            .map(|envelope| envelope.flags)
+            .or_else(|| {
+                self.viewing_envelope
+                    .as_ref()
+                    .filter(|envelope| &envelope.id == message_id)
+                    .map(|envelope| envelope.flags)
+            })
+    }
+
+    fn flag_updates_for_ids<F>(
+        &self,
+        message_ids: &[MessageId],
+        mut update: F,
+    ) -> Vec<(MessageId, MessageFlags)>
+    where
+        F: FnMut(MessageFlags) -> MessageFlags,
+    {
+        message_ids
+            .iter()
+            .filter_map(|message_id| {
+                self.message_flags(message_id)
+                    .map(|flags| (message_id.clone(), update(flags)))
+            })
+            .collect()
+    }
+
     fn resolve_label_provider_ids(&self, refs: &[String]) -> Vec<String> {
         refs.iter()
             .filter_map(|label_ref| {
@@ -1875,6 +2130,7 @@ impl App {
         detail: impl Into<String>,
         request: Request,
         effect: MutationEffect,
+        optimistic_effect: Option<MutationEffect>,
         status_message: String,
         count: usize,
     ) {
@@ -1884,11 +2140,14 @@ impl App {
                 detail: detail.into(),
                 request,
                 effect,
+                optimistic_effect,
                 status_message,
             });
         } else {
-            self.pending_mutation_queue.push((request, effect));
-            self.status_message = Some(status_message);
+            if let Some(effect) = optimistic_effect.as_ref() {
+                self.apply_local_mutation_effect(effect);
+            }
+            self.queue_mutation(request, effect, status_message);
             self.clear_selection();
         }
     }
@@ -2349,5 +2608,61 @@ pub fn resolve_snooze_preset(
                 .unwrap()
                 .with_timezone(&chrono::Utc)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn test_envelope(
+        thread_id: mxr_core::ThreadId,
+        subject: &str,
+        date: chrono::DateTime<chrono::Utc>,
+    ) -> Envelope {
+        Envelope {
+            id: MessageId::new(),
+            account_id: AccountId::new(),
+            provider_id: subject.to_string(),
+            thread_id,
+            message_id_header: None,
+            in_reply_to: None,
+            references: vec![],
+            from: Address {
+                name: Some("Alice".to_string()),
+                email: "alice@example.com".to_string(),
+            },
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: subject.to_string(),
+            date,
+            flags: MessageFlags::empty(),
+            snippet: String::new(),
+            has_attachments: false,
+            size_bytes: 0,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: vec![],
+        }
+    }
+
+    #[test]
+    fn build_mail_list_rows_ignores_impossible_future_thread_dates() {
+        let thread_id = mxr_core::ThreadId::new();
+        let poisoned = test_envelope(
+            thread_id.clone(),
+            "Poisoned future",
+            chrono::Utc
+                .timestamp_opt(236_816_444_325, 0)
+                .single()
+                .unwrap(),
+        );
+        let recent = test_envelope(thread_id, "Real recent", chrono::Utc::now());
+
+        let rows = App::build_mail_list_rows(&[poisoned, recent.clone()], MailListMode::Threads);
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].representative.subject, recent.subject);
     }
 }

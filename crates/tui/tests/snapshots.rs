@@ -586,6 +586,7 @@ fn bulk_confirm_snapshot() {
             message_ids: vec![MessageId::new()],
         }),
         effect: MutationEffect::RefreshList,
+        optimistic_effect: None,
         status_message: "Archiving...".into(),
     };
 
@@ -645,6 +646,8 @@ fn bars_snapshot() {
                 starred_count: 96,
                 sync_status: Some("synced just now".into()),
                 status_message: None,
+                pending_mutation_count: 0,
+                pending_mutation_status: None,
             },
             &mxr_tui::theme::Theme::default(),
         );

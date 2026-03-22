@@ -228,6 +228,9 @@ pub enum MutationCommand {
     Archive {
         message_ids: Vec<MessageId>,
     },
+    ReadAndArchive {
+        message_ids: Vec<MessageId>,
+    },
     Trash {
         message_ids: Vec<MessageId>,
     },

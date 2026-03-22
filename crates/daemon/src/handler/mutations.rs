@@ -43,6 +43,7 @@ fn quoted_subject(subject: &str) -> String {
 pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> HandlerResult {
     let message_ids = match cmd {
         MutationCommand::Archive { message_ids }
+        | MutationCommand::ReadAndArchive { message_ids }
         | MutationCommand::Trash { message_ids }
         | MutationCommand::Spam { message_ids }
         | MutationCommand::Star { message_ids, .. }
@@ -63,6 +64,32 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
 
         let result = match cmd {
             MutationCommand::Archive { .. } => {
+                provider
+                    .modify_labels(provider_id, &[], &["INBOX".to_string()])
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let mut label_ids = state
+                    .store
+                    .get_message_label_ids(message_id)
+                    .await
+                    .unwrap_or_default();
+                label_ids.retain(|label_id| label_id.as_str() != "INBOX");
+                state
+                    .store
+                    .set_message_labels(message_id, &label_ids)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+            MutationCommand::ReadAndArchive { .. } => {
+                provider
+                    .set_read(provider_id, true)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                state
+                    .store
+                    .set_read(message_id, true)
+                    .await
+                    .map_err(|e| e.to_string())?;
                 provider
                     .modify_labels(provider_id, &[], &["INBOX".to_string()])
                     .await
@@ -141,6 +168,13 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
         let (summary, details) = match cmd {
             MutationCommand::Archive { .. } => (
                 format!("Archived {}", quoted_subject(&envelope.subject)),
+                Some(format!("from={}", envelope.from.email)),
+            ),
+            MutationCommand::ReadAndArchive { .. } => (
+                format!(
+                    "Marked {} as read and archived",
+                    quoted_subject(&envelope.subject)
+                ),
                 Some(format!("from={}", envelope.from.email)),
             ),
             MutationCommand::Trash { .. } => (

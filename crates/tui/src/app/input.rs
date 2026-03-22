@@ -2,6 +2,18 @@ use super::*;
 
 impl App {
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        if self.error_modal.is_some() {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc | KeyCode::Enter, _)
+                | (KeyCode::Char('q'), _)
+                | (KeyCode::Char('x'), _) => {
+                    self.error_modal = None;
+                    None
+                }
+                _ => None,
+            };
+        }
+
         if self.help_modal_open {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Enter, _)
@@ -115,11 +127,11 @@ impl App {
                             created_at: now,
                             updated_at: now,
                         };
-                        self.pending_mutation_queue.push((
+                        self.queue_mutation(
                             Request::SendDraft { draft },
                             MutationEffect::StatusOnly("Sent!".into()),
-                        ));
-                        self.status_message = Some("Sending...".into());
+                            "Sending...".into(),
+                        );
                         let _ = std::fs::remove_file(&pending.draft_path);
                     }
                     return None;
@@ -163,11 +175,11 @@ impl App {
                             created_at: now,
                             updated_at: now,
                         };
-                        self.pending_mutation_queue.push((
+                        self.queue_mutation(
                             Request::SaveDraftToServer { draft },
                             MutationEffect::StatusOnly("Draft saved to server".into()),
-                        ));
-                        self.status_message = Some("Saving draft...".into());
+                            "Saving draft...".into(),
+                        );
                         let _ = std::fs::remove_file(&pending.draft_path);
                     }
                     return None;

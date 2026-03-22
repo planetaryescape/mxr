@@ -3,6 +3,7 @@ use super::*;
 impl App {
     pub fn tick(&mut self) {
         self.input.check_timeout();
+        self.process_pending_preview_read();
     }
 
     pub fn apply(&mut self, action: Action) {
@@ -25,6 +26,7 @@ impl App {
                 };
             }
             Action::OpenSearchScreen => {
+                self.pending_preview_read = None;
                 self.screen = Screen::Search;
                 self.search_page.editing = true;
                 self.search_page.query = self.search_bar.query.clone();
@@ -37,14 +39,17 @@ impl App {
                 self.search_page.scroll_offset = 0;
             }
             Action::OpenRulesScreen => {
+                self.pending_preview_read = None;
                 self.screen = Screen::Rules;
                 self.rules_page.refresh_pending = true;
             }
             Action::OpenDiagnosticsScreen => {
+                self.pending_preview_read = None;
                 self.screen = Screen::Diagnostics;
                 self.diagnostics_page.refresh_pending = true;
             }
             Action::OpenAccountsScreen => {
+                self.pending_preview_read = None;
                 self.screen = Screen::Accounts;
                 self.accounts_page.refresh_pending = true;
             }
@@ -192,9 +197,10 @@ impl App {
             }
             Action::OpenSelected => {
                 if let Some(pending) = self.pending_bulk_confirm.take() {
-                    self.pending_mutation_queue
-                        .push((pending.request, pending.effect));
-                    self.status_message = Some(pending.status_message);
+                    if let Some(effect) = pending.optimistic_effect.as_ref() {
+                        self.apply_local_mutation_effect(effect);
+                    }
+                    self.queue_mutation(pending.request, pending.effect, pending.status_message);
                     self.clear_selection();
                     return;
                 }
@@ -338,6 +344,7 @@ impl App {
                 self.active_label = None;
                 self.pending_active_label = None;
                 self.pending_label_fetch = None;
+                self.pending_preview_read = None;
                 self.desired_system_mailbox = None;
                 self.search_active = false;
                 self.screen = Screen::Mailbox;
@@ -379,11 +386,11 @@ impl App {
             }
             // Sync
             Action::SyncNow => {
-                self.pending_mutation_queue.push((
+                self.queue_mutation(
                     Request::SyncNow { account_id: None },
                     MutationEffect::RefreshList,
-                ));
-                self.status_message = Some("Syncing...".into());
+                    "Syncing...".into(),
+                );
             }
             // Message view
             Action::OpenMessageView => {
@@ -401,6 +408,7 @@ impl App {
                 self.close_attachment_panel();
                 self.layout_mode = LayoutMode::TwoPane;
                 self.active_pane = ActivePane::MailList;
+                self.pending_preview_read = None;
                 self.viewing_envelope = None;
                 self.viewed_thread = None;
                 self.viewed_thread_messages.clear();
@@ -520,6 +528,7 @@ impl App {
                 self.mailbox_view = MailboxView::Messages;
                 self.active_label = None;
                 self.pending_active_label = None;
+                self.pending_preview_read = None;
                 self.desired_system_mailbox = None;
                 self.search_active = false;
                 self.envelopes = self.all_mail_envelopes();
@@ -575,7 +584,33 @@ impl App {
                             message_ids: ids.clone(),
                         }),
                         effect,
+                        None,
                         "Archiving...".into(),
+                        ids.len(),
+                    );
+                }
+            }
+            Action::MarkReadAndArchive => {
+                let ids = self.mutation_target_ids();
+                if !ids.is_empty() {
+                    let updates = self.flag_updates_for_ids(&ids, |mut flags| {
+                        flags.insert(MessageFlags::READ);
+                        flags
+                    });
+                    self.queue_or_confirm_bulk_action(
+                        "Mark messages as read and archive",
+                        bulk_message_detail("mark as read and archive", ids.len()),
+                        Request::Mutation(MutationCommand::ReadAndArchive {
+                            message_ids: ids.clone(),
+                        }),
+                        remove_from_list_effect(&ids),
+                        (!updates.is_empty())
+                            .then_some(MutationEffect::UpdateFlagsMany { updates }),
+                        format!(
+                            "Marking {} {} as read and archiving...",
+                            ids.len(),
+                            pluralize_messages(ids.len())
+                        ),
                         ids.len(),
                     );
                 }
@@ -591,6 +626,7 @@ impl App {
                             message_ids: ids.clone(),
                         }),
                         effect,
+                        None,
                         "Trashing...".into(),
                         ids.len(),
                     );
@@ -607,6 +643,7 @@ impl App {
                             message_ids: ids.clone(),
                         }),
                         effect,
+                        None,
                         "Marking as spam...".into(),
                         ids.len(),
                     );
@@ -625,31 +662,29 @@ impl App {
                     } else {
                         true
                     };
-                    let first = ids[0].clone();
-                    // For single message, provide flag update
-                    let effect = if ids.len() == 1 {
-                        if let Some(env) = self.context_envelope() {
-                            let mut new_flags = env.flags;
-                            if starred {
-                                new_flags.insert(MessageFlags::STARRED);
-                            } else {
-                                new_flags.remove(MessageFlags::STARRED);
-                            }
-                            MutationEffect::UpdateFlags {
-                                message_id: first.clone(),
-                                flags: new_flags,
-                            }
+                    let updates = self.flag_updates_for_ids(&ids, |mut flags| {
+                        if starred {
+                            flags.insert(MessageFlags::STARRED);
                         } else {
-                            MutationEffect::RefreshList
+                            flags.remove(MessageFlags::STARRED);
                         }
-                    } else {
-                        MutationEffect::RefreshList
-                    };
+                        flags
+                    });
+                    let optimistic_effect = (!updates.is_empty())
+                        .then_some(MutationEffect::UpdateFlagsMany { updates });
                     let verb = if starred { "star" } else { "unstar" };
                     let status = if starred {
-                        "Starring..."
+                        format!(
+                            "Starring {} {}...",
+                            ids.len(),
+                            pluralize_messages(ids.len())
+                        )
                     } else {
-                        "Unstarring..."
+                        format!(
+                            "Unstarring {} {}...",
+                            ids.len(),
+                            pluralize_messages(ids.len())
+                        )
                     };
                     self.queue_or_confirm_bulk_action(
                         if starred {
@@ -662,8 +697,13 @@ impl App {
                             message_ids: ids.clone(),
                             starred,
                         }),
-                        effect,
-                        status.into(),
+                        MutationEffect::StatusOnly(if starred {
+                            format!("Starred {} {}", ids.len(), pluralize_messages(ids.len()))
+                        } else {
+                            format!("Unstarred {} {}", ids.len(), pluralize_messages(ids.len()))
+                        }),
+                        optimistic_effect,
+                        status,
                         ids.len(),
                     );
                 }
@@ -671,21 +711,10 @@ impl App {
             Action::MarkRead => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
-                    let first = ids[0].clone();
-                    let effect = if ids.len() == 1 {
-                        if let Some(env) = self.context_envelope() {
-                            let mut new_flags = env.flags;
-                            new_flags.insert(MessageFlags::READ);
-                            MutationEffect::UpdateFlags {
-                                message_id: first.clone(),
-                                flags: new_flags,
-                            }
-                        } else {
-                            MutationEffect::RefreshList
-                        }
-                    } else {
-                        MutationEffect::RefreshList
-                    };
+                    let updates = self.flag_updates_for_ids(&ids, |mut flags| {
+                        flags.insert(MessageFlags::READ);
+                        flags
+                    });
                     self.queue_or_confirm_bulk_action(
                         "Mark messages as read",
                         bulk_message_detail("mark as read", ids.len()),
@@ -693,8 +722,18 @@ impl App {
                             message_ids: ids.clone(),
                             read: true,
                         }),
-                        effect,
-                        "Marking as read...".into(),
+                        MutationEffect::StatusOnly(format!(
+                            "Marked {} {} as read",
+                            ids.len(),
+                            pluralize_messages(ids.len())
+                        )),
+                        (!updates.is_empty())
+                            .then_some(MutationEffect::UpdateFlagsMany { updates }),
+                        format!(
+                            "Marking {} {} as read...",
+                            ids.len(),
+                            pluralize_messages(ids.len())
+                        ),
                         ids.len(),
                     );
                 }
@@ -702,21 +741,10 @@ impl App {
             Action::MarkUnread => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
-                    let first = ids[0].clone();
-                    let effect = if ids.len() == 1 {
-                        if let Some(env) = self.context_envelope() {
-                            let mut new_flags = env.flags;
-                            new_flags.remove(MessageFlags::READ);
-                            MutationEffect::UpdateFlags {
-                                message_id: first.clone(),
-                                flags: new_flags,
-                            }
-                        } else {
-                            MutationEffect::RefreshList
-                        }
-                    } else {
-                        MutationEffect::RefreshList
-                    };
+                    let updates = self.flag_updates_for_ids(&ids, |mut flags| {
+                        flags.remove(MessageFlags::READ);
+                        flags
+                    });
                     self.queue_or_confirm_bulk_action(
                         "Mark messages as unread",
                         bulk_message_detail("mark as unread", ids.len()),
@@ -724,8 +752,18 @@ impl App {
                             message_ids: ids.clone(),
                             read: false,
                         }),
-                        effect,
-                        "Marking as unread...".into(),
+                        MutationEffect::StatusOnly(format!(
+                            "Marked {} {} as unread",
+                            ids.len(),
+                            pluralize_messages(ids.len())
+                        )),
+                        (!updates.is_empty())
+                            .then_some(MutationEffect::UpdateFlagsMany { updates }),
+                        format!(
+                            "Marking {} {} as unread...",
+                            ids.len(),
+                            pluralize_messages(ids.len())
+                        ),
                         ids.len(),
                     );
                 }
@@ -754,6 +792,7 @@ impl App {
                                 remove: vec![],
                                 status: format!("Applied label '{}'", label_name),
                             },
+                            None,
                             format!("Applying label '{}'...", label_name),
                             ids.len(),
                         );
@@ -782,6 +821,7 @@ impl App {
                                 target_label: label_name.clone(),
                             }),
                             remove_from_list_effect(&ids),
+                            None,
                             format!("Moving to '{}'...", label_name),
                             ids.len(),
                         );
@@ -849,7 +889,7 @@ impl App {
                             snooze_presets()[self.snooze_panel.selected_index],
                             &self.snooze_config,
                         );
-                        self.pending_mutation_queue.push((
+                        self.queue_mutation(
                             Request::Snooze {
                                 message_id: env.id.clone(),
                                 wake_at,
@@ -860,8 +900,8 @@ impl App {
                                     .with_timezone(&chrono::Local)
                                     .format("%a %b %e %H:%M")
                             )),
-                        ));
-                        self.status_message = Some("Snoozing...".into());
+                            "Snoozing...".into(),
+                        );
                     }
                     self.snooze_panel.visible = false;
                 } else if self.context_envelope().is_some() {

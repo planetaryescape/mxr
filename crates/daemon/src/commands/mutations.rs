@@ -284,6 +284,29 @@ pub async fn archive(
     .await
 }
 
+pub async fn read_archive(
+    message_id: Option<String>,
+    search: Option<String>,
+    yes: bool,
+    dry_run: bool,
+) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    run_simple_mutation(
+        &mut client,
+        selection,
+        MutationRunOptions {
+            action: "mark as read and archive",
+            success_message: "Marked as read and archived",
+            yes,
+            dry_run,
+            destructive: false,
+        },
+        |ids| Request::Mutation(MutationCommand::ReadAndArchive { message_ids: ids }),
+    )
+    .await
+}
+
 pub async fn trash(
     message_id: Option<String>,
     search: Option<String>,

@@ -1,5 +1,5 @@
 use crate::app::{ActivePane, MailListMode, MailListRow, SearchPageState};
-use crate::ui::{mail_list, message_view};
+use crate::ui::{mail_list, message_view, search_query::highlight_search_query};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -30,7 +30,7 @@ pub fn draw(
     } else {
         " Search Query ".to_string()
     };
-    let query = Paragraph::new(state.query.as_str()).block(
+    let query = Paragraph::new(highlight_search_query(&state.query, theme)).block(
         Block::bordered()
             .title(query_title)
             .border_type(BorderType::Rounded)

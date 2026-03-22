@@ -308,6 +308,17 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Mark message as read and archive it
+    #[command(name = "read-archive")]
+    ReadArchive {
+        message_id: Option<String>,
+        #[arg(long)]
+        search: Option<String>,
+        #[arg(long)]
+        yes: bool,
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Move message to trash
     Trash {
         message_id: Option<String>,

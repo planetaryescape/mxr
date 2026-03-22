@@ -118,19 +118,17 @@ fn build_sidebar_entries<'a>(
         .collect();
     user_labels.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
 
-    let mut entries = vec![
-        SidebarEntry::Header {
-            title: "System",
-            expanded: system_expanded,
-        },
-        SidebarEntry::AllMail,
-        SidebarEntry::Subscriptions {
-            count: subscription_count,
-        },
-    ];
+    let mut entries = vec![SidebarEntry::Header {
+        title: "System",
+        expanded: system_expanded,
+    }];
     if system_expanded {
         entries.extend(system_labels.into_iter().map(SidebarEntry::Label));
     }
+    entries.push(SidebarEntry::AllMail);
+    entries.push(SidebarEntry::Subscriptions {
+        count: subscription_count,
+    });
 
     if !user_labels.is_empty() {
         if !entries.is_empty() {
@@ -366,12 +364,12 @@ mod tests {
                 ..
             }
         ));
-        assert!(matches!(entries[1], SidebarEntry::AllMail));
+        assert!(matches!(entries[1], SidebarEntry::Label(label) if label.name == "INBOX"));
+        assert!(matches!(entries[2], SidebarEntry::AllMail));
         assert!(matches!(
-            entries[2],
+            entries[3],
             SidebarEntry::Subscriptions { count: 3 }
         ));
-        assert!(matches!(entries[3], SidebarEntry::Label(label) if label.name == "INBOX"));
         assert!(matches!(entries[4], SidebarEntry::Separator));
         assert!(matches!(
             entries[5],

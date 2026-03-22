@@ -1,5 +1,25 @@
 use super::*;
 
+fn tab_titles() -> [&'static str; 5] {
+    [
+        "1 Mailbox",
+        "2 Search",
+        "3 Rules",
+        "4 Accounts",
+        "5 Diagnostics",
+    ]
+}
+
+fn selected_tab(screen: Screen) -> usize {
+    match screen {
+        Screen::Mailbox => 0,
+        Screen::Search => 1,
+        Screen::Rules => 2,
+        Screen::Accounts => 3,
+        Screen::Diagnostics => 4,
+    }
+}
+
 impl App {
     pub fn draw(&mut self, frame: &mut Frame) {
         let theme = &self.theme;
@@ -24,16 +44,8 @@ impl App {
         let bottom_bar_area = outer_chunks[3];
 
         // Tab bar
-        let tab_titles = vec!["Mailbox", "Search", "Rules", "Accounts", "Diagnostics"];
-        let selected_tab = match self.screen {
-            Screen::Mailbox => 0,
-            Screen::Search => 1,
-            Screen::Rules => 2,
-            Screen::Accounts => 3,
-            Screen::Diagnostics => 4,
-        };
-        let tabs = ratatui::widgets::Tabs::new(tab_titles)
-            .select(selected_tab)
+        let tabs = ratatui::widgets::Tabs::new(tab_titles())
+            .select(selected_tab(self.screen))
             .style(Style::default().fg(theme.text_muted))
             .highlight_style(Style::default().fg(theme.accent).bold())
             .divider(Span::styled(" | ", Style::default().fg(theme.text_muted)));
@@ -277,6 +289,9 @@ impl App {
         // Bulk confirmation overlay
         ui::bulk_confirm_modal::draw(frame, area, self.pending_bulk_confirm.as_ref(), theme);
 
+        // Error overlay
+        ui::error_modal::draw(frame, area, self.error_modal.as_ref(), theme);
+
         // Unsubscribe confirmation overlay
         ui::unsubscribe_modal::draw(
             frame,
@@ -297,6 +312,25 @@ impl App {
                 scroll_offset: self.help_scroll_offset,
             },
             theme,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tab_titles;
+
+    #[test]
+    fn tab_titles_include_numeric_shortcuts() {
+        assert_eq!(
+            tab_titles(),
+            [
+                "1 Mailbox",
+                "2 Search",
+                "3 Rules",
+                "4 Accounts",
+                "5 Diagnostics",
+            ]
         );
     }
 }

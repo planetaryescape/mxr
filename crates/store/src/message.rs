@@ -1,6 +1,11 @@
 use mxr_core::id::*;
 use mxr_core::types::*;
 use sqlx::Row;
+
+pub(crate) fn future_date_cutoff_timestamp() -> i64 {
+    (chrono::Utc::now() + chrono::Duration::days(1)).timestamp()
+}
+
 impl super::Store {
     pub async fn upsert_envelope(&self, envelope: &Envelope) -> Result<(), sqlx::Error> {
         let id = envelope.id.as_str();
@@ -123,6 +128,7 @@ impl super::Store {
         offset: u32,
     ) -> Result<Vec<Envelope>, sqlx::Error> {
         let lid = label_id.as_str();
+        let cutoff = future_date_cutoff_timestamp();
         let lim = limit as i64;
         let off = offset as i64;
         let rows = sqlx::query!(
@@ -143,9 +149,10 @@ impl super::Store {
              FROM messages m
              JOIN message_labels ml ON m.id = ml.message_id
              WHERE ml.label_id = ?
-             ORDER BY m.date DESC
+             ORDER BY CASE WHEN m.date > ? THEN 0 ELSE m.date END DESC, m.id DESC
              LIMIT ? OFFSET ?"#,
             lid,
+            cutoff,
             lim,
             off,
         )
@@ -188,6 +195,7 @@ impl super::Store {
         offset: u32,
     ) -> Result<Vec<Envelope>, sqlx::Error> {
         let aid = account_id.as_str();
+        let cutoff = future_date_cutoff_timestamp();
         let lim = limit as i64;
         let off = offset as i64;
         let rows = sqlx::query!(
@@ -205,8 +213,12 @@ impl super::Store {
                     JOIN labels ON labels.id = message_labels.label_id
                     WHERE message_labels.message_id = messages.id
                 ), '') as "label_provider_ids!: String"
-             FROM messages WHERE account_id = ? ORDER BY date DESC LIMIT ? OFFSET ?"#,
+             FROM messages
+             WHERE account_id = ?
+             ORDER BY CASE WHEN date > ? THEN 0 ELSE date END DESC, id DESC
+             LIMIT ? OFFSET ?"#,
             aid,
+            cutoff,
             lim,
             off,
         )
@@ -409,6 +421,7 @@ impl super::Store {
         limit: u32,
         offset: u32,
     ) -> Result<Vec<Envelope>, sqlx::Error> {
+        let cutoff = future_date_cutoff_timestamp();
         let lim = limit as i64;
         let off = offset as i64;
         let rows = sqlx::query!(
@@ -426,7 +439,10 @@ impl super::Store {
                     JOIN labels ON labels.id = message_labels.label_id
                     WHERE message_labels.message_id = messages.id
                 ), '') as "label_provider_ids!: String"
-             FROM messages ORDER BY date DESC LIMIT ? OFFSET ?"#,
+             FROM messages
+             ORDER BY CASE WHEN date > ? THEN 0 ELSE date END DESC, id DESC
+             LIMIT ? OFFSET ?"#,
+            cutoff,
             lim,
             off,
         )
@@ -661,6 +677,7 @@ impl super::Store {
         let none_unsubscribe = serde_json::to_string(&UnsubscribeMethod::None).unwrap();
         let trash_flag = MessageFlags::TRASH.bits() as i64;
         let spam_flag = MessageFlags::SPAM.bits() as i64;
+        let cutoff = future_date_cutoff_timestamp();
         let lim = limit as i64;
 
         let rows = sqlx::query(
@@ -684,7 +701,7 @@ impl super::Store {
                     ) AS message_count,
                     ROW_NUMBER() OVER (
                         PARTITION BY account_id, LOWER(from_email)
-                        ORDER BY date DESC, id DESC
+                        ORDER BY CASE WHEN date > ? THEN 0 ELSE date END DESC, id DESC
                     ) AS rn
                 FROM messages
                 WHERE from_email != ''
@@ -710,12 +727,14 @@ impl super::Store {
                 message_count
             FROM ranked
             WHERE rn = 1
-            ORDER BY date DESC, id DESC
+            ORDER BY CASE WHEN date > ? THEN 0 ELSE date END DESC, id DESC
             LIMIT ?"#,
         )
+        .bind(cutoff)
         .bind(none_unsubscribe)
         .bind(trash_flag)
         .bind(spam_flag)
+        .bind(cutoff)
         .bind(lim)
         .fetch_all(self.reader())
         .await?;

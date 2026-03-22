@@ -25,6 +25,7 @@ pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
     use mxr_core::*;
 
     fn test_account() -> Account {
@@ -116,6 +117,38 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(list.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn list_envelopes_by_account_sinks_impossible_future_dates() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let mut poisoned = test_envelope(&account.id);
+        poisoned.provider_id = "poisoned-future".to_string();
+        poisoned.subject = "Poisoned future".to_string();
+        poisoned.date = chrono::Utc
+            .timestamp_opt(236_816_444_325, 0)
+            .single()
+            .unwrap();
+
+        let mut recent = test_envelope(&account.id);
+        recent.id = MessageId::new();
+        recent.provider_id = "real-recent".to_string();
+        recent.subject = "Real recent".to_string();
+        recent.date = chrono::Utc::now();
+
+        store.upsert_envelope(&poisoned).await.unwrap();
+        store.upsert_envelope(&recent).await.unwrap();
+
+        let listed = store
+            .list_envelopes_by_account(&account.id, 100, 0)
+            .await
+            .unwrap();
+
+        assert_eq!(listed[0].subject, "Real recent");
+        assert_eq!(listed[1].subject, "Poisoned future");
     }
 
     #[tokio::test]
@@ -245,6 +278,36 @@ mod tests {
         let thread = store.get_thread(&thread_id).await.unwrap().unwrap();
         assert_eq!(thread.message_count, 3);
         assert_eq!(thread.unread_count, 1);
+    }
+
+    #[tokio::test]
+    async fn thread_latest_date_ignores_impossible_future_dates() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let thread_id = ThreadId::new();
+
+        let mut poisoned = test_envelope(&account.id);
+        poisoned.provider_id = "poisoned-thread".to_string();
+        poisoned.thread_id = thread_id.clone();
+        poisoned.date = chrono::Utc
+            .timestamp_opt(236_816_444_325, 0)
+            .single()
+            .unwrap();
+
+        let mut recent = test_envelope(&account.id);
+        recent.id = MessageId::new();
+        recent.provider_id = "recent-thread".to_string();
+        recent.thread_id = thread_id.clone();
+        recent.subject = "Recent thread message".to_string();
+        recent.date = chrono::Utc::now();
+
+        store.upsert_envelope(&poisoned).await.unwrap();
+        store.upsert_envelope(&recent).await.unwrap();
+
+        let thread = store.get_thread(&thread_id).await.unwrap().unwrap();
+        assert_eq!(thread.latest_date.timestamp(), recent.date.timestamp());
     }
 
     #[tokio::test]

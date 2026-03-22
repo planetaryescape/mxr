@@ -118,11 +118,22 @@ fn build_row<'a>(
     let is_unread = !env.flags.contains(MessageFlags::READ);
     let is_starred = env.flags.contains(MessageFlags::STARRED);
     let is_in_set = view.selected_set.contains(&env.id);
+    let selection_marker = match (is_selected, is_in_set) {
+        (true, true) => "*",
+        (true, false) => ">",
+        (false, true) => "+",
+        (false, false) => " ",
+    };
+    let line_number_style = match (is_selected, is_in_set) {
+        (true, true) | (true, false) => Style::default().fg(theme.warning).bold(),
+        (false, true) => Style::default().fg(theme.accent).bold(),
+        (false, false) => Style::default().fg(theme.line_number_fg),
+    };
 
     // Line number
     let line_num_cell = Cell::from(Span::styled(
-        format!("{:>3}", index + 1),
-        Style::default().fg(theme.line_number_fg),
+        format!("{selection_marker}{:>3}", index + 1),
+        line_number_style,
     ));
 
     // Unread indicator
@@ -187,16 +198,21 @@ fn build_row<'a>(
         Style::default().fg(theme.success),
     ));
 
-    let base_style = if is_selected {
-        Style::default()
+    let base_style = match (is_selected, is_in_set) {
+        (true, true) => Style::default()
+            .bg(theme.accent)
+            .fg(theme.selection_fg)
+            .add_modifier(Modifier::BOLD),
+        (true, false) => Style::default()
             .bg(theme.selection_bg)
             .fg(theme.selection_fg)
-    } else if is_in_set {
-        Style::default().bg(theme.label_bg).fg(theme.text_primary)
-    } else if is_unread {
-        theme.unread_style()
-    } else {
-        Style::default().fg(theme.text_secondary)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        (false, true) => Style::default()
+            .bg(theme.accent_dim)
+            .fg(theme.selection_fg)
+            .add_modifier(Modifier::BOLD),
+        (false, false) if is_unread => theme.unread_style(),
+        (false, false) => Style::default().fg(theme.text_secondary),
     };
 
     Row::new(vec![
@@ -347,5 +363,37 @@ mod tests {
     fn attachment_marker_uses_clip_icon() {
         assert_eq!(attachment_marker(true), "📎");
         assert_eq!(attachment_marker(false), "  ");
+    }
+
+    #[test]
+    fn selection_markers_distinguish_cursor_and_bulk_selection() {
+        use mxr_test_support::render_to_string;
+        use std::collections::HashSet;
+
+        let first = row(1, false);
+        let second = row(1, false);
+        let rows = vec![first.clone(), second.clone()];
+        let mut selected_set = HashSet::new();
+        selected_set.insert(second.representative.id.clone());
+
+        let snapshot = render_to_string(80, 8, |frame| {
+            draw_view(
+                frame,
+                Rect::new(0, 0, 80, 8),
+                &MailListView {
+                    rows: &rows,
+                    selected_index: 0,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MailList,
+                    title: "Inbox",
+                    selected_set: &selected_set,
+                    mode: MailListMode::Threads,
+                },
+                &Theme::default(),
+            );
+        });
+
+        assert!(snapshot.contains(">  1"));
+        assert!(snapshot.contains("+  2"));
     }
 }

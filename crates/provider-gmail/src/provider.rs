@@ -6,6 +6,7 @@ use mxr_core::{
 use tracing::{debug, warn};
 
 use crate::client::{GmailApi, GmailClient, MessageFormat};
+use crate::error::GmailError;
 use crate::parse::{extract_message_body, gmail_message_to_envelope};
 use crate::send;
 use mxr_core::types::SyncedMessage;
@@ -109,7 +110,10 @@ impl GmailProvider {
 
             match resp.next_page_token {
                 Some(token) => page_token = Some(token),
-                None => break,
+                None => {
+                    page_token = None;
+                    break;
+                }
             }
         }
 
@@ -226,11 +230,19 @@ impl GmailProvider {
         let mut page_token: Option<String> = None;
 
         loop {
-            let resp = self
-                .client
-                .list_history(history_id, page_token.as_deref())
-                .await
-                .map_err(MxrError::from)?;
+            let resp = match self.client.list_history(history_id, page_token.as_deref()).await {
+                Ok(resp) => resp,
+                Err(GmailError::NotFound(body)) => {
+                    warn!(
+                        history_id,
+                        account = %self.account_id,
+                        error = %body,
+                        "Gmail history cursor stale, falling back to initial sync"
+                    );
+                    return self.initial_sync().await;
+                }
+                Err(error) => return Err(MxrError::from(error)),
+            };
 
             if let Some(ref hid) = resp.history_id {
                 if let Ok(h) = hid.parse::<u64>() {
@@ -552,6 +564,7 @@ mod tests {
         messages: HashMap<String, GmailMessage>,
         labels: Vec<GmailLabel>,
         modified: Mutex<Vec<String>>,
+        stale_history: bool,
     }
 
     #[async_trait]
@@ -604,6 +617,26 @@ mod tests {
             _start_history_id: u64,
             _page_token: Option<&str>,
         ) -> Result<GmailHistoryResponse, GmailError> {
+            if self.stale_history {
+                return Err(GmailError::NotFound(
+                    json!({
+                        "error": {
+                            "code": 404,
+                            "message": "Requested entity was not found.",
+                            "errors": [
+                                {
+                                    "message": "Requested entity was not found.",
+                                    "domain": "global",
+                                    "reason": "notFound"
+                                }
+                            ],
+                            "status": "NOT_FOUND"
+                        }
+                    })
+                    .to_string(),
+                ));
+            }
+
             Ok(GmailHistoryResponse {
                 history: Some(vec![GmailHistoryRecord {
                     id: "23".into(),
@@ -716,6 +749,10 @@ mod tests {
     }
 
     fn gmail_provider() -> GmailProvider {
+        gmail_provider_with_stale_history(false)
+    }
+
+    fn gmail_provider_with_stale_history(stale_history: bool) -> GmailProvider {
         let mut messages = HashMap::new();
         for message in [
             serde_json::from_value::<GmailMessage>(gmail_message("msg-1", "thread-1", "Welcome"))
@@ -760,6 +797,7 @@ mod tests {
                     },
                 ],
                 modified: Mutex::new(Vec::new()),
+                stale_history,
             }),
         )
     }
@@ -854,6 +892,23 @@ mod tests {
         assert!(matches!(
             batch.next_cursor,
             SyncCursor::Gmail { history_id: 23 }
+        ));
+    }
+
+    #[tokio::test]
+    async fn gmail_delta_sync_recovers_from_stale_history_cursor() {
+        let provider = gmail_provider_with_stale_history(true);
+        let batch = provider
+            .sync_messages(&SyncCursor::Gmail { history_id: 27_672_073 })
+            .await
+            .unwrap();
+
+        assert_eq!(batch.upserted.len(), 3);
+        assert!(batch.deleted_provider_ids.is_empty());
+        assert!(batch.label_changes.is_empty());
+        assert!(matches!(
+            batch.next_cursor,
+            SyncCursor::Gmail { history_id: 22 }
         ));
     }
 }

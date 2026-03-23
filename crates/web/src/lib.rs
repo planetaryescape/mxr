@@ -2708,7 +2708,7 @@ mod tests {
                     },
                 }),
                 Request::ListEnvelopes {
-                    limit: 50,
+                    limit: 200,
                     offset: 0,
                     label_id: Some(label_id),
                     account_id: None,
@@ -2798,7 +2798,7 @@ mod tests {
                     },
                 }),
                 Request::ListEnvelopes {
-                    limit: 50,
+                    limit: 200,
                     offset: 0,
                     label_id: None,
                     account_id: None,
@@ -2921,7 +2921,7 @@ mod tests {
             move |request| match request {
                 Request::Search {
                     query,
-                    limit: 50,
+                    limit: 200,
                     offset: 0,
                     mode: None,
                     sort: Some(SortOrder::DateDesc),
@@ -3022,7 +3022,7 @@ mod tests {
             move |request| match request {
                 Request::Search {
                     query,
-                    limit: 50,
+                    limit: 200,
                     offset: 0,
                     mode: Some(SearchMode::Semantic),
                     sort: Some(SortOrder::DateDesc),
@@ -3111,7 +3111,7 @@ mod tests {
             move |request| match request {
                 Request::Search {
                     query,
-                    limit: 50,
+                    limit: 200,
                     offset: 0,
                     mode: None,
                     sort: Some(SortOrder::DateDesc),

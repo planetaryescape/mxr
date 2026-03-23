@@ -17,7 +17,25 @@
         { "type": "style", "section": "Style", "hidden": true }
       ],
       "extra-files": [
-        "Cargo.toml",
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.package.version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-core'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-store'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-search'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-semantic'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-web'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-test-support'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-protocol'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-provider-fake'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-config'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-sync'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-provider-gmail'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-reader'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-compose'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-provider-smtp'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-provider-imap'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-export'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-rules'].version" },
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-tui'].version" },
         "apps/desktop/package.json"
       ]
     }

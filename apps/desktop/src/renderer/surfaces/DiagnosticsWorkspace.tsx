@@ -8,15 +8,15 @@ export function DiagnosticsWorkspace(props: {
   onGenerateBugReport: () => void;
 }) {
   return (
-    <div className="grid h-full place-items-center bg-panel-muted px-8 py-10">
-      <section className="surface flex w-full max-w-4xl flex-col gap-6 rounded-3xl px-8 py-8">
+    <div className="grid h-full place-items-center bg-panel-muted px-4 py-4">
+      <section className="surface flex w-full max-w-4xl flex-col gap-4 px-4 py-4">
         <div className="flex items-center gap-3">
-          <div className="rounded-2xl border border-outline bg-panel-elevated p-3">
+          <div className="border border-outline bg-panel-elevated p-2">
             <MailWarning className="size-5 text-warning" />
           </div>
           <div>
             <p className="mono-meta">Diagnostics</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
               Diagnostics
             </h1>
           </div>
@@ -30,7 +30,7 @@ export function DiagnosticsWorkspace(props: {
           <StatCard label="Health" value={props.diagnostics?.report.health_class ?? "loading"} />
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-outline bg-panel-elevated px-4 py-4">
+          <div className="border border-outline bg-panel-elevated px-3 py-3">
             <p className="mono-meta">Recommended next steps</p>
             <div className="mt-3 space-y-2">
               {(props.diagnostics?.report.recommended_next_steps ?? []).length === 0 ? (
@@ -44,7 +44,7 @@ export function DiagnosticsWorkspace(props: {
               )}
             </div>
           </div>
-          <div className="rounded-2xl border border-outline bg-panel-elevated px-4 py-4">
+          <div className="border border-outline bg-panel-elevated px-3 py-3">
             <p className="mono-meta">Recent errors</p>
             <div className="mt-3 space-y-2">
               {(props.diagnostics?.report.recent_error_logs ?? []).length === 0 ? (

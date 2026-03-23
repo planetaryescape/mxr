@@ -21,14 +21,14 @@ export function BridgeMismatchView(props: {
 }) {
   return (
     <BridgeFrame>
-      <section className="surface mx-auto flex w-full max-w-4xl flex-col gap-6 rounded-3xl px-8 py-8">
+      <section className="surface mx-auto flex w-full max-w-4xl flex-col gap-4 px-5 py-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="mono-meta">mxr Desktop</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-tight text-foreground">
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
               mxr Desktop needs a compatible version of mxr
             </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-foreground-muted">
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-foreground-muted">
               {props.bridge.detail}
             </p>
           </div>
@@ -42,21 +42,21 @@ export function BridgeMismatchView(props: {
           />
           <StatCard label="Required protocol" value={String(props.bridge.requiredProtocol)} />
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2">
           <button
-            className="rounded-xl border border-accent/30 bg-accent/15 px-4 py-2 text-sm font-medium text-accent"
+            className="border border-accent/30 bg-accent/15 px-3 py-1.5 text-xs font-medium uppercase text-accent"
             onClick={props.onUseBundled}
           >
             Use bundled mxr
           </button>
           <button
-            className="rounded-xl border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
+            className="border border-outline bg-panel-elevated px-3 py-1.5 text-xs uppercase text-foreground-muted"
             onClick={props.onRetry}
           >
             Retry
           </button>
         </div>
-        <div className="surface-muted rounded-2xl px-5 py-5">
+        <div className="surface-muted px-4 py-4">
           <p className="mono-meta">Update steps</p>
           <ul className="mt-4 space-y-3 text-sm text-foreground-muted">
             {props.bridge.updateSteps.map((step) => (
@@ -64,13 +64,13 @@ export function BridgeMismatchView(props: {
             ))}
           </ul>
         </div>
-        <div className="surface-muted grid gap-3 rounded-2xl px-5 py-5">
+        <div className="surface-muted grid gap-2 px-4 py-4">
           <label className="mono-meta" htmlFor="external-binary">
             Advanced external mxr binary
           </label>
           <input
             id="external-binary"
-            className="rounded-xl border border-outline bg-canvas-elevated px-4 py-3 text-sm text-foreground outline-none ring-0 placeholder:text-foreground-subtle"
+            className="border border-outline bg-canvas-elevated px-3 py-2 text-sm text-foreground outline-none ring-0 placeholder:text-foreground-subtle"
             value={props.externalPath}
             onChange={(event) => props.onExternalPathChange(event.target.value)}
             onKeyDown={(event) => {
@@ -82,7 +82,7 @@ export function BridgeMismatchView(props: {
             placeholder="/usr/local/bin/mxr"
           />
           <button
-            className="w-fit rounded-xl border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
+            className="w-fit border border-outline bg-panel-elevated px-3 py-1.5 text-xs uppercase text-foreground-muted"
             onClick={props.onTryExternal}
           >
             Try external binary
@@ -101,11 +101,11 @@ export function BridgeErrorView(props: {
 }) {
   return (
     <BridgeFrame>
-      <section className="surface mx-auto flex w-full max-w-3xl flex-col gap-6 rounded-3xl px-8 py-8">
+      <section className="surface mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 py-5">
         <p className="mono-meta">mxr Desktop</p>
-        <h1 className="text-4xl font-semibold tracking-tight text-foreground">{props.title}</h1>
-        <p className="max-w-2xl text-sm leading-7 text-foreground-muted">{props.detail}</p>
-        <div className="surface-muted rounded-2xl px-5 py-5">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{props.title}</h1>
+        <p className="max-w-2xl text-sm leading-6 text-foreground-muted">{props.detail}</p>
+        <div className="surface-muted px-4 py-4">
           <p className="mono-meta">Useful next steps</p>
           <ul className="mt-4 space-y-3 text-sm text-foreground-muted">
             {props.updateSteps.map((step) => (
@@ -114,7 +114,7 @@ export function BridgeErrorView(props: {
           </ul>
         </div>
         <button
-          className="w-fit rounded-xl border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground"
+          className="w-fit border border-outline bg-panel-elevated px-3 py-1.5 text-xs uppercase text-foreground"
           onClick={props.onRetry}
         >
           Retry
@@ -127,10 +127,10 @@ export function BridgeErrorView(props: {
 export function BridgeLoadingView(props: { title: string; detail: string }) {
   return (
     <BridgeFrame>
-      <section className="surface mx-auto flex w-full max-w-xl flex-col gap-4 rounded-3xl px-8 py-8">
+      <section className="surface mx-auto flex w-full max-w-xl flex-col gap-3 px-5 py-5">
         <p className="mono-meta">mxr Desktop</p>
-        <h1 className="text-4xl font-semibold tracking-tight text-foreground">{props.title}</h1>
-        <p className="text-sm leading-7 text-foreground-muted">{props.detail}</p>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{props.title}</h1>
+        <p className="text-sm leading-6 text-foreground-muted">{props.detail}</p>
       </section>
     </BridgeFrame>
   );
@@ -147,6 +147,8 @@ export function CommandPaletteOverlay(props: {
     label: string;
     shortcut: string;
   }>;
+  selectedIndex: number;
+  onHighlight: (index: number) => void;
   onSelect: (action: string) => void;
 }) {
   if (!props.open) {
@@ -154,9 +156,9 @@ export function CommandPaletteOverlay(props: {
   }
 
   return (
-    <div className="absolute inset-0 z-30 flex items-start justify-center bg-canvas/60 px-6 pt-24 backdrop-blur-sm">
-      <section className="surface w-full max-w-2xl rounded-3xl">
-        <div className="flex items-center gap-3 border-b border-outline px-5 py-4">
+    <div className="absolute inset-0 z-30 flex items-start justify-center bg-canvas/75 px-4 pt-16 backdrop-blur-sm">
+      <section className="surface w-full max-w-2xl">
+        <div className="flex items-center gap-2 border-b border-outline px-3 py-2">
           <Command className="size-4 text-foreground-subtle" />
           <input
             ref={props.inputRef}
@@ -166,12 +168,18 @@ export function CommandPaletteOverlay(props: {
             onChange={(event) => props.onQueryChange(event.target.value)}
           />
         </div>
-        <div className="max-h-[28rem] overflow-y-auto px-3 py-3">
-          {props.commands.map((item) => (
+        <div className="max-h-[28rem] overflow-y-auto px-1 py-1">
+          {props.commands.map((item, index) => (
             <button
               key={`${item.category}-${item.action}-${item.label}`}
               type="button"
-              className="flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left text-sm text-foreground-muted hover:bg-panel-elevated hover:text-foreground"
+              aria-selected={props.selectedIndex === index}
+              className={`flex w-full items-center justify-between border-b border-outline/50 px-3 py-2 text-left text-sm ${
+                props.selectedIndex === index
+                  ? "bg-panel-elevated text-foreground"
+                  : "text-foreground-muted hover:bg-panel-elevated hover:text-foreground"
+              }`}
+              onMouseEnter={() => props.onHighlight(index)}
               onClick={() => props.onSelect(item.action)}
             >
               <div className="min-w-0">
@@ -203,32 +211,32 @@ export function HelpOverlay(props: {
   }
 
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-canvas/70 px-6 py-10">
-      <section className="surface subtle-scrollbar w-full max-w-5xl overflow-y-auto rounded-3xl px-6 py-6">
-        <div className="flex items-center justify-between gap-4 border-b border-outline pb-4">
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-canvas/80 px-4 py-6">
+      <section className="surface subtle-scrollbar w-full max-w-5xl overflow-y-auto px-4 py-4">
+        <div className="flex items-center justify-between gap-4 border-b border-outline pb-3">
           <div>
             <p className="mono-meta">Help</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
               Keyboard map
             </h2>
           </div>
           <button
             type="button"
-            className="rounded-xl border border-outline bg-panel-elevated px-3 py-2 text-sm text-foreground-muted"
+            className="border border-outline bg-panel-elevated px-2 py-1.5 text-xs uppercase text-foreground-muted"
             onClick={props.onClose}
           >
             Close
           </button>
         </div>
-        <div className="mt-6 grid gap-6 xl:grid-cols-3">
+        <div className="mt-4 grid gap-4 xl:grid-cols-3">
           {props.sections.map((section) => (
-            <section key={section.id} className="surface-muted rounded-2xl px-4 py-4">
+            <section key={section.id} className="surface-muted px-3 py-3">
               <p className="mono-meta">{section.title}</p>
-              <div className="mt-4 space-y-2">
+              <div className="mt-3 space-y-1">
                 {section.entries.map((entry) => (
                   <div
                     key={`${section.id}-${entry.display}-${entry.action}`}
-                    className="flex items-center justify-between gap-4 rounded-xl px-3 py-2 text-sm"
+                    className="flex items-center justify-between gap-4 border-b border-outline/50 px-2 py-1.5 text-sm"
                   >
                     <span className="truncate text-foreground-muted">{entry.label}</span>
                     <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground-subtle">
@@ -252,12 +260,12 @@ export function InboxZeroOverlay(props: { open: boolean; onDismiss: () => void }
 
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(103,183,255,0.20),_transparent_32%),linear-gradient(180deg,_rgba(21,28,44,0.96),_rgba(10,13,20,0.98))] px-6">
-      <section className="mx-auto flex max-w-3xl flex-col items-center gap-6 text-center">
+      <section className="mx-auto flex max-w-3xl flex-col items-center gap-4 text-center">
         <p className="mono-meta">Inbox zero</p>
-        <h2 className="max-w-2xl text-6xl font-semibold tracking-tight text-foreground">
+        <h2 className="max-w-2xl text-5xl font-semibold tracking-tight text-foreground">
           Congratulations. You hit Inbox Zero.
         </h2>
-        <p className="max-w-xl text-lg leading-8 text-foreground-muted">
+        <p className="max-w-xl text-base leading-7 text-foreground-muted">
           Spend less time in your inbox, and more time on what matters most.
         </p>
         <HeaderActionButton label="Enter to dismiss" onClick={props.onDismiss} />

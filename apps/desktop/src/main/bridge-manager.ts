@@ -25,6 +25,12 @@ export class BridgeManager {
   private bridgeProcess: ReturnType<typeof spawn> | null = null;
   private state: BridgeState = { kind: "idle" };
 
+  async resolveBinaryPath(): Promise<string> {
+    const defaultBinaryPath = this.resolveDefaultBinaryPath();
+    const settings = await this.readSettings();
+    return settings.externalBinaryPath?.trim() || defaultBinaryPath;
+  }
+
   async getState(): Promise<BridgeState> {
     return this.state.kind === "idle" ? this.connect() : this.state;
   }
@@ -52,8 +58,7 @@ export class BridgeManager {
 
   async connect(): Promise<BridgeState> {
     const defaultBinaryPath = this.resolveDefaultBinaryPath();
-    const settings = await this.readSettings();
-    const binaryPath = settings.externalBinaryPath?.trim() || defaultBinaryPath;
+    const binaryPath = await this.resolveBinaryPath();
     const usingBundled = binaryPath === defaultBinaryPath;
 
     let expectedStatus: MxrStatusSnapshot;

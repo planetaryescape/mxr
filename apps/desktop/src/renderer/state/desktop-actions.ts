@@ -86,12 +86,17 @@ export type DesktopActionContext = {
   setSignatureExpanded: Dispatch<SetStateAction<boolean>>;
   visualMode: boolean;
   setVisualMode: Dispatch<SetStateAction<boolean>>;
+  visualAnchorMessageId: string | null;
+  setVisualAnchorMessageId: Dispatch<SetStateAction<string | null>>;
   selectedMessageIds: Set<string>;
   setSelectedMessageIds: Dispatch<SetStateAction<Set<string>>>;
   openGoToLabelDialog: () => void;
   setMailListMode: Dispatch<SetStateAction<"threads" | "messages">>;
   exportSelectedThread: () => Promise<void>;
   generateBugReport: () => Promise<void>;
+  openDiagnosticsDetails: () => Promise<void>;
+  openConfigFile: () => Promise<void>;
+  openLogs: () => Promise<void>;
   openRuleForm: (mode: "new" | "edit") => Promise<void>;
   toggleSelectedRuleEnabled: () => Promise<void>;
   openRuleDryRun: () => Promise<void>;
@@ -108,7 +113,13 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
     case "move_down":
     case "scroll_down":
     case "next_message":
-      moveSelection(
+      if (context.focusContext === "sidebar") {
+        void moveSidebarSelection(1, context.sidebar, context.applySidebarLens);
+        return;
+      }
+      maybeExtendVisualSelection(
+        context,
+        moveSelection(
         1,
         context.screen,
         context.mailboxRows,
@@ -119,12 +130,19 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
           setMailbox: context.setSelectedMailboxThreadId,
           setSearch: context.setSelectedSearchThreadId,
         },
+        ),
       );
       return;
     case "move_up":
     case "scroll_up":
     case "prev_message":
-      moveSelection(
+      if (context.focusContext === "sidebar") {
+        void moveSidebarSelection(-1, context.sidebar, context.applySidebarLens);
+        return;
+      }
+      maybeExtendVisualSelection(
+        context,
+        moveSelection(
         -1,
         context.screen,
         context.mailboxRows,
@@ -135,10 +153,17 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
           setMailbox: context.setSelectedMailboxThreadId,
           setSearch: context.setSelectedSearchThreadId,
         },
+        ),
       );
       return;
     case "page_down":
-      moveSelection(
+      if (context.focusContext === "sidebar") {
+        void moveSidebarSelection(8, context.sidebar, context.applySidebarLens);
+        return;
+      }
+      maybeExtendVisualSelection(
+        context,
+        moveSelection(
         8,
         context.screen,
         context.mailboxRows,
@@ -149,10 +174,17 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
           setMailbox: context.setSelectedMailboxThreadId,
           setSearch: context.setSelectedSearchThreadId,
         },
+        ),
       );
       return;
     case "page_up":
-      moveSelection(
+      if (context.focusContext === "sidebar") {
+        void moveSidebarSelection(-8, context.sidebar, context.applySidebarLens);
+        return;
+      }
+      maybeExtendVisualSelection(
+        context,
+        moveSelection(
         -8,
         context.screen,
         context.mailboxRows,
@@ -163,28 +195,45 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
           setMailbox: context.setSelectedMailboxThreadId,
           setSearch: context.setSelectedSearchThreadId,
         },
+        ),
       );
       return;
     case "jump_top":
     case "visible_top":
-      jumpSelection("top", context.screen, context.mailboxRows, context.searchRows, {
+      if (context.focusContext === "sidebar") {
+        void jumpSidebarSelection("top", context.sidebar, context.applySidebarLens);
+        return;
+      }
+      maybeExtendVisualSelection(
+        context,
+        jumpSelection("top", context.screen, context.mailboxRows, context.searchRows, {
         setMailbox: context.setSelectedMailboxThreadId,
         setSearch: context.setSelectedSearchThreadId,
-      });
+        }),
+      );
       return;
     case "jump_bottom":
     case "visible_bottom":
-      jumpSelection("bottom", context.screen, context.mailboxRows, context.searchRows, {
+      if (context.focusContext === "sidebar") {
+        void jumpSidebarSelection("bottom", context.sidebar, context.applySidebarLens);
+        return;
+      }
+      maybeExtendVisualSelection(
+        context,
+        jumpSelection("bottom", context.screen, context.mailboxRows, context.searchRows, {
         setMailbox: context.setSelectedMailboxThreadId,
         setSearch: context.setSelectedSearchThreadId,
-      });
+        }),
+      );
       return;
     case "visible_middle":
     case "center_current":
       context.setFocusContext(context.layoutMode === "twoPane" ? "mailList" : "reader");
       return;
     case "next_search_result":
-      moveSelection(
+      maybeExtendVisualSelection(
+        context,
+        moveSelection(
         1,
         context.screen,
         context.mailboxRows,
@@ -195,10 +244,13 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
           setMailbox: context.setSelectedMailboxThreadId,
           setSearch: context.setSelectedSearchThreadId,
         },
+        ),
       );
       return;
     case "prev_search_result":
-      moveSelection(
+      maybeExtendVisualSelection(
+        context,
+        moveSelection(
         -1,
         context.screen,
         context.mailboxRows,
@@ -209,6 +261,7 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
           setMailbox: context.setSelectedMailboxThreadId,
           setSearch: context.setSelectedSearchThreadId,
         },
+        ),
       );
       return;
     case "open":
@@ -472,13 +525,11 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       }
       return;
     case "open_subscriptions": {
-      if (context.sidebar.sections.some((section) => section.title === "Subscriptions")) {
-        const subscription = context.sidebar.sections.find(
-          (section) => section.title === "Subscriptions",
-        )?.items[0];
-        if (subscription) {
-          void context.applySidebarLens(subscription);
-        }
+      const subscription = context.sidebar.sections
+        .flatMap((section) => section.items)
+        .find((item) => item.lens.kind === "subscription");
+      if (subscription) {
+        void context.applySidebarLens(subscription);
       }
       return;
     }
@@ -497,7 +548,10 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
     case "visual_line_mode":
       context.setVisualMode((current) => !current);
       if (!context.visualMode && context.selectedRow) {
-        context.setSelectedMessageIds((current) => new Set(current).add(context.selectedRow!.id));
+        context.setVisualAnchorMessageId(context.selectedRow.id);
+        context.setSelectedMessageIds(new Set([context.selectedRow.id]));
+      } else {
+        context.setVisualAnchorMessageId(null);
       }
       context.showNotice(!context.visualMode ? "-- VISUAL LINE --" : "Visual mode off");
       return;
@@ -525,6 +579,7 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
     case "clear_selection":
       context.setSelectedMessageIds(new Set());
       context.setVisualMode(false);
+      context.setVisualAnchorMessageId(null);
       context.showNotice("Selection cleared");
       return;
     case "go_label":
@@ -535,6 +590,15 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       return;
     case "generate_bug_report":
       void context.generateBugReport();
+      return;
+    case "open_diagnostics_pane_details":
+      void context.openDiagnosticsDetails();
+      return;
+    case "edit_config":
+      void context.openConfigFile();
+      return;
+    case "open_logs":
+      void context.openLogs();
       return;
     case "open_rule_form_new":
       void context.openRuleForm("new");
@@ -588,6 +652,10 @@ export function isTypingTarget(element: Element | null) {
 }
 
 export function normalizeKeyToken(event: KeyboardEvent) {
+  if (event.metaKey && !event.ctrlKey && event.key.toLowerCase() === "p") {
+    return "Ctrl-p";
+  }
+
   if (event.ctrlKey && event.key.length === 1) {
     return `Ctrl-${event.key.toLowerCase()}`;
   }
@@ -635,7 +703,7 @@ function moveSelection(
   mailboxThreadId: string | null,
   searchThreadId: string | null,
   setters: SelectionSetters,
-) {
+): Extract<FlattenedEntry, { kind: "row" }>["row"] | null {
   const entries = (screen === "search" ? searchRows : mailboxRows).filter(
     (entry): entry is Extract<FlattenedEntry, { kind: "row" }> => entry.kind === "row",
   );
@@ -648,6 +716,7 @@ function moveSelection(
   } else {
     setters.setMailbox(next);
   }
+  return entries[nextIndex]?.row ?? null;
 }
 
 function jumpSelection(
@@ -656,7 +725,7 @@ function jumpSelection(
   mailboxRows: FlattenedEntry[],
   searchRows: FlattenedEntry[],
   setters: SelectionSetters,
-) {
+): Extract<FlattenedEntry, { kind: "row" }>["row"] | null {
   const entries = (screen === "search" ? searchRows : mailboxRows).filter(
     (entry): entry is Extract<FlattenedEntry, { kind: "row" }> => entry.kind === "row",
   );
@@ -669,6 +738,42 @@ function jumpSelection(
   } else {
     setters.setMailbox(next);
   }
+  return direction === "top" ? (entries[0]?.row ?? null) : (entries[entries.length - 1]?.row ?? null);
+}
+
+function maybeExtendVisualSelection(
+  context: Pick<
+    DesktopActionContext,
+    | "screen"
+    | "mailboxRows"
+    | "searchRows"
+    | "visualMode"
+    | "visualAnchorMessageId"
+    | "selectedRow"
+    | "setSelectedMessageIds"
+    | "setVisualAnchorMessageId"
+  >,
+  nextRow: MailboxRow | null,
+) {
+  if (!context.visualMode || !nextRow) {
+    return;
+  }
+
+  const entries = (context.screen === "search" ? context.searchRows : context.mailboxRows).filter(
+    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> => entry.kind === "row",
+  );
+  const anchorId = context.visualAnchorMessageId ?? context.selectedRow?.id ?? nextRow.id;
+  const anchorIndex = entries.findIndex((entry) => entry.row.id === anchorId);
+  const targetIndex = entries.findIndex((entry) => entry.row.id === nextRow.id);
+
+  context.setVisualAnchorMessageId(anchorId);
+  if (anchorIndex < 0 || targetIndex < 0) {
+    context.setSelectedMessageIds(new Set([nextRow.id]));
+    return;
+  }
+
+  const [start, end] = anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
+  context.setSelectedMessageIds(new Set(entries.slice(start, end + 1).map((entry) => entry.row.id)));
 }
 
 function clampIndex(index: number, length: number) {
@@ -676,4 +781,36 @@ function clampIndex(index: number, length: number) {
     return 0;
   }
   return Math.min(Math.max(index, 0), length - 1);
+}
+
+async function moveSidebarSelection(
+  delta: number,
+  sidebar: SidebarPayload,
+  applySidebarLens: (item: SidebarItem) => Promise<void>,
+) {
+  const items = sidebar.sections.flatMap((section) => section.items);
+  if (items.length === 0) {
+    return;
+  }
+  const currentIndex = items.findIndex((item) => item.active);
+  const nextIndex = clampIndex(currentIndex < 0 ? 0 : currentIndex + delta, items.length);
+  const next = items[nextIndex];
+  if (next) {
+    await applySidebarLens(next);
+  }
+}
+
+async function jumpSidebarSelection(
+  direction: "top" | "bottom",
+  sidebar: SidebarPayload,
+  applySidebarLens: (item: SidebarItem) => Promise<void>,
+) {
+  const items = sidebar.sections.flatMap((section) => section.items);
+  if (items.length === 0) {
+    return;
+  }
+  const next = direction === "top" ? items[0] : items[items.length - 1];
+  if (next) {
+    await applySidebarLens(next);
+  }
 }

@@ -86,6 +86,23 @@ export function useComposeActions(props: {
     hydrateComposeSession(payload.session);
   });
 
+  const openDraftInEditorForSession = useEffectEvent(async (session: ComposeSession) => {
+    props.setComposeBusy("Opening editor");
+    props.setComposeError(null);
+    try {
+      await window.mxrDesktop.openDraftInEditor({
+        draftPath: session.draftPath,
+        editorCommand: session.editorCommand,
+        cursorLine: session.cursorLine,
+      });
+      props.showNotice(`Opened ${session.editorCommand}`);
+    } catch (error) {
+      props.setComposeError(error instanceof Error ? error.message : "Failed to open editor");
+    } finally {
+      props.setComposeBusy(null);
+    }
+  });
+
   const openComposeShell = useEffectEvent(async (kind: ComposeSessionKind, messageId?: string) => {
     if (props.bridge.kind !== "ready") {
       return;
@@ -117,6 +134,7 @@ export function useComposeActions(props: {
     hydrateComposeSession(payload.session);
     props.setComposeOpen(true);
     props.setFocusContext("compose");
+    await openDraftInEditorForSession(payload.session);
   });
 
   const closeComposeShell = useEffectEvent(() => {
@@ -196,23 +214,11 @@ export function useComposeActions(props: {
       return;
     }
 
-    props.setComposeBusy("Opening editor");
-    try {
-      const session = await persistComposeDraft();
-      if (!session) {
-        return;
-      }
-      await window.mxrDesktop.openDraftInEditor({
-        draftPath: session.draftPath,
-        editorCommand: session.editorCommand,
-        cursorLine: session.cursorLine,
-      });
-      props.showNotice(`Opened ${session.editorCommand}`);
-    } catch (error) {
-      props.setComposeError(error instanceof Error ? error.message : "Failed to open editor");
-    } finally {
-      props.setComposeBusy(null);
+    const session = await persistComposeDraft();
+    if (!session) {
+      return;
     }
+    await openDraftInEditorForSession(session);
   });
 
   return {

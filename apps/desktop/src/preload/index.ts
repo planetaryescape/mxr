@@ -8,6 +8,12 @@ const api: DesktopApi = {
   setExternalBinaryPath: (path) => ipcRenderer.invoke("mxr:setExternalBinaryPath", path),
   openDraftInEditor: (request) => ipcRenderer.invoke("mxr:openDraftInEditor", request),
   openExternalUrl: (url) => ipcRenderer.invoke("mxr:openExternalUrl", url),
+  openLocalPath: (path) => ipcRenderer.invoke("mxr:openLocalPath", path),
+  openConfigFile: () => ipcRenderer.invoke("mxr:openConfigFile"),
 };
+
+ipcRenderer.on("mxr:commandPaletteShortcut", () => {
+  window.dispatchEvent(new CustomEvent("mxr:command-palette"));
+});
 
 contextBridge.exposeInMainWorld("mxrDesktop", api);

@@ -289,7 +289,10 @@ fn open_temp_text_buffer(name: &str, content: &str) -> Result<String, MxrError> 
         .map_err(|error| MxrError::Ipc(format!("failed to launch editor: {error}")))?;
 
     if !status.success() {
-        return Ok(format!("Diagnostics detail open cancelled ({})", path.display()));
+        return Ok(format!(
+            "Diagnostics detail open cancelled ({})",
+            path.display()
+        ));
     }
 
     Ok(format!("Opened diagnostics details at {}", path.display()))
@@ -3073,15 +3076,6 @@ mod tests {
         let removed_id = app.envelopes[0].id.clone();
         app.apply(Action::Archive);
         assert!(!app.pending_mutation_queue.is_empty());
-        // Simulate the mutation result
-        let (_, effect) = app.pending_mutation_queue.remove(0);
-        // Apply the effect as if it succeeded
-        match effect {
-            MutationEffect::RemoveFromList(remove_id) => {
-                app.apply_removed_message_ids(&[remove_id]);
-            }
-            _ => panic!("Expected RemoveFromList"),
-        }
         assert_eq!(app.envelopes.len(), 4);
         assert!(!app
             .envelopes

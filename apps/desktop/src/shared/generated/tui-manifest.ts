@@ -371,6 +371,14 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "mark_read_archive",
+        "label": "Read + Archive",
+        "display": "m",
+        "tokens": [
+          "m"
+        ]
+      },
+      {
         "action": "next_search_result",
         "label": "Next Search Result",
         "display": "n",
@@ -616,6 +624,14 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "mark_read_archive",
+        "label": "Read + Archive",
+        "display": "m",
+        "tokens": [
+          "m"
+        ]
+      },
+      {
         "action": "reply",
         "label": "Reply",
         "display": "r",
@@ -817,6 +833,14 @@ export const tuiDesktopManifest = {
         "display": "k",
         "tokens": [
           "k"
+        ]
+      },
+      {
+        "action": "mark_read_archive",
+        "label": "Read + Archive",
+        "display": "m",
+        "tokens": [
+          "m"
         ]
       },
       {

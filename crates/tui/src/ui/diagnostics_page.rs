@@ -28,11 +28,46 @@ pub fn draw(
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(chunks[0]);
 
-    render_pane(frame, top_chunks[0], state, DiagnosticsPaneKind::Status, theme, false);
-    render_pane(frame, top_chunks[1], state, DiagnosticsPaneKind::Data, theme, false);
-    render_pane(frame, chunks[1], state, DiagnosticsPaneKind::Sync, theme, false);
-    render_pane(frame, chunks[2], state, DiagnosticsPaneKind::Events, theme, false);
-    render_pane(frame, chunks[3], state, DiagnosticsPaneKind::Logs, theme, false);
+    render_pane(
+        frame,
+        top_chunks[0],
+        state,
+        DiagnosticsPaneKind::Status,
+        theme,
+        false,
+    );
+    render_pane(
+        frame,
+        top_chunks[1],
+        state,
+        DiagnosticsPaneKind::Data,
+        theme,
+        false,
+    );
+    render_pane(
+        frame,
+        chunks[1],
+        state,
+        DiagnosticsPaneKind::Sync,
+        theme,
+        false,
+    );
+    render_pane(
+        frame,
+        chunks[2],
+        state,
+        DiagnosticsPaneKind::Events,
+        theme,
+        false,
+    );
+    render_pane(
+        frame,
+        chunks[3],
+        state,
+        DiagnosticsPaneKind::Logs,
+        theme,
+        false,
+    );
 }
 
 pub fn pane_details_text(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> String {
@@ -151,7 +186,11 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
             format!("Health: {} status={}", health_text, status_text),
             format!(
                 "Lifecycle: restart={} repair={}",
-                yes_no(doctor.map(|report| report.restart_required).unwrap_or(false)),
+                yes_no(
+                    doctor
+                        .map(|report| report.restart_required)
+                        .unwrap_or(false)
+                ),
                 yes_no(doctor.map(|report| report.repair_required).unwrap_or(false)),
             ),
             format!(
@@ -227,9 +266,7 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                         "-".into()
                     }),
             ),
-            format!(
-                "Hints: Tab/Shift-Tab pane  Enter fullscreen  d details  L logs"
-            ),
+            format!("Hints: Tab/Shift-Tab pane  Enter fullscreen  d details  L logs"),
         ],
         DiagnosticsPaneKind::Data => vec![
             format!(
@@ -286,7 +323,12 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                     .unwrap_or_else(|| "-".into()),
             ),
             doctor
-                .map(|report| format!("Paths: db={} index={} logs={}", report.database_path, report.index_path, report.log_path))
+                .map(|report| {
+                    format!(
+                        "Paths: db={} index={} logs={}",
+                        report.database_path, report.index_path, report.log_path
+                    )
+                })
                 .unwrap_or_else(|| "Paths: loading".into()),
         ],
         DiagnosticsPaneKind::Sync => {
@@ -361,7 +403,11 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
 }
 
 fn yes_no(value: bool) -> &'static str {
-    if value { "yes" } else { "no" }
+    if value {
+        "yes"
+    } else {
+        "no"
+    }
 }
 
 fn format_bytes(bytes: u64) -> String {

@@ -695,34 +695,26 @@ impl App {
             }
             (KeyCode::Char('j') | KeyCode::Down, _) => {
                 let pane = self.diagnostics_page.active_pane();
-                *self.diagnostics_page.scroll_offset_mut(pane) = self
-                    .diagnostics_page
-                    .scroll_offset(pane)
-                    .saturating_add(1);
+                *self.diagnostics_page.scroll_offset_mut(pane) =
+                    self.diagnostics_page.scroll_offset(pane).saturating_add(1);
                 None
             }
             (KeyCode::Char('k') | KeyCode::Up, _) => {
                 let pane = self.diagnostics_page.active_pane();
-                *self.diagnostics_page.scroll_offset_mut(pane) = self
-                    .diagnostics_page
-                    .scroll_offset(pane)
-                    .saturating_sub(1);
+                *self.diagnostics_page.scroll_offset_mut(pane) =
+                    self.diagnostics_page.scroll_offset(pane).saturating_sub(1);
                 None
             }
             (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
                 let pane = self.diagnostics_page.active_pane();
-                *self.diagnostics_page.scroll_offset_mut(pane) = self
-                    .diagnostics_page
-                    .scroll_offset(pane)
-                    .saturating_add(8);
+                *self.diagnostics_page.scroll_offset_mut(pane) =
+                    self.diagnostics_page.scroll_offset(pane).saturating_add(8);
                 None
             }
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                 let pane = self.diagnostics_page.active_pane();
-                *self.diagnostics_page.scroll_offset_mut(pane) = self
-                    .diagnostics_page
-                    .scroll_offset(pane)
-                    .saturating_sub(8);
+                *self.diagnostics_page.scroll_offset_mut(pane) =
+                    self.diagnostics_page.scroll_offset(pane).saturating_sub(8);
                 None
             }
             (KeyCode::Enter | KeyCode::Char('o'), _) => {

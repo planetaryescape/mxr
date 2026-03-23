@@ -18,22 +18,22 @@ export function AccountsWorkspace(props: {
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 xl:grid-cols-[22rem_minmax(0,1fr)]">
-      <section className="subtle-scrollbar min-h-0 overflow-y-auto border-r border-outline bg-panel px-5 py-5">
-        <div className="flex items-center justify-between gap-3 border-b border-outline pb-4">
+      <section className="subtle-scrollbar min-h-0 overflow-y-auto border-r border-outline bg-panel px-4 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-outline pb-3">
           <div>
             <p className="mono-meta">Accounts</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">Accounts</h1>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">Accounts</h1>
           </div>
           <HeaderActionButton label="New" onClick={props.onNew} />
         </div>
         {props.status ? (
-          <div className="mt-4 rounded-2xl border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground-muted">
+          <div className="mt-3 border border-outline bg-panel-elevated px-3 py-2 text-sm text-foreground-muted">
             {props.status}
           </div>
         ) : null}
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 space-y-px">
           {props.accounts.length === 0 ? (
-            <div className="rounded-2xl border border-outline bg-panel-elevated px-4 py-4 text-sm text-foreground-muted">
+            <div className="border border-outline bg-panel-elevated px-3 py-3 text-sm text-foreground-muted">
               No accounts configured.
             </div>
           ) : (
@@ -42,30 +42,30 @@ export function AccountsWorkspace(props: {
                 key={account.account_id}
                 type="button"
                 className={cn(
-                  "w-full rounded-2xl border px-4 py-4 text-left",
+                  "w-full border px-3 py-2.5 text-left",
                   props.selectedAccountId === account.account_id
-                    ? "border-accent/35 bg-accent/10"
-                    : "border-outline bg-panel-elevated",
+                    ? "border-outline-strong bg-panel-elevated"
+                    : "border-transparent bg-transparent hover:bg-panel-elevated/55",
                 )}
                 onClick={() => props.onSelect(account.account_id)}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-base font-medium text-foreground">{account.name}</h2>
-                  <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground-subtle">
+                  <h2 className="text-sm font-medium text-foreground">{account.name}</h2>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-foreground-subtle">
                     {account.provider_kind}
                   </span>
                 </div>
-                <p className="mt-2 text-sm text-foreground-muted">{account.email}</p>
+                <p className="mt-1 text-[12px] text-foreground-muted">{account.email}</p>
               </button>
             ))
           )}
         </div>
       </section>
-      <section className="subtle-scrollbar min-h-0 overflow-y-auto bg-panel-muted px-6 py-5">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-outline pb-4">
+      <section className="subtle-scrollbar min-h-0 overflow-y-auto bg-panel-muted px-4 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-outline pb-3">
           <div>
             <p className="mono-meta">Account details</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
               {selectedAccount?.name ?? "Select an account"}
             </h2>
           </div>
@@ -78,15 +78,15 @@ export function AccountsWorkspace(props: {
             />
           </div>
         </div>
-        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="rounded-3xl border border-outline bg-panel px-5 py-5">
-            <pre className="whitespace-pre-wrap text-sm leading-7 text-foreground-muted">
+        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="border border-outline bg-panel px-4 py-4">
+            <pre className="whitespace-pre-wrap text-sm leading-6 text-foreground-muted">
               {formatJson(selectedAccount)}
             </pre>
           </div>
-          <div className="rounded-3xl border border-outline bg-panel px-5 py-5">
+          <div className="border border-outline bg-panel px-4 py-4">
             <p className="mono-meta">Last operation</p>
-            <pre className="mt-4 whitespace-pre-wrap text-sm leading-7 text-foreground-muted">
+            <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground-muted">
               {formatJson(props.result)}
             </pre>
           </div>

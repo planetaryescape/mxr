@@ -21,13 +21,13 @@ use mxr_core::{
     id::{AccountId, DraftId, MessageId, ThreadId},
     types::{
         Draft, Envelope, Label, LabelKind, MessageBody, MessageFlags, ReplyHeaders, SavedSearch,
-        SearchMode, SubscriptionSummary,
+        SearchMode, SortOrder, SubscriptionSummary,
     },
 };
 use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload, Request, ResponseData, SearchResultItem};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use tokio::net::TcpListener;
@@ -267,7 +267,7 @@ impl MailboxQuery {
 }
 
 fn default_limit() -> u32 {
-    50
+    200
 }
 
 #[derive(Debug, Deserialize)]
@@ -506,7 +506,10 @@ async fn thread(
                 _ => return Err(BridgeError::UnexpectedResponse),
             };
 
-            let attachment_count = bodies.iter().map(|body| body.attachments.len()).sum::<usize>();
+            let attachment_count = bodies
+                .iter()
+                .map(|body| body.attachments.len())
+                .sum::<usize>();
 
             Ok(Json(json!({
                 "thread": thread,
@@ -562,52 +565,74 @@ async fn search(
     if query.q.trim().is_empty() {
         return Ok(Json(json!({
             "scope": query.scope.unwrap_or_else(|| "threads".to_string()),
-            "sort": query.sort.unwrap_or_else(|| "relevant".to_string()),
+            "sort": query.sort.unwrap_or_else(|| "recent".to_string()),
             "mode": query.mode.unwrap_or_default(),
             "total": 0,
+            "has_more": false,
             "groups": [],
             "explain": serde_json::Value::Null,
         })));
     }
+
+    let sort = match query.sort.as_deref() {
+        Some("relevant") => SortOrder::Relevance,
+        Some("oldest") => SortOrder::DateAsc,
+        _ => SortOrder::DateDesc,
+    };
+
+    let thread_scope = query.scope.as_deref().unwrap_or("threads") == "threads";
 
     match ipc_request(
         &state.config.socket_path,
         Request::Search {
             query: query.q,
             limit: query.limit,
+            offset: 0,
             mode: query.mode,
+            sort: Some(sort),
             explain: query.explain,
         },
     )
     .await?
     {
-        ResponseData::SearchResults { results, explain } => {
-            let message_ids = results
+        ResponseData::SearchResults {
+            results,
+            explain,
+            has_more,
+        } => {
+            let effective_results = if thread_scope {
+                dedupe_search_results_by_thread(results)
+            } else {
+                results
+            };
+            let message_ids = effective_results
                 .iter()
                 .map(|result| result.message_id.clone())
                 .collect::<Vec<_>>();
-            let mut envelopes = if message_ids.is_empty() {
+            let envelopes = if message_ids.is_empty() {
                 Vec::new()
             } else {
                 match ipc_request(
                     &state.config.socket_path,
-                    Request::ListEnvelopesByIds { message_ids: message_ids.clone() },
+                    Request::ListEnvelopesByIds {
+                        message_ids: message_ids.clone(),
+                    },
                 )
                 .await?
                 {
-                    ResponseData::Envelopes { envelopes } => reorder_envelopes(envelopes, &message_ids),
+                    ResponseData::Envelopes { envelopes } => {
+                        reorder_envelopes(envelopes, &message_ids)
+                    }
                     _ => return Err(BridgeError::UnexpectedResponse),
                 }
             };
-            if query.sort.as_deref() == Some("recent") {
-                envelopes.sort_by(|left, right| right.date.cmp(&left.date));
-            }
 
             Ok(Json(json!({
                 "scope": query.scope.unwrap_or_else(|| "threads".to_string()),
-                "sort": query.sort.unwrap_or_else(|| "relevant".to_string()),
+                "sort": query.sort.unwrap_or_else(|| "recent".to_string()),
                 "mode": query.mode.unwrap_or_default(),
-                "total": results.len(),
+                "total": effective_results.len(),
+                "has_more": has_more,
                 "groups": group_envelopes(envelopes),
                 "explain": explain,
             })))
@@ -676,11 +701,7 @@ async fn send_compose_session(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let draft = compose_draft_from_file(&request.draft_path, &request.account_id)?;
-    let _ = ack_request(
-        &state.config.socket_path,
-        Request::SendDraft { draft },
-    )
-    .await?;
+    let _ = ack_request(&state.config.socket_path, Request::SendDraft { draft }).await?;
     let _ = std::fs::remove_file(&request.draft_path);
     Ok(Json(json!({ "ok": true })))
 }
@@ -1403,7 +1424,8 @@ fn compose_kind_name(kind: &ComposeSessionKindRequest) -> &'static str {
 }
 
 fn load_compose_session(path: &Path) -> Result<serde_json::Value, BridgeError> {
-    let raw_content = std::fs::read_to_string(path).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let raw_content =
+        std::fs::read_to_string(path).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let (frontmatter, body) =
         parse_compose_file(&raw_content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let rendered = render_markdown(&body);
@@ -1439,7 +1461,11 @@ fn extract_compose_context(content: &str) -> Option<String> {
     let marker_index = content.find(CONTEXT_MARKER)?;
     let lines = content[marker_index + CONTEXT_MARKER.len()..]
         .lines()
-        .map(|line| line.strip_prefix("# ").or_else(|| line.strip_prefix('#')).unwrap_or(line))
+        .map(|line| {
+            line.strip_prefix("# ")
+                .or_else(|| line.strip_prefix('#'))
+                .unwrap_or(line)
+        })
         .map(str::trim_end)
         .collect::<Vec<_>>();
     let context = lines.join("\n").trim().to_string();
@@ -1481,10 +1507,13 @@ fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<Draft, 
     Ok(Draft {
         id: DraftId::new(),
         account_id: parse_account_id(account_id)?,
-        reply_headers: frontmatter.in_reply_to.as_ref().map(|in_reply_to| ReplyHeaders {
-            in_reply_to: in_reply_to.clone(),
-            references: frontmatter.references.clone(),
-        }),
+        reply_headers: frontmatter
+            .in_reply_to
+            .as_ref()
+            .map(|in_reply_to| ReplyHeaders {
+                in_reply_to: in_reply_to.clone(),
+                references: frontmatter.references.clone(),
+            }),
         to: parse_address_list(&frontmatter.to),
         cc: parse_address_list(&frontmatter.cc),
         bcc: parse_address_list(&frontmatter.bcc),
@@ -1504,7 +1533,10 @@ async fn default_account(socket_path: &Path) -> Result<(AccountId, String), Brid
     if accounts.is_empty() {
         return Err(BridgeError::Ipc("No runtime account configured".into()));
     }
-    let index = accounts.iter().position(|account| account.is_default).unwrap_or(0);
+    let index = accounts
+        .iter()
+        .position(|account| account.is_default)
+        .unwrap_or(0);
     let account = accounts.swap_remove(index);
     Ok((account.account_id, account.email))
 }
@@ -1522,7 +1554,10 @@ async fn account_summary(
     }
 }
 
-async fn envelope_for_message(socket_path: &Path, message_id: &str) -> Result<Envelope, BridgeError> {
+async fn envelope_for_message(
+    socket_path: &Path,
+    message_id: &str,
+) -> Result<Envelope, BridgeError> {
     match ipc_request(
         socket_path,
         Request::GetEnvelope {
@@ -1633,7 +1668,11 @@ fn merge_account_operation_result(
     }
 }
 
-fn build_snooze_preset(name: &str, label: &str, config: &mxr_config::SnoozeConfig) -> serde_json::Value {
+fn build_snooze_preset(
+    name: &str,
+    label: &str,
+    config: &mxr_config::SnoozeConfig,
+) -> serde_json::Value {
     let wake_at = resolve_snooze_until(name, config).unwrap_or_else(|_| Utc::now());
     json!({
         "id": name,
@@ -1700,7 +1739,11 @@ fn resolve_snooze_until(
                 - now.weekday().num_days_from_monday() as i64
                 + 7)
                 % 7;
-            let days = if days_until_monday == 0 { 7 } else { days_until_monday };
+            let days = if days_until_monday == 0 {
+                7
+            } else {
+                days_until_monday
+            };
             let monday = now.date_naive() + chrono::Duration::days(days);
             let time = NaiveTime::from_hms_opt(config.morning_hour as u32, 0, 0).unwrap();
             monday
@@ -1721,21 +1764,17 @@ async fn build_bridge_chrome(
     socket_path: &Path,
     active_lens: &MailboxLensRequest,
 ) -> Result<BridgeChrome, BridgeError> {
-    let (
-        accounts,
-        total_messages,
-        sync_statuses,
-        repair_required,
-    ) = match ipc_request(socket_path, Request::GetStatus).await? {
-        ResponseData::Status {
-            accounts,
-            total_messages,
-            sync_statuses,
-            repair_required,
-            ..
-        } => (accounts, total_messages, sync_statuses, repair_required),
-        _ => return Err(BridgeError::UnexpectedResponse),
-    };
+    let (accounts, total_messages, sync_statuses, repair_required) =
+        match ipc_request(socket_path, Request::GetStatus).await? {
+            ResponseData::Status {
+                accounts,
+                total_messages,
+                sync_statuses,
+                repair_required,
+                ..
+            } => (accounts, total_messages, sync_statuses, repair_required),
+            _ => return Err(BridgeError::UnexpectedResponse),
+        };
 
     let labels = match ipc_request(socket_path, Request::ListLabels { account_id: None }).await? {
         ResponseData::Labels { labels } => labels,
@@ -1747,15 +1786,18 @@ async fn build_bridge_chrome(
         _ => return Err(BridgeError::UnexpectedResponse),
     };
 
-    let subscriptions = match ipc_request(socket_path, Request::ListSubscriptions { limit: 8 }).await?
-    {
-        ResponseData::Subscriptions { subscriptions } => subscriptions,
-        _ => return Err(BridgeError::UnexpectedResponse),
-    };
+    let subscriptions =
+        match ipc_request(socket_path, Request::ListSubscriptions { limit: 8 }).await? {
+            ResponseData::Subscriptions { subscriptions } => subscriptions,
+            _ => return Err(BridgeError::UnexpectedResponse),
+        };
 
     let sync_label = if sync_statuses.iter().any(|status| status.sync_in_progress) {
         "Syncing"
-    } else if sync_statuses.iter().any(|status| !status.healthy || status.last_error.is_some()) {
+    } else if sync_statuses
+        .iter()
+        .any(|status| !status.healthy || status.last_error.is_some())
+    {
         "Needs attention"
     } else {
         "Synced"
@@ -1763,7 +1805,10 @@ async fn build_bridge_chrome(
 
     let status_message = if repair_required {
         "Repair required before mailbox opens".to_string()
-    } else if sync_statuses.iter().any(|status| status.last_error.is_some()) {
+    } else if sync_statuses
+        .iter()
+        .any(|status| status.last_error.is_some())
+    {
         "Last sync needs attention".to_string()
     } else {
         "Local-first and ready".to_string()
@@ -1802,7 +1847,9 @@ async fn ack_request(
 }
 
 fn find_inbox_label(labels: &[Label]) -> Option<&Label> {
-    labels.iter().find(|label| matches_system_label(label, "Inbox"))
+    labels
+        .iter()
+        .find(|label| matches_system_label(label, "Inbox"))
 }
 
 fn matches_system_label(label: &Label, expected: &str) -> bool {
@@ -1856,7 +1903,10 @@ fn build_sidebar_sections(
 
     let mut system_items = Vec::new();
     for name in ["Inbox", "Starred", "Sent", "Drafts", "Spam", "Trash"] {
-        if let Some(label) = labels.iter().find(|label| matches_system_label(label, name)) {
+        if let Some(label) = labels
+            .iter()
+            .find(|label| matches_system_label(label, name))
+        {
             system_items.push(json!({
                 "id": slugify(&label.name),
                 "label": label.name,
@@ -1922,26 +1972,17 @@ fn build_sidebar_sections(
         })
         .collect::<Vec<_>>();
 
-    let subscription_items = subscriptions
-        .iter()
-        .map(|subscription| {
-            json!({
-                "id": format!("subscription-{}", slugify(&subscription.sender_email)),
-                "label": subscription
-                    .sender_name
-                    .clone()
-                    .unwrap_or_else(|| subscription.sender_email.clone()),
-                "unread": 0,
-                "total": subscription.message_count,
-                "active": active_lens.kind == MailboxLensKind::Subscription
-                    && active_lens.sender_email.as_deref() == Some(subscription.sender_email.as_str()),
-                "lens": {
-                    "kind": "subscription",
-                    "senderEmail": subscription.sender_email,
-                },
-            })
-        })
-        .collect::<Vec<_>>();
+    system_items.push(json!({
+        "id": "subscriptions",
+        "label": "Subscriptions",
+        "unread": subscriptions
+            .iter()
+            .filter(|subscription| !subscription.latest_flags.contains(MessageFlags::READ))
+            .count(),
+        "total": subscriptions.len(),
+        "active": active_lens.kind == MailboxLensKind::Subscription,
+        "lens": { "kind": "subscription" },
+    }));
 
     let mut sections = vec![json!({
         "id": "system",
@@ -1962,13 +2003,6 @@ fn build_sidebar_sections(
             "items": saved_search_items,
         }));
     }
-    if !subscription_items.is_empty() {
-        sections.push(json!({
-            "id": "subscriptions",
-            "title": "Subscriptions",
-            "items": subscription_items,
-        }));
-    }
     sections
 }
 
@@ -1981,7 +2015,8 @@ async fn load_mailbox_selection(
 ) -> Result<MailboxSelection, BridgeError> {
     match lens.kind {
         MailboxLensKind::Inbox => {
-            let envelopes = list_envelopes(socket_path, chrome.inbox_label_id.clone(), limit, offset).await?;
+            let envelopes =
+                list_envelopes(socket_path, chrome.inbox_label_id.clone(), limit, offset).await?;
             Ok(MailboxSelection {
                 lens_label: find_inbox_label(&chrome.labels)
                     .map(|label| label.name.clone())
@@ -2015,7 +2050,8 @@ async fn load_mailbox_selection(
                 .as_deref()
                 .ok_or_else(|| BridgeError::Ipc("label lens missing label_id".into()))
                 .and_then(parse_label_id)?;
-            let envelopes = list_envelopes(socket_path, Some(label_id.clone()), limit, offset).await?;
+            let envelopes =
+                list_envelopes(socket_path, Some(label_id.clone()), limit, offset).await?;
             let label = chrome
                 .labels
                 .iter()
@@ -2053,19 +2089,37 @@ async fn load_mailbox_selection(
             })
         }
         MailboxLensKind::Subscription => {
-            let sender_email = lens
-                .sender_email
-                .as_deref()
-                .ok_or_else(|| BridgeError::Ipc("subscription lens missing sender_email".into()))?;
-            let envelopes = search_envelopes(socket_path, sender_email, limit).await?;
+            if let Some(sender_email) = lens.sender_email.as_deref() {
+                let envelopes = search_envelopes(socket_path, sender_email, limit).await?;
+                return Ok(MailboxSelection {
+                    lens_label: chrome
+                        .subscriptions
+                        .iter()
+                        .find(|subscription| subscription.sender_email == sender_email)
+                        .and_then(|subscription| subscription.sender_name.clone())
+                        .unwrap_or_else(|| sender_email.to_string()),
+                    counts: derived_counts(&envelopes),
+                    envelopes,
+                });
+            }
+
+            let message_ids = chrome
+                .subscriptions
+                .iter()
+                .take(limit as usize)
+                .map(|subscription| subscription.latest_message_id.clone())
+                .collect::<Vec<_>>();
+            let envelopes = list_envelopes_by_message_ids(socket_path, &message_ids).await?;
             Ok(MailboxSelection {
-                lens_label: chrome
-                    .subscriptions
-                    .iter()
-                    .find(|subscription| subscription.sender_email == sender_email)
-                    .and_then(|subscription| subscription.sender_name.clone())
-                    .unwrap_or_else(|| sender_email.to_string()),
-                counts: derived_counts(&envelopes),
+                lens_label: "Subscriptions".to_string(),
+                counts: json!({
+                    "unread": chrome
+                        .subscriptions
+                        .iter()
+                        .filter(|subscription| !subscription.latest_flags.contains(MessageFlags::READ))
+                        .count(),
+                    "total": chrome.subscriptions.len(),
+                }),
                 envelopes,
             })
         }
@@ -2094,6 +2148,26 @@ async fn list_envelopes(
     }
 }
 
+async fn list_envelopes_by_message_ids(
+    socket_path: &Path,
+    message_ids: &[MessageId],
+) -> Result<Vec<Envelope>, BridgeError> {
+    if message_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    match ipc_request(
+        socket_path,
+        Request::ListEnvelopesByIds {
+            message_ids: message_ids.to_vec(),
+        },
+    )
+    .await?
+    {
+        ResponseData::Envelopes { envelopes } => Ok(reorder_envelopes(envelopes, message_ids)),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 async fn run_saved_search(
     socket_path: &Path,
     name: &str,
@@ -2108,7 +2182,9 @@ async fn run_saved_search(
     )
     .await?
     {
-        ResponseData::SearchResults { results, .. } => search_result_envelopes(socket_path, &results).await,
+        ResponseData::SearchResults { results, .. } => {
+            search_result_envelopes(socket_path, &results).await
+        }
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
@@ -2123,13 +2199,17 @@ async fn search_envelopes(
         Request::Search {
             query: query.to_string(),
             limit,
+            offset: 0,
             mode: Some(SearchMode::Lexical),
+            sort: Some(SortOrder::DateDesc),
             explain: false,
         },
     )
     .await?
     {
-        ResponseData::SearchResults { results, .. } => search_result_envelopes(socket_path, &results).await,
+        ResponseData::SearchResults { results, .. } => {
+            search_result_envelopes(socket_path, &results).await
+        }
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
@@ -2237,9 +2317,14 @@ fn reorder_envelopes(envelopes: Vec<Envelope>, order: &[MessageId]) -> Vec<Envel
         by_id.insert(envelope.id.clone(), envelope);
     }
 
-    order
-        .iter()
-        .filter_map(|id| by_id.remove(id))
+    order.iter().filter_map(|id| by_id.remove(id)).collect()
+}
+
+fn dedupe_search_results_by_thread(results: Vec<SearchResultItem>) -> Vec<SearchResultItem> {
+    let mut seen = HashSet::new();
+    results
+        .into_iter()
+        .filter(|result| seen.insert(result.thread_id.clone()))
         .collect()
 }
 
@@ -2658,9 +2743,17 @@ mod tests {
         assert_eq!(json["shell"]["statusMessage"], "Local-first and ready");
         assert_eq!(json["sidebar"]["sections"][0]["title"], "System");
         assert_eq!(json["sidebar"]["sections"][1]["title"], "Labels");
+        assert!(json["sidebar"]["sections"][0]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["label"] == "Subscriptions"));
         assert_eq!(json["mailbox"]["lensLabel"], "Inbox");
         assert_eq!(json["mailbox"]["groups"][0]["rows"][0]["id"], expected_id);
-        assert_eq!(json["mailbox"]["groups"][0]["rows"][0]["subject"], "Mailroom");
+        assert_eq!(
+            json["mailbox"]["groups"][0]["rows"][0]["subject"],
+            "Mailroom"
+        );
     }
 
     #[tokio::test]
@@ -2739,8 +2832,15 @@ mod tests {
         let json: serde_json::Value = response.json().await.unwrap();
         assert_eq!(json["mailbox"]["lensLabel"], "All Mail");
         assert_eq!(json["mailbox"]["counts"]["total"], 8124);
-        assert_eq!(json["sidebar"]["sections"][0]["items"][1]["active"], true);
-        assert_eq!(json["mailbox"]["groups"][0]["rows"][0]["subject"], "Archive rollup");
+        assert!(json["sidebar"]["sections"][0]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["label"] == "All Mail" && item["active"] == true));
+        assert_eq!(
+            json["mailbox"]["groups"][0]["rows"][0]["subject"],
+            "Archive rollup"
+        );
     }
 
     #[tokio::test]
@@ -2822,23 +2922,24 @@ mod tests {
                 Request::Search {
                     query,
                     limit: 50,
+                    offset: 0,
                     mode: None,
+                    sort: Some(SortOrder::DateDesc),
                     explain: false,
                 } if query == "buildkite" => Some(Response::Ok {
                     data: ResponseData::SearchResults {
                         results: vec![result.clone()],
+                        has_more: false,
                         explain: None,
                     },
                 }),
-                Request::ListEnvelopesByIds { message_ids: requested }
-                    if requested == message_ids =>
-                {
-                    Some(Response::Ok {
-                        data: ResponseData::Envelopes {
-                            envelopes: vec![envelope.clone()],
-                        },
-                    })
-                }
+                Request::ListEnvelopesByIds {
+                    message_ids: requested,
+                } if requested == message_ids => Some(Response::Ok {
+                    data: ResponseData::Envelopes {
+                        envelopes: vec![envelope.clone()],
+                    },
+                }),
                 _ => None,
             },
             None,
@@ -2893,7 +2994,7 @@ mod tests {
             score: 0.8,
             mode: mxr_core::types::SearchMode::Semantic,
         };
-        let requested_ids = vec![older.id.clone(), newer.id.clone()];
+        let requested_ids = vec![newer.id.clone(), older.id.clone()];
         let explain = mxr_protocol::SearchExplain {
             requested_mode: SearchMode::Semantic,
             executed_mode: SearchMode::Semantic,
@@ -2922,11 +3023,14 @@ mod tests {
                 Request::Search {
                     query,
                     limit: 50,
+                    offset: 0,
                     mode: Some(SearchMode::Semantic),
+                    sort: Some(SortOrder::DateDesc),
                     explain: true,
                 } if query == "deploy" => Some(Response::Ok {
                     data: ResponseData::SearchResults {
-                        results: vec![older_result.clone(), newer_result.clone()],
+                        results: vec![newer_result.clone(), older_result.clone()],
+                        has_more: false,
                         explain: Some(explain.clone()),
                     },
                 }),
@@ -2967,6 +3071,91 @@ mod tests {
         assert_eq!(json["explain"]["requested_mode"], "semantic");
         assert_eq!(json["groups"][0]["rows"][0]["subject"], "Newest deploy");
         assert_eq!(json["groups"][1]["rows"][0]["subject"], "Older deploy");
+    }
+
+    #[tokio::test]
+    async fn search_endpoint_dedupes_threads_by_thread_id() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+
+        let mut first = sample_envelope();
+        first.subject = "First match".into();
+        first.snippet = "first".into();
+
+        let mut second = sample_envelope();
+        second.id = MessageId::new();
+        second.subject = "Second match same thread".into();
+        second.snippet = "second".into();
+        second.thread_id = first.thread_id.clone();
+
+        let results = vec![
+            SearchResultItem {
+                message_id: first.id.clone(),
+                account_id: first.account_id.clone(),
+                thread_id: first.thread_id.clone(),
+                score: 9.5,
+                mode: mxr_core::types::SearchMode::Lexical,
+            },
+            SearchResultItem {
+                message_id: second.id.clone(),
+                account_id: second.account_id.clone(),
+                thread_id: second.thread_id.clone(),
+                score: 9.0,
+                mode: mxr_core::types::SearchMode::Lexical,
+            },
+        ];
+        let requested_ids = vec![first.id.clone()];
+
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |request| match request {
+                Request::Search {
+                    query,
+                    limit: 50,
+                    offset: 0,
+                    mode: None,
+                    sort: Some(SortOrder::DateDesc),
+                    explain: false,
+                } if query == "dalumuzi" => Some(Response::Ok {
+                    data: ResponseData::SearchResults {
+                        results: results.clone(),
+                        has_more: false,
+                        explain: None,
+                    },
+                }),
+                Request::ListEnvelopesByIds { message_ids } if message_ids == requested_ids => {
+                    Some(Response::Ok {
+                        data: ResponseData::Envelopes {
+                            envelopes: vec![first.clone()],
+                        },
+                    })
+                }
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/search?q=dalumuzi&scope=threads"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["total"], 1);
+        assert_eq!(json["groups"][0]["rows"].as_array().unwrap().len(), 1);
+        assert_eq!(json["groups"][0]["rows"][0]["subject"], "First match");
     }
 
     #[tokio::test]

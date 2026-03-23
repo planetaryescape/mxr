@@ -37,6 +37,8 @@ function installDesktopApi(bridgeState: BridgeState = readyBridge) {
     setExternalBinaryPath: vi.fn(),
     openDraftInEditor: vi.fn().mockResolvedValue({ ok: true }),
     openExternalUrl: vi.fn().mockResolvedValue({ ok: true }),
+    openLocalPath: vi.fn().mockResolvedValue({ ok: true }),
+    openConfigFile: vi.fn().mockResolvedValue({ ok: true }),
   };
   Object.defineProperty(window, "mxrDesktop", {
     value: api,
@@ -95,11 +97,19 @@ function getActiveLens(label: string) {
   return screen.getByText(activeLensText(label));
 }
 
+function setNavigatorPlatform(platform: string) {
+  Object.defineProperty(window.navigator, "platform", {
+    value: platform,
+    configurable: true,
+  });
+}
+
 describe("App", () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    setNavigatorPlatform("Linux");
     configureDesktopMockServer();
   });
 
@@ -134,6 +144,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Search local mail" })).toBeInTheDocument();
     });
+    expect(screen.queryByText("System")).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Threads" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Sort" })).toBeInTheDocument();
   });
@@ -173,12 +184,14 @@ describe("App", () => {
     expect(screen.getAllByText("Review requested").length).toBeGreaterThan(0);
   });
 
-  it("opens the command palette and supports multi-key navigation back to mailbox", async () => {
+  it("shows the mac command hint and opens the command palette from the app shortcut event", async () => {
+    setNavigatorPlatform("MacIntel");
     installDesktopApi();
 
     render(<App />);
 
     await screen.findByRole("button", { name: "Mailbox" });
+    expect(document.body.textContent).toContain("⌘P");
 
     fireEvent.keyDown(window, { key: "2" });
     await act(async () => {
@@ -186,11 +199,10 @@ describe("App", () => {
     });
     expect(document.body.textContent).toContain("Search local mail");
 
-    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
-    await act(async () => {
-      await flushAsyncWork();
+    window.dispatchEvent(new CustomEvent("mxr:command-palette"));
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Search commands")).toBeInTheDocument();
     });
-    expect(document.querySelector('input[placeholder="Search commands"]')).not.toBeNull();
 
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.keyDown(window, { key: "g" });
@@ -200,6 +212,134 @@ describe("App", () => {
     });
     expect(document.body.textContent).not.toContain("Search local mail");
     expect(screen.getByRole("button", { name: "Mailbox" })).toBeInTheDocument();
+  });
+
+  it("selects the first filtered command and runs it on enter", async () => {
+    installDesktopApi();
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "Mailbox" });
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Search commands")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Search commands"), {
+      target: { value: "search" },
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('[aria-selected="true"]')).not.toBeNull();
+    });
+
+    fireEvent.keyDown(window, { key: "Enter" });
+    await act(async () => {
+      await flushAsyncWork();
+    });
+
+    expect(screen.getByRole("heading", { name: "Search local mail" })).toBeInTheDocument();
+  });
+
+  it("moves the command palette selection with j", async () => {
+    installDesktopApi();
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "Mailbox" });
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Search commands")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('[aria-selected="true"]')).not.toBeNull();
+    });
+    const firstSelectedText = document.querySelector('[aria-selected="true"]')?.textContent;
+
+    fireEvent.keyDown(window, { key: "j" });
+
+    await waitFor(() => {
+      const selected = document.querySelector('[aria-selected="true"]');
+      expect(selected).not.toBeNull();
+      expect(selected?.textContent).not.toBe(firstSelectedText);
+    });
+  });
+
+  it("keeps the mailbox selection in view while navigating with j", async () => {
+    installDesktopApi();
+    const scrollSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      value: scrollSpy,
+      configurable: true,
+    });
+
+    render(<App />);
+
+    await findActiveLens("Inbox");
+    scrollSpy.mockClear();
+
+    fireEvent.keyDown(window, { key: "j" });
+
+    await waitFor(() => {
+      expect(scrollSpy).toHaveBeenCalledWith({ block: "nearest" });
+    });
+  });
+
+  it("extends a continuous selection in visual mode while moving with j", async () => {
+    installDesktopApi();
+
+    render(<App />);
+
+    await findActiveLens("Inbox");
+
+    fireEvent.keyDown(window, { key: "V" });
+    fireEvent.keyDown(window, { key: "j" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Vercel").closest("button")?.className).toContain("bg-success/8");
+    });
+    expect(screen.getByText("Stripe").closest("button")?.className).toContain("bg-panel-elevated");
+  });
+
+  it("keeps the search selection in view while navigating with j", async () => {
+    installDesktopApi();
+    const scrollSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      value: scrollSpy,
+      configurable: true,
+    });
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "Search" });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await screen.findByRole("heading", { name: "Search local mail" });
+    scrollSpy.mockClear();
+
+    fireEvent.keyDown(window, { key: "j" });
+
+    await waitFor(() => {
+      expect(scrollSpy).toHaveBeenCalledWith({ block: "nearest" });
+    });
+  });
+
+  it("moves focus to the sidebar with h from the mail list", async () => {
+    installDesktopApi();
+    installFetchMocks();
+
+    render(<App />);
+
+    await findActiveLens("Inbox");
+
+    fireEvent.keyDown(window, { key: "h" });
+    fireEvent.keyDown(window, { key: "j" });
+
+    await waitFor(() => {
+      expect(getActiveLens("All Mail")).toBeInTheDocument();
+    });
   });
 
   it("dispatches manifest-driven star mutations from the mail list", async () => {
@@ -308,6 +448,14 @@ describe("App", () => {
     fireEvent.keyDown(window, { key: "c" });
 
     expect(await screen.findByRole("heading", { name: "New message" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(desktopApi.openDraftInEditor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          draftPath: "/tmp/new-draft.md",
+          editorCommand: "nvim",
+        }),
+      );
+    });
 
     fireEvent.change(screen.getByLabelText("To"), {
       target: { value: "friend@example.com" },
@@ -336,7 +484,7 @@ describe("App", () => {
   });
 
   it("opens a reply shell for the selected message", async () => {
-    installDesktopApi();
+    const desktopApi = installDesktopApi();
     installFetchMocks();
 
     render(<App />);
@@ -352,6 +500,14 @@ describe("App", () => {
     expect(parseRequestBody<{ kind: string; message_id: string }>(composeCall)).toMatchObject({
       kind: "reply",
       message_id: "msg-1",
+    });
+    await waitFor(() => {
+      expect(desktopApi.openDraftInEditor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          draftPath: "/tmp/reply-draft.md",
+          editorCommand: "nvim",
+        }),
+      );
     });
   });
 
@@ -422,6 +578,7 @@ describe("App", () => {
     expect(searchCall).toBeDefined();
     expect(document.body.textContent).toContain("semantic mode");
     expect(document.body.textContent).toContain('"query": "deploy"');
+    expect(await screen.findByRole("heading", { name: "Deploy complete" })).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.keyDown(window, { key: "Z" });
@@ -443,6 +600,31 @@ describe("App", () => {
       await flushAsyncWork();
     });
     expect(findRequest("/actions/unsubscribe", "POST")).toBeDefined();
+  });
+
+  it("leaves the search input and returns to keyboard navigation on enter", async () => {
+    installDesktopApi();
+    installFetchMocks();
+
+    render(<App />);
+
+    await findActiveLens("Inbox");
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    const input = await screen.findByPlaceholderText("Search subjects, senders, snippets");
+
+    fireEvent.change(input, {
+      target: { value: "deploy" },
+    });
+    await screen.findByRole("heading", { name: "Deploy complete" });
+
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(document.activeElement).not.toBe(input);
+
+    fireEvent.keyDown(window, { key: "j" });
+    expect((input as HTMLInputElement).value).toBe("deploy");
   });
 
   it("opens browser links, exports threads, and opens attachment/link dialogs", async () => {
@@ -537,5 +719,42 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "Bug report" })).toBeInTheDocument();
     expect(await screen.findByText(/bug report body/)).toBeInTheDocument();
+  });
+
+  it("opens logs, config, and diagnostics details from the TUI command surface", async () => {
+    const desktopApi = installDesktopApi();
+
+    render(<App />);
+
+    await findActiveLens("Inbox");
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    await act(async () => {
+      await flushAsyncWork();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Open Logs/i }));
+
+    await waitFor(() => {
+      expect(desktopApi.openLocalPath).toHaveBeenCalledWith("/tmp/mxr.log");
+    });
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    await act(async () => {
+      await flushAsyncWork();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Edit Config/i }));
+
+    await waitFor(() => {
+      expect(desktopApi.openConfigFile).toHaveBeenCalled();
+    });
+
+    fireEvent.keyDown(window, { key: "p", ctrlKey: true });
+    await act(async () => {
+      await flushAsyncWork();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Open Diagnostics Details/i }));
+
+    expect(await screen.findByRole("heading", { name: "Diagnostics details" })).toBeInTheDocument();
+    expect(await screen.findByText(/Log file: \/tmp\/mxr\.log/)).toBeInTheDocument();
   });
 });

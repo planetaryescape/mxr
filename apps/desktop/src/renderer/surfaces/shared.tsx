@@ -2,9 +2,9 @@ import { cn } from "../lib/cn";
 
 export function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-outline bg-canvas-elevated px-3 py-3">
+    <div className="border border-outline bg-canvas-elevated px-3 py-3">
       <p className="mono-meta">{label}</p>
-      <p className="mt-2 text-lg font-semibold text-foreground">{value}</p>
+      <p className="mt-1.5 text-base font-semibold text-foreground">{value}</p>
     </div>
   );
 }
@@ -19,7 +19,7 @@ export function HeaderActionButton(props: {
       type="button"
       disabled={props.disabled}
       className={cn(
-        "h-7 rounded-md border px-2.5 text-[11px] transition-colors",
+        "h-5 border px-1.5 font-mono text-[9px] uppercase transition-colors",
         props.disabled
           ? "border-outline/60 bg-canvas-elevated text-foreground-subtle"
           : "border-outline bg-canvas-elevated text-foreground-muted hover:border-outline-strong hover:bg-panel-elevated hover:text-foreground",

@@ -252,6 +252,25 @@ fn contrast_foreground(bg: Color, fallback: Color) -> Color {
     }
 }
 
+fn blend_bg(base: Color, tint: Color, tint_weight: u8) -> Color {
+    let Some((base_r, base_g, base_b)) = color_rgb(base) else {
+        return base;
+    };
+    let Some((tint_r, tint_g, tint_b)) = color_rgb(tint) else {
+        return base;
+    };
+    let tint_weight = u16::from(tint_weight);
+    let base_weight = 255u16.saturating_sub(tint_weight);
+    let mix = |base: u8, tint: u8| -> u8 {
+        (((u16::from(base) * base_weight) + (u16::from(tint) * tint_weight)) / 255) as u8
+    };
+    Color::Rgb(
+        mix(base_r, tint_r),
+        mix(base_g, tint_g),
+        mix(base_b, tint_b),
+    )
+}
+
 fn color_rgb(color: Color) -> Option<(u8, u8, u8)> {
     match color {
         Color::Reset => None,

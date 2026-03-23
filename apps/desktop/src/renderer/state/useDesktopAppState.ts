@@ -39,6 +39,7 @@ type UiChromeState = {
   signatureExpanded: boolean;
   selectedMessageIds: Set<string>;
   visualMode: boolean;
+  visualAnchorMessageId: string | null;
 };
 
 type ComposeState = {
@@ -110,6 +111,7 @@ const INITIAL_UI_CHROME: UiChromeState = {
   signatureExpanded: false,
   selectedMessageIds: new Set(),
   visualMode: false,
+  visualAnchorMessageId: null,
 };
 
 const INITIAL_COMPOSE_STATE: ComposeState = {
@@ -277,6 +279,9 @@ export function useDesktopAppState() {
     visualMode: uiChrome.visualMode,
     setVisualMode: (updater: SetStateAction<boolean>) =>
       updateField(dispatchUiChrome, "visualMode", updater),
+    visualAnchorMessageId: uiChrome.visualAnchorMessageId,
+    setVisualAnchorMessageId: (updater: SetStateAction<string | null>) =>
+      updateField(dispatchUiChrome, "visualAnchorMessageId", updater),
 
     composeSession: composeState.composeSession,
     setComposeSession: (updater: SetStateAction<ComposeSession | null>) =>

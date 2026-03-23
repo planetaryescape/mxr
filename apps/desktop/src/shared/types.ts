@@ -50,6 +50,8 @@ export interface DesktopApi {
   setExternalBinaryPath(path: string): Promise<BridgeState>;
   openDraftInEditor(request: OpenDraftInEditorRequest): Promise<ActionAckResponse>;
   openExternalUrl(url: string): Promise<ActionAckResponse>;
+  openLocalPath(path: string): Promise<ActionAckResponse>;
+  openConfigFile(): Promise<ActionAckResponse>;
 }
 
 export type WorkbenchScreen = "mailbox" | "search" | "rules" | "accounts" | "diagnostics";
@@ -312,6 +314,10 @@ export interface DiagnosticsReport {
   daemon_build_id?: string | null;
   lexical_index_freshness: string;
   semantic_index_freshness: string;
+  database_path?: string;
+  index_path?: string;
+  log_path?: string;
+  log_size_bytes?: number;
   recommended_next_steps: string[];
   recent_error_logs: string[];
 }

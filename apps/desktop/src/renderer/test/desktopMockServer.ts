@@ -58,19 +58,24 @@ export const desktopMockServer = setupServer(
     if (path === "/mailbox") {
       const lens = url.searchParams.get("lens_kind");
       const isAllMail = lens === "all_mail";
+      const isSubscriptions = lens === "subscription";
       return HttpResponse.json({
         mailbox: {
-          lensLabel: isAllMail ? "All Mail" : "Inbox",
-          counts: isAllMail
-            ? { unread: 24, total: 8124 }
-            : { unread: unreadInboxCount(currentState), total: 144 },
+          lensLabel: isSubscriptions ? "Subscriptions" : isAllMail ? "All Mail" : "Inbox",
+          counts: isSubscriptions
+            ? { unread: 1, total: 2 }
+            : isAllMail
+              ? { unread: 24, total: 8124 }
+              : { unread: unreadInboxCount(currentState), total: 144 },
           groups: [
             {
-              id: isAllMail ? "earlier" : "today",
-              label: isAllMail ? "Earlier" : "Today",
-              rows: (isAllMail ? currentState.allMailRows : currentState.inboxRows).map((row) =>
-                rowWithFlags(currentState, row),
-              ),
+              id: isSubscriptions ? "subscriptions" : isAllMail ? "earlier" : "today",
+              label: isSubscriptions ? "Subscriptions" : isAllMail ? "Earlier" : "Today",
+              rows: (
+                isSubscriptions ? currentState.allMailRows.slice(0, 2)
+                : isAllMail ? currentState.allMailRows
+                : currentState.inboxRows
+              ).map((row) => rowWithFlags(currentState, row)),
             },
           ],
         },
@@ -93,8 +98,16 @@ export const desktopMockServer = setupServer(
                   label: "All Mail",
                   unread: 24,
                   total: 8124,
-                  active: isAllMail,
+                  active: isAllMail && !isSubscriptions,
                   lens: { kind: "all_mail" },
+                },
+                {
+                  id: "subscriptions",
+                  label: "Subscriptions",
+                  unread: 1,
+                  total: 2,
+                  active: isSubscriptions,
+                  lens: { kind: "subscription" },
                 },
               ],
             },
@@ -268,6 +281,10 @@ export const desktopMockServer = setupServer(
           daemon_build_id: "build-123",
           lexical_index_freshness: "current",
           semantic_index_freshness: "disabled",
+          database_path: "/tmp/mxr.db",
+          index_path: "/tmp/mxr-index",
+          log_path: "/tmp/mxr.log",
+          log_size_bytes: 2048,
           recommended_next_steps: ["None"],
           recent_error_logs: [],
         },

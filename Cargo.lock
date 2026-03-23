@@ -3597,7 +3597,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-web"
-version = "0.4.9"
+version = "0.4.12"
 dependencies = [
  "axum",
  "bytes",

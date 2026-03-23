@@ -37,14 +37,11 @@ jobs:
       - id: matrix
         name: Build release matrix
         run: |
-          MATRIX='{"include":[{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","desktop_platform":"linux","desktop_arch":"x64","desktop_archive":"desktop-linux-x86_64.zip","use_cross":false,"cargo_args":""}]}'
-
-          if [[ "${{ steps.scope.outputs.desktop_source_changed }}" == 'true' ]]; then
-            MATRIX="$(printf '%s' "$MATRIX" | jq -c '.include += [
-              {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","desktop_platform":"darwin","desktop_arch":"x64","desktop_archive":"desktop-macos-x86_64.zip","use_cross":false,"cargo_args":"--no-default-features"},
-              {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","desktop_platform":"darwin","desktop_arch":"arm64","desktop_archive":"desktop-macos-aarch64.zip","use_cross":false,"cargo_args":""}
-            ]')"
-          fi
+          MATRIX='{"include":[
+            {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","desktop_platform":"linux","desktop_arch":"x64","desktop_archive":"desktop-linux-x86_64.zip","use_cross":false,"cargo_args":""},
+            {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","desktop_platform":"darwin","desktop_arch":"x64","desktop_archive":"desktop-macos-x86_64.zip","use_cross":false,"cargo_args":"--no-default-features"},
+            {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","desktop_platform":"darwin","desktop_arch":"arm64","desktop_archive":"desktop-macos-aarch64.zip","use_cross":false,"cargo_args":""}
+          ]}'
 
           echo "build_matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
 
@@ -65,6 +62,7 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - uses: actions/setup-node@v4
+        if: needs.plan.outputs.desktop_source_changed == 'true'
         with:
           node-version: 20
           cache: npm
@@ -102,19 +100,19 @@ jobs:
         run: shasum -a 256 "${{ env.ARCHIVE }}" > "${{ env.ARCHIVE }}.sha256"
 
       - name: Install desktop dependencies
-        if: needs.plan.outputs.desktop_changed == 'true'
+        if: needs.plan.outputs.desktop_source_changed == 'true'
         working-directory: apps/desktop
         run: npm ci
 
       - name: Package desktop
-        if: needs.plan.outputs.desktop_changed == 'true'
+        if: needs.plan.outputs.desktop_source_changed == 'true'
         working-directory: apps/desktop
         env:
           MXR_DESKTOP_BUNDLED_BINARY: ../../target/${{ matrix.target }}/release/mxr
         run: npm run make -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
 
       - name: Smoke packaged desktop bundle
-        if: needs.plan.outputs.desktop_changed == 'true'
+        if: needs.plan.outputs.desktop_source_changed == 'true'
         working-directory: apps/desktop
         run: |
           BUNDLED_MXR=$(find out -type f \( -path '*resources/bin/mxr' -o -path '*Resources/bin/mxr' \) ! -path '*resources/app/*' ! -path '*Resources/app/*' -print -quit)
@@ -122,7 +120,7 @@ jobs:
           "$BUNDLED_MXR" status --format json | grep '"protocol_version"'
 
       - name: Collect desktop archive
-        if: needs.plan.outputs.desktop_changed == 'true'
+        if: needs.plan.outputs.desktop_source_changed == 'true'
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           DESKTOP_ARCHIVE="mxr-v${VERSION}-${{ matrix.desktop_archive }}"
@@ -132,7 +130,7 @@ jobs:
           echo "DESKTOP_ARCHIVE=${DESKTOP_ARCHIVE}" >> $GITHUB_ENV
 
       - name: Generate desktop SHA256 checksum
-        if: needs.plan.outputs.desktop_changed == 'true'
+        if: needs.plan.outputs.desktop_source_changed == 'true'
         run: shasum -a 256 "${{ env.DESKTOP_ARCHIVE }}" > "${{ env.DESKTOP_ARCHIVE }}.sha256"
 
       - uses: actions/upload-artifact@v4
@@ -144,7 +142,7 @@ jobs:
             ${{ env.ARCHIVE }}.sha256
 
       - uses: actions/upload-artifact@v4
-        if: needs.plan.outputs.desktop_changed == 'true'
+        if: needs.plan.outputs.desktop_source_changed == 'true'
         with:
           name: ${{ matrix.target }}-desktop
           path: |

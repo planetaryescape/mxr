@@ -90,9 +90,6 @@ if relevant_diff "apps/desktop/package-lock.json" "${package_json_ignore}"; then
 fi
 
 desktop_changed="${desktop_source_changed}"
-if [[ "${cli_changed}" == true ]]; then
-  desktop_changed=true
-fi
 
 has_artifacts=false
 if [[ "${cli_changed}" == true || "${desktop_changed}" == true ]]; then

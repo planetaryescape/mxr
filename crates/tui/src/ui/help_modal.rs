@@ -88,7 +88,7 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 ("Enter".into(), "Run Query / Open Result".into()),
                 ("o".into(), "Open In Mailbox".into()),
                 ("j / k".into(), "Move Results".into()),
-                ("Esc".into(), "Return To Mailbox".into()),
+                ("Esc".into(), "Return To Inbox".into()),
             ],
         },
         HelpSection {

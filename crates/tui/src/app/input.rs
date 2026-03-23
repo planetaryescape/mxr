@@ -559,7 +559,7 @@ impl App {
                 }
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE)
                 | (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::OpenSelected),
-                (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
+                (KeyCode::Esc, _) => Some(Action::GoToInbox),
                 _ => self.input.handle_key(key),
             },
             SearchPane::Preview => match (key.code, key.modifiers) {

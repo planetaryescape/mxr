@@ -3772,6 +3772,20 @@ mod tests {
     }
 
     #[test]
+    fn search_escape_routes_back_to_inbox() {
+        let mut app = App::new();
+        app.screen = Screen::Search;
+        app.search_page.session_active = true;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = make_test_envelopes(2);
+        app.search_page.active_pane = SearchPane::Results;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert_eq!(action, Some(Action::GoToInbox));
+    }
+
+    #[test]
     fn open_rules_screen_marks_refresh_pending() {
         let mut app = App::new();
         app.apply(Action::OpenRulesScreen);

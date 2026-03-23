@@ -168,6 +168,14 @@ pub enum SidebarItem {
     SavedSearch(mxr_core::SavedSearch),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SidebarSelectionKey {
+    AllMail,
+    Subscriptions,
+    Label(mxr_core::LabelId),
+    SavedSearch(String),
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SubscriptionsPageState {
     pub entries: Vec<SubscriptionEntry>,
@@ -806,7 +814,7 @@ impl App {
     }
 
     pub fn search_mail_list_rows(&self) -> Vec<MailListRow> {
-        Self::build_mail_list_rows(&self.search_page.results, self.mail_list_mode)
+        Self::build_mail_list_rows(&self.search_page.results, self.search_list_mode())
     }
 
     pub fn selected_mail_row(&self) -> Option<MailListRow> {
@@ -858,8 +866,40 @@ impl App {
         self.sidebar_items().get(self.sidebar_selected).cloned()
     }
 
+    pub(crate) fn selected_sidebar_key(&self) -> Option<SidebarSelectionKey> {
+        self.selected_sidebar_item().map(|item| match item {
+            SidebarItem::AllMail => SidebarSelectionKey::AllMail,
+            SidebarItem::Subscriptions => SidebarSelectionKey::Subscriptions,
+            SidebarItem::Label(label) => SidebarSelectionKey::Label(label.id),
+            SidebarItem::SavedSearch(search) => SidebarSelectionKey::SavedSearch(search.name),
+        })
+    }
+
+    pub(crate) fn restore_sidebar_selection(&mut self, selection: Option<SidebarSelectionKey>) {
+        let items = self.sidebar_items();
+        match selection.and_then(|selection| {
+            items.iter().position(|item| match (item, &selection) {
+                (SidebarItem::AllMail, SidebarSelectionKey::AllMail) => true,
+                (SidebarItem::Subscriptions, SidebarSelectionKey::Subscriptions) => true,
+                (SidebarItem::Label(label), SidebarSelectionKey::Label(label_id)) => {
+                    label.id == *label_id
+                }
+                (SidebarItem::SavedSearch(search), SidebarSelectionKey::SavedSearch(name)) => {
+                    search.name == *name
+                }
+                _ => false,
+            })
+        }) {
+            Some(index) => self.sidebar_selected = index,
+            None => {
+                self.sidebar_selected = self.sidebar_selected.min(items.len().saturating_sub(1));
+            }
+        }
+        self.sync_sidebar_section();
+    }
+
     pub fn selected_search_envelope(&self) -> Option<&Envelope> {
-        match self.mail_list_mode {
+        match self.search_list_mode() {
             MailListMode::Messages => self
                 .search_page
                 .results
@@ -1076,6 +1116,10 @@ impl App {
 
     pub(crate) fn search_row_count(&self) -> usize {
         self.search_mail_list_rows().len()
+    }
+
+    fn search_list_mode(&self) -> MailListMode {
+        MailListMode::Messages
     }
 
     fn build_mail_list_rows(envelopes: &[Envelope], mode: MailListMode) -> Vec<MailListRow> {

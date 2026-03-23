@@ -242,7 +242,7 @@ impl App {
                     &self.search_page,
                     &rows,
                     &self.selected_set,
-                    self.mail_list_mode,
+                    self.search_list_mode(),
                     &self.thread_message_blocks(),
                     self.message_scroll_offset,
                     theme,

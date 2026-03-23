@@ -1313,7 +1313,9 @@ pub async fn run() -> anyhow::Result<()> {
                             app.accounts_page.status = Some(format!("Accounts error: {e}"));
                         }
                         AsyncResult::Labels(Ok(labels)) => {
+                            let selected_sidebar = app.selected_sidebar_key();
                             app.labels = labels;
+                            app.restore_sidebar_selection(selected_sidebar);
                             app.resolve_desired_system_mailbox();
                         }
                         AsyncResult::Labels(Err(e)) => {
@@ -1885,6 +1887,7 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             }
         }
         DaemonEvent::LabelCountsUpdated { counts } => {
+            let selected_sidebar = app.selected_sidebar_key();
             for count in &counts {
                 if let Some(label) = app
                     .labels
@@ -1895,12 +1898,19 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
                     label.total_count = count.total_count;
                 }
             }
+            app.restore_sidebar_selection(selected_sidebar);
         }
         _ => {}
     }
 }
 
 fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>) {
+    let selected_id = (app.active_label.is_none()
+        && app.pending_active_label.is_none()
+        && !app.search_active
+        && app.mailbox_view == app::MailboxView::Messages)
+        .then(|| app.selected_mail_row().map(|row| row.representative.id))
+        .flatten();
     app.all_envelopes = envelopes;
     if app.active_label.is_none() && app.pending_active_label.is_none() && !app.search_active {
         app.envelopes = app
@@ -1910,7 +1920,6 @@ fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>
             .cloned()
             .collect();
         if app.mailbox_view == app::MailboxView::Messages {
-            let selected_id = app.selected_mail_row().map(|row| row.representative.id);
             restore_mail_list_selection(app, selected_id);
         } else {
             app.selected_index = app
@@ -2038,15 +2047,15 @@ mod tests {
     use super::ui::search_bar::SearchBar;
     use super::ui::status_bar;
     use super::{
-        apply_all_envelopes_refresh, handle_daemon_event, pending_send_from_edited_draft,
-        ComposeReadyData, PendingSend,
+        app::MailListMode, apply_all_envelopes_refresh, handle_daemon_event,
+        pending_send_from_edited_draft, ComposeReadyData, PendingSend,
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use mxr_config::RenderConfig;
     use mxr_core::id::*;
     use mxr_core::types::*;
     use mxr_core::MxrError;
-    use mxr_protocol::{DaemonEvent, MutationCommand, Request};
+    use mxr_protocol::{DaemonEvent, LabelCount, MutationCommand, Request};
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
         (0..count)
@@ -3011,6 +3020,7 @@ mod tests {
     fn all_envelopes_refresh_preserves_selection_when_possible() {
         let mut app = App::new();
         app.visible_height = 3;
+        app.mail_list_mode = MailListMode::Messages;
         let initial = make_test_envelopes(4);
         app.all_envelopes = initial.clone();
         app.envelopes = initial.clone();
@@ -3025,6 +3035,24 @@ mod tests {
         assert_eq!(app.selected_index, 2);
         assert_eq!(app.envelopes[app.selected_index].id, initial[2].id);
         assert_eq!(app.scroll_offset, 1);
+    }
+
+    #[test]
+    fn all_envelopes_refresh_preserves_selected_message_when_rows_shift() {
+        let mut app = App::new();
+        app.mail_list_mode = MailListMode::Messages;
+        let initial = make_test_envelopes(4);
+        let selected_id = initial[2].id.clone();
+        app.all_envelopes = initial.clone();
+        app.envelopes = initial;
+        app.selected_index = 2;
+
+        let mut refreshed = make_test_envelopes(1);
+        refreshed.extend(app.envelopes.clone());
+
+        apply_all_envelopes_refresh(&mut app, refreshed);
+
+        assert_eq!(app.envelopes[app.selected_index].id, selected_id);
     }
 
     #[test]
@@ -3777,6 +3805,28 @@ mod tests {
     }
 
     #[test]
+    fn search_results_do_not_collapse_to_threads() {
+        let mut app = App::new();
+        let mut results = make_test_envelopes(3);
+        let thread_id = ThreadId::new();
+        for envelope in &mut results {
+            envelope.thread_id = thread_id.clone();
+        }
+        app.mail_list_mode = MailListMode::Threads;
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = results.clone();
+        app.search_page.session_active = true;
+        app.search_page.selected_index = 1;
+
+        assert_eq!(app.search_row_count(), 3);
+        assert_eq!(
+            app.selected_search_envelope().map(|env| env.id.clone()),
+            Some(results[1].id.clone())
+        );
+    }
+
+    #[test]
     fn search_jump_bottom_loads_remaining_pages() {
         let mut app = App::new();
         app.screen = Screen::Search;
@@ -4044,6 +4094,42 @@ mod tests {
             app.body_view_state,
             BodyViewState::Loading { ref preview }
                 if preview.as_deref() == Some("Snippet 1")
+        ));
+    }
+
+    #[test]
+    fn label_count_updates_preserve_sidebar_selection_identity() {
+        let mut app = App::new();
+        app.labels = make_test_labels();
+
+        let selected_index = app
+            .sidebar_items()
+            .iter()
+            .position(|item| matches!(item, super::app::SidebarItem::Label(label) if label.name == "Work"))
+            .unwrap();
+        app.sidebar_selected = selected_index;
+
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::LabelCountsUpdated {
+                counts: vec![
+                    LabelCount {
+                        label_id: LabelId::from_provider_id("test", "STARRED"),
+                        unread_count: 0,
+                        total_count: 0,
+                    },
+                    LabelCount {
+                        label_id: LabelId::from_provider_id("test", "SENT"),
+                        unread_count: 0,
+                        total_count: 0,
+                    },
+                ],
+            },
+        );
+
+        assert!(matches!(
+            app.selected_sidebar_item(),
+            Some(super::app::SidebarItem::Label(label)) if label.name == "Work"
         ));
     }
 

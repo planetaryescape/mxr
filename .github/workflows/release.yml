@@ -12,8 +12,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  plan:
+    name: Plan Release
+    runs-on: ubuntu-latest
+    outputs:
+      cli_changed: ${{ steps.scope.outputs.cli_changed }}
+      desktop_changed: ${{ steps.scope.outputs.desktop_changed }}
+      has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: previous-tag
+        name: Find previous tag
+        run: |
+          CURRENT_TAG="${GITHUB_REF_NAME}"
+          PREVIOUS_TAG="$(git tag --sort=-version:refname | grep '^v' | grep -Fxv "${CURRENT_TAG}" | head -n1 || true)"
+          echo "previous_tag=${PREVIOUS_TAG}" >> "$GITHUB_OUTPUT"
+      - id: scope
+        name: Detect changed artifact families
+        run: bash ./scripts/release_change_scope.sh "${{ steps.previous-tag.outputs.previous_tag }}" "${GITHUB_REF_NAME}"
+
   build-binaries:
     name: Build ${{ matrix.target }}
+    needs: plan
+    if: needs.plan.outputs.has_artifacts == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -73,7 +96,8 @@ jobs:
         if: "!matrix.use_cross"
         run: cargo build --release --target ${{ matrix.target }} -p mxr ${{ matrix.cargo_args }}
 
-      - name: Package
+      - name: Package CLI archive
+        if: needs.plan.outputs.cli_changed == 'true'
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           ARCHIVE="mxr-v${VERSION}-${{ matrix.archive }}"
@@ -83,20 +107,24 @@ jobs:
           cd release && tar czf "../${ARCHIVE}" * && cd ..
           echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
-      - name: Generate SHA256 checksum
+      - name: Generate CLI SHA256 checksum
+        if: needs.plan.outputs.cli_changed == 'true'
         run: shasum -a 256 "${{ env.ARCHIVE }}" > "${{ env.ARCHIVE }}.sha256"
 
       - name: Install desktop dependencies
+        if: needs.plan.outputs.desktop_changed == 'true'
         working-directory: apps/desktop
         run: npm ci
 
       - name: Package desktop
+        if: needs.plan.outputs.desktop_changed == 'true'
         working-directory: apps/desktop
         env:
           MXR_DESKTOP_BUNDLED_BINARY: ../../target/${{ matrix.target }}/release/mxr
         run: npm run make -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
 
       - name: Smoke packaged desktop bundle
+        if: needs.plan.outputs.desktop_changed == 'true'
         working-directory: apps/desktop
         run: |
           BUNDLED_MXR=$(find out -type f \( -path '*resources/bin/mxr' -o -path '*Resources/bin/mxr' \) ! -path '*resources/app/*' ! -path '*Resources/app/*' -print -quit)
@@ -104,6 +132,7 @@ jobs:
           "$BUNDLED_MXR" status --format json | grep '"protocol_version"'
 
       - name: Collect desktop archive
+        if: needs.plan.outputs.desktop_changed == 'true'
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           DESKTOP_ARCHIVE="mxr-v${VERSION}-${{ matrix.desktop_archive }}"
@@ -113,21 +142,30 @@ jobs:
           echo "DESKTOP_ARCHIVE=${DESKTOP_ARCHIVE}" >> $GITHUB_ENV
 
       - name: Generate desktop SHA256 checksum
+        if: needs.plan.outputs.desktop_changed == 'true'
         run: shasum -a 256 "${{ env.DESKTOP_ARCHIVE }}" > "${{ env.DESKTOP_ARCHIVE }}.sha256"
 
       - uses: actions/upload-artifact@v4
+        if: needs.plan.outputs.cli_changed == 'true'
         with:
-          name: ${{ matrix.target }}
+          name: ${{ matrix.target }}-cli
           path: |
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
+
+      - uses: actions/upload-artifact@v4
+        if: needs.plan.outputs.desktop_changed == 'true'
+        with:
+          name: ${{ matrix.target }}-desktop
+          path: |
             ${{ env.DESKTOP_ARCHIVE }}
             ${{ env.DESKTOP_ARCHIVE }}.sha256
 
   publish-crates:
     name: Publish Crates
     runs-on: ubuntu-latest
-    needs: build-binaries
+    needs: [plan, build-binaries]
+    if: needs.plan.outputs.cli_changed == 'true' && needs.build-binaries.result == 'success'
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -150,8 +188,8 @@ jobs:
   github-release:
     name: GitHub Release
     runs-on: ubuntu-latest
-    needs: build-binaries
-    if: needs.build-binaries.result == 'success'
+    needs: [plan, build-binaries]
+    if: always() && needs.plan.result == 'success' && (needs.build-binaries.result == 'success' || needs.build-binaries.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -163,14 +201,22 @@ jobs:
         run: git cliff --tag "${GITHUB_REF_NAME}" --output CHANGELOG_RELEASE.md
 
       - uses: actions/download-artifact@v4
+        if: needs.build-binaries.result == 'success'
         with:
           path: artifacts
           merge-multiple: true
 
       - uses: softprops/action-gh-release@v2
+        if: needs.build-binaries.result == 'success'
         with:
           body_path: CHANGELOG_RELEASE.md
           files: artifacts/*
+          generate_release_notes: false
+
+      - uses: softprops/action-gh-release@v2
+        if: needs.build-binaries.result == 'skipped'
+        with:
+          body_path: CHANGELOG_RELEASE.md
           generate_release_notes: false
 
   # Docs auto-deploy to Vercel on push (mxr-mail.vercel.app)
@@ -178,7 +224,8 @@ jobs:
   homebrew:
     name: Homebrew Formula
     runs-on: ubuntu-latest
-    needs: github-release
+    needs: [plan, github-release]
+    if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

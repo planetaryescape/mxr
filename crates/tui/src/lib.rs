@@ -1902,7 +1902,7 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
 
 fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>) {
     app.all_envelopes = envelopes;
-    if app.active_label.is_none() && !app.search_active {
+    if app.active_label.is_none() && app.pending_active_label.is_none() && !app.search_active {
         app.envelopes = app
             .all_envelopes
             .iter()
@@ -3028,6 +3028,30 @@ mod tests {
     }
 
     #[test]
+    fn all_envelopes_refresh_preserves_pending_label_view() {
+        let mut app = App::new();
+        let labels = make_test_labels();
+        let inbox_id = labels
+            .iter()
+            .find(|label| label.name == "INBOX")
+            .unwrap()
+            .id
+            .clone();
+        let initial = make_test_envelopes(2);
+        let refreshed = make_test_envelopes(5);
+        app.labels = labels;
+        app.envelopes = initial.clone();
+        app.all_envelopes = initial;
+        app.pending_active_label = Some(inbox_id);
+
+        apply_all_envelopes_refresh(&mut app, refreshed.clone());
+
+        assert_eq!(app.all_envelopes.len(), refreshed.len());
+        assert_eq!(app.all_envelopes[0].id, refreshed[0].id);
+        assert_eq!(app.envelopes.len(), 2);
+    }
+
+    #[test]
     fn label_counts_refresh_can_follow_empty_boot() {
         let mut app = App::new();
         app.desired_system_mailbox = Some("INBOX".into());
@@ -3223,6 +3247,17 @@ mod tests {
         assert!(app.pending_all_envelopes_refresh);
         assert!(app.pending_status_refresh);
         assert!(app.pending_subscriptions_refresh);
+    }
+
+    #[test]
+    fn mutation_failure_reloads_pending_label_fetch() {
+        let mut app = App::new();
+        let inbox_id = LabelId::new();
+        app.pending_active_label = Some(inbox_id.clone());
+
+        app.refresh_mailbox_after_mutation_failure();
+
+        assert_eq!(app.pending_label_fetch.as_ref(), Some(&inbox_id));
     }
 
     #[test]

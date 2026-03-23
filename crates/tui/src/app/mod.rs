@@ -2297,7 +2297,11 @@ impl App {
         self.pending_all_envelopes_refresh = true;
         self.pending_status_refresh = true;
         self.pending_subscriptions_refresh = true;
-        if let Some(label_id) = self.active_label.clone() {
+        if let Some(label_id) = self
+            .pending_active_label
+            .clone()
+            .or_else(|| self.active_label.clone())
+        {
             self.pending_label_fetch = Some(label_id);
         }
     }

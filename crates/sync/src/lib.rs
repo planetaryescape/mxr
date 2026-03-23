@@ -230,9 +230,9 @@ mod tests {
         async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
             self.calls.lock().unwrap().push(cursor.clone());
             match cursor {
-                SyncCursor::Gmail { .. } => Err(MxrError::NotFound(
-                    "Requested entity was not found.".into(),
-                )),
+                SyncCursor::Gmail { .. } => {
+                    Err(MxrError::NotFound("Requested entity was not found.".into()))
+                }
                 SyncCursor::Initial => Ok(SyncBatch {
                     upserted: vec![self.message.clone()],
                     deleted_provider_ids: vec![],
@@ -657,8 +657,12 @@ mod tests {
         assert_eq!(envelopes.len(), 55);
 
         // Verify search
-        let results = search.lock().await.search("deployment", 10).unwrap();
-        assert!(!results.is_empty());
+        let results = search
+            .lock()
+            .await
+            .search("deployment", 10, 0, SortOrder::DateDesc)
+            .unwrap();
+        assert!(!results.results.is_empty());
     }
 
     #[tokio::test]
@@ -949,9 +953,13 @@ mod tests {
         assert_eq!(envelopes.len(), 55, "Store should contain 55 envelopes");
 
         // Verify search index has results for known fixture terms
-        let results = search.lock().await.search("deployment", 10).unwrap();
+        let results = search
+            .lock()
+            .await
+            .search("deployment", 10, 0, SortOrder::DateDesc)
+            .unwrap();
         assert!(
-            !results.is_empty(),
+            !results.results.is_empty(),
             "Search index should have 'deployment' results"
         );
     }
@@ -1226,9 +1234,14 @@ mod tests {
                 .split_whitespace()
                 .find(|w| w.len() > 3 && w.chars().all(|c| c.is_alphanumeric()))
                 .unwrap_or(&env.subject);
-            let results = search_guard.search(keyword, 100).unwrap();
+            let results = search_guard
+                .search(keyword, 100, 0, SortOrder::DateDesc)
+                .unwrap();
             assert!(
-                results.iter().any(|r| r.message_id == env.id.as_str()),
+                results
+                    .results
+                    .iter()
+                    .any(|r| r.message_id == env.id.as_str()),
                 "Envelope '{}' (subject='{}') should be findable by keyword '{}' in search index",
                 env.id,
                 env.subject,
@@ -1421,7 +1434,12 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_sync_cursor(&account_id, &SyncCursor::Gmail { history_id: 27_697_494 })
+            .set_sync_cursor(
+                &account_id,
+                &SyncCursor::Gmail {
+                    history_id: 27_697_494,
+                },
+            )
             .await
             .unwrap();
 
@@ -1465,7 +1483,9 @@ mod tests {
         assert_eq!(calls.len(), 2);
         assert!(matches!(
             calls[0],
-            SyncCursor::Gmail { history_id: 27_697_494 }
+            SyncCursor::Gmail {
+                history_id: 27_697_494
+            }
         ));
         assert!(matches!(calls[1], SyncCursor::Initial));
         let stored_cursor = store.get_sync_cursor(&account_id).await.unwrap();

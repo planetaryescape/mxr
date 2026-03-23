@@ -230,7 +230,11 @@ impl GmailProvider {
         let mut page_token: Option<String> = None;
 
         loop {
-            let resp = match self.client.list_history(history_id, page_token.as_deref()).await {
+            let resp = match self
+                .client
+                .list_history(history_id, page_token.as_deref())
+                .await
+            {
                 Ok(resp) => resp,
                 Err(GmailError::NotFound(body)) => {
                     warn!(
@@ -899,7 +903,9 @@ mod tests {
     async fn gmail_delta_sync_recovers_from_stale_history_cursor() {
         let provider = gmail_provider_with_stale_history(true);
         let batch = provider
-            .sync_messages(&SyncCursor::Gmail { history_id: 27_672_073 })
+            .sync_messages(&SyncCursor::Gmail {
+                history_id: 27_672_073,
+            })
             .await
             .unwrap();
 

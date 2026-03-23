@@ -24,7 +24,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.12"
+version = "0.4.13"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.75"
@@ -35,23 +35,23 @@ categories = ["email", "command-line-utilities"]
 
 [workspace.dependencies]
 # Internal crates
-mxr-core = { path = "crates/core", version = "0.4.11" }
-mxr-store = { path = "crates/store", version = "0.4.11" }
-mxr-search = { path = "crates/search", version = "0.4.11" }
-mxr-semantic = { path = "crates/semantic", version = "0.4.11", default-features = false }
-mxr-web = { path = "crates/web", version = "0.4.11" }
-mxr-test-support = { path = "crates/test-support", version = "0.4.11" }
-mxr-protocol = { path = "crates/protocol", version = "0.4.11" }
-mxr-provider-fake = { path = "crates/provider-fake", version = "0.4.11" }
-mxr-config = { path = "crates/config", version = "0.4.11" }
-mxr-sync = { path = "crates/sync", version = "0.4.11" }
-mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.4.11" }
-mxr-reader = { path = "crates/reader", version = "0.4.11" }
-mxr-compose = { path = "crates/compose", version = "0.4.11" }
-mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.4.11" }
-mxr-provider-imap = { path = "crates/provider-imap", version = "0.4.11" }
-mxr-export = { path = "crates/export", version = "0.4.11" }
-mxr-rules = { path = "crates/rules", version = "0.4.11" }
+mxr-core = { path = "crates/core", version = "0.4.13" }
+mxr-store = { path = "crates/store", version = "0.4.13" }
+mxr-search = { path = "crates/search", version = "0.4.13" }
+mxr-semantic = { path = "crates/semantic", version = "0.4.13", default-features = false }
+mxr-web = { path = "crates/web", version = "0.4.13" }
+mxr-test-support = { path = "crates/test-support", version = "0.4.13" }
+mxr-protocol = { path = "crates/protocol", version = "0.4.13" }
+mxr-provider-fake = { path = "crates/provider-fake", version = "0.4.13" }
+mxr-config = { path = "crates/config", version = "0.4.13" }
+mxr-sync = { path = "crates/sync", version = "0.4.13" }
+mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.4.13" }
+mxr-reader = { path = "crates/reader", version = "0.4.13" }
+mxr-compose = { path = "crates/compose", version = "0.4.13" }
+mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.4.13" }
+mxr-provider-imap = { path = "crates/provider-imap", version = "0.4.13" }
+mxr-export = { path = "crates/export", version = "0.4.13" }
+mxr-rules = { path = "crates/rules", version = "0.4.13" }
 glob-match = "0.2"
 which = "7"
 

@@ -109,7 +109,12 @@ impl QueryBuilder {
 
         let token_groups = tokens
             .into_iter()
-            .map(|token| (Occur::Must, self.build_text_token_query(&fields_boosts, &token)))
+            .map(|token| {
+                (
+                    Occur::Must,
+                    self.build_text_token_query(&fields_boosts, &token),
+                )
+            })
             .collect();
         Box::new(BooleanQuery::new(token_groups))
     }
@@ -291,7 +296,11 @@ impl QueryBuilder {
         Box::new(PhraseQuery::new(terms))
     }
 
-    fn build_text_token_query(&self, fields_boosts: &[(Field, f32)], token: &str) -> Box<dyn Query> {
+    fn build_text_token_query(
+        &self,
+        fields_boosts: &[(Field, f32)],
+        token: &str,
+    ) -> Box<dyn Query> {
         let subqueries = fields_boosts
             .iter()
             .map(|(field, boost)| {

@@ -16,6 +16,7 @@ emit_output() {
 
 if [[ -z "${base_ref}" ]]; then
   emit_output cli_changed true
+  emit_output desktop_source_changed true
   emit_output desktop_changed true
   emit_output has_artifacts true
   exit 0
@@ -47,6 +48,7 @@ cargo_lock_ignore='^[+-][[:space:]]*$|^[+-][[:space:]]*version[[:space:]]*=[[:sp
 package_json_ignore='^[+-][[:space:]]*"version":[[:space:]]*"[^"]+",?$'
 
 cli_changed=false
+desktop_source_changed=false
 desktop_changed=false
 
 while IFS= read -r path; do
@@ -58,7 +60,7 @@ while IFS= read -r path; do
       cli_changed=true
       ;;
     apps/desktop/*)
-      desktop_changed=true
+      desktop_source_changed=true
       ;;
   esac
 done <<< "${changed_files}"
@@ -80,13 +82,14 @@ while IFS= read -r manifest; do
 done < <(printf '%s\n' "${changed_files}" | grep '^crates/.*/Cargo.toml$' || true)
 
 if relevant_diff "apps/desktop/package.json" "${package_json_ignore}"; then
-  desktop_changed=true
+  desktop_source_changed=true
 fi
 
 if relevant_diff "apps/desktop/package-lock.json" "${package_json_ignore}"; then
-  desktop_changed=true
+  desktop_source_changed=true
 fi
 
+desktop_changed="${desktop_source_changed}"
 if [[ "${cli_changed}" == true ]]; then
   desktop_changed=true
 fi
@@ -97,5 +100,6 @@ if [[ "${cli_changed}" == true || "${desktop_changed}" == true ]]; then
 fi
 
 emit_output cli_changed "${cli_changed}"
+emit_output desktop_source_changed "${desktop_source_changed}"
 emit_output desktop_changed "${desktop_changed}"
 emit_output has_artifacts "${has_artifacts}"

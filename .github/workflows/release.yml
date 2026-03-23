@@ -20,6 +20,7 @@ jobs:
       desktop_source_changed: ${{ steps.scope.outputs.desktop_source_changed }}
       desktop_changed: ${{ steps.scope.outputs.desktop_changed }}
       has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
+      build_matrix: ${{ steps.matrix.outputs.build_matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,43 +34,28 @@ jobs:
       - id: scope
         name: Detect changed artifact families
         run: bash ./scripts/release_change_scope.sh "${{ steps.previous-tag.outputs.previous_tag }}" "${GITHUB_REF_NAME}"
+      - id: matrix
+        name: Build release matrix
+        run: |
+          MATRIX='{"include":[{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","desktop_platform":"linux","desktop_arch":"x64","desktop_archive":"desktop-linux-x86_64.zip","use_cross":false,"cargo_args":""}]}'
+
+          if [[ "${{ steps.scope.outputs.desktop_source_changed }}" == 'true' ]]; then
+            MATRIX="$(printf '%s' "$MATRIX" | jq -c '.include += [
+              {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","desktop_platform":"darwin","desktop_arch":"x64","desktop_archive":"desktop-macos-x86_64.zip","use_cross":false,"cargo_args":"--no-default-features"},
+              {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","desktop_platform":"darwin","desktop_arch":"arm64","desktop_archive":"desktop-macos-aarch64.zip","use_cross":false,"cargo_args":""}
+            ]')"
+          fi
+
+          echo "build_matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
 
   build-binaries:
     name: Build ${{ matrix.target }}
     needs: plan
-    if: needs.plan.outputs.has_artifacts == 'true' && (matrix.platform_family != 'macos' || needs.plan.outputs.desktop_source_changed == 'true')
+    if: needs.plan.outputs.has_artifacts == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            platform_family: linux
-            archive: linux-x86_64.tar.gz
-            desktop_platform: linux
-            desktop_arch: x64
-            desktop_archive: desktop-linux-x86_64.zip
-            use_cross: false
-            cargo_args: ""
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-            platform_family: macos
-            archive: macos-x86_64.tar.gz
-            desktop_platform: darwin
-            desktop_arch: x64
-            desktop_archive: desktop-macos-x86_64.zip
-            use_cross: false
-            cargo_args: "--no-default-features"
-          - os: macos-15
-            target: aarch64-apple-darwin
-            platform_family: macos
-            archive: macos-aarch64.tar.gz
-            desktop_platform: darwin
-            desktop_arch: arm64
-            desktop_archive: desktop-macos-aarch64.zip
-            use_cross: false
-            cargo_args: ""
+      matrix: ${{ fromJson(needs.plan.outputs.build_matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

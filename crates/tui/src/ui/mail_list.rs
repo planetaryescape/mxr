@@ -118,6 +118,25 @@ fn build_row<'a>(
     let is_unread = !env.flags.contains(MessageFlags::READ);
     let is_starred = env.flags.contains(MessageFlags::STARRED);
     let is_in_set = view.selected_set.contains(&env.id);
+    let base_style = row_base_style(theme, is_selected, is_in_set, is_unread);
+    let row_fg = base_style.fg.unwrap_or(theme.text_primary);
+    let row_secondary_fg = if is_selected || is_in_set {
+        row_fg
+    } else if is_unread {
+        theme.text_primary
+    } else {
+        theme.text_secondary
+    };
+    let row_muted_fg = if is_selected || is_in_set {
+        row_fg
+    } else {
+        theme.text_muted
+    };
+    let row_marker_fg = if is_selected || is_in_set {
+        row_fg
+    } else {
+        theme.line_number_fg
+    };
     let selection_marker = match (is_selected, is_in_set) {
         (true, true) => "*",
         (true, false) => ">",
@@ -125,9 +144,9 @@ fn build_row<'a>(
         (false, false) => " ",
     };
     let line_number_style = match (is_selected, is_in_set) {
-        (true, true) | (true, false) => Style::default().fg(theme.warning).bold(),
-        (false, true) => Style::default().fg(theme.accent).bold(),
-        (false, false) => Style::default().fg(theme.line_number_fg),
+        (true, true) | (true, false) => Style::default().fg(row_fg).bold(),
+        (false, true) => Style::default().fg(row_fg).bold(),
+        (false, false) => Style::default().fg(row_marker_fg),
     };
 
     // Line number
@@ -139,45 +158,31 @@ fn build_row<'a>(
     // Unread indicator
     let unread_cell = Cell::from(Span::styled(
         if is_unread { "N" } else { " " },
-        Style::default().fg(theme.accent).bold(),
+        Style::default().fg(row_fg).bold(),
     ));
 
     // Star
     let star_cell = Cell::from(Span::styled(
         if is_starred { "★" } else { " " },
-        Style::default().fg(theme.warning),
+        Style::default().fg(row_fg),
     ));
 
     let unsubscribe_cell = Cell::from(Span::styled(
         unsubscribe_marker(&env.unsubscribe),
-        Style::default().fg(theme.text_muted),
+        Style::default().fg(row_muted_fg),
     ));
 
     // Sender (with thread count badge)
     let (sender_text, thread_count) = sender_parts(row, view.mode);
     let sender_spans: Vec<Span> = if let Some(count) = thread_count {
         vec![
-            Span::styled(
-                sender_text,
-                Style::default().fg(if is_unread {
-                    theme.text_primary
-                } else {
-                    theme.text_secondary
-                }),
-            ),
-            Span::styled(
-                format!(" {}", count),
-                Style::default().fg(theme.accent_dim).bold(),
-            ),
+            Span::styled(sender_text, Style::default().fg(row_secondary_fg)),
+            Span::styled(format!(" {}", count), Style::default().fg(row_fg).bold()),
         ]
     } else {
         vec![Span::styled(
             sender_text,
-            Style::default().fg(if is_unread {
-                theme.text_primary
-            } else {
-                theme.text_secondary
-            }),
+            Style::default().fg(row_secondary_fg),
         )]
     };
     let sender_cell = Cell::from(Line::from(sender_spans));
@@ -187,33 +192,13 @@ fn build_row<'a>(
 
     // Date
     let date_str = format_date(&env.date);
-    let date_cell = Cell::from(Span::styled(
-        date_str,
-        Style::default().fg(theme.text_muted),
-    ));
+    let date_cell = Cell::from(Span::styled(date_str, Style::default().fg(row_muted_fg)));
 
     // Attachment
     let attach_cell = Cell::from(Span::styled(
         attachment_marker(env.has_attachments),
-        Style::default().fg(theme.success),
+        Style::default().fg(row_fg),
     ));
-
-    let base_style = match (is_selected, is_in_set) {
-        (true, true) => Style::default()
-            .bg(theme.accent)
-            .fg(theme.selection_fg)
-            .add_modifier(Modifier::BOLD),
-        (true, false) => Style::default()
-            .bg(theme.selection_bg)
-            .fg(theme.selection_fg)
-            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-        (false, true) => Style::default()
-            .bg(theme.accent_dim)
-            .fg(theme.selection_fg)
-            .add_modifier(Modifier::BOLD),
-        (false, false) if is_unread => theme.unread_style(),
-        (false, false) => Style::default().fg(theme.text_secondary),
-    };
 
     Row::new(vec![
         line_num_cell,

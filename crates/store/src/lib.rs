@@ -150,6 +150,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_envelopes_by_ids_roundtrip_on_disk() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "mxr-store-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let db_path = temp_dir.join("mxr.db");
+        let store = Store::new(&db_path).await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let mut first = test_envelope(&account.id);
+        first.provider_id = "first".to_string();
+        first.subject = "First".to_string();
+
+        let mut second = test_envelope(&account.id);
+        second.id = MessageId::new();
+        second.provider_id = "second".to_string();
+        second.subject = "Second".to_string();
+
+        store.upsert_envelope(&first).await.unwrap();
+        store.upsert_envelope(&second).await.unwrap();
+
+        let listed = store
+            .list_envelopes_by_ids(&[second.id.clone(), first.id.clone()])
+            .await
+            .unwrap();
+
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].id, second.id);
+        assert_eq!(listed[0].subject, "Second");
+        assert_eq!(listed[1].id, first.id);
+        assert_eq!(listed[1].subject, "First");
+
+        let _ = std::fs::remove_file(&db_path);
+        let _ = std::fs::remove_dir(&temp_dir);
+    }
+
+    #[tokio::test]
     async fn list_envelopes_by_account_sinks_impossible_future_dates() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();

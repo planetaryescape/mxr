@@ -291,28 +291,47 @@ impl super::Store {
         let rows = query.fetch_all(self.reader()).await?;
         let mut by_id = std::collections::HashMap::with_capacity(rows.len());
         for row in rows {
+            let id = row.get::<String, _>(0);
+            let account_id = row.get::<String, _>(1);
+            let provider_id = row.get::<String, _>(2);
+            let thread_id = row.get::<String, _>(3);
+            let message_id_header = row.get::<Option<String>, _>(4);
+            let in_reply_to = row.get::<Option<String>, _>(5);
+            let reference_headers = row.get::<Option<String>, _>(6);
+            let from_name = row.get::<Option<String>, _>(7);
+            let from_email = row.get::<String, _>(8);
+            let to_addrs = row.get::<String, _>(9);
+            let cc_addrs = row.get::<String, _>(10);
+            let bcc_addrs = row.get::<String, _>(11);
+            let subject = row.get::<String, _>(12);
+            let date = row.get::<i64, _>(13);
+            let flags = row.get::<i64, _>(14);
+            let snippet = row.get::<String, _>(15);
+            let has_attachments = row.get::<bool, _>(16);
+            let size_bytes = row.get::<i64, _>(17);
+            let unsubscribe_method = row.get::<Option<String>, _>(18);
+            let label_provider_ids = row.get::<String, _>(19);
             let envelope = record_to_envelope(
-                row.get::<String, _>("id").as_str(),
-                row.get::<String, _>("account_id").as_str(),
-                row.get::<String, _>("provider_id").as_str(),
-                row.get::<String, _>("thread_id").as_str(),
-                row.get::<Option<String>, _>("message_id_header").as_deref(),
-                row.get::<Option<String>, _>("in_reply_to").as_deref(),
-                row.get::<Option<String>, _>("reference_headers").as_deref(),
-                row.get::<Option<String>, _>("from_name").as_deref(),
-                row.get::<String, _>("from_email").as_str(),
-                row.get::<String, _>("to_addrs").as_str(),
-                row.get::<String, _>("cc_addrs").as_str(),
-                row.get::<String, _>("bcc_addrs").as_str(),
-                row.get::<String, _>("subject").as_str(),
-                row.get::<i64, _>("date"),
-                row.get::<i64, _>("flags"),
-                row.get::<String, _>("snippet").as_str(),
-                row.get::<bool, _>("has_attachments"),
-                row.get::<i64, _>("size_bytes"),
-                row.get::<Option<String>, _>("unsubscribe_method")
-                    .as_deref(),
-                row.get::<String, _>("label_provider_ids").as_str(),
+                &id,
+                &account_id,
+                &provider_id,
+                &thread_id,
+                message_id_header.as_deref(),
+                in_reply_to.as_deref(),
+                reference_headers.as_deref(),
+                from_name.as_deref(),
+                &from_email,
+                &to_addrs,
+                &cc_addrs,
+                &bcc_addrs,
+                &subject,
+                date,
+                flags,
+                &snippet,
+                has_attachments,
+                size_bytes,
+                unsubscribe_method.as_deref(),
+                &label_provider_ids,
             );
             by_id.insert(envelope.id.clone(), envelope);
         }

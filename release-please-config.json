@@ -1,7 +1,7 @@
 {
   "packages": {
     ".": {
-      "release-type": "rust",
+      "release-type": "simple",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "include-component-in-tag": false,
@@ -36,6 +36,25 @@
         { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-export'].version" },
         { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-rules'].version" },
         { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.dependencies['mxr-tui'].version" },
+        { "type": "toml", "path": "crates/core/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/config/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/store/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/search/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/semantic/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/web/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/test-support/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/protocol/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/provider-fake/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/provider-gmail/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/sync/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/daemon/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/tui/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/reader/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/compose/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/provider-smtp/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/provider-imap/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/export/Cargo.toml", "jsonpath": "$.package.version" },
+        { "type": "toml", "path": "crates/rules/Cargo.toml", "jsonpath": "$.package.version" },
         "apps/desktop/package.json"
       ]
     }

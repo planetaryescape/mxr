@@ -9,10 +9,41 @@ permissions:
   pull-requests: write
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
+      is_release_pr_merge: ${{ steps.release-merge.outputs.is_release_pr_merge }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: previous-tag
+        name: Find previous tag
+        run: |
+          PREVIOUS_TAG="$(git tag --sort=-version:refname | grep '^v' | head -n1 || true)"
+          echo "previous_tag=${PREVIOUS_TAG}" >> "$GITHUB_OUTPUT"
+      - id: scope
+        name: Detect changed artifact families
+        run: bash ./scripts/release_change_scope.sh "${{ steps.previous-tag.outputs.previous_tag }}" HEAD
+      - id: release-merge
+        name: Detect merged release PR
+        run: |
+          COMMIT_MESSAGE="$(git log -1 --pretty=%B)"
+
+          if printf '%s\n' "${COMMIT_MESSAGE}" | grep -Eq '^(Merge pull request #[0-9]+ from .*/release-please--branches--|chore\(main\): release [0-9]+\.[0-9]+\.[0-9]+)'; then
+            echo "is_release_pr_merge=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release_pr_merge=false" >> "$GITHUB_OUTPUT"
+          fi
+
   release-please:
+    needs: plan
+    if: needs.plan.outputs.has_artifacts == 'true' || needs.plan.outputs.is_release_pr_merge == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: googleapis/release-please-action@v4
+      - id: release
+        uses: googleapis/release-please-action@v4
         with:
           manifest-file: .release-please-manifest.json
           config-file: release-please-config.json

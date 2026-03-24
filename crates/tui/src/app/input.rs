@@ -98,6 +98,30 @@ impl App {
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         if self.error_modal.is_some() {
             return match (key.code, key.modifiers) {
+                (KeyCode::Char('j') | KeyCode::Down, _) => {
+                    if let Some(error) = self.error_modal.as_mut() {
+                        error.scroll_offset = error.scroll_offset.saturating_add(1);
+                    }
+                    None
+                }
+                (KeyCode::Char('k') | KeyCode::Up, _) => {
+                    if let Some(error) = self.error_modal.as_mut() {
+                        error.scroll_offset = error.scroll_offset.saturating_sub(1);
+                    }
+                    None
+                }
+                (KeyCode::Char('d'), KeyModifiers::CONTROL) | (KeyCode::PageDown, _) => {
+                    if let Some(error) = self.error_modal.as_mut() {
+                        error.scroll_offset = error.scroll_offset.saturating_add(8);
+                    }
+                    None
+                }
+                (KeyCode::Char('u'), KeyModifiers::CONTROL) | (KeyCode::PageUp, _) => {
+                    if let Some(error) = self.error_modal.as_mut() {
+                        error.scroll_offset = error.scroll_offset.saturating_sub(8);
+                    }
+                    None
+                }
                 (KeyCode::Esc | KeyCode::Enter, _)
                 | (KeyCode::Char('q'), _)
                 | (KeyCode::Char('x'), _) => {
@@ -932,6 +956,12 @@ impl App {
             (KeyCode::Char('n'), _) => Some(Action::OpenAccountFormNew),
             (KeyCode::Char('r'), _) => Some(Action::RefreshAccounts),
             (KeyCode::Char('t'), _) => Some(Action::TestAccountForm),
+            (KeyCode::Char('O'), KeyModifiers::SHIFT)
+                if super::account_result_has_details(self.accounts_page.last_result.as_ref()) =>
+            {
+                self.open_last_account_result_details_modal();
+                None
+            }
             (KeyCode::Char('d'), _) => Some(Action::SetDefaultAccount),
             (KeyCode::Char('c'), _) => Some(Action::EditConfig),
             (KeyCode::Enter | KeyCode::Char('o'), _) => {
@@ -1103,6 +1133,14 @@ impl App {
                 }
             }
             (KeyCode::Char('t'), _) => Some(Action::TestAccountForm),
+            (KeyCode::Char('o'), _)
+                if super::account_result_has_details(
+                    self.accounts_page.form.last_result.as_ref(),
+                ) =>
+            {
+                self.open_last_account_result_details_modal();
+                None
+            }
             (KeyCode::Char('r'), _)
                 if matches!(self.accounts_page.form.mode, AccountFormMode::Gmail) =>
             {

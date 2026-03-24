@@ -12,7 +12,7 @@ pub fn draw(
         return;
     };
 
-    let popup = centered_rect(62, 26, area);
+    let popup = centered_rect(72, 58, area);
     frame.render_widget(Clear, popup);
 
     let block = Block::bordered()
@@ -23,12 +23,38 @@ pub fn draw(
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
-    let lines = vec![
-        Line::from(error.detail.clone()),
-        Line::from(""),
-        Line::from("[Enter] dismiss   [Esc] dismiss"),
-    ];
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(inner);
+
+    let detail_lines = error
+        .detail
+        .lines()
+        .map(|line| Line::from(line.to_string()))
+        .collect::<Vec<_>>();
+    let paragraph = Paragraph::new(detail_lines.clone())
+        .scroll((error.scroll_offset as u16, 0))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, chunks[0]);
+
+    let footer = Line::from("[j/k] scroll   [Ctrl-d/u] page   [Enter] dismiss   [Esc] dismiss");
+    frame.render_widget(footer, chunks[1]);
+
+    let body_height = chunks[0].height as usize;
+    if detail_lines.len() > body_height {
+        let mut scrollbar_state =
+            ScrollbarState::new(detail_lines.len().saturating_sub(body_height))
+                .position(error.scroll_offset);
+        frame.render_stateful_widget(
+            Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(None)
+                .end_symbol(None),
+            chunks[0],
+            &mut scrollbar_state,
+        );
+    }
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -58,11 +84,12 @@ mod tests {
 
     #[test]
     fn error_modal_state_is_constructible() {
-        let error = ErrorModalState {
-            title: "Mutation Failed".into(),
-            detail: "Optimistic changes could not be applied.".into(),
-        };
+        let error = ErrorModalState::new(
+            "Mutation Failed",
+            "Optimistic changes could not be applied.",
+        );
         let _ = draw;
         assert!(error.detail.contains("Optimistic"));
+        assert_eq!(error.scroll_offset, 0);
     }
 }

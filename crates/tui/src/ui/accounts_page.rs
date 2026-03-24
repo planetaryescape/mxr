@@ -175,11 +175,15 @@ pub fn draw(
     } else if let Some(status) = &state.status {
         footer_lines.push(Line::from(status.clone()));
     }
-    footer_lines.push(Line::from(if state.accounts.is_empty() {
-        "n:new account  c:edit config  Esc:mailbox"
+    let mut footer_hint = if state.accounts.is_empty() {
+        "n:new account  c:edit config  Esc:mailbox".to_string()
     } else {
-        "j/k:select  Enter:edit  n:new  t:test  d:default  c:config  r:refresh"
-    }));
+        "j/k:select  Enter:edit  n:new  t:test  d:default  c:config  r:refresh".to_string()
+    };
+    if account_result_has_details(state.last_result.as_ref()) {
+        footer_hint.push_str("  O:details");
+    }
+    footer_lines.push(Line::from(footer_hint));
     let footer = Paragraph::new(footer_lines).block(
         Block::default()
             .borders(Borders::ALL)
@@ -292,11 +296,17 @@ fn draw_form(
     if state.operation_in_flight {
         footer_lines.push(account_operation_status_line(state, theme));
     }
-    footer_lines.push(Line::from(if form.editing_field {
+    let mut footer_hint = if form.editing_field {
         "Enter/Esc:finish  Left/Right:cursor  Backspace/Delete:edit  Tab/Shift-Tab:field"
+            .to_string()
     } else {
         "j/k or Tab:field  Enter/i:edit  Shift-Tab:prev  h/l:mode  s:save  t:test  r:reauth  Esc:close"
-    }));
+            .to_string()
+    };
+    if !form.editing_field && account_result_has_details(form.last_result.as_ref()) {
+        footer_hint.push_str("  o:details");
+    }
+    footer_lines.push(Line::from(footer_hint));
     let footer = Paragraph::new(footer_lines).block(
         Block::default()
             .borders(Borders::ALL)
@@ -557,6 +567,16 @@ fn push_unique_hint(hints: &mut Vec<String>, hint: Option<String>) {
     }
 }
 
+fn account_result_has_details(
+    result: Option<&crate::mxr_protocol::AccountOperationResult>,
+) -> bool {
+    let Some(result) = result else {
+        return false;
+    };
+
+    result.save.is_some() || result.auth.is_some() || result.sync.is_some() || result.send.is_some()
+}
+
 fn gmail_result_hint(detail: &str) -> Option<String> {
     let detail = detail.to_ascii_lowercase();
     if detail.contains("client id")
@@ -574,6 +594,14 @@ fn gmail_result_hint(detail: &str) -> Option<String> {
 
 fn server_result_hint(service: &str, detail: &str, auth_required: bool) -> Option<String> {
     let detail = detail.to_ascii_lowercase();
+    if detail.contains("namespace response")
+        || detail.contains("could not parse")
+        || detail.contains("unsupported format")
+    {
+        return Some(format!(
+            "{service} returned an unexpected protocol response. This looks like a server compatibility issue, not a bad password. Open details for the exact step."
+        ));
+    }
     if detail.contains("keyring") {
         return Some(format!(
             "Check fields: {service} pass ref and {service} user."
@@ -760,7 +788,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, rect: Rect) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::account_field_help_text;
+    use super::{account_field_help_text, server_result_hint};
 
     #[test]
     fn account_key_help_explains_internal_id_and_refs() {
@@ -780,5 +808,17 @@ mod tests {
     fn auth_toggle_help_explains_when_to_disable_it() {
         assert!(account_field_help_text("IMAP auth").contains("anonymous"));
         assert!(account_field_help_text("SMTP auth").contains("without auth"));
+    }
+
+    #[test]
+    fn parse_failures_get_compatibility_hint_instead_of_password_hint() {
+        let hint = server_result_hint(
+            "IMAP",
+            "Protocol error: IMAP server returned a NAMESPACE response in an unsupported format during folder discovery.",
+            true,
+        )
+        .unwrap();
+        assert!(hint.contains("compatibility issue"));
+        assert!(!hint.contains("IMAP password"));
     }
 }

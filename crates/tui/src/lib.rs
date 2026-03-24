@@ -364,12 +364,12 @@ pub async fn run() -> anyhow::Result<()> {
                     app.status_message = Some(message);
                 }
                 Err(error) => {
-                    app.error_modal = Some(app::ErrorModalState {
-                        title: "Config Reload Failed".into(),
-                        detail: format!(
+                    app.error_modal = Some(app::ErrorModalState::new(
+                        "Config Reload Failed",
+                        format!(
                             "Config could not be reloaded after editing.\n\n{error}\n\nFix the file and run Edit Config again."
                         ),
-                    });
+                    ));
                     app.status_message = Some(format!("Config reload failed: {error}"));
                 }
             }
@@ -384,12 +384,12 @@ pub async fn run() -> anyhow::Result<()> {
                     app.status_message = Some(message);
                 }
                 Err(error) => {
-                    app.error_modal = Some(app::ErrorModalState {
-                        title: "Open Logs Failed".into(),
-                        detail: format!(
+                    app.error_modal = Some(app::ErrorModalState::new(
+                        "Open Logs Failed",
+                        format!(
                             "The log file could not be opened.\n\n{error}\n\nCheck that the daemon has created the log file and try again."
                         ),
-                    });
+                    ));
                     app.status_message = Some(format!("Open logs failed: {error}"));
                 }
             }
@@ -403,12 +403,12 @@ pub async fn run() -> anyhow::Result<()> {
                     app.status_message = Some(message);
                 }
                 Err(error) => {
-                    app.error_modal = Some(app::ErrorModalState {
-                        title: "Diagnostics Open Failed".into(),
-                        detail: format!(
+                    app.error_modal = Some(app::ErrorModalState::new(
+                        "Diagnostics Open Failed",
+                        format!(
                             "The diagnostics source could not be opened.\n\n{error}\n\nTry refresh first, then open details again."
                         ),
-                    });
+                    ));
                     app.status_message = Some(format!("Open diagnostics failed: {error}"));
                 }
             }
@@ -1398,27 +1398,16 @@ pub async fn run() -> anyhow::Result<()> {
                                 Some(format!("Mailbox refresh failed: {e}"));
                         }
                         AsyncResult::AccountOperation(Ok(result)) => {
-                            app.accounts_page.operation_in_flight = false;
-                            app.accounts_page.throbber = Default::default();
-                            app.accounts_page.status = Some(result.summary.clone());
-                            app.accounts_page.last_result = Some(result.clone());
-                            app.accounts_page.form.last_result = Some(result.clone());
-                            app.accounts_page.form.gmail_authorized = result
-                                .auth
-                                .as_ref()
-                                .map(|step| step.ok)
-                                .unwrap_or(app.accounts_page.form.gmail_authorized);
-                            if result.save.as_ref().is_some_and(|step| step.ok) {
-                                app.accounts_page.new_account_draft = None;
-                                app.accounts_page.resume_new_account_draft_prompt_open = false;
-                                app.accounts_page.form.visible = false;
-                            }
-                            app.accounts_page.refresh_pending = true;
+                            app.apply_account_operation_result(result);
                         }
                         AsyncResult::AccountOperation(Err(e)) => {
                             app.accounts_page.operation_in_flight = false;
                             app.accounts_page.throbber = Default::default();
                             app.accounts_page.status = Some(format!("Account error: {e}"));
+                            app.error_modal = Some(app::ErrorModalState::new(
+                                "Account Operation Failed",
+                                format!("The account test or save request failed.\n\n{e}"),
+                            ));
                         }
                         AsyncResult::BugReport(Ok(content)) => {
                             let filename = format!(
@@ -3999,6 +3988,83 @@ mod tests {
             }
             other => panic!("expected smtp config, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn failed_account_operation_opens_details_modal() {
+        let mut app = App::new();
+        let result = crate::mxr_protocol::AccountOperationResult {
+            ok: false,
+            summary: "Account 'consulting' test failed.".into(),
+            save: None,
+            auth: None,
+            sync: Some(crate::mxr_protocol::AccountOperationStep {
+                ok: false,
+                detail: "IMAP server returned a NAMESPACE response in an unsupported format during folder discovery. This looks like a server compatibility issue, not necessarily a bad username or password.".into(),
+            }),
+            send: Some(crate::mxr_protocol::AccountOperationStep {
+                ok: true,
+                detail: "SMTP send ok".into(),
+            }),
+        };
+
+        app.apply_account_operation_result(result);
+
+        let modal = app.error_modal.as_ref().unwrap();
+        assert_eq!(modal.title, "Account Test Failed");
+        assert!(modal.detail.contains("NAMESPACE response"));
+        assert!(modal.detail.contains("compatibility issue"));
+    }
+
+    #[test]
+    fn account_form_o_reopens_result_details_modal() {
+        let mut app = App::new();
+        app.screen = Screen::Accounts;
+        app.accounts_page.form.visible = true;
+        app.accounts_page.form.last_result = Some(crate::mxr_protocol::AccountOperationResult {
+            ok: false,
+            summary: "Account 'consulting' test failed.".into(),
+            save: None,
+            auth: None,
+            sync: Some(crate::mxr_protocol::AccountOperationStep {
+                ok: false,
+                detail: "IMAP server returned a response mxr could not parse.".into(),
+            }),
+            send: None,
+        });
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+
+        assert!(action.is_none());
+        assert_eq!(
+            app.error_modal.as_ref().map(|modal| modal.title.as_str()),
+            Some("Account Test Failed")
+        );
+    }
+
+    #[test]
+    fn error_modal_supports_scrolling_keys() {
+        let mut app = App::new();
+        app.error_modal = Some(super::app::ErrorModalState::new(
+            "Account Test Failed",
+            "line1\nline2\nline3\nline4\nline5",
+        ));
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert_eq!(app.error_modal.as_ref().unwrap().scroll_offset, 1);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert_eq!(app.error_modal.as_ref().unwrap().scroll_offset, 9);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert_eq!(app.error_modal.as_ref().unwrap().scroll_offset, 8);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert_eq!(app.error_modal.as_ref().unwrap().scroll_offset, 0);
     }
 
     #[test]

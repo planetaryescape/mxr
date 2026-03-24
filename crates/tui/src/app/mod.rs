@@ -545,6 +545,17 @@ pub struct PendingBulkConfirm {
 pub struct ErrorModalState {
     pub title: String,
     pub detail: String,
+    pub scroll_offset: usize,
+}
+
+impl ErrorModalState {
+    pub fn new(title: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            detail: detail.into(),
+            scroll_offset: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1443,6 +1454,18 @@ impl App {
         self.accounts_page.form.field_cursor = account_form_field_value(&self.accounts_page.form)
             .map(|value| value.chars().count())
             .unwrap_or(0);
+    }
+
+    fn account_result_modal_hint(label: &str, detail: &str) -> Option<&'static str> {
+        let detail = detail.to_ascii_lowercase();
+        if label == "Sync"
+            && (detail.contains("namespace response")
+                || detail.contains("could not parse")
+                || detail.contains("unsupported format"))
+        {
+            return Some("This looks like an IMAP server compatibility issue, not a bad password.");
+        }
+        None
     }
 
     fn next_account_form_mode(&self, forward: bool) -> AccountFormMode {
@@ -2974,13 +2997,64 @@ impl App {
         }
     }
 
+    fn show_error_modal(&mut self, title: impl Into<String>, detail: impl Into<String>) {
+        self.error_modal = Some(ErrorModalState::new(title, detail));
+    }
+
+    pub(crate) fn apply_account_operation_result(
+        &mut self,
+        result: crate::mxr_protocol::AccountOperationResult,
+    ) {
+        self.accounts_page.operation_in_flight = false;
+        self.accounts_page.throbber = Default::default();
+        self.accounts_page.status = Some(result.summary.clone());
+        self.accounts_page.last_result = Some(result.clone());
+        self.accounts_page.form.last_result = Some(result.clone());
+        self.accounts_page.form.gmail_authorized = result
+            .auth
+            .as_ref()
+            .map(|step| step.ok)
+            .unwrap_or(self.accounts_page.form.gmail_authorized);
+        if result.save.as_ref().is_some_and(|step| step.ok) {
+            self.accounts_page.new_account_draft = None;
+            self.accounts_page.resume_new_account_draft_prompt_open = false;
+            self.accounts_page.form.visible = false;
+        }
+        if !result.ok && account_result_has_details(Some(&result)) {
+            self.open_account_result_details_modal(&result);
+        }
+        self.accounts_page.refresh_pending = true;
+    }
+
+    pub(crate) fn open_last_account_result_details_modal(&mut self) {
+        if let Some(result) = self
+            .accounts_page
+            .form
+            .last_result
+            .clone()
+            .or_else(|| self.accounts_page.last_result.clone())
+        {
+            self.open_account_result_details_modal(&result);
+        }
+    }
+
+    fn open_account_result_details_modal(
+        &mut self,
+        result: &crate::mxr_protocol::AccountOperationResult,
+    ) {
+        self.show_error_modal(
+            account_result_modal_title(result),
+            account_result_modal_detail(result),
+        );
+    }
+
     pub fn show_mutation_failure(&mut self, error: &MxrError) {
-        self.error_modal = Some(ErrorModalState {
-            title: "Mutation Failed".into(),
-            detail: format!(
+        self.show_error_modal(
+            "Mutation Failed",
+            format!(
                 "Optimistic changes could not be applied.\nMailbox is refreshing to reconcile state.\n\n{error}"
             ),
-        });
+        );
         self.status_message = Some(format!("Error: {error}"));
     }
 
@@ -3361,6 +3435,52 @@ fn subscription_summary_to_envelope(summary: &SubscriptionSummary) -> Envelope {
         unsubscribe: summary.unsubscribe.clone(),
         label_provider_ids: vec![],
     }
+}
+
+fn account_result_has_details(
+    result: Option<&crate::mxr_protocol::AccountOperationResult>,
+) -> bool {
+    let Some(result) = result else {
+        return false;
+    };
+
+    result.save.is_some() || result.auth.is_some() || result.sync.is_some() || result.send.is_some()
+}
+
+fn account_result_modal_title(result: &crate::mxr_protocol::AccountOperationResult) -> String {
+    if result.summary.contains("test failed") {
+        "Account Test Failed".into()
+    } else if result.summary.contains("test passed") {
+        "Account Test Result".into()
+    } else if result.summary.starts_with("Account form has problems.") {
+        "Account Form Problems".into()
+    } else {
+        "Account Setup Details".into()
+    }
+}
+
+fn account_result_modal_detail(result: &crate::mxr_protocol::AccountOperationResult) -> String {
+    let mut lines = vec![result.summary.clone()];
+    for (label, step) in [
+        ("Save", result.save.as_ref()),
+        ("Auth", result.auth.as_ref()),
+        ("Sync", result.sync.as_ref()),
+        ("Send", result.send.as_ref()),
+    ] {
+        let Some(step) = step else {
+            continue;
+        };
+        lines.push(String::new());
+        lines.push(format!(
+            "{label}: {}",
+            if step.ok { "ok" } else { "failed" }
+        ));
+        lines.push(step.detail.clone());
+        if let Some(hint) = App::account_result_modal_hint(label, &step.detail) {
+            lines.push(format!("Hint: {hint}"));
+        }
+    }
+    lines.join("\n")
 }
 
 fn account_summary_to_config(

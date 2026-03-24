@@ -11,9 +11,9 @@ use mxr_test_support::render_to_string;
 use mxr_tui::action::UiContext;
 use mxr_tui::app::{
     AccountFormState, AccountsPageState, ActivePane, AttachmentPanelState, BodySource,
-    BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, MailListMode, MailListRow,
-    MutationEffect, PendingBulkConfirm, PendingSend, RulesPageState, SearchPageState,
-    SearchUiStatus,
+    BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, FeatureOnboardingState,
+    MailListMode, MailListRow, MutationEffect, PendingBulkConfirm, PendingSend, RulesPageState,
+    SearchPageState, SearchUiStatus,
 };
 use mxr_tui::ui::attachment_modal::draw as draw_attachment_modal;
 use mxr_tui::ui::bulk_confirm_modal::draw as draw_bulk_confirm_modal;
@@ -22,6 +22,7 @@ use mxr_tui::ui::compose_picker::{draw as draw_compose_picker, ComposePicker, Co
 use mxr_tui::ui::help_modal::{draw as draw_help_modal, HelpModalState};
 use mxr_tui::ui::label_picker::{draw as draw_label_picker, LabelPicker, LabelPickerMode};
 use mxr_tui::ui::message_view::{draw as draw_message_view, ThreadMessageBlock};
+use mxr_tui::ui::onboarding_modal::draw as draw_onboarding_modal;
 use mxr_tui::ui::search_bar::{draw as draw_search_bar, SearchBar};
 use mxr_tui::ui::search_page::draw as draw_search_page;
 use mxr_tui::ui::send_confirm_modal::draw as draw_send_confirm;
@@ -308,6 +309,8 @@ fn search_page_snapshot() {
         active_pane: mxr_tui::app::SearchPane::Results,
         selected_index: 0,
         scroll_offset: 0,
+        result_selected: true,
+        throbber: Default::default(),
     };
     let rows = vec![sample_mail_row()];
     let preview = vec![ThreadMessageBlock {
@@ -343,7 +346,7 @@ fn search_page_snapshot() {
 
 #[test]
 fn search_page_blank_snapshot() {
-    let state = SearchPageState::default();
+        let state = SearchPageState::default();
 
     let snapshot = render_to_string(90, 24, |frame| {
         draw_search_page(
@@ -422,10 +425,58 @@ fn rules_page_snapshot() {
             frame,
             Rect::new(0, 0, 100, 20),
             &state,
+            &tui_textarea::TextArea::from(["from:github.com"]),
+            &tui_textarea::TextArea::from(["add_label(\"GitHub\")"]),
             &mxr_tui::theme::Theme::default(),
         );
     });
     insta::assert_snapshot!("rules_page_snapshot", snapshot);
+}
+
+#[test]
+fn search_page_searching_snapshot() {
+    let state = SearchPageState {
+        query: "invoice".into(),
+        editing: true,
+        ui_status: SearchUiStatus::Searching,
+        loading_more: true,
+        count_pending: true,
+        session_active: true,
+        throbber: Default::default(),
+        ..SearchPageState::default()
+    };
+
+    let snapshot = render_to_string(90, 24, |frame| {
+        draw_search_page(
+            frame,
+            Rect::new(0, 0, 90, 24),
+            &state,
+            &[],
+            &std::collections::HashSet::new(),
+            MailListMode::Messages,
+            &[],
+            0,
+            &mxr_tui::theme::Theme::default(),
+        );
+    });
+    insta::assert_snapshot!("search_page_searching_snapshot", snapshot);
+}
+
+#[test]
+fn onboarding_modal_snapshot() {
+    let snapshot = render_to_string(90, 24, |frame| {
+        draw_onboarding_modal(
+            frame,
+            Rect::new(0, 0, 90, 24),
+            &FeatureOnboardingState {
+                visible: true,
+                step: 2,
+                seen: false,
+            },
+            &mxr_tui::theme::Theme::default(),
+        );
+    });
+    insta::assert_snapshot!("onboarding_modal_snapshot", snapshot);
 }
 
 #[test]

@@ -101,9 +101,9 @@ fn render_detail_layout(
         frame,
         chunks[2],
         if fullscreen {
-            "j/k:section  Ctrl-d/u:scroll  Enter/o:exit full  d:details  r:refresh  L:logs"
+            "j/k:section  Ctrl-d/u:scroll  Enter/o:exit full  d:details  c:config  L:logs"
         } else {
-            "j/k:section  Ctrl-d/u:scroll  Enter/o:full  d:details  r:refresh  b:bug"
+            "j/k:section  Ctrl-d/u:scroll  Enter/o:full  r:refresh  c:config  L:logs"
         },
         theme,
     );
@@ -129,7 +129,7 @@ fn render_summary(
 ) {
     let block = Block::default()
         .title(format!(
-            " Summary · {}{} ",
+            " Summary / {}{} ",
             pane_label(pane),
             if fullscreen { " [full]" } else { "" }
         ))

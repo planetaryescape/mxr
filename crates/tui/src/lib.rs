@@ -4,6 +4,7 @@ pub mod client;
 pub mod desktop_manifest;
 pub mod input;
 pub mod keybindings;
+pub mod local_state;
 pub mod theme;
 pub mod ui;
 
@@ -322,12 +323,15 @@ pub async fn run() -> anyhow::Result<()> {
     let socket_path = daemon_socket_path();
     let mut client = Client::connect(&socket_path).await?;
     let config = load_config()?;
+    let local_state = local_state::load();
 
     let mut app = App::from_config(&config);
+    app.onboarding.seen = local_state.onboarding_seen;
     if config.accounts.is_empty() {
         app.accounts_page.refresh_pending = true;
     } else {
         app.load(&mut client).await?;
+        app.maybe_show_feature_onboarding();
     }
 
     let mut terminal = ratatui::init();
@@ -340,6 +344,16 @@ pub async fn run() -> anyhow::Result<()> {
     let bg = spawn_ipc_worker(socket_path, result_tx.clone());
 
     loop {
+        if app.pending_local_state_save {
+            app.pending_local_state_save = false;
+            let state = local_state::TuiLocalState {
+                onboarding_seen: app.onboarding.seen,
+            };
+            if let Err(error) = local_state::save(&state) {
+                app.status_message = Some(format!("Could not save TUI state: {error}"));
+            }
+        }
+
         if app.pending_config_edit {
             app.pending_config_edit = false;
             ratatui::restore();
@@ -1158,7 +1172,11 @@ pub async fn run() -> anyhow::Result<()> {
                                         .min(app.search_row_count().saturating_sub(1));
                                     if app.screen == app::Screen::Search {
                                         app.ensure_search_visible();
-                                        app.auto_preview_search();
+                                        if app.search_page.result_selected {
+                                            app.auto_preview_search();
+                                        } else {
+                                            app.clear_message_view_state();
+                                        }
                                     }
                                 }
                             }
@@ -1219,7 +1237,7 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             app.search_page.count_pending = false;
                             if app.search_page.results.is_empty()
-                                && matches!(app.search_page.ui_status, app::SearchUiStatus::FirstLoad)
+                                && matches!(app.search_page.ui_status, app::SearchUiStatus::Searching)
                             {
                                 app.search_page.ui_status = app::SearchUiStatus::Error;
                             }
@@ -1264,6 +1282,7 @@ pub async fn run() -> anyhow::Result<()> {
                             app.rules_page.form.priority = form.priority.to_string();
                             app.rules_page.form.enabled = form.enabled;
                             app.rules_page.form.active_field = 0;
+                            app.sync_rule_form_editors();
                             app.rules_page.panel = app::RulesPanel::Form;
                         }
                         AsyncResult::RuleForm(Err(e)) => {
@@ -1359,6 +1378,7 @@ pub async fn run() -> anyhow::Result<()> {
                             } else {
                                 app.accounts_page.onboarding_required = false;
                                 app.accounts_page.onboarding_modal_open = false;
+                                app.maybe_show_feature_onboarding();
                             }
                         }
                         AsyncResult::Accounts(Err(e)) => {
@@ -2613,7 +2633,7 @@ mod tests {
         app.search_bar.query = "deploy".to_string();
         app.search_bar.cursor_pos = 0;
 
-        app.apply(Action::OpenSearch);
+        app.apply(Action::OpenMailboxFilter);
 
         assert!(app.search_bar.active);
         assert_eq!(app.search_bar.query, "deploy");
@@ -3835,33 +3855,27 @@ mod tests {
 
         assert_eq!(app.search_page.query, "crate");
         assert!(app.search_page.results.is_empty());
-        assert!(app.search_page.loading_more);
-        assert!(app.search_page.count_pending);
+        assert!(!app.search_page.loading_more);
+        assert!(!app.search_page.count_pending);
         assert_eq!(
             app.search_page.ui_status,
-            crate::mxr_tui::app::SearchUiStatus::FirstLoad
+            crate::mxr_tui::app::SearchUiStatus::Debouncing
         );
         assert_eq!(
-            app.pending_search,
-            Some(PendingSearchRequest {
-                query: "crate".into(),
-                mode: crate::mxr_core::SearchMode::Lexical,
-                sort: crate::mxr_core::SortOrder::DateDesc,
-                limit: SEARCH_PAGE_SIZE,
-                offset: 0,
-                target: SearchTarget::SearchPage,
-                append: false,
-                session_id: app.search_page.session_id,
-            })
-        );
-        assert_eq!(
-            app.pending_search_count,
-            Some(crate::mxr_tui::app::PendingSearchCountRequest {
+            app.pending_search_debounce,
+            Some(crate::mxr_tui::app::PendingSearchDebounce {
                 query: "crate".into(),
                 mode: crate::mxr_core::SearchMode::Lexical,
                 session_id: app.search_page.session_id,
+                due_at: app
+                    .pending_search_debounce
+                    .as_ref()
+                    .map(|pending| pending.due_at)
+                    .expect("debounce timer should be set"),
             })
         );
+        assert!(app.pending_search.is_none());
+        assert!(app.pending_search_count.is_none());
     }
 
     #[test]
@@ -3873,6 +3887,7 @@ mod tests {
         app.search_page.results = results.clone();
         app.search_page.session_active = true;
         app.search_page.selected_index = 1;
+        app.search_page.result_selected = true;
         app.search_page.active_pane = SearchPane::Preview;
         app.viewing_envelope = Some(results[1].clone());
 
@@ -3889,6 +3904,21 @@ mod tests {
             Some(results[1].id.clone())
         );
         assert!(app.pending_search.is_none());
+    }
+
+    #[test]
+    fn slash_opens_global_search_and_ctrl_f_opens_mailbox_filter() {
+        let mut app = App::new();
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::OpenGlobalSearch));
+        app.apply(action.expect("slash should map to search"));
+        assert_eq!(app.screen, Screen::Search);
+        assert!(app.search_page.editing);
+
+        app.apply(Action::OpenMailboxScreen);
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
+        assert_eq!(action, Some(Action::OpenMailboxFilter));
     }
 
     #[test]
@@ -4060,9 +4090,9 @@ mod tests {
 
         app.apply(Action::JumpBottom);
 
-        assert_eq!(app.visible_height, 11);
+        assert_eq!(app.visible_height, 10);
         assert_eq!(app.search_page.selected_index, 14);
-        assert_eq!(app.search_page.scroll_offset, 4);
+        assert_eq!(app.search_page.scroll_offset, 5);
     }
 
     #[test]
@@ -4076,7 +4106,7 @@ mod tests {
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
-        assert_eq!(action, Some(Action::GoToInbox));
+        assert_eq!(action, Some(Action::OpenMailboxScreen));
     }
 
     #[test]

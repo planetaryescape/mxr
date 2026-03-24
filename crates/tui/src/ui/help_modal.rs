@@ -62,45 +62,72 @@ pub fn draw(
 fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
     let mut sections = vec![
         HelpSection {
-            title: "Global".into(),
+            title: "Start Here".into(),
             entries: vec![
+                ("o".into(), "Open onboarding walkthrough".into()),
                 ("Ctrl-p".into(), "Command Palette".into()),
+                ("gc".into(), "Edit config in $EDITOR".into()),
                 ("?".into(), "Toggle Help".into()),
                 ("Esc".into(), "Back / Close".into()),
                 ("q".into(), "Quit".into()),
             ],
         },
         HelpSection {
-            title: "Current Context".into(),
+            title: "Most Common Actions".into(),
             entries: context_entries(state),
-        },
-        HelpSection {
-            title: "Modals".into(),
-            entries: vec![
-                ("Help: j/k Ctrl-d/u".into(), "Scroll".into()),
-                ("Label Picker".into(), "Type, j/k, Enter, Esc".into()),
-                ("Compose Picker".into(), "Type, Tab, Enter, Esc".into()),
-                ("Attachments".into(), "j/k, Enter/o, d, Esc".into()),
-                ("Links".into(), "j/k, Enter/o open, y copy, Esc".into()),
-                (
-                    "Unsubscribe".into(),
-                    "Enter unsubscribe, a archive sender, Esc cancel".into(),
-                ),
-                (
-                    "Bulk Confirm".into(),
-                    "Enter/y confirm, Esc/n cancel".into(),
-                ),
-            ],
         },
     ];
 
     sections.extend(screen_sections(state.ui_context));
+    sections.push(HelpSection {
+        title: "Modals".into(),
+        entries: vec![
+            ("Help: j/k Ctrl-d/u".into(), "Scroll".into()),
+            ("Label Picker".into(), "Type, j/k, Enter, Esc".into()),
+            ("Compose Picker".into(), "Type, Tab, Enter, Esc".into()),
+            ("Attachments".into(), "j/k, Enter/o, d, Esc".into()),
+            ("Links".into(), "j/k, Enter/o open, y copy, Esc".into()),
+            (
+                "Unsubscribe".into(),
+                "Enter unsubscribe, a archive sender, Esc cancel".into(),
+            ),
+            ("Bulk Confirm".into(), "Enter/y confirm, Esc/n cancel".into()),
+        ],
+    });
     sections.extend(command_sections(state.ui_context));
     sections
 }
 
 fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
-    let mut entries = vec![("Context".into(), state.ui_context.label().into())];
+    let mut entries = match state.ui_context {
+        UiContext::MailboxSidebar | UiContext::MailboxList | UiContext::MailboxMessage => vec![
+            ("/".into(), "Search all indexed mail".into()),
+            ("Ctrl-f".into(), "Filter current mailbox only".into()),
+            ("Ctrl-p".into(), "Open command palette".into()),
+        ],
+        UiContext::SearchEditor | UiContext::SearchResults | UiContext::SearchPreview => vec![
+            ("Enter".into(), "Run search now".into()),
+            ("Tab".into(), "Switch results and preview".into()),
+            ("Esc".into(), "Preview -> results -> mailbox".into()),
+        ],
+        UiContext::RulesList | UiContext::RulesForm => vec![
+            ("n".into(), "Start a new rule".into()),
+            ("D".into(), "Dry run before save".into()),
+            ("E".into(), "Edit selected rule".into()),
+        ],
+        UiContext::Diagnostics => vec![
+            ("r".into(), "Refresh diagnostics".into()),
+            ("c".into(), "Edit config".into()),
+            ("L".into(), "Open log file".into()),
+        ],
+        UiContext::AccountsList | UiContext::AccountsForm => vec![
+            ("n".into(), "Add an account".into()),
+            ("t".into(), "Test selected account".into()),
+            ("c".into(), "Edit config".into()),
+        ],
+    };
+
+    entries.insert(0, ("Context".into(), state.ui_context.label().into()));
 
     if state.selected_count > 0 {
         entries.push((
@@ -118,7 +145,7 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
     ) {
         entries.push((
             "Search".into(),
-            "Search tab hits the full local index; mailbox / is only a quick filter".into(),
+            "Search tab hits the full local index; Ctrl-f only filters the current mailbox".into(),
         ));
     }
 
@@ -144,11 +171,12 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 title: "Search Page".into(),
                 entries: vec![
                     ("/".into(), "Edit query".into()),
-                    ("Enter".into(), "Run search / preview result".into()),
+                    ("Enter".into(), "Run search now".into()),
+                    ("l".into(), "Open selected preview".into()),
                     ("x".into(), "Select result".into()),
                     ("Tab".into(), "Switch results and preview".into()),
-                    ("j / k".into(), "Move through results or preview".into()),
-                    ("Esc".into(), "Leave search or return to results".into()),
+                    ("j / k".into(), "Move result cursor".into()),
+                    ("Esc".into(), "Return to mailbox".into()),
                 ],
             }]
         }
@@ -172,12 +200,13 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
         UiContext::RulesList | UiContext::RulesForm => vec![HelpSection {
             title: "Rules Page".into(),
             entries: vec![
-                ("j / k".into(), "Move rules or form fields".into()),
-                ("Enter".into(), "Open overview or save form".into()),
+                ("j / k".into(), "Move rules".into()),
+                ("Enter".into(), "Refresh overview".into()),
                 ("n".into(), "New rule".into()),
                 ("E".into(), "Edit rule".into()),
                 ("D".into(), "Dry run".into()),
                 ("H".into(), "History".into()),
+                ("Ctrl-s".into(), "Save rule form".into()),
             ],
         }],
         UiContext::Diagnostics => vec![HelpSection {
@@ -188,6 +217,7 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 ("Enter / o".into(), "Toggle fullscreen".into()),
                 ("d".into(), "Open selected section details".into()),
                 ("r".into(), "Refresh".into()),
+                ("c".into(), "Edit config".into()),
                 ("b".into(), "Generate bug report".into()),
                 ("L".into(), "Open logs".into()),
             ],
@@ -200,6 +230,7 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 ("n".into(), "New account".into()),
                 ("t".into(), "Test account".into()),
                 ("d".into(), "Set default".into()),
+                ("c".into(), "Edit config".into()),
                 ("s".into(), "Save account form".into()),
             ],
         }],

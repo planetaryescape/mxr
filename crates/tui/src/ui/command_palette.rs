@@ -317,9 +317,15 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "System".into(),
         },
         PaletteCommand {
-            label: "Search".into(),
+            label: "Search All Mail".into(),
             shortcut: "/".into(),
-            action: Action::OpenSearch,
+            action: Action::OpenGlobalSearch,
+            category: "Search".into(),
+        },
+        PaletteCommand {
+            label: "Filter Current Mailbox".into(),
+            shortcut: "Ctrl-f".into(),
+            action: Action::OpenMailboxFilter,
             category: "Search".into(),
         },
         PaletteCommand {
@@ -467,6 +473,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Navigation".into(),
         },
         PaletteCommand {
+            label: "Start Here".into(),
+            shortcut: "help:o".into(),
+            action: Action::ShowOnboarding,
+            category: "System".into(),
+        },
+        PaletteCommand {
             label: "Quit".into(),
             shortcut: "q".into(),
             action: Action::QuitView,
@@ -485,12 +497,12 @@ pub fn draw(
         return;
     }
 
-    let width = ((area.width as u32 * 64) / 100).clamp(56, 108) as u16;
+    let width = ((area.width as u32 * 62) / 100).clamp(56, 96) as u16;
     let width = width.min(area.width.saturating_sub(4)).max(1);
-    let preferred_height = area.height.saturating_sub(5).clamp(14, 22);
+    let preferred_height = area.height.saturating_sub(6).clamp(14, 22);
     let height = preferred_height.min(area.height.saturating_sub(2).max(1));
     let x = area.x + (area.width.saturating_sub(width)) / 2;
-    let y = (area.y + 3).min(area.y + area.height.saturating_sub(height));
+    let y = (area.y + 2).min(area.y + area.height.saturating_sub(height));
     let popup_area = Rect::new(x, y, width, height);
 
     frame.render_widget(Clear, popup_area);

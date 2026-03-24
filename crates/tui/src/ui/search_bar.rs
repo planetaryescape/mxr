@@ -84,7 +84,10 @@ pub fn draw(
     frame.render_widget(Clear, modal);
     frame.render_widget(
         Block::default()
-            .title(format!(" Search [{}] ", search_mode_label(search_bar.mode)))
+            .title(format!(
+                " Filter Current Mailbox [{}] ",
+                search_mode_label(search_bar.mode)
+            ))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme.accent)),
         modal,
@@ -101,7 +104,7 @@ pub fn draw(
 
     let query = if search_bar.query.is_empty() {
         Line::from(Span::styled(
-            "> Type to search mail",
+            "> Type to filter the current mailbox",
             Style::default().fg(theme.text_muted),
         ))
     } else {
@@ -111,7 +114,7 @@ pub fn draw(
     };
     frame.render_widget(Paragraph::new(query), sections[0]);
     frame.render_widget(
-        Paragraph::new("Enter submit  Tab mode  Esc cancel")
+        Paragraph::new("Live filter  Enter keep results  Tab mode  Esc clear")
             .style(Style::default().fg(theme.text_muted)),
         sections[1],
     );
@@ -131,6 +134,6 @@ fn centered_rect(area: Rect) -> Rect {
     let width = width.min(area.width.saturating_sub(2)).max(1);
     let height = height.min(area.height.saturating_sub(2)).max(1);
     let x = area.x + area.width.saturating_sub(width) / 2;
-    let y = area.y + area.height.saturating_sub(height) / 3;
+    let y = (area.y + 2).min(area.y + area.height.saturating_sub(height));
     Rect::new(x, y, width, height)
 }

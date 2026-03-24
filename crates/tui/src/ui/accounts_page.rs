@@ -10,13 +10,13 @@ pub fn draw(
 ) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(36), Constraint::Percentage(64)])
+        .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
         .split(area);
 
     let detail_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(3)])
-        .split(chunks[1]);
+        .split(chunks[0]);
 
     let items = state
         .accounts
@@ -42,7 +42,7 @@ pub fn draw(
             .into_iter()
             .flatten()
             .collect::<Vec<_>>()
-            .join(" · ");
+            .join(" | ");
             ListItem::new(Line::from(vec![
                 Span::styled(
                     account.name.clone(),
@@ -58,14 +58,14 @@ pub fn draw(
     let list = List::new(items)
         .block(
             Block::default()
-                .title(" Accounts ")
+                .title(" Accounts / Browse ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.accent)),
         )
         .highlight_style(theme.highlight_style())
         .highlight_symbol("> ");
     let mut list_state = ListState::default().with_selected(Some(state.selected_index));
-    frame.render_stateful_widget(list, chunks[0], &mut list_state);
+    frame.render_stateful_widget(list, chunks[1], &mut list_state);
 
     if state.form.visible {
         draw_form(frame, chunks[1], &state.form, theme);
@@ -98,13 +98,23 @@ pub fn draw(
                 ),
             ]),
             Line::from(""),
+            Line::from(format!("Summary: {} via {}", account.email, account.provider_kind)),
             Line::from(format!(
                 "Key: {}",
                 account.key.as_deref().unwrap_or("(runtime-only)")
             )),
-            Line::from(format!("Name: {}", account.name)),
-            Line::from(format!("Email: {}", account.email)),
-            Line::from(format!("Provider: {}", account.provider_kind)),
+            Line::from(format!(
+                "Auth: {}",
+                if account
+                    .sync
+                    .as_ref()
+                    .is_some_and(|sync| matches!(sync, crate::mxr_protocol::AccountSyncConfigData::Gmail { .. }))
+                {
+                    "gmail configured"
+                } else {
+                    "managed by saved config"
+                }
+            )),
             Line::from(format!(
                 "Sync: {}",
                 account.sync_kind.as_deref().unwrap_or("none")
@@ -113,18 +123,25 @@ pub fn draw(
                 "Send: {}",
                 account.send_kind.as_deref().unwrap_or("none")
             )),
-            Line::from(format!("Source: {source}")),
-            Line::from(format!("Editable: {editability}")),
             Line::from(format!(
                 "Default: {}",
                 if account.is_default { "yes" } else { "no" }
             )),
+            Line::from(format!("Source: {source}")),
+            Line::from(format!("Editable: {editability}")),
+            Line::from(""),
+            Line::from("Actions"),
+            Line::from("Enter edit selected account"),
+            Line::from("t test account"),
+            Line::from("d set default"),
+            Line::from("c edit config"),
         ]
     } else {
         let mut lines = vec![
-            Line::from("No accounts configured"),
+            Line::from("Accounts connect mxr to sync and send mail."),
             Line::from(""),
-            Line::from("Press n to add a Gmail, IMAP/SMTP, or SMTP account"),
+            Line::from("Press n to add Gmail, IMAP + SMTP, or SMTP-only."),
+            Line::from("Press c to open config in your editor."),
         ];
         if let Some(status) = &state.status {
             lines.push(Line::from(""));
@@ -142,7 +159,7 @@ pub fn draw(
     let paragraph = Paragraph::new(detail_lines)
         .block(
             Block::default()
-                .title(" Details ")
+                .title(" Account Details ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.warning)),
         )
@@ -152,9 +169,9 @@ pub fn draw(
     let footer_text = if let Some(status) = &state.status {
         status.clone()
     } else if state.accounts.is_empty() {
-        "n:new account  Esc:mailbox".into()
+        "n:new account  c:edit config  Esc:mailbox".into()
     } else {
-        "j/k:select  Enter:edit  n:new  t:test  d:set default  r:refresh".into()
+        "j/k:select  Enter:edit  n:new  t:test  d:default  c:config  r:refresh".into()
     };
     let footer = Paragraph::new(footer_text).block(
         Block::default()

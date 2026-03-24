@@ -3,6 +3,10 @@ use super::*;
 impl App {
     pub fn tick(&mut self) {
         self.input.check_timeout();
+        if self.search_is_pending() {
+            self.search_page.throbber.calc_next();
+        }
+        self.process_pending_search_debounce();
         self.process_pending_preview_read();
     }
 
@@ -30,11 +34,26 @@ impl App {
                 self.screen = Screen::Search;
                 if self.search_page.has_session() {
                     self.search_page.editing = false;
-                    self.auto_preview_search();
+                    if !self.search_page.result_selected {
+                        self.clear_message_view_state();
+                    }
                 } else {
                     self.reset_search_page_workspace();
                     self.search_page.editing = true;
                     self.search_page.sort = SortOrder::DateDesc;
+                }
+            }
+            Action::OpenGlobalSearch => {
+                self.pending_preview_read = None;
+                self.search_bar.deactivate();
+                self.screen = Screen::Search;
+                if !self.search_page.has_session() {
+                    self.reset_search_page_workspace();
+                }
+                self.search_page.editing = true;
+                self.search_page.active_pane = SearchPane::Results;
+                if !self.search_page.result_selected {
+                    self.clear_message_view_state();
                 }
             }
             Action::OpenRulesScreen => {
@@ -110,7 +129,6 @@ impl App {
                     if self.search_page.selected_index + 1 < self.search_row_count() {
                         self.search_page.selected_index += 1;
                         self.ensure_search_visible();
-                        self.auto_preview_search();
                     }
                     self.maybe_load_more_search_results();
                     return;
@@ -127,7 +145,6 @@ impl App {
                     if self.search_page.selected_index > 0 {
                         self.search_page.selected_index -= 1;
                         self.ensure_search_visible();
-                        self.auto_preview_search();
                     }
                     return;
                 }
@@ -142,7 +159,6 @@ impl App {
                 if self.screen == Screen::Search {
                     self.search_page.selected_index = 0;
                     self.search_page.scroll_offset = 0;
-                    self.auto_preview_search();
                     return;
                 }
                 self.selected_index = 0;
@@ -157,7 +173,6 @@ impl App {
                     } else if self.search_row_count() > 0 {
                         self.search_page.selected_index = self.search_row_count() - 1;
                         self.ensure_search_visible();
-                        self.auto_preview_search();
                     }
                     return;
                 }
@@ -173,7 +188,6 @@ impl App {
                     self.search_page.selected_index = (self.search_page.selected_index + page)
                         .min(self.search_row_count().saturating_sub(1));
                     self.ensure_search_visible();
-                    self.auto_preview_search();
                     self.maybe_load_more_search_results();
                     return;
                 }
@@ -189,7 +203,6 @@ impl App {
                     self.search_page.selected_index =
                         self.search_page.selected_index.saturating_sub(page);
                     self.ensure_search_visible();
-                    self.auto_preview_search();
                     return;
                 }
                 let page = self.visible_height.max(1);
@@ -220,7 +233,10 @@ impl App {
             Action::SwitchPane => {
                 if self.screen == Screen::Search {
                     self.search_page.active_pane = match self.search_page.active_pane {
-                        SearchPane::Results => SearchPane::Preview,
+                        SearchPane::Results => {
+                            self.maybe_open_search_preview();
+                            self.search_page.active_pane
+                        }
                         SearchPane::Preview => SearchPane::Results,
                     };
                     return;
@@ -246,10 +262,7 @@ impl App {
                     return;
                 }
                 if self.screen == Screen::Search {
-                    if let Some(env) = self.selected_search_envelope().cloned() {
-                        self.open_envelope(env);
-                        self.search_page.active_pane = SearchPane::Preview;
-                    }
+                    self.open_selected_search_result();
                     return;
                 }
                 if self.mailbox_view == MailboxView::Subscriptions {
@@ -294,7 +307,7 @@ impl App {
                 self.status_message = Some("Selection cleared".into());
             }
             // Search
-            Action::OpenSearch => {
+            Action::OpenMailboxFilter => {
                 if self.search_active {
                     self.search_bar.activate_existing();
                 } else {
@@ -305,7 +318,7 @@ impl App {
                 if self.screen == Screen::Search {
                     self.search_page.editing = false;
                     self.search_bar.query = self.search_page.query.clone();
-                    self.trigger_live_search();
+                    self.execute_search_page_search();
                 } else {
                     self.search_bar.deactivate();
                     if !self.search_bar.query.is_empty() {
@@ -437,10 +450,7 @@ impl App {
             // Message view
             Action::OpenMessageView => {
                 if self.screen == Screen::Search {
-                    if let Some(env) = self.selected_search_envelope().cloned() {
-                        self.open_envelope(env);
-                        self.search_page.active_pane = SearchPane::Preview;
-                    }
+                    self.open_selected_search_result();
                     return;
                 }
                 if self.mailbox_view == MailboxView::Subscriptions {
@@ -455,7 +465,7 @@ impl App {
             }
             Action::CloseMessageView => {
                 if self.screen == Screen::Search {
-                    self.search_page.active_pane = SearchPane::Results;
+                    self.reset_search_preview_selection();
                     return;
                 }
                 self.close_attachment_panel();
@@ -527,6 +537,7 @@ impl App {
                     active_field: 0,
                     ..RuleFormState::default()
                 };
+                self.sync_rule_form_editors();
                 self.rules_page.panel = RulesPanel::Form;
             }
             Action::OpenRuleFormEdit => {
@@ -539,6 +550,7 @@ impl App {
                 }
             }
             Action::SaveRuleForm => {
+                self.sync_rule_form_strings_from_editors();
                 self.rules_page.status = Some("Saving rule...".into());
                 self.pending_rule_form_save = true;
             }
@@ -556,6 +568,10 @@ impl App {
             Action::OpenLogs => {
                 self.pending_log_open = true;
                 self.status_message = Some("Opening log file in editor...".into());
+            }
+            Action::ShowOnboarding => {
+                self.onboarding.visible = true;
+                self.onboarding.step = 0;
             }
             Action::OpenDiagnosticsPaneDetails => {
                 self.pending_diagnostics_details = Some(self.diagnostics_page.active_pane());
@@ -1015,7 +1031,6 @@ impl App {
                         if self.search_page.selected_index + 1 < self.search_row_count() {
                             self.search_page.selected_index += 1;
                             self.ensure_search_visible();
-                            self.auto_preview_search();
                             self.maybe_load_more_search_results();
                         }
                     } else if should_advance && self.selected_index + 1 < self.mail_row_count() {

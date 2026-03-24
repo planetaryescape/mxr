@@ -40,10 +40,10 @@ impl App {
         let hint_bar_area = outer_chunks[1];
         let content_area = outer_chunks[2];
         let ui_context = self.current_ui_context();
-        // Search results sit below a fixed 3-line query box, so their scroll viewport is
-        // shorter than the main content area.
+        // Search results sit below a fixed 4-line query box, and the list itself has borders,
+        // so the usable result viewport is shorter than the main content area.
         self.visible_height = match self.screen {
-            Screen::Search => content_area.height.saturating_sub(5) as usize,
+            Screen::Search => content_area.height.saturating_sub(6) as usize,
             _ => content_area.height.saturating_sub(2) as usize,
         };
         let bottom_bar_area = outer_chunks[3];
@@ -254,7 +254,14 @@ impl App {
                 );
             }
             Screen::Rules => {
-                ui::rules_page::draw(frame, content_area, &self.rules_page, theme);
+                ui::rules_page::draw(
+                    frame,
+                    content_area,
+                    &self.rules_page,
+                    &self.rule_condition_editor,
+                    &self.rule_action_editor,
+                    theme,
+                );
             }
             Screen::Diagnostics => {
                 ui::diagnostics_page::draw(frame, content_area, &self.diagnostics_page, theme);
@@ -319,6 +326,8 @@ impl App {
             },
             theme,
         );
+
+        ui::onboarding_modal::draw(frame, area, &self.onboarding, theme);
     }
 }
 

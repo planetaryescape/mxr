@@ -10,6 +10,7 @@ pub mod hint_bar;
 pub mod label_picker;
 pub mod mail_list;
 pub mod message_view;
+pub mod onboarding_modal;
 pub mod rules_page;
 pub mod search_bar;
 pub mod search_page;

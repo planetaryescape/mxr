@@ -27,7 +27,8 @@ pub enum Action {
     OpenTab4,
     OpenTab5,
     // Search
-    OpenSearch,
+    OpenGlobalSearch,
+    OpenMailboxFilter,
     SubmitSearch,
     CloseSearch,
     CycleSearchMode,
@@ -72,6 +73,7 @@ pub enum Action {
     GenerateBugReport,
     EditConfig,
     OpenLogs,
+    ShowOnboarding,
     OpenDiagnosticsPaneDetails,
 
     // --- Phase 2: Email actions (Gmail-native A005) ---
@@ -185,7 +187,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
         MailboxSidebar | MailboxList | MailboxMessage => true,
         SearchEditor => matches!(
             action,
-            OpenSearch
+            OpenGlobalSearch
                 | SubmitSearch
                 | CloseSearch
                 | CycleSearchMode
@@ -204,6 +206,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
+                | ShowOnboarding
                 | Help
                 | QuitView
         ),
@@ -215,7 +218,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | PageUp
                 | JumpTop
                 | JumpBottom
-                | OpenSearch
+                | OpenGlobalSearch
                 | SubmitSearch
                 | CloseSearch
                 | CycleSearchMode
@@ -235,6 +238,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
+                | ShowOnboarding
                 | ToggleSelect
                 | ClearSelection
                 | Help
@@ -242,7 +246,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
         ),
         SearchPreview => matches!(
             action,
-            OpenSearch
+            OpenGlobalSearch
                 | SubmitSearch
                 | CloseSearch
                 | CycleSearchMode
@@ -262,6 +266,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
+                | ShowOnboarding
                 | Reply
                 | ReplyAll
                 | Forward
@@ -312,6 +317,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
+                | ShowOnboarding
                 | Help
                 | QuitView
         ),
@@ -335,6 +341,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
+                | ShowOnboarding
                 | Help
                 | QuitView
         ),
@@ -361,6 +368,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SyncNow
                 | EditConfig
                 | OpenLogs
+                | ShowOnboarding
                 | Help
                 | QuitView
         ),

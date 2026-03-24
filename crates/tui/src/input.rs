@@ -176,8 +176,7 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('4'), KeyModifiers::NONE) => Some(Action::OpenTab4),
             (KeyState::Normal, KeyCode::Char('5'), KeyModifiers::NONE) => Some(Action::OpenTab5),
 
-            // Search
-            (KeyState::Normal, KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenSearch),
+            // Search navigation
             (KeyState::Normal, KeyCode::Char('n'), KeyModifiers::NONE) => {
                 Some(Action::NextSearchResult)
             }
@@ -190,37 +189,9 @@ impl InputHandler {
                 Some(Action::OpenCommandPalette)
             }
 
-            // Phase 2: Email actions (Gmail-native A005)
-            (KeyState::Normal, KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::Compose),
-            (KeyState::Normal, KeyCode::Char('r'), KeyModifiers::NONE) => Some(Action::Reply),
-            (KeyState::Normal, KeyCode::Char('a'), KeyModifiers::NONE) => Some(Action::ReplyAll),
-            (KeyState::Normal, KeyCode::Char('f'), KeyModifiers::NONE) => Some(Action::Forward),
-            (KeyState::Normal, KeyCode::Char('e'), KeyModifiers::NONE) => Some(Action::Archive),
-            (KeyState::Normal, KeyCode::Char('m'), KeyModifiers::NONE) => {
-                Some(Action::MarkReadAndArchive)
-            }
-            (KeyState::Normal, KeyCode::Char('#'), _) => Some(Action::Trash),
-            (KeyState::Normal, KeyCode::Char('!'), _) => Some(Action::Spam),
-            (KeyState::Normal, KeyCode::Char('s'), KeyModifiers::NONE) => Some(Action::Star),
-            (KeyState::Normal, KeyCode::Char('I'), KeyModifiers::SHIFT) => Some(Action::MarkRead),
-            (KeyState::Normal, KeyCode::Char('U'), KeyModifiers::SHIFT) => Some(Action::MarkUnread),
-            (KeyState::Normal, KeyCode::Char('l'), KeyModifiers::NONE) => Some(Action::ApplyLabel),
-            (KeyState::Normal, KeyCode::Char('v'), KeyModifiers::NONE) => Some(Action::MoveToLabel),
+            // Shared selection / layout
             (KeyState::Normal, KeyCode::Char('x'), KeyModifiers::NONE) => {
                 Some(Action::ToggleSelect)
-            }
-            (KeyState::Normal, KeyCode::Char('D'), KeyModifiers::SHIFT) => {
-                Some(Action::Unsubscribe)
-            }
-            (KeyState::Normal, KeyCode::Char('Z'), KeyModifiers::SHIFT) => Some(Action::Snooze),
-            (KeyState::Normal, KeyCode::Char('O'), KeyModifiers::SHIFT) => {
-                Some(Action::OpenInBrowser)
-            }
-            (KeyState::Normal, KeyCode::Char('R'), KeyModifiers::SHIFT) => {
-                Some(Action::ToggleReaderMode)
-            }
-            (KeyState::Normal, KeyCode::Char('S'), KeyModifiers::SHIFT) => {
-                Some(Action::ToggleSignature)
             }
             (KeyState::Normal, KeyCode::Char('A'), KeyModifiers::SHIFT) => {
                 Some(Action::AttachmentList)

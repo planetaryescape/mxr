@@ -6,6 +6,7 @@ use crate::mxr_tui::ui::{mail_list, message_view, search_query::highlight_search
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::HashSet;
+use throbber_widgets_tui::{BRAILLE_SIX, Throbber};
 
 #[expect(
     clippy::too_many_arguments,
@@ -24,21 +25,22 @@ pub fn draw(
 ) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .constraints([Constraint::Length(4), Constraint::Min(0)])
         .split(area);
 
     let result_count = rows.len();
-    let query_title = if state.editing {
-        format!(
-            " Search All Mail [{}] (editing) ",
-            search_mode_label(state.mode)
-        )
+    let query_line = if state.query.is_empty() {
+        Line::from(Span::styled(
+            "type to search the full local index",
+            Style::default().fg(theme.text_muted),
+        ))
     } else {
-        format!(" Search All Mail [{}] ", search_mode_label(state.mode))
+        highlight_search_query(&state.query, theme)
     };
-    let query = Paragraph::new(highlight_search_query(&state.query, theme)).block(
+    let query = Paragraph::new(vec![query_line, query_status_line(state, result_count, theme)])
+    .block(
         Block::bordered()
-            .title(query_title)
+            .title(query_title(state))
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(theme.warning)),
     );
@@ -119,13 +121,62 @@ fn search_mode_label(mode: SearchMode) -> &'static str {
     }
 }
 
+fn query_title(state: &SearchPageState) -> String {
+    if state.editing {
+        format!(" Search All Mail [{}] / query ", search_mode_label(state.mode))
+    } else {
+        format!(" Search All Mail [{}] ", search_mode_label(state.mode))
+    }
+}
+
+fn query_status_line(
+    state: &SearchPageState,
+    result_count: usize,
+    theme: &crate::mxr_tui::theme::Theme,
+) -> Line<'static> {
+    let status = match state.ui_status {
+        SearchUiStatus::Idle if state.query.is_empty() => {
+            "full local index ready / type to search every account".to_string()
+        }
+        SearchUiStatus::Idle | SearchUiStatus::Loaded => match state.total_count {
+            Some(total) => format!("loaded {result_count} of {total} matches"),
+            None if state.has_more => format!("loaded {result_count}+ matches"),
+            None if state.count_pending => format!("loaded {result_count} matches / counting"),
+            None => format!("loaded {result_count} matches"),
+        },
+        SearchUiStatus::Debouncing => "waiting for a pause before searching".to_string(),
+        SearchUiStatus::Searching => "searching full local index".to_string(),
+        SearchUiStatus::LoadingMore => match state.total_count {
+            Some(total) => format!("loading more / {result_count} of {total} shown"),
+            None => format!("loading more / {result_count} shown"),
+        },
+        SearchUiStatus::Error => "search failed / adjust query and retry".to_string(),
+    };
+
+    let mut spans = Vec::new();
+    if matches!(
+        state.ui_status,
+        SearchUiStatus::Debouncing | SearchUiStatus::Searching | SearchUiStatus::LoadingMore
+    ) {
+        spans.push(
+            Throbber::default()
+                .throbber_set(BRAILLE_SIX)
+                .throbber_style(Style::default().fg(theme.accent))
+                .to_symbol_span(&state.throbber),
+        );
+    }
+    spans.push(Span::styled(status, Style::default().fg(theme.text_muted)));
+    Line::from(spans)
+}
+
 fn results_title(state: &SearchPageState, result_count: usize) -> String {
     let summary = match state.ui_status {
         SearchUiStatus::Idle if !state.has_session() => "full local index".to_string(),
-        SearchUiStatus::FirstLoad => "searching full local index".to_string(),
+        SearchUiStatus::Debouncing => "debounce".to_string(),
+        SearchUiStatus::Searching => "searching".to_string(),
         SearchUiStatus::LoadingMore => match state.total_count {
-            Some(total) => format!("showing {result_count} of {total} · loading more"),
-            None => format!("showing {result_count} · loading more"),
+            Some(total) => format!("showing {result_count} of {total} / loading more"),
+            None => format!("showing {result_count} / loading more"),
         },
         SearchUiStatus::Loaded | SearchUiStatus::Idle => match state.total_count {
             Some(total) => format!("showing {result_count} of {total}"),
@@ -136,7 +187,7 @@ fn results_title(state: &SearchPageState, result_count: usize) -> String {
         SearchUiStatus::Error => "search failed".to_string(),
     };
     format!(
-        " Search Results · {} · {} ",
+        " Search Results / {} / {} ",
         search_mode_label(state.mode),
         summary
     )
@@ -149,20 +200,23 @@ fn should_render_results_blank(state: &SearchPageState, result_count: usize) -> 
 fn results_blank_state(state: &SearchPageState) -> Vec<Line<'static>> {
     if !state.has_session() || state.query.is_empty() {
         return vec![
-            Line::from("Search all mail in your local index."),
+            Line::from("Search all mail from the full local index."),
             Line::from(""),
-            Line::from("Type a query above, then press Enter."),
-            Line::from("This searches the full database, not just the current mailbox viewport."),
+            Line::from("Start typing to search every account."),
+            Line::from("Enter runs immediately. Tab changes lexical / hybrid / semantic mode."),
+            Line::from("This is not the mailbox filter. Use Ctrl-f in Mailbox to filter current mail."),
         ];
     }
 
     match state.ui_status {
-        SearchUiStatus::FirstLoad | SearchUiStatus::LoadingMore if state.results.is_empty() => {
+        SearchUiStatus::Debouncing | SearchUiStatus::Searching | SearchUiStatus::LoadingMore
+            if state.results.is_empty() =>
+        {
             vec![
                 Line::from("Searching the full local index..."),
                 Line::from(""),
-                Line::from("Loading first page of matches."),
-                Line::from("Counting total results in parallel."),
+                Line::from("Looking beyond the currently loaded mailbox slice."),
+                Line::from("Counting total matches in parallel."),
             ]
         }
         SearchUiStatus::Error => vec![
@@ -173,7 +227,7 @@ fn results_blank_state(state: &SearchPageState) -> Vec<Line<'static>> {
         _ => vec![
             Line::from("No matches in the local index."),
             Line::from(""),
-            Line::from("Try a broader query, different mode, or fewer filters."),
+            Line::from("Try a broader query, another search mode, or fewer terms."),
         ],
     }
 }
@@ -182,20 +236,23 @@ fn should_render_preview_blank(
     state: &SearchPageState,
     preview_messages: &[message_view::ThreadMessageBlock],
 ) -> bool {
-    !state.has_session() || preview_messages.is_empty()
+    !state.has_session() || !state.result_selected || preview_messages.is_empty()
 }
 
 fn preview_blank_state(state: &SearchPageState) -> Vec<Line<'static>> {
     if !state.has_session() || state.query.is_empty() {
         vec![
-            Line::from("No search preview yet."),
+            Line::from("Search tips"),
             Line::from(""),
-            Line::from("Run a full-mail search to preview a message here."),
+            Line::from("Results come from sender, subject, snippet, and indexed body text."),
+            Line::from("Try names, companies, invoice numbers, or distinct phrases."),
+            Line::from("Use hybrid or semantic mode when exact wording is unknown."),
         ]
     } else if matches!(
         state.ui_status,
-        SearchUiStatus::FirstLoad | SearchUiStatus::LoadingMore
-    ) {
+        SearchUiStatus::Debouncing | SearchUiStatus::Searching | SearchUiStatus::LoadingMore
+    ) && state.results.is_empty()
+    {
         vec![
             Line::from("Loading preview..."),
             Line::from(""),
@@ -205,7 +262,8 @@ fn preview_blank_state(state: &SearchPageState) -> Vec<Line<'static>> {
         vec![
             Line::from("No message selected."),
             Line::from(""),
-            Line::from("Move through results on the left to preview a message."),
+            Line::from("Use Enter or l on a result to open the preview here."),
+            Line::from("j / k move the result cursor without changing the preview."),
         ]
     }
 }

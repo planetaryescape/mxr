@@ -27,7 +27,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
         )]
     } else if state.search_active && matches!(state.ui_context, UiContext::MailboxList) {
         vec![hint_line(
-            &[("Enter", "Confirm Quick Filter"), ("Esc", "Cancel Filter")],
+            &[("Enter", "Apply Filter"), ("Esc", "Clear Filter"), ("Ctrl-f", "Mailbox Filter")],
             theme,
         )]
     } else {
@@ -79,7 +79,7 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
                 "move_down",
                 "move_up",
                 "open",
-                "switch_panes",
+                "search_all_mail",
                 "command_palette",
                 "help",
             ],
@@ -110,11 +110,9 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
                 "move_up",
                 "open",
                 "reply",
-                "reply_all",
-                "forward",
-                "apply_label",
-                "search",
-                "toggle_select",
+                "archive",
+                "search_all_mail",
+                "mailbox_filter",
                 "command_palette",
                 "help",
             ],
@@ -135,7 +133,7 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
             ],
         ),
         UiContext::SearchEditor => vec![
-            ("Enter".to_string(), "Search All Mail".to_string()),
+            ("Enter".to_string(), "Run Now".to_string()),
             ("Tab".to_string(), "Mode".to_string()),
             ("Esc".to_string(), "Stop Editing".to_string()),
             ("?".to_string(), "Help".to_string()),
@@ -144,7 +142,6 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
             ("j".to_string(), "Next Result".to_string()),
             ("k".to_string(), "Prev Result".to_string()),
             ("Enter".to_string(), "Preview".to_string()),
-            ("x".to_string(), "Select".to_string()),
             ("/".to_string(), "Edit Query".to_string()),
             ("Tab".to_string(), "Switch Pane".to_string()),
             ("Esc".to_string(), "Mailbox".to_string()),
@@ -171,7 +168,7 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
         UiContext::RulesList => vec![
             ("j".to_string(), "Down".to_string()),
             ("k".to_string(), "Up".to_string()),
-            ("Enter".to_string(), "Overview".to_string()),
+            ("Enter".to_string(), "Refresh".to_string()),
             ("n".to_string(), "New Rule".to_string()),
             ("E".to_string(), "Edit Rule".to_string()),
             ("e".to_string(), "Toggle Enabled".to_string()),
@@ -182,7 +179,7 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
         UiContext::RulesForm => vec![
             ("Tab".to_string(), "Next Field".to_string()),
             ("Shift-Tab".to_string(), "Prev Field".to_string()),
-            ("Enter".to_string(), "Save".to_string()),
+            ("Ctrl-s".to_string(), "Save".to_string()),
             ("Esc".to_string(), "Close Form".to_string()),
             ("?".to_string(), "Help".to_string()),
         ],
@@ -192,9 +189,8 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
             ("Ctrl-d".to_string(), "Scroll Down".to_string()),
             ("Ctrl-u".to_string(), "Scroll Up".to_string()),
             ("Enter/o".to_string(), "Full".to_string()),
-            ("d".to_string(), "Details".to_string()),
             ("r".to_string(), "Refresh".to_string()),
-            ("b".to_string(), "Bug Report".to_string()),
+            ("c".to_string(), "Config".to_string()),
             ("L".to_string(), "Logs".to_string()),
             ("Esc".to_string(), "Mailbox".to_string()),
             ("?".to_string(), "Help".to_string()),
@@ -205,6 +201,7 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
             ("n".to_string(), "New".to_string()),
             ("t".to_string(), "Test".to_string()),
             ("d".to_string(), "Default".to_string()),
+            ("c".to_string(), "Config".to_string()),
             ("Enter".to_string(), "Edit".to_string()),
             ("r".to_string(), "Refresh".to_string()),
             ("Esc".to_string(), "Mailbox".to_string()),

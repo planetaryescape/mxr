@@ -7,6 +7,33 @@ impl App {
             .then_some(action)
     }
 
+    fn mail_action_key(&self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        match (key.code, key.modifiers) {
+            (KeyCode::Char('c'), KeyModifiers::NONE) => Some(Action::Compose),
+            (KeyCode::Char('r'), KeyModifiers::NONE) => Some(Action::Reply),
+            (KeyCode::Char('a'), KeyModifiers::NONE) => Some(Action::ReplyAll),
+            (KeyCode::Char('f'), KeyModifiers::NONE) => Some(Action::Forward),
+            (KeyCode::Char('e'), KeyModifiers::NONE) => Some(Action::Archive),
+            (KeyCode::Char('m'), KeyModifiers::NONE) => Some(Action::MarkReadAndArchive),
+            (KeyCode::Char('#'), _) => Some(Action::Trash),
+            (KeyCode::Char('!'), _) => Some(Action::Spam),
+            (KeyCode::Char('s'), KeyModifiers::NONE) => Some(Action::Star),
+            (KeyCode::Char('I'), KeyModifiers::SHIFT) => Some(Action::MarkRead),
+            (KeyCode::Char('U'), KeyModifiers::SHIFT) => Some(Action::MarkUnread),
+            (KeyCode::Char('l'), KeyModifiers::NONE) => Some(Action::ApplyLabel),
+            (KeyCode::Char('v'), KeyModifiers::NONE) => Some(Action::MoveToLabel),
+            (KeyCode::Char('D'), KeyModifiers::SHIFT) => Some(Action::Unsubscribe),
+            (KeyCode::Char('Z'), KeyModifiers::SHIFT) => Some(Action::Snooze),
+            (KeyCode::Char('O'), KeyModifiers::SHIFT) => Some(Action::OpenInBrowser),
+            (KeyCode::Char('R'), KeyModifiers::SHIFT) => Some(Action::ToggleReaderMode),
+            (KeyCode::Char('S'), KeyModifiers::SHIFT) => Some(Action::ToggleSignature),
+            (KeyCode::Char('A'), KeyModifiers::SHIFT) => Some(Action::AttachmentList),
+            (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLinks),
+            (KeyCode::Char('E'), KeyModifiers::SHIFT) => Some(Action::ExportThread),
+            _ => None,
+        }
+    }
+
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         if self.error_modal.is_some() {
             return match (key.code, key.modifiers) {
@@ -39,6 +66,25 @@ impl App {
                 }
                 (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                     self.help_scroll_offset = self.help_scroll_offset.saturating_sub(8);
+                    None
+                }
+                (KeyCode::Char('o'), _) => Some(Action::ShowOnboarding),
+                _ => None,
+            };
+        }
+
+        if self.onboarding.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l'), _) => {
+                    self.advance_feature_onboarding();
+                    None
+                }
+                (KeyCode::Left | KeyCode::Char('h'), _) => {
+                    self.onboarding.step = self.onboarding.step.saturating_sub(1);
+                    None
+                }
+                (KeyCode::Esc | KeyCode::Char('q'), _) => {
+                    self.dismiss_feature_onboarding();
                     None
                 }
                 _ => None,
@@ -444,6 +490,8 @@ impl App {
         // Route keys based on active pane
         match self.active_pane {
             ActivePane::MessageView => match (key.code, key.modifiers) {
+                (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
+                (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
                     self.move_thread_focus_down();
                     None
@@ -473,9 +521,12 @@ impl App {
                 (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::OpenInBrowser),
                 // L = open links picker
                 (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLinks),
+                _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },
             ActivePane::Sidebar => match (key.code, key.modifiers) {
+                (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
+                (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
                     self.sidebar_move_down();
                     None
@@ -498,6 +549,8 @@ impl App {
                 _ => self.contextual_input_action(key),
             },
             ActivePane::MailList => match (key.code, key.modifiers) {
+                (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
+                (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
                 // h = move left to sidebar
                 (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
                     self.active_pane = ActivePane::Sidebar;
@@ -505,6 +558,7 @@ impl App {
                 }
                 // Right arrow opens selected message
                 (KeyCode::Right, KeyModifiers::NONE) => Some(Action::OpenSelected),
+                _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },
         }
@@ -552,7 +606,6 @@ impl App {
                     if self.search_page.selected_index + 1 < self.search_row_count() {
                         self.search_page.selected_index += 1;
                         self.ensure_search_visible();
-                        self.auto_preview_search();
                     }
                     self.maybe_load_more_search_results();
                     None
@@ -561,13 +614,12 @@ impl App {
                     if self.search_page.selected_index > 0 {
                         self.search_page.selected_index -= 1;
                         self.ensure_search_visible();
-                        self.auto_preview_search();
                     }
                     None
                 }
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE)
                 | (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::OpenSelected),
-                (KeyCode::Esc, _) => Some(Action::GoToInbox),
+                (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
                 _ => self.contextual_input_action(key),
             },
             SearchPane::Preview => match (key.code, key.modifiers) {
@@ -600,9 +652,10 @@ impl App {
                     None
                 }
                 (KeyCode::Esc, _) => {
-                    self.search_page.active_pane = SearchPane::Results;
+                    self.reset_search_preview_selection();
                     None
                 }
+                _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },
         }
@@ -650,25 +703,32 @@ impl App {
                 None
             }
             (KeyCode::BackTab, _) => {
-                self.rules_page.form.active_field =
-                    self.rules_page.form.active_field.saturating_sub(1);
+                self.rules_page.form.active_field = if self.rules_page.form.active_field == 0 {
+                    4
+                } else {
+                    self.rules_page.form.active_field - 1
+                };
                 None
             }
-            (KeyCode::Enter, _) => Some(Action::SaveRuleForm),
             (KeyCode::Char(' '), _) if self.rules_page.form.active_field == 4 => {
                 self.rules_page.form.enabled = !self.rules_page.form.enabled;
+                None
+            }
+            (KeyCode::Char('s'), KeyModifiers::CONTROL) => Some(Action::SaveRuleForm),
+            (_, _) if self.rules_page.form.active_field == 1 => {
+                self.rule_condition_editor.input(key);
+                self.sync_rule_form_strings_from_editors();
+                None
+            }
+            (_, _) if self.rules_page.form.active_field == 2 => {
+                self.rule_action_editor.input(key);
+                self.sync_rule_form_strings_from_editors();
                 None
             }
             (KeyCode::Backspace, _) => {
                 match self.rules_page.form.active_field {
                     0 => {
                         self.rules_page.form.name.pop();
-                    }
-                    1 => {
-                        self.rules_page.form.condition.pop();
-                    }
-                    2 => {
-                        self.rules_page.form.action.pop();
                     }
                     3 => {
                         self.rules_page.form.priority.pop();
@@ -680,13 +740,12 @@ impl App {
             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 match self.rules_page.form.active_field {
                     0 => self.rules_page.form.name.push(c),
-                    1 => self.rules_page.form.condition.push(c),
-                    2 => self.rules_page.form.action.push(c),
                     3 => self.rules_page.form.priority.push(c),
                     _ => {}
                 }
                 None
             }
+            (KeyCode::Enter, _) => Some(Action::SaveRuleForm),
             _ => None,
         }
     }
@@ -728,6 +787,7 @@ impl App {
             (KeyCode::Char('d'), _) => Some(Action::OpenDiagnosticsPaneDetails),
             (KeyCode::Char('r'), _) => Some(Action::RefreshDiagnostics),
             (KeyCode::Char('b'), _) => Some(Action::GenerateBugReport),
+            (KeyCode::Char('c'), _) => Some(Action::EditConfig),
             (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLogs),
             (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
             _ => self.contextual_input_action(key),
@@ -770,6 +830,7 @@ impl App {
             (KeyCode::Char('r'), _) => Some(Action::RefreshAccounts),
             (KeyCode::Char('t'), _) => Some(Action::TestAccountForm),
             (KeyCode::Char('d'), _) => Some(Action::SetDefaultAccount),
+            (KeyCode::Char('c'), _) => Some(Action::EditConfig),
             (KeyCode::Enter | KeyCode::Char('o'), _) => {
                 if let Some(account) = self.selected_account().cloned() {
                     if let Some(config) = account_summary_to_config(&account) {

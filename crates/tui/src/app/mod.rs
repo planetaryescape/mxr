@@ -19,9 +19,13 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
+use throbber_widgets_tui::ThrobberState;
+use tui_textarea::TextArea;
 
 const PREVIEW_MARK_READ_DELAY: Duration = Duration::from_secs(5);
 pub const SEARCH_PAGE_SIZE: u32 = 200;
+const SEARCH_DEBOUNCE_DELAY: Duration = Duration::from_millis(250);
+const SEARCH_SPINNER_TICK: Duration = Duration::from_millis(120);
 
 fn sane_mail_sort_timestamp(date: &chrono::DateTime<chrono::Utc>) -> i64 {
     let cutoff = (chrono::Utc::now() + chrono::Duration::days(1)).timestamp();
@@ -90,7 +94,8 @@ pub enum SearchPane {
 pub enum SearchUiStatus {
     #[default]
     Idle,
-    FirstLoad,
+    Debouncing,
+    Searching,
     LoadingMore,
     Loaded,
     Error,
@@ -210,6 +215,8 @@ pub struct SearchPageState {
     pub active_pane: SearchPane,
     pub selected_index: usize,
     pub scroll_offset: usize,
+    pub result_selected: bool,
+    pub throbber: ThrobberState,
 }
 
 impl SearchPageState {
@@ -238,8 +245,17 @@ impl Default for SearchPageState {
             active_pane: SearchPane::Results,
             selected_index: 0,
             scroll_offset: 0,
+            result_selected: false,
+            throbber: ThrobberState::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FeatureOnboardingState {
+    pub visible: bool,
+    pub step: usize,
+    pub seen: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -585,6 +601,14 @@ pub struct PendingSearchCountRequest {
     pub session_id: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingSearchDebounce {
+    pub query: String,
+    pub mode: SearchMode,
+    pub session_id: u64,
+    pub due_at: Instant,
+}
+
 pub struct App {
     pub theme: Theme,
     pub envelopes: Vec<Envelope>,
@@ -616,6 +640,7 @@ pub struct App {
     pub in_flight_thread_fetch: Option<crate::mxr_core::ThreadId>,
     pub pending_search: Option<PendingSearchRequest>,
     pub pending_search_count: Option<PendingSearchCountRequest>,
+    pub pending_search_debounce: Option<PendingSearchDebounce>,
     pub mailbox_search_session_id: u64,
     pub search_active: bool,
     pub pending_rule_detail: Option<String>,
@@ -642,6 +667,8 @@ pub struct App {
     pub rules_page: RulesPageState,
     pub diagnostics_page: DiagnosticsPageState,
     pub accounts_page: AccountsPageState,
+    pub onboarding: FeatureOnboardingState,
+    pub pending_local_state_save: bool,
     pub active_label: Option<crate::mxr_core::LabelId>,
     pub pending_label_fetch: Option<crate::mxr_core::LabelId>,
     pub pending_active_label: Option<crate::mxr_core::LabelId>,
@@ -678,6 +705,8 @@ pub struct App {
     pub sidebar_saved_searches_expanded: bool,
     pending_label_action: Option<(LabelPickerMode, String)>,
     pub url_modal: Option<ui::url_modal::UrlModalState>,
+    pub rule_condition_editor: TextArea<'static>,
+    pub rule_action_editor: TextArea<'static>,
     input: InputHandler,
 }
 
@@ -749,6 +778,7 @@ impl App {
             in_flight_thread_fetch: None,
             pending_search: None,
             pending_search_count: None,
+            pending_search_debounce: None,
             mailbox_search_session_id: 0,
             search_active: false,
             pending_rule_detail: None,
@@ -775,6 +805,8 @@ impl App {
             rules_page: RulesPageState::default(),
             diagnostics_page: DiagnosticsPageState::default(),
             accounts_page: AccountsPageState::default(),
+            onboarding: FeatureOnboardingState::default(),
+            pending_local_state_save: false,
             active_label: None,
             pending_label_fetch: None,
             pending_active_label: None,
@@ -811,6 +843,8 @@ impl App {
             sidebar_saved_searches_expanded: true,
             pending_label_action: None,
             url_modal: None,
+            rule_condition_editor: TextArea::default(),
+            rule_action_editor: TextArea::default(),
             input: InputHandler::new(),
         }
     }
@@ -1014,6 +1048,7 @@ impl App {
         self.accounts_page.refresh_pending = true;
         self.accounts_page.onboarding_required = true;
         self.accounts_page.onboarding_modal_open = true;
+        self.onboarding.visible = false;
         self.active_label = None;
         self.pending_active_label = None;
         self.pending_label_fetch = None;
@@ -1023,6 +1058,62 @@ impl App {
     fn complete_account_setup_onboarding(&mut self) {
         self.accounts_page.onboarding_modal_open = false;
         self.apply(Action::OpenAccountFormNew);
+    }
+
+    pub fn sync_rule_form_editors(&mut self) {
+        self.rule_condition_editor = TextArea::from(
+            if self.rules_page.form.condition.is_empty() {
+                vec![String::new()]
+            } else {
+                self.rules_page
+                    .form
+                    .condition
+                    .lines()
+                    .map(ToString::to_string)
+                    .collect()
+            },
+        );
+        self.rule_action_editor = TextArea::from(
+            if self.rules_page.form.action.is_empty() {
+                vec![String::new()]
+            } else {
+                self.rules_page
+                    .form
+                    .action
+                    .lines()
+                    .map(ToString::to_string)
+                    .collect()
+            },
+        );
+    }
+
+    pub fn sync_rule_form_strings_from_editors(&mut self) {
+        self.rules_page.form.condition = self.rule_condition_editor.lines().join("\n");
+        self.rules_page.form.action = self.rule_action_editor.lines().join("\n");
+    }
+
+    pub fn maybe_show_feature_onboarding(&mut self) {
+        if self.onboarding.seen || self.accounts_page.accounts.is_empty() {
+            return;
+        }
+        self.onboarding.visible = true;
+        self.onboarding.step = 0;
+    }
+
+    pub fn dismiss_feature_onboarding(&mut self) {
+        self.onboarding.visible = false;
+        if !self.onboarding.seen {
+            self.onboarding.seen = true;
+            self.pending_local_state_save = true;
+        }
+    }
+
+    pub fn advance_feature_onboarding(&mut self) {
+        if self.onboarding.step >= 4 {
+            self.dismiss_feature_onboarding();
+        } else {
+            self.onboarding.step += 1;
+        }
     }
 
     fn selected_account_config(&self) -> Option<crate::mxr_protocol::AccountConfigData> {
@@ -1481,9 +1572,101 @@ impl App {
         self.search_page.active_pane = SearchPane::Results;
         self.search_page.selected_index = 0;
         self.search_page.scroll_offset = 0;
+        self.search_page.result_selected = false;
+        self.search_page.throbber = ThrobberState::default();
+        self.pending_search = None;
+        self.pending_search_count = None;
+        self.pending_search_debounce = None;
+        self.clear_message_view_state();
+    }
+
+    fn begin_search_page_request(&mut self, status: SearchUiStatus) -> u64 {
+        self.search_page.results.clear();
+        self.search_page.scores.clear();
+        self.search_page.has_more = false;
+        self.search_page.loading_more =
+            matches!(status, SearchUiStatus::Searching | SearchUiStatus::LoadingMore);
+        self.search_page.total_count = None;
+        self.search_page.count_pending = matches!(status, SearchUiStatus::Searching);
+        self.search_page.ui_status = status;
+        self.search_page.load_to_end = false;
+        self.search_page.session_active = !self.search_page.query.trim().is_empty();
+        self.search_page.active_pane = SearchPane::Results;
+        self.search_page.selected_index = 0;
+        self.search_page.scroll_offset = 0;
+        self.search_page.result_selected = false;
+        self.search_page.throbber = ThrobberState::default();
         self.pending_search = None;
         self.pending_search_count = None;
         self.clear_message_view_state();
+        Self::bump_search_session_id(&mut self.search_page.session_id)
+    }
+
+    fn schedule_search_page_search(&mut self) {
+        self.search_bar.query = self.search_page.query.clone();
+        self.search_bar.mode = self.search_page.mode;
+        self.search_page.sort = SortOrder::DateDesc;
+        let query = self.search_page.query.trim().to_string();
+        if query.is_empty() {
+            self.reset_search_page_workspace();
+            return;
+        }
+
+        let session_id = self.begin_search_page_request(SearchUiStatus::Debouncing);
+        self.pending_search_debounce = Some(PendingSearchDebounce {
+            query,
+            mode: self.search_page.mode,
+            session_id,
+            due_at: Instant::now() + SEARCH_DEBOUNCE_DELAY,
+        });
+    }
+
+    pub fn execute_search_page_search(&mut self) {
+        self.search_bar.query = self.search_page.query.clone();
+        self.search_bar.mode = self.search_page.mode;
+        self.search_page.sort = SortOrder::DateDesc;
+        let query = self.search_page.query.trim().to_string();
+        self.pending_search_debounce = None;
+        if query.is_empty() {
+            self.reset_search_page_workspace();
+            return;
+        }
+
+        let session_id = self.begin_search_page_request(SearchUiStatus::Searching);
+        self.queue_search_request(
+            SearchTarget::SearchPage,
+            false,
+            query.clone(),
+            self.search_page.mode,
+            self.search_page.sort.clone(),
+            0,
+            session_id,
+        );
+        self.queue_search_count_request(query, self.search_page.mode, session_id);
+    }
+
+    fn process_pending_search_debounce(&mut self) {
+        let Some(pending) = self.pending_search_debounce.clone() else {
+            return;
+        };
+        if pending.due_at > Instant::now() || pending.session_id != self.search_page.session_id {
+            return;
+        }
+
+        self.pending_search_debounce = None;
+        self.search_page.loading_more = true;
+        self.search_page.count_pending = true;
+        self.search_page.ui_status = SearchUiStatus::Searching;
+        self.queue_search_request(
+            SearchTarget::SearchPage,
+            false,
+            pending.query.clone(),
+            pending.mode,
+            self.search_page.sort.clone(),
+            0,
+            pending.session_id,
+        );
+        self.queue_search_count_request(pending.query, pending.mode, pending.session_id);
     }
 
     pub(crate) fn load_more_search_results(&mut self) {
@@ -1566,23 +1749,20 @@ impl App {
     /// Live filter: instant client-side prefix matching on subject/from/snippet,
     /// plus async Tantivy search for full-text body matches.
     fn trigger_live_search(&mut self) {
-        let query_source = if self.screen == Screen::Search {
-            self.search_page.query.clone()
-        } else {
-            self.search_bar.query.clone()
-        };
+        if self.screen == Screen::Search {
+            self.schedule_search_page_search();
+            return;
+        }
+
+        let query_source = self.search_bar.query.clone();
         self.search_bar.query = query_source.clone();
         self.search_page.mode = self.search_bar.mode;
         self.search_page.sort = SortOrder::DateDesc;
         let query = query_source.to_lowercase();
         if query.is_empty() {
-            if self.screen == Screen::Search {
-                self.reset_search_page_workspace();
-            } else {
-                Self::bump_search_session_id(&mut self.mailbox_search_session_id);
-                self.envelopes = self.all_mail_envelopes();
-                self.search_active = false;
-            }
+            Self::bump_search_session_id(&mut self.mailbox_search_session_id);
+            self.envelopes = self.all_mail_envelopes();
+            self.search_active = false;
         } else {
             let query_words: Vec<&str> = query.split_whitespace().collect();
             // Instant client-side filter: every query word must prefix-match
@@ -1607,60 +1787,58 @@ impl App {
                 })
                 .cloned()
                 .collect();
-            if self.screen == Screen::Search {
-                self.search_page.results.clear();
-                self.search_page.scores.clear();
-                self.search_page.has_more = false;
-                self.search_page.loading_more = true;
-                self.search_page.total_count = None;
-                self.search_page.count_pending = true;
-                self.search_page.ui_status = SearchUiStatus::FirstLoad;
-                self.search_page.load_to_end = false;
-                self.search_page.session_active = true;
-                self.search_page.active_pane = SearchPane::Results;
-                self.search_page.selected_index = 0;
-                self.search_page.scroll_offset = 0;
-                self.clear_message_view_state();
-                let session_id = Self::bump_search_session_id(&mut self.search_page.session_id);
-                self.queue_search_request(
-                    SearchTarget::SearchPage,
-                    false,
-                    query_source.clone(),
-                    self.search_page.mode,
-                    self.search_page.sort.clone(),
-                    0,
-                    session_id,
-                );
-                self.queue_search_count_request(query_source, self.search_page.mode, session_id);
-            } else {
-                let mut filtered = filtered;
-                filtered.sort_by(|left, right| {
-                    sane_mail_sort_timestamp(&right.date)
-                        .cmp(&sane_mail_sort_timestamp(&left.date))
-                        .then_with(|| right.id.as_str().cmp(&left.id.as_str()))
-                });
-                self.envelopes = filtered;
-                self.search_active = true;
-                let session_id = Self::bump_search_session_id(&mut self.mailbox_search_session_id);
-                self.queue_search_request(
-                    SearchTarget::Mailbox,
-                    false,
-                    query_source,
-                    self.search_bar.mode,
-                    SortOrder::DateDesc,
-                    0,
-                    session_id,
-                );
-            }
+            let mut filtered = filtered;
+            filtered.sort_by(|left, right| {
+                sane_mail_sort_timestamp(&right.date)
+                    .cmp(&sane_mail_sort_timestamp(&left.date))
+                    .then_with(|| right.id.as_str().cmp(&left.id.as_str()))
+            });
+            self.envelopes = filtered;
+            self.search_active = true;
+            let session_id = Self::bump_search_session_id(&mut self.mailbox_search_session_id);
+            self.queue_search_request(
+                SearchTarget::Mailbox,
+                false,
+                query_source,
+                self.search_bar.mode,
+                SortOrder::DateDesc,
+                0,
+                session_id,
+            );
         }
-        if self.screen == Screen::Search {
-            self.search_page.selected_index = 0;
-            self.search_page.scroll_offset = 0;
-            self.auto_preview_search();
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+    }
+
+    pub fn search_is_pending(&self) -> bool {
+        matches!(
+            self.search_page.ui_status,
+            SearchUiStatus::Debouncing | SearchUiStatus::Searching | SearchUiStatus::LoadingMore
+        )
+    }
+
+    pub fn open_selected_search_result(&mut self) {
+        if let Some(env) = self.selected_search_envelope().cloned() {
+            self.search_page.result_selected = true;
+            self.open_envelope(env);
+            self.search_page.active_pane = SearchPane::Preview;
         } else {
-            self.selected_index = 0;
-            self.scroll_offset = 0;
+            self.reset_search_preview_selection();
         }
+    }
+
+    pub fn maybe_open_search_preview(&mut self) {
+        if self.search_page.result_selected {
+            self.search_page.active_pane = SearchPane::Preview;
+        } else {
+            self.open_selected_search_result();
+        }
+    }
+
+    pub fn reset_search_preview_selection(&mut self) {
+        self.search_page.result_selected = false;
+        self.search_page.active_pane = SearchPane::Results;
+        self.clear_message_view_state();
     }
 
     /// Compute the mail list title based on active filter/search.
@@ -1882,6 +2060,12 @@ impl App {
     }
 
     pub fn auto_preview_search(&mut self) {
+        if !self.search_page.result_selected {
+            if self.screen == Screen::Search {
+                self.clear_message_view_state();
+            }
+            return;
+        }
         if let Some(env) = self.selected_search_envelope().cloned() {
             if self
                 .viewing_envelope
@@ -1892,6 +2076,7 @@ impl App {
                 self.open_envelope(env);
             }
         } else if self.screen == Screen::Search {
+            self.search_page.result_selected = false;
             self.clear_message_view_state();
         }
     }
@@ -2056,15 +2241,27 @@ impl App {
     }
 
     pub fn next_background_timeout(&self, fallback: Duration) -> Duration {
-        let Some(pending) = self.pending_preview_read.as_ref() else {
-            return fallback;
-        };
-        fallback.min(
-            pending
-                .due_at
-                .checked_duration_since(Instant::now())
-                .unwrap_or(Duration::ZERO),
-        )
+        let mut timeout = fallback;
+        if let Some(pending) = self.pending_preview_read.as_ref() {
+            timeout = timeout.min(
+                pending
+                    .due_at
+                    .checked_duration_since(Instant::now())
+                    .unwrap_or(Duration::ZERO),
+            );
+        }
+        if let Some(pending) = self.pending_search_debounce.as_ref() {
+            timeout = timeout.min(
+                pending
+                    .due_at
+                    .checked_duration_since(Instant::now())
+                    .unwrap_or(Duration::ZERO),
+            );
+        }
+        if self.search_is_pending() {
+            timeout = timeout.min(SEARCH_SPINNER_TICK);
+        }
+        timeout
     }
 
     #[cfg(test)]
@@ -2467,7 +2664,7 @@ impl App {
         }
     }
 
-    fn clear_message_view_state(&mut self) {
+    pub(crate) fn clear_message_view_state(&mut self) {
         self.pending_preview_read = None;
         self.viewing_envelope = None;
         self.viewed_thread = None;

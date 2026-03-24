@@ -105,7 +105,8 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "visible_middle" => Some(Action::ViewportMiddle),
         "visible_bottom" => Some(Action::ViewportBottom),
         "center_current" => Some(Action::CenterCurrent),
-        "search" => Some(Action::OpenSearch),
+        "search" | "search_all_mail" => Some(Action::OpenGlobalSearch),
+        "mailbox_filter" => Some(Action::OpenMailboxFilter),
         "next_search_result" => Some(Action::NextSearchResult),
         "prev_search_result" => Some(Action::PrevSearchResult),
         "open" => Some(Action::OpenSelected),
@@ -156,6 +157,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "open_tab_4" => Some(Action::OpenTab4),
         "open_tab_5" => Some(Action::OpenTab5),
         "toggle_signature" => Some(Action::ToggleSignature),
+        "show_onboarding" => Some(Action::ShowOnboarding),
         _ => None,
     }
 }
@@ -233,7 +235,8 @@ fn action_display_name(action: &str) -> String {
     match action {
         "move_down" => "Down".into(),
         "move_up" => "Up".into(),
-        "search" => "Search".into(),
+        "search" | "search_all_mail" => "Search All Mail".into(),
+        "mailbox_filter" => "Filter Mailbox".into(),
         "open" => "Open".into(),
         "apply_label" => "Apply Label".into(),
         "move_to_label" => "Move Label".into(),
@@ -269,6 +272,7 @@ fn action_display_name(action: &str) -> String {
         "open_tab_3" => "Rules Page".into(),
         "open_tab_4" => "Accounts Page".into(),
         "open_tab_5" => "Diagnostics Page".into(),
+        "show_onboarding" => "Start Here".into(),
         "quit_view" => "Quit".into(),
         "clear_selection" => "Clear Sel".into(),
         _ => action
@@ -348,7 +352,8 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("M", "visible_middle"),
         ("L", "visible_bottom"),
         ("zz", "center_current"),
-        ("/", "search"),
+        ("/", "search_all_mail"),
+        ("Ctrl-f", "mailbox_filter"),
         ("n", "next_search_result"),
         ("N", "prev_search_result"),
         ("Enter", "open"),

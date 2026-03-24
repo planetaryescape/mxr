@@ -42,8 +42,11 @@ jobs:
             {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","desktop_platform":"darwin","desktop_arch":"x64","desktop_archive":"desktop-macos-x86_64.zip","use_cross":false,"cargo_args":"--no-default-features"},
             {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","desktop_platform":"darwin","desktop_arch":"arm64","desktop_archive":"desktop-macos-aarch64.zip","use_cross":false,"cargo_args":""}
           ]}'
-
-          echo "build_matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          {
+            echo 'build_matrix<<EOF'
+            echo "${MATRIX}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
   build-binaries:
     name: Build ${{ matrix.target }}

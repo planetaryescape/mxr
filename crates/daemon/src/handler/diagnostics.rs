@@ -353,7 +353,7 @@ pub(super) async fn sync_now(
     state: &Arc<AppState>,
     account_id: Option<&AccountId>,
 ) -> HandlerResult {
-    let provider = state.get_provider(account_id).clone();
+    let provider = state.get_provider(account_id)?.clone();
     let outcome = state
         .sync_engine
         .sync_account_with_outcome(provider.as_ref())

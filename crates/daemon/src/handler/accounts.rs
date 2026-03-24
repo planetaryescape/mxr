@@ -52,8 +52,14 @@ pub(super) async fn set_default_account_key(state: &Arc<AppState>, key: &str) ->
     })
 }
 
-pub(super) async fn test_account(account: AccountConfigData) -> HandlerResult {
-    Ok(ResponseData::AccountOperation {
-        result: test_account_config(account).await,
-    })
+pub(super) async fn test_account(
+    state: &Arc<AppState>,
+    account: AccountConfigData,
+) -> HandlerResult {
+    let result = test_account_config(account).await;
+    if result.ok {
+        // Reload providers so a newly-authorized token gets picked up immediately
+        let _ = state.reload_accounts_from_disk().await;
+    }
+    Ok(ResponseData::AccountOperation { result })
 }

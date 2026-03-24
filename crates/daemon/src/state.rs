@@ -134,26 +134,39 @@ impl AppState {
                         csecret,
                         token_ref.clone(),
                     );
-                    auth.load_existing().await?;
-                    let client = crate::mxr_provider_gmail::client::GmailClient::new(auth);
-                    let provider = Arc::new(crate::mxr_provider_gmail::GmailProvider::new(
-                        account_id.clone(),
-                        client,
-                    ));
-                    let sync_provider: Arc<dyn MailSyncProvider> = provider.clone();
-                    if matches!(
-                        acct_config.send,
-                        Some(crate::mxr_config::SendProviderConfig::Gmail)
-                    ) {
-                        let send_provider: Arc<dyn MailSendProvider> = provider.clone();
-                        send_providers.insert(account_id.clone(), send_provider.clone());
-                        if requested_default == Some(key.as_str())
-                            || default_send_provider.is_none()
-                        {
-                            default_send_provider = Some(send_provider);
+                    match auth.load_existing().await {
+                        Ok(()) => {
+                            let client =
+                                crate::mxr_provider_gmail::client::GmailClient::new(auth);
+                            let provider =
+                                Arc::new(crate::mxr_provider_gmail::GmailProvider::new(
+                                    account_id.clone(),
+                                    client,
+                                ));
+                            let sync_provider: Arc<dyn MailSyncProvider> = provider.clone();
+                            if matches!(
+                                acct_config.send,
+                                Some(crate::mxr_config::SendProviderConfig::Gmail)
+                            ) {
+                                let send_provider: Arc<dyn MailSendProvider> = provider.clone();
+                                send_providers
+                                    .insert(account_id.clone(), send_provider.clone());
+                                if requested_default == Some(key.as_str())
+                                    || default_send_provider.is_none()
+                                {
+                                    default_send_provider = Some(send_provider);
+                                }
+                            }
+                            Some(sync_provider)
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                account = %key,
+                                "Gmail auth not ready, skipping provider: {e}"
+                            );
+                            None
                         }
                     }
-                    Some(sync_provider)
                 }
                 Some(crate::mxr_config::SyncProviderConfig::Imap {
                     host,
@@ -188,7 +201,14 @@ impl AppState {
                 Some(crate::mxr_config::SendProviderConfig::Gmail)
             ) && !send_providers.contains_key(&account_id)
             {
-                anyhow::bail!("Account '{key}' uses gmail send without gmail sync");
+                if providers.contains_key(&account_id) {
+                    anyhow::bail!("Account '{key}' uses gmail send without gmail sync");
+                }
+                // Gmail sync provider was skipped (e.g. auth not ready), skip send too
+                tracing::warn!(
+                    account = %key,
+                    "Skipping Gmail send provider: sync provider not available"
+                );
             }
 
             if let Some(crate::mxr_config::SendProviderConfig::Smtp {
@@ -304,12 +324,15 @@ impl AppState {
     }
 
     /// Get provider for a specific account, or fall back to default.
-    pub fn get_provider(&self, account_id: Option<&AccountId>) -> Arc<dyn MailSyncProvider> {
+    pub fn get_provider(
+        &self,
+        account_id: Option<&AccountId>,
+    ) -> std::result::Result<Arc<dyn MailSyncProvider>, String> {
         let runtime = self.runtime.read().expect("runtime lock poisoned");
         account_id
             .and_then(|id| runtime.providers.get(id).cloned())
             .or_else(|| runtime.default_provider.clone())
-            .expect("no sync-capable accounts configured")
+            .ok_or_else(|| "no sync-capable accounts configured".to_string())
     }
 
     /// Get send provider for a specific account, or fall back to default.

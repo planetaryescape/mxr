@@ -203,7 +203,7 @@ pub(super) async fn create_label(
     account_id: Option<&AccountId>,
 ) -> HandlerResult {
     let account_id = resolve_account_id(state, account_id)?;
-    let provider = state.get_provider(Some(&account_id));
+    let provider = state.get_provider(Some(&account_id))?;
     let mut label = provider
         .create_label(name, color)
         .await
@@ -226,7 +226,7 @@ pub(super) async fn delete_label(
 ) -> HandlerResult {
     let account_id = resolve_account_id(state, account_id)?;
     let label = find_label_by_name(state, &account_id, name).await?;
-    let provider = state.get_provider(Some(&account_id));
+    let provider = state.get_provider(Some(&account_id))?;
     provider
         .delete_label(&label.provider_id)
         .await
@@ -247,7 +247,7 @@ pub(super) async fn rename_label(
 ) -> HandlerResult {
     let account_id = resolve_account_id(state, account_id)?;
     let existing = find_label_by_name(state, &account_id, old).await?;
-    let provider = state.get_provider(Some(&account_id));
+    let provider = state.get_provider(Some(&account_id))?;
     let mut label = provider
         .rename_label(&existing.provider_id, new)
         .await

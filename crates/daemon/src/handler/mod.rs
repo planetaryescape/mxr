@@ -94,7 +94,9 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             accounts::upsert_account(state, account.clone()).await
         }
         Request::SetDefaultAccount { key } => accounts::set_default_account_key(state, key).await,
-        Request::TestAccountConfig { account } => accounts::test_account(account.clone()).await,
+        Request::TestAccountConfig { account } => {
+            accounts::test_account(state, account.clone()).await
+        }
         Request::GetRule { rule } => rules::get_rule(state, rule).await,
         Request::GetRuleForm { rule } => rules::get_rule_form(state, rule).await,
         Request::UpsertRule { rule } => rules::upsert_rule_value(state, rule.clone()).await,
@@ -411,7 +413,7 @@ pub(crate) async fn apply_snooze(
         .await
         .map_err(|e| e.to_string())?;
     state
-        .get_provider(Some(&envelope.account_id))
+        .get_provider(Some(&envelope.account_id))?
         .modify_labels(&provider_id, &[], &["INBOX".to_string()])
         .await
         .map_err(|e| e.to_string())?;
@@ -453,7 +455,7 @@ pub(crate) async fn restore_snoozed_message(
         .collect();
 
     state
-        .get_provider(Some(&snoozed.account_id))
+        .get_provider(Some(&snoozed.account_id))?
         .modify_labels(&provider_id, &restore_provider_ids, &[])
         .await
         .map_err(|e| e.to_string())?;
@@ -2273,7 +2275,9 @@ async fn materialize_attachment_file(
         });
     }
 
-    let provider = state.get_provider(Some(&envelope.account_id));
+    let provider = state
+        .get_provider(Some(&envelope.account_id))
+        .map_err(crate::mxr_core::MxrError::Provider)?;
     let bytes = provider
         .fetch_attachment(&envelope.provider_id, &attachment.provider_id)
         .await?;

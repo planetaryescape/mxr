@@ -60,7 +60,7 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Message not found: {message_id}"))?;
         let provider_id = &envelope.provider_id;
-        let provider = state.get_provider(Some(&envelope.account_id)).clone();
+        let provider = state.get_provider(Some(&envelope.account_id))?.clone();
 
         let result = match cmd {
             MutationCommand::Archive { .. } => {

@@ -29,6 +29,21 @@ TUI / CLI / Scripts  <--- Unix socket (JSON) --->  Daemon
 
 Single unified binary: `mxr` with subcommands (`mxr` = TUI, `mxr daemon`, `mxr sync`, `mxr search`, etc.).
 
+## Release Shorthand
+
+- User phrase `ship it` means full release flow, not just a local commit.
+- Required sequence:
+  1. Commit release-ready changes.
+  2. If the current version/tag already exists, bump to the next release version first. Never try to overwrite an existing tag or GitHub release.
+  3. Push `main`.
+  4. Create and push the release tag `v{version}`.
+  5. Wait for the tag-driven release workflow to finish: binaries, crates publish, GitHub Release, Homebrew update.
+  6. Verify install surfaces against the released version:
+     - `brew install mxr` / `brew upgrade mxr`
+     - `cargo install mxr`
+  7. Report final released version and any install lag/failures.
+- Release artifacts generated locally (`mxr-v*.tar.gz`, `mxr-v*.zip`, checksums) are not source files. Do not commit them. Delete or ignore them after verification.
+
 ## Core Principles (NON-NEGOTIABLE)
 
 1. **Local-first**: SQLite is the canonical state store. Search index is rebuildable from SQLite. Works offline.

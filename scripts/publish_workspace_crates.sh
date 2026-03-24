@@ -71,7 +71,11 @@ publish_or_skip_existing() {
 
 ensure_async_imap_available() {
   local crate="mxr-async-imap"
-  local version="0.10.5"
+  local manifest="vendor/async-imap/Cargo.toml"
+  local version
+  version="$(awk -F'"' '/^version = /{print $2; exit}' "${manifest}")"
+  echo "Publishing ${crate}..."
+  publish_or_skip_existing cargo publish --manifest-path "${manifest}" --locked
   wait_for_crate "${crate}" "${version}"
 }
 

@@ -45,7 +45,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.23"
+version = "0.4.24"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.75"
@@ -59,7 +59,7 @@ glob-match = "0.2"
 which = "7"
 
 # IMAP (fork with ENABLE/NAMESPACE support, published as mxr-async-imap)
-async-imap = { package = "mxr-async-imap", path = "vendor/async-imap", version = "0.10.5" }
+async-imap = { package = "mxr-async-imap", path = "vendor/async-imap", version = "0.10.6" }
 async-native-tls = "0.5"
 
 # Async

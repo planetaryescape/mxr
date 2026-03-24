@@ -176,7 +176,7 @@ impl ImapSession for RealImapSession {
             .session
             .capabilities()
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(ImapCapabilities {
             move_ext: capabilities.has_str("MOVE"),
             uidplus: capabilities.has_str("UIDPLUS"),
@@ -195,7 +195,7 @@ impl ImapSession for RealImapSession {
             .session
             .select(mailbox)
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
 
         Ok(MailboxInfo {
             uid_validity: mb.uid_validity.unwrap_or(0),
@@ -213,7 +213,7 @@ impl ImapSession for RealImapSession {
         self.session
             .enable(capabilities)
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(())
     }
 
@@ -222,7 +222,7 @@ impl ImapSession for RealImapSession {
             .session
             .namespace()
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(Some(NamespaceInfo {
             personal_prefix: namespace.personal.first().map(|entry| entry.prefix.clone()),
             delimiter: namespace
@@ -246,7 +246,7 @@ impl ImapSession for RealImapSession {
                 format!("{uid_validity} {highest_modseq} {known_uids}"),
             )
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
 
         Ok(QresyncInfo {
             mailbox: MailboxInfo {
@@ -275,12 +275,12 @@ impl ImapSession for RealImapSession {
             .session
             .uid_fetch(uid_set, query)
             .await
-            .map_err(|e| ImapProviderError::Fetch(e.to_string()))?;
+            .map_err(|e| ImapProviderError::fetch_detail(e.to_string()))?;
 
         let fetches: Vec<_> = stream
             .try_collect()
             .await
-            .map_err(|e| ImapProviderError::Fetch(e.to_string()))?;
+            .map_err(|e| ImapProviderError::fetch_detail(e.to_string()))?;
 
         let mut messages = Vec::with_capacity(fetches.len());
         for fetch in &fetches {
@@ -381,12 +381,12 @@ impl ImapSession for RealImapSession {
             .session
             .uid_store(uid_set, flags)
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         // Consume the stream to apply the store
         let _: Vec<_> = stream
             .try_collect()
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(())
     }
 
@@ -394,7 +394,7 @@ impl ImapSession for RealImapSession {
         self.session
             .uid_copy(uid_set, mailbox)
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(())
     }
 
@@ -402,7 +402,7 @@ impl ImapSession for RealImapSession {
         self.session
             .uid_mv(uid_set, mailbox)
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(())
     }
 
@@ -412,11 +412,11 @@ impl ImapSession for RealImapSession {
             .session
             .uid_expunge(uid_set)
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         let _: Vec<_> = stream
             .try_collect()
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(())
     }
 
@@ -426,21 +426,20 @@ impl ImapSession for RealImapSession {
             .session
             .expunge()
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         let _: Vec<_> = stream
             .try_collect()
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(())
     }
 
     async fn list_folders(&mut self) -> Result<Vec<FolderInfo>> {
-        let namespace = self.namespace().await.ok().flatten();
         let names = if self.capabilities().await?.list_status {
             self.session
                 .list_status("", "*")
                 .await
-                .map_err(|e| ImapProviderError::Protocol(e.to_string()))?
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?
                 .into_iter()
                 .map(|status| (status.name, Some(status.mailbox)))
                 .collect::<Vec<_>>()
@@ -450,12 +449,12 @@ impl ImapSession for RealImapSession {
                 .session
                 .list(Some(""), Some("*"))
                 .await
-                .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
 
             stream
                 .try_collect::<Vec<_>>()
                 .await
-                .map_err(|e| ImapProviderError::Protocol(e.to_string()))?
+                .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?
                 .into_iter()
                 .map(|name| (name, None))
                 .collect::<Vec<_>>()
@@ -493,9 +492,10 @@ impl ImapSession for RealImapSession {
                 uid_validity: mailbox.as_ref().and_then(|mailbox| mailbox.uid_validity),
                 uid_next: mailbox.as_ref().and_then(|mailbox| mailbox.uid_next),
                 highest_modseq: mailbox.as_ref().and_then(|mailbox| mailbox.highest_modseq),
-                namespace_prefix: namespace
-                    .as_ref()
-                    .and_then(|namespace| namespace.personal_prefix.clone()),
+                // Namespace discovery is optional, and some servers answer it in a
+                // format the upstream parser rejects. Avoid issuing NAMESPACE here
+                // so folder discovery remains usable for account setup and sync.
+                namespace_prefix: None,
             });
         }
 
@@ -506,7 +506,7 @@ impl ImapSession for RealImapSession {
         self.session
             .create(mailbox)
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(())
     }
 
@@ -514,7 +514,7 @@ impl ImapSession for RealImapSession {
         self.session
             .rename(old_mailbox, new_mailbox)
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(())
     }
 
@@ -522,7 +522,7 @@ impl ImapSession for RealImapSession {
         self.session
             .delete(mailbox)
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(())
     }
 
@@ -530,7 +530,7 @@ impl ImapSession for RealImapSession {
         self.session
             .logout()
             .await
-            .map_err(|e| ImapProviderError::Protocol(e.to_string()))?;
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
         Ok(())
     }
 }

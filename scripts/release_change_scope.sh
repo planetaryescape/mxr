@@ -56,6 +56,13 @@ while IFS= read -r path; do
   case "${path}" in
     crates/*/Cargo.toml|Cargo.toml|Cargo.lock|apps/desktop/package.json|apps/desktop/package-lock.json)
       ;;
+    .github/workflows/release.yml|scripts/release_change_scope.sh)
+      cli_changed=true
+      desktop_source_changed=true
+      ;;
+    scripts/render_homebrew_formula.sh|scripts/publish_workspace_crates.sh)
+      cli_changed=true
+      ;;
     crates/*|vendor/*|.sqlx/*)
       cli_changed=true
       ;;

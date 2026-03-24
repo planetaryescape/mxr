@@ -1,21 +1,21 @@
 mod actions;
 mod draw;
 mod input;
-use crate::action::{Action, PatternKind};
-use crate::client::Client;
-use crate::input::InputHandler;
-use crate::theme::Theme;
-use crate::ui;
-use crate::ui::command_palette::CommandPalette;
-use crate::ui::compose_picker::ComposePicker;
-use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
-use crate::ui::search_bar::SearchBar;
+use crate::mxr_config::RenderConfig;
+use crate::mxr_core::id::{AccountId, AttachmentId, MessageId};
+use crate::mxr_core::types::*;
+use crate::mxr_core::MxrError;
+use crate::mxr_protocol::{MutationCommand, Request, Response, ResponseData};
+use crate::mxr_tui::action::{Action, PatternKind, ScreenContext, UiContext};
+use crate::mxr_tui::client::Client;
+use crate::mxr_tui::input::InputHandler;
+use crate::mxr_tui::theme::Theme;
+use crate::mxr_tui::ui;
+use crate::mxr_tui::ui::command_palette::CommandPalette;
+use crate::mxr_tui::ui::compose_picker::ComposePicker;
+use crate::mxr_tui::ui::label_picker::{LabelPicker, LabelPickerMode};
+use crate::mxr_tui::ui::search_bar::SearchBar;
 use crossterm::event::{KeyCode, KeyModifiers};
-use mxr_config::RenderConfig;
-use mxr_core::id::{AccountId, AttachmentId, MessageId};
-use mxr_core::types::*;
-use mxr_core::MxrError;
-use mxr_protocol::{MutationCommand, Request, Response, ResponseData};
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -56,7 +56,7 @@ pub enum MutationEffect {
 
 /// Draft waiting for user confirmation after editor closes.
 pub struct PendingSend {
-    pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
+    pub fm: crate::mxr_compose::frontmatter::ComposeFrontmatter,
     pub body: String,
     pub draft_path: std::path::PathBuf,
     pub allow_send: bool,
@@ -84,6 +84,16 @@ pub enum SearchPane {
     #[default]
     Results,
     Preview,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SearchUiStatus {
+    #[default]
+    Idle,
+    FirstLoad,
+    LoadingMore,
+    Loaded,
+    Error,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,7 +158,7 @@ pub enum BodyViewState {
 
 #[derive(Debug, Clone)]
 pub struct MailListRow {
-    pub thread_id: mxr_core::ThreadId,
+    pub thread_id: crate::mxr_core::ThreadId,
     pub representative: Envelope,
     pub message_count: usize,
     pub unread_count: usize,
@@ -165,14 +175,14 @@ pub enum SidebarItem {
     AllMail,
     Subscriptions,
     Label(Label),
-    SavedSearch(mxr_core::SavedSearch),
+    SavedSearch(crate::mxr_core::SavedSearch),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SidebarSelectionKey {
     AllMail,
     Subscriptions,
-    Label(mxr_core::LabelId),
+    Label(crate::mxr_core::LabelId),
     SavedSearch(String),
 }
 
@@ -191,6 +201,9 @@ pub struct SearchPageState {
     pub sort: SortOrder,
     pub has_more: bool,
     pub loading_more: bool,
+    pub total_count: Option<u32>,
+    pub count_pending: bool,
+    pub ui_status: SearchUiStatus,
     pub session_active: bool,
     pub load_to_end: bool,
     pub session_id: u64,
@@ -201,7 +214,7 @@ pub struct SearchPageState {
 
 impl SearchPageState {
     pub fn has_session(&self) -> bool {
-        self.session_active || !self.query.is_empty() || !self.results.is_empty()
+        self.session_active || !self.results.is_empty()
     }
 }
 
@@ -216,6 +229,9 @@ impl Default for SearchPageState {
             sort: SortOrder::DateDesc,
             has_more: false,
             loading_more: false,
+            total_count: None,
+            count_pending: false,
+            ui_status: SearchUiStatus::Idle,
             session_active: false,
             load_to_end: false,
             session_id: 0,
@@ -317,9 +333,9 @@ pub struct DiagnosticsPageState {
     pub daemon_pid: Option<u32>,
     pub accounts: Vec<String>,
     pub total_messages: Option<u32>,
-    pub sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
-    pub doctor: Option<mxr_protocol::DoctorReport>,
-    pub events: Vec<mxr_protocol::EventLogEntry>,
+    pub sync_statuses: Vec<crate::mxr_protocol::AccountSyncStatus>,
+    pub doctor: Option<crate::mxr_protocol::DoctorReport>,
+    pub events: Vec<crate::mxr_protocol::EventLogEntry>,
     pub logs: Vec<String>,
     pub status: Option<String>,
     pub refresh_pending: bool,
@@ -381,7 +397,7 @@ pub struct AccountFormState {
     pub key: String,
     pub name: String,
     pub email: String,
-    pub gmail_credential_source: mxr_protocol::GmailCredentialSourceData,
+    pub gmail_credential_source: crate::mxr_protocol::GmailCredentialSourceData,
     pub gmail_client_id: String,
     pub gmail_client_secret: String,
     pub gmail_token_ref: String,
@@ -399,7 +415,7 @@ pub struct AccountFormState {
     pub active_field: usize,
     pub editing_field: bool,
     pub field_cursor: usize,
-    pub last_result: Option<mxr_protocol::AccountOperationResult>,
+    pub last_result: Option<crate::mxr_protocol::AccountOperationResult>,
 }
 
 impl Default for AccountFormState {
@@ -411,7 +427,7 @@ impl Default for AccountFormState {
             key: String::new(),
             name: String::new(),
             email: String::new(),
-            gmail_credential_source: mxr_protocol::GmailCredentialSourceData::Bundled,
+            gmail_credential_source: crate::mxr_protocol::GmailCredentialSourceData::Bundled,
             gmail_client_id: String::new(),
             gmail_client_secret: String::new(),
             gmail_token_ref: String::new(),
@@ -436,10 +452,10 @@ impl Default for AccountFormState {
 
 #[derive(Debug, Clone, Default)]
 pub struct AccountsPageState {
-    pub accounts: Vec<mxr_protocol::AccountSummaryData>,
+    pub accounts: Vec<crate::mxr_protocol::AccountSummaryData>,
     pub selected_index: usize,
     pub status: Option<String>,
-    pub last_result: Option<mxr_protocol::AccountOperationResult>,
+    pub last_result: Option<crate::mxr_protocol::AccountOperationResult>,
     pub refresh_pending: bool,
     pub onboarding_required: bool,
     pub onboarding_modal_open: bool,
@@ -562,6 +578,13 @@ pub struct PendingSearchRequest {
     pub session_id: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingSearchCountRequest {
+    pub query: String,
+    pub mode: SearchMode,
+    pub session_id: u64,
+}
+
 pub struct App {
     pub theme: Theme,
     pub envelopes: Vec<Envelope>,
@@ -589,9 +612,10 @@ pub struct App {
     pub body_cache: HashMap<MessageId, MessageBody>,
     pub queued_body_fetches: Vec<MessageId>,
     pub in_flight_body_requests: HashSet<MessageId>,
-    pub pending_thread_fetch: Option<mxr_core::ThreadId>,
-    pub in_flight_thread_fetch: Option<mxr_core::ThreadId>,
+    pub pending_thread_fetch: Option<crate::mxr_core::ThreadId>,
+    pub in_flight_thread_fetch: Option<crate::mxr_core::ThreadId>,
     pub pending_search: Option<PendingSearchRequest>,
+    pub pending_search_count: Option<PendingSearchCountRequest>,
     pub mailbox_search_session_id: u64,
     pub search_active: bool,
     pub pending_rule_detail: Option<String>,
@@ -605,22 +629,22 @@ pub struct App {
     pub pending_config_edit: bool,
     pub pending_log_open: bool,
     pub pending_diagnostics_details: Option<DiagnosticsPaneKind>,
-    pub pending_account_save: Option<mxr_protocol::AccountConfigData>,
-    pub pending_account_test: Option<mxr_protocol::AccountConfigData>,
-    pub pending_account_authorize: Option<(mxr_protocol::AccountConfigData, bool)>,
+    pub pending_account_save: Option<crate::mxr_protocol::AccountConfigData>,
+    pub pending_account_test: Option<crate::mxr_protocol::AccountConfigData>,
+    pub pending_account_authorize: Option<(crate::mxr_protocol::AccountConfigData, bool)>,
     pub pending_account_set_default: Option<String>,
     pub sidebar_selected: usize,
     pub sidebar_section: SidebarSection,
     pub help_modal_open: bool,
     pub help_scroll_offset: u16,
-    pub saved_searches: Vec<mxr_core::SavedSearch>,
+    pub saved_searches: Vec<crate::mxr_core::SavedSearch>,
     pub subscriptions_page: SubscriptionsPageState,
     pub rules_page: RulesPageState,
     pub diagnostics_page: DiagnosticsPageState,
     pub accounts_page: AccountsPageState,
-    pub active_label: Option<mxr_core::LabelId>,
-    pub pending_label_fetch: Option<mxr_core::LabelId>,
-    pub pending_active_label: Option<mxr_core::LabelId>,
+    pub active_label: Option<crate::mxr_core::LabelId>,
+    pub pending_label_fetch: Option<crate::mxr_core::LabelId>,
+    pub pending_active_label: Option<crate::mxr_core::LabelId>,
     pub pending_labels_refresh: bool,
     pub pending_all_envelopes_refresh: bool,
     pub pending_subscriptions_refresh: bool,
@@ -647,8 +671,8 @@ pub struct App {
     pub selected_set: HashSet<MessageId>,
     pub visual_mode: bool,
     pub visual_anchor: Option<usize>,
-    pub pending_export_thread: Option<mxr_core::id::ThreadId>,
-    pub snooze_config: mxr_config::SnoozeConfig,
+    pub pending_export_thread: Option<crate::mxr_core::id::ThreadId>,
+    pub snooze_config: crate::mxr_config::SnoozeConfig,
     pub sidebar_system_expanded: bool,
     pub sidebar_user_expanded: bool,
     pub sidebar_saved_searches_expanded: bool,
@@ -667,11 +691,11 @@ impl App {
     pub fn new() -> Self {
         Self::from_render_and_snooze(
             &RenderConfig::default(),
-            &mxr_config::SnoozeConfig::default(),
+            &crate::mxr_config::SnoozeConfig::default(),
         )
     }
 
-    pub fn from_config(config: &mxr_config::MxrConfig) -> Self {
+    pub fn from_config(config: &crate::mxr_config::MxrConfig) -> Self {
         let mut app = Self::from_render_and_snooze(&config.render, &config.snooze);
         app.apply_runtime_config(config);
         if config.accounts.is_empty() {
@@ -680,19 +704,19 @@ impl App {
         app
     }
 
-    pub fn apply_runtime_config(&mut self, config: &mxr_config::MxrConfig) {
+    pub fn apply_runtime_config(&mut self, config: &crate::mxr_config::MxrConfig) {
         self.theme = Theme::from_spec(&config.appearance.theme);
         self.reader_mode = config.render.reader_mode;
         self.snooze_config = config.snooze.clone();
     }
 
     pub fn from_render_config(render: &RenderConfig) -> Self {
-        Self::from_render_and_snooze(render, &mxr_config::SnoozeConfig::default())
+        Self::from_render_and_snooze(render, &crate::mxr_config::SnoozeConfig::default())
     }
 
     fn from_render_and_snooze(
         render: &RenderConfig,
-        snooze_config: &mxr_config::SnoozeConfig,
+        snooze_config: &crate::mxr_config::SnoozeConfig,
     ) -> Self {
         Self {
             theme: Theme::default(),
@@ -724,6 +748,7 @@ impl App {
             pending_thread_fetch: None,
             in_flight_thread_fetch: None,
             pending_search: None,
+            pending_search_count: None,
             mailbox_search_session_id: 0,
             search_active: false,
             pending_rule_detail: None,
@@ -920,10 +945,68 @@ impl App {
         self.rules_page.rules.get(self.rules_page.selected_index)
     }
 
-    pub fn selected_account(&self) -> Option<&mxr_protocol::AccountSummaryData> {
+    pub fn selected_account(&self) -> Option<&crate::mxr_protocol::AccountSummaryData> {
         self.accounts_page
             .accounts
             .get(self.accounts_page.selected_index)
+    }
+
+    pub fn refresh_selected_rule_panel(&mut self) {
+        let selected_rule_id = self
+            .selected_rule()
+            .and_then(|rule| rule["id"].as_str())
+            .map(ToString::to_string);
+
+        self.pending_rule_detail = None;
+        self.pending_rule_history = None;
+        self.pending_rule_dry_run = None;
+
+        if let Some(rule_id) = selected_rule_id {
+            match self.rules_page.panel {
+                RulesPanel::History => self.pending_rule_history = Some(rule_id),
+                RulesPanel::DryRun => self.pending_rule_dry_run = Some(rule_id),
+                RulesPanel::Details | RulesPanel::Form => self.pending_rule_detail = Some(rule_id),
+            }
+        }
+    }
+
+    pub fn current_ui_context(&self) -> UiContext {
+        match self.screen {
+            Screen::Mailbox => match self.active_pane {
+                ActivePane::Sidebar => UiContext::MailboxSidebar,
+                ActivePane::MailList => UiContext::MailboxList,
+                ActivePane::MessageView => UiContext::MailboxMessage,
+            },
+            Screen::Search => {
+                if self.search_page.editing {
+                    UiContext::SearchEditor
+                } else {
+                    match self.search_page.active_pane {
+                        SearchPane::Results => UiContext::SearchResults,
+                        SearchPane::Preview => UiContext::SearchPreview,
+                    }
+                }
+            }
+            Screen::Rules => {
+                if self.rules_page.form.visible {
+                    UiContext::RulesForm
+                } else {
+                    UiContext::RulesList
+                }
+            }
+            Screen::Diagnostics => UiContext::Diagnostics,
+            Screen::Accounts => {
+                if self.accounts_page.form.visible {
+                    UiContext::AccountsForm
+                } else {
+                    UiContext::AccountsList
+                }
+            }
+        }
+    }
+
+    pub fn current_screen_context(&self) -> ScreenContext {
+        self.current_ui_context().screen()
     }
 
     pub fn enter_account_setup_onboarding(&mut self) {
@@ -942,7 +1025,7 @@ impl App {
         self.apply(Action::OpenAccountFormNew);
     }
 
-    fn selected_account_config(&self) -> Option<mxr_protocol::AccountConfigData> {
+    fn selected_account_config(&self) -> Option<crate::mxr_protocol::AccountConfigData> {
         self.selected_account().and_then(account_summary_to_config)
     }
 
@@ -950,7 +1033,7 @@ impl App {
         match self.accounts_page.form.mode {
             AccountFormMode::Gmail => {
                 if self.accounts_page.form.gmail_credential_source
-                    == mxr_protocol::GmailCredentialSourceData::Custom
+                    == crate::mxr_protocol::GmailCredentialSourceData::Custom
                 {
                     8
                 } else {
@@ -962,7 +1045,7 @@ impl App {
         }
     }
 
-    fn account_form_data(&self, is_default: bool) -> mxr_protocol::AccountConfigData {
+    fn account_form_data(&self, is_default: bool) -> crate::mxr_protocol::AccountConfigData {
         let form = &self.accounts_page.form;
         let key = form.key.trim().to_string();
         let name = if form.name.trim().is_empty() {
@@ -987,7 +1070,7 @@ impl App {
             form.gmail_token_ref.trim().to_string()
         };
         let sync = match form.mode {
-            AccountFormMode::Gmail => Some(mxr_protocol::AccountSyncConfigData::Gmail {
+            AccountFormMode::Gmail => Some(crate::mxr_protocol::AccountSyncConfigData::Gmail {
                 credential_source: form.gmail_credential_source.clone(),
                 client_id: form.gmail_client_id.trim().to_string(),
                 client_secret: if form.gmail_client_secret.trim().is_empty() {
@@ -997,7 +1080,7 @@ impl App {
                 },
                 token_ref: gmail_token_ref,
             }),
-            AccountFormMode::ImapSmtp => Some(mxr_protocol::AccountSyncConfigData::Imap {
+            AccountFormMode::ImapSmtp => Some(crate::mxr_protocol::AccountSyncConfigData::Imap {
                 host: form.imap_host.trim().to_string(),
                 port: form.imap_port.parse().unwrap_or(993),
                 username: imap_username,
@@ -1012,9 +1095,9 @@ impl App {
             AccountFormMode::SmtpOnly => None,
         };
         let send = match form.mode {
-            AccountFormMode::Gmail => Some(mxr_protocol::AccountSendConfigData::Gmail),
+            AccountFormMode::Gmail => Some(crate::mxr_protocol::AccountSendConfigData::Gmail),
             AccountFormMode::ImapSmtp | AccountFormMode::SmtpOnly => {
-                Some(mxr_protocol::AccountSendConfigData::Smtp {
+                Some(crate::mxr_protocol::AccountSendConfigData::Smtp {
                     host: form.smtp_host.trim().to_string(),
                     port: form.smtp_port.parse().unwrap_or(587),
                     username: smtp_username,
@@ -1028,7 +1111,7 @@ impl App {
                 })
             }
         };
-        mxr_protocol::AccountConfigData {
+        crate::mxr_protocol::AccountConfigData {
             key,
             name,
             email,
@@ -1134,8 +1217,8 @@ impl App {
                 })
                 .collect(),
             MailListMode::Threads => {
-                let mut order: Vec<mxr_core::ThreadId> = Vec::new();
-                let mut rows: HashMap<mxr_core::ThreadId, MailListRow> = HashMap::new();
+                let mut order: Vec<crate::mxr_core::ThreadId> = Vec::new();
+                let mut rows: HashMap<crate::mxr_core::ThreadId, MailListRow> = HashMap::new();
                 for envelope in envelopes {
                     let entry = rows.entry(envelope.thread_id.clone()).or_insert_with(|| {
                         order.push(envelope.thread_id.clone());
@@ -1267,7 +1350,7 @@ impl App {
         daemon_pid: Option<u32>,
         accounts: Vec<String>,
         total_messages: u32,
-        sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
+        sync_statuses: Vec<crate::mxr_protocol::AccountSyncStatus>,
     ) {
         self.diagnostics_page.uptime_secs = Some(uptime_secs);
         self.diagnostics_page.daemon_pid = daemon_pid;
@@ -1287,21 +1370,21 @@ impl App {
         let mut system: Vec<&Label> = self
             .labels
             .iter()
-            .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
-            .filter(|l| l.kind == mxr_core::types::LabelKind::System)
+            .filter(|l| !crate::mxr_tui::ui::sidebar::should_hide_label(&l.name))
+            .filter(|l| l.kind == crate::mxr_core::types::LabelKind::System)
             .filter(|l| {
-                crate::ui::sidebar::is_primary_system_label(&l.name)
+                crate::mxr_tui::ui::sidebar::is_primary_system_label(&l.name)
                     || l.total_count > 0
                     || l.unread_count > 0
             })
             .collect();
-        system.sort_by_key(|l| crate::ui::sidebar::system_label_order(&l.name));
+        system.sort_by_key(|l| crate::mxr_tui::ui::sidebar::system_label_order(&l.name));
 
         let mut user: Vec<&Label> = self
             .labels
             .iter()
-            .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
-            .filter(|l| l.kind != mxr_core::types::LabelKind::System)
+            .filter(|l| !crate::mxr_tui::ui::sidebar::should_hide_label(&l.name))
+            .filter(|l| l.kind != crate::mxr_core::types::LabelKind::System)
             .collect();
         user.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
@@ -1349,6 +1432,10 @@ impl App {
         *current
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "queued search state stays explicit at call sites"
+    )]
     fn queue_search_request(
         &mut self,
         target: SearchTarget,
@@ -1371,6 +1458,34 @@ impl App {
         });
     }
 
+    fn queue_search_count_request(&mut self, query: String, mode: SearchMode, session_id: u64) {
+        self.pending_search_count = Some(PendingSearchCountRequest {
+            query,
+            mode,
+            session_id,
+        });
+    }
+
+    fn reset_search_page_workspace(&mut self) {
+        Self::bump_search_session_id(&mut self.search_page.session_id);
+        self.search_page.query.clear();
+        self.search_page.results.clear();
+        self.search_page.scores.clear();
+        self.search_page.has_more = false;
+        self.search_page.loading_more = false;
+        self.search_page.total_count = None;
+        self.search_page.count_pending = false;
+        self.search_page.ui_status = SearchUiStatus::Idle;
+        self.search_page.load_to_end = false;
+        self.search_page.session_active = false;
+        self.search_page.active_pane = SearchPane::Results;
+        self.search_page.selected_index = 0;
+        self.search_page.scroll_offset = 0;
+        self.pending_search = None;
+        self.pending_search_count = None;
+        self.clear_message_view_state();
+    }
+
     pub(crate) fn load_more_search_results(&mut self) {
         if self.search_page.loading_more
             || !self.search_page.has_more
@@ -1379,6 +1494,7 @@ impl App {
             return;
         }
         self.search_page.loading_more = true;
+        self.search_page.ui_status = SearchUiStatus::LoadingMore;
         self.queue_search_request(
             SearchTarget::SearchPage,
             true,
@@ -1461,13 +1577,7 @@ impl App {
         let query = query_source.to_lowercase();
         if query.is_empty() {
             if self.screen == Screen::Search {
-                Self::bump_search_session_id(&mut self.search_page.session_id);
-                self.search_page.results.clear();
-                self.search_page.scores.clear();
-                self.search_page.has_more = false;
-                self.search_page.loading_more = false;
-                self.search_page.load_to_end = false;
-                self.search_page.session_active = false;
+                self.reset_search_page_workspace();
             } else {
                 Self::bump_search_session_id(&mut self.mailbox_search_session_id);
                 self.envelopes = self.all_mail_envelopes();
@@ -1502,6 +1612,9 @@ impl App {
                 self.search_page.scores.clear();
                 self.search_page.has_more = false;
                 self.search_page.loading_more = true;
+                self.search_page.total_count = None;
+                self.search_page.count_pending = true;
+                self.search_page.ui_status = SearchUiStatus::FirstLoad;
                 self.search_page.load_to_end = false;
                 self.search_page.session_active = true;
                 self.search_page.active_pane = SearchPane::Results;
@@ -1512,12 +1625,13 @@ impl App {
                 self.queue_search_request(
                     SearchTarget::SearchPage,
                     false,
-                    query_source,
+                    query_source.clone(),
                     self.search_page.mode,
                     self.search_page.sort.clone(),
                     0,
                     session_id,
                 );
+                self.queue_search_count_request(query_source, self.search_page.mode, session_id);
             } else {
                 let mut filtered = filtered;
                 filtered.sort_by(|left, right| {
@@ -1568,7 +1682,7 @@ impl App {
             .or(self.active_label.as_ref())
         {
             if let Some(label) = self.labels.iter().find(|l| &l.id == label_id) {
-                let name = crate::ui::sidebar::humanize_label(&label.name);
+                let name = crate::mxr_tui::ui::sidebar::humanize_label(&label.name);
                 format!("{name} {list_name} ({list_count})")
             } else {
                 format!("{list_name} ({list_count})")
@@ -1685,7 +1799,7 @@ impl App {
         }
     }
 
-    fn summarize_sync_status(sync_statuses: &[mxr_protocol::AccountSyncStatus]) -> String {
+    fn summarize_sync_status(sync_statuses: &[crate::mxr_protocol::AccountSyncStatus]) -> String {
         if sync_statuses.is_empty() {
             return "not synced".into();
         }
@@ -1997,7 +2111,7 @@ impl App {
         self.queued_body_fetches.push(message_id);
     }
 
-    fn queue_thread_fetch(&mut self, thread_id: mxr_core::ThreadId) {
+    fn queue_thread_fetch(&mut self, thread_id: crate::mxr_core::ThreadId) {
         if self.pending_thread_fetch.as_ref() == Some(&thread_id)
             || self.in_flight_thread_fetch.as_ref() == Some(&thread_id)
         {
@@ -2020,10 +2134,10 @@ impl App {
             return raw.to_string();
         }
 
-        let config = mxr_reader::ReaderConfig::default();
+        let config = crate::mxr_reader::ReaderConfig::default();
         match source {
-            BodySource::Plain => mxr_reader::clean(Some(raw), None, &config).content,
-            BodySource::Html => mxr_reader::clean(None, Some(raw), &config).content,
+            BodySource::Plain => crate::mxr_reader::clean(Some(raw), None, &config).content,
+            BodySource::Html => crate::mxr_reader::clean(None, Some(raw), &config).content,
             BodySource::Snippet => raw.to_string(),
         }
     }
@@ -2161,7 +2275,7 @@ impl App {
         });
     }
 
-    pub fn resolve_attachment_file(&mut self, file: &mxr_protocol::AttachmentFile) {
+    pub fn resolve_attachment_file(&mut self, file: &crate::mxr_protocol::AttachmentFile) {
         let path = std::path::PathBuf::from(&file.path);
         for attachment in &mut self.attachment_panel.attachments {
             if attachment.id == file.attachment_id {
@@ -2185,7 +2299,9 @@ impl App {
                 self.labels
                     .iter()
                     .find(|label| &label.provider_id == provider_id)
-                    .map(|label| crate::ui::sidebar::humanize_label(&label.name).to_string())
+                    .map(|label| {
+                        crate::mxr_tui::ui::sidebar::humanize_label(&label.name).to_string()
+                    })
             })
             .collect()
     }
@@ -2215,6 +2331,7 @@ impl App {
                 attachments: self.attachment_summaries_for_envelope(message),
                 selected: self.viewing_envelope.as_ref().map(|env| env.id.clone())
                     == Some(message.id.clone()),
+                bulk_selected: self.selected_set.contains(&message.id),
                 has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
                 signature_expanded: self.signature_expanded,
             })
@@ -2499,7 +2616,7 @@ impl App {
         }
     }
 
-    pub fn resolve_thread_fetch_error(&mut self, thread_id: &mxr_core::ThreadId) {
+    pub fn resolve_thread_fetch_error(&mut self, thread_id: &crate::mxr_core::ThreadId) {
         if self.in_flight_thread_fetch.as_ref() == Some(thread_id) {
             self.in_flight_thread_fetch = None;
         }
@@ -2522,6 +2639,10 @@ impl App {
         self.visual_anchor = None;
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "bulk confirmation inputs stay explicit for safety"
+    )]
     fn queue_or_confirm_bulk_action(
         &mut self,
         title: impl Into<String>,
@@ -2712,9 +2833,9 @@ fn subscription_summary_to_envelope(summary: &SubscriptionSummary) -> Envelope {
 }
 
 fn account_summary_to_config(
-    account: &mxr_protocol::AccountSummaryData,
-) -> Option<mxr_protocol::AccountConfigData> {
-    Some(mxr_protocol::AccountConfigData {
+    account: &crate::mxr_protocol::AccountSummaryData,
+) -> Option<crate::mxr_protocol::AccountConfigData> {
+    Some(crate::mxr_protocol::AccountConfigData {
         key: account.key.clone()?,
         name: account.name.clone(),
         email: account.email.clone(),
@@ -2724,7 +2845,7 @@ fn account_summary_to_config(
     })
 }
 
-fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> AccountFormState {
+fn account_form_from_config(account: crate::mxr_protocol::AccountConfigData) -> AccountFormState {
     let mut form = AccountFormState {
         visible: true,
         key: account.key,
@@ -2735,7 +2856,7 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
 
     if let Some(sync) = account.sync {
         match sync {
-            mxr_protocol::AccountSyncConfigData::Gmail {
+            crate::mxr_protocol::AccountSyncConfigData::Gmail {
                 credential_source,
                 client_id,
                 client_secret,
@@ -2747,7 +2868,7 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 form.gmail_client_secret = client_secret.unwrap_or_default();
                 form.gmail_token_ref = token_ref;
             }
-            mxr_protocol::AccountSyncConfigData::Imap {
+            crate::mxr_protocol::AccountSyncConfigData::Imap {
                 host,
                 port,
                 username,
@@ -2766,7 +2887,7 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
     }
 
     match account.send {
-        Some(mxr_protocol::AccountSendConfigData::Smtp {
+        Some(crate::mxr_protocol::AccountSendConfigData::Smtp {
             host,
             port,
             username,
@@ -2778,7 +2899,7 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
             form.smtp_username = username;
             form.smtp_password_ref = password_ref;
         }
-        Some(mxr_protocol::AccountSendConfigData::Gmail) => {
+        Some(crate::mxr_protocol::AccountSendConfigData::Gmail) => {
             if form.gmail_token_ref.is_empty() {
                 form.gmail_token_ref = format!("mxr/{}-gmail", form.key);
             }
@@ -2797,12 +2918,14 @@ fn account_form_field_value(form: &AccountFormState) -> Option<&str> {
         (_, 3) => Some(form.email.as_str()),
         (AccountFormMode::Gmail, 4) => None,
         (AccountFormMode::Gmail, 5)
-            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+            if form.gmail_credential_source
+                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             Some(form.gmail_client_id.as_str())
         }
         (AccountFormMode::Gmail, 6)
-            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+            if form.gmail_credential_source
+                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             Some(form.gmail_client_secret.as_str())
         }
@@ -2840,12 +2963,14 @@ where
         (_, 2) => &mut form.name,
         (_, 3) => &mut form.email,
         (AccountFormMode::Gmail, 5)
-            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+            if form.gmail_credential_source
+                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             &mut form.gmail_client_id
         }
         (AccountFormMode::Gmail, 6)
-            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
+            if form.gmail_credential_source
+                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             &mut form.gmail_client_secret
         }
@@ -2912,21 +3037,21 @@ fn char_to_byte_index(value: &str, char_index: usize) -> usize {
 }
 
 fn next_gmail_credential_source(
-    current: mxr_protocol::GmailCredentialSourceData,
+    current: crate::mxr_protocol::GmailCredentialSourceData,
     forward: bool,
-) -> mxr_protocol::GmailCredentialSourceData {
+) -> crate::mxr_protocol::GmailCredentialSourceData {
     match (current, forward) {
-        (mxr_protocol::GmailCredentialSourceData::Bundled, true) => {
-            mxr_protocol::GmailCredentialSourceData::Custom
+        (crate::mxr_protocol::GmailCredentialSourceData::Bundled, true) => {
+            crate::mxr_protocol::GmailCredentialSourceData::Custom
         }
-        (mxr_protocol::GmailCredentialSourceData::Custom, true) => {
-            mxr_protocol::GmailCredentialSourceData::Bundled
+        (crate::mxr_protocol::GmailCredentialSourceData::Custom, true) => {
+            crate::mxr_protocol::GmailCredentialSourceData::Bundled
         }
-        (mxr_protocol::GmailCredentialSourceData::Bundled, false) => {
-            mxr_protocol::GmailCredentialSourceData::Custom
+        (crate::mxr_protocol::GmailCredentialSourceData::Bundled, false) => {
+            crate::mxr_protocol::GmailCredentialSourceData::Custom
         }
-        (mxr_protocol::GmailCredentialSourceData::Custom, false) => {
-            mxr_protocol::GmailCredentialSourceData::Bundled
+        (crate::mxr_protocol::GmailCredentialSourceData::Custom, false) => {
+            crate::mxr_protocol::GmailCredentialSourceData::Bundled
         }
     }
 }
@@ -2942,7 +3067,7 @@ pub fn snooze_presets() -> [SnoozePreset; 4] {
 
 pub fn resolve_snooze_preset(
     preset: SnoozePreset,
-    config: &mxr_config::SnoozeConfig,
+    config: &crate::mxr_config::SnoozeConfig,
 ) -> chrono::DateTime<chrono::Utc> {
     use chrono::{Datelike, Duration, Local, NaiveTime, Weekday};
 
@@ -3020,7 +3145,7 @@ mod tests {
     use chrono::TimeZone;
 
     fn test_envelope(
-        thread_id: mxr_core::ThreadId,
+        thread_id: crate::mxr_core::ThreadId,
         subject: &str,
         date: chrono::DateTime<chrono::Utc>,
     ) -> Envelope {
@@ -3052,7 +3177,7 @@ mod tests {
 
     #[test]
     fn build_mail_list_rows_ignores_impossible_future_thread_dates() {
-        let thread_id = mxr_core::ThreadId::new();
+        let thread_id = crate::mxr_core::ThreadId::new();
         let poisoned = test_envelope(
             thread_id.clone(),
             "Poisoned future",

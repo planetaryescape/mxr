@@ -1,7 +1,7 @@
-use mxr_core::id::*;
-use mxr_core::types::*;
+use crate::mxr_core::id::*;
+use crate::mxr_core::types::*;
 
-use crate::message::{future_date_cutoff_timestamp, record_to_envelope};
+use crate::mxr_store::message::{future_date_cutoff_timestamp, record_to_envelope};
 
 impl super::Store {
     pub async fn get_thread(&self, thread_id: &ThreadId) -> Result<Option<Thread>, sqlx::Error> {

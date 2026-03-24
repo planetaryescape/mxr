@@ -1,8 +1,8 @@
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
+use crate::mxr_core::MessageId;
+use crate::mxr_protocol::*;
 use crate::output::resolve_format;
-use mxr_core::MessageId;
-use mxr_protocol::*;
 
 pub async fn run(
     message_id: String,

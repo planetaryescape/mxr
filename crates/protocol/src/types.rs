@@ -1,5 +1,5 @@
-use mxr_core::id::*;
-use mxr_core::types::*;
+use crate::mxr_core::id::*;
+use crate::mxr_core::types::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -369,16 +369,16 @@ pub enum ResponseData {
         headers: Vec<(String, String)>,
     },
     SavedSearches {
-        searches: Vec<mxr_core::types::SavedSearch>,
+        searches: Vec<crate::mxr_core::types::SavedSearch>,
     },
     Subscriptions {
-        subscriptions: Vec<mxr_core::types::SubscriptionSummary>,
+        subscriptions: Vec<crate::mxr_core::types::SubscriptionSummary>,
     },
     SemanticStatus {
         snapshot: SemanticStatusSnapshot,
     },
     SavedSearchData {
-        search: mxr_core::types::SavedSearch,
+        search: crate::mxr_core::types::SavedSearch,
     },
     Status {
         uptime_secs: u64,

@@ -25,8 +25,8 @@ pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mxr_core::*;
     use chrono::TimeZone;
-    use mxr_core::*;
 
     fn test_account() -> Account {
         Account {
@@ -775,7 +775,7 @@ mod tests {
         let now = chrono::Utc::now();
 
         store
-            .upsert_rule(crate::RuleRecordInput {
+            .upsert_rule(crate::mxr_store::RuleRecordInput {
                 id: "rule-1",
                 name: "Archive newsletters",
                 enabled: true,
@@ -790,12 +790,12 @@ mod tests {
 
         let rules = store.list_rules().await.unwrap();
         assert_eq!(rules.len(), 1);
-        let rule_json = crate::rules::row_to_rule_json(&rules[0]);
+        let rule_json = crate::mxr_store::rules::row_to_rule_json(&rules[0]);
         assert_eq!(rule_json["name"], "Archive newsletters");
         assert_eq!(rule_json["priority"], 10);
 
         store
-            .insert_rule_log(crate::RuleLogInput {
+            .insert_rule_log(crate::mxr_store::RuleLogInput {
                 rule_id: "rule-1",
                 rule_name: "Archive newsletters",
                 message_id: "msg-1",
@@ -809,7 +809,7 @@ mod tests {
 
         let logs = store.list_rule_logs(Some("rule-1"), 10).await.unwrap();
         assert_eq!(logs.len(), 1);
-        let log_json = crate::rules::row_to_rule_log_json(&logs[0]);
+        let log_json = crate::mxr_store::rules::row_to_rule_log_json(&logs[0]);
         assert_eq!(log_json["rule_name"], "Archive newsletters");
         assert_eq!(log_json["message_id"], "msg-1");
     }

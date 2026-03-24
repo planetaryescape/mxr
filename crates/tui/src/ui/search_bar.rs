@@ -1,8 +1,8 @@
-use mxr_core::SearchMode;
+use crate::mxr_core::SearchMode;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-use crate::ui::search_query::highlight_search_query;
+use crate::mxr_tui::ui::search_query::highlight_search_query;
 
 pub struct SearchBar {
     pub active: bool,
@@ -70,7 +70,12 @@ impl SearchBar {
     }
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, search_bar: &SearchBar, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    search_bar: &SearchBar,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
     if !search_bar.active {
         return;
     }

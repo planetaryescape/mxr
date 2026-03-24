@@ -1,4 +1,4 @@
-use crate::error::ImapProviderError;
+use crate::mxr_provider_imap::error::ImapProviderError;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]

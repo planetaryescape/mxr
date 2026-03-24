@@ -5,16 +5,16 @@ pub mod parse;
 pub mod session;
 pub mod types;
 
+use crate::mxr_core::id::AccountId;
+use crate::mxr_core::provider::MailSyncProvider;
+use crate::mxr_core::types::*;
 use async_trait::async_trait;
 use config::ImapConfig;
-use mxr_core::id::AccountId;
-use mxr_core::provider::MailSyncProvider;
-use mxr_core::types::*;
 use session::{ImapSessionFactory, RealImapSessionFactory};
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};
 
-use crate::types::{FolderInfo, ImapCapabilities};
+use crate::mxr_provider_imap::types::{FolderInfo, ImapCapabilities};
 
 pub struct ImapProvider {
     account_id: AccountId,
@@ -154,12 +154,12 @@ impl ImapProvider {
     async fn enable_session(
         session: &mut dyn session::ImapSession,
         capabilities: &ImapCapabilities,
-    ) -> mxr_core::provider::Result<()> {
+    ) -> crate::mxr_core::provider::Result<()> {
         let enabled = Self::enableable_capabilities(capabilities);
         session
             .enable(&enabled)
             .await
-            .map_err(mxr_core::error::MxrError::from)
+            .map_err(crate::mxr_core::error::MxrError::from)
     }
 
     fn known_uid_set(mailbox: &ImapMailboxCursor) -> Option<String> {
@@ -183,11 +183,11 @@ impl ImapProvider {
         seen_uids: &mut HashSet<u32>,
         account_id: &AccountId,
         synced: &mut Vec<SyncedMessage>,
-    ) -> mxr_core::provider::Result<()> {
+    ) -> crate::mxr_core::provider::Result<()> {
         let fetched = session
             .uid_fetch(uid_set, query)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         for msg in &fetched {
             if msg.uid < min_uid || !seen_uids.insert(msg.uid) {
@@ -211,22 +211,22 @@ impl ImapProvider {
         session: &mut dyn session::ImapSession,
         uid: &str,
         capabilities: &ImapCapabilities,
-    ) -> mxr_core::provider::Result<()> {
+    ) -> crate::mxr_core::provider::Result<()> {
         session
             .uid_store(uid, "+FLAGS (\\Deleted)")
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         if capabilities.uidplus {
             session
                 .uid_expunge(uid)
                 .await
-                .map_err(mxr_core::error::MxrError::from)?;
+                .map_err(crate::mxr_core::error::MxrError::from)?;
         } else {
             session
                 .expunge()
                 .await
-                .map_err(mxr_core::error::MxrError::from)?;
+                .map_err(crate::mxr_core::error::MxrError::from)?;
         }
 
         Ok(())
@@ -237,34 +237,37 @@ impl ImapProvider {
         uid: &str,
         target_folder: &str,
         capabilities: &ImapCapabilities,
-    ) -> mxr_core::provider::Result<()> {
+    ) -> crate::mxr_core::provider::Result<()> {
         if capabilities.move_ext {
             session
                 .uid_move(uid, target_folder)
                 .await
-                .map_err(mxr_core::error::MxrError::from)?;
+                .map_err(crate::mxr_core::error::MxrError::from)?;
         } else {
             session
                 .uid_copy(uid, target_folder)
                 .await
-                .map_err(mxr_core::error::MxrError::from)?;
+                .map_err(crate::mxr_core::error::MxrError::from)?;
             Self::delete_selected_message(session, uid, capabilities).await?;
         }
 
         Ok(())
     }
 
-    async fn assert_mutable_folder(&self, folder_name: &str) -> mxr_core::provider::Result<()> {
+    async fn assert_mutable_folder(
+        &self,
+        folder_name: &str,
+    ) -> crate::mxr_core::provider::Result<()> {
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let folders = session
             .list_folders()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         let _ = session.logout().await;
 
         let is_special_use = folders
@@ -275,7 +278,7 @@ impl ImapProvider {
             });
 
         if is_special_use {
-            return Err(mxr_core::error::MxrError::Provider(
+            return Err(crate::mxr_core::error::MxrError::Provider(
                 "Cannot modify IMAP system folders".to_string(),
             ));
         }
@@ -284,26 +287,26 @@ impl ImapProvider {
     }
 
     /// Initial sync: fetch all messages from syncable mailboxes via UID FETCH.
-    async fn initial_sync(&self) -> mxr_core::provider::Result<SyncBatch> {
+    async fn initial_sync(&self) -> crate::mxr_core::provider::Result<SyncBatch> {
         debug!("Starting IMAP initial sync for account {}", self.account_id);
 
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let capabilities = session
             .capabilities()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         debug!(?capabilities, "IMAP server capabilities");
         Self::enable_session(&mut *session, &capabilities).await?;
 
         let folders = session
             .list_folders()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         let sync_folders = Self::syncable_folders(&folders);
 
         let mut synced = Vec::new();
@@ -312,7 +315,7 @@ impl ImapProvider {
             let mailbox_info = session
                 .select(&folder.name)
                 .await
-                .map_err(mxr_core::error::MxrError::from)?;
+                .map_err(crate::mxr_core::error::MxrError::from)?;
             mailboxes.push(ImapMailboxCursor {
                 mailbox: folder.name.clone(),
                 uid_validity: mailbox_info.uid_validity,
@@ -327,7 +330,7 @@ impl ImapProvider {
             let fetched = session
                 .uid_fetch("1:*", "(FLAGS BODY.PEEK[] RFC822.SIZE)")
                 .await
-                .map_err(mxr_core::error::MxrError::from)?;
+                .map_err(crate::mxr_core::error::MxrError::from)?;
 
             for msg in &fetched {
                 match parse::imap_fetch_to_synced_message(msg, &folder.name, &self.account_id) {
@@ -358,7 +361,7 @@ impl ImapProvider {
     async fn delta_sync(
         &self,
         old_mailboxes: &[ImapMailboxCursor],
-    ) -> mxr_core::provider::Result<SyncBatch> {
+    ) -> crate::mxr_core::provider::Result<SyncBatch> {
         debug!(
             mailbox_count = old_mailboxes.len(),
             "Starting IMAP delta sync for account {}", self.account_id
@@ -368,19 +371,19 @@ impl ImapProvider {
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let capabilities = session
             .capabilities()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         debug!(?capabilities, "IMAP server capabilities");
         Self::enable_session(&mut *session, &capabilities).await?;
 
         let folders = session
             .list_folders()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         let sync_folders = Self::syncable_folders(&folders);
         let old_by_mailbox: HashMap<&str, &ImapMailboxCursor> = old_mailboxes
             .iter()
@@ -448,20 +451,20 @@ impl ImapProvider {
                                     session
                                         .select(&folder.name)
                                         .await
-                                        .map_err(mxr_core::error::MxrError::from)?
+                                        .map_err(crate::mxr_core::error::MxrError::from)?
                                 }
                             }
                         }
                         None => session
                             .select(&folder.name)
                             .await
-                            .map_err(mxr_core::error::MxrError::from)?,
+                            .map_err(crate::mxr_core::error::MxrError::from)?,
                     }
                 } else {
                     session
                         .select(&folder.name)
                         .await
-                        .map_err(mxr_core::error::MxrError::from)?
+                        .map_err(crate::mxr_core::error::MxrError::from)?
                 };
             mailboxes.push(ImapMailboxCursor {
                 mailbox: folder.name.clone(),
@@ -576,29 +579,29 @@ impl MailSyncProvider for ImapProvider {
         }
     }
 
-    async fn authenticate(&mut self) -> mxr_core::provider::Result<()> {
+    async fn authenticate(&mut self) -> crate::mxr_core::provider::Result<()> {
         let _password = self
             .config
             .resolve_password()
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         Ok(())
     }
 
-    async fn refresh_auth(&mut self) -> mxr_core::provider::Result<()> {
+    async fn refresh_auth(&mut self) -> crate::mxr_core::provider::Result<()> {
         Ok(())
     }
 
-    async fn sync_labels(&self) -> mxr_core::provider::Result<Vec<Label>> {
+    async fn sync_labels(&self) -> crate::mxr_core::provider::Result<Vec<Label>> {
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let folder_list = session
             .list_folders()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let _ = session.logout().await;
 
@@ -617,7 +620,10 @@ impl MailSyncProvider for ImapProvider {
             .collect())
     }
 
-    async fn sync_messages(&self, cursor: &SyncCursor) -> mxr_core::provider::Result<SyncBatch> {
+    async fn sync_messages(
+        &self,
+        cursor: &SyncCursor,
+    ) -> crate::mxr_core::provider::Result<SyncBatch> {
         match cursor {
             SyncCursor::Initial => self.initial_sync().await,
             SyncCursor::Imap {
@@ -638,7 +644,7 @@ impl MailSyncProvider for ImapProvider {
                 };
                 self.delta_sync(&legacy_mailboxes).await
             }
-            other => Err(mxr_core::error::MxrError::Provider(format!(
+            other => Err(crate::mxr_core::error::MxrError::Provider(format!(
                 "IMAP provider received incompatible cursor: {other:?}"
             ))),
         }
@@ -648,49 +654,54 @@ impl MailSyncProvider for ImapProvider {
         &self,
         provider_message_id: &str,
         provider_attachment_id: &str,
-    ) -> mxr_core::provider::Result<Vec<u8>> {
+    ) -> crate::mxr_core::provider::Result<Vec<u8>> {
         let (mailbox, uid) = folders::parse_provider_id(provider_message_id)
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         session
             .select(&mailbox)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let fetched = session
             .uid_fetch(&uid.to_string(), "BODY[]")
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let _ = session.logout().await;
 
         let msg = fetched.first().ok_or_else(|| {
-            mxr_core::error::MxrError::Provider(format!("Message not found: {provider_message_id}"))
+            crate::mxr_core::error::MxrError::Provider(format!(
+                "Message not found: {provider_message_id}"
+            ))
         })?;
 
         let raw = msg
             .body
             .as_ref()
-            .ok_or_else(|| mxr_core::error::MxrError::Provider("Empty body".into()))?;
+            .ok_or_else(|| crate::mxr_core::error::MxrError::Provider("Empty body".into()))?;
 
         let parsed = mail_parser::MessageParser::default().parse(raw);
-        let parsed = parsed
-            .ok_or_else(|| mxr_core::error::MxrError::Provider("Failed to parse message".into()))?;
+        let parsed = parsed.ok_or_else(|| {
+            crate::mxr_core::error::MxrError::Provider("Failed to parse message".into())
+        })?;
 
         let part_idx: usize = provider_attachment_id.parse().map_err(|_| {
-            mxr_core::error::MxrError::Provider(format!(
+            crate::mxr_core::error::MxrError::Provider(format!(
                 "Invalid attachment ID: {provider_attachment_id}"
             ))
         })?;
 
         let part = parsed.parts.get(part_idx).ok_or_else(|| {
-            mxr_core::error::MxrError::Provider(format!("Attachment part {part_idx} not found"))
+            crate::mxr_core::error::MxrError::Provider(format!(
+                "Attachment part {part_idx} not found"
+            ))
         })?;
 
         Ok(part.contents().to_vec())
@@ -701,28 +712,28 @@ impl MailSyncProvider for ImapProvider {
         provider_message_id: &str,
         add: &[String],
         remove: &[String],
-    ) -> mxr_core::provider::Result<()> {
+    ) -> crate::mxr_core::provider::Result<()> {
         let (mailbox, uid) = folders::parse_provider_id(provider_message_id)
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         session
             .select(&mailbox)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         let capabilities = session
             .capabilities()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         let folders = session
             .list_folders()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let uid_str = uid.to_string();
 
@@ -735,7 +746,7 @@ impl MailSyncProvider for ImapProvider {
             session
                 .uid_store(&uid_str, &flag_str)
                 .await
-                .map_err(mxr_core::error::MxrError::from)?;
+                .map_err(crate::mxr_core::error::MxrError::from)?;
         }
 
         if !remove_flags.is_empty() {
@@ -743,7 +754,7 @@ impl MailSyncProvider for ImapProvider {
             session
                 .uid_store(&uid_str, &flag_str)
                 .await
-                .map_err(mxr_core::error::MxrError::from)?;
+                .map_err(crate::mxr_core::error::MxrError::from)?;
         }
 
         // Handle folder moves (labels that are actually folder names)
@@ -763,7 +774,7 @@ impl MailSyncProvider for ImapProvider {
         {
             let archive_folder =
                 Self::resolve_folder_for_label("ARCHIVE", &folders).ok_or_else(|| {
-                    mxr_core::error::MxrError::Provider(
+                    crate::mxr_core::error::MxrError::Provider(
                         "Archive folder not found on IMAP server".to_string(),
                     )
                 })?;
@@ -777,7 +788,7 @@ impl MailSyncProvider for ImapProvider {
                 session
                     .uid_copy(&uid_str, folder)
                     .await
-                    .map_err(mxr_core::error::MxrError::from)?;
+                    .map_err(crate::mxr_core::error::MxrError::from)?;
             }
 
             if remove_current_mailbox {
@@ -793,17 +804,17 @@ impl MailSyncProvider for ImapProvider {
         &self,
         name: &str,
         _color: Option<&str>,
-    ) -> mxr_core::provider::Result<Label> {
+    ) -> crate::mxr_core::provider::Result<Label> {
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         session
             .create_mailbox(name)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         let _ = session.logout().await;
 
         Ok(folders::map_folder_to_label(name, None, &self.account_id))
@@ -813,19 +824,19 @@ impl MailSyncProvider for ImapProvider {
         &self,
         provider_label_id: &str,
         new_name: &str,
-    ) -> mxr_core::provider::Result<Label> {
+    ) -> crate::mxr_core::provider::Result<Label> {
         self.assert_mutable_folder(provider_label_id).await?;
 
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         session
             .rename_mailbox(provider_label_id, new_name)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         let _ = session.logout().await;
 
         Ok(folders::map_folder_to_label(
@@ -835,45 +846,45 @@ impl MailSyncProvider for ImapProvider {
         ))
     }
 
-    async fn delete_label(&self, provider_label_id: &str) -> mxr_core::provider::Result<()> {
+    async fn delete_label(&self, provider_label_id: &str) -> crate::mxr_core::provider::Result<()> {
         self.assert_mutable_folder(provider_label_id).await?;
 
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         session
             .delete_mailbox(provider_label_id)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         let _ = session.logout().await;
         Ok(())
     }
 
-    async fn trash(&self, provider_message_id: &str) -> mxr_core::provider::Result<()> {
+    async fn trash(&self, provider_message_id: &str) -> crate::mxr_core::provider::Result<()> {
         let (mailbox, uid) = folders::parse_provider_id(provider_message_id)
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         session
             .select(&mailbox)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         let capabilities = session
             .capabilities()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
         let folders = session
             .list_folders()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let uid_str = uid.to_string();
         let trash_folder = Self::resolve_folder_for_label("TRASH", &folders)
@@ -901,20 +912,20 @@ impl MailSyncProvider for ImapProvider {
         &self,
         provider_message_id: &str,
         read: bool,
-    ) -> mxr_core::provider::Result<()> {
+    ) -> crate::mxr_core::provider::Result<()> {
         let (mailbox, uid) = folders::parse_provider_id(provider_message_id)
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         session
             .select(&mailbox)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let flag_op = if read {
             "+FLAGS (\\Seen)"
@@ -925,7 +936,7 @@ impl MailSyncProvider for ImapProvider {
         session
             .uid_store(&uid.to_string(), flag_op)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let _ = session.logout().await;
         Ok(())
@@ -935,20 +946,20 @@ impl MailSyncProvider for ImapProvider {
         &self,
         provider_message_id: &str,
         starred: bool,
-    ) -> mxr_core::provider::Result<()> {
+    ) -> crate::mxr_core::provider::Result<()> {
         let (mailbox, uid) = folders::parse_provider_id(provider_message_id)
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let mut session = self
             .session_factory
             .create_session()
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         session
             .select(&mailbox)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let flag_op = if starred {
             "+FLAGS (\\Flagged)"
@@ -959,7 +970,7 @@ impl MailSyncProvider for ImapProvider {
         session
             .uid_store(&uid.to_string(), flag_op)
             .await
-            .map_err(mxr_core::error::MxrError::from)?;
+            .map_err(crate::mxr_core::error::MxrError::from)?;
 
         let _ = session.logout().await;
         Ok(())
@@ -981,8 +992,8 @@ fn label_to_flag(label: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::mock::MockImapSessionFactory;
-    use crate::types::*;
+    use crate::mxr_provider_imap::session::mock::MockImapSessionFactory;
+    use crate::mxr_provider_imap::types::*;
 
     fn test_config() -> ImapConfig {
         ImapConfig {
@@ -1086,7 +1097,7 @@ mod tests {
         );
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
-        mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
+        crate::mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
     }
 
     #[tokio::test]

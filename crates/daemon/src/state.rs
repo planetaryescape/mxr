@@ -1,10 +1,10 @@
-use mxr_core::id::AccountId;
-use mxr_core::*;
-use mxr_protocol::IpcMessage;
-use mxr_search::SearchIndex;
-use mxr_semantic::SemanticEngine;
-use mxr_store::Store;
-use mxr_sync::SyncEngine;
+use crate::mxr_core::id::AccountId;
+use crate::mxr_core::*;
+use crate::mxr_protocol::IpcMessage;
+use crate::mxr_search::SearchIndex;
+use crate::mxr_semantic::SemanticEngine;
+use crate::mxr_store::Store;
+use crate::mxr_sync::SyncEngine;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex as StdMutex, RwLock};
 use std::time::Instant;
@@ -33,13 +33,13 @@ pub struct AppState {
     sync_loop_accounts: StdMutex<HashSet<AccountId>>,
     pub event_tx: broadcast::Sender<IpcMessage>,
     pub start_time: Instant,
-    config: RwLock<mxr_config::MxrConfig>,
+    config: RwLock<crate::mxr_config::MxrConfig>,
 }
 
 impl AppState {
     pub async fn new() -> anyhow::Result<Self> {
-        let config = mxr_config::load_config().unwrap_or_default();
-        let data_dir = mxr_config::data_dir();
+        let config = crate::mxr_config::load_config().unwrap_or_default();
+        let data_dir = crate::mxr_config::data_dir();
         std::fs::create_dir_all(&data_dir)?;
 
         let db_path = data_dir.join("mxr.db");
@@ -78,7 +78,7 @@ impl AppState {
     }
 
     async fn create_providers_from_config(
-        config: &mxr_config::MxrConfig,
+        config: &crate::mxr_config::MxrConfig,
         store: &Arc<Store>,
     ) -> anyhow::Result<ProviderSetup> {
         let mut providers = HashMap::new();
@@ -116,7 +116,7 @@ impl AppState {
             store.insert_account(&account).await?;
 
             let sync_provider = match &acct_config.sync {
-                Some(mxr_config::SyncProviderConfig::Gmail {
+                Some(crate::mxr_config::SyncProviderConfig::Gmail {
                     credential_source: _,
                     client_id,
                     client_secret,
@@ -126,21 +126,24 @@ impl AppState {
                     let csecret = client_secret
                         .clone()
                         .or_else(|| {
-                            mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET.map(String::from)
+                            crate::mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET.map(String::from)
                         })
                         .unwrap_or_default();
-                    let mut auth =
-                        mxr_provider_gmail::auth::GmailAuth::new(cid, csecret, token_ref.clone());
+                    let mut auth = crate::mxr_provider_gmail::auth::GmailAuth::new(
+                        cid,
+                        csecret,
+                        token_ref.clone(),
+                    );
                     auth.load_existing().await?;
-                    let client = mxr_provider_gmail::client::GmailClient::new(auth);
-                    let provider = Arc::new(mxr_provider_gmail::GmailProvider::new(
+                    let client = crate::mxr_provider_gmail::client::GmailClient::new(auth);
+                    let provider = Arc::new(crate::mxr_provider_gmail::GmailProvider::new(
                         account_id.clone(),
                         client,
                     ));
                     let sync_provider: Arc<dyn MailSyncProvider> = provider.clone();
                     if matches!(
                         acct_config.send,
-                        Some(mxr_config::SendProviderConfig::Gmail)
+                        Some(crate::mxr_config::SendProviderConfig::Gmail)
                     ) {
                         let send_provider: Arc<dyn MailSendProvider> = provider.clone();
                         send_providers.insert(account_id.clone(), send_provider.clone());
@@ -152,15 +155,15 @@ impl AppState {
                     }
                     Some(sync_provider)
                 }
-                Some(mxr_config::SyncProviderConfig::Imap {
+                Some(crate::mxr_config::SyncProviderConfig::Imap {
                     host,
                     port,
                     username,
                     password_ref,
                     use_tls,
-                }) => Some(Arc::new(mxr_provider_imap::ImapProvider::new(
+                }) => Some(Arc::new(crate::mxr_provider_imap::ImapProvider::new(
                     account_id.clone(),
-                    mxr_provider_imap::config::ImapConfig {
+                    crate::mxr_provider_imap::config::ImapConfig {
                         host: host.clone(),
                         port: *port,
                         username: username.clone(),
@@ -180,13 +183,13 @@ impl AppState {
 
             if matches!(
                 acct_config.send,
-                Some(mxr_config::SendProviderConfig::Gmail)
+                Some(crate::mxr_config::SendProviderConfig::Gmail)
             ) && !send_providers.contains_key(&account_id)
             {
                 anyhow::bail!("Account '{key}' uses gmail send without gmail sync");
             }
 
-            if let Some(mxr_config::SendProviderConfig::Smtp {
+            if let Some(crate::mxr_config::SendProviderConfig::Smtp {
                 host,
                 port,
                 username,
@@ -194,8 +197,8 @@ impl AppState {
                 use_tls,
             }) = &acct_config.send
             {
-                let send_provider = Arc::new(mxr_provider_smtp::SmtpSendProvider::new(
-                    mxr_provider_smtp::config::SmtpConfig {
+                let send_provider = Arc::new(crate::mxr_provider_smtp::SmtpSendProvider::new(
+                    crate::mxr_provider_smtp::config::SmtpConfig {
                         host: host.clone(),
                         port: *port,
                         username: username.clone(),
@@ -219,14 +222,14 @@ impl AppState {
     }
 
     pub fn data_dir() -> std::path::PathBuf {
-        mxr_config::data_dir()
+        crate::mxr_config::data_dir()
     }
 
     pub fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
     }
 
-    pub fn config_snapshot(&self) -> mxr_config::MxrConfig {
+    pub fn config_snapshot(&self) -> crate::mxr_config::MxrConfig {
         self.config.read().expect("config lock poisoned").clone()
     }
 
@@ -245,13 +248,13 @@ impl AppState {
     pub async fn mutate_config<F>(
         &self,
         mutator: F,
-    ) -> std::result::Result<mxr_config::MxrConfig, String>
+    ) -> std::result::Result<crate::mxr_config::MxrConfig, String>
     where
-        F: FnOnce(&mut mxr_config::MxrConfig),
+        F: FnOnce(&mut crate::mxr_config::MxrConfig),
     {
         let mut config = self.config_snapshot();
         mutator(&mut config);
-        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+        crate::mxr_config::save_config(&config).map_err(|e| e.to_string())?;
         self.semantic
             .lock()
             .await
@@ -346,7 +349,7 @@ impl AppState {
     }
 
     pub async fn reload_accounts_from_disk(self: &Arc<Self>) -> std::result::Result<(), String> {
-        let config = mxr_config::load_config().map_err(|e| e.to_string())?;
+        let config = crate::mxr_config::load_config().map_err(|e| e.to_string())?;
         let provider_setup = Self::create_providers_from_config(&config, &self.store)
             .await
             .map_err(|e| e.to_string())?;
@@ -383,7 +386,10 @@ impl AppState {
         let semantic = Arc::new(Mutex::new(SemanticEngine::new(
             store.clone(),
             &std::env::temp_dir(),
-            mxr_config::MxrConfig::default().search.semantic.clone(),
+            crate::mxr_config::MxrConfig::default()
+                .search
+                .semantic
+                .clone(),
         )));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
         let (event_tx, _) = broadcast::channel(256);
@@ -402,19 +408,22 @@ impl AppState {
             sync_loop_accounts: StdMutex::new(HashSet::new()),
             event_tx,
             start_time: Instant::now(),
-            config: RwLock::new(mxr_config::MxrConfig::default()),
+            config: RwLock::new(crate::mxr_config::MxrConfig::default()),
         })
     }
 
     #[cfg(test)]
     pub async fn in_memory_with_fake(
-    ) -> anyhow::Result<(Self, Arc<mxr_provider_fake::FakeProvider>)> {
+    ) -> anyhow::Result<(Self, Arc<crate::mxr_provider_fake::FakeProvider>)> {
         let store = Arc::new(Store::in_memory().await?);
         let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
         let semantic = Arc::new(Mutex::new(SemanticEngine::new(
             store.clone(),
             &std::env::temp_dir(),
-            mxr_config::MxrConfig::default().search.semantic.clone(),
+            crate::mxr_config::MxrConfig::default()
+                .search
+                .semantic
+                .clone(),
         )));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
@@ -432,7 +441,9 @@ impl AppState {
         };
         store.insert_account(&account).await?;
 
-        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let fake = Arc::new(crate::mxr_provider_fake::FakeProvider::new(
+            account_id.clone(),
+        ));
         let provider: Arc<dyn MailSyncProvider> = fake.clone();
         let send_provider: Option<Arc<dyn MailSendProvider>> = Some(fake.clone());
 
@@ -458,14 +469,14 @@ impl AppState {
                 sync_loop_accounts: StdMutex::new(HashSet::new()),
                 event_tx,
                 start_time: Instant::now(),
-                config: RwLock::new(mxr_config::MxrConfig::default()),
+                config: RwLock::new(crate::mxr_config::MxrConfig::default()),
             },
             fake,
         ))
     }
 
     pub fn socket_path() -> std::path::PathBuf {
-        mxr_config::socket_path()
+        crate::mxr_config::socket_path()
     }
 
     #[cfg(test)]
@@ -530,18 +541,22 @@ fn search_error_requires_repair(message: &str) -> bool {
         || lower.contains("already an indexwriter working"))
 }
 
-fn sync_provider_kind(sync: Option<&mxr_config::SyncProviderConfig>) -> Option<ProviderKind> {
+fn sync_provider_kind(
+    sync: Option<&crate::mxr_config::SyncProviderConfig>,
+) -> Option<ProviderKind> {
     match sync {
-        Some(mxr_config::SyncProviderConfig::Gmail { .. }) => Some(ProviderKind::Gmail),
-        Some(mxr_config::SyncProviderConfig::Imap { .. }) => Some(ProviderKind::Imap),
+        Some(crate::mxr_config::SyncProviderConfig::Gmail { .. }) => Some(ProviderKind::Gmail),
+        Some(crate::mxr_config::SyncProviderConfig::Imap { .. }) => Some(ProviderKind::Imap),
         None => None,
     }
 }
 
-fn send_provider_kind(send: Option<&mxr_config::SendProviderConfig>) -> Option<ProviderKind> {
+fn send_provider_kind(
+    send: Option<&crate::mxr_config::SendProviderConfig>,
+) -> Option<ProviderKind> {
     match send {
-        Some(mxr_config::SendProviderConfig::Gmail) => Some(ProviderKind::Gmail),
-        Some(mxr_config::SendProviderConfig::Smtp { .. }) => Some(ProviderKind::Smtp),
+        Some(crate::mxr_config::SendProviderConfig::Gmail) => Some(ProviderKind::Gmail),
+        Some(crate::mxr_config::SendProviderConfig::Smtp { .. }) => Some(ProviderKind::Smtp),
         None => None,
     }
 }
@@ -559,8 +574,8 @@ fn provider_kind_name(kind: ProviderKind) -> &'static str {
 mod tests {
     use super::*;
 
-    fn imap_smtp_config(default_account: &str) -> mxr_config::MxrConfig {
-        mxr_config::load_config_from_str(&format!(
+    fn imap_smtp_config(default_account: &str) -> crate::mxr_config::MxrConfig {
+        crate::mxr_config::load_config_from_str(&format!(
             r#"
 [general]
 default_account = "{default_account}"
@@ -668,7 +683,7 @@ use_tls = true
     #[tokio::test]
     async fn create_providers_from_config_allows_empty_config() {
         let store = Arc::new(Store::in_memory().await.expect("store"));
-        let config = mxr_config::MxrConfig::default();
+        let config = crate::mxr_config::MxrConfig::default();
 
         let setup = AppState::create_providers_from_config(&config, &store)
             .await

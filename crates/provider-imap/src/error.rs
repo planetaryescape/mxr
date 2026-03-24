@@ -20,8 +20,8 @@ pub enum ImapProviderError {
     Io(#[from] std::io::Error),
 }
 
-impl From<ImapProviderError> for mxr_core::error::MxrError {
+impl From<ImapProviderError> for crate::mxr_core::error::MxrError {
     fn from(e: ImapProviderError) -> Self {
-        mxr_core::error::MxrError::Provider(e.to_string())
+        crate::mxr_core::error::MxrError::Provider(e.to_string())
     }
 }

@@ -1,8 +1,8 @@
 use crate::cli::{LabelsAction, OutputFormat};
 use crate::ipc_client::IpcClient;
+use crate::mxr_core::types::Label;
+use crate::mxr_protocol::*;
 use crate::output::resolve_format;
-use mxr_core::types::Label;
-use mxr_protocol::*;
 
 fn render_labels(labels: &[Label], format: OutputFormat) -> anyhow::Result<String> {
     Ok(match format {
@@ -33,9 +33,9 @@ fn render_labels(labels: &[Label], format: OutputFormat) -> anyhow::Result<Strin
                 out.push_str(&format!("{}\n", "-".repeat(56)));
                 for label in labels {
                     let kind = match label.kind {
-                        mxr_core::types::LabelKind::System => "system",
-                        mxr_core::types::LabelKind::Folder => "folder",
-                        mxr_core::types::LabelKind::User => "user",
+                        crate::mxr_core::types::LabelKind::System => "system",
+                        crate::mxr_core::types::LabelKind::Folder => "folder",
+                        crate::mxr_core::types::LabelKind::User => "user",
                     };
                     out.push_str(&format!(
                         "{:<24} {:<10} {:>8} {:>8}\n",
@@ -123,7 +123,7 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::{AccountId, LabelId};
+    use crate::mxr_core::{AccountId, LabelId};
 
     fn sample_labels() -> Vec<Label> {
         vec![
@@ -131,7 +131,7 @@ mod tests {
                 id: LabelId::new(),
                 account_id: AccountId::new(),
                 name: "Inbox".to_string(),
-                kind: mxr_core::types::LabelKind::System,
+                kind: crate::mxr_core::types::LabelKind::System,
                 color: None,
                 provider_id: "INBOX".to_string(),
                 unread_count: 3,
@@ -141,7 +141,7 @@ mod tests {
                 id: LabelId::new(),
                 account_id: AccountId::new(),
                 name: "Projects".to_string(),
-                kind: mxr_core::types::LabelKind::User,
+                kind: crate::mxr_core::types::LabelKind::User,
                 color: Some("#ff6600".to_string()),
                 provider_id: "Projects".to_string(),
                 unread_count: 1,

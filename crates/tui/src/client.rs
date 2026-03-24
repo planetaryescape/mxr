@@ -1,8 +1,8 @@
+use crate::mxr_core::id::*;
+use crate::mxr_core::types::*;
+use crate::mxr_core::MxrError;
+use crate::mxr_protocol::*;
 use futures::{SinkExt, StreamExt};
-use mxr_core::id::*;
-use mxr_core::types::*;
-use mxr_core::MxrError;
-use mxr_protocol::*;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::net::UnixStream;
@@ -114,7 +114,7 @@ impl Client {
                 limit,
                 offset: 0,
                 mode: None,
-                sort: Some(mxr_core::types::SortOrder::DateDesc),
+                sort: Some(crate::mxr_core::types::SortOrder::DateDesc),
                 explain: false,
             })
             .await?;
@@ -177,7 +177,7 @@ impl Client {
 
     pub async fn list_saved_searches(
         &mut self,
-    ) -> Result<Vec<mxr_core::types::SavedSearch>, MxrError> {
+    ) -> Result<Vec<crate::mxr_core::types::SavedSearch>, MxrError> {
         let resp = self.request(Request::ListSavedSearches).await?;
         match resp {
             Response::Ok {
@@ -191,7 +191,7 @@ impl Client {
     pub async fn list_subscriptions(
         &mut self,
         limit: u32,
-    ) -> Result<Vec<mxr_core::types::SubscriptionSummary>, MxrError> {
+    ) -> Result<Vec<crate::mxr_core::types::SubscriptionSummary>, MxrError> {
         let resp = self.request(Request::ListSubscriptions { limit }).await?;
         match resp {
             Response::Ok {

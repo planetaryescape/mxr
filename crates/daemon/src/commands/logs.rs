@@ -27,7 +27,7 @@ fn purge_old_log_files(log_dir: &Path, cutoff: SystemTime) -> anyhow::Result<usi
 }
 
 fn purge_events(retention_days: u32) -> anyhow::Result<u64> {
-    let db_path = mxr_config::data_dir().join("mxr.db");
+    let db_path = crate::mxr_config::data_dir().join("mxr.db");
     if !db_path.exists() {
         return Ok(0);
     }
@@ -35,7 +35,7 @@ fn purge_events(retention_days: u32) -> anyhow::Result<u64> {
     let cutoff = chrono::Utc::now() - chrono::Duration::days(retention_days as i64);
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async move {
-        let store = mxr_store::Store::new(&db_path).await?;
+        let store = crate::mxr_store::Store::new(&db_path).await?;
         Ok::<u64, anyhow::Error>(store.prune_events_before(cutoff.timestamp()).await?)
     })
 }
@@ -46,12 +46,12 @@ pub fn run(
     _since: Option<String>,
     purge: bool,
 ) -> anyhow::Result<()> {
-    let data_dir = mxr_config::data_dir();
+    let data_dir = crate::mxr_config::data_dir();
     let log_dir = data_dir.join("logs");
     let log_path = log_dir.join("mxr.log");
 
     if purge {
-        let config = mxr_config::load_config().unwrap_or_default();
+        let config = crate::mxr_config::load_config().unwrap_or_default();
         let retention_days = config.logging.event_retention_days;
         let cutoff = SystemTime::now() - Duration::from_secs(retention_days as u64 * 24 * 60 * 60);
         let removed_files = purge_old_log_files(&log_dir, cutoff)?;

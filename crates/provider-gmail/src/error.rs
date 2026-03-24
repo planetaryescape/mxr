@@ -1,4 +1,4 @@
-use mxr_core::MxrError;
+use crate::mxr_core::MxrError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

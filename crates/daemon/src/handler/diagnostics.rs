@@ -3,17 +3,17 @@ use super::{
     handle_export_search, handle_export_thread, protocol_event_entry, recent_log_lines,
     should_fallback_to_tantivy, HandlerResult,
 };
-use crate::state::AppState;
-use chrono::Datelike;
-use mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr_core::types::{ExportFormat, SearchMode, SemanticProfile, SortOrder};
-use mxr_protocol::IPC_PROTOCOL_VERSION;
-use mxr_protocol::{ResponseData, SearchExplain, SearchExplainResult, SearchResultItem};
-use mxr_search::{
+use crate::mxr_core::id::{AccountId, MessageId, ThreadId};
+use crate::mxr_core::types::{ExportFormat, SearchMode, SemanticProfile, SortOrder};
+use crate::mxr_protocol::IPC_PROTOCOL_VERSION;
+use crate::mxr_protocol::{ResponseData, SearchExplain, SearchExplainResult, SearchResultItem};
+use crate::mxr_search::{
     ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp},
     parse_query, QueryBuilder, SearchPage, SearchResult,
 };
-use mxr_semantic::{should_use_semantic, SemanticHit};
+use crate::mxr_semantic::{should_use_semantic, SemanticHit};
+use crate::state::AppState;
+use chrono::Datelike;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -274,13 +274,13 @@ pub(super) async fn create_saved_search(
     query: &str,
     search_mode: SearchMode,
 ) -> HandlerResult {
-    let search = mxr_core::types::SavedSearch {
-        id: mxr_core::SavedSearchId::new(),
+    let search = crate::mxr_core::types::SavedSearch {
+        id: crate::mxr_core::SavedSearchId::new(),
         account_id: None,
         name: name.to_string(),
         query: query.to_string(),
         search_mode,
-        sort: mxr_core::types::SortOrder::DateDesc,
+        sort: crate::mxr_core::types::SortOrder::DateDesc,
         icon: None,
         position: 0,
         created_at: chrono::Utc::now(),
@@ -377,8 +377,8 @@ pub(super) async fn export_thread(
     format: &ExportFormat,
 ) -> HandlerResult {
     match handle_export_thread(state, thread_id, format).await {
-        mxr_protocol::Response::Ok { data } => Ok(data),
-        mxr_protocol::Response::Error { message } => Err(message),
+        crate::mxr_protocol::Response::Ok { data } => Ok(data),
+        crate::mxr_protocol::Response::Error { message } => Err(message),
     }
 }
 
@@ -388,8 +388,8 @@ pub(super) async fn export_search(
     format: &ExportFormat,
 ) -> HandlerResult {
     match handle_export_search(state, query, format).await {
-        mxr_protocol::Response::Ok { data } => Ok(data),
-        mxr_protocol::Response::Error { message } => Err(message),
+        crate::mxr_protocol::Response::Ok { data } => Ok(data),
+        crate::mxr_protocol::Response::Error { message } => Err(message),
     }
 }
 
@@ -407,10 +407,10 @@ fn search_result_items(results: Vec<SearchResult>, mode: SearchMode) -> Vec<Sear
         .filter_map(|result| {
             Some(SearchResultItem {
                 message_id: parse_message_id(&result.message_id)?,
-                account_id: mxr_core::AccountId::from_uuid(
+                account_id: crate::mxr_core::AccountId::from_uuid(
                     uuid::Uuid::parse_str(&result.account_id).ok()?,
                 ),
-                thread_id: mxr_core::ThreadId::from_uuid(
+                thread_id: crate::mxr_core::ThreadId::from_uuid(
                     uuid::Uuid::parse_str(&result.thread_id).ok()?,
                 ),
                 score: result.score,
@@ -980,7 +980,7 @@ fn contains_semantic_term(node: &QueryNode) -> bool {
     }
 }
 
-fn matches_structured_filters(node: &QueryNode, envelope: &mxr_core::Envelope) -> bool {
+fn matches_structured_filters(node: &QueryNode, envelope: &crate::mxr_core::Envelope) -> bool {
     match node {
         QueryNode::Text(_) | QueryNode::Phrase(_) => true,
         QueryNode::Field { field, value } => match field {
@@ -1029,16 +1029,24 @@ fn address_matches(email: &str, name: Option<&str>, value: &str) -> bool {
             .contains(&needle)
 }
 
-fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
+fn matches_filter(filter: &FilterKind, envelope: &crate::mxr_core::Envelope) -> bool {
     match filter {
-        FilterKind::Unread => !envelope.flags.contains(mxr_core::MessageFlags::READ),
-        FilterKind::Read => envelope.flags.contains(mxr_core::MessageFlags::READ),
-        FilterKind::Starred => envelope.flags.contains(mxr_core::MessageFlags::STARRED),
-        FilterKind::Draft => envelope.flags.contains(mxr_core::MessageFlags::DRAFT),
-        FilterKind::Sent => envelope.flags.contains(mxr_core::MessageFlags::SENT),
-        FilterKind::Trash => envelope.flags.contains(mxr_core::MessageFlags::TRASH),
-        FilterKind::Spam => envelope.flags.contains(mxr_core::MessageFlags::SPAM),
-        FilterKind::Answered => envelope.flags.contains(mxr_core::MessageFlags::ANSWERED),
+        FilterKind::Unread => !envelope.flags.contains(crate::mxr_core::MessageFlags::READ),
+        FilterKind::Read => envelope.flags.contains(crate::mxr_core::MessageFlags::READ),
+        FilterKind::Starred => envelope
+            .flags
+            .contains(crate::mxr_core::MessageFlags::STARRED),
+        FilterKind::Draft => envelope
+            .flags
+            .contains(crate::mxr_core::MessageFlags::DRAFT),
+        FilterKind::Sent => envelope.flags.contains(crate::mxr_core::MessageFlags::SENT),
+        FilterKind::Trash => envelope
+            .flags
+            .contains(crate::mxr_core::MessageFlags::TRASH),
+        FilterKind::Spam => envelope.flags.contains(crate::mxr_core::MessageFlags::SPAM),
+        FilterKind::Answered => envelope
+            .flags
+            .contains(crate::mxr_core::MessageFlags::ANSWERED),
         FilterKind::Inbox => envelope
             .label_provider_ids
             .iter()
@@ -1048,16 +1056,20 @@ fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
                 .label_provider_ids
                 .iter()
                 .any(|label| label.eq_ignore_ascii_case("INBOX"))
-                && !envelope.flags.contains(mxr_core::MessageFlags::SENT)
-                && !envelope.flags.contains(mxr_core::MessageFlags::DRAFT)
-                && !envelope.flags.contains(mxr_core::MessageFlags::TRASH)
-                && !envelope.flags.contains(mxr_core::MessageFlags::SPAM)
+                && !envelope.flags.contains(crate::mxr_core::MessageFlags::SENT)
+                && !envelope
+                    .flags
+                    .contains(crate::mxr_core::MessageFlags::DRAFT)
+                && !envelope
+                    .flags
+                    .contains(crate::mxr_core::MessageFlags::TRASH)
+                && !envelope.flags.contains(crate::mxr_core::MessageFlags::SPAM)
         }
         FilterKind::HasAttachment => envelope.has_attachments,
     }
 }
 
-fn matches_date(bound: &DateBound, date: &DateValue, envelope: &mxr_core::Envelope) -> bool {
+fn matches_date(bound: &DateBound, date: &DateValue, envelope: &crate::mxr_core::Envelope) -> bool {
     let message_date = envelope.date.date_naive();
     let resolved = resolve_date_value(date);
     match bound {

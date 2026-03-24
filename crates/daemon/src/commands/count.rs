@@ -1,6 +1,6 @@
 use crate::cli::SearchModeArg;
 use crate::ipc_client::IpcClient;
-use mxr_protocol::*;
+use crate::mxr_protocol::*;
 
 pub async fn run(query: String, mode: Option<SearchModeArg>) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;

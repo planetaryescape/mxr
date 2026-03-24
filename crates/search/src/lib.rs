@@ -15,8 +15,8 @@ pub use schema::MxrSchema;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::id::*;
-    use mxr_core::types::*;
+    use crate::mxr_core::id::*;
+    use crate::mxr_core::types::*;
 
     fn make_envelope(subject: &str, snippet: &str, from_name: &str) -> Envelope {
         make_envelope_full(

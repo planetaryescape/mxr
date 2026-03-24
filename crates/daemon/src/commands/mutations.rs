@@ -1,8 +1,8 @@
 use crate::ipc_client::IpcClient;
+use crate::mxr_core::id::MessageId;
+use crate::mxr_core::types::{Envelope, SortOrder};
+use crate::mxr_protocol::*;
 use chrono::{Datelike, Duration, NaiveTime, TimeZone, Utc, Weekday};
-use mxr_core::id::MessageId;
-use mxr_core::types::{Envelope, SortOrder};
-use mxr_protocol::*;
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
@@ -714,7 +714,7 @@ fn resolve_compose_from_address(explicit_from: Option<String>) -> String {
         return from;
     }
 
-    let config = mxr_config::load_config().unwrap_or_default();
+    let config = crate::mxr_config::load_config().unwrap_or_default();
     if let Some(default_key) = config.general.default_account.as_deref() {
         if let Some(account) = config.accounts.get(default_key) {
             return account.email.clone();
@@ -738,7 +738,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     }
 
     let (path, cursor_line) =
-        mxr_compose::create_draft_file(mxr_compose::ComposeKind::New, &from_addr)?;
+        crate::mxr_compose::create_draft_file(crate::mxr_compose::ComposeKind::New, &from_addr)?;
 
     // If inline body provided, append it to the draft file
     if let Some(b) = &options.body {
@@ -776,8 +776,8 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         std::fs::write(&path, updated)?;
     }
 
-    let editor = mxr_compose::editor::resolve_editor(None);
-    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
+    let editor = crate::mxr_compose::editor::resolve_editor(None);
+    crate::mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
 
     println!("Draft saved to {}", path.display());
     Ok(())
@@ -793,9 +793,9 @@ mod tests {
         render_selection_preview_lines, requires_confirmation, resolve_compose_from_address,
         MutationSelection,
     };
+    use crate::mxr_core::id::{AccountId, ThreadId};
+    use crate::mxr_core::types::{Address, Envelope, MessageFlags, UnsubscribeMethod};
     use chrono::Utc;
-    use mxr_core::id::{AccountId, ThreadId};
-    use mxr_core::types::{Address, Envelope, MessageFlags, UnsubscribeMethod};
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -829,7 +829,7 @@ mod tests {
 
     fn test_envelope(subject: &str) -> Envelope {
         Envelope {
-            id: mxr_core::MessageId::new(),
+            id: crate::mxr_core::MessageId::new(),
             account_id: AccountId::new(),
             provider_id: format!("provider-{subject}"),
             thread_id: ThreadId::new(),
@@ -911,8 +911,8 @@ pub async fn reply(
         return Ok(());
     }
 
-    let (path, cursor_line) = mxr_compose::create_draft_file(
-        mxr_compose::ComposeKind::Reply {
+    let (path, cursor_line) = crate::mxr_compose::create_draft_file(
+        crate::mxr_compose::ComposeKind::Reply {
             in_reply_to: ctx.in_reply_to,
             references: ctx.references,
             to: ctx.reply_to,
@@ -934,8 +934,8 @@ pub async fn reply(
         std::fs::write(&path, format!("{}{}", content, stdin_body))?;
     }
 
-    let editor = mxr_compose::editor::resolve_editor(None);
-    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
+    let editor = crate::mxr_compose::editor::resolve_editor(None);
+    crate::mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
 
     println!("Draft saved to {}", path.display());
     Ok(())
@@ -971,8 +971,8 @@ pub async fn reply_all(
         return Ok(());
     }
 
-    let (path, cursor_line) = mxr_compose::create_draft_file(
-        mxr_compose::ComposeKind::Reply {
+    let (path, cursor_line) = crate::mxr_compose::create_draft_file(
+        crate::mxr_compose::ComposeKind::Reply {
             in_reply_to: ctx.in_reply_to,
             references: ctx.references,
             to: ctx.reply_to,
@@ -994,8 +994,8 @@ pub async fn reply_all(
         std::fs::write(&path, format!("{}{}", content, stdin_body))?;
     }
 
-    let editor = mxr_compose::editor::resolve_editor(None);
-    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
+    let editor = crate::mxr_compose::editor::resolve_editor(None);
+    crate::mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
 
     println!("Draft saved to {}", path.display());
     Ok(())
@@ -1029,8 +1029,8 @@ pub async fn forward(
         return Ok(());
     }
 
-    let (path, cursor_line) = mxr_compose::create_draft_file(
-        mxr_compose::ComposeKind::Forward {
+    let (path, cursor_line) = crate::mxr_compose::create_draft_file(
+        crate::mxr_compose::ComposeKind::Forward {
             subject: ctx.subject,
             original_context: ctx.forwarded_content,
         },
@@ -1055,8 +1055,8 @@ pub async fn forward(
         std::fs::write(&path, format!("{}{}", content, stdin_body))?;
     }
 
-    let editor = mxr_compose::editor::resolve_editor(None);
-    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
+    let editor = crate::mxr_compose::editor::resolve_editor(None);
+    crate::mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
 
     println!("Draft saved to {}", path.display());
     Ok(())
@@ -1202,7 +1202,7 @@ pub async fn attachments_download(
     let mut client = IpcClient::connect().await?;
     let attachments = load_attachments(&mut client, &id).await?;
 
-    let selected: Vec<(usize, &mxr_core::AttachmentMeta)> = match index {
+    let selected: Vec<(usize, &crate::mxr_core::AttachmentMeta)> = match index {
         Some(index) => vec![(index, attachment_by_index(&attachments, index)?)],
         None => attachments
             .iter()
@@ -1260,7 +1260,7 @@ pub async fn attachments_open(message_id: String, index: usize) -> anyhow::Resul
 async fn load_attachments(
     client: &mut IpcClient,
     message_id: &MessageId,
-) -> anyhow::Result<Vec<mxr_core::AttachmentMeta>> {
+) -> anyhow::Result<Vec<crate::mxr_core::AttachmentMeta>> {
     let resp = client
         .request(Request::GetBody {
             message_id: message_id.clone(),
@@ -1281,9 +1281,9 @@ async fn load_attachments(
 }
 
 fn attachment_by_index(
-    attachments: &[mxr_core::AttachmentMeta],
+    attachments: &[crate::mxr_core::AttachmentMeta],
     index: usize,
-) -> anyhow::Result<&mxr_core::AttachmentMeta> {
+) -> anyhow::Result<&crate::mxr_core::AttachmentMeta> {
     attachments
         .get(index.saturating_sub(1))
         .ok_or_else(|| anyhow::anyhow!("Attachment index {} out of range", index))

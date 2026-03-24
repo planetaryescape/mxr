@@ -1,6 +1,6 @@
-use crate::app::{ActivePane, AttachmentSummary, BodyViewState};
-use crate::theme::Theme;
-use mxr_core::types::Envelope;
+use crate::mxr_core::types::Envelope;
+use crate::mxr_tui::app::{ActivePane, AttachmentSummary, BodyViewState};
+use crate::mxr_tui::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -11,6 +11,7 @@ pub struct ThreadMessageBlock {
     pub labels: Vec<String>,
     pub attachments: Vec<AttachmentSummary>,
     pub selected: bool,
+    pub bulk_selected: bool,
     pub has_unsubscribe: bool,
     pub signature_expanded: bool,
 }
@@ -92,9 +93,19 @@ pub fn draw(
             Span::styled(env.subject.clone(), value_style),
         ]));
 
-        // Label chips with colored backgrounds
-        if !message.labels.is_empty() {
+        // Selection + label chips
+        if message.bulk_selected || !message.labels.is_empty() {
             let mut chips: Vec<Span> = Vec::new();
+            if message.bulk_selected {
+                chips.push(Span::styled(
+                    " Selected ",
+                    Style::default()
+                        .bg(theme.selection_bg)
+                        .fg(theme.selection_fg)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                chips.push(Span::raw(" "));
+            }
             for label in &message.labels {
                 chips.push(Span::styled(
                     format!(" {} ", label),
@@ -207,6 +218,74 @@ pub fn draw(
         .scroll((scroll_offset, 0));
 
     frame.render_widget(paragraph, inner);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mxr_core::id::{AccountId, MessageId, ThreadId};
+    use crate::mxr_core::types::{Address, MessageFlags, UnsubscribeMethod};
+    use crate::mxr_tui::app::BodySource;
+    use chrono::{TimeZone, Utc};
+    use mxr_test_support::render_to_string;
+
+    fn envelope() -> Envelope {
+        Envelope {
+            id: MessageId::new(),
+            account_id: AccountId::new(),
+            provider_id: "msg-1".into(),
+            thread_id: ThreadId::new(),
+            message_id_header: None,
+            in_reply_to: None,
+            references: vec![],
+            from: Address {
+                name: Some("Alice".into()),
+                email: "alice@example.com".into(),
+            },
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Selection".into(),
+            date: Utc.with_ymd_and_hms(2024, 3, 15, 9, 30, 0).unwrap(),
+            flags: MessageFlags::READ,
+            snippet: "snippet".into(),
+            has_attachments: false,
+            size_bytes: 1024,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: vec![],
+        }
+    }
+
+    #[test]
+    fn selected_messages_render_visible_chip() {
+        let block = ThreadMessageBlock {
+            envelope: envelope(),
+            body_state: BodyViewState::Ready {
+                raw: "hello".into(),
+                rendered: "hello".into(),
+                source: BodySource::Plain,
+            },
+            labels: vec!["INBOX".into()],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: true,
+            has_unsubscribe: false,
+            signature_expanded: false,
+        };
+
+        let snapshot = render_to_string(70, 18, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 70, 18),
+                &[block],
+                0,
+                &ActivePane::MessageView,
+                &Theme::default(),
+            );
+        });
+
+        assert!(snapshot.contains("Selected"));
+    }
 }
 
 fn process_body_lines(raw: &str, theme: &Theme, signature_expanded: bool) -> Vec<Line<'static>> {

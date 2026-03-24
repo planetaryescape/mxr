@@ -137,7 +137,7 @@ pub fn thread_messages(messages: &[MessageForThreading]) -> Vec<ThreadTree> {
             .and_then(|c| c.message.as_ref())
             .map(|m| m.date)
             .unwrap_or_default();
-        date_a.cmp(&date_b)
+        date_a.cmp(&date_b).then_with(|| a.cmp(b))
     });
 
     // Step 3: Build thread trees
@@ -183,6 +183,18 @@ fn merge_subject_fallback_threads(
     threads: Vec<ThreadTree>,
     message_map: &HashMap<&str, &MessageForThreading>,
 ) -> Vec<ThreadTree> {
+    let mut threads = threads;
+    threads.sort_by(|left, right| {
+        let left_has_headers = thread_has_headers(left, message_map);
+        let right_has_headers = thread_has_headers(right, message_map);
+        right_has_headers
+            .cmp(&left_has_headers)
+            .then_with(|| {
+                thread_first_date(left, message_map).cmp(&thread_first_date(right, message_map))
+            })
+            .then_with(|| left.root_message_id.cmp(&right.root_message_id))
+    });
+
     let mut merged: Vec<ThreadTree> = Vec::new();
     let mut subject_roots: HashMap<String, usize> = HashMap::new();
 
@@ -194,11 +206,7 @@ fn merge_subject_fallback_threads(
             .get(first_id.as_str())
             .map(|message| normalize_subject(&message.subject))
             .unwrap_or_default();
-        let has_headers = thread.messages.iter().any(|id| {
-            message_map.get(id.as_str()).is_some_and(|message| {
-                message.in_reply_to.is_some() || !message.references.is_empty()
-            })
-        });
+        let has_headers = thread_has_headers(&thread, message_map);
 
         if !has_headers && !key.is_empty() {
             if let Some(index) = subject_roots.get(&key).copied() {
@@ -242,6 +250,29 @@ fn sort_thread_messages(
     if let Some(first) = thread.messages.first() {
         thread.root_message_id = first.clone();
     }
+}
+
+fn thread_has_headers(
+    thread: &ThreadTree,
+    message_map: &HashMap<&str, &MessageForThreading>,
+) -> bool {
+    thread.messages.iter().any(|id| {
+        message_map
+            .get(id.as_str())
+            .is_some_and(|message| message.in_reply_to.is_some() || !message.references.is_empty())
+    })
+}
+
+fn thread_first_date(
+    thread: &ThreadTree,
+    message_map: &HashMap<&str, &MessageForThreading>,
+) -> DateTime<Utc> {
+    thread
+        .messages
+        .iter()
+        .filter_map(|id| message_map.get(id.as_str()).map(|message| message.date))
+        .min()
+        .unwrap_or_default()
 }
 
 fn normalize_subject(subject: &str) -> String {

@@ -1,10 +1,10 @@
 use crate::cli::{OutputFormat, RulesAction};
 use crate::ipc_client::IpcClient;
+use crate::mxr_protocol::*;
+use crate::mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, RuleId, StringMatch};
+use crate::mxr_search::ast::{FilterKind, QueryField, QueryNode, SizeOp};
+use crate::mxr_search::parse_query;
 use crate::output::resolve_format;
-use mxr_protocol::*;
-use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, RuleId, StringMatch};
-use mxr_search::ast::{FilterKind, QueryField, QueryNode, SizeOp};
-use mxr_search::parse_query;
 
 fn parse_action(value: &str) -> anyhow::Result<RuleAction> {
     let lower = value.to_ascii_lowercase();
@@ -106,7 +106,7 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
         }
         QueryNode::DateRange { bound, date } => {
             let date = match date {
-                mxr_search::ast::DateValue::Specific(date) => {
+                crate::mxr_search::ast::DateValue::Specific(date) => {
                     chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
                         date.and_hms_opt(0, 0, 0).unwrap(),
                         chrono::Utc,
@@ -115,13 +115,13 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
                 _ => anyhow::bail!("Relative dates are not supported in rules add yet"),
             };
             match bound {
-                mxr_search::ast::DateBound::After => {
+                crate::mxr_search::ast::DateBound::After => {
                     Conditions::Field(FieldCondition::DateAfter { date })
                 }
-                mxr_search::ast::DateBound::Before => {
+                crate::mxr_search::ast::DateBound::Before => {
                     Conditions::Field(FieldCondition::DateBefore { date })
                 }
-                mxr_search::ast::DateBound::Exact => Conditions::And {
+                crate::mxr_search::ast::DateBound::Exact => Conditions::And {
                     conditions: vec![
                         Conditions::Field(FieldCondition::DateAfter { date }),
                         Conditions::Field(FieldCondition::DateBefore {

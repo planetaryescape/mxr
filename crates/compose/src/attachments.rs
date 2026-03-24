@@ -1,4 +1,4 @@
-use crate::frontmatter::ComposeError;
+use crate::mxr_compose::frontmatter::ComposeError;
 use std::path::{Path, PathBuf};
 
 /// Resolve and validate attachment paths from frontmatter.

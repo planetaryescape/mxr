@@ -8,10 +8,12 @@ use mxr_protocol::{
     DoctorReport, EventLogEntry, MutationCommand, Request,
 };
 use mxr_test_support::render_to_string;
+use mxr_tui::action::UiContext;
 use mxr_tui::app::{
     AccountFormState, AccountsPageState, ActivePane, AttachmentPanelState, BodySource,
     BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, MailListMode, MailListRow,
-    MutationEffect, PendingBulkConfirm, PendingSend, Screen, SearchPageState,
+    MutationEffect, PendingBulkConfirm, PendingSend, RulesPageState, SearchPageState,
+    SearchUiStatus,
 };
 use mxr_tui::ui::attachment_modal::draw as draw_attachment_modal;
 use mxr_tui::ui::bulk_confirm_modal::draw as draw_bulk_confirm_modal;
@@ -26,7 +28,7 @@ use mxr_tui::ui::send_confirm_modal::draw as draw_send_confirm;
 use mxr_tui::ui::sidebar::{draw as draw_sidebar, SidebarView};
 use mxr_tui::ui::status_bar::{draw as draw_status_bar, StatusBarState};
 use mxr_tui::ui::unsubscribe_modal::draw as draw_unsubscribe_modal;
-use mxr_tui::ui::{accounts_page, diagnostics_page};
+use mxr_tui::ui::{accounts_page, diagnostics_page, rules_page};
 use ratatui::layout::Rect;
 
 fn sample_envelope() -> Envelope {
@@ -98,6 +100,7 @@ fn message_view_snapshot() {
             size_bytes: 10,
         }],
         selected: true,
+        bulk_selected: false,
         has_unsubscribe: true,
         signature_expanded: false,
     };
@@ -118,7 +121,7 @@ fn message_view_snapshot() {
 #[test]
 fn command_palette_snapshot() {
     let mut palette = CommandPalette::default();
-    palette.toggle();
+    palette.toggle(UiContext::MailboxList);
     palette.on_char('u');
     palette.on_char('n');
 
@@ -131,6 +134,46 @@ fn command_palette_snapshot() {
         );
     });
     insta::assert_snapshot!("command_palette_snapshot", snapshot);
+}
+
+#[test]
+fn command_palette_prompt_row_stays_fixed() {
+    let mut broad = CommandPalette::default();
+    broad.toggle(UiContext::MailboxList);
+    broad.on_char('a');
+
+    let mut narrow = CommandPalette::default();
+    narrow.toggle(UiContext::MailboxList);
+    for ch in "edit config".chars() {
+        narrow.on_char(ch);
+    }
+
+    let broad_snapshot = render_to_string(70, 20, |frame| {
+        draw_command_palette(
+            frame,
+            Rect::new(0, 0, 70, 20),
+            &broad,
+            &mxr_tui::theme::Theme::default(),
+        );
+    });
+    let narrow_snapshot = render_to_string(70, 20, |frame| {
+        draw_command_palette(
+            frame,
+            Rect::new(0, 0, 70, 20),
+            &narrow,
+            &mxr_tui::theme::Theme::default(),
+        );
+    });
+
+    let broad_line = broad_snapshot
+        .lines()
+        .position(|line| line.contains("> a"))
+        .unwrap();
+    let narrow_line = narrow_snapshot
+        .lines()
+        .position(|line| line.contains("> edit config"))
+        .unwrap();
+    assert_eq!(broad_line, narrow_line);
 }
 
 #[test]
@@ -256,6 +299,9 @@ fn search_page_snapshot() {
         sort: mxr_core::SortOrder::DateDesc,
         has_more: false,
         loading_more: false,
+        total_count: Some(1),
+        count_pending: false,
+        ui_status: SearchUiStatus::Loaded,
         session_active: true,
         load_to_end: false,
         session_id: 1,
@@ -274,6 +320,7 @@ fn search_page_snapshot() {
         labels: vec!["INBOX".into()],
         attachments: vec![],
         selected: true,
+        bulk_selected: false,
         has_unsubscribe: true,
         signature_expanded: false,
     }];
@@ -292,6 +339,26 @@ fn search_page_snapshot() {
         );
     });
     insta::assert_snapshot!("search_page_snapshot", snapshot);
+}
+
+#[test]
+fn search_page_blank_snapshot() {
+    let state = SearchPageState::default();
+
+    let snapshot = render_to_string(90, 24, |frame| {
+        draw_search_page(
+            frame,
+            Rect::new(0, 0, 90, 24),
+            &state,
+            &[],
+            &std::collections::HashSet::new(),
+            MailListMode::Messages,
+            &[],
+            0,
+            &mxr_tui::theme::Theme::default(),
+        );
+    });
+    insta::assert_snapshot!("search_page_blank_snapshot", snapshot);
 }
 
 #[test]
@@ -330,6 +397,35 @@ fn accounts_page_snapshot() {
         );
     });
     insta::assert_snapshot!("accounts_page_snapshot", snapshot);
+}
+
+#[test]
+fn rules_page_snapshot() {
+    let state = RulesPageState {
+        rules: vec![serde_json::json!({
+            "id": "rule-1",
+            "name": "Route GitHub",
+            "enabled": true,
+            "priority": 100
+        })],
+        detail: Some(serde_json::json!({
+            "id": "rule-1",
+            "name": "Route GitHub",
+            "condition": "from:github.com",
+            "action": "label:GitHub"
+        })),
+        ..RulesPageState::default()
+    };
+
+    let snapshot = render_to_string(100, 20, |frame| {
+        rules_page::draw(
+            frame,
+            Rect::new(0, 0, 100, 20),
+            &state,
+            &mxr_tui::theme::Theme::default(),
+        );
+    });
+    insta::assert_snapshot!("rules_page_snapshot", snapshot);
 }
 
 #[test]
@@ -527,10 +623,10 @@ fn help_modal_snapshot() {
             Rect::new(0, 0, 100, 28),
             HelpModalState {
                 open: true,
-                screen: Screen::Mailbox,
-                active_pane: &ActivePane::MailList,
+                ui_context: UiContext::MailboxList,
                 selected_count: 2,
                 scroll_offset: 0,
+                _marker: std::marker::PhantomData,
             },
             &mxr_tui::theme::Theme::default(),
         );

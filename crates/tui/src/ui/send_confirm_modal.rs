@@ -1,4 +1,4 @@
-use crate::app::PendingSend;
+use crate::mxr_tui::app::PendingSend;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -6,7 +6,7 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     pending: Option<&PendingSend>,
-    theme: &crate::theme::Theme,
+    theme: &crate::mxr_tui::theme::Theme,
 ) {
     let Some(pending) = pending else {
         return;
@@ -70,11 +70,11 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::modal_lines;
-    use crate::app::PendingSend;
+    use crate::mxr_tui::app::PendingSend;
 
     fn pending(allow_send: bool) -> PendingSend {
         PendingSend {
-            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+            fm: crate::mxr_compose::frontmatter::ComposeFrontmatter {
                 to: "a@example.com".into(),
                 cc: String::new(),
                 bcc: String::new(),

@@ -1,5 +1,8 @@
 # 05 — Phase 4: Community & Release
 
+> **Current Layout Note**
+> This phase plan still uses the historical multi-crate release model. Current code ships as one publishable package, `mxr`. Release and publish steps that refer to workspace-wide first-party crate publishing should now be read as single-package publishing for `mxr`.
+
 ## Goal
 
 Ready for public release. Adapter kit for community providers, binary releases, install methods, documentation site, contributor guide. After this phase, mxr is a real open-source project that people can discover, install, use, and contribute to.

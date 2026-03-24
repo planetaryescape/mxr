@@ -108,7 +108,7 @@ impl FieldCondition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::*;
+    use crate::mxr_rules::tests::*;
 
     // -- StringMatch tests --
 

@@ -1,6 +1,6 @@
 use crate::ipc_client::IpcClient;
-use mxr_core::MessageId;
-use mxr_protocol::*;
+use crate::mxr_core::MessageId;
+use crate::mxr_protocol::*;
 
 pub async fn run(message_id: String) -> anyhow::Result<()> {
     let mid = MessageId::from_uuid(uuid::Uuid::parse_str(&message_id)?);

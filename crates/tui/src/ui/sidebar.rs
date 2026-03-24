@@ -1,6 +1,6 @@
-use crate::app::ActivePane;
-use crate::theme::Theme;
-use mxr_core::types::{Label, LabelKind, SavedSearch};
+use crate::mxr_core::types::{Label, LabelKind, SavedSearch};
+use crate::mxr_tui::app::ActivePane;
+use crate::mxr_tui::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -15,7 +15,7 @@ pub struct SidebarView<'a> {
     pub system_expanded: bool,
     pub user_expanded: bool,
     pub saved_searches_expanded: bool,
-    pub active_label: Option<&'a mxr_core::LabelId>,
+    pub active_label: Option<&'a crate::mxr_core::LabelId>,
 }
 
 #[derive(Debug, Clone)]
@@ -230,7 +230,7 @@ fn render_sidebar_link<'a>(
 fn render_label_item<'a>(
     label: &Label,
     inner_width: usize,
-    active_label: Option<&mxr_core::LabelId>,
+    active_label: Option<&crate::mxr_core::LabelId>,
     theme: &Theme,
 ) -> ListItem<'a> {
     let is_active = active_label
@@ -334,8 +334,8 @@ pub fn system_label_order(name: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::id::{AccountId, LabelId, SavedSearchId};
-    use mxr_core::types::{SearchMode, SortOrder};
+    use crate::mxr_core::id::{AccountId, LabelId, SavedSearchId};
+    use crate::mxr_core::types::{SearchMode, SortOrder};
 
     fn label(name: &str, kind: LabelKind) -> Label {
         Label {

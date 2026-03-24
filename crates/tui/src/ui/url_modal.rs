@@ -1,4 +1,4 @@
-use crate::theme::Theme;
+use crate::mxr_tui::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::HashSet;

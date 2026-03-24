@@ -1,6 +1,12 @@
 use super::*;
 
 impl App {
+    fn contextual_input_action(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        let action = self.input.handle_key(key)?;
+        crate::mxr_tui::action::action_allowed_in_context(&action, self.current_ui_context())
+            .then_some(action)
+    }
+
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         if self.error_modal.is_some() {
             return match (key.code, key.modifiers) {
@@ -95,9 +101,10 @@ impl App {
                             self.pending_send_confirm = Some(pending);
                             return None;
                         }
-                        let parse_addrs = |s: &str| mxr_compose::parse::parse_address_list(s);
+                        let parse_addrs =
+                            |s: &str| crate::mxr_compose::parse::parse_address_list(s);
                         let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
-                            mxr_core::types::ReplyHeaders {
+                            crate::mxr_core::types::ReplyHeaders {
                                 in_reply_to: in_reply_to.clone(),
                                 references: pending.fm.references.clone(),
                             }
@@ -109,8 +116,8 @@ impl App {
                             .map(|e| e.account_id.clone())
                             .unwrap_or_default();
                         let now = chrono::Utc::now();
-                        let draft = mxr_core::Draft {
-                            id: mxr_core::id::DraftId::new(),
+                        let draft = crate::mxr_core::Draft {
+                            id: crate::mxr_core::id::DraftId::new(),
                             account_id,
                             reply_headers,
                             to: parse_addrs(&pending.fm.to),
@@ -143,9 +150,10 @@ impl App {
                             self.pending_send_confirm = Some(pending);
                             return None;
                         }
-                        let parse_addrs = |s: &str| mxr_compose::parse::parse_address_list(s);
+                        let parse_addrs =
+                            |s: &str| crate::mxr_compose::parse::parse_address_list(s);
                         let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
-                            mxr_core::types::ReplyHeaders {
+                            crate::mxr_core::types::ReplyHeaders {
                                 in_reply_to: in_reply_to.clone(),
                                 references: pending.fm.references.clone(),
                             }
@@ -157,8 +165,8 @@ impl App {
                             .map(|e| e.account_id.clone())
                             .unwrap_or_default();
                         let now = chrono::Utc::now();
-                        let draft = mxr_core::Draft {
-                            id: mxr_core::id::DraftId::new(),
+                        let draft = crate::mxr_core::Draft {
+                            id: crate::mxr_core::id::DraftId::new(),
                             account_id,
                             reply_headers,
                             to: parse_addrs(&pending.fm.to),
@@ -465,7 +473,7 @@ impl App {
                 (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::OpenInBrowser),
                 // L = open links picker
                 (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLinks),
-                _ => self.input.handle_key(key),
+                _ => self.contextual_input_action(key),
             },
             ActivePane::Sidebar => match (key.code, key.modifiers) {
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
@@ -487,7 +495,7 @@ impl App {
                 (KeyCode::Enter | KeyCode::Char('o'), _) => self.sidebar_select(),
                 // l = select label and move to mail list
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE) => self.sidebar_select(),
-                _ => self.input.handle_key(key),
+                _ => self.contextual_input_action(key),
             },
             ActivePane::MailList => match (key.code, key.modifiers) {
                 // h = move left to sidebar
@@ -497,7 +505,7 @@ impl App {
                 }
                 // Right arrow opens selected message
                 (KeyCode::Right, KeyModifiers::NONE) => Some(Action::OpenSelected),
-                _ => self.input.handle_key(key),
+                _ => self.contextual_input_action(key),
             },
         }
     }
@@ -560,7 +568,7 @@ impl App {
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE)
                 | (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::OpenSelected),
                 (KeyCode::Esc, _) => Some(Action::GoToInbox),
-                _ => self.input.handle_key(key),
+                _ => self.contextual_input_action(key),
             },
             SearchPane::Preview => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), _) => {
@@ -591,13 +599,11 @@ impl App {
                     self.message_scroll_offset = u16::MAX;
                     None
                 }
-                (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::OpenInBrowser),
-                (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLinks),
                 (KeyCode::Esc, _) => {
                     self.search_page.active_pane = SearchPane::Results;
                     None
                 }
-                _ => self.input.handle_key(key),
+                _ => self.contextual_input_action(key),
             },
         }
     }
@@ -611,11 +617,13 @@ impl App {
             (KeyCode::Char('j') | KeyCode::Down, _) => {
                 if self.rules_page.selected_index + 1 < self.rules_page.rules.len() {
                     self.rules_page.selected_index += 1;
+                    self.refresh_selected_rule_panel();
                 }
                 None
             }
             (KeyCode::Char('k') | KeyCode::Up, _) => {
                 self.rules_page.selected_index = self.rules_page.selected_index.saturating_sub(1);
+                self.refresh_selected_rule_panel();
                 None
             }
             (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::RefreshRules),
@@ -626,7 +634,7 @@ impl App {
             (KeyCode::Char('n'), _) => Some(Action::OpenRuleFormNew),
             (KeyCode::Char('E'), KeyModifiers::SHIFT) => Some(Action::OpenRuleFormEdit),
             (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
-            _ => self.input.handle_key(key),
+            _ => self.contextual_input_action(key),
         }
     }
 
@@ -694,24 +702,20 @@ impl App {
                 None
             }
             (KeyCode::Char('j') | KeyCode::Down, _) => {
-                let pane = self.diagnostics_page.active_pane();
-                *self.diagnostics_page.scroll_offset_mut(pane) =
-                    self.diagnostics_page.scroll_offset(pane).saturating_add(1);
+                self.diagnostics_page.selected_pane = self.diagnostics_page.selected_pane.next();
                 None
             }
             (KeyCode::Char('k') | KeyCode::Up, _) => {
-                let pane = self.diagnostics_page.active_pane();
-                *self.diagnostics_page.scroll_offset_mut(pane) =
-                    self.diagnostics_page.scroll_offset(pane).saturating_sub(1);
+                self.diagnostics_page.selected_pane = self.diagnostics_page.selected_pane.prev();
                 None
             }
-            (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) | (KeyCode::PageDown, _) => {
                 let pane = self.diagnostics_page.active_pane();
                 *self.diagnostics_page.scroll_offset_mut(pane) =
                     self.diagnostics_page.scroll_offset(pane).saturating_add(8);
                 None
             }
-            (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
+            (KeyCode::Char('u'), KeyModifiers::CONTROL) | (KeyCode::PageUp, _) => {
                 let pane = self.diagnostics_page.active_pane();
                 *self.diagnostics_page.scroll_offset_mut(pane) =
                     self.diagnostics_page.scroll_offset(pane).saturating_sub(8);
@@ -726,7 +730,7 @@ impl App {
             (KeyCode::Char('b'), _) => Some(Action::GenerateBugReport),
             (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLogs),
             (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
-            _ => self.input.handle_key(key),
+            _ => self.contextual_input_action(key),
         }
     }
 
@@ -781,7 +785,7 @@ impl App {
             }
             (KeyCode::Esc, _) if self.accounts_page.onboarding_required => None,
             (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
-            _ => self.input.handle_key(key),
+            _ => self.contextual_input_action(key),
         }
     }
 

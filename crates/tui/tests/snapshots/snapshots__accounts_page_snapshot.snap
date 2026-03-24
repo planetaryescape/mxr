@@ -1,9 +1,12 @@
 ---
 source: crates/tui/tests/snapshots.rs
+assertion_line: 397
 expression: snapshot
 ---
 "┌ Accounts ────────────────────────┐┌ Details ─────────────────────────────────────────────────────┐"
-"│Work * [imap / smtp] {config}     ││Key: work                                                     │"
+"│> Work  [default · imap · smtp · c││Work  [default]                                               │"
+"│                                  ││                                                              │"
+"│                                  ││Key: work                                                     │"
 "│                                  ││Name: Work                                                    │"
 "│                                  ││Email: me@example.com                                         │"
 "│                                  ││Provider: imap                                                │"
@@ -13,12 +16,10 @@ expression: snapshot
 "│                                  ││Editable: full                                                │"
 "│                                  ││Default: yes                                                  │"
 "│                                  ││                                                              │"
+"│                                  ││                                                              │"
+"│                                  ││                                                              │"
+"│                                  ││                                                              │"
+"│                                  │└──────────────────────────────────────────────────────────────┘"
+"│                                  │┌──────────────────────────────────────────────────────────────┐"
 "│                                  ││n:new  Enter:edit  t:test  d:set default                      │"
-"│                                  ││                                                              │"
-"│                                  ││                                                              │"
-"│                                  ││                                                              │"
-"│                                  ││                                                              │"
-"│                                  ││                                                              │"
-"│                                  ││                                                              │"
-"│                                  ││                                                              │"
 "└──────────────────────────────────┘└──────────────────────────────────────────────────────────────┘"

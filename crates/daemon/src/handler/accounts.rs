@@ -3,8 +3,8 @@ use super::{
     list_runtime_accounts, set_default_account, test_account_config, upsert_account_config,
     HandlerResult,
 };
+use crate::mxr_protocol::{AccountConfigData, ResponseData};
 use crate::state::AppState;
-use mxr_protocol::{AccountConfigData, ResponseData};
 use std::sync::Arc;
 
 pub(super) async fn list_accounts(state: &Arc<AppState>) -> HandlerResult {

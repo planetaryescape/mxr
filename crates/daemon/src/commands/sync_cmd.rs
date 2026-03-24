@@ -1,7 +1,10 @@
 use crate::ipc_client::IpcClient;
-use mxr_protocol::{Request, Response, ResponseData, IPC_PROTOCOL_VERSION};
+use crate::mxr_protocol::{Request, Response, ResponseData, IPC_PROTOCOL_VERSION};
 
-fn render_sync_status(sync_statuses: &[mxr_protocol::AccountSyncStatus], protocol_version: u32) {
+fn render_sync_status(
+    sync_statuses: &[crate::mxr_protocol::AccountSyncStatus],
+    protocol_version: u32,
+) {
     if sync_statuses.is_empty() {
         if protocol_version < IPC_PROTOCOL_VERSION {
             println!("Sync status unavailable from legacy daemon");

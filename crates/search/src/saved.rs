@@ -1,6 +1,6 @@
-use mxr_core::id::SavedSearchId;
-use mxr_core::types::SavedSearch;
-use mxr_store::Store;
+use crate::mxr_core::id::SavedSearchId;
+use crate::mxr_core::types::SavedSearch;
+use crate::mxr_store::Store;
 use std::sync::Arc;
 
 pub struct SavedSearchService {
@@ -12,28 +12,31 @@ impl SavedSearchService {
         Self { store }
     }
 
-    pub async fn create(&self, search: &SavedSearch) -> Result<(), mxr_core::MxrError> {
+    pub async fn create(&self, search: &SavedSearch) -> Result<(), crate::mxr_core::MxrError> {
         self.store
             .insert_saved_search(search)
             .await
-            .map_err(|e| mxr_core::MxrError::Store(e.to_string()))
+            .map_err(|e| crate::mxr_core::MxrError::Store(e.to_string()))
     }
 
-    pub async fn list(&self) -> Result<Vec<SavedSearch>, mxr_core::MxrError> {
+    pub async fn list(&self) -> Result<Vec<SavedSearch>, crate::mxr_core::MxrError> {
         self.store
             .list_saved_searches()
             .await
-            .map_err(|e| mxr_core::MxrError::Store(e.to_string()))
+            .map_err(|e| crate::mxr_core::MxrError::Store(e.to_string()))
     }
 
-    pub async fn delete(&self, id: &SavedSearchId) -> Result<(), mxr_core::MxrError> {
+    pub async fn delete(&self, id: &SavedSearchId) -> Result<(), crate::mxr_core::MxrError> {
         self.store
             .delete_saved_search(id)
             .await
-            .map_err(|e| mxr_core::MxrError::Store(e.to_string()))
+            .map_err(|e| crate::mxr_core::MxrError::Store(e.to_string()))
     }
 
-    pub async fn get_by_name(&self, name: &str) -> Result<Option<SavedSearch>, mxr_core::MxrError> {
+    pub async fn get_by_name(
+        &self,
+        name: &str,
+    ) -> Result<Option<SavedSearch>, crate::mxr_core::MxrError> {
         let searches = self.list().await?;
         Ok(searches.into_iter().find(|s| s.name == name))
     }
@@ -42,8 +45,8 @@ impl SavedSearchService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::types::SortOrder;
-    use mxr_core::SearchMode;
+    use crate::mxr_core::types::SortOrder;
+    use crate::mxr_core::SearchMode;
 
     fn make_saved_search(name: &str, query: &str) -> SavedSearch {
         SavedSearch {

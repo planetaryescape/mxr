@@ -1,6 +1,6 @@
+use crate::mxr_compose::email::{build_message, format_message_for_gmail};
+use crate::mxr_core::types::{Address, Draft};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use mxr_compose::email::{build_message, format_message_for_gmail};
-use mxr_core::types::{Address, Draft};
 
 /// Build an RFC 5322 message from a Draft and return the raw bytes.
 pub fn build_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
@@ -25,8 +25,8 @@ pub enum GmailSendError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::id::{AccountId, DraftId};
-    use mxr_core::types::ReplyHeaders;
+    use crate::mxr_core::id::{AccountId, DraftId};
+    use crate::mxr_core::types::ReplyHeaders;
 
     fn test_draft() -> Draft {
         Draft {

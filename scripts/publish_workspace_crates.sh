@@ -69,22 +69,9 @@ publish_or_skip_existing() {
   done
 }
 
-publish_async_imap() {
+ensure_async_imap_available() {
   local crate="mxr-async-imap"
   local version="0.10.5"
-  local tmpdir
-
-  tmpdir="$(mktemp -d)"
-  rsync -a \
-    --exclude 'Cargo.toml.orig' \
-    --exclude '.cargo_vcs_info.json' \
-    vendor/async-imap/ "${tmpdir}/"
-
-  echo "Publishing ${crate}..."
-  (
-    cd "${tmpdir}"
-    publish_or_skip_existing cargo publish --locked
-  )
   wait_for_crate "${crate}" "${version}"
 }
 
@@ -127,23 +114,5 @@ fi
 
 sync_store_sqlx_cache
 
-publish_async_imap
-publish mxr-core "${VERSION}"
-publish mxr-protocol "${VERSION}"
-publish mxr-config "${VERSION}"
-publish mxr-test-support "${VERSION}"
-publish mxr-store "${VERSION}"
-publish mxr-search "${VERSION}"
-publish mxr-reader "${VERSION}"
-publish mxr-semantic "${VERSION}"
-publish mxr-compose "${VERSION}"
-publish mxr-web "${VERSION}"
-publish mxr-provider-fake "${VERSION}"
-publish mxr-provider-gmail "${VERSION}"
-publish mxr-provider-smtp "${VERSION}"
-publish mxr-provider-imap "${VERSION}"
-publish mxr-export "${VERSION}"
-publish mxr-rules "${VERSION}"
-publish mxr-sync "${VERSION}"
-publish mxr-tui "${VERSION}"
+ensure_async_imap_available
 publish mxr "${VERSION}"

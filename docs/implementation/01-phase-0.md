@@ -1,5 +1,8 @@
 # Phase 0 — Implementation Plan
 
+> **Current Layout Note**
+> This phase plan was written for the old multi-crate workspace. Current code ships as one publishable package, `mxr`. Names like `mxr-core`, `mxr-store`, `mxr-protocol`, and `mxr-tui` now refer to modules mounted from `crates/*/src` under the root package.
+
 ## Goal
 
 Prove the architecture. Daemon runs, TUI connects, fake data flows end-to-end through SQLite and Tantivy.

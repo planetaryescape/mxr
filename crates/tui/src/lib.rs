@@ -7,13 +7,13 @@ pub mod keybindings;
 pub mod theme;
 pub mod ui;
 
+use crate::mxr_config::{load_config, socket_path as config_socket_path};
+use crate::mxr_core::MxrError;
+use crate::mxr_protocol::{DaemonEvent, Request, Response, ResponseData};
 use app::{App, AttachmentOperation, ComposeAction, PendingSend};
 use client::Client;
 use crossterm::event::{Event, EventStream};
 use futures::StreamExt;
-use mxr_config::{load_config, socket_path as config_socket_path};
-use mxr_core::MxrError;
-use mxr_protocol::{DaemonEvent, Request, Response, ResponseData};
 use std::path::Path;
 use std::process::Stdio;
 use tokio::sync::{mpsc, oneshot};
@@ -217,15 +217,16 @@ async fn ipc_call(
 }
 
 fn edit_tui_config(app: &mut App) -> Result<String, MxrError> {
-    let config_path = mxr_config::config_file_path();
+    let config_path = crate::mxr_config::config_file_path();
     let current_config = load_config().map_err(|error| MxrError::Ipc(error.to_string()))?;
 
     if !config_path.exists() {
-        mxr_config::save_config(&current_config)
+        crate::mxr_config::save_config(&current_config)
             .map_err(|error| MxrError::Ipc(error.to_string()))?;
     }
 
-    let editor = mxr_compose::editor::resolve_editor(current_config.general.editor.as_deref());
+    let editor =
+        crate::mxr_compose::editor::resolve_editor(current_config.general.editor.as_deref());
     let status = std::process::Command::new(&editor)
         .arg(&config_path)
         .status()
@@ -244,7 +245,7 @@ fn edit_tui_config(app: &mut App) -> Result<String, MxrError> {
 }
 
 fn open_tui_log_file() -> Result<String, MxrError> {
-    let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
+    let log_path = crate::mxr_config::data_dir().join("logs").join("mxr.log");
     if !log_path.exists() {
         return Err(MxrError::Ipc(format!(
             "log file not found at {}",
@@ -255,8 +256,8 @@ fn open_tui_log_file() -> Result<String, MxrError> {
     let editor = load_config()
         .ok()
         .and_then(|config| config.general.editor)
-        .map(|editor| mxr_compose::editor::resolve_editor(Some(editor.as_str())))
-        .unwrap_or_else(|| mxr_compose::editor::resolve_editor(None));
+        .map(|editor| crate::mxr_compose::editor::resolve_editor(Some(editor.as_str())))
+        .unwrap_or_else(|| crate::mxr_compose::editor::resolve_editor(None));
     let status = std::process::Command::new(&editor)
         .arg(&log_path)
         .status()
@@ -281,8 +282,8 @@ fn open_temp_text_buffer(name: &str, content: &str) -> Result<String, MxrError> 
     let editor = load_config()
         .ok()
         .and_then(|config| config.general.editor)
-        .map(|editor| mxr_compose::editor::resolve_editor(Some(editor.as_str())))
-        .unwrap_or_else(|| mxr_compose::editor::resolve_editor(None));
+        .map(|editor| crate::mxr_compose::editor::resolve_editor(Some(editor.as_str())))
+        .unwrap_or_else(|| crate::mxr_compose::editor::resolve_editor(None));
     let status = std::process::Command::new(&editor)
         .arg(&path)
         .status()
@@ -313,7 +314,7 @@ fn open_diagnostics_pane_details(
         app::DiagnosticsPaneKind::Events => "events",
         app::DiagnosticsPaneKind::Logs => "logs",
     };
-    let content = crate::ui::diagnostics_page::pane_details_text(state, pane);
+    let content = crate::mxr_tui::ui::diagnostics_page::pane_details_text(state, pane);
     open_temp_text_buffer(name, &content)
 }
 
@@ -529,6 +530,31 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some(pending) = app.pending_search_count.take() {
+            let bg = bg.clone();
+            let tx = result_tx.clone();
+            tokio::spawn(async move {
+                let session_id = pending.session_id;
+                let result = match ipc_call(
+                    &bg,
+                    Request::Count {
+                        query: pending.query,
+                        mode: Some(pending.mode),
+                    },
+                )
+                .await
+                {
+                    Ok(Response::Ok {
+                        data: ResponseData::Count { count },
+                    }) => Ok(count),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(error) => Err(error),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                let _ = tx.send(AsyncResult::SearchCount { session_id, result });
+            });
+        }
+
         if let Some(pending) = app.pending_unsubscribe_action.take() {
             let bg = bg.clone();
             let tx = result_tx.clone();
@@ -558,7 +584,7 @@ pub async fn run() -> anyhow::Result<()> {
                         let archived_count = pending.archive_message_ids.len();
                         let archive_resp = ipc_call(
                             &bg,
-                            Request::Mutation(mxr_protocol::MutationCommand::Archive {
+                            Request::Mutation(crate::mxr_protocol::MutationCommand::Archive {
                                 message_ids: pending.archive_message_ids.clone(),
                             }),
                         )
@@ -1037,7 +1063,7 @@ pub async fn run() -> anyhow::Result<()> {
                     &bg,
                     Request::ExportThread {
                         thread_id,
-                        format: mxr_core::types::ExportFormat::Markdown,
+                        format: crate::mxr_core::types::ExportFormat::Markdown,
                     },
                 )
                 .await;
@@ -1108,6 +1134,7 @@ pub async fn run() -> anyhow::Result<()> {
 
                                 app.search_page.has_more = results.has_more;
                                 app.search_page.loading_more = false;
+                                app.search_page.ui_status = app::SearchUiStatus::Loaded;
                                 app.search_page.session_active =
                                     !app.search_page.query.is_empty()
                                         || !app.search_page.results.is_empty();
@@ -1157,6 +1184,9 @@ pub async fn run() -> anyhow::Result<()> {
                                     }
                                     app.search_page.loading_more = false;
                                     app.search_page.load_to_end = false;
+                                    app.search_page.count_pending = false;
+                                    app.search_page.total_count = None;
+                                    app.search_page.ui_status = app::SearchUiStatus::Error;
                                 }
                                 app::SearchTarget::Mailbox => {
                                     if session_id != app.mailbox_search_session_id {
@@ -1167,19 +1197,41 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             app.status_message = Some(format!("Search failed: {error}"));
                         }
+                        AsyncResult::SearchCount {
+                            session_id,
+                            result: Ok(count),
+                        } => {
+                            if session_id != app.search_page.session_id {
+                                continue;
+                            }
+                            app.search_page.total_count = Some(count);
+                            app.search_page.count_pending = false;
+                            if app.search_page.ui_status != app::SearchUiStatus::Error {
+                                app.search_page.ui_status = app::SearchUiStatus::Loaded;
+                            }
+                        }
+                        AsyncResult::SearchCount {
+                            session_id,
+                            result: Err(error),
+                        } => {
+                            if session_id != app.search_page.session_id {
+                                continue;
+                            }
+                            app.search_page.count_pending = false;
+                            if app.search_page.results.is_empty()
+                                && matches!(app.search_page.ui_status, app::SearchUiStatus::FirstLoad)
+                            {
+                                app.search_page.ui_status = app::SearchUiStatus::Error;
+                            }
+                            app.status_message = Some(format!("Search count failed: {error}"));
+                        }
                         AsyncResult::Rules(Ok(rules)) => {
                             app.rules_page.rules = rules;
                             app.rules_page.selected_index = app
                                 .rules_page
                                 .selected_index
                                 .min(app.rules_page.rules.len().saturating_sub(1));
-                            if let Some(rule_id) = app
-                                .selected_rule()
-                                .and_then(|rule| rule["id"].as_str())
-                                .map(ToString::to_string)
-                            {
-                                app.pending_rule_detail = Some(rule_id);
-                            }
+                            app.refresh_selected_rule_panel();
                         }
                         AsyncResult::Rules(Err(e)) => {
                             app.rules_page.status = Some(format!("Rules error: {e}"));
@@ -1313,10 +1365,7 @@ pub async fn run() -> anyhow::Result<()> {
                             app.accounts_page.status = Some(format!("Accounts error: {e}"));
                         }
                         AsyncResult::Labels(Ok(labels)) => {
-                            let selected_sidebar = app.selected_sidebar_key();
-                            app.labels = labels;
-                            app.restore_sidebar_selection(selected_sidebar);
-                            app.resolve_desired_system_mailbox();
+                            apply_labels_refresh(&mut app, labels);
                         }
                         AsyncResult::Labels(Err(e)) => {
                             app.status_message = Some(format!("Label refresh failed: {e}"));
@@ -1496,7 +1545,7 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ComposeReady(Ok(data)) => {
                             // Restore terminal, spawn editor, then re-init terminal
                             ratatui::restore();
-                            let editor = mxr_compose::editor::resolve_editor(None);
+                            let editor = crate::mxr_compose::editor::resolve_editor(None);
                             let status = std::process::Command::new(&editor)
                                 .arg(format!("+{}", data.cursor_line))
                                 .arg(&data.draft_path)
@@ -1575,33 +1624,37 @@ enum AsyncResult {
         session_id: u64,
         result: Result<SearchResultData, MxrError>,
     },
+    SearchCount {
+        session_id: u64,
+        result: Result<u32, MxrError>,
+    },
     Rules(Result<Vec<serde_json::Value>, MxrError>),
     RuleDetail(Result<serde_json::Value, MxrError>),
     RuleHistory(Result<Vec<serde_json::Value>, MxrError>),
     RuleDryRun(Result<Vec<serde_json::Value>, MxrError>),
-    RuleForm(Result<mxr_protocol::RuleFormData, MxrError>),
+    RuleForm(Result<crate::mxr_protocol::RuleFormData, MxrError>),
     RuleDeleted(Result<(), MxrError>),
     RuleUpsert(Result<serde_json::Value, MxrError>),
     Diagnostics(Box<Result<Response, MxrError>>),
     Status(Result<StatusSnapshot, MxrError>),
-    Accounts(Result<Vec<mxr_protocol::AccountSummaryData>, MxrError>),
-    Labels(Result<Vec<mxr_core::Label>, MxrError>),
-    AllEnvelopes(Result<Vec<mxr_core::Envelope>, MxrError>),
-    Subscriptions(Result<Vec<mxr_core::types::SubscriptionSummary>, MxrError>),
-    AccountOperation(Result<mxr_protocol::AccountOperationResult, MxrError>),
+    Accounts(Result<Vec<crate::mxr_protocol::AccountSummaryData>, MxrError>),
+    Labels(Result<Vec<crate::mxr_core::Label>, MxrError>),
+    AllEnvelopes(Result<Vec<crate::mxr_core::Envelope>, MxrError>),
+    Subscriptions(Result<Vec<crate::mxr_core::types::SubscriptionSummary>, MxrError>),
+    AccountOperation(Result<crate::mxr_protocol::AccountOperationResult, MxrError>),
     BugReport(Result<String, MxrError>),
     AttachmentFile {
         operation: AttachmentOperation,
-        result: Result<mxr_protocol::AttachmentFile, MxrError>,
+        result: Result<crate::mxr_protocol::AttachmentFile, MxrError>,
     },
-    LabelEnvelopes(Result<Vec<mxr_core::Envelope>, MxrError>),
+    LabelEnvelopes(Result<Vec<crate::mxr_core::Envelope>, MxrError>),
     Bodies {
-        requested: Vec<mxr_core::MessageId>,
-        result: Result<Vec<mxr_core::MessageBody>, MxrError>,
+        requested: Vec<crate::mxr_core::MessageId>,
+        result: Result<Vec<crate::mxr_core::MessageBody>, MxrError>,
     },
     Thread {
-        thread_id: mxr_core::ThreadId,
-        result: Result<(mxr_core::Thread, Vec<mxr_core::Envelope>), MxrError>,
+        thread_id: crate::mxr_core::ThreadId,
+        result: Result<(crate::mxr_core::Thread, Vec<crate::mxr_core::Envelope>), MxrError>,
     },
     MutationResult(Result<app::MutationEffect, MxrError>),
     ComposeReady(Result<ComposeReadyData, MxrError>),
@@ -1617,8 +1670,8 @@ struct ComposeReadyData {
 }
 
 struct SearchResultData {
-    envelopes: Vec<mxr_core::types::Envelope>,
-    scores: std::collections::HashMap<mxr_core::MessageId, f32>,
+    envelopes: Vec<crate::mxr_core::types::Envelope>,
+    scores: std::collections::HashMap<crate::mxr_core::MessageId, f32>,
     has_more: bool,
 }
 
@@ -1627,11 +1680,11 @@ struct StatusSnapshot {
     daemon_pid: Option<u32>,
     accounts: Vec<String>,
     total_messages: u32,
-    sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
+    sync_statuses: Vec<crate::mxr_protocol::AccountSyncStatus>,
 }
 
 struct UnsubscribeResultData {
-    archived_ids: Vec<mxr_core::MessageId>,
+    archived_ids: Vec<crate::mxr_core::MessageId>,
     message: String,
 }
 
@@ -1652,8 +1705,8 @@ async fn handle_compose_action(
                     .map_err(|e| MxrError::Ipc(e.to_string()))?,
             });
         }
-        ComposeAction::New => mxr_compose::ComposeKind::New,
-        ComposeAction::NewWithTo(to) => mxr_compose::ComposeKind::NewWithTo { to },
+        ComposeAction::New => crate::mxr_compose::ComposeKind::New,
+        ComposeAction::NewWithTo(to) => crate::mxr_compose::ComposeKind::NewWithTo { to },
         ComposeAction::Reply { message_id } => {
             let resp = ipc_call(
                 bg,
@@ -1666,7 +1719,7 @@ async fn handle_compose_action(
             match resp {
                 Response::Ok {
                     data: ResponseData::ReplyContext { context },
-                } => mxr_compose::ComposeKind::Reply {
+                } => crate::mxr_compose::ComposeKind::Reply {
                     in_reply_to: context.in_reply_to,
                     references: context.references,
                     to: context.reply_to,
@@ -1690,7 +1743,7 @@ async fn handle_compose_action(
             match resp {
                 Response::Ok {
                     data: ResponseData::ReplyContext { context },
-                } => mxr_compose::ComposeKind::Reply {
+                } => crate::mxr_compose::ComposeKind::Reply {
                     in_reply_to: context.in_reply_to,
                     references: context.references,
                     to: context.reply_to,
@@ -1707,7 +1760,7 @@ async fn handle_compose_action(
             match resp {
                 Response::Ok {
                     data: ResponseData::ForwardContext { context },
-                } => mxr_compose::ComposeKind::Forward {
+                } => crate::mxr_compose::ComposeKind::Forward {
                     subject: context.subject,
                     original_context: context.forwarded_content,
                 },
@@ -1717,8 +1770,8 @@ async fn handle_compose_action(
         }
     };
 
-    let (path, cursor_line) =
-        mxr_compose::create_draft_file(kind, &from).map_err(|e| MxrError::Ipc(e.to_string()))?;
+    let (path, cursor_line) = crate::mxr_compose::create_draft_file(kind, &from)
+        .map_err(|e| MxrError::Ipc(e.to_string()))?;
 
     Ok(ComposeReadyData {
         draft_path: path.clone(),
@@ -1754,9 +1807,9 @@ fn pending_send_from_edited_draft(data: &ComposeReadyData) -> Result<Option<Pend
         .map_err(|e| format!("Failed to read draft: {e}"))?;
     let unchanged = content == data.initial_content;
 
-    let (fm, body) = mxr_compose::frontmatter::parse_compose_file(&content)
+    let (fm, body) = crate::mxr_compose::frontmatter::parse_compose_file(&content)
         .map_err(|e| format!("Parse error: {e}"))?;
-    let issues = mxr_compose::validate_draft(&fm, &body);
+    let issues = crate::mxr_compose::validate_draft(&fm, &body);
     let has_errors = issues.iter().any(|issue| issue.is_error());
     if has_errors {
         let msgs: Vec<String> = issues.iter().map(|issue| issue.to_string()).collect();
@@ -1778,7 +1831,7 @@ fn daemon_socket_path() -> std::path::PathBuf {
 async fn request_account_operation(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     request: Request,
-) -> Result<mxr_protocol::AccountOperationResult, MxrError> {
+) -> Result<crate::mxr_protocol::AccountOperationResult, MxrError> {
     let resp = ipc_call(bg, request).await;
     match resp {
         Ok(Response::Ok {
@@ -1792,11 +1845,11 @@ async fn request_account_operation(
 
 async fn run_account_save_workflow(
     bg: &mpsc::UnboundedSender<IpcRequest>,
-    account: mxr_protocol::AccountConfigData,
-) -> Result<mxr_protocol::AccountOperationResult, MxrError> {
+    account: crate::mxr_protocol::AccountConfigData,
+) -> Result<crate::mxr_protocol::AccountOperationResult, MxrError> {
     let mut result = if matches!(
         account.sync,
-        Some(mxr_protocol::AccountSyncConfigData::Gmail { .. })
+        Some(crate::mxr_protocol::AccountSyncConfigData::Gmail { .. })
     ) {
         request_account_operation(
             bg,
@@ -1833,8 +1886,8 @@ async fn run_account_save_workflow(
     Ok(result)
 }
 
-fn empty_account_operation_result() -> mxr_protocol::AccountOperationResult {
-    mxr_protocol::AccountOperationResult {
+fn empty_account_operation_result() -> crate::mxr_protocol::AccountOperationResult {
+    crate::mxr_protocol::AccountOperationResult {
         ok: true,
         summary: String::new(),
         save: None,
@@ -1845,8 +1898,8 @@ fn empty_account_operation_result() -> mxr_protocol::AccountOperationResult {
 }
 
 fn merge_account_operation_result(
-    base: &mut mxr_protocol::AccountOperationResult,
-    next: mxr_protocol::AccountOperationResult,
+    base: &mut crate::mxr_protocol::AccountOperationResult,
+    next: crate::mxr_protocol::AccountOperationResult,
 ) {
     base.ok &= next.ok;
     if !next.summary.is_empty() {
@@ -1904,7 +1957,7 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
     }
 }
 
-fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>) {
+fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<crate::mxr_core::Envelope>) {
     let selected_id = (app.active_label.is_none()
         && app.pending_active_label.is_none()
         && !app.search_active
@@ -1916,7 +1969,11 @@ fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>
         app.envelopes = app
             .all_envelopes
             .iter()
-            .filter(|envelope| !envelope.flags.contains(mxr_core::MessageFlags::TRASH))
+            .filter(|envelope| {
+                !envelope
+                    .flags
+                    .contains(crate::mxr_core::MessageFlags::TRASH)
+            })
             .cloned()
             .collect();
         if app.mailbox_view == app::MailboxView::Messages {
@@ -1930,7 +1987,43 @@ fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>
     }
 }
 
-fn restore_mail_list_selection(app: &mut App, selected_id: Option<mxr_core::MessageId>) {
+fn apply_labels_refresh(app: &mut App, mut labels: Vec<crate::mxr_core::Label>) {
+    let selected_sidebar = app.selected_sidebar_key();
+    let mut preserved_label_ids = std::collections::HashSet::new();
+    if let Some(app::SidebarSelectionKey::Label(label_id)) = selected_sidebar.as_ref() {
+        preserved_label_ids.insert(label_id.clone());
+    }
+    if let Some(label_id) = app.pending_active_label.as_ref() {
+        preserved_label_ids.insert(label_id.clone());
+    }
+    if let Some(label_id) = app.active_label.as_ref() {
+        preserved_label_ids.insert(label_id.clone());
+    }
+
+    for label_id in preserved_label_ids {
+        if labels.iter().any(|label| label.id == label_id) {
+            continue;
+        }
+        if let Some(existing) = app
+            .labels
+            .iter()
+            .find(|label| label.id == label_id)
+            .cloned()
+        {
+            labels.push(crate::mxr_core::Label {
+                unread_count: 0,
+                total_count: 0,
+                ..existing
+            });
+        }
+    }
+
+    app.labels = labels;
+    app.restore_sidebar_selection(selected_sidebar);
+    app.resolve_desired_system_mailbox();
+}
+
+fn restore_mail_list_selection(app: &mut App, selected_id: Option<crate::mxr_core::MessageId>) {
     let row_count = app.mail_list_rows().len();
     if row_count == 0 {
         app.selected_index = 0;
@@ -1962,7 +2055,7 @@ fn restore_mail_list_selection(app: &mut App, selected_id: Option<mxr_core::Mess
 
 async fn load_accounts_page_accounts(
     bg: &mpsc::UnboundedSender<IpcRequest>,
-) -> Result<Vec<mxr_protocol::AccountSummaryData>, MxrError> {
+) -> Result<Vec<crate::mxr_protocol::AccountSummaryData>, MxrError> {
     match ipc_call(bg, Request::ListAccounts).await {
         Ok(Response::Ok {
             data: ResponseData::Accounts { accounts },
@@ -1978,7 +2071,7 @@ async fn load_accounts_page_accounts(
 
 async fn load_config_account_summaries(
     bg: &mpsc::UnboundedSender<IpcRequest>,
-) -> Result<Vec<mxr_protocol::AccountSummaryData>, MxrError> {
+) -> Result<Vec<crate::mxr_protocol::AccountSummaryData>, MxrError> {
     let resp = ipc_call(bg, Request::ListAccountsConfig).await?;
     match resp {
         Response::Ok {
@@ -1993,17 +2086,17 @@ async fn load_config_account_summaries(
 }
 
 fn account_config_to_summary(
-    account: mxr_protocol::AccountConfigData,
-) -> mxr_protocol::AccountSummaryData {
+    account: crate::mxr_protocol::AccountConfigData,
+) -> crate::mxr_protocol::AccountSummaryData {
     let provider_kind = account
         .sync
         .as_ref()
         .map(account_sync_kind_label)
         .or_else(|| account.send.as_ref().map(account_send_kind_label))
         .unwrap_or_else(|| "unknown".to_string());
-    let account_id = mxr_core::AccountId::from_provider_id(&provider_kind, &account.email);
+    let account_id = crate::mxr_core::AccountId::from_provider_id(&provider_kind, &account.email);
 
-    mxr_protocol::AccountSummaryData {
+    crate::mxr_protocol::AccountSummaryData {
         account_id,
         key: Some(account.key),
         name: account.name,
@@ -2013,24 +2106,24 @@ fn account_config_to_summary(
         send_kind: account.send.as_ref().map(account_send_kind_label),
         enabled: true,
         is_default: account.is_default,
-        source: mxr_protocol::AccountSourceData::Config,
-        editable: mxr_protocol::AccountEditModeData::Full,
+        source: crate::mxr_protocol::AccountSourceData::Config,
+        editable: crate::mxr_protocol::AccountEditModeData::Full,
         sync: account.sync,
         send: account.send,
     }
 }
 
-fn account_sync_kind_label(sync: &mxr_protocol::AccountSyncConfigData) -> String {
+fn account_sync_kind_label(sync: &crate::mxr_protocol::AccountSyncConfigData) -> String {
     match sync {
-        mxr_protocol::AccountSyncConfigData::Gmail { .. } => "gmail".to_string(),
-        mxr_protocol::AccountSyncConfigData::Imap { .. } => "imap".to_string(),
+        crate::mxr_protocol::AccountSyncConfigData::Gmail { .. } => "gmail".to_string(),
+        crate::mxr_protocol::AccountSyncConfigData::Imap { .. } => "imap".to_string(),
     }
 }
 
-fn account_send_kind_label(send: &mxr_protocol::AccountSendConfigData) -> String {
+fn account_send_kind_label(send: &crate::mxr_protocol::AccountSendConfigData) -> String {
     match send {
-        mxr_protocol::AccountSendConfigData::Gmail => "gmail".to_string(),
-        mxr_protocol::AccountSendConfigData::Smtp { .. } => "smtp".to_string(),
+        crate::mxr_protocol::AccountSendConfigData::Gmail => "gmail".to_string(),
+        crate::mxr_protocol::AccountSendConfigData::Smtp { .. } => "smtp".to_string(),
     }
 }
 
@@ -2050,12 +2143,13 @@ mod tests {
         app::MailListMode, apply_all_envelopes_refresh, handle_daemon_event,
         pending_send_from_edited_draft, ComposeReadyData, PendingSend,
     };
+    use crate::mxr_config::RenderConfig;
+    use crate::mxr_core::id::*;
+    use crate::mxr_core::types::*;
+    use crate::mxr_core::MxrError;
+    use crate::mxr_protocol::{DaemonEvent, LabelCount, MutationCommand, Request};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use mxr_config::RenderConfig;
-    use mxr_core::id::*;
-    use mxr_core::types::*;
-    use mxr_core::MxrError;
-    use mxr_protocol::{DaemonEvent, LabelCount, MutationCommand, Request};
+    use mxr_test_support::render_to_string;
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
         (0..count)
@@ -2292,7 +2386,7 @@ mod tests {
     #[test]
     fn apply_runtime_config_updates_tui_settings() {
         let mut app = App::new();
-        let mut config = mxr_config::MxrConfig::default();
+        let mut config = crate::mxr_config::MxrConfig::default();
         config.render.reader_mode = false;
         config.snooze.morning_hour = 7;
         config.appearance.theme = "light".into();
@@ -2303,7 +2397,7 @@ mod tests {
         assert_eq!(app.snooze_config.morning_hour, 7);
         assert_eq!(
             app.theme.selection_fg,
-            crate::theme::Theme::light().selection_fg
+            crate::mxr_tui::theme::Theme::light().selection_fg
         );
     }
 
@@ -2358,16 +2452,16 @@ mod tests {
     fn command_palette_toggle() {
         let mut p = CommandPalette::default();
         assert!(!p.visible);
-        p.toggle();
+        p.toggle(crate::mxr_tui::action::UiContext::MailboxList);
         assert!(p.visible);
-        p.toggle();
+        p.toggle(crate::mxr_tui::action::UiContext::MailboxList);
         assert!(!p.visible);
     }
 
     #[test]
     fn command_palette_fuzzy_filter() {
         let mut p = CommandPalette::default();
-        p.toggle();
+        p.toggle(crate::mxr_tui::action::UiContext::MailboxList);
         p.on_char('i');
         p.on_char('n');
         p.on_char('b');
@@ -2382,7 +2476,7 @@ mod tests {
     #[test]
     fn command_palette_shortcut_filter_finds_edit_config() {
         let mut p = CommandPalette::default();
-        p.toggle();
+        p.toggle(crate::mxr_tui::action::UiContext::MailboxList);
         p.on_char('g');
         p.on_char('c');
         let labels: Vec<&str> = p
@@ -2503,13 +2597,13 @@ mod tests {
     #[test]
     fn search_bar_cycles_modes() {
         let mut bar = SearchBar::default();
-        assert_eq!(bar.mode, mxr_core::SearchMode::Lexical);
+        assert_eq!(bar.mode, crate::mxr_core::SearchMode::Lexical);
         bar.cycle_mode();
-        assert_eq!(bar.mode, mxr_core::SearchMode::Hybrid);
+        assert_eq!(bar.mode, crate::mxr_core::SearchMode::Hybrid);
         bar.cycle_mode();
-        assert_eq!(bar.mode, mxr_core::SearchMode::Semantic);
+        assert_eq!(bar.mode, crate::mxr_core::SearchMode::Semantic);
         bar.cycle_mode();
-        assert_eq!(bar.mode, mxr_core::SearchMode::Lexical);
+        assert_eq!(bar.mode, crate::mxr_core::SearchMode::Lexical);
     }
 
     #[test]
@@ -3742,16 +3836,29 @@ mod tests {
         assert_eq!(app.search_page.query, "crate");
         assert!(app.search_page.results.is_empty());
         assert!(app.search_page.loading_more);
+        assert!(app.search_page.count_pending);
+        assert_eq!(
+            app.search_page.ui_status,
+            crate::mxr_tui::app::SearchUiStatus::FirstLoad
+        );
         assert_eq!(
             app.pending_search,
             Some(PendingSearchRequest {
                 query: "crate".into(),
-                mode: mxr_core::SearchMode::Lexical,
-                sort: mxr_core::SortOrder::DateDesc,
+                mode: crate::mxr_core::SearchMode::Lexical,
+                sort: crate::mxr_core::SortOrder::DateDesc,
                 limit: SEARCH_PAGE_SIZE,
                 offset: 0,
                 target: SearchTarget::SearchPage,
                 append: false,
+                session_id: app.search_page.session_id,
+            })
+        );
+        assert_eq!(
+            app.pending_search_count,
+            Some(crate::mxr_tui::app::PendingSearchCountRequest {
+                query: "crate".into(),
+                mode: crate::mxr_core::SearchMode::Lexical,
                 session_id: app.search_page.session_id,
             })
         );
@@ -3782,6 +3889,91 @@ mod tests {
             Some(results[1].id.clone())
         );
         assert!(app.pending_search.is_none());
+    }
+
+    #[test]
+    fn search_results_accept_gg_and_g_navigation() {
+        let mut app = App::new();
+        app.apply(Action::OpenSearchScreen);
+        app.search_page.editing = false;
+        app.search_page.results = make_test_envelopes(3);
+        app.search_page.selected_index = 2;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+        assert!(action.is_none());
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::JumpTop));
+        app.apply(action.unwrap());
+        assert_eq!(app.search_page.selected_index, 0);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT));
+        assert_eq!(action, Some(Action::JumpBottom));
+        app.apply(action.unwrap());
+        assert_eq!(app.search_page.selected_index, 2);
+    }
+
+    #[test]
+    fn open_search_screen_without_session_clears_stale_preview_and_query() {
+        let mut app = App::new();
+        let envelope = make_test_envelopes(1).remove(0);
+        app.search_bar.query = "mailbox quick filter".into();
+        app.viewing_envelope = Some(envelope.clone());
+        app.viewed_thread_messages = vec![envelope];
+        app.search_page.query = "stale".into();
+        app.search_page.session_active = false;
+        app.search_page.results.clear();
+
+        app.apply(Action::OpenSearchScreen);
+
+        assert_eq!(app.screen, Screen::Search);
+        assert!(app.search_page.editing);
+        assert!(app.search_page.query.is_empty());
+        assert!(app.viewing_envelope.is_none());
+        assert!(app.viewed_thread_messages.is_empty());
+        assert_eq!(
+            app.search_page.ui_status,
+            crate::mxr_tui::app::SearchUiStatus::Idle
+        );
+    }
+
+    #[test]
+    fn non_mail_screens_ignore_label_shortcut() {
+        let mut app = App::new();
+
+        for screen in [Screen::Rules, Screen::Accounts, Screen::Diagnostics] {
+            app.screen = screen;
+            app.label_picker.close();
+            let action = app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
+            assert!(action.is_none(), "unexpected action on {screen:?}");
+            assert!(
+                !app.label_picker.visible,
+                "label picker opened on {screen:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rules_navigation_refreshes_selected_panel_request() {
+        let mut app = App::new();
+        app.screen = Screen::Rules;
+        app.rules_page.rules = vec![
+            serde_json::json!({"id": "rule-1", "name": "One"}),
+            serde_json::json!({"id": "rule-2", "name": "Two"}),
+        ];
+        app.rules_page.panel = crate::mxr_tui::app::RulesPanel::History;
+
+        assert!(app
+            .handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE))
+            .is_none());
+        assert_eq!(app.rules_page.selected_index, 1);
+        assert_eq!(app.pending_rule_history.as_deref(), Some("rule-2"));
+
+        app.rules_page.panel = crate::mxr_tui::app::RulesPanel::DryRun;
+        assert!(app
+            .handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE))
+            .is_none());
+        assert_eq!(app.rules_page.selected_index, 0);
+        assert_eq!(app.pending_rule_dry_run.as_deref(), Some("rule-1"));
     }
 
     #[test]
@@ -3845,8 +4037,8 @@ mod tests {
             app.pending_search,
             Some(PendingSearchRequest {
                 query: "deploy".into(),
-                mode: mxr_core::SearchMode::Lexical,
-                sort: mxr_core::SortOrder::DateDesc,
+                mode: crate::mxr_core::SearchMode::Lexical,
+                sort: crate::mxr_core::SortOrder::DateDesc,
                 limit: SEARCH_PAGE_SIZE,
                 offset: 3,
                 target: SearchTarget::SearchPage,
@@ -3854,6 +4046,23 @@ mod tests {
                 session_id: 9,
             })
         );
+    }
+
+    #[test]
+    fn search_jump_bottom_uses_search_results_viewport_height() {
+        let mut app = App::new();
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = make_test_envelopes(15);
+        app.search_page.session_active = true;
+
+        let _ = render_to_string(120, 20, |frame| app.draw(frame));
+
+        app.apply(Action::JumpBottom);
+
+        assert_eq!(app.visible_height, 11);
+        assert_eq!(app.search_page.selected_index, 14);
+        assert_eq!(app.search_page.scroll_offset, 4);
     }
 
     #[test]
@@ -3904,13 +4113,13 @@ mod tests {
         assert!(app.accounts_page.form.visible);
         assert_eq!(
             app.accounts_page.form.mode,
-            crate::app::AccountFormMode::Gmail
+            crate::mxr_tui::app::AccountFormMode::Gmail
         );
     }
 
     #[test]
     fn app_from_empty_config_enters_account_onboarding() {
-        let config = mxr_config::MxrConfig::default();
+        let config = crate::mxr_config::MxrConfig::default();
         let app = App::from_config(&config);
 
         assert_eq!(app.screen, Screen::Accounts);
@@ -3921,7 +4130,7 @@ mod tests {
 
     #[test]
     fn onboarding_confirm_opens_new_account_form() {
-        let config = mxr_config::MxrConfig::default();
+        let config = crate::mxr_config::MxrConfig::default();
         let mut app = App::from_config(&config);
 
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
@@ -3933,7 +4142,7 @@ mod tests {
 
     #[test]
     fn onboarding_q_quits() {
-        let config = mxr_config::MxrConfig::default();
+        let config = crate::mxr_config::MxrConfig::default();
         let mut app = App::from_config(&config);
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE));
@@ -3943,7 +4152,7 @@ mod tests {
 
     #[test]
     fn onboarding_blocks_mailbox_screen_until_account_exists() {
-        let config = mxr_config::MxrConfig::default();
+        let config = crate::mxr_config::MxrConfig::default();
         let mut app = App::from_config(&config);
 
         app.apply(Action::OpenMailboxScreen);
@@ -3961,13 +4170,13 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
         assert_eq!(
             app.accounts_page.form.mode,
-            crate::app::AccountFormMode::ImapSmtp
+            crate::mxr_tui::app::AccountFormMode::ImapSmtp
         );
 
         app.handle_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE));
         assert_eq!(
             app.accounts_page.form.mode,
-            crate::app::AccountFormMode::Gmail
+            crate::mxr_tui::app::AccountFormMode::Gmail
         );
     }
 
@@ -3980,13 +4189,13 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         assert_eq!(
             app.accounts_page.form.mode,
-            crate::app::AccountFormMode::ImapSmtp
+            crate::mxr_tui::app::AccountFormMode::ImapSmtp
         );
 
         app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
         assert_eq!(
             app.accounts_page.form.mode,
-            crate::app::AccountFormMode::Gmail
+            crate::mxr_tui::app::AccountFormMode::Gmail
         );
     }
 
@@ -4000,11 +4209,11 @@ mod tests {
 
         assert_eq!(
             app.accounts_page.form.mode,
-            crate::app::AccountFormMode::Gmail
+            crate::mxr_tui::app::AccountFormMode::Gmail
         );
         assert_eq!(
             app.accounts_page.form.pending_mode_switch,
-            Some(crate::app::AccountFormMode::ImapSmtp)
+            Some(crate::mxr_tui::app::AccountFormMode::ImapSmtp)
         );
     }
 
@@ -4019,7 +4228,7 @@ mod tests {
 
         assert_eq!(
             app.accounts_page.form.mode,
-            crate::app::AccountFormMode::ImapSmtp
+            crate::mxr_tui::app::AccountFormMode::ImapSmtp
         );
         assert!(app.accounts_page.form.pending_mode_switch.is_none());
     }
@@ -4035,7 +4244,7 @@ mod tests {
 
         assert_eq!(
             app.accounts_page.form.mode,
-            crate::app::AccountFormMode::Gmail
+            crate::mxr_tui::app::AccountFormMode::Gmail
         );
         assert!(app.accounts_page.form.pending_mode_switch.is_none());
     }
@@ -4082,6 +4291,7 @@ mod tests {
         app.envelopes = make_test_envelopes(2);
         app.all_envelopes = app.envelopes.clone();
         app.apply(Action::OpenSelected);
+        app.active_pane = ActivePane::MailList;
 
         app.apply(Action::ToggleSelect);
 
@@ -4095,6 +4305,24 @@ mod tests {
             BodyViewState::Loading { ref preview }
                 if preview.as_deref() == Some("Snippet 1")
         ));
+    }
+
+    #[test]
+    fn toggle_select_in_message_view_keeps_current_message_visible() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(2);
+        app.all_envelopes = app.envelopes.clone();
+        app.apply(Action::OpenSelected);
+
+        let original_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+        app.apply(Action::ToggleSelect);
+
+        assert_eq!(app.selected_index, 0);
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(original_id.clone())
+        );
+        assert!(app.selected_set.contains(&original_id));
     }
 
     #[test]
@@ -4131,6 +4359,45 @@ mod tests {
             app.selected_sidebar_item(),
             Some(super::app::SidebarItem::Label(label)) if label.name == "Work"
         ));
+    }
+
+    #[test]
+    fn labels_refresh_preserves_active_label_context_when_label_becomes_empty() {
+        let mut app = App::new();
+        app.labels = make_test_labels();
+        let work = app
+            .labels
+            .iter()
+            .find(|label| label.name == "Work")
+            .unwrap()
+            .clone();
+        app.active_label = Some(work.id.clone());
+        app.sidebar_selected = app
+            .sidebar_items()
+            .iter()
+            .position(
+                |item| matches!(item, super::app::SidebarItem::Label(label) if label.id == work.id),
+            )
+            .unwrap();
+
+        let refreshed = app
+            .labels
+            .iter()
+            .filter(|label| label.id != work.id)
+            .cloned()
+            .collect();
+
+        super::apply_labels_refresh(&mut app, refreshed);
+
+        let preserved = app.labels.iter().find(|label| label.id == work.id).unwrap();
+        assert_eq!(preserved.unread_count, 0);
+        assert_eq!(preserved.total_count, 0);
+        assert_eq!(app.active_label.as_ref(), Some(&work.id));
+        assert!(matches!(
+            app.selected_sidebar_item(),
+            Some(super::app::SidebarItem::Label(label)) if label.id == work.id
+        ));
+        assert_eq!(app.status_bar_state().mailbox_name, "Work");
     }
 
     #[test]
@@ -4185,6 +4452,75 @@ mod tests {
     }
 
     #[test]
+    fn search_preview_attachment_key_opens_modal() {
+        let mut app = App::new();
+        let mut results = make_test_envelopes(1);
+        results[0].has_attachments = true;
+        let env = results[0].clone();
+        app.screen = Screen::Search;
+        app.search_page.results = results;
+        app.search_page.session_active = true;
+        app.search_page.active_pane = SearchPane::Preview;
+        app.viewed_thread_messages = vec![env.clone()];
+        app.viewing_envelope = Some(env.clone());
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some("hello".into()),
+                text_html: None,
+                attachments: vec![AttachmentMeta {
+                    id: AttachmentId::new(),
+                    message_id: env.id.clone(),
+                    filename: "report.pdf".into(),
+                    mime_type: "application/pdf".into(),
+                    size_bytes: 1024,
+                    local_path: None,
+                    provider_id: "att-1".into(),
+                }],
+                fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
+            },
+        );
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('A'), KeyModifiers::SHIFT));
+        assert_eq!(action, Some(Action::AttachmentList));
+
+        app.apply(Action::AttachmentList);
+
+        assert!(app.attachment_panel.visible);
+        assert_eq!(app.attachment_panel.attachments.len(), 1);
+        assert_eq!(app.attachment_panel.attachments[0].filename, "report.pdf");
+    }
+
+    #[test]
+    fn search_preview_toggle_select_keeps_current_message_visible() {
+        let mut app = App::new();
+        let results = make_test_envelopes(2);
+        let env = results[0].clone();
+        app.screen = Screen::Search;
+        app.search_page.results = results;
+        app.search_page.session_active = true;
+        app.search_page.active_pane = SearchPane::Preview;
+        app.viewed_thread_messages = vec![env.clone()];
+        app.viewing_envelope = Some(env.clone());
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::ToggleSelect));
+
+        app.apply(Action::ToggleSelect);
+
+        assert_eq!(app.search_page.selected_index, 0);
+        assert_eq!(
+            app.viewing_envelope
+                .as_ref()
+                .map(|current| current.id.clone()),
+            Some(env.id.clone())
+        );
+        assert!(app.selected_set.contains(&env.id));
+    }
+
+    #[test]
     fn unchanged_editor_result_disables_send_actions() {
         let temp = std::env::temp_dir().join(format!(
             "mxr-compose-test-{}-{}.md",
@@ -4211,7 +4547,7 @@ mod tests {
     fn send_key_is_ignored_for_unchanged_draft_confirmation() {
         let mut app = App::new();
         app.pending_send_confirm = Some(PendingSend {
-            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+            fm: crate::mxr_compose::frontmatter::ComposeFrontmatter {
                 to: "a@example.com".into(),
                 cc: String::new(),
                 bcc: String::new(),
@@ -4285,7 +4621,7 @@ mod tests {
             "IPC error: Connection refused (os error 61)".into(),
         ));
 
-        assert!(crate::should_reconnect_ipc(&result));
+        assert!(crate::mxr_tui::should_reconnect_ipc(&result));
     }
 
     #[test]
@@ -4294,9 +4630,9 @@ mod tests {
         let missing = std::io::Error::from(std::io::ErrorKind::NotFound);
         let other = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
 
-        assert!(crate::should_autostart_daemon(&refused));
-        assert!(crate::should_autostart_daemon(&missing));
-        assert!(!crate::should_autostart_daemon(&other));
+        assert!(crate::mxr_tui::should_autostart_daemon(&refused));
+        assert!(crate::mxr_tui::should_autostart_daemon(&missing));
+        assert!(!crate::mxr_tui::should_autostart_daemon(&other));
     }
 
     #[test]
@@ -4319,7 +4655,7 @@ mod tests {
         assert!(action.is_none());
         assert_eq!(
             app.diagnostics_page.selected_pane,
-            crate::app::DiagnosticsPaneKind::Data
+            crate::mxr_tui::app::DiagnosticsPaneKind::Data
         );
     }
 
@@ -4327,14 +4663,14 @@ mod tests {
     fn diagnostics_enter_toggles_fullscreen_for_selected_pane() {
         let mut app = App::new();
         app.screen = Screen::Diagnostics;
-        app.diagnostics_page.selected_pane = crate::app::DiagnosticsPaneKind::Logs;
+        app.diagnostics_page.selected_pane = crate::mxr_tui::app::DiagnosticsPaneKind::Logs;
 
         assert!(app
             .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .is_none());
         assert_eq!(
             app.diagnostics_page.fullscreen_pane,
-            Some(crate::app::DiagnosticsPaneKind::Logs)
+            Some(crate::mxr_tui::app::DiagnosticsPaneKind::Logs)
         );
         assert!(app
             .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
@@ -4346,7 +4682,7 @@ mod tests {
     fn diagnostics_d_opens_selected_pane_details() {
         let mut app = App::new();
         app.screen = Screen::Diagnostics;
-        app.diagnostics_page.selected_pane = crate::app::DiagnosticsPaneKind::Events;
+        app.diagnostics_page.selected_pane = crate::mxr_tui::app::DiagnosticsPaneKind::Events;
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
 

@@ -1,4 +1,4 @@
-use mxr_core::AccountId;
+use crate::mxr_core::AccountId;
 use sqlx::Row;
 
 pub struct EventLogEntry {

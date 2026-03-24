@@ -1,4 +1,4 @@
-use crate::ExportThread;
+use crate::mxr_export::ExportThread;
 use std::collections::HashSet;
 
 pub fn export_markdown(thread: &ExportThread) -> String {
@@ -43,7 +43,7 @@ pub fn export_markdown(thread: &ExportThread) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{empty_body_thread, sample_thread, single_message_thread};
+    use crate::mxr_export::tests::{empty_body_thread, sample_thread, single_message_thread};
     use pretty_assertions::assert_eq;
 
     #[test]

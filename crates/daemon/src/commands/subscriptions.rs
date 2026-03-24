@@ -1,8 +1,8 @@
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
+use crate::mxr_core::types::SubscriptionSummary;
+use crate::mxr_protocol::{Request, Response, ResponseData};
 use crate::output::resolve_format;
-use mxr_core::types::SubscriptionSummary;
-use mxr_protocol::{Request, Response, ResponseData};
 
 fn display_name(subscription: &SubscriptionSummary) -> &str {
     subscription
@@ -26,11 +26,11 @@ fn render_table(subscriptions: &[SubscriptionSummary]) {
     for subscription in subscriptions {
         let subject: String = subscription.latest_subject.chars().take(32).collect();
         let method = match &subscription.unsubscribe {
-            mxr_core::types::UnsubscribeMethod::OneClick { .. } => "one-click",
-            mxr_core::types::UnsubscribeMethod::HttpLink { .. } => "link",
-            mxr_core::types::UnsubscribeMethod::Mailto { .. } => "mailto",
-            mxr_core::types::UnsubscribeMethod::BodyLink { .. } => "body-link",
-            mxr_core::types::UnsubscribeMethod::None => "-",
+            crate::mxr_core::types::UnsubscribeMethod::OneClick { .. } => "one-click",
+            crate::mxr_core::types::UnsubscribeMethod::HttpLink { .. } => "link",
+            crate::mxr_core::types::UnsubscribeMethod::Mailto { .. } => "mailto",
+            crate::mxr_core::types::UnsubscribeMethod::BodyLink { .. } => "body-link",
+            crate::mxr_core::types::UnsubscribeMethod::None => "-",
         };
         println!(
             "{:<32} {:<34} {:>6} {:<10} {:<32}",
@@ -66,9 +66,9 @@ pub async fn run(limit: u32, format: Option<OutputFormat>) -> anyhow::Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mxr_core::id::{AccountId, MessageId, ThreadId};
+    use crate::mxr_core::types::{MessageFlags, UnsubscribeMethod};
     use chrono::{TimeZone, Utc};
-    use mxr_core::id::{AccountId, MessageId, ThreadId};
-    use mxr_core::types::{MessageFlags, UnsubscribeMethod};
 
     fn sample_subscription() -> SubscriptionSummary {
         SubscriptionSummary {

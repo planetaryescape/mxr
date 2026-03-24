@@ -1,4 +1,4 @@
-use crate::action::Action;
+use crate::mxr_tui::action::{action_allowed_in_context, Action, UiContext};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -16,42 +16,46 @@ pub struct CommandPalette {
     pub commands: Vec<PaletteCommand>,
     pub filtered: Vec<usize>,
     pub selected: usize,
+    pub context: UiContext,
 }
 
 impl Default for CommandPalette {
     fn default() -> Self {
         let commands = default_commands();
-        let filtered: Vec<usize> = (0..commands.len()).collect();
+        let context = UiContext::MailboxList;
+        let filtered = filtered_indices(&commands, context, "");
         Self {
             visible: false,
             input: String::new(),
             commands,
             filtered,
             selected: 0,
+            context,
         }
     }
 }
 
 impl CommandPalette {
-    pub fn toggle(&mut self) {
+    pub fn toggle(&mut self, context: UiContext) {
         self.visible = !self.visible;
         if self.visible {
+            self.context = context;
             self.input.clear();
             self.selected = 0;
-            self.update_filtered();
+            self.update_filtered(None);
         }
     }
 
     pub fn on_char(&mut self, c: char) {
+        let preferred = self.selected_action().cloned();
         self.input.push(c);
-        self.selected = 0;
-        self.update_filtered();
+        self.update_filtered(preferred);
     }
 
     pub fn on_backspace(&mut self) {
+        let preferred = self.selected_action().cloned();
         self.input.pop();
-        self.selected = 0;
-        self.update_filtered();
+        self.update_filtered(preferred);
     }
 
     pub fn select_next(&mut self) {
@@ -78,22 +82,56 @@ impl CommandPalette {
         }
     }
 
-    pub fn update_filtered(&mut self) {
-        let query = self.input.to_lowercase();
-        self.filtered = self
-            .commands
+    pub fn visible_commands(&self) -> impl Iterator<Item = &PaletteCommand> {
+        self.filtered
             .iter()
-            .enumerate()
-            .filter(|(_, cmd)| {
-                if query.is_empty() {
-                    return true;
-                }
-                cmd.label.to_lowercase().contains(&query)
-                    || cmd.shortcut.to_lowercase().contains(&query)
-            })
-            .map(|(i, _)| i)
-            .collect();
+            .filter_map(|&index| self.commands.get(index))
     }
+
+    fn selected_action(&self) -> Option<&Action> {
+        self.filtered
+            .get(self.selected)
+            .and_then(|&index| self.commands.get(index))
+            .map(|command| &command.action)
+    }
+
+    fn update_filtered(&mut self, preferred_action: Option<Action>) {
+        self.filtered = filtered_indices(&self.commands, self.context, &self.input);
+        if let Some(action) = preferred_action {
+            if let Some(index) = self
+                .filtered
+                .iter()
+                .position(|&command_index| self.commands[command_index].action == action)
+            {
+                self.selected = index;
+                return;
+            }
+        }
+        self.selected = self.selected.min(self.filtered.len().saturating_sub(1));
+    }
+}
+
+pub fn commands_for_context(context: UiContext) -> Vec<PaletteCommand> {
+    default_commands()
+        .into_iter()
+        .filter(|command| action_allowed_in_context(&command.action, context))
+        .collect()
+}
+
+fn filtered_indices(commands: &[PaletteCommand], context: UiContext, input: &str) -> Vec<usize> {
+    let query = input.to_lowercase();
+    commands
+        .iter()
+        .enumerate()
+        .filter(|(_, command)| {
+            action_allowed_in_context(&command.action, context)
+                && (query.is_empty()
+                    || command.label.to_lowercase().contains(&query)
+                    || command.shortcut.to_lowercase().contains(&query)
+                    || command.category.to_lowercase().contains(&query))
+        })
+        .map(|(index, _)| index)
+        .collect()
 }
 
 pub fn default_commands() -> Vec<PaletteCommand> {
@@ -437,17 +475,22 @@ pub fn default_commands() -> Vec<PaletteCommand> {
     ]
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    palette: &CommandPalette,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
     if !palette.visible {
         return;
     }
 
-    let width = (area.width as u32 * 68 / 100).min(92) as u16;
-    let height = (palette.filtered.len() as u16 + 8)
-        .min(area.height.saturating_sub(4))
-        .max(10);
+    let width = ((area.width as u32 * 64) / 100).clamp(56, 108) as u16;
+    let width = width.min(area.width.saturating_sub(4)).max(1);
+    let preferred_height = area.height.saturating_sub(5).clamp(14, 22);
+    let height = preferred_height.min(area.height.saturating_sub(2).max(1));
     let x = area.x + (area.width.saturating_sub(width)) / 2;
-    let y = area.y + (area.height.saturating_sub(height)) / 2;
+    let y = (area.y + 3).min(area.y + area.height.saturating_sub(height));
     let popup_area = Rect::new(x, y, width, height);
 
     frame.render_widget(Clear, popup_area);
@@ -486,7 +529,11 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
         palette.input.clone()
     };
     let input_block = Block::bordered()
-        .title(format!(" Query  {} matches ", palette.filtered.len()))
+        .title(format!(
+            " Query  {} matches  {} ",
+            palette.filtered.len(),
+            palette.context.label()
+        ))
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.border_unfocused))
         .style(Style::default().bg(theme.hint_bar_bg));
@@ -506,7 +553,7 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
 
     let list_area = chunks[1];
 
-    let visible_len = list_area.height as usize;
+    let visible_len = list_area.height.saturating_sub(2) as usize;
     let start = if visible_len == 0 {
         0
     } else {
@@ -604,6 +651,11 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
                 Span::styled(&cmd.label, Style::default().fg(theme.text_primary).bold()),
                 Span::styled(" · ", Style::default().fg(theme.text_muted)),
                 Span::styled(shortcut, Style::default().fg(theme.accent)),
+                Span::styled(" · ", Style::default().fg(theme.text_muted)),
+                Span::styled(
+                    palette.context.label(),
+                    Style::default().fg(theme.text_muted),
+                ),
             ])
         })
         .unwrap_or_else(|| {
@@ -620,7 +672,7 @@ pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &cra
     frame.render_widget(footer, chunks[2]);
 }
 
-fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str, Color) {
+fn category_style(category: &str, theme: &crate::mxr_tui::theme::Theme) -> (&'static str, Color) {
     match category {
         "Mail" => ("@", theme.warning),
         "Navigation" => (">", theme.accent),
@@ -632,5 +684,44 @@ fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str,
         "Accounts" => ("=", theme.accent_dim),
         "Sync" => ("*", theme.success),
         _ => ("?", theme.text_muted),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{commands_for_context, CommandPalette};
+    use crate::mxr_tui::action::UiContext;
+
+    #[test]
+    fn rules_context_hides_mail_only_commands() {
+        let labels: Vec<String> = commands_for_context(UiContext::RulesList)
+            .into_iter()
+            .map(|command| command.label)
+            .collect();
+
+        assert!(labels.contains(&"New Rule".to_string()));
+        assert!(!labels.contains(&"Apply Label".to_string()));
+        assert!(!labels.contains(&"Archive".to_string()));
+    }
+
+    #[test]
+    fn filtering_preserves_selected_command_identity() {
+        let mut palette = CommandPalette::default();
+        palette.toggle(UiContext::MailboxList);
+        palette.selected = palette
+            .filtered
+            .iter()
+            .position(|&index| palette.commands[index].label == "Open Search Page")
+            .unwrap();
+
+        palette.on_char('o');
+        palette.on_char('p');
+
+        let selected = palette
+            .filtered
+            .get(palette.selected)
+            .map(|&index| palette.commands[index].label.clone());
+
+        assert_eq!(selected.as_deref(), Some("Open Search Page"));
     }
 }

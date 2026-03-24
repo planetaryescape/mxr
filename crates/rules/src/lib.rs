@@ -51,7 +51,7 @@ pub struct Rule {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::condition::MessageView;
+    use crate::mxr_rules::condition::MessageView;
     use chrono::{DateTime, Utc};
 
     /// Test message implementation for condition evaluation.

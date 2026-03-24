@@ -1,5 +1,8 @@
 # 03 — Phase 2: Compose + Mutations + IMAP + Batch Operations
 
+> **Current Layout Note**
+> This phase plan still uses the historical `mxr-*` crate names. Current code ships as one publishable package, `mxr`; those old crate names now map to modules mounted from `crates/*/src` under the root package.
+
 ## Goal
 
 Full read-write, multi-provider email client. After this phase, you can use mxr as your primary email client: read, compose, reply, reply-all, forward, archive, trash, spam, star, search, snooze, unsubscribe, batch operations, and IMAP sync. Both Gmail and IMAP accounts work. Every TUI action has a CLI equivalent for scripting.

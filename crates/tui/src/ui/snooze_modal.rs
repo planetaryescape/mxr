@@ -1,5 +1,5 @@
-use crate::app::{snooze_presets, SnoozePanelState, SnoozePreset};
-use mxr_config::SnoozeConfig;
+use crate::mxr_config::SnoozeConfig;
+use crate::mxr_tui::app::{snooze_presets, SnoozePanelState, SnoozePreset};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -8,7 +8,7 @@ pub fn draw(
     area: Rect,
     panel: &SnoozePanelState,
     config: &SnoozeConfig,
-    theme: &crate::theme::Theme,
+    theme: &crate::mxr_tui::theme::Theme,
 ) {
     if !panel.visible {
         return;

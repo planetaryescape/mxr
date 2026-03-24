@@ -1,8 +1,8 @@
-use crate::app::{ActivePane, MailListMode, MailListRow};
-use crate::theme::Theme;
+use crate::mxr_core::id::MessageId;
+use crate::mxr_core::types::MessageFlags;
+use crate::mxr_tui::app::{ActivePane, MailListMode, MailListRow};
+use crate::mxr_tui::theme::Theme;
 use chrono::{Datelike, Local, Utc};
-use mxr_core::id::MessageId;
-use mxr_core::types::MessageFlags;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::HashSet;
@@ -363,8 +363,8 @@ fn attachment_marker(has_attachments: bool) -> &'static str {
     }
 }
 
-fn unsubscribe_marker(unsubscribe: &mxr_core::types::UnsubscribeMethod) -> &'static str {
-    if matches!(unsubscribe, mxr_core::types::UnsubscribeMethod::None) {
+fn unsubscribe_marker(unsubscribe: &crate::mxr_core::types::UnsubscribeMethod) -> &'static str {
+    if matches!(unsubscribe, crate::mxr_core::types::UnsubscribeMethod::None) {
         " "
     } else {
         "U"
@@ -405,9 +405,9 @@ fn truncate_display(text: &str, max_width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mxr_core::id::{AccountId, ThreadId};
+    use crate::mxr_core::types::{Address, Envelope, UnsubscribeMethod};
     use chrono::Utc;
-    use mxr_core::id::{AccountId, ThreadId};
-    use mxr_core::types::{Address, Envelope, UnsubscribeMethod};
 
     fn row(message_count: usize, has_attachments: bool) -> MailListRow {
         MailListRow {

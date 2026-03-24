@@ -1,8 +1,8 @@
-use crate::schema::MxrSchema;
-use mxr_core::id::MessageId;
-use mxr_core::types::MessageFlags;
-use mxr_core::types::{Envelope, MessageBody, SortOrder};
-use mxr_core::MxrError;
+use crate::mxr_core::id::MessageId;
+use crate::mxr_core::types::MessageFlags;
+use crate::mxr_core::types::{Envelope, MessageBody, SortOrder};
+use crate::mxr_core::MxrError;
+use crate::mxr_search::schema::MxrSchema;
 use std::path::Path;
 use tantivy::{
     collector::TopDocs, query::Query, query::QueryParser, schema::Value, Index, IndexReader,

@@ -9,8 +9,8 @@ pub const IPC_PROTOCOL_VERSION: u32 = 1;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mxr_core::id::*;
     use bytes::BytesMut;
-    use mxr_core::id::*;
     use tokio_util::codec::{Decoder, Encoder};
 
     #[test]

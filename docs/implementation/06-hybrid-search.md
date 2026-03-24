@@ -1,5 +1,8 @@
 # Hybrid Search
 
+> **Current Layout Note**
+> This plan still uses the historical `mxr-*` crate names in places. Current code ships as one publishable package, `mxr`; those old crate names now map to modules mounted from `crates/*/src` under the root package.
+
 Cross-phase implementation plan for stabilizing lexical search first, then layering in local semantic retrieval without violating mxr's local-first architecture.
 
 ## Non-negotiables

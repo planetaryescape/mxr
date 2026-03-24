@@ -1,20 +1,17 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 339
+assertion_line: 359
 expression: snapshot
 ---
 "╭ Search All Mail [lexical] ─────────────────────────────────────────────────────────────╮"
-"│deployment                                                                              │"
+"│                                                                                        │"
 "╰────────────────────────────────────────────────────────────────────────────────────────╯"
-"┌  Search Results · lexical · showing 1 ┐╭ Message ──────────────────────────────────────╮"
-"│>  1   ★  U  Alice Example  03/15/24 📎││From:     Alice Example <alice@example.com>    │" Hidden by multi-width symbols: [(39, " ")]
-"│                                       ││To:       Bob Example <bob@example.com>        │"
-"│                                       ││Date:     2024-03-15 09:30                     │"
-"│                                       ││Subject:  Snapshot fixture                     │"
-"│                                       ││ INBOX                                         │"
-"│                                       ││List:      unsubscribe                         │"
+"┌ Search Results · lexical · full local ┐┌ Preview ──────────────────────────────────────┐"
+"│Search all mail in your local index.   ││No search preview yet.                         │"
 "│                                       ││                                               │"
-"│                                       ││Preview body                                   │"
+"│Type a query above, then press Enter.  ││Run a full-mail search to preview a message    │"
+"│This searches the full database, not   ││here.                                          │"
+"│just the current mailbox viewport.     ││                                               │"
 "│                                       ││                                               │"
 "│                                       ││                                               │"
 "│                                       ││                                               │"
@@ -26,4 +23,7 @@ expression: snapshot
 "│                                       ││                                               │"
 "│                                       ││                                               │"
 "│                                       ││                                               │"
-"└───────────────────────────────────────┘╰───────────────────────────────────────────────╯"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"└───────────────────────────────────────┘└───────────────────────────────────────────────┘"

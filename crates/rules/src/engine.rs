@@ -1,5 +1,5 @@
-use crate::condition::MessageView;
-use crate::{Rule, RuleAction, RuleId};
+use crate::mxr_rules::condition::MessageView;
+use crate::mxr_rules::{Rule, RuleAction, RuleId};
 use serde::Serialize;
 
 /// The rule engine: evaluates rules against messages.
@@ -110,10 +110,10 @@ impl RuleEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::RuleAction;
-    use crate::condition::*;
-    use crate::tests::*;
-    use crate::{Rule, RuleId};
+    use crate::mxr_rules::action::RuleAction;
+    use crate::mxr_rules::condition::*;
+    use crate::mxr_rules::tests::*;
+    use crate::mxr_rules::{Rule, RuleId};
     use chrono::Utc;
 
     fn archive_newsletters_rule() -> Rule {

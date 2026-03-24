@@ -1,4 +1,4 @@
-use crate::app::PendingUnsubscribeConfirm;
+use crate::mxr_tui::app::PendingUnsubscribeConfirm;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -6,7 +6,7 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     pending: Option<&PendingUnsubscribeConfirm>,
-    theme: &crate::theme::Theme,
+    theme: &crate::mxr_tui::theme::Theme,
 ) {
     let Some(pending) = pending else {
         return;

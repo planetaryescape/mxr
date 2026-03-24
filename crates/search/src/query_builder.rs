@@ -1,5 +1,5 @@
-use crate::ast::*;
-use crate::schema::MxrSchema;
+use crate::mxr_search::ast::*;
+use crate::mxr_search::schema::MxrSchema;
 use chrono::{Datelike, Local, NaiveDate};
 use std::ops::Bound;
 use tantivy::query::{
@@ -347,10 +347,10 @@ fn tokenize_text_value(value: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::index::SearchIndex;
-    use crate::parser::parse_query;
-    use mxr_core::id::*;
-    use mxr_core::types::*;
+    use crate::mxr_core::id::*;
+    use crate::mxr_core::types::*;
+    use crate::mxr_search::index::SearchIndex;
+    use crate::mxr_search::parser::parse_query;
 
     fn make_test_envelope(
         subject: &str,

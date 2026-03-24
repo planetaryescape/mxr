@@ -1,5 +1,8 @@
 # 04 — Phase 3: Export + Rules + Polish
 
+> **Current Layout Note**
+> This phase plan still uses the historical `mxr-*` crate names. Current code ships as one publishable package, `mxr`; those old crate names now map to modules mounted from `crates/*/src` under the root package.
+
 ## Goal
 
 mxr becomes a productivity platform, not just a client. Thread export enables AI workflows and sharing. The rules engine automates inbox organization. Shell hooks provide an escape hatch for custom automation. Multi-account support, performance optimization, and error UX improvements round out the release.

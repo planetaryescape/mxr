@@ -1,6 +1,6 @@
-use crate::auth::GmailAuth;
-use crate::error::GmailError;
-use crate::types::*;
+use crate::mxr_provider_gmail::auth::GmailAuth;
+use crate::mxr_provider_gmail::error::GmailError;
+use crate::mxr_provider_gmail::types::*;
 use async_trait::async_trait;
 use tracing::{debug, warn};
 

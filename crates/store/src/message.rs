@@ -1,5 +1,5 @@
-use mxr_core::id::*;
-use mxr_core::types::*;
+use crate::mxr_core::id::*;
+use crate::mxr_core::types::*;
 use sqlx::Row;
 
 pub(crate) fn future_date_cutoff_timestamp() -> i64 {
@@ -749,10 +749,10 @@ impl super::Store {
             ORDER BY CASE WHEN date > ? THEN 0 ELSE date END DESC, id DESC
             LIMIT ?"#,
         )
+        .bind(cutoff)
         .bind(none_unsubscribe)
         .bind(trash_flag)
         .bind(spam_flag)
-        .bind(cutoff)
         .bind(cutoff)
         .bind(lim)
         .fetch_all(self.reader())

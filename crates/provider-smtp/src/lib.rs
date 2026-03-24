@@ -1,14 +1,14 @@
 pub mod config;
 
+use crate::mxr_compose::email::build_message;
+use crate::mxr_core::error::MxrError;
+use crate::mxr_core::provider::MailSendProvider;
+use crate::mxr_core::types::{Address, Draft, SendReceipt};
 use async_trait::async_trait;
 use config::{SmtpConfig, SmtpError};
 #[cfg(not(test))]
 use lettre::AsyncTransport;
 use lettre::{transport::smtp::authentication::Credentials, AsyncSmtpTransport, Tokio1Executor};
-use mxr_compose::email::build_message;
-use mxr_core::error::MxrError;
-use mxr_core::provider::MailSendProvider;
-use mxr_core::types::{Address, Draft, SendReceipt};
 
 pub struct SmtpSendProvider {
     config: SmtpConfig,
@@ -124,13 +124,13 @@ trait TestSender: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::id::DraftId;
+    use crate::mxr_core::id::DraftId;
     use std::sync::{Arc, Mutex};
 
     fn test_draft() -> Draft {
         Draft {
             id: DraftId::new(),
-            account_id: mxr_core::id::AccountId::new(),
+            account_id: crate::mxr_core::id::AccountId::new(),
             reply_headers: None,
             to: vec![Address {
                 name: Some("Alice".into()),
@@ -210,7 +210,7 @@ mod tests {
             },
             sender.clone(),
         );
-        mxr_provider_fake::conformance::run_send_conformance(&provider).await;
+        crate::mxr_provider_fake::conformance::run_send_conformance(&provider).await;
         let messages = sender.messages.lock().unwrap();
         assert_eq!(messages.len(), 1);
         assert!(messages[0].contains("Subject: Conformance test draft"));

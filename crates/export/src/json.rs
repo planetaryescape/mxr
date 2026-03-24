@@ -1,4 +1,4 @@
-use crate::ExportThread;
+use crate::mxr_export::ExportThread;
 use serde::Serialize;
 use std::collections::HashSet;
 
@@ -79,7 +79,7 @@ pub fn export_json(thread: &ExportThread) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{empty_body_thread, sample_thread, single_message_thread};
+    use crate::mxr_export::tests::{empty_body_thread, sample_thread, single_message_thread};
 
     #[test]
     fn json_is_valid_and_parseable() {

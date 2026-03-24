@@ -192,9 +192,9 @@ dependencies = [
 
 [[package]]
 name = "arc-swap"
-version = "1.8.2"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9f3647c145568cec02c42054e07bdf9a5a698e15b466fb2341bfc393cd24aa5"
+checksum = "a07d1f37ff60921c83bdfc7407723bdefe89b44b98a9b772f225c8f9d67141a6"
 dependencies = [
  "rustversion",
 ]
@@ -3216,60 +3216,68 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 
 [[package]]
 name = "mxr"
-version = "0.4.15"
+version = "0.4.16"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "async-native-tls",
+ "async-std",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "bitflags",
  "bytes",
+ "calamine",
  "chrono",
  "clap",
  "clap_complete",
+ "comrak",
+ "crossterm",
  "dirs",
+ "fastembed",
  "futures",
+ "glob-match",
+ "hnsw_rs",
+ "html2text",
  "insta",
  "keyring",
- "mxr-compose",
- "mxr-config",
- "mxr-core",
- "mxr-export",
- "mxr-protocol",
- "mxr-provider-fake",
- "mxr-provider-gmail",
- "mxr-provider-imap",
- "mxr-provider-smtp",
- "mxr-reader",
- "mxr-rules",
- "mxr-search",
- "mxr-semantic",
- "mxr-store",
- "mxr-sync",
+ "lettre",
+ "mail-parser",
+ "mxr-async-imap",
  "mxr-test-support",
- "mxr-tui",
- "mxr-web",
+ "nucleo",
+ "once_cell",
  "predicates",
+ "pretty_assertions",
+ "ratatui",
  "regex",
  "reqwest",
  "serde",
+ "serde_bytes",
  "serde_json",
+ "serde_yaml",
+ "sha2",
  "sqlx",
+ "tantivy",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
+ "tokio-tungstenite",
  "tokio-util",
+ "toml",
+ "tower",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
+ "undoc",
+ "unicode-width 0.2.0",
+ "unpdf",
  "url",
  "uuid",
  "which",
-]
-
-[[package]]
-name = "mxr-adapter-skeleton"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "mxr-core",
- "mxr-provider-fake",
+ "wiremock",
+ "yup-oauth2",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -3296,327 +3304,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "mxr-compose"
-version = "0.4.15"
-dependencies = [
- "chrono",
- "comrak",
- "dirs",
- "insta",
- "lettre",
- "mail-parser",
- "mxr-core",
- "mxr-reader",
- "mxr-test-support",
- "pretty_assertions",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "mxr-config"
-version = "0.4.15"
-dependencies = [
- "dirs",
- "mxr-core",
- "serde",
- "tempfile",
- "thiserror 2.0.18",
- "toml",
- "tracing",
-]
-
-[[package]]
-name = "mxr-core"
-version = "0.4.15"
-dependencies = [
- "async-trait",
- "bitflags",
- "chrono",
- "serde",
- "serde_bytes",
- "serde_json",
- "thiserror 2.0.18",
- "uuid",
-]
-
-[[package]]
-name = "mxr-export"
-version = "0.4.15"
-dependencies = [
- "chrono",
- "insta",
- "mxr-core",
- "mxr-reader",
- "mxr-test-support",
- "pretty_assertions",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
-name = "mxr-protocol"
-version = "0.4.15"
-dependencies = [
- "bytes",
- "chrono",
- "mxr-core",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio-util",
-]
-
-[[package]]
-name = "mxr-provider-fake"
-version = "0.4.15"
-dependencies = [
- "async-trait",
- "chrono",
- "insta",
- "mxr-core",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "mxr-provider-gmail"
-version = "0.4.15"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "dirs",
- "futures",
- "insta",
- "mail-parser",
- "mxr-compose",
- "mxr-core",
- "mxr-provider-fake",
- "mxr-test-support",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "url",
- "uuid",
- "wiremock",
- "yup-oauth2",
-]
-
-[[package]]
-name = "mxr-provider-imap"
-version = "0.4.15"
-dependencies = [
- "async-native-tls",
- "async-std",
- "async-trait",
- "chrono",
- "futures",
- "insta",
- "keyring",
- "mail-parser",
- "mxr-async-imap",
- "mxr-compose",
- "mxr-core",
- "mxr-provider-fake",
- "mxr-test-support",
- "pretty_assertions",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "mxr-provider-smtp"
-version = "0.4.15"
-dependencies = [
- "async-trait",
- "chrono",
- "insta",
- "keyring",
- "lettre",
- "mxr-compose",
- "mxr-core",
- "mxr-provider-fake",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "mxr-reader"
-version = "0.4.15"
-dependencies = [
- "chrono",
- "html2text",
- "insta",
- "mail-parser",
- "mxr-core",
- "mxr-test-support",
- "once_cell",
- "pretty_assertions",
- "regex",
- "serde_json",
- "tracing",
- "which",
-]
-
-[[package]]
-name = "mxr-rules"
-version = "0.4.15"
-dependencies = [
- "chrono",
- "glob-match",
- "mxr-core",
- "pretty_assertions",
- "regex",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "mxr-search"
-version = "0.4.15"
-dependencies = [
- "chrono",
- "mxr-core",
- "mxr-store",
- "tantivy",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "mxr-semantic"
-version = "0.4.15"
-dependencies = [
- "anyhow",
- "calamine",
- "chrono",
- "fastembed",
- "hnsw_rs",
- "mxr-config",
- "mxr-core",
- "mxr-reader",
- "mxr-store",
- "sha2",
- "tempfile",
- "undoc",
- "unpdf",
- "which",
- "zip 2.4.2",
-]
-
-[[package]]
-name = "mxr-store"
-version = "0.4.15"
-dependencies = [
- "chrono",
- "mxr-core",
- "serde_json",
- "sqlx",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "mxr-sync"
-version = "0.4.15"
-dependencies = [
- "async-trait",
- "chrono",
- "mxr-core",
- "mxr-provider-fake",
- "mxr-search",
- "mxr-store",
- "serde_json",
- "sqlx",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "mxr-test-support"
-version = "0.4.15"
+version = "0.4.16"
 dependencies = [
  "ratatui",
  "regex",
-]
-
-[[package]]
-name = "mxr-tui"
-version = "0.4.15"
-dependencies = [
- "anyhow",
- "chrono",
- "crossterm",
- "dirs",
- "futures",
- "insta",
- "mxr-compose",
- "mxr-config",
- "mxr-core",
- "mxr-protocol",
- "mxr-reader",
- "mxr-test-support",
- "ratatui",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "toml",
- "tracing",
- "unicode-width 0.2.0",
-]
-
-[[package]]
-name = "mxr-web"
-version = "0.4.15"
-dependencies = [
- "axum",
- "bytes",
- "chrono",
- "futures",
- "mxr-compose",
- "mxr-config",
- "mxr-core",
- "mxr-protocol",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
- "tower-http",
- "uuid",
 ]
 
 [[package]]
@@ -3718,6 +3410,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "nucleo"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5262af4c94921c2646c5ac6ff7900c2af9cbb08dc26a797e18130a7019c039d4"
+dependencies = [
+ "nucleo-matcher",
+ "parking_lot",
+ "rayon",
+]
+
+[[package]]
+name = "nucleo-matcher"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf33f538733d1a5a3494b836ba913207f14d9d4a1d3cd67030c5061bdd2cac85"
+dependencies = [
+ "memchr",
+ "unicode-segmentation",
 ]
 
 [[package]]

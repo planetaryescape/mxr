@@ -133,7 +133,12 @@ impl ComposePicker {
     }
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    picker: &ComposePicker,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
     if !picker.visible {
         return;
     }

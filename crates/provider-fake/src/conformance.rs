@@ -1,6 +1,6 @@
-use crate::fixtures;
+use crate::mxr_core::{AccountId, MailSendProvider, MailSyncProvider, SyncCursor};
+use crate::mxr_provider_fake::fixtures;
 use chrono::Utc;
-use mxr_core::{AccountId, MailSendProvider, MailSyncProvider, SyncCursor};
 
 /// Run reusable sync-provider conformance checks.
 ///

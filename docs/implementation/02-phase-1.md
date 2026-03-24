@@ -1,5 +1,8 @@
 # 02 — Phase 1: Gmail Read-Only + Search
 
+> **Current Layout Note**
+> This phase plan still uses the historical `mxr-*` crate names. Current code ships as one publishable package, `mxr`; those old crate names now map to modules mounted from `crates/*/src` under the root package.
+
 ## Goal
 
 Read real email from Gmail. Search actually works with full query syntax. Config file parsed. After this phase, you can add your Gmail account, sync your inbox, browse messages in the TUI, read message bodies, search with the query syntax, create saved searches, and use the command palette. Full CLI surface for reading: `mxr cat`, `mxr thread`, `mxr headers`, `mxr count`, `mxr saved` subcommands. Daemon observability via `mxr status`, `mxr sync --status/--history`, `mxr logs`. TUI uses vim-native + Gmail keybindings (A005) with `g`-prefix navigation and `Ctrl-p` command palette. All from real Gmail data.

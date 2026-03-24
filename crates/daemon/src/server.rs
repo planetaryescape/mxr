@@ -1,12 +1,13 @@
 use crate::handler::handle_request;
 use crate::ipc_client::IpcClient;
 use crate::loops;
-use crate::state::AppState;
-use futures::{FutureExt, SinkExt, StreamExt};
-use mxr_protocol::{
+use crate::mxr_protocol::{
     AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
     ResponseData, IPC_PROTOCOL_VERSION,
 };
+use crate::reindex::{reindex, ReindexProgress};
+use crate::state::AppState;
+use futures::{FutureExt, SinkExt, StreamExt};
 use std::any::Any;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -148,13 +149,13 @@ pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
         fetch_daemon_status_snapshot_from_path(&AppState::socket_path(), STATUS_REQUEST_TIMEOUT)
             .await?;
 
-    if snapshot.protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION {
+    if snapshot.protocol_version >= crate::mxr_protocol::IPC_PROTOCOL_VERSION {
         Ok(())
     } else {
         anyhow::bail!(
             "The running daemon is using IPC protocol {} but this TUI expects {}. Restart the existing daemon after upgrading, then rerun `mxr`.",
             snapshot.protocol_version,
-            mxr_protocol::IPC_PROTOCOL_VERSION
+            crate::mxr_protocol::IPC_PROTOCOL_VERSION
         )
     }
 }
@@ -225,7 +226,7 @@ pub(crate) async fn search_requires_repair(state: &Arc<AppState>, total_messages
         return false;
     };
 
-    match search.search("*", 1, 0, mxr_core::types::SortOrder::DateDesc) {
+    match search.search("*", 1, 0, crate::mxr_core::types::SortOrder::DateDesc) {
         Ok(results) => results.results.is_empty(),
         Err(_) => true,
     }
@@ -422,37 +423,40 @@ fn spawn_startup_maintenance(state: Arc<AppState>) -> tokio::task::JoinHandle<an
 }
 
 async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
-    let search = state.search.lock().await;
-    let test_results = search.search("*", 1, 0, mxr_core::types::SortOrder::DateDesc);
-    let index_empty = test_results.map(|r| r.results.is_empty()).unwrap_or(true);
-    drop(search);
-
-    if !index_empty {
+    let total_messages = state.store.count_all_messages().await.unwrap_or_default();
+    if total_messages == 0 {
         return Ok(());
     }
 
-    let accounts = state.store.list_accounts().await.unwrap_or_default();
-    for account in &accounts {
-        let envelopes = state
-            .store
-            .list_envelopes_by_account(&account.id, 10000, 0)
-            .await
-            .unwrap_or_default();
-        if envelopes.is_empty() {
-            continue;
-        }
+    let indexed_messages = {
+        let search = state.search.lock().await;
+        search.num_docs()
+    };
 
-        tracing::info!(
-            "Reindexing {} existing messages for {}",
-            envelopes.len(),
-            account.email
-        );
-        let mut search = state.search.lock().await;
-        for env in &envelopes {
-            let _ = search.index_envelope(env);
-        }
-        let _ = search.commit();
+    if indexed_messages == total_messages as u64 {
+        return Ok(());
     }
+
+    tracing::info!(
+        indexed_messages,
+        total_messages,
+        "Reindexing lexical index from SQLite"
+    );
+    let _ = reindex(&state.search, &state.store, |progress| match progress {
+        ReindexProgress::Starting { total } => {
+            tracing::info!(total, "Lexical reindex started");
+        }
+        ReindexProgress::Indexing { indexed, total }
+            if indexed == total || indexed.is_multiple_of(10_000) =>
+        {
+            tracing::info!(indexed, total, "Lexical reindex progress");
+        }
+        ReindexProgress::Indexing { .. } => {}
+        ReindexProgress::Complete { indexed } => {
+            tracing::info!(indexed, "Lexical reindex complete");
+        }
+    })
+    .await?;
 
     Ok(())
 }
@@ -501,17 +505,17 @@ mod tests {
         classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_status,
         guard_ipc_response, is_index_lock_error, spawn_startup_maintenance,
     };
-    use crate::{handler::handle_request, state::AppState};
-    use chrono::Utc;
-    use futures::{SinkExt, StreamExt};
-    use mxr_core::{
+    use crate::mxr_core::{
         id::{AccountId, MessageId, ThreadId},
         types::{Address, Envelope, MessageFlags, UnsubscribeMethod},
     };
-    use mxr_protocol::{
+    use crate::mxr_protocol::{
         AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
         ResponseData, IPC_PROTOCOL_VERSION,
     };
+    use crate::{handler::handle_request, state::AppState};
+    use chrono::Utc;
+    use futures::{SinkExt, StreamExt};
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::net::UnixListener;
@@ -532,12 +536,12 @@ mod tests {
     fn restart_required_for_build_mismatch() {
         assert!(daemon_requires_restart(0, Some("0.0.0"), None));
         assert!(daemon_requires_restart(
-            mxr_protocol::IPC_PROTOCOL_VERSION,
+            crate::mxr_protocol::IPC_PROTOCOL_VERSION,
             Some(env!("CARGO_PKG_VERSION")),
             Some("other-build"),
         ));
         assert!(!daemon_requires_restart(
-            mxr_protocol::IPC_PROTOCOL_VERSION,
+            crate::mxr_protocol::IPC_PROTOCOL_VERSION,
             Some(env!("CARGO_PKG_VERSION")),
             Some(current_build_id().as_str()),
         ));
@@ -578,9 +582,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn startup_maintenance_reindexes_without_blocking_ping_requests() {
+    async fn startup_maintenance_repairs_partial_index() {
         let state = Arc::new(AppState::in_memory().await.expect("state"));
-        let envelope = Envelope {
+        let indexed_envelope = Envelope {
             id: MessageId::new(),
             account_id: state.default_account_id(),
             provider_id: "provider-msg-1".into(),
@@ -607,36 +611,68 @@ mod tests {
             unsubscribe: UnsubscribeMethod::None,
             label_provider_ids: Vec::new(),
         };
+        let missing_envelope = Envelope {
+            id: MessageId::new(),
+            account_id: state.default_account_id(),
+            provider_id: "provider-msg-2".into(),
+            thread_id: ThreadId::new(),
+            message_id_header: Some("<msg-2@example.com>".into()),
+            in_reply_to: None,
+            references: Vec::new(),
+            from: Address {
+                name: Some("Sender".into()),
+                email: "sender@example.com".into(),
+            },
+            to: vec![Address {
+                name: Some("User".into()),
+                email: "user@example.com".into(),
+            }],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: "missing corpus subject".into(),
+            date: Utc::now(),
+            flags: MessageFlags::empty(),
+            snippet: "missing corpus snippet".into(),
+            has_attachments: false,
+            size_bytes: 128,
+            unsubscribe: UnsubscribeMethod::None,
+            label_provider_ids: Vec::new(),
+        };
 
         state
             .store
-            .upsert_envelope(&envelope)
+            .upsert_envelope(&indexed_envelope)
             .await
             .expect("insert envelope");
+        state
+            .store
+            .upsert_envelope(&missing_envelope)
+            .await
+            .expect("insert envelope");
+
+        {
+            let mut search = state.search.lock().await;
+            search
+                .index_envelope(&indexed_envelope)
+                .expect("index partial envelope");
+            search.commit().expect("commit partial index");
+        }
+
         assert!(state
             .search
             .lock()
             .await
-            .search("startup", 10)
-            .expect("empty search")
+            .search(
+                "missing",
+                10,
+                0,
+                crate::mxr_core::types::SortOrder::DateDesc
+            )
+            .expect("pre-maintenance search")
+            .results
             .is_empty());
 
-        let maintenance = spawn_startup_maintenance(state.clone());
-        let ping = handle_request(
-            &state,
-            &IpcMessage {
-                id: 1,
-                payload: IpcPayload::Request(Request::Ping),
-            },
-        )
-        .await;
-
-        match ping.payload {
-            IpcPayload::Response(Response::Ok { .. }) => {}
-            other => panic!("expected ping response, got {other:?}"),
-        }
-
-        maintenance
+        spawn_startup_maintenance(state.clone())
             .await
             .expect("join maintenance task")
             .expect("maintenance result");
@@ -645,9 +681,14 @@ mod tests {
             .search
             .lock()
             .await
-            .search("startup", 10)
+            .search(
+                "missing",
+                10,
+                0,
+                crate::mxr_core::types::SortOrder::DateDesc,
+            )
             .expect("search after reindex");
-        assert_eq!(results.len(), 1);
+        assert_eq!(results.results.len(), 1);
     }
 
     #[tokio::test]
@@ -690,7 +731,12 @@ mod tests {
             .search
             .lock()
             .await
-            .search("startup", 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .search(
+                "startup",
+                10,
+                0,
+                crate::mxr_core::types::SortOrder::DateDesc
+            )
             .expect("empty search")
             .results
             .is_empty());
@@ -719,7 +765,12 @@ mod tests {
             .search
             .lock()
             .await
-            .search("startup", 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .search(
+                "startup",
+                10,
+                0,
+                crate::mxr_core::types::SortOrder::DateDesc,
+            )
             .expect("search after reindex");
         assert_eq!(results.results.len(), 1);
     }

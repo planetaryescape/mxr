@@ -51,8 +51,8 @@ pub enum Action {
     CloseMessageView,
     ToggleMailListMode,
     // Label / saved search selection
-    SelectLabel(mxr_core::LabelId),
-    SelectSavedSearch(String, mxr_core::SearchMode),
+    SelectLabel(crate::mxr_core::LabelId),
+    SelectSavedSearch(String, crate::mxr_core::SearchMode),
     ClearFilter,
     RefreshRules,
     ToggleRuleEnabled,
@@ -121,6 +121,250 @@ pub enum Action {
 
     // No-op (for unrecognized keys)
     Noop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ScreenContext {
+    Mailbox,
+    Search,
+    Rules,
+    Diagnostics,
+    Accounts,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UiContext {
+    MailboxSidebar,
+    MailboxList,
+    MailboxMessage,
+    SearchEditor,
+    SearchResults,
+    SearchPreview,
+    RulesList,
+    RulesForm,
+    Diagnostics,
+    AccountsList,
+    AccountsForm,
+}
+
+impl UiContext {
+    pub const fn screen(self) -> ScreenContext {
+        match self {
+            Self::MailboxSidebar | Self::MailboxList | Self::MailboxMessage => {
+                ScreenContext::Mailbox
+            }
+            Self::SearchEditor | Self::SearchResults | Self::SearchPreview => ScreenContext::Search,
+            Self::RulesList | Self::RulesForm => ScreenContext::Rules,
+            Self::Diagnostics => ScreenContext::Diagnostics,
+            Self::AccountsList | Self::AccountsForm => ScreenContext::Accounts,
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::MailboxSidebar => "Mailbox / Sidebar",
+            Self::MailboxList => "Mailbox / List",
+            Self::MailboxMessage => "Mailbox / Message",
+            Self::SearchEditor => "Search / Query",
+            Self::SearchResults => "Search / Results",
+            Self::SearchPreview => "Search / Preview",
+            Self::RulesList => "Rules",
+            Self::RulesForm => "Rules / Form",
+            Self::Diagnostics => "Diagnostics",
+            Self::AccountsList => "Accounts",
+            Self::AccountsForm => "Accounts / Form",
+        }
+    }
+}
+
+pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
+    use Action::*;
+    use UiContext::*;
+
+    match context {
+        MailboxSidebar | MailboxList | MailboxMessage => true,
+        SearchEditor => matches!(
+            action,
+            OpenSearch
+                | SubmitSearch
+                | CloseSearch
+                | CycleSearchMode
+                | OpenCommandPalette
+                | CloseCommandPalette
+                | OpenMailboxScreen
+                | OpenSearchScreen
+                | OpenRulesScreen
+                | OpenDiagnosticsScreen
+                | OpenAccountsScreen
+                | OpenTab1
+                | OpenTab2
+                | OpenTab3
+                | OpenTab4
+                | OpenTab5
+                | SyncNow
+                | EditConfig
+                | OpenLogs
+                | Help
+                | QuitView
+        ),
+        SearchResults => matches!(
+            action,
+            MoveDown
+                | MoveUp
+                | PageDown
+                | PageUp
+                | JumpTop
+                | JumpBottom
+                | OpenSearch
+                | SubmitSearch
+                | CloseSearch
+                | CycleSearchMode
+                | SwitchPane
+                | OpenCommandPalette
+                | CloseCommandPalette
+                | OpenMailboxScreen
+                | OpenSearchScreen
+                | OpenRulesScreen
+                | OpenDiagnosticsScreen
+                | OpenAccountsScreen
+                | OpenTab1
+                | OpenTab2
+                | OpenTab3
+                | OpenTab4
+                | OpenTab5
+                | SyncNow
+                | EditConfig
+                | OpenLogs
+                | ToggleSelect
+                | ClearSelection
+                | Help
+                | QuitView
+        ),
+        SearchPreview => matches!(
+            action,
+            OpenSearch
+                | SubmitSearch
+                | CloseSearch
+                | CycleSearchMode
+                | SwitchPane
+                | OpenCommandPalette
+                | CloseCommandPalette
+                | OpenMailboxScreen
+                | OpenSearchScreen
+                | OpenRulesScreen
+                | OpenDiagnosticsScreen
+                | OpenAccountsScreen
+                | OpenTab1
+                | OpenTab2
+                | OpenTab3
+                | OpenTab4
+                | OpenTab5
+                | SyncNow
+                | EditConfig
+                | OpenLogs
+                | Reply
+                | ReplyAll
+                | Forward
+                | Archive
+                | MarkReadAndArchive
+                | Trash
+                | Spam
+                | Star
+                | MarkRead
+                | MarkUnread
+                | ApplyLabel
+                | MoveToLabel
+                | Unsubscribe
+                | Snooze
+                | OpenInBrowser
+                | ToggleReaderMode
+                | ToggleSignature
+                | ToggleSelect
+                | ClearSelection
+                | AttachmentList
+                | OpenLinks
+                | ExportThread
+                | Help
+                | QuitView
+        ),
+        RulesList | RulesForm => matches!(
+            action,
+            OpenCommandPalette
+                | CloseCommandPalette
+                | OpenMailboxScreen
+                | OpenSearchScreen
+                | OpenRulesScreen
+                | OpenDiagnosticsScreen
+                | OpenAccountsScreen
+                | OpenTab1
+                | OpenTab2
+                | OpenTab3
+                | OpenTab4
+                | OpenTab5
+                | RefreshRules
+                | ToggleRuleEnabled
+                | DeleteRule
+                | ShowRuleHistory
+                | ShowRuleDryRun
+                | OpenRuleFormNew
+                | OpenRuleFormEdit
+                | SaveRuleForm
+                | SyncNow
+                | EditConfig
+                | OpenLogs
+                | Help
+                | QuitView
+        ),
+        Diagnostics => matches!(
+            action,
+            OpenCommandPalette
+                | CloseCommandPalette
+                | OpenMailboxScreen
+                | OpenSearchScreen
+                | OpenRulesScreen
+                | OpenDiagnosticsScreen
+                | OpenAccountsScreen
+                | OpenTab1
+                | OpenTab2
+                | OpenTab3
+                | OpenTab4
+                | OpenTab5
+                | RefreshDiagnostics
+                | GenerateBugReport
+                | OpenDiagnosticsPaneDetails
+                | SyncNow
+                | EditConfig
+                | OpenLogs
+                | Help
+                | QuitView
+        ),
+        AccountsList | AccountsForm => matches!(
+            action,
+            OpenCommandPalette
+                | CloseCommandPalette
+                | OpenMailboxScreen
+                | OpenSearchScreen
+                | OpenRulesScreen
+                | OpenDiagnosticsScreen
+                | OpenAccountsScreen
+                | OpenTab1
+                | OpenTab2
+                | OpenTab3
+                | OpenTab4
+                | OpenTab5
+                | RefreshAccounts
+                | OpenAccountFormNew
+                | SaveAccountForm
+                | TestAccountForm
+                | ReauthorizeAccountForm
+                | SetDefaultAccount
+                | SyncNow
+                | EditConfig
+                | OpenLogs
+                | Help
+                | QuitView
+        ),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

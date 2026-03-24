@@ -1,5 +1,5 @@
 use crate::ipc_client::IpcClient;
-use mxr_protocol::{Request, Response, ResponseData};
+use crate::mxr_protocol::{Request, Response, ResponseData};
 use regex::Regex;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -116,15 +116,15 @@ pub async fn generate_report_markdown(options: &BugReportOptions) -> anyhow::Res
 }
 
 async fn generate_report(options: &BugReportOptions) -> anyhow::Result<String> {
-    let config = mxr_config::load_config().unwrap_or_default();
-    let data_dir = mxr_config::data_dir();
+    let config = crate::mxr_config::load_config().unwrap_or_default();
+    let data_dir = crate::mxr_config::data_dir();
     let db_path = data_dir.join("mxr.db");
     let log_path = data_dir.join("logs").join("mxr.log");
     let index_path = data_dir.join("search_index");
     let socket_path = crate::state::AppState::socket_path();
 
     let store = if db_path.exists() {
-        Some(mxr_store::Store::new(&db_path).await?)
+        Some(crate::mxr_store::Store::new(&db_path).await?)
     } else {
         None
     };
@@ -214,7 +214,7 @@ async fn generate_report(options: &BugReportOptions) -> anyhow::Result<String> {
 }
 
 fn build_config_lines(
-    config: &mxr_config::MxrConfig,
+    config: &crate::mxr_config::MxrConfig,
     accounts: &[AccountSummary],
     db_path: &Path,
     index_path: &Path,
@@ -284,7 +284,7 @@ async fn collect_daemon_summary(socket_exists: bool) -> DaemonSummary {
 }
 
 async fn collect_account_summaries(
-    store: &mxr_store::Store,
+    store: &crate::mxr_store::Store,
 ) -> anyhow::Result<Vec<AccountSummary>> {
     let accounts = store.list_accounts().await?;
     let mut summaries = Vec::with_capacity(accounts.len());
@@ -393,7 +393,7 @@ fn push_section(out: &mut String, title: &str, lines: &[String]) {
     out.push('\n');
 }
 
-fn render_event_line(entry: &mxr_store::EventLogEntry) -> String {
+fn render_event_line(entry: &crate::mxr_store::EventLogEntry) -> String {
     let timestamp = chrono::DateTime::<chrono::Utc>::from_timestamp(entry.timestamp, 0)
         .map(|time| time.to_rfc3339())
         .unwrap_or_else(|| entry.timestamp.to_string());
@@ -502,7 +502,7 @@ fn line_timestamp(line: &str) -> Option<chrono::DateTime<chrono::Utc>> {
         .map(|value| value.with_timezone(&chrono::Utc))
 }
 
-fn resolve_editor(config: &mxr_config::MxrConfig) -> String {
+fn resolve_editor(config: &crate::mxr_config::MxrConfig) -> String {
     config
         .general
         .editor
@@ -512,7 +512,7 @@ fn resolve_editor(config: &mxr_config::MxrConfig) -> String {
 }
 
 fn open_in_editor(path: &Path) -> anyhow::Result<()> {
-    let config = mxr_config::load_config().unwrap_or_default();
+    let config = crate::mxr_config::load_config().unwrap_or_default();
     let editor = resolve_editor(&config);
     let quoted = path.display().to_string().replace('\'', r"'\''");
     let status = Command::new("sh")

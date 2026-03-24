@@ -1,5 +1,5 @@
+use crate::mxr_core::AccountId;
 use chrono::{DateTime, Utc};
-use mxr_core::AccountId;
 
 pub struct SyncLogEntry {
     pub id: i64,

@@ -32,13 +32,9 @@ impl App {
                     self.search_page.editing = false;
                     self.auto_preview_search();
                 } else {
+                    self.reset_search_page_workspace();
                     self.search_page.editing = true;
-                    self.search_page.query = self.search_bar.query.clone();
-                    self.search_page.mode = self.search_bar.mode;
                     self.search_page.sort = SortOrder::DateDesc;
-                    if !self.search_page.query.is_empty() {
-                        self.trigger_live_search();
-                    }
                 }
             }
             Action::OpenRulesScreen => {
@@ -425,7 +421,7 @@ impl App {
             }
             // Command palette
             Action::OpenCommandPalette => {
-                self.command_palette.toggle();
+                self.command_palette.toggle(self.current_ui_context());
             }
             Action::CloseCommandPalette => {
                 self.command_palette.visible = false;
@@ -489,9 +485,7 @@ impl App {
             }
             Action::RefreshRules => {
                 self.rules_page.refresh_pending = true;
-                if let Some(id) = self.selected_rule().and_then(|rule| rule["id"].as_str()) {
-                    self.pending_rule_detail = Some(id.to_string());
-                }
+                self.refresh_selected_rule_panel();
             }
             Action::ToggleRuleEnabled => {
                 if let Some(rule) = self.selected_rule().cloned() {
@@ -519,17 +513,11 @@ impl App {
             }
             Action::ShowRuleHistory => {
                 self.rules_page.panel = RulesPanel::History;
-                self.pending_rule_history = self
-                    .selected_rule()
-                    .and_then(|rule| rule["id"].as_str())
-                    .map(ToString::to_string);
+                self.refresh_selected_rule_panel();
             }
             Action::ShowRuleDryRun => {
                 self.rules_page.panel = RulesPanel::DryRun;
-                self.pending_rule_dry_run = self
-                    .selected_rule()
-                    .and_then(|rule| rule["id"].as_str())
-                    .map(ToString::to_string);
+                self.refresh_selected_rule_panel();
             }
             Action::OpenRuleFormNew => {
                 self.rules_page.form = RuleFormState {
@@ -618,7 +606,7 @@ impl App {
                 let mut seen = std::collections::HashMap::new();
                 for env in &self.all_envelopes {
                     seen.entry(env.from.email.clone()).or_insert_with(|| {
-                        crate::ui::compose_picker::Contact {
+                        crate::mxr_tui::ui::compose_picker::Contact {
                             name: env.from.name.clone().unwrap_or_default(),
                             email: env.from.email.clone(),
                         }
@@ -1013,21 +1001,24 @@ impl App {
             // Phase 2: Batch operations (A007)
             Action::ToggleSelect => {
                 if let Some(env) = self.context_envelope() {
+                    let should_advance = matches!(
+                        self.current_ui_context(),
+                        UiContext::MailboxList | UiContext::SearchResults
+                    );
                     let id = env.id.clone();
                     if self.selected_set.contains(&id) {
                         self.selected_set.remove(&id);
                     } else {
                         self.selected_set.insert(id);
                     }
-                    // Move to next after toggling
-                    if self.screen == Screen::Search {
+                    if should_advance && self.screen == Screen::Search {
                         if self.search_page.selected_index + 1 < self.search_row_count() {
                             self.search_page.selected_index += 1;
                             self.ensure_search_visible();
                             self.auto_preview_search();
                             self.maybe_load_more_search_results();
                         }
-                    } else if self.selected_index + 1 < self.mail_row_count() {
+                    } else if should_advance && self.selected_index + 1 < self.mail_row_count() {
                         self.selected_index += 1;
                         self.ensure_visible();
                         self.auto_preview();

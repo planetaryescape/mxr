@@ -1,18 +1,18 @@
-use chrono::{DateTime, TimeZone, Utc};
-use mail_parser::MimeHeaders;
-use mxr_compose::parse::{
+use crate::mxr_compose::parse::{
     body_unsubscribe_from_html, calendar_metadata_from_text, decode_format_flowed,
     extract_raw_header_block, parse_headers_from_raw,
 };
-use mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};
-use mxr_core::types::{
+use crate::mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};
+use crate::mxr_core::types::{
     Address, AttachmentMeta, Envelope, MessageBody, MessageFlags, SyncedMessage, TextPlainFormat,
     UnsubscribeMethod,
 };
+use chrono::{DateTime, TimeZone, Utc};
+use mail_parser::MimeHeaders;
 
-use crate::error::ImapProviderError;
-use crate::folders::format_provider_id;
-use crate::types::FetchedMessage;
+use crate::mxr_provider_imap::error::ImapProviderError;
+use crate::mxr_provider_imap::folders::format_provider_id;
+use crate::mxr_provider_imap::types::FetchedMessage;
 
 /// Convert IMAP flags to mxr MessageFlags.
 pub fn flags_from_imap(flags: &[String]) -> MessageFlags {

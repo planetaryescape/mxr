@@ -1,8 +1,8 @@
-use crate::attachments::resolve_attachment_paths;
-use crate::frontmatter::ComposeError;
-use crate::render::render_markdown;
+use crate::mxr_compose::attachments::resolve_attachment_paths;
+use crate::mxr_compose::frontmatter::ComposeError;
+use crate::mxr_compose::render::render_markdown;
+use crate::mxr_core::types::{Address, Draft};
 use lettre::message::{header::ContentType, Attachment, Mailbox, Message, MultiPart, SinglePart};
-use mxr_core::types::{Address, Draft};
 use std::fs;
 
 pub fn build_message(
@@ -120,8 +120,8 @@ pub enum EmailBuildError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_core::id::{AccountId, DraftId};
-    use mxr_core::types::ReplyHeaders;
+    use crate::mxr_core::id::{AccountId, DraftId};
+    use crate::mxr_core::types::ReplyHeaders;
     use mxr_test_support::redact_rfc822;
 
     fn draft() -> Draft {

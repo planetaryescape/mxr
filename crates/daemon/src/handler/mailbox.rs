@@ -2,9 +2,9 @@ use super::{
     find_label_by_name, materialize_attachment_file, open_local_file,
     populate_envelope_label_provider_ids, HandlerResult,
 };
+use crate::mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
+use crate::mxr_protocol::ResponseData;
 use crate::state::AppState;
-use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
-use mxr_protocol::ResponseData;
 use std::sync::Arc;
 
 fn resolve_account_id(
@@ -145,11 +145,11 @@ pub(super) async fn list_bodies(state: &Arc<AppState>, message_ids: &[MessageId]
             } else {
                 (None, full.text_html)
             };
-            bodies.push(mxr_core::types::MessageBody {
+            bodies.push(crate::mxr_core::types::MessageBody {
                 message_id: full.message_id,
                 text_plain: plain,
                 text_html: html,
-                attachments: vec![],
+                attachments: full.attachments,
                 fetched_at: full.fetched_at,
                 metadata: full.metadata,
             });

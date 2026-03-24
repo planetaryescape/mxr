@@ -1,6 +1,6 @@
-use mxr_core::MxrError;
-use mxr_search::SearchIndex;
-use mxr_store::Store;
+use crate::mxr_core::MxrError;
+use crate::mxr_search::SearchIndex;
+use crate::mxr_store::Store;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -155,7 +155,12 @@ mod tests {
         assert_eq!(idx.num_docs(), total as u64);
 
         // Should be able to find messages
-        let results = idx.search("deployment", 10, 0, mxr_core::types::SortOrder::DateDesc);
+        let results = idx.search(
+            "deployment",
+            10,
+            0,
+            crate::mxr_core::types::SortOrder::DateDesc,
+        );
         // FakeProvider messages may or may not contain "deployment",
         // but search itself should not error
         drop(results);

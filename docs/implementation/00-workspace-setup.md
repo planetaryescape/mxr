@@ -1,5 +1,8 @@
 # 00 — Workspace Setup
 
+> **Current Layout Note**
+> This plan describes the historical multi-crate workspace bootstrap. Current code still uses a Cargo workspace, but first-party code now ships as a single publishable package, `mxr`. References to `mxr-*` crates in later phase docs now map to modules mounted from `crates/*/src` under the root package.
+
 ## Goal
 
 Establish the Cargo workspace, toolchain, CI pipeline, and project scaffolding. After this step, `cargo check --workspace` passes on an empty workspace with all crate stubs.

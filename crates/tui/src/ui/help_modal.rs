@@ -1,6 +1,6 @@
-use crate::app::{ActivePane, Screen};
-use crate::keybindings::{all_bindings_for_context, ViewContext};
-use crate::ui::command_palette::default_commands;
+use crate::mxr_tui::action::UiContext;
+use crate::mxr_tui::keybindings::{all_bindings_for_context, ViewContext};
+use crate::mxr_tui::ui::command_palette::commands_for_context;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::BTreeMap;
@@ -13,13 +13,18 @@ struct HelpSection {
 
 pub struct HelpModalState<'a> {
     pub open: bool,
-    pub screen: Screen,
-    pub active_pane: &'a ActivePane,
+    pub ui_context: UiContext,
     pub selected_count: usize,
     pub scroll_offset: u16,
+    pub _marker: std::marker::PhantomData<&'a ()>,
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    state: HelpModalState<'_>,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
     if !state.open {
         return;
     }
@@ -70,62 +75,6 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
             entries: context_entries(state),
         },
         HelpSection {
-            title: "Mailbox List".into(),
-            entries: all_bindings_for_context(ViewContext::MailList),
-        },
-        HelpSection {
-            title: "Thread View".into(),
-            entries: all_bindings_for_context(ViewContext::ThreadView),
-        },
-        HelpSection {
-            title: "Single Message".into(),
-            entries: all_bindings_for_context(ViewContext::MessageView),
-        },
-        HelpSection {
-            title: "Search Page".into(),
-            entries: vec![
-                ("/".into(), "Edit Query".into()),
-                ("Enter".into(), "Run Query / Open Result".into()),
-                ("o".into(), "Open In Mailbox".into()),
-                ("j / k".into(), "Move Results".into()),
-                ("Esc".into(), "Return To Inbox".into()),
-            ],
-        },
-        HelpSection {
-            title: "Rules Page".into(),
-            entries: vec![
-                ("j / k".into(), "Move Rules".into()),
-                ("n".into(), "New Rule".into()),
-                ("E".into(), "Edit Rule".into()),
-                ("e".into(), "Enable / Disable".into()),
-                ("D".into(), "Dry Run".into()),
-                ("H".into(), "History".into()),
-                ("#".into(), "Delete Rule".into()),
-            ],
-        },
-        HelpSection {
-            title: "Diagnostics Page".into(),
-            entries: vec![
-                ("Tab / Shift-Tab".into(), "Select Pane".into()),
-                ("j / k Ctrl-d/u".into(), "Scroll Selected Pane".into()),
-                ("Enter / o".into(), "Toggle Fullscreen Pane".into()),
-                ("d".into(), "Open Selected Pane Details".into()),
-                ("r".into(), "Refresh".into()),
-                ("b".into(), "Generate Bug Report".into()),
-                ("L / gL".into(), "Open Log File".into()),
-            ],
-        },
-        HelpSection {
-            title: "Accounts Page".into(),
-            entries: vec![
-                ("n".into(), "New IMAP/SMTP Account".into()),
-                ("Enter".into(), "Edit Selected Account".into()),
-                ("t".into(), "Test Account".into()),
-                ("d".into(), "Set Default".into()),
-                ("r".into(), "Refresh Accounts".into()),
-            ],
-        },
-        HelpSection {
             title: "Modals".into(),
             entries: vec![
                 ("Help: j/k Ctrl-d/u".into(), "Scroll".into()),
@@ -145,32 +94,13 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
         },
     ];
 
-    sections.extend(command_sections());
+    sections.extend(screen_sections(state.ui_context));
+    sections.extend(command_sections(state.ui_context));
     sections
 }
 
 fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
-    let mut entries = vec![(
-        "Screen".into(),
-        match state.screen {
-            Screen::Mailbox => "Mailbox".into(),
-            Screen::Search => "Search".into(),
-            Screen::Rules => "Rules".into(),
-            Screen::Diagnostics => "Diagnostics".into(),
-            Screen::Accounts => "Accounts".into(),
-        },
-    )];
-
-    if state.screen == Screen::Mailbox {
-        entries.push((
-            "Pane".into(),
-            match state.active_pane {
-                ActivePane::Sidebar => "Sidebar".into(),
-                ActivePane::MailList => "Mail List".into(),
-                ActivePane::MessageView => "Message".into(),
-            },
-        ));
-    }
+    let mut entries = vec![("Context".into(), state.ui_context.label().into())];
 
     if state.selected_count > 0 {
         entries.push((
@@ -182,12 +112,103 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
         ));
     }
 
+    if matches!(
+        state.ui_context,
+        UiContext::SearchEditor | UiContext::SearchResults | UiContext::SearchPreview
+    ) {
+        entries.push((
+            "Search".into(),
+            "Search tab hits the full local index; mailbox / is only a quick filter".into(),
+        ));
+    }
+
     entries
 }
 
-fn command_sections() -> Vec<HelpSection> {
+fn screen_sections(context: UiContext) -> Vec<HelpSection> {
+    match context {
+        UiContext::MailboxSidebar => vec![HelpSection {
+            title: "Mailbox Sidebar".into(),
+            entries: all_bindings_for_context(ViewContext::MailList),
+        }],
+        UiContext::MailboxList => vec![HelpSection {
+            title: "Mailbox List".into(),
+            entries: all_bindings_for_context(ViewContext::MailList),
+        }],
+        UiContext::MailboxMessage => vec![HelpSection {
+            title: "Mailbox Message".into(),
+            entries: all_bindings_for_context(ViewContext::ThreadView),
+        }],
+        UiContext::SearchEditor | UiContext::SearchResults => {
+            vec![HelpSection {
+                title: "Search Page".into(),
+                entries: vec![
+                    ("/".into(), "Edit query".into()),
+                    ("Enter".into(), "Run search / preview result".into()),
+                    ("x".into(), "Select result".into()),
+                    ("Tab".into(), "Switch results and preview".into()),
+                    ("j / k".into(), "Move through results or preview".into()),
+                    ("Esc".into(), "Leave search or return to results".into()),
+                ],
+            }]
+        }
+        UiContext::SearchPreview => vec![HelpSection {
+            title: "Search Preview".into(),
+            entries: vec![
+                ("j / k".into(), "Move through messages in the thread".into()),
+                ("h / Esc".into(), "Return to results".into()),
+                ("/".into(), "Edit query".into()),
+                ("x".into(), "Select current message".into()),
+                ("Tab".into(), "Switch results and preview".into()),
+                ("A".into(), "Open attachments".into()),
+                ("L".into(), "Open links".into()),
+                ("R".into(), "Toggle reader mode".into()),
+                (
+                    "r / a / f / e".into(),
+                    "Reply, reply all, forward, archive".into(),
+                ),
+            ],
+        }],
+        UiContext::RulesList | UiContext::RulesForm => vec![HelpSection {
+            title: "Rules Page".into(),
+            entries: vec![
+                ("j / k".into(), "Move rules or form fields".into()),
+                ("Enter".into(), "Open overview or save form".into()),
+                ("n".into(), "New rule".into()),
+                ("E".into(), "Edit rule".into()),
+                ("D".into(), "Dry run".into()),
+                ("H".into(), "History".into()),
+            ],
+        }],
+        UiContext::Diagnostics => vec![HelpSection {
+            title: "Diagnostics Page".into(),
+            entries: vec![
+                ("j / k".into(), "Change section".into()),
+                ("Ctrl-d / Ctrl-u".into(), "Scroll details".into()),
+                ("Enter / o".into(), "Toggle fullscreen".into()),
+                ("d".into(), "Open selected section details".into()),
+                ("r".into(), "Refresh".into()),
+                ("b".into(), "Generate bug report".into()),
+                ("L".into(), "Open logs".into()),
+            ],
+        }],
+        UiContext::AccountsList | UiContext::AccountsForm => vec![HelpSection {
+            title: "Accounts Page".into(),
+            entries: vec![
+                ("j / k".into(), "Move accounts or fields".into()),
+                ("Enter".into(), "Edit selected account".into()),
+                ("n".into(), "New account".into()),
+                ("t".into(), "Test account".into()),
+                ("d".into(), "Set default".into()),
+                ("s".into(), "Save account form".into()),
+            ],
+        }],
+    }
+}
+
+fn command_sections(context: UiContext) -> Vec<HelpSection> {
     let mut by_category: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
-    for command in default_commands() {
+    for command in commands_for_context(context) {
         let shortcut = if command.shortcut.is_empty() {
             "palette".to_string()
         } else {
@@ -211,7 +232,10 @@ fn command_sections() -> Vec<HelpSection> {
         .collect()
 }
 
-fn render_sections(sections: &[HelpSection], theme: &crate::theme::Theme) -> Vec<Line<'static>> {
+fn render_sections(
+    sections: &[HelpSection],
+    theme: &crate::mxr_tui::theme::Theme,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     for (index, section) in sections.iter().enumerate() {
@@ -259,16 +283,16 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::{help_sections, HelpModalState};
-    use crate::app::{ActivePane, Screen};
+    use crate::mxr_tui::action::UiContext;
 
     #[test]
     fn help_sections_cover_accounts_and_commands() {
         let state = HelpModalState {
             open: true,
-            screen: Screen::Accounts,
-            active_pane: &ActivePane::MailList,
+            ui_context: UiContext::AccountsList,
             selected_count: 2,
             scroll_offset: 0,
+            _marker: std::marker::PhantomData,
         };
         let titles: Vec<String> = help_sections(&state)
             .into_iter()
@@ -278,7 +302,7 @@ mod tests {
         assert!(titles
             .iter()
             .any(|title| title.starts_with("Commands: Accounts")));
-        assert!(titles
+        assert!(!titles
             .iter()
             .any(|title| title.starts_with("Commands: Mail")));
     }

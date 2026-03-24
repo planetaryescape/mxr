@@ -550,7 +550,7 @@ pub enum SearchSortArg {
     Relevance,
 }
 
-impl From<SearchModeArg> for mxr_core::SearchMode {
+impl From<SearchModeArg> for crate::mxr_core::SearchMode {
     fn from(value: SearchModeArg) -> Self {
         match value {
             SearchModeArg::Lexical => Self::Lexical,
@@ -560,11 +560,11 @@ impl From<SearchModeArg> for mxr_core::SearchMode {
     }
 }
 
-impl From<SearchSortArg> for mxr_core::types::SortOrder {
+impl From<SearchSortArg> for crate::mxr_core::types::SortOrder {
     fn from(value: SearchSortArg) -> Self {
         match value {
-            SearchSortArg::Date => mxr_core::types::SortOrder::DateDesc,
-            SearchSortArg::Relevance => mxr_core::types::SortOrder::Relevance,
+            SearchSortArg::Date => crate::mxr_core::types::SortOrder::DateDesc,
+            SearchSortArg::Relevance => crate::mxr_core::types::SortOrder::Relevance,
         }
     }
 }
@@ -579,7 +579,7 @@ pub enum SemanticProfileArg {
     BgeM3,
 }
 
-impl From<SemanticProfileArg> for mxr_core::SemanticProfile {
+impl From<SemanticProfileArg> for crate::mxr_core::SemanticProfile {
     fn from(value: SemanticProfileArg) -> Self {
         match value {
             SemanticProfileArg::BgeSmallEnV15 => Self::BgeSmallEnV15,

@@ -1,5 +1,5 @@
-use mxr_core::id::*;
-use mxr_core::types::*;
+use crate::mxr_core::id::*;
+use crate::mxr_core::types::*;
 
 impl super::Store {
     pub async fn upsert_label(&self, label: &Label) -> Result<(), sqlx::Error> {

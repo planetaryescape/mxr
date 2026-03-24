@@ -1,8 +1,8 @@
-use crate::action::Action;
-use crate::keybindings::{
+use crate::mxr_tui::action::Action;
+use crate::mxr_tui::keybindings::{
     action_from_name, all_bindings_for_context, default_keybindings, format_keybinding, ViewContext,
 };
-use crate::ui::command_palette::default_commands;
+use crate::mxr_tui::ui::command_palette::default_commands;
 use crossterm::event::KeyCode;
 use serde::Serialize;
 
@@ -63,7 +63,7 @@ pub fn desktop_manifest() -> DesktopManifest {
 }
 
 fn bindings_for_context(
-    bindings: &std::collections::HashMap<crate::keybindings::KeyBinding, String>,
+    bindings: &std::collections::HashMap<crate::mxr_tui::keybindings::KeyBinding, String>,
     context: ViewContext,
 ) -> Vec<DesktopBinding> {
     let display_names = all_bindings_for_context(context)
@@ -73,9 +73,7 @@ fn bindings_for_context(
     let mut entries = bindings
         .iter()
         .filter_map(|(binding, action)| {
-            if action_from_name(action).is_none() {
-                return None;
-            }
+            action_from_name(action)?;
             Some(DesktopBinding {
                 action: action.clone(),
                 label: display_names
@@ -96,7 +94,7 @@ fn bindings_for_context(
     entries
 }
 
-fn key_press_token(key: &crate::keybindings::KeyPress) -> String {
+fn key_press_token(key: &crate::mxr_tui::keybindings::KeyPress) -> String {
     if key
         .modifiers
         .contains(crossterm::event::KeyModifiers::CONTROL)

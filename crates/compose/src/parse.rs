@@ -1,8 +1,8 @@
-use chrono::{DateTime, Utc};
-use mail_parser::{Message, MessageParser, MimeHeaders};
-use mxr_core::types::{
+use crate::mxr_core::types::{
     Address, CalendarMetadata, MessageMetadata, TextPlainFormat, UnsubscribeMethod,
 };
+use chrono::{DateTime, Utc};
+use mail_parser::{Message, MessageParser, MimeHeaders};
 use regex::Regex;
 use std::sync::OnceLock;
 use url::Url;

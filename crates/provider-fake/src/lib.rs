@@ -8,10 +8,12 @@
 pub mod conformance;
 pub mod fixtures;
 
+use crate::mxr_core::id::*;
+use crate::mxr_core::types::*;
+use crate::mxr_core::{
+    MailSendProvider, MailSyncProvider, MxrError, SendReceipt, SyncCapabilities,
+};
 use async_trait::async_trait;
-use mxr_core::id::*;
-use mxr_core::types::*;
-use mxr_core::{MailSendProvider, MailSyncProvider, MxrError, SendReceipt, SyncCapabilities};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -46,7 +48,8 @@ pub enum Mutation {
 
 impl FakeProvider {
     pub fn new(account_id: AccountId) -> Self {
-        let (messages, bodies, labels) = crate::fixtures::generate_fixtures(&account_id);
+        let (messages, bodies, labels) =
+            crate::mxr_provider_fake::fixtures::generate_fixtures(&account_id);
         Self {
             account_id,
             messages,
@@ -357,12 +360,12 @@ mod tests {
     #[tokio::test]
     async fn fake_provider_passes_sync_conformance() {
         let provider = FakeProvider::new(AccountId::new());
-        crate::conformance::run_sync_conformance(&provider).await;
+        crate::mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
     }
 
     #[tokio::test]
     async fn fake_provider_passes_send_conformance() {
         let provider = FakeProvider::new(AccountId::new());
-        crate::conformance::run_send_conformance(&provider).await;
+        crate::mxr_provider_fake::conformance::run_send_conformance(&provider).await;
     }
 }

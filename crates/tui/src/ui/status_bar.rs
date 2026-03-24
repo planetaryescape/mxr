@@ -13,7 +13,12 @@ pub struct StatusBarState {
     pub pending_mutation_status: Option<String>,
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, state: &StatusBarState, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    state: &StatusBarState,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
     let sync_part = state.sync_status.as_deref().unwrap_or("not synced");
 
     let status = if state

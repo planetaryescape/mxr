@@ -1,4 +1,4 @@
-use crate::{boilerplate, html, quotes, signatures, tracking};
+use crate::mxr_reader::{boilerplate, html, quotes, signatures, tracking};
 
 /// Configuration for the reader pipeline.
 #[derive(Debug, Clone)]

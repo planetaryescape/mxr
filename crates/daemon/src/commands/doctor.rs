@@ -1,12 +1,12 @@
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
-use crate::output::resolve_format;
-use mxr_protocol::{
+use crate::mxr_protocol::{
     AccountSyncStatus, DaemonHealthClass, DoctorDataStats, DoctorReport, EventLogEntry, Request,
     Response, ResponseData,
 };
-use mxr_search::SearchIndex;
-use mxr_store::Store;
+use crate::mxr_search::SearchIndex;
+use crate::mxr_store::Store;
+use crate::output::resolve_format;
 use std::io::BufRead;
 use tokio::net::UnixStream;
 
@@ -66,7 +66,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
     }
 
     let report = collect_report().await?;
-    let data_dir = mxr_config::data_dir();
+    let data_dir = crate::mxr_config::data_dir();
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
 
@@ -124,7 +124,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
 }
 
 async fn collect_report() -> anyhow::Result<DoctorReport> {
-    let data_dir = mxr_config::data_dir();
+    let data_dir = crate::mxr_config::data_dir();
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
     let log_path = data_dir.join("logs").join("mxr.log");
@@ -147,7 +147,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
     let mut restart_required = false;
     let mut semantic_enabled = false;
     let mut semantic_active_profile = None;
-    let mut semantic_index_freshness = mxr_protocol::IndexFreshness::Disabled;
+    let mut semantic_index_freshness = crate::mxr_protocol::IndexFreshness::Disabled;
     let mut semantic_last_indexed_at = None;
 
     if socket_reachable {
@@ -212,7 +212,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         }
         data_stats = doctor_data_stats(store.collect_record_counts().await?);
         if semantic_active_profile.is_none() {
-            let config = mxr_config::load_config().unwrap_or_default();
+            let config = crate::mxr_config::load_config().unwrap_or_default();
             let active_profile = config.search.semantic.active_profile;
             let active_record = store.get_semantic_profile(active_profile).await?;
             (
@@ -604,13 +604,13 @@ fn shell_escape_path(path: &std::path::Path) -> String {
     path.display().to_string().replace(' ', "\\ ")
 }
 
-fn describe_cursor(cursor: Option<&mxr_core::types::SyncCursor>) -> String {
+fn describe_cursor(cursor: Option<&crate::mxr_core::types::SyncCursor>) -> String {
     match cursor {
-        Some(mxr_core::types::SyncCursor::Initial) | None => "initial".to_string(),
-        Some(mxr_core::types::SyncCursor::Gmail { history_id }) => {
+        Some(crate::mxr_core::types::SyncCursor::Initial) | None => "initial".to_string(),
+        Some(crate::mxr_core::types::SyncCursor::Gmail { history_id }) => {
             format!("gmail history_id={history_id}")
         }
-        Some(mxr_core::types::SyncCursor::GmailBackfill {
+        Some(crate::mxr_core::types::SyncCursor::GmailBackfill {
             history_id,
             page_token,
         }) => {
@@ -621,7 +621,7 @@ fn describe_cursor(cursor: Option<&mxr_core::types::SyncCursor>) -> String {
                 format!("gmail_backfill history_id={history_id} page_token={short}")
             }
         }
-        Some(mxr_core::types::SyncCursor::Imap {
+        Some(crate::mxr_core::types::SyncCursor::Imap {
             uid_validity,
             uid_next,
             mailboxes,
@@ -633,7 +633,7 @@ fn describe_cursor(cursor: Option<&mxr_core::types::SyncCursor>) -> String {
     }
 }
 
-fn protocol_event_entry(entry: mxr_store::EventLogEntry) -> EventLogEntry {
+fn protocol_event_entry(entry: crate::mxr_store::EventLogEntry) -> EventLogEntry {
     EventLogEntry {
         timestamp: entry.timestamp,
         level: entry.level,
@@ -659,24 +659,24 @@ fn lexical_index_freshness(
     index_exists: bool,
     repair_required: bool,
     restart_required: bool,
-) -> mxr_protocol::IndexFreshness {
+) -> crate::mxr_protocol::IndexFreshness {
     if repair_required || !index_exists {
-        mxr_protocol::IndexFreshness::RepairRequired
+        crate::mxr_protocol::IndexFreshness::RepairRequired
     } else if restart_required {
-        mxr_protocol::IndexFreshness::Stale
+        crate::mxr_protocol::IndexFreshness::Stale
     } else {
-        mxr_protocol::IndexFreshness::Current
+        crate::mxr_protocol::IndexFreshness::Current
     }
 }
 
 fn semantic_freshness_from_snapshot(
-    snapshot: Option<&mxr_core::types::SemanticStatusSnapshot>,
+    snapshot: Option<&crate::mxr_core::types::SemanticStatusSnapshot>,
     enabled_fallback: bool,
     active_profile_fallback: &str,
 ) -> (
     bool,
     Option<String>,
-    mxr_protocol::IndexFreshness,
+    crate::mxr_protocol::IndexFreshness,
     Option<String>,
 ) {
     let Some(snapshot) = snapshot else {
@@ -684,16 +684,26 @@ fn semantic_freshness_from_snapshot(
             (
                 true,
                 Some(active_profile_fallback.to_string()),
-                mxr_protocol::IndexFreshness::Unknown,
+                crate::mxr_protocol::IndexFreshness::Unknown,
                 None,
             )
         } else {
-            (false, None, mxr_protocol::IndexFreshness::Disabled, None)
+            (
+                false,
+                None,
+                crate::mxr_protocol::IndexFreshness::Disabled,
+                None,
+            )
         };
     };
 
     if !snapshot.enabled {
-        return (false, None, mxr_protocol::IndexFreshness::Disabled, None);
+        return (
+            false,
+            None,
+            crate::mxr_protocol::IndexFreshness::Disabled,
+            None,
+        );
     }
 
     let active_profile = snapshot.active_profile.as_str().to_string();
@@ -702,15 +712,17 @@ fn semantic_freshness_from_snapshot(
         .iter()
         .find(|profile| profile.profile == snapshot.active_profile);
     let freshness = match active_record.map(|profile| profile.status) {
-        Some(mxr_core::types::SemanticProfileStatus::Ready) => {
-            mxr_protocol::IndexFreshness::Current
+        Some(crate::mxr_core::types::SemanticProfileStatus::Ready) => {
+            crate::mxr_protocol::IndexFreshness::Current
         }
-        Some(mxr_core::types::SemanticProfileStatus::Indexing)
-        | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
-            mxr_protocol::IndexFreshness::Indexing
+        Some(crate::mxr_core::types::SemanticProfileStatus::Indexing)
+        | Some(crate::mxr_core::types::SemanticProfileStatus::Pending) => {
+            crate::mxr_protocol::IndexFreshness::Indexing
         }
-        Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
-        None => mxr_protocol::IndexFreshness::Stale,
+        Some(crate::mxr_core::types::SemanticProfileStatus::Error) => {
+            crate::mxr_protocol::IndexFreshness::Error
+        }
+        None => crate::mxr_protocol::IndexFreshness::Stale,
     };
 
     (
@@ -725,28 +737,35 @@ fn semantic_freshness_from_snapshot(
 
 fn semantic_freshness_from_store(
     enabled: bool,
-    active_profile: mxr_core::SemanticProfile,
-    active_record: Option<&mxr_core::types::SemanticProfileRecord>,
+    active_profile: crate::mxr_core::SemanticProfile,
+    active_record: Option<&crate::mxr_core::types::SemanticProfileRecord>,
 ) -> (
     bool,
     Option<String>,
-    mxr_protocol::IndexFreshness,
+    crate::mxr_protocol::IndexFreshness,
     Option<String>,
 ) {
     if !enabled {
-        return (false, None, mxr_protocol::IndexFreshness::Disabled, None);
+        return (
+            false,
+            None,
+            crate::mxr_protocol::IndexFreshness::Disabled,
+            None,
+        );
     }
 
     let freshness = match active_record.map(|profile| profile.status) {
-        Some(mxr_core::types::SemanticProfileStatus::Ready) => {
-            mxr_protocol::IndexFreshness::Current
+        Some(crate::mxr_core::types::SemanticProfileStatus::Ready) => {
+            crate::mxr_protocol::IndexFreshness::Current
         }
-        Some(mxr_core::types::SemanticProfileStatus::Indexing)
-        | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
-            mxr_protocol::IndexFreshness::Indexing
+        Some(crate::mxr_core::types::SemanticProfileStatus::Indexing)
+        | Some(crate::mxr_core::types::SemanticProfileStatus::Pending) => {
+            crate::mxr_protocol::IndexFreshness::Indexing
         }
-        Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
-        None => mxr_protocol::IndexFreshness::Stale,
+        Some(crate::mxr_core::types::SemanticProfileStatus::Error) => {
+            crate::mxr_protocol::IndexFreshness::Error
+        }
+        None => crate::mxr_protocol::IndexFreshness::Stale,
     };
 
     (
@@ -759,7 +778,7 @@ fn semantic_freshness_from_store(
     )
 }
 
-fn doctor_data_stats(counts: mxr_store::StoreRecordCounts) -> DoctorDataStats {
+fn doctor_data_stats(counts: crate::mxr_store::StoreRecordCounts) -> DoctorDataStats {
     DoctorDataStats {
         accounts: counts.accounts,
         labels: counts.labels,
@@ -785,7 +804,7 @@ fn doctor_data_stats(counts: mxr_store::StoreRecordCounts) -> DoctorDataStats {
 }
 
 fn recent_log_lines(limit: usize, level: Option<&str>) -> Result<Vec<String>, std::io::Error> {
-    let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
+    let log_path = crate::mxr_config::data_dir().join("logs").join("mxr.log");
     if !log_path.exists() {
         return Ok(Vec::new());
     }

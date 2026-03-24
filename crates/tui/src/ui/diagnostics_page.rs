@@ -1,5 +1,5 @@
-use crate::app::{DiagnosticsPageState, DiagnosticsPaneKind};
-use mxr_protocol::{AccountSyncStatus, DoctorDataStats, EventLogEntry};
+use crate::mxr_protocol::{AccountSyncStatus, DoctorDataStats, EventLogEntry};
+use crate::mxr_tui::app::{DiagnosticsPageState, DiagnosticsPaneKind};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -7,111 +7,106 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     state: &DiagnosticsPageState,
-    theme: &crate::theme::Theme,
+    theme: &crate::mxr_tui::theme::Theme,
 ) {
     if let Some(pane) = state.fullscreen_pane {
-        render_pane(frame, area, state, pane, theme, true);
+        render_detail_layout(frame, area, state, pane, theme, true);
         return;
     }
 
     let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(9),
-            Constraint::Length(7),
-            Constraint::Min(4),
-            Constraint::Min(4),
-        ])
-        .split(area);
-    let top_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[0]);
+        .constraints([Constraint::Percentage(26), Constraint::Percentage(74)])
+        .split(area);
 
-    render_pane(
-        frame,
-        top_chunks[0],
-        state,
-        DiagnosticsPaneKind::Status,
-        theme,
-        false,
-    );
-    render_pane(
-        frame,
-        top_chunks[1],
-        state,
-        DiagnosticsPaneKind::Data,
-        theme,
-        false,
-    );
-    render_pane(
-        frame,
-        chunks[1],
-        state,
-        DiagnosticsPaneKind::Sync,
-        theme,
-        false,
-    );
-    render_pane(
-        frame,
-        chunks[2],
-        state,
-        DiagnosticsPaneKind::Events,
-        theme,
-        false,
-    );
-    render_pane(
-        frame,
-        chunks[3],
-        state,
-        DiagnosticsPaneKind::Logs,
-        theme,
-        false,
-    );
+    render_selector(frame, chunks[0], state, theme);
+    render_detail_layout(frame, chunks[1], state, state.selected_pane, theme, false);
 }
 
 pub fn pane_details_text(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> String {
     pane_lines(state, pane).join("\n")
 }
 
-fn render_pane(
+fn render_selector(
+    frame: &mut Frame,
+    area: Rect,
+    state: &DiagnosticsPageState,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
+    let items = all_panes()
+        .iter()
+        .map(|&pane| {
+            let meta = match pane {
+                DiagnosticsPaneKind::Status => state
+                    .doctor
+                    .as_ref()
+                    .map(|report| report.health_class.as_str().to_string())
+                    .unwrap_or_else(|| "status".into()),
+                DiagnosticsPaneKind::Data => state
+                    .total_messages
+                    .map(|count| format!("{count} msgs"))
+                    .unwrap_or_else(|| "storage".into()),
+                DiagnosticsPaneKind::Sync => format!("{} accounts", state.sync_statuses.len()),
+                DiagnosticsPaneKind::Events => format!("{} recent", state.events.len()),
+                DiagnosticsPaneKind::Logs => format!("{} lines", state.logs.len()),
+            };
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    pane_label(pane),
+                    Style::default().fg(theme.text_primary).bold(),
+                ),
+                Span::styled(
+                    format!("  [{meta}]"),
+                    Style::default().fg(theme.text_secondary),
+                ),
+            ]))
+        })
+        .collect::<Vec<_>>();
+    let selected = all_panes()
+        .iter()
+        .position(|pane| *pane == state.selected_pane)
+        .unwrap_or(0);
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .title(" Diagnostics ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.accent)),
+        )
+        .highlight_style(theme.highlight_style())
+        .highlight_symbol("> ");
+    let mut list_state = ListState::default().with_selected(Some(selected));
+    frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+fn render_detail_layout(
     frame: &mut Frame,
     area: Rect,
     state: &DiagnosticsPageState,
     pane: DiagnosticsPaneKind,
-    theme: &crate::theme::Theme,
+    theme: &crate::mxr_tui::theme::Theme,
     fullscreen: bool,
 ) {
-    let selected = state.selected_pane == pane;
-    let title = pane_title(pane, selected, fullscreen);
-    let border_fg = if selected {
-        theme.accent
-    } else {
-        pane_border_color(pane, theme)
-    };
-
-    let paragraph = Paragraph::new(
-        pane_lines(state, pane)
-            .into_iter()
-            .map(Line::from)
-            .collect::<Vec<_>>(),
-    )
-    .block(
-        Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_fg)),
-    )
-    .scroll((state.scroll_offset(pane), 0))
-    .wrap(Wrap { trim: false });
-
-    frame.render_widget(paragraph, area);
-}
-
-fn pane_title(pane: DiagnosticsPaneKind, selected: bool, fullscreen: bool) -> String {
-    let prefix = if selected { "> " } else { "" };
-    let suffix = if fullscreen { " [full]" } else { "" };
-    format!(" {prefix}{}{suffix} ", pane_label(pane))
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(7),
+            Constraint::Min(0),
+            Constraint::Length(3),
+        ])
+        .split(area);
+    render_summary(frame, chunks[0], state, pane, theme, fullscreen);
+    render_detail(frame, chunks[1], state, pane, theme, fullscreen);
+    render_footer(
+        frame,
+        chunks[2],
+        if fullscreen {
+            "j/k:section  Ctrl-d/u:scroll  Enter/o:exit full  d:details  r:refresh  L:logs"
+        } else {
+            "j/k:section  Ctrl-d/u:scroll  Enter/o:full  d:details  r:refresh  b:bug"
+        },
+        theme,
+    );
 }
 
 fn pane_label(pane: DiagnosticsPaneKind) -> &'static str {
@@ -124,11 +119,198 @@ fn pane_label(pane: DiagnosticsPaneKind) -> &'static str {
     }
 }
 
-fn pane_border_color(pane: DiagnosticsPaneKind, theme: &crate::theme::Theme) -> Color {
+fn render_summary(
+    frame: &mut Frame,
+    area: Rect,
+    state: &DiagnosticsPageState,
+    pane: DiagnosticsPaneKind,
+    theme: &crate::mxr_tui::theme::Theme,
+    fullscreen: bool,
+) {
+    let block = Block::default()
+        .title(format!(
+            " Summary · {}{} ",
+            pane_label(pane),
+            if fullscreen { " [full]" } else { "" }
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.warning));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if inner.height < 4 {
+        return;
+    }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(summary_lines(state, pane)).wrap(Wrap { trim: false }),
+        chunks[0],
+    );
+
+    let health = state
+        .doctor
+        .as_ref()
+        .map(|report| report.health_class.as_str())
+        .unwrap_or("unknown");
+    let lexical = state
+        .doctor
+        .as_ref()
+        .map(|report| report.lexical_index_freshness.as_str())
+        .unwrap_or("unknown");
+
+    frame.render_widget(
+        LineGauge::default()
+            .label(format!("health {health}"))
+            .filled_style(Style::default().fg(theme.success))
+            .unfilled_style(Style::default().fg(theme.border_unfocused))
+            .ratio(health_ratio(health)),
+        chunks[1],
+    );
+    frame.render_widget(
+        LineGauge::default()
+            .label(format!("index {lexical}"))
+            .filled_style(Style::default().fg(theme.accent))
+            .unfilled_style(Style::default().fg(theme.border_unfocused))
+            .ratio(freshness_ratio(lexical)),
+        chunks[2],
+    );
+}
+
+fn render_detail(
+    frame: &mut Frame,
+    area: Rect,
+    state: &DiagnosticsPageState,
+    pane: DiagnosticsPaneKind,
+    theme: &crate::mxr_tui::theme::Theme,
+    fullscreen: bool,
+) {
+    let title = if fullscreen {
+        format!(" {} [full] ", pane_label(pane))
+    } else {
+        format!(" {} ", pane_label(pane))
+    };
+    let paragraph = Paragraph::new(
+        pane_lines(state, pane)
+            .into_iter()
+            .map(Line::from)
+            .collect::<Vec<_>>(),
+    )
+    .block(
+        Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.accent)),
+    )
+    .scroll((state.scroll_offset(pane), 0))
+    .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, area);
+
+    let body_height = area.height.saturating_sub(2) as usize;
+    let line_count = pane_lines(state, pane).len();
+    if line_count > body_height {
+        let mut scrollbar_state = ScrollbarState::new(line_count.saturating_sub(body_height))
+            .position(state.scroll_offset(pane) as usize);
+        frame.render_stateful_widget(
+            Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .thumb_style(Style::default().fg(theme.warning)),
+            area,
+            &mut scrollbar_state,
+        );
+    }
+}
+
+fn render_footer(frame: &mut Frame, area: Rect, text: &str, theme: &crate::mxr_tui::theme::Theme) {
+    frame.render_widget(
+        Paragraph::new(text).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.accent)),
+        ),
+        area,
+    );
+}
+
+fn all_panes() -> [DiagnosticsPaneKind; 5] {
+    [
+        DiagnosticsPaneKind::Status,
+        DiagnosticsPaneKind::Data,
+        DiagnosticsPaneKind::Sync,
+        DiagnosticsPaneKind::Events,
+        DiagnosticsPaneKind::Logs,
+    ]
+}
+
+fn summary_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<Line<'static>> {
     match pane {
-        DiagnosticsPaneKind::Status | DiagnosticsPaneKind::Sync => theme.accent,
-        DiagnosticsPaneKind::Data | DiagnosticsPaneKind::Events => theme.warning,
-        DiagnosticsPaneKind::Logs => theme.success,
+        DiagnosticsPaneKind::Status => vec![
+            Line::from(format!(
+                "daemon={}  pid={}",
+                state.status.as_deref().unwrap_or("unknown"),
+                state
+                    .daemon_pid
+                    .map(|pid| pid.to_string())
+                    .unwrap_or_else(|| "unknown".into())
+            )),
+            Line::from(format!(
+                "accounts={}  messages={}",
+                state.accounts.len(),
+                state
+                    .total_messages
+                    .map(|count| count.to_string())
+                    .unwrap_or_else(|| "unknown".into())
+            )),
+        ],
+        DiagnosticsPaneKind::Data => vec![
+            Line::from("Local database, index, and semantic storage."),
+            Line::from("Use this when counts or disk footprint look wrong."),
+        ],
+        DiagnosticsPaneKind::Sync => vec![
+            Line::from(format!(
+                "{} account sync runtimes visible.",
+                state.sync_statuses.len()
+            )),
+            Line::from("Check failures, backoff, and current cursor state here."),
+        ],
+        DiagnosticsPaneKind::Events => vec![
+            Line::from(format!(
+                "{} recent daemon events loaded.",
+                state.events.len()
+            )),
+            Line::from("Inspect recent sync summaries and event details."),
+        ],
+        DiagnosticsPaneKind::Logs => vec![
+            Line::from(format!("{} recent log lines loaded.", state.logs.len())),
+            Line::from("Open logs for the full file in your editor."),
+        ],
+    }
+}
+
+fn health_ratio(status: &str) -> f64 {
+    match status {
+        "healthy" => 1.0,
+        "degraded" => 0.66,
+        "unhealthy" => 0.33,
+        _ => 0.15,
+    }
+}
+
+fn freshness_ratio(status: &str) -> f64 {
+    match status {
+        "fresh" => 1.0,
+        "stale" => 0.5,
+        "missing" => 0.2,
+        _ => 0.15,
     }
 }
 

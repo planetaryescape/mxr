@@ -1,4 +1,4 @@
-use mxr_core::types::Label;
+use crate::mxr_core::types::Label;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -102,7 +102,12 @@ impl LabelPicker {
     }
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, picker: &LabelPicker, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    picker: &LabelPicker,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
     if !picker.visible {
         return;
     }

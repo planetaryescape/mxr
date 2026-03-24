@@ -1,6 +1,6 @@
 use crate::ipc_client::IpcClient;
-use mxr_core::{ExportFormat, ThreadId};
-use mxr_protocol::*;
+use crate::mxr_core::{ExportFormat, ThreadId};
+use crate::mxr_protocol::*;
 use std::path::PathBuf;
 
 fn parse_export_format(value: &str) -> anyhow::Result<ExportFormat> {

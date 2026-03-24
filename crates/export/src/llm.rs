@@ -1,5 +1,5 @@
-use crate::ExportThread;
-use mxr_reader::{clean, ReaderConfig};
+use crate::mxr_export::ExportThread;
+use crate::mxr_reader::{clean, ReaderConfig};
 use std::collections::HashSet;
 
 /// Export thread optimized for AI consumption.
@@ -51,8 +51,8 @@ pub fn export_llm_context(thread: &ExportThread, reader_config: &ReaderConfig) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{empty_body_thread, sample_thread, single_message_thread};
-    use crate::{ExportAttachment, ExportMessage, ExportThread};
+    use crate::mxr_export::tests::{empty_body_thread, sample_thread, single_message_thread};
+    use crate::mxr_export::{ExportAttachment, ExportMessage, ExportThread};
     use chrono::TimeZone;
 
     fn default_config() -> ReaderConfig {
@@ -142,7 +142,7 @@ mod tests {
     fn llm_omits_markdown_formatting_overhead() {
         let thread = sample_thread();
         let config = default_config();
-        let md = crate::export_markdown(&thread);
+        let md = crate::mxr_export::export_markdown(&thread);
         let llm = export_llm_context(&thread, &config);
         // LLM format uses compact headers (no "##", no "**Attachments:**", no footer)
         assert!(!llm.contains("## "));

@@ -1,5 +1,5 @@
-use mxr_core::id::{AccountId, LabelId};
-use mxr_core::types::{Label, LabelKind};
+use crate::mxr_core::id::{AccountId, LabelId};
+use crate::mxr_core::types::{Label, LabelKind};
 
 /// Map IMAP folders to mxr labels using RFC 6154 SPECIAL-USE attributes.
 pub fn map_folder_to_label(
@@ -36,13 +36,15 @@ pub fn format_provider_id(mailbox: &str, uid: u32) -> String {
     format!("{mailbox}:{uid}")
 }
 
-pub fn parse_provider_id(id: &str) -> Result<(String, u32), crate::error::ImapProviderError> {
-    let (mailbox, uid_str) = id
-        .rsplit_once(':')
-        .ok_or_else(|| crate::error::ImapProviderError::InvalidProviderId(id.to_string()))?;
-    let uid = uid_str
-        .parse()
-        .map_err(|_| crate::error::ImapProviderError::InvalidProviderId(id.to_string()))?;
+pub fn parse_provider_id(
+    id: &str,
+) -> Result<(String, u32), crate::mxr_provider_imap::error::ImapProviderError> {
+    let (mailbox, uid_str) = id.rsplit_once(':').ok_or_else(|| {
+        crate::mxr_provider_imap::error::ImapProviderError::InvalidProviderId(id.to_string())
+    })?;
+    let uid = uid_str.parse().map_err(|_| {
+        crate::mxr_provider_imap::error::ImapProviderError::InvalidProviderId(id.to_string())
+    })?;
     Ok((mailbox.to_string(), uid))
 }
 

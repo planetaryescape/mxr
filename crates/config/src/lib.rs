@@ -28,12 +28,12 @@ mod tests {
         assert_eq!(deserialized.search.max_results, 200);
         assert_eq!(
             deserialized.search.default_mode,
-            mxr_core::SearchMode::Lexical
+            crate::mxr_core::SearchMode::Lexical
         );
         assert!(!deserialized.search.semantic.enabled);
         assert_eq!(
             deserialized.search.semantic.active_profile,
-            mxr_core::SemanticProfile::BgeSmallEnV15
+            crate::mxr_core::SemanticProfile::BgeSmallEnV15
         );
         assert_eq!(deserialized.logging.event_retention_days, 90);
         assert!(deserialized.accounts.is_empty());
@@ -119,12 +119,12 @@ subject_max_width = 80
         assert_eq!(round_tripped.search.max_results, 50);
         assert_eq!(
             round_tripped.search.default_mode,
-            mxr_core::SearchMode::Hybrid
+            crate::mxr_core::SearchMode::Hybrid
         );
         assert!(round_tripped.search.semantic.enabled);
         assert_eq!(
             round_tripped.search.semantic.active_profile,
-            mxr_core::SemanticProfile::MultilingualE5Small
+            crate::mxr_core::SemanticProfile::MultilingualE5Small
         );
         assert_eq!(round_tripped.logging.max_files, 5);
         assert_eq!(round_tripped.appearance.theme, "catppuccin");
@@ -144,10 +144,13 @@ editor = "emacs"
         assert_eq!(config.general.hook_timeout, 30);
         assert!(config.render.reader_mode);
         assert_eq!(config.search.max_results, 200);
-        assert_eq!(config.search.default_mode, mxr_core::SearchMode::Lexical);
+        assert_eq!(
+            config.search.default_mode,
+            crate::mxr_core::SearchMode::Lexical
+        );
         assert_eq!(
             config.search.semantic.active_profile,
-            mxr_core::SemanticProfile::BgeSmallEnV15
+            crate::mxr_core::SemanticProfile::BgeSmallEnV15
         );
         assert_eq!(config.snooze.morning_hour, 9);
         assert_eq!(config.logging.event_retention_days, 90);

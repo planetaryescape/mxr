@@ -39,8 +39,13 @@ impl App {
         let tab_bar_area = outer_chunks[0];
         let hint_bar_area = outer_chunks[1];
         let content_area = outer_chunks[2];
-        // Update visible height based on actual terminal size (subtract borders/header)
-        self.visible_height = content_area.height.saturating_sub(2) as usize;
+        let ui_context = self.current_ui_context();
+        // Search results sit below a fixed 3-line query box, so their scroll viewport is
+        // shorter than the main content area.
+        self.visible_height = match self.screen {
+            Screen::Search => content_area.height.saturating_sub(5) as usize,
+            _ => content_area.height.saturating_sub(2) as usize,
+        };
         let bottom_bar_area = outer_chunks[3];
 
         // Tab bar
@@ -56,13 +61,13 @@ impl App {
             frame,
             hint_bar_area,
             ui::hint_bar::HintBarState {
-                screen: self.screen,
-                active_pane: &self.active_pane,
+                ui_context,
                 search_active: self.search_bar.active,
                 help_modal_open: self.help_modal_open,
                 selected_count: self.selected_set.len(),
                 bulk_confirm_open: self.pending_bulk_confirm.is_some(),
                 sync_status: self.last_sync_status.clone(),
+                _marker: std::marker::PhantomData,
             },
             theme,
         );
@@ -307,10 +312,10 @@ impl App {
             area,
             ui::help_modal::HelpModalState {
                 open: self.help_modal_open,
-                screen: self.screen,
-                active_pane: &self.active_pane,
+                ui_context,
                 selected_count: self.selected_set.len(),
                 scroll_offset: self.help_scroll_offset,
+                _marker: std::marker::PhantomData,
             },
             theme,
         );

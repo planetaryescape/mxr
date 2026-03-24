@@ -1,6 +1,6 @@
+use crate::mxr_core::id::*;
+use crate::mxr_core::types::*;
 use chrono::{DateTime, Utc};
-use mxr_core::id::*;
-use mxr_core::types::*;
 
 impl super::Store {
     pub async fn insert_snooze(&self, snoozed: &Snoozed) -> Result<(), sqlx::Error> {

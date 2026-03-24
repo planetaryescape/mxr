@@ -1,7 +1,7 @@
 use crate::cli::{OutputFormat, SavedAction};
 use crate::ipc_client::IpcClient;
+use crate::mxr_protocol::*;
 use crate::output::resolve_format;
-use mxr_protocol::*;
 
 pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let action = action.unwrap_or(SavedAction::List);
@@ -39,7 +39,7 @@ pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> a
                     query,
                     search_mode: mode
                         .map(Into::into)
-                        .unwrap_or(mxr_core::SearchMode::Lexical),
+                        .unwrap_or(crate::mxr_core::SearchMode::Lexical),
                 })
                 .await?;
             match resp {

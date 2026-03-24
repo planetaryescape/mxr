@@ -1,4 +1,4 @@
-use mxr_core::{AccountId, SyncCursor};
+use crate::mxr_core::{AccountId, SyncCursor};
 
 impl super::Store {
     pub async fn get_sync_cursor(

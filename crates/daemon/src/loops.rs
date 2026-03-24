@@ -1,10 +1,10 @@
+use crate::mxr_core::id::AccountId;
+use crate::mxr_core::types::SyncCursor;
+use crate::mxr_core::MailSyncProvider;
+use crate::mxr_protocol::*;
+use crate::mxr_rules::{Rule, RuleAction, RuleEngine, RuleExecutionLog};
+use crate::mxr_store::{SyncRuntimeStatusUpdate, SyncStatus as StoreSyncStatus};
 use crate::state::AppState;
-use mxr_core::id::AccountId;
-use mxr_core::types::SyncCursor;
-use mxr_core::MailSyncProvider;
-use mxr_protocol::*;
-use mxr_rules::{Rule, RuleAction, RuleEngine, RuleExecutionLog};
-use mxr_store::{SyncRuntimeStatusUpdate, SyncStatus as StoreSyncStatus};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
@@ -325,7 +325,7 @@ async fn apply_rules_to_messages(
     state: &Arc<AppState>,
     account_id: &AccountId,
     provider: &dyn MailSyncProvider,
-    message_ids: &[mxr_core::MessageId],
+    message_ids: &[crate::mxr_core::MessageId],
 ) -> Result<(), String> {
     let rows = state.store.list_rules().await.map_err(|e| e.to_string())?;
     if rows.is_empty() || message_ids.is_empty() {
@@ -335,7 +335,8 @@ async fn apply_rules_to_messages(
     let rules: Vec<Rule> = rows
         .iter()
         .map(|row| {
-            serde_json::from_value(mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string())
+            serde_json::from_value(crate::mxr_store::row_to_rule_json(row))
+                .map_err(|e| e.to_string())
         })
         .collect::<Result<_, _>>()?;
     let engine = RuleEngine::new(rules.clone());
@@ -402,7 +403,7 @@ async fn apply_rules_to_messages(
                     serde_json::to_string(&entry.actions_applied).map_err(|e| e.to_string())?;
                 state
                     .store
-                    .insert_rule_log(mxr_store::RuleLogInput {
+                    .insert_rule_log(crate::mxr_store::RuleLogInput {
                         rule_id: &entry.rule_id.0,
                         rule_name: &entry.rule_name,
                         message_id: &entry.message_id,
@@ -435,9 +436,9 @@ async fn execute_rule_action(
     state: &Arc<AppState>,
     account_id: &AccountId,
     provider: &dyn MailSyncProvider,
-    message_id: &mxr_core::MessageId,
+    message_id: &crate::mxr_core::MessageId,
     action: &RuleAction,
-    labels: &[mxr_core::Label],
+    labels: &[crate::mxr_core::Label],
 ) -> Result<(), String> {
     let provider_message_id = state
         .store
@@ -531,13 +532,13 @@ async fn execute_rule_action(
         }
         RuleAction::Snooze { duration } => {
             let wake_at = match duration {
-                mxr_rules::SnoozeDuration::Hours { count } => {
+                crate::mxr_rules::SnoozeDuration::Hours { count } => {
                     chrono::Utc::now() + chrono::Duration::hours(*count as i64)
                 }
-                mxr_rules::SnoozeDuration::Days { count } => {
+                crate::mxr_rules::SnoozeDuration::Days { count } => {
                     chrono::Utc::now() + chrono::Duration::days(*count as i64)
                 }
-                mxr_rules::SnoozeDuration::Until { date } => *date,
+                crate::mxr_rules::SnoozeDuration::Until { date } => *date,
             };
             let original_labels = state
                 .store
@@ -546,7 +547,7 @@ async fn execute_rule_action(
                 .map_err(|e| e.to_string())?;
             state
                 .store
-                .insert_snooze(&mxr_core::types::Snoozed {
+                .insert_snooze(&crate::mxr_core::types::Snoozed {
                     message_id: message_id.clone(),
                     account_id: account_id.clone(),
                     snoozed_at: chrono::Utc::now(),
@@ -561,14 +562,14 @@ async fn execute_rule_action(
                 "message_id": message_id.as_str(),
                 "provider_message_id": provider_message_id,
             });
-            mxr_rules::shell_hook::execute_shell_hook(
+            crate::mxr_rules::shell_hook::execute_shell_hook(
                 command,
-                &mxr_rules::shell_hook::ShellHookPayload {
+                &crate::mxr_rules::shell_hook::ShellHookPayload {
                     id: payload["message_id"]
                         .as_str()
                         .unwrap_or_default()
                         .to_string(),
-                    from: mxr_rules::shell_hook::ShellHookAddress {
+                    from: crate::mxr_rules::shell_hook::ShellHookAddress {
                         name: None,
                         email: String::new(),
                     },
@@ -603,8 +604,8 @@ struct RuleMessage {
 
 impl RuleMessage {
     fn from_parts(
-        envelope: mxr_core::Envelope,
-        body: Option<mxr_core::MessageBody>,
+        envelope: crate::mxr_core::Envelope,
+        body: Option<crate::mxr_core::MessageBody>,
         labels: Vec<String>,
     ) -> Self {
         Self {
@@ -615,18 +616,20 @@ impl RuleMessage {
             has_attachment: envelope.has_attachments,
             size_bytes: envelope.size_bytes,
             date: envelope.date,
-            is_unread: !envelope.flags.contains(mxr_core::MessageFlags::READ),
-            is_starred: envelope.flags.contains(mxr_core::MessageFlags::STARRED),
+            is_unread: !envelope.flags.contains(crate::mxr_core::MessageFlags::READ),
+            is_starred: envelope
+                .flags
+                .contains(crate::mxr_core::MessageFlags::STARRED),
             has_unsubscribe: !matches!(
                 envelope.unsubscribe,
-                mxr_core::types::UnsubscribeMethod::None
+                crate::mxr_core::types::UnsubscribeMethod::None
             ),
             body_text: body.and_then(|body| body.text_plain.or(body.text_html)),
         }
     }
 }
 
-impl mxr_rules::MessageView for RuleMessage {
+impl crate::mxr_rules::MessageView for RuleMessage {
     fn sender_email(&self) -> &str {
         &self.from
     }
@@ -691,7 +694,7 @@ pub async fn snooze_loop(state: Arc<AppState>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mxr_protocol::{IpcMessage, IpcPayload, Request, Response, ResponseData};
+    use crate::mxr_protocol::{IpcMessage, IpcPayload, Request, Response, ResponseData};
 
     #[tokio::test]
     async fn apply_rules_to_messages_marks_message_read_and_logs_history() {
@@ -704,7 +707,7 @@ mod tests {
         let mut unread_id = None;
         for message_id in &outcome.upserted_message_ids {
             let envelope = state.store.get_envelope(message_id).await.unwrap().unwrap();
-            if !envelope.flags.contains(mxr_core::MessageFlags::READ) {
+            if !envelope.flags.contains(crate::mxr_core::MessageFlags::READ) {
                 unread_id = Some(message_id.clone());
                 break;
             }
@@ -740,7 +743,7 @@ mod tests {
         .unwrap();
 
         let envelope = state.store.get_envelope(&unread_id).await.unwrap().unwrap();
-        assert!(envelope.flags.contains(mxr_core::MessageFlags::READ));
+        assert!(envelope.flags.contains(crate::mxr_core::MessageFlags::READ));
 
         let history = crate::handler::handle_request(
             &state,

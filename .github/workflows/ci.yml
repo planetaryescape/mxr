@@ -51,7 +51,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
-      - run: cargo test -p mxr-adapter-skeleton
 
   coverage:
     name: Coverage
@@ -65,15 +64,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: >
           cargo llvm-cov
-          --package mxr-compose
-          --package mxr-provider-gmail
-          --package mxr-provider-imap
-          --package mxr-provider-smtp
-          --package mxr-reader
-          --package mxr-export
-          --package mxr-sync
           --package mxr
-          --exclude-from-report mxr
           --ignore-filename-regex 'crates/provider-gmail/src/(auth|client)\.rs|crates/provider-imap/src/session\.rs'
           --summary-only
           --fail-under-lines 90

@@ -687,6 +687,8 @@ pub enum AccountSyncConfigData {
         username: String,
         password_ref: String,
         password: Option<String>,
+        #[serde(default = "default_auth_required")]
+        auth_required: bool,
         use_tls: bool,
     },
 }
@@ -717,8 +719,14 @@ pub enum AccountSendConfigData {
         username: String,
         password_ref: String,
         password: Option<String>,
+        #[serde(default = "default_auth_required")]
+        auth_required: bool,
         use_tls: bool,
     },
+}
+
+fn default_auth_required() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

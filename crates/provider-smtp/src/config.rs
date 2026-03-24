@@ -8,6 +8,8 @@ pub struct SmtpConfig {
     /// Keyring reference (e.g., "mxr/work-smtp"). Looked up at runtime.
     pub password_ref: String,
     #[serde(default = "default_true")]
+    pub auth_required: bool,
+    #[serde(default = "default_true")]
     pub use_tls: bool,
 }
 
@@ -45,6 +47,7 @@ mod tests {
         let json =
             r#"{"host":"smtp.example.com","port":587,"username":"user","password_ref":"mxr/test"}"#;
         let config: SmtpConfig = serde_json::from_str(json).unwrap();
+        assert!(config.auth_required);
         assert!(config.use_tls);
     }
 }

@@ -474,7 +474,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Start Here".into(),
-            shortcut: "help:o".into(),
+            shortcut: "".into(),
             action: Action::ShowOnboarding,
             category: "System".into(),
         },

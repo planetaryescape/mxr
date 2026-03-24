@@ -18,7 +18,6 @@ use crate::mxr_provider_imap::types::{FolderInfo, ImapCapabilities};
 
 pub struct ImapProvider {
     account_id: AccountId,
-    config: ImapConfig,
     trash_folder: String,
     session_factory: Box<dyn ImapSessionFactory>,
 }
@@ -28,7 +27,6 @@ impl ImapProvider {
         let session_factory = Box::new(RealImapSessionFactory::new(config.clone()));
         Self {
             account_id,
-            config,
             trash_folder: "Trash".to_string(),
             session_factory,
         }
@@ -38,12 +36,11 @@ impl ImapProvider {
     #[cfg(test)]
     pub fn with_session_factory(
         account_id: AccountId,
-        config: ImapConfig,
+        _config: ImapConfig,
         session_factory: Box<dyn ImapSessionFactory>,
     ) -> Self {
         Self {
             account_id,
-            config,
             trash_folder: "Trash".to_string(),
             session_factory,
         }
@@ -580,10 +577,12 @@ impl MailSyncProvider for ImapProvider {
     }
 
     async fn authenticate(&mut self) -> crate::mxr_core::provider::Result<()> {
-        let _password = self
-            .config
-            .resolve_password()
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
             .map_err(crate::mxr_core::error::MxrError::from)?;
+        let _ = session.logout().await;
         Ok(())
     }
 
@@ -1001,6 +1000,7 @@ mod tests {
             port: 993,
             username: "test@test.com".to_string(),
             password_ref: "test/imap".to_string(),
+            auth_required: true,
             use_tls: true,
         }
     }

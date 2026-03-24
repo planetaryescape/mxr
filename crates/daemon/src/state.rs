@@ -160,6 +160,7 @@ impl AppState {
                     port,
                     username,
                     password_ref,
+                    auth_required,
                     use_tls,
                 }) => Some(Arc::new(crate::mxr_provider_imap::ImapProvider::new(
                     account_id.clone(),
@@ -168,6 +169,7 @@ impl AppState {
                         port: *port,
                         username: username.clone(),
                         password_ref: password_ref.clone(),
+                        auth_required: *auth_required,
                         use_tls: *use_tls,
                     },
                 )) as Arc<dyn MailSyncProvider>),
@@ -194,6 +196,7 @@ impl AppState {
                 port,
                 username,
                 password_ref,
+                auth_required,
                 use_tls,
             }) = &acct_config.send
             {
@@ -203,6 +206,7 @@ impl AppState {
                         port: *port,
                         username: username.clone(),
                         password_ref: password_ref.clone(),
+                        auth_required: *auth_required,
                         use_tls: *use_tls,
                     },
                 )) as Arc<dyn MailSendProvider>;

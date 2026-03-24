@@ -322,6 +322,8 @@ impl App {
                 ui_context,
                 selected_count: self.selected_set.len(),
                 scroll_offset: self.help_scroll_offset,
+                query: &self.help_query,
+                selected: self.help_selected,
                 _marker: std::marker::PhantomData,
             },
             theme,

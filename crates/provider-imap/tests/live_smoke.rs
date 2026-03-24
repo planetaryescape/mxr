@@ -22,6 +22,7 @@ async fn live_smoke_imap_sync_labels_and_messages() {
         port: required_env("MXR_IMAP_PORT").parse().unwrap(),
         username,
         password_ref: password_ref.into(),
+        auth_required: true,
         use_tls: std::env::var("MXR_IMAP_USE_TLS")
             .ok()
             .map(|value| value != "false")

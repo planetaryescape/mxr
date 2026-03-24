@@ -303,10 +303,20 @@ fn overview_lines(state: &RulesPageState) -> Vec<Line<'static>> {
         )),
         Line::from(""),
         Line::from("Condition"),
-        Line::from(rule["condition"].as_str().unwrap_or("No condition recorded").to_string()),
+        Line::from(
+            rule["condition"]
+                .as_str()
+                .unwrap_or("No condition recorded")
+                .to_string(),
+        ),
         Line::from(""),
         Line::from("Action"),
-        Line::from(rule["action"].as_str().unwrap_or("No action recorded").to_string()),
+        Line::from(
+            rule["action"]
+                .as_str()
+                .unwrap_or("No action recorded")
+                .to_string(),
+        ),
         Line::from(""),
         Line::from(format!(
             "Last run: {}",
@@ -418,7 +428,10 @@ fn truncate_line(text: &str, max_len: usize) -> String {
     if text.chars().count() <= max_len {
         text.to_string()
     } else {
-        let mut truncated = text.chars().take(max_len.saturating_sub(1)).collect::<String>();
+        let mut truncated = text
+            .chars()
+            .take(max_len.saturating_sub(1))
+            .collect::<String>();
         truncated.push_str("...");
         truncated
     }

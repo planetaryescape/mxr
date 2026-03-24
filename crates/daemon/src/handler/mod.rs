@@ -1612,6 +1612,7 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                 port,
                 username,
                 password_ref,
+                auth_required,
                 use_tls,
                 ..
             } => {
@@ -1622,6 +1623,7 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                         port,
                         username,
                         password_ref,
+                        auth_required,
                         use_tls,
                     },
                 );
@@ -1650,6 +1652,7 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
             port,
             username,
             password_ref,
+            auth_required,
             use_tls,
             ..
         }) => {
@@ -1659,6 +1662,7 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                     port,
                     username,
                     password_ref,
+                    auth_required,
                     use_tls,
                 },
             );
@@ -1778,6 +1782,7 @@ fn sync_config_to_data(sync: crate::mxr_config::SyncProviderConfig) -> AccountSy
             port,
             username,
             password_ref,
+            auth_required,
             use_tls,
         } => AccountSyncConfigData::Imap {
             host,
@@ -1785,6 +1790,7 @@ fn sync_config_to_data(sync: crate::mxr_config::SyncProviderConfig) -> AccountSy
             username,
             password_ref,
             password: None,
+            auth_required,
             use_tls,
         },
     }
@@ -1843,6 +1849,7 @@ fn send_config_to_data(send: crate::mxr_config::SendProviderConfig) -> AccountSe
             port,
             username,
             password_ref,
+            auth_required,
             use_tls,
         } => AccountSendConfigData::Smtp {
             host,
@@ -1850,6 +1857,7 @@ fn send_config_to_data(send: crate::mxr_config::SendProviderConfig) -> AccountSe
             username,
             password_ref,
             password: None,
+            auth_required,
             use_tls,
         },
     }
@@ -1882,6 +1890,7 @@ fn sync_data_to_config(
             port,
             username,
             password_ref,
+            auth_required,
             use_tls,
             ..
         } => Ok(crate::mxr_config::SyncProviderConfig::Imap {
@@ -1889,6 +1898,7 @@ fn sync_data_to_config(
             port,
             username,
             password_ref,
+            auth_required,
             use_tls,
         }),
     }
@@ -1904,6 +1914,7 @@ fn send_data_to_config(
             port,
             username,
             password_ref,
+            auth_required,
             use_tls,
             ..
         } => Ok(crate::mxr_config::SendProviderConfig::Smtp {
@@ -1911,6 +1922,7 @@ fn send_data_to_config(
             port,
             username,
             password_ref,
+            auth_required,
             use_tls,
         }),
     }
@@ -1918,25 +1930,47 @@ fn send_data_to_config(
 
 fn persist_account_passwords(account: &AccountConfigData) -> anyhow::Result<()> {
     if let Some(AccountSyncConfigData::Imap {
+        auth_required,
         username,
         password_ref,
         password: Some(password),
         ..
     }) = &account.sync
     {
-        keyring::Entry::new(password_ref, username)?.set_password(password)?;
+        persist_account_password("IMAP", *auth_required, username, password_ref, password)?;
     }
 
     if let Some(AccountSendConfigData::Smtp {
+        auth_required,
         username,
         password_ref,
         password: Some(password),
         ..
     }) = &account.send
     {
-        keyring::Entry::new(password_ref, username)?.set_password(password)?;
+        persist_account_password("SMTP", *auth_required, username, password_ref, password)?;
     }
 
+    Ok(())
+}
+
+fn persist_account_password(
+    service: &str,
+    auth_required: bool,
+    username: &str,
+    password_ref: &str,
+    password: &str,
+) -> anyhow::Result<()> {
+    if !auth_required || password.is_empty() {
+        return Ok(());
+    }
+    if username.trim().is_empty() {
+        anyhow::bail!("{service} user is required to store the password.");
+    }
+    if password_ref.trim().is_empty() {
+        anyhow::bail!("{service} pass ref is required to store the password.");
+    }
+    keyring::Entry::new(password_ref, username)?.set_password(password)?;
     Ok(())
 }
 

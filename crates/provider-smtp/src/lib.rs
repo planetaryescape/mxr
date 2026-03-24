@@ -48,28 +48,42 @@ impl SmtpSendProvider {
     }
 
     async fn build_transport(&self) -> Result<AsyncSmtpTransport<Tokio1Executor>, SmtpError> {
-        let password = self.config.resolve_password()?;
-        let creds = Credentials::new(self.config.username.clone(), password);
-
         let transport = if self.config.use_tls {
             if self.config.port == 465 {
-                AsyncSmtpTransport::<Tokio1Executor>::relay(&self.config.host)
+                let builder = AsyncSmtpTransport::<Tokio1Executor>::relay(&self.config.host)
                     .map_err(|e| SmtpError::Transport(e.to_string()))?
-                    .port(self.config.port)
-                    .credentials(creds)
-                    .build()
+                    .port(self.config.port);
+                if self.config.auth_required {
+                    let password = self.config.resolve_password()?;
+                    let creds = Credentials::new(self.config.username.clone(), password);
+                    builder.credentials(creds).build()
+                } else {
+                    builder.build()
+                }
             } else {
-                AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.config.host)
-                    .map_err(|e| SmtpError::Transport(e.to_string()))?
-                    .port(self.config.port)
-                    .credentials(creds)
-                    .build()
+                let builder =
+                    AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&self.config.host)
+                        .map_err(|e| SmtpError::Transport(e.to_string()))?
+                        .port(self.config.port);
+                if self.config.auth_required {
+                    let password = self.config.resolve_password()?;
+                    let creds = Credentials::new(self.config.username.clone(), password);
+                    builder.credentials(creds).build()
+                } else {
+                    builder.build()
+                }
             }
         } else {
-            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&self.config.host)
-                .port(self.config.port)
-                .credentials(creds)
-                .build()
+            let builder =
+                AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&self.config.host)
+                    .port(self.config.port);
+            if self.config.auth_required {
+                let password = self.config.resolve_password()?;
+                let creds = Credentials::new(self.config.username.clone(), password);
+                builder.credentials(creds).build()
+            } else {
+                builder.build()
+            }
         };
 
         Ok(transport)
@@ -206,6 +220,7 @@ mod tests {
                 port: 587,
                 username: "me@example.com".into(),
                 password_ref: "mxr/test".into(),
+                auth_required: true,
                 use_tls: true,
             },
             sender.clone(),

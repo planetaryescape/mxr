@@ -22,6 +22,7 @@ async fn live_smoke_smtp_test_connection_and_send() {
         port: required_env("MXR_SMTP_PORT").parse().unwrap(),
         username: username.clone(),
         password_ref: password_ref.into(),
+        auth_required: true,
         use_tls: std::env::var("MXR_SMTP_USE_TLS")
             .ok()
             .map(|value| value != "false")

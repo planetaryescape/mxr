@@ -6,7 +6,7 @@ use crate::mxr_tui::ui::{mail_list, message_view, search_query::highlight_search
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::HashSet;
-use throbber_widgets_tui::{BRAILLE_SIX, Throbber};
+use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
 
 #[expect(
     clippy::too_many_arguments,
@@ -37,7 +37,10 @@ pub fn draw(
     } else {
         highlight_search_query(&state.query, theme)
     };
-    let query = Paragraph::new(vec![query_line, query_status_line(state, result_count, theme)])
+    let query = Paragraph::new(vec![
+        query_line,
+        query_status_line(state, result_count, theme),
+    ])
     .block(
         Block::bordered()
             .title(query_title(state))
@@ -123,7 +126,10 @@ fn search_mode_label(mode: SearchMode) -> &'static str {
 
 fn query_title(state: &SearchPageState) -> String {
     if state.editing {
-        format!(" Search All Mail [{}] / query ", search_mode_label(state.mode))
+        format!(
+            " Search All Mail [{}] / query ",
+            search_mode_label(state.mode)
+        )
     } else {
         format!(" Search All Mail [{}] ", search_mode_label(state.mode))
     }
@@ -204,7 +210,9 @@ fn results_blank_state(state: &SearchPageState) -> Vec<Line<'static>> {
             Line::from(""),
             Line::from("Start typing to search every account."),
             Line::from("Enter runs immediately. Tab changes lexical / hybrid / semantic mode."),
-            Line::from("This is not the mailbox filter. Use Ctrl-f in Mailbox to filter current mail."),
+            Line::from(
+                "This is not the mailbox filter. Use Ctrl-f in Mailbox to filter current mail.",
+            ),
         ];
     }
 

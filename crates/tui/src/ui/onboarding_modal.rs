@@ -75,7 +75,7 @@ fn step_lines(step: usize) -> Vec<Line<'static>> {
             Line::from(""),
             Line::from("Press 3 for Rules. Start with a dry run before saving."),
             Line::from("Press gc or c on Accounts / Diagnostics to open config."),
-            Line::from("Open Help with ? any time, then press o to see this walkthrough again."),
+            Line::from("Open Help with ? any time, then search Start Here or use Ctrl-p to reopen this walkthrough."),
         ],
     }
 }

@@ -405,9 +405,17 @@ pub enum AccountFormMode {
     SmtpOnly,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AccountFormToggleField {
+    GmailCredentialSource,
+    ImapAuthRequired,
+    SmtpAuthRequired,
+}
+
 #[derive(Debug, Clone)]
 pub struct AccountFormState {
     pub visible: bool,
+    pub is_new_account: bool,
     pub mode: AccountFormMode,
     pub pending_mode_switch: Option<AccountFormMode>,
     pub key: String,
@@ -423,11 +431,13 @@ pub struct AccountFormState {
     pub imap_username: String,
     pub imap_password_ref: String,
     pub imap_password: String,
+    pub imap_auth_required: bool,
     pub smtp_host: String,
     pub smtp_port: String,
     pub smtp_username: String,
     pub smtp_password_ref: String,
     pub smtp_password: String,
+    pub smtp_auth_required: bool,
     pub active_field: usize,
     pub editing_field: bool,
     pub field_cursor: usize,
@@ -438,6 +448,7 @@ impl Default for AccountFormState {
     fn default() -> Self {
         Self {
             visible: false,
+            is_new_account: false,
             mode: AccountFormMode::Gmail,
             pending_mode_switch: None,
             key: String::new(),
@@ -453,11 +464,13 @@ impl Default for AccountFormState {
             imap_username: String::new(),
             imap_password_ref: String::new(),
             imap_password: String::new(),
+            imap_auth_required: true,
             smtp_host: String::new(),
             smtp_port: "587".into(),
             smtp_username: String::new(),
             smtp_password_ref: String::new(),
             smtp_password: String::new(),
+            smtp_auth_required: true,
             active_field: 0,
             editing_field: false,
             field_cursor: 0,
@@ -472,9 +485,13 @@ pub struct AccountsPageState {
     pub selected_index: usize,
     pub status: Option<String>,
     pub last_result: Option<crate::mxr_protocol::AccountOperationResult>,
+    pub operation_in_flight: bool,
+    pub throbber: ThrobberState,
     pub refresh_pending: bool,
     pub onboarding_required: bool,
     pub onboarding_modal_open: bool,
+    pub new_account_draft: Option<AccountFormState>,
+    pub resume_new_account_draft_prompt_open: bool,
     pub form: AccountFormState,
 }
 
@@ -662,6 +679,8 @@ pub struct App {
     pub sidebar_section: SidebarSection,
     pub help_modal_open: bool,
     pub help_scroll_offset: u16,
+    pub help_query: String,
+    pub help_selected: usize,
     pub saved_searches: Vec<crate::mxr_core::SavedSearch>,
     pub subscriptions_page: SubscriptionsPageState,
     pub rules_page: RulesPageState,
@@ -800,6 +819,8 @@ impl App {
             sidebar_section: SidebarSection::Labels,
             help_modal_open: false,
             help_scroll_offset: 0,
+            help_query: String::new(),
+            help_selected: 0,
             saved_searches: Vec::new(),
             subscriptions_page: SubscriptionsPageState::default(),
             rules_page: RulesPageState::default(),
@@ -1061,30 +1082,26 @@ impl App {
     }
 
     pub fn sync_rule_form_editors(&mut self) {
-        self.rule_condition_editor = TextArea::from(
-            if self.rules_page.form.condition.is_empty() {
-                vec![String::new()]
-            } else {
-                self.rules_page
-                    .form
-                    .condition
-                    .lines()
-                    .map(ToString::to_string)
-                    .collect()
-            },
-        );
-        self.rule_action_editor = TextArea::from(
-            if self.rules_page.form.action.is_empty() {
-                vec![String::new()]
-            } else {
-                self.rules_page
-                    .form
-                    .action
-                    .lines()
-                    .map(ToString::to_string)
-                    .collect()
-            },
-        );
+        self.rule_condition_editor = TextArea::from(if self.rules_page.form.condition.is_empty() {
+            vec![String::new()]
+        } else {
+            self.rules_page
+                .form
+                .condition
+                .lines()
+                .map(ToString::to_string)
+                .collect()
+        });
+        self.rule_action_editor = TextArea::from(if self.rules_page.form.action.is_empty() {
+            vec![String::new()]
+        } else {
+            self.rules_page
+                .form
+                .action
+                .lines()
+                .map(ToString::to_string)
+                .collect()
+        });
     }
 
     pub fn sync_rule_form_strings_from_editors(&mut self) {
@@ -1131,8 +1148,8 @@ impl App {
                     6
                 }
             }
-            AccountFormMode::ImapSmtp => 14,
-            AccountFormMode::SmtpOnly => 9,
+            AccountFormMode::ImapSmtp => 16,
+            AccountFormMode::SmtpOnly => 10,
         }
     }
 
@@ -1145,16 +1162,36 @@ impl App {
             form.name.trim().to_string()
         };
         let email = form.email.trim().to_string();
-        let imap_username = if form.imap_username.trim().is_empty() {
+        let imap_username = if form.imap_auth_required && form.imap_username.trim().is_empty() {
             email.clone()
         } else {
             form.imap_username.trim().to_string()
         };
-        let smtp_username = if form.smtp_username.trim().is_empty() {
+        let smtp_username = if form.smtp_auth_required && form.smtp_username.trim().is_empty() {
             email.clone()
         } else {
             form.smtp_username.trim().to_string()
         };
+        let imap_password_ref =
+            if form.imap_auth_required && form.imap_password_ref.trim().is_empty() {
+                if key.is_empty() {
+                    String::new()
+                } else {
+                    format!("mxr/{key}-imap")
+                }
+            } else {
+                form.imap_password_ref.trim().to_string()
+            };
+        let smtp_password_ref =
+            if form.smtp_auth_required && form.smtp_password_ref.trim().is_empty() {
+                if key.is_empty() {
+                    String::new()
+                } else {
+                    format!("mxr/{key}-smtp")
+                }
+            } else {
+                form.smtp_password_ref.trim().to_string()
+            };
         let gmail_token_ref = if form.gmail_token_ref.trim().is_empty() {
             format!("mxr/{key}-gmail")
         } else {
@@ -1175,12 +1212,13 @@ impl App {
                 host: form.imap_host.trim().to_string(),
                 port: form.imap_port.parse().unwrap_or(993),
                 username: imap_username,
-                password_ref: form.imap_password_ref.trim().to_string(),
+                password_ref: imap_password_ref,
                 password: if form.imap_password.is_empty() {
                     None
                 } else {
                     Some(form.imap_password.clone())
                 },
+                auth_required: form.imap_auth_required,
                 use_tls: true,
             }),
             AccountFormMode::SmtpOnly => None,
@@ -1192,12 +1230,13 @@ impl App {
                     host: form.smtp_host.trim().to_string(),
                     port: form.smtp_port.parse().unwrap_or(587),
                     username: smtp_username,
-                    password_ref: form.smtp_password_ref.trim().to_string(),
+                    password_ref: smtp_password_ref,
                     password: if form.smtp_password.is_empty() {
                         None
                     } else {
                         Some(form.smtp_password.clone())
                     },
+                    auth_required: form.smtp_auth_required,
                     use_tls: true,
                 })
             }
@@ -1210,6 +1249,200 @@ impl App {
             send,
             is_default,
         }
+    }
+
+    fn account_form_validation_failure(
+        &self,
+    ) -> Option<(crate::mxr_protocol::AccountOperationResult, usize)> {
+        let form = &self.accounts_page.form;
+        let mut first_invalid = None;
+        let mut remember_first_invalid = |field: usize| {
+            if first_invalid.is_none() {
+                first_invalid = Some(field);
+            }
+        };
+
+        let mut form_issues = Vec::new();
+        if form.key.trim().is_empty() {
+            form_issues.push("Account key is required.".to_string());
+            remember_first_invalid(1);
+        }
+        if form.email.trim().is_empty() {
+            form_issues.push("Email is required.".to_string());
+            remember_first_invalid(3);
+        }
+
+        let save = (!form_issues.is_empty()).then(|| crate::mxr_protocol::AccountOperationStep {
+            ok: false,
+            detail: form_issues.join(" "),
+        });
+
+        let mut auth = None;
+        let mut sync = None;
+        let mut send = None;
+
+        match form.mode {
+            AccountFormMode::Gmail => {
+                if form.gmail_credential_source
+                    == crate::mxr_protocol::GmailCredentialSourceData::Custom
+                {
+                    let mut auth_issues = Vec::new();
+                    if form.gmail_client_id.trim().is_empty() {
+                        auth_issues
+                            .push("Client ID is required for custom Gmail auth.".to_string());
+                        remember_first_invalid(5);
+                    }
+                    if form.gmail_client_secret.trim().is_empty() {
+                        auth_issues
+                            .push("Client Secret is required for custom Gmail auth.".to_string());
+                        remember_first_invalid(6);
+                    }
+                    if !auth_issues.is_empty() {
+                        auth = Some(crate::mxr_protocol::AccountOperationStep {
+                            ok: false,
+                            detail: auth_issues.join(" "),
+                        });
+                    }
+                }
+            }
+            AccountFormMode::ImapSmtp => {
+                let mut sync_issues = Vec::new();
+                if form.imap_host.trim().is_empty() {
+                    sync_issues.push("IMAP host is required.".to_string());
+                    remember_first_invalid(4);
+                }
+                if form.imap_port.trim().is_empty() {
+                    sync_issues.push("IMAP port is required.".to_string());
+                    remember_first_invalid(5);
+                } else if form.imap_port.trim().parse::<u16>().is_err() {
+                    sync_issues.push("IMAP port must be a valid number.".to_string());
+                    remember_first_invalid(5);
+                }
+                if form.imap_auth_required {
+                    if form.email.trim().is_empty() && form.imap_username.trim().is_empty() {
+                        sync_issues.push(
+                            "IMAP auth is enabled, so Email or IMAP user is required.".to_string(),
+                        );
+                        remember_first_invalid(3);
+                    }
+                    if form.imap_password_ref.trim().is_empty() && form.imap_password.is_empty() {
+                        sync_issues.push(
+                            "IMAP auth is enabled, so IMAP password or IMAP pass ref is required."
+                                .to_string(),
+                        );
+                        remember_first_invalid(9);
+                    }
+                }
+                if !sync_issues.is_empty() {
+                    sync = Some(crate::mxr_protocol::AccountOperationStep {
+                        ok: false,
+                        detail: sync_issues.join(" "),
+                    });
+                }
+
+                let mut send_issues = Vec::new();
+                if form.smtp_host.trim().is_empty() {
+                    send_issues.push("SMTP host is required.".to_string());
+                    remember_first_invalid(10);
+                }
+                if form.smtp_port.trim().is_empty() {
+                    send_issues.push("SMTP port is required.".to_string());
+                    remember_first_invalid(11);
+                } else if form.smtp_port.trim().parse::<u16>().is_err() {
+                    send_issues.push("SMTP port must be a valid number.".to_string());
+                    remember_first_invalid(11);
+                }
+                if form.smtp_auth_required {
+                    if form.email.trim().is_empty() && form.smtp_username.trim().is_empty() {
+                        send_issues.push(
+                            "SMTP auth is enabled, so Email or SMTP user is required.".to_string(),
+                        );
+                        remember_first_invalid(3);
+                    }
+                    if form.smtp_password_ref.trim().is_empty() && form.smtp_password.is_empty() {
+                        send_issues.push(
+                            "SMTP auth is enabled, so SMTP password or SMTP pass ref is required."
+                                .to_string(),
+                        );
+                        remember_first_invalid(15);
+                    }
+                }
+                if !send_issues.is_empty() {
+                    send = Some(crate::mxr_protocol::AccountOperationStep {
+                        ok: false,
+                        detail: send_issues.join(" "),
+                    });
+                }
+            }
+            AccountFormMode::SmtpOnly => {
+                let mut send_issues = Vec::new();
+                if form.smtp_host.trim().is_empty() {
+                    send_issues.push("SMTP host is required.".to_string());
+                    remember_first_invalid(4);
+                }
+                if form.smtp_port.trim().is_empty() {
+                    send_issues.push("SMTP port is required.".to_string());
+                    remember_first_invalid(5);
+                } else if form.smtp_port.trim().parse::<u16>().is_err() {
+                    send_issues.push("SMTP port must be a valid number.".to_string());
+                    remember_first_invalid(5);
+                }
+                if form.smtp_auth_required {
+                    if form.email.trim().is_empty() && form.smtp_username.trim().is_empty() {
+                        send_issues.push(
+                            "SMTP auth is enabled, so Email or SMTP user is required.".to_string(),
+                        );
+                        remember_first_invalid(3);
+                    }
+                    if form.smtp_password_ref.trim().is_empty() && form.smtp_password.is_empty() {
+                        send_issues.push(
+                            "SMTP auth is enabled, so SMTP password or SMTP pass ref is required."
+                                .to_string(),
+                        );
+                        remember_first_invalid(9);
+                    }
+                }
+                if !send_issues.is_empty() {
+                    send = Some(crate::mxr_protocol::AccountOperationStep {
+                        ok: false,
+                        detail: send_issues.join(" "),
+                    });
+                }
+            }
+        }
+
+        if save.is_none() && auth.is_none() && sync.is_none() && send.is_none() {
+            return None;
+        }
+
+        Some((
+            crate::mxr_protocol::AccountOperationResult {
+                ok: false,
+                summary: "Account form has problems. Fix the listed fields and try again.".into(),
+                save,
+                auth,
+                sync,
+                send,
+            },
+            first_invalid.unwrap_or(0),
+        ))
+    }
+
+    fn fail_account_form_submission(
+        &mut self,
+        result: crate::mxr_protocol::AccountOperationResult,
+        first_invalid_field: usize,
+    ) {
+        self.accounts_page.operation_in_flight = false;
+        self.accounts_page.status = Some(result.summary.clone());
+        self.accounts_page.last_result = Some(result.clone());
+        self.accounts_page.form.last_result = Some(result);
+        self.accounts_page.form.active_field =
+            first_invalid_field.min(self.account_form_field_count().saturating_sub(1));
+        self.accounts_page.form.editing_field = false;
+        self.accounts_page.form.field_cursor = account_form_field_value(&self.accounts_page.form)
+            .map(|value| value.chars().count())
+            .unwrap_or(0);
     }
 
     fn next_account_form_mode(&self, forward: bool) -> AccountFormMode {
@@ -1242,6 +1475,48 @@ impl App {
         ]
         .iter()
         .any(|value| !value.is_empty())
+    }
+
+    fn open_new_account_form(&mut self) {
+        self.accounts_page.form = AccountFormState {
+            visible: true,
+            is_new_account: true,
+            ..AccountFormState::default()
+        };
+        self.accounts_page.resume_new_account_draft_prompt_open = false;
+        self.refresh_account_form_derived_fields();
+    }
+
+    fn restore_new_account_form_draft(&mut self) {
+        if let Some(mut draft) = self.accounts_page.new_account_draft.take() {
+            draft.visible = true;
+            draft.pending_mode_switch = None;
+            draft.editing_field = false;
+            self.accounts_page.form = draft;
+            self.accounts_page.resume_new_account_draft_prompt_open = false;
+            self.refresh_account_form_derived_fields();
+        } else {
+            self.open_new_account_form();
+        }
+    }
+
+    fn maybe_preserve_new_account_form_draft(&mut self) {
+        if !self.accounts_page.form.visible {
+            return;
+        }
+
+        if self.accounts_page.form.is_new_account && self.account_form_has_meaningful_input() {
+            let mut draft = self.accounts_page.form.clone();
+            draft.visible = false;
+            draft.pending_mode_switch = None;
+            draft.editing_field = false;
+            self.accounts_page.new_account_draft = Some(draft);
+        }
+
+        self.accounts_page.form.visible = false;
+        self.accounts_page.form.pending_mode_switch = None;
+        self.accounts_page.form.editing_field = false;
+        self.accounts_page.resume_new_account_draft_prompt_open = false;
     }
 
     fn apply_account_form_mode(&mut self, mode: AccountFormMode) {
@@ -1278,6 +1553,47 @@ impl App {
                 format!("mxr/{key}-gmail")
             };
             self.accounts_page.form.gmail_token_ref = token_ref;
+        }
+    }
+
+    fn current_account_form_toggle_field(&self) -> Option<AccountFormToggleField> {
+        match (
+            self.accounts_page.form.mode,
+            self.accounts_page.form.active_field,
+        ) {
+            (AccountFormMode::Gmail, 4) => Some(AccountFormToggleField::GmailCredentialSource),
+            (AccountFormMode::ImapSmtp, 7) => Some(AccountFormToggleField::ImapAuthRequired),
+            (AccountFormMode::ImapSmtp, 13) => Some(AccountFormToggleField::SmtpAuthRequired),
+            (AccountFormMode::SmtpOnly, 7) => Some(AccountFormToggleField::SmtpAuthRequired),
+            _ => None,
+        }
+    }
+
+    fn toggle_current_account_form_field(&mut self, forward: bool) -> bool {
+        match self.current_account_form_toggle_field() {
+            Some(AccountFormToggleField::GmailCredentialSource) => {
+                self.accounts_page.form.gmail_credential_source = next_gmail_credential_source(
+                    self.accounts_page.form.gmail_credential_source.clone(),
+                    forward,
+                );
+                self.accounts_page.form.active_field = self
+                    .accounts_page
+                    .form
+                    .active_field
+                    .min(self.account_form_field_count().saturating_sub(1));
+                true
+            }
+            Some(AccountFormToggleField::ImapAuthRequired) => {
+                self.accounts_page.form.imap_auth_required =
+                    !self.accounts_page.form.imap_auth_required;
+                true
+            }
+            Some(AccountFormToggleField::SmtpAuthRequired) => {
+                self.accounts_page.form.smtp_auth_required =
+                    !self.accounts_page.form.smtp_auth_required;
+                true
+            }
+            None => false,
         }
     }
 
@@ -1584,8 +1900,10 @@ impl App {
         self.search_page.results.clear();
         self.search_page.scores.clear();
         self.search_page.has_more = false;
-        self.search_page.loading_more =
-            matches!(status, SearchUiStatus::Searching | SearchUiStatus::LoadingMore);
+        self.search_page.loading_more = matches!(
+            status,
+            SearchUiStatus::Searching | SearchUiStatus::LoadingMore
+        );
         self.search_page.total_count = None;
         self.search_page.count_pending = matches!(status, SearchUiStatus::Searching);
         self.search_page.ui_status = status;
@@ -2282,6 +2600,22 @@ impl App {
         if self.thread_selected_index > 0 {
             self.thread_selected_index -= 1;
             self.sync_focused_thread_envelope();
+        }
+    }
+
+    fn move_message_view_down(&mut self) {
+        if self.viewed_thread_messages.len() > 1 {
+            self.move_thread_focus_down();
+        } else {
+            self.message_scroll_offset = self.message_scroll_offset.saturating_add(1);
+        }
+    }
+
+    fn move_message_view_up(&mut self) {
+        if self.viewed_thread_messages.len() > 1 {
+            self.move_thread_focus_up();
+        } else {
+            self.message_scroll_offset = self.message_scroll_offset.saturating_sub(1);
         }
     }
 
@@ -3045,6 +3379,7 @@ fn account_summary_to_config(
 fn account_form_from_config(account: crate::mxr_protocol::AccountConfigData) -> AccountFormState {
     let mut form = AccountFormState {
         visible: true,
+        is_new_account: false,
         key: account.key,
         name: account.name,
         email: account.email,
@@ -3070,6 +3405,7 @@ fn account_form_from_config(account: crate::mxr_protocol::AccountConfigData) -> 
                 port,
                 username,
                 password_ref,
+                auth_required,
                 ..
             } => {
                 form.mode = AccountFormMode::ImapSmtp;
@@ -3077,6 +3413,7 @@ fn account_form_from_config(account: crate::mxr_protocol::AccountConfigData) -> 
                 form.imap_port = port.to_string();
                 form.imap_username = username;
                 form.imap_password_ref = password_ref;
+                form.imap_auth_required = auth_required;
             }
         }
     } else {
@@ -3089,12 +3426,14 @@ fn account_form_from_config(account: crate::mxr_protocol::AccountConfigData) -> 
             port,
             username,
             password_ref,
+            auth_required,
             ..
         }) => {
             form.smtp_host = host;
             form.smtp_port = port.to_string();
             form.smtp_username = username;
             form.smtp_password_ref = password_ref;
+            form.smtp_auth_required = auth_required;
         }
         Some(crate::mxr_protocol::AccountSendConfigData::Gmail) => {
             if form.gmail_token_ref.is_empty() {
@@ -3131,18 +3470,21 @@ fn account_form_field_value(form: &AccountFormState) -> Option<&str> {
         (AccountFormMode::ImapSmtp, 4) => Some(form.imap_host.as_str()),
         (AccountFormMode::ImapSmtp, 5) => Some(form.imap_port.as_str()),
         (AccountFormMode::ImapSmtp, 6) => Some(form.imap_username.as_str()),
-        (AccountFormMode::ImapSmtp, 7) => Some(form.imap_password_ref.as_str()),
-        (AccountFormMode::ImapSmtp, 8) => Some(form.imap_password.as_str()),
-        (AccountFormMode::ImapSmtp, 9) => Some(form.smtp_host.as_str()),
-        (AccountFormMode::ImapSmtp, 10) => Some(form.smtp_port.as_str()),
-        (AccountFormMode::ImapSmtp, 11) => Some(form.smtp_username.as_str()),
-        (AccountFormMode::ImapSmtp, 12) => Some(form.smtp_password_ref.as_str()),
-        (AccountFormMode::ImapSmtp, 13) => Some(form.smtp_password.as_str()),
+        (AccountFormMode::ImapSmtp, 7) => None,
+        (AccountFormMode::ImapSmtp, 8) => Some(form.imap_password_ref.as_str()),
+        (AccountFormMode::ImapSmtp, 9) => Some(form.imap_password.as_str()),
+        (AccountFormMode::ImapSmtp, 10) => Some(form.smtp_host.as_str()),
+        (AccountFormMode::ImapSmtp, 11) => Some(form.smtp_port.as_str()),
+        (AccountFormMode::ImapSmtp, 12) => Some(form.smtp_username.as_str()),
+        (AccountFormMode::ImapSmtp, 13) => None,
+        (AccountFormMode::ImapSmtp, 14) => Some(form.smtp_password_ref.as_str()),
+        (AccountFormMode::ImapSmtp, 15) => Some(form.smtp_password.as_str()),
         (AccountFormMode::SmtpOnly, 4) => Some(form.smtp_host.as_str()),
         (AccountFormMode::SmtpOnly, 5) => Some(form.smtp_port.as_str()),
         (AccountFormMode::SmtpOnly, 6) => Some(form.smtp_username.as_str()),
-        (AccountFormMode::SmtpOnly, 7) => Some(form.smtp_password_ref.as_str()),
-        (AccountFormMode::SmtpOnly, 8) => Some(form.smtp_password.as_str()),
+        (AccountFormMode::SmtpOnly, 7) => None,
+        (AccountFormMode::SmtpOnly, 8) => Some(form.smtp_password_ref.as_str()),
+        (AccountFormMode::SmtpOnly, 9) => Some(form.smtp_password.as_str()),
         _ => None,
     }
 }
@@ -3174,18 +3516,18 @@ where
         (AccountFormMode::ImapSmtp, 4) => &mut form.imap_host,
         (AccountFormMode::ImapSmtp, 5) => &mut form.imap_port,
         (AccountFormMode::ImapSmtp, 6) => &mut form.imap_username,
-        (AccountFormMode::ImapSmtp, 7) => &mut form.imap_password_ref,
-        (AccountFormMode::ImapSmtp, 8) => &mut form.imap_password,
-        (AccountFormMode::ImapSmtp, 9) => &mut form.smtp_host,
-        (AccountFormMode::ImapSmtp, 10) => &mut form.smtp_port,
-        (AccountFormMode::ImapSmtp, 11) => &mut form.smtp_username,
-        (AccountFormMode::ImapSmtp, 12) => &mut form.smtp_password_ref,
-        (AccountFormMode::ImapSmtp, 13) => &mut form.smtp_password,
+        (AccountFormMode::ImapSmtp, 8) => &mut form.imap_password_ref,
+        (AccountFormMode::ImapSmtp, 9) => &mut form.imap_password,
+        (AccountFormMode::ImapSmtp, 10) => &mut form.smtp_host,
+        (AccountFormMode::ImapSmtp, 11) => &mut form.smtp_port,
+        (AccountFormMode::ImapSmtp, 12) => &mut form.smtp_username,
+        (AccountFormMode::ImapSmtp, 14) => &mut form.smtp_password_ref,
+        (AccountFormMode::ImapSmtp, 15) => &mut form.smtp_password,
         (AccountFormMode::SmtpOnly, 4) => &mut form.smtp_host,
         (AccountFormMode::SmtpOnly, 5) => &mut form.smtp_port,
         (AccountFormMode::SmtpOnly, 6) => &mut form.smtp_username,
-        (AccountFormMode::SmtpOnly, 7) => &mut form.smtp_password_ref,
-        (AccountFormMode::SmtpOnly, 8) => &mut form.smtp_password,
+        (AccountFormMode::SmtpOnly, 8) => &mut form.smtp_password_ref,
+        (AccountFormMode::SmtpOnly, 9) => &mut form.smtp_password,
         _ => return,
     };
     update(field);

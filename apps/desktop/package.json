@@ -1,7 +1,7 @@
 {
   "name": "mxr-desktop",
   "private": true,
-  "version": "0.4.22",
+  "version": "0.4.23",
   "type": "module",
   "main": "dist-electron/main/index.js",
   "scripts": {

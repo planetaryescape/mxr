@@ -60,6 +60,8 @@ pub enum SyncProviderConfig {
         port: u16,
         username: String,
         password_ref: String,
+        #[serde(default = "default_auth_required")]
+        auth_required: bool,
         use_tls: bool,
     },
 }
@@ -74,8 +76,14 @@ pub enum SendProviderConfig {
         port: u16,
         username: String,
         password_ref: String,
+        #[serde(default = "default_auth_required")]
+        auth_required: bool,
         use_tls: bool,
     },
+}
+
+fn default_auth_required() -> bool {
+    true
 }
 
 /// HTML rendering configuration.

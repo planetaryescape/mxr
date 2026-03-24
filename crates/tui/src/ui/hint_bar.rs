@@ -22,12 +22,21 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
         )]
     } else if state.help_modal_open {
         vec![hint_line(
-            &[("Esc", "Close Help"), ("?", "Toggle Help")],
+            &[
+                ("Type", "Search"),
+                ("j/k ↑↓", "Navigate"),
+                ("Ctrl-u/d", "Page"),
+                ("Esc", "Close"),
+            ],
             theme,
         )]
     } else if state.search_active && matches!(state.ui_context, UiContext::MailboxList) {
         vec![hint_line(
-            &[("Enter", "Apply Filter"), ("Esc", "Clear Filter"), ("Ctrl-f", "Mailbox Filter")],
+            &[
+                ("Enter", "Apply Filter"),
+                ("Esc", "Clear Filter"),
+                ("Ctrl-f", "Mailbox Filter"),
+            ],
             theme,
         )]
     } else {
@@ -209,6 +218,8 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
         ],
         UiContext::AccountsForm => vec![
             ("j/k".to_string(), "Fields".to_string()),
+            ("Tab".to_string(), "Next Field".to_string()),
+            ("Shift-Tab".to_string(), "Prev Field".to_string()),
             ("h/l".to_string(), "Mode".to_string()),
             ("Enter/i".to_string(), "Edit".to_string()),
             ("s".to_string(), "Save".to_string()),

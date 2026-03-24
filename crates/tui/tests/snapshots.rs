@@ -11,9 +11,9 @@ use mxr_test_support::render_to_string;
 use mxr_tui::action::UiContext;
 use mxr_tui::app::{
     AccountFormState, AccountsPageState, ActivePane, AttachmentPanelState, BodySource,
-    BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, FeatureOnboardingState,
-    MailListMode, MailListRow, MutationEffect, PendingBulkConfirm, PendingSend, RulesPageState,
-    SearchPageState, SearchUiStatus,
+    BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, FeatureOnboardingState, MailListMode,
+    MailListRow, MutationEffect, PendingBulkConfirm, PendingSend, RulesPageState, SearchPageState,
+    SearchUiStatus,
 };
 use mxr_tui::ui::attachment_modal::draw as draw_attachment_modal;
 use mxr_tui::ui::bulk_confirm_modal::draw as draw_bulk_confirm_modal;
@@ -346,7 +346,7 @@ fn search_page_snapshot() {
 
 #[test]
 fn search_page_blank_snapshot() {
-        let state = SearchPageState::default();
+    let state = SearchPageState::default();
 
     let snapshot = render_to_string(90, 24, |frame| {
         draw_search_page(
@@ -385,6 +385,8 @@ fn accounts_page_snapshot() {
         selected_index: 0,
         status: Some("n:new  Enter:edit  t:test  d:set default".into()),
         last_result: None,
+        operation_in_flight: false,
+        throbber: Default::default(),
         refresh_pending: false,
         onboarding_required: false,
         onboarding_modal_open: false,
@@ -677,6 +679,8 @@ fn help_modal_snapshot() {
                 ui_context: UiContext::MailboxList,
                 selected_count: 2,
                 scroll_offset: 0,
+                query: "",
+                selected: 0,
                 _marker: std::marker::PhantomData,
             },
             &mxr_tui::theme::Theme::default(),

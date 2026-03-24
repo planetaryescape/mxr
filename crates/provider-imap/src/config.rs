@@ -9,6 +9,8 @@ pub struct ImapConfig {
     /// Keyring reference (e.g., "mxr/fastmail-imap"). Looked up at runtime.
     pub password_ref: String,
     #[serde(default = "default_true")]
+    pub auth_required: bool,
+    #[serde(default = "default_true")]
     pub use_tls: bool,
 }
 
@@ -42,6 +44,7 @@ mod tests {
         let config: ImapConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.host, "imap.fastmail.com");
         assert_eq!(config.port, 993);
+        assert!(config.auth_required);
         assert!(config.use_tls);
     }
 }

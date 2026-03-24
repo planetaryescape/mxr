@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use futures::TryStreamExt;
 
 use crate::mxr_provider_imap::config::ImapConfig;
 use crate::mxr_provider_imap::error::ImapProviderError;
@@ -45,6 +46,16 @@ pub trait ImapSessionFactory: Send + Sync {
 /// Type alias for the TLS stream used by async-imap (futures-based async IO).
 type ImapTlsStream = async_native_tls::TlsStream<async_std::net::TcpStream>;
 
+struct AnonymousAuthenticator;
+
+impl async_imap::Authenticator for AnonymousAuthenticator {
+    type Response = &'static [u8];
+
+    fn process(&mut self, _challenge: &[u8]) -> Self::Response {
+        b""
+    }
+}
+
 /// Production session factory that connects via TLS to an IMAP server.
 pub struct RealImapSessionFactory {
     config: ImapConfig,
@@ -59,8 +70,6 @@ impl RealImapSessionFactory {
 #[async_trait]
 impl ImapSessionFactory for RealImapSessionFactory {
     async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
-        let password = self.config.resolve_password()?;
-
         let tcp = async_std::net::TcpStream::connect((&*self.config.host, self.config.port))
             .await
             .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
@@ -71,12 +80,85 @@ impl ImapSessionFactory for RealImapSessionFactory {
             .await
             .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
 
-        let client = async_imap::Client::new(tls_stream);
-
-        let session = client
-            .login(&self.config.username, &password)
+        let mut client = async_imap::Client::new(tls_stream);
+        let greeting = client
+            .read_response()
             .await
-            .map_err(|e| ImapProviderError::Auth(e.0.to_string()))?;
+            .ok_or_else(|| {
+                ImapProviderError::Connection(
+                    "Server closed the IMAP connection before sending a greeting.".into(),
+                )
+            })?
+            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
+
+        let session = match greeting.parsed() {
+            async_imap::imap_proto::Response::Data {
+                status: async_imap::imap_proto::Status::PreAuth,
+                ..
+            } => client.into_session(),
+            async_imap::imap_proto::Response::Data {
+                status: async_imap::imap_proto::Status::Ok,
+                ..
+            } if self.config.auth_required => {
+                let password = self.config.resolve_password()?;
+                client
+                    .login(&self.config.username, &password)
+                    .await
+                    .map_err(|e| ImapProviderError::Auth(e.0.to_string()))?
+            }
+            async_imap::imap_proto::Response::Data {
+                status: async_imap::imap_proto::Status::Ok,
+                ..
+            } => match client
+                .authenticate("ANONYMOUS", AnonymousAuthenticator)
+                .await
+            {
+                Ok(session) => session,
+                Err((anonymous_error, client)) => {
+                    let fallback_username = if self.config.username.trim().is_empty() {
+                        "anonymous".to_string()
+                    } else {
+                        self.config.username.clone()
+                    };
+                    let fallback_password = if !self.config.username.trim().is_empty()
+                        && !self.config.password_ref.trim().is_empty()
+                    {
+                        self.config
+                            .resolve_password()
+                            .unwrap_or_else(|_| "anonymous".to_string())
+                    } else {
+                        "anonymous".to_string()
+                    };
+
+                    match client.login(&fallback_username, &fallback_password).await {
+                        Ok(session) => session,
+                        Err((login_error, client)) => {
+                            let mut session = client.into_session();
+                            let names = session
+                                .list(Some(""), Some("*"))
+                                .await
+                                .map_err(|probe_error| {
+                                    ImapProviderError::Auth(format!(
+                                        "IMAP auth is disabled, but the server neither sent PREAUTH, accepted AUTHENTICATE ANONYMOUS, accepted fallback LOGIN, nor allowed unauthenticated LIST. ANONYMOUS failed with: {anonymous_error}; LOGIN failed with: {login_error}; LIST failed with: {probe_error}"
+                                    ))
+                                })?;
+                            let _: Vec<_> =
+                                names.try_collect().await.map_err(|probe_error| {
+                                    ImapProviderError::Auth(format!(
+                                        "IMAP auth is disabled, but the server neither sent PREAUTH, accepted AUTHENTICATE ANONYMOUS, accepted fallback LOGIN, nor completed unauthenticated LIST. ANONYMOUS failed with: {anonymous_error}; LOGIN failed with: {login_error}; LIST failed with: {probe_error}"
+                                    ))
+                                })?;
+                            session
+                        }
+                    }
+                }
+            },
+            other => {
+                return Err(ImapProviderError::Connection(format!(
+                    "Unexpected IMAP greeting from server: {other:?}"
+                )));
+            }
+        };
 
         Ok(Box::new(RealImapSession { session }))
     }

@@ -1,4 +1,6 @@
 use crate::mxr_core::types::Label;
+use nucleo::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
+use nucleo::{Config, Matcher, Utf32Str};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -86,20 +88,67 @@ impl LabelPicker {
     }
 
     fn update_filtered(&mut self) {
-        let query = self.input.to_lowercase();
-        self.filtered = self
-            .labels
-            .iter()
-            .enumerate()
-            .filter(|(_, label)| {
-                if query.is_empty() {
-                    return true;
-                }
-                label.name.to_lowercase().contains(&query)
-            })
-            .map(|(i, _)| i)
-            .collect();
+        self.filtered = filtered_indices(&self.labels, &self.input);
     }
+}
+
+fn filtered_indices(labels: &[Label], query: &str) -> Vec<usize> {
+    if query.is_empty() {
+        return (0..labels.len()).collect();
+    }
+
+    let query_lower = query.to_lowercase();
+    let pattern = Pattern::new(
+        query,
+        CaseMatching::Smart,
+        Normalization::Smart,
+        AtomKind::Fuzzy,
+    );
+    let mut matcher = Matcher::new(Config::DEFAULT);
+    let mut utf32_buf = Vec::new();
+    let mut ranked: Vec<_> = labels
+        .iter()
+        .enumerate()
+        .filter_map(|(index, label)| {
+            let display = humanize_label(&label.name);
+            let search_text = format!("{display} {}", label.name);
+            let score = pattern.score(Utf32Str::new(&search_text, &mut utf32_buf), &mut matcher)?;
+            Some((
+                index,
+                label_match_priority(display, &label.name, &query_lower),
+                score,
+            ))
+        })
+        .collect();
+
+    ranked.sort_by(|left, right| {
+        left.1
+            .cmp(&right.1)
+            .then_with(|| right.2.cmp(&left.2))
+            .then_with(|| left.0.cmp(&right.0))
+    });
+
+    ranked.into_iter().map(|(index, _, _)| index).collect()
+}
+
+fn label_match_priority(display: &str, raw: &str, query_lower: &str) -> u8 {
+    if starts_with_query(display, query_lower) || starts_with_query(raw, query_lower) {
+        0
+    } else if has_word_prefix(display, query_lower) || has_word_prefix(raw, query_lower) {
+        1
+    } else {
+        2
+    }
+}
+
+fn starts_with_query(haystack: &str, query_lower: &str) -> bool {
+    haystack.to_lowercase().starts_with(query_lower)
+}
+
+fn has_word_prefix(haystack: &str, query_lower: &str) -> bool {
+    haystack
+        .split(|c: char| !c.is_alphanumeric())
+        .any(|word| !word.is_empty() && word.to_lowercase().starts_with(query_lower))
 }
 
 pub fn draw(
@@ -185,5 +234,46 @@ fn humanize_label(name: &str) -> &str {
         "IMPORTANT" => "Important",
         "UNREAD" => "Unread",
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mxr_core::id::{AccountId, LabelId};
+    use crate::mxr_core::types::LabelKind;
+
+    fn label(name: &str, kind: LabelKind) -> Label {
+        Label {
+            id: LabelId::from_provider_id("test", name),
+            account_id: AccountId::new(),
+            name: name.into(),
+            kind,
+            color: None,
+            provider_id: name.into(),
+            unread_count: 0,
+            total_count: 0,
+        }
+    }
+
+    #[test]
+    fn label_picker_prefers_prefix_matches_over_interior_matches() {
+        let mut picker = LabelPicker::default();
+        picker.open(
+            vec![
+                label("DRAFT", LabelKind::System),
+                label("Follow Up", LabelKind::User),
+            ],
+            LabelPickerMode::Apply,
+        );
+
+        picker.on_char('f');
+
+        let ranked: Vec<&str> = picker
+            .filtered
+            .iter()
+            .map(|&index| humanize_label(&picker.labels[index].name))
+            .collect();
+        assert_eq!(ranked, vec!["Follow Up", "Drafts"]);
     }
 }

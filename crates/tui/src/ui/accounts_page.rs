@@ -1,6 +1,7 @@
 use crate::mxr_tui::app::{AccountFormMode, AccountsPageState};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
+use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
 
 pub fn draw(
     frame: &mut Frame,
@@ -68,7 +69,7 @@ pub fn draw(
     frame.render_stateful_widget(list, chunks[1], &mut list_state);
 
     if state.form.visible {
-        draw_form(frame, chunks[1], &state.form, theme);
+        draw_form(frame, chunks[1], state, theme);
         return;
     }
 
@@ -98,18 +99,20 @@ pub fn draw(
                 ),
             ]),
             Line::from(""),
-            Line::from(format!("Summary: {} via {}", account.email, account.provider_kind)),
+            Line::from(format!(
+                "Summary: {} via {}",
+                account.email, account.provider_kind
+            )),
             Line::from(format!(
                 "Key: {}",
                 account.key.as_deref().unwrap_or("(runtime-only)")
             )),
             Line::from(format!(
                 "Auth: {}",
-                if account
-                    .sync
-                    .as_ref()
-                    .is_some_and(|sync| matches!(sync, crate::mxr_protocol::AccountSyncConfigData::Gmail { .. }))
-                {
+                if account.sync.as_ref().is_some_and(|sync| matches!(
+                    sync,
+                    crate::mxr_protocol::AccountSyncConfigData::Gmail { .. }
+                )) {
                     "gmail configured"
                 } else {
                     "managed by saved config"
@@ -166,14 +169,18 @@ pub fn draw(
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, detail_chunks[0]);
 
-    let footer_text = if let Some(status) = &state.status {
-        status.clone()
-    } else if state.accounts.is_empty() {
-        "n:new account  c:edit config  Esc:mailbox".into()
+    let mut footer_lines = Vec::new();
+    if state.operation_in_flight {
+        footer_lines.push(account_operation_status_line(state, theme));
+    } else if let Some(status) = &state.status {
+        footer_lines.push(Line::from(status.clone()));
+    }
+    footer_lines.push(Line::from(if state.accounts.is_empty() {
+        "n:new account  c:edit config  Esc:mailbox"
     } else {
-        "j/k:select  Enter:edit  n:new  t:test  d:default  c:config  r:refresh".into()
-    };
-    let footer = Paragraph::new(footer_text).block(
+        "j/k:select  Enter:edit  n:new  t:test  d:default  c:config  r:refresh"
+    }));
+    let footer = Paragraph::new(footer_lines).block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme.accent)),
@@ -182,15 +189,18 @@ pub fn draw(
 
     if state.onboarding_modal_open {
         draw_onboarding_modal(frame, area, theme);
+    } else if state.resume_new_account_draft_prompt_open {
+        draw_resume_new_account_draft_modal(frame, area, theme);
     }
 }
 
 fn draw_form(
     frame: &mut Frame,
     area: Rect,
-    form: &crate::mxr_tui::app::AccountFormState,
+    state: &AccountsPageState,
     theme: &crate::mxr_tui::theme::Theme,
 ) {
+    let form = &state.form;
     let titles = ["Gmail", "IMAP + SMTP", "SMTP only"]
         .into_iter()
         .map(Line::from)
@@ -206,7 +216,7 @@ fn draw_form(
         .constraints([
             Constraint::Length(3),
             Constraint::Min(0),
-            Constraint::Length(2),
+            Constraint::Length(3),
         ])
         .split(area);
 
@@ -255,9 +265,17 @@ fn draw_form(
             "not verified"
         }
     )));
+    body_lines.push(Line::from(""));
+    body_lines.extend(account_form_hint_lines(form, &fields, theme));
     let result_lines = format_account_result_lines(form.last_result.as_ref());
     if !result_lines.is_empty() {
+        body_lines.push(Line::from(""));
         body_lines.extend(result_lines);
+        let result_hint_lines = account_result_hint_lines(form, form.last_result.as_ref(), theme);
+        if !result_hint_lines.is_empty() {
+            body_lines.push(Line::from(""));
+            body_lines.extend(result_hint_lines);
+        }
     }
 
     let paragraph = Paragraph::new(body_lines)
@@ -270,12 +288,16 @@ fn draw_form(
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, layout[1]);
 
-    let footer = Paragraph::new(if form.editing_field {
-        "Esc/Enter:finish  Left/Right:move  Backspace/Delete:edit  Tab:next field"
+    let mut footer_lines = Vec::new();
+    if state.operation_in_flight {
+        footer_lines.push(account_operation_status_line(state, theme));
+    }
+    footer_lines.push(Line::from(if form.editing_field {
+        "Enter/Esc:finish  Left/Right:cursor  Backspace/Delete:edit  Tab/Shift-Tab:field"
     } else {
-        "j/k:move  Enter/i:edit  h/l:switch mode  s:save  t:test  r:reauth  Esc:close"
-    })
-    .block(
+        "j/k or Tab:field  Enter/i:edit  Shift-Tab:prev  h/l:mode  s:save  t:test  r:reauth  Esc:close"
+    }));
+    let footer = Paragraph::new(footer_lines).block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme.accent)),
@@ -328,11 +350,29 @@ fn build_fields(form: &crate::mxr_tui::app::AccountFormState) -> Vec<(&'static s
                 ("IMAP host", form.imap_host.clone(), true),
                 ("IMAP port", form.imap_port.clone(), true),
                 ("IMAP user", form.imap_username.clone(), true),
+                (
+                    "IMAP auth",
+                    if form.imap_auth_required {
+                        "Required".to_string()
+                    } else {
+                        "Not required".to_string()
+                    },
+                    false,
+                ),
                 ("IMAP pass ref", form.imap_password_ref.clone(), true),
                 ("IMAP password", mask(&form.imap_password), true),
                 ("SMTP host", form.smtp_host.clone(), true),
                 ("SMTP port", form.smtp_port.clone(), true),
                 ("SMTP user", form.smtp_username.clone(), true),
+                (
+                    "SMTP auth",
+                    if form.smtp_auth_required {
+                        "Required".to_string()
+                    } else {
+                        "Not required".to_string()
+                    },
+                    false,
+                ),
                 ("SMTP pass ref", form.smtp_password_ref.clone(), true),
                 ("SMTP password", mask(&form.smtp_password), true),
             ]);
@@ -342,6 +382,15 @@ fn build_fields(form: &crate::mxr_tui::app::AccountFormState) -> Vec<(&'static s
                 ("SMTP host", form.smtp_host.clone(), true),
                 ("SMTP port", form.smtp_port.clone(), true),
                 ("SMTP user", form.smtp_username.clone(), true),
+                (
+                    "SMTP auth",
+                    if form.smtp_auth_required {
+                        "Required".to_string()
+                    } else {
+                        "Not required".to_string()
+                    },
+                    false,
+                ),
                 ("SMTP pass ref", form.smtp_password_ref.clone(), true),
                 ("SMTP password", mask(&form.smtp_password), true),
             ]);
@@ -351,6 +400,63 @@ fn build_fields(form: &crate::mxr_tui::app::AccountFormState) -> Vec<(&'static s
     fields
 }
 
+fn account_form_hint_lines(
+    form: &crate::mxr_tui::app::AccountFormState,
+    fields: &[(&'static str, String, bool)],
+    theme: &crate::mxr_tui::theme::Theme,
+) -> Vec<Line<'static>> {
+    let Some((label, _, _)) = fields.get(form.active_field) else {
+        return Vec::new();
+    };
+
+    let hints = vec![
+        if form.editing_field {
+            "Tip: type to edit. Enter or Esc finishes. Tab and Shift-Tab jump between fields."
+                .to_string()
+        } else {
+            "Tip: Tab and Shift-Tab move between fields. Enter or i edits the selected field."
+                .to_string()
+        },
+        format!("{label}: {}", account_field_help_text(label)),
+    ];
+
+    hints
+        .into_iter()
+        .map(|hint| {
+            Line::from(Span::styled(
+                hint,
+                Style::default().fg(theme.text_secondary),
+            ))
+        })
+        .collect()
+}
+
+fn account_field_help_text(label: &str) -> &'static str {
+    match label {
+        "Mode" => "Choose Gmail OAuth, IMAP + SMTP, or SMTP-only.",
+        "Account key" => "Short internal ID used in config and secret refs, like work or personal.",
+        "Display name" => "Shown as the sender name on outgoing mail.",
+        "Email" => "Primary email address for this account.",
+        "Credential source" => "Bundled uses mxr's built-in Gmail app. Custom uses your own Google OAuth client.",
+        "Client ID" => "Google OAuth client ID for custom Gmail auth.",
+        "Client Secret" => "Google OAuth client secret for custom Gmail auth.",
+        "Token ref" => "Where mxr stores the Gmail OAuth token. Usually auto-filled from the account key.",
+        "IMAP host" => "Incoming mail server hostname, usually something like imap.example.com.",
+        "IMAP port" => "Usually 993 for TLS IMAP.",
+        "IMAP user" => "Usually your full email address or mailbox login.",
+        "IMAP auth" => "Toggle whether mxr should authenticate to the IMAP server. Turn this off only for servers that explicitly allow anonymous or no-auth access.",
+        "IMAP pass ref" => "Secret/keychain ref for the IMAP app password. If you leave it blank, mxr will generate one from the account key when needed.",
+        "IMAP password" => "Inline IMAP app password. Many providers require this instead of your normal account password.",
+        "SMTP host" => "Outgoing mail server hostname, usually something like smtp.example.com.",
+        "SMTP port" => "Usually 587 for STARTTLS SMTP.",
+        "SMTP user" => "Usually your full email address or SMTP login.",
+        "SMTP auth" => "Toggle whether mxr should authenticate to the SMTP server. Turn this off only for relay servers that explicitly allow sending without auth.",
+        "SMTP pass ref" => "Secret/keychain ref for the SMTP app password. If you leave it blank, mxr will generate one from the account key when needed.",
+        "SMTP password" => "Inline SMTP app password. Many providers require this instead of your normal account password.",
+        _ => "Update this field for the selected account.",
+    }
+}
+
 fn format_account_result_lines(
     result: Option<&crate::mxr_protocol::AccountOperationResult>,
 ) -> Vec<Line<'static>> {
@@ -358,8 +464,13 @@ fn format_account_result_lines(
         return Vec::new();
     };
     let mut lines = vec![Line::from(result.summary.clone())];
+    let save_label = if result.summary.starts_with("Account form has problems.") {
+        "Form"
+    } else {
+        "Save"
+    };
     if let Some(step) = &result.save {
-        lines.push(Line::from(format_step("Save", step)));
+        lines.push(Line::from(format_step(save_label, step)));
     }
     if let Some(step) = &result.auth {
         lines.push(Line::from(format_step("Auth", step)));
@@ -371,6 +482,145 @@ fn format_account_result_lines(
         lines.push(Line::from(format_step("Send", step)));
     }
     lines
+}
+
+fn account_operation_status_line(
+    state: &AccountsPageState,
+    theme: &crate::mxr_tui::theme::Theme,
+) -> Line<'static> {
+    let status = state
+        .status
+        .clone()
+        .unwrap_or_else(|| "Working...".to_string());
+    Line::from(vec![
+        Throbber::default()
+            .throbber_set(BRAILLE_SIX)
+            .throbber_style(Style::default().fg(theme.accent))
+            .to_symbol_span(&state.throbber),
+        Span::raw(" "),
+        Span::styled(status, Style::default().fg(theme.text_secondary)),
+    ])
+}
+
+fn account_result_hint_lines(
+    form: &crate::mxr_tui::app::AccountFormState,
+    result: Option<&crate::mxr_protocol::AccountOperationResult>,
+    theme: &crate::mxr_tui::theme::Theme,
+) -> Vec<Line<'static>> {
+    let Some(result) = result else {
+        return Vec::new();
+    };
+    if result.summary.starts_with("Account form has problems.") {
+        return Vec::new();
+    }
+
+    let mut hints = Vec::new();
+    if let Some(step) = &result.auth {
+        if !step.ok {
+            push_unique_hint(&mut hints, gmail_result_hint(&step.detail));
+        }
+    }
+    if let Some(step) = &result.sync {
+        if !step.ok {
+            push_unique_hint(
+                &mut hints,
+                server_result_hint("IMAP", &step.detail, form.imap_auth_required),
+            );
+        }
+    }
+    if let Some(step) = &result.send {
+        if !step.ok {
+            push_unique_hint(
+                &mut hints,
+                server_result_hint("SMTP", &step.detail, form.smtp_auth_required),
+            );
+        }
+    }
+
+    hints
+        .into_iter()
+        .map(|hint| {
+            Line::from(Span::styled(
+                format!("Hint: {hint}"),
+                Style::default().fg(theme.text_secondary),
+            ))
+        })
+        .collect()
+}
+
+fn push_unique_hint(hints: &mut Vec<String>, hint: Option<String>) {
+    let Some(hint) = hint else {
+        return;
+    };
+    if !hints.iter().any(|existing| existing == &hint) {
+        hints.push(hint);
+    }
+}
+
+fn gmail_result_hint(detail: &str) -> Option<String> {
+    let detail = detail.to_ascii_lowercase();
+    if detail.contains("client id")
+        || detail.contains("client secret")
+        || detail.contains("oauth")
+        || detail.contains("token")
+        || detail.contains("credential")
+    {
+        return Some(
+            "Check fields: Credential source, Client ID, Client Secret, and Token ref.".to_string(),
+        );
+    }
+    None
+}
+
+fn server_result_hint(service: &str, detail: &str, auth_required: bool) -> Option<String> {
+    let detail = detail.to_ascii_lowercase();
+    if detail.contains("keyring") {
+        return Some(format!(
+            "Check fields: {service} pass ref and {service} user."
+        ));
+    }
+    if detail.contains("tls")
+        || detail.contains("ssl")
+        || detail.contains("starttls")
+        || detail.contains("certificate")
+    {
+        return Some(format!(
+            "Check fields: {service} host and {service} port. Server TLS settings may also be wrong."
+        ));
+    }
+    if detail.contains("connect")
+        || detail.contains("connection")
+        || detail.contains("timed out")
+        || detail.contains("timeout")
+        || detail.contains("refused")
+        || detail.contains("resolve")
+        || detail.contains("name or service not known")
+        || detail.contains("unreachable")
+    {
+        return Some(format!("Check fields: {service} host and {service} port."));
+    }
+    if detail.contains("auth")
+        || detail.contains("login")
+        || detail.contains("credential")
+        || detail.contains("username")
+        || detail.contains("password")
+    {
+        if auth_required {
+            return Some(format!(
+                "Check fields: {service} user, {service} pass ref, and {service} password."
+            ));
+        }
+        return Some(format!(
+            "Check field: {service} auth. This server likely requires authentication."
+        ));
+    }
+    Some(if auth_required {
+        format!(
+            "Check fields: {service} host, {service} port, {service} user, and {service} password."
+        )
+    } else {
+        format!("Check fields: {service} host, {service} port, and {service} auth.")
+    })
 }
 
 fn format_step(label: &str, step: &crate::mxr_protocol::AccountOperationStep) -> String {
@@ -458,6 +708,36 @@ fn draw_mode_switch_confirm_modal(
     frame.render_widget(paragraph, popup);
 }
 
+fn draw_resume_new_account_draft_modal(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
+    let popup = centered_rect(62, 32, area);
+    frame.render_widget(Clear, popup);
+
+    let lines = vec![
+        Line::from("Unsaved new account form found."),
+        Line::from(""),
+        Line::from("Continue the draft you were editing,"),
+        Line::from("or start a fresh account form."),
+        Line::from(""),
+        Line::from("Enter/c: continue  n: start new  Esc: cancel"),
+    ];
+
+    let paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .title(" Resume Draft ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.warning))
+                .style(Style::default().bg(theme.modal_bg)),
+        )
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, popup);
+}
+
 fn centered_rect(percent_x: u16, percent_y: u16, rect: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -476,4 +756,29 @@ fn centered_rect(percent_x: u16, percent_y: u16, rect: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::account_field_help_text;
+
+    #[test]
+    fn account_key_help_explains_internal_id_and_refs() {
+        let help = account_field_help_text("Account key");
+        assert!(help.contains("internal ID"));
+        assert!(help.contains("secret refs"));
+    }
+
+    #[test]
+    fn password_field_help_mentions_app_passwords() {
+        assert!(account_field_help_text("IMAP password").contains("app password"));
+        assert!(account_field_help_text("SMTP pass ref").contains("app password"));
+        assert!(!account_field_help_text("Email").contains("app password"));
+    }
+
+    #[test]
+    fn auth_toggle_help_explains_when_to_disable_it() {
+        assert!(account_field_help_text("IMAP auth").contains("anonymous"));
+        assert!(account_field_help_text("SMTP auth").contains("without auth"));
+    }
 }

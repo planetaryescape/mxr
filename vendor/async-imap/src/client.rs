@@ -149,6 +149,15 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
         conn.into_inner()
     }
 
+    /// Convert this client into a session without sending an authentication command.
+    ///
+    /// The caller is responsible for ensuring the server connection is already in a state where
+    /// session commands are valid, such as after a `PREAUTH` greeting or when intentionally
+    /// probing a server that permits unauthenticated commands.
+    pub fn into_session(self) -> Session<T> {
+        Session::new(self.conn)
+    }
+
     /// Log in to the IMAP server. Upon success a [`Session`](struct.Session.html) instance is
     /// returned; on error the original `Client` instance is returned in addition to the error.
     /// This is because `login` takes ownership of `self`, so in order to try again (e.g. after
@@ -193,7 +202,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
             self
         );
 
-        Ok(Session::new(self.conn))
+        Ok(self.into_session())
     }
 
     /// Authenticate with the server using the given custom `authenticator` to handle the server's
@@ -293,7 +302,7 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Client<T> {
                             self.check_done_ok_from(&id, None, res).await,
                             self
                         );
-                        return Ok(Session::new(self.conn));
+                        return Ok(self.into_session());
                     }
                 }
             } else {

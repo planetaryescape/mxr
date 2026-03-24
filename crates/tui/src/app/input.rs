@@ -1,6 +1,67 @@
 use super::*;
 
 impl App {
+    fn help_modal_state(&self) -> crate::mxr_tui::ui::help_modal::HelpModalState<'_> {
+        crate::mxr_tui::ui::help_modal::HelpModalState {
+            open: self.help_modal_open,
+            ui_context: self.current_ui_context(),
+            selected_count: self.selected_set.len(),
+            scroll_offset: self.help_scroll_offset,
+            query: &self.help_query,
+            selected: self.help_selected,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    fn help_search_active(&self) -> bool {
+        !self.help_query.is_empty()
+    }
+
+    fn help_search_result_count(&self) -> usize {
+        crate::mxr_tui::ui::help_modal::search_result_count(&self.help_modal_state())
+    }
+
+    fn clamp_help_selected(&mut self) {
+        let count = self.help_search_result_count();
+        self.help_selected = self.help_selected.min(count.saturating_sub(1));
+    }
+
+    fn push_help_query(&mut self, c: char) {
+        self.help_query.push(c);
+        self.help_selected = 0;
+    }
+
+    fn pop_help_query(&mut self) {
+        self.help_query.pop();
+        if self.help_query.is_empty() {
+            self.help_selected = 0;
+        } else {
+            self.clamp_help_selected();
+        }
+    }
+
+    fn help_select_next(&mut self) {
+        let count = self.help_search_result_count();
+        if count > 0 {
+            self.help_selected = (self.help_selected + 1).min(count - 1);
+        }
+    }
+
+    fn help_select_prev(&mut self) {
+        self.help_selected = self.help_selected.saturating_sub(1);
+    }
+
+    fn help_page_down(&mut self) {
+        let count = self.help_search_result_count();
+        if count > 0 {
+            self.help_selected = (self.help_selected + 8).min(count - 1);
+        }
+    }
+
+    fn help_page_up(&mut self) {
+        self.help_selected = self.help_selected.saturating_sub(8);
+    }
+
     fn contextual_input_action(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let action = self.input.handle_key(key)?;
         crate::mxr_tui::action::action_allowed_in_context(&action, self.current_ui_context())
@@ -53,22 +114,45 @@ impl App {
                 | (KeyCode::Char('?'), _)
                 | (KeyCode::Char('q'), _) => Some(Action::Help),
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
-                    self.help_scroll_offset = self.help_scroll_offset.saturating_add(1);
+                    if self.help_search_active() {
+                        self.help_select_next();
+                    } else {
+                        self.help_scroll_offset = self.help_scroll_offset.saturating_add(1);
+                    }
                     None
                 }
                 (KeyCode::Char('k') | KeyCode::Up, _) => {
-                    self.help_scroll_offset = self.help_scroll_offset.saturating_sub(1);
+                    if self.help_search_active() {
+                        self.help_select_prev();
+                    } else {
+                        self.help_scroll_offset = self.help_scroll_offset.saturating_sub(1);
+                    }
                     None
                 }
                 (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                    self.help_scroll_offset = self.help_scroll_offset.saturating_add(8);
+                    if self.help_search_active() {
+                        self.help_page_down();
+                    } else {
+                        self.help_scroll_offset = self.help_scroll_offset.saturating_add(8);
+                    }
                     None
                 }
                 (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
-                    self.help_scroll_offset = self.help_scroll_offset.saturating_sub(8);
+                    if self.help_search_active() {
+                        self.help_page_up();
+                    } else {
+                        self.help_scroll_offset = self.help_scroll_offset.saturating_sub(8);
+                    }
                     None
                 }
-                (KeyCode::Char('o'), _) => Some(Action::ShowOnboarding),
+                (KeyCode::Backspace, _) => {
+                    self.pop_help_query();
+                    None
+                }
+                (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                    self.push_help_query(c);
+                    None
+                }
                 _ => None,
             };
         }
@@ -493,11 +577,11 @@ impl App {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
-                    self.move_thread_focus_down();
+                    self.move_message_view_down();
                     None
                 }
                 (KeyCode::Char('k') | KeyCode::Up, _) => {
-                    self.move_thread_focus_up();
+                    self.move_message_view_up();
                     None
                 }
                 (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
@@ -632,11 +716,11 @@ impl App {
                     None
                 }
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
-                    self.move_thread_focus_down();
+                    self.move_message_view_down();
                     None
                 }
                 (KeyCode::Char('k') | KeyCode::Up, _) => {
-                    self.move_thread_focus_up();
+                    self.move_message_view_up();
                     None
                 }
                 (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
@@ -810,6 +894,25 @@ impl App {
             };
         }
 
+        if self.accounts_page.resume_new_account_draft_prompt_open {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Enter | KeyCode::Char('c'), _) => {
+                    self.restore_new_account_form_draft();
+                    None
+                }
+                (KeyCode::Char('n'), _) => {
+                    self.accounts_page.new_account_draft = None;
+                    self.open_new_account_form();
+                    None
+                }
+                (KeyCode::Esc, _) => {
+                    self.accounts_page.resume_new_account_draft_prompt_open = false;
+                    None
+                }
+                _ => None,
+            };
+        }
+
         if self.accounts_page.form.visible {
             return self.handle_account_form_key(key);
         }
@@ -938,7 +1041,7 @@ impl App {
 
         match (key.code, key.modifiers) {
             (KeyCode::Esc, _) => {
-                self.accounts_page.form.visible = false;
+                self.maybe_preserve_new_account_form_draft();
                 None
             }
             (KeyCode::Left | KeyCode::Char('h'), _) => {
@@ -993,18 +1096,7 @@ impl App {
                 } else if self.accounts_page.form.active_field == 0 {
                     self.request_account_form_mode_change(true);
                     None
-                } else if matches!(self.accounts_page.form.mode, AccountFormMode::Gmail)
-                    && self.accounts_page.form.active_field == 4
-                {
-                    self.accounts_page.form.gmail_credential_source = next_gmail_credential_source(
-                        self.accounts_page.form.gmail_credential_source.clone(),
-                        true,
-                    );
-                    self.accounts_page.form.active_field = self
-                        .accounts_page
-                        .form
-                        .active_field
-                        .min(self.account_form_field_count().saturating_sub(1));
+                } else if self.toggle_current_account_form_field(true) {
                     None
                 } else {
                     None
@@ -1021,21 +1113,7 @@ impl App {
                 self.request_account_form_mode_change(true);
                 None
             }
-            (KeyCode::Char(' '), _)
-                if matches!(self.accounts_page.form.mode, AccountFormMode::Gmail)
-                    && self.accounts_page.form.active_field == 4 =>
-            {
-                self.accounts_page.form.gmail_credential_source = next_gmail_credential_source(
-                    self.accounts_page.form.gmail_credential_source.clone(),
-                    true,
-                );
-                self.accounts_page.form.active_field = self
-                    .accounts_page
-                    .form
-                    .active_field
-                    .min(self.account_form_field_count().saturating_sub(1));
-                None
-            }
+            (KeyCode::Char(' '), _) if self.toggle_current_account_form_field(true) => None,
             _ => None,
         }
     }

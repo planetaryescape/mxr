@@ -6,6 +6,9 @@ impl App {
         if self.search_is_pending() {
             self.search_page.throbber.calc_next();
         }
+        if self.accounts_page.operation_in_flight {
+            self.accounts_page.throbber.calc_next();
+        }
         self.process_pending_search_debounce();
         self.process_pending_preview_read();
     }
@@ -22,6 +25,7 @@ impl App {
                         self.accounts_page.accounts.is_empty() && !self.accounts_page.form.visible;
                     return;
                 }
+                self.maybe_preserve_new_account_form_draft();
                 self.screen = Screen::Mailbox;
                 self.active_pane = if self.layout_mode == LayoutMode::ThreePane {
                     ActivePane::MailList
@@ -30,6 +34,7 @@ impl App {
                 };
             }
             Action::OpenSearchScreen => {
+                self.maybe_preserve_new_account_form_draft();
                 self.pending_preview_read = None;
                 self.screen = Screen::Search;
                 if self.search_page.has_session() {
@@ -44,6 +49,7 @@ impl App {
                 }
             }
             Action::OpenGlobalSearch => {
+                self.maybe_preserve_new_account_form_draft();
                 self.pending_preview_read = None;
                 self.search_bar.deactivate();
                 self.screen = Screen::Search;
@@ -57,11 +63,13 @@ impl App {
                 }
             }
             Action::OpenRulesScreen => {
+                self.maybe_preserve_new_account_form_draft();
                 self.pending_preview_read = None;
                 self.screen = Screen::Rules;
                 self.rules_page.refresh_pending = true;
             }
             Action::OpenDiagnosticsScreen => {
+                self.maybe_preserve_new_account_form_draft();
                 self.pending_preview_read = None;
                 self.screen = Screen::Diagnostics;
                 self.diagnostics_page.refresh_pending = true;
@@ -75,10 +83,14 @@ impl App {
                 self.accounts_page.refresh_pending = true;
             }
             Action::OpenAccountFormNew => {
-                self.accounts_page.form = AccountFormState::default();
-                self.accounts_page.form.visible = true;
+                if self.accounts_page.new_account_draft.is_some() {
+                    self.accounts_page.resume_new_account_draft_prompt_open = true;
+                    self.accounts_page.onboarding_modal_open = false;
+                    self.screen = Screen::Accounts;
+                    return;
+                }
+                self.open_new_account_form();
                 self.accounts_page.onboarding_modal_open = false;
-                self.refresh_account_form_derived_fields();
                 self.screen = Screen::Accounts;
             }
             Action::SaveAccountForm => {
@@ -88,27 +100,51 @@ impl App {
                     || self.accounts_page.accounts.is_empty();
                 self.accounts_page.last_result = None;
                 self.accounts_page.form.last_result = None;
+                if let Some((result, first_invalid_field)) = self.account_form_validation_failure()
+                {
+                    self.fail_account_form_submission(result, first_invalid_field);
+                    return;
+                }
+                self.accounts_page.operation_in_flight = true;
+                self.accounts_page.throbber = ThrobberState::default();
                 self.pending_account_save = Some(self.account_form_data(is_default));
                 self.accounts_page.status = Some("Saving account...".into());
             }
             Action::TestAccountForm => {
                 let account = if self.accounts_page.form.visible {
+                    self.accounts_page.last_result = None;
+                    self.accounts_page.form.last_result = None;
+                    if let Some((result, first_invalid_field)) =
+                        self.account_form_validation_failure()
+                    {
+                        self.fail_account_form_submission(result, first_invalid_field);
+                        return;
+                    }
                     self.account_form_data(false)
                 } else if let Some(account) = self.selected_account_config() {
+                    self.accounts_page.last_result = None;
+                    self.accounts_page.form.last_result = None;
                     account
                 } else {
                     self.accounts_page.status = Some("No editable account selected.".into());
                     return;
                 };
-                self.accounts_page.last_result = None;
-                self.accounts_page.form.last_result = None;
+                self.accounts_page.operation_in_flight = true;
+                self.accounts_page.throbber = ThrobberState::default();
                 self.pending_account_test = Some(account);
                 self.accounts_page.status = Some("Testing account...".into());
             }
             Action::ReauthorizeAccountForm => {
-                let account = self.account_form_data(false);
                 self.accounts_page.last_result = None;
                 self.accounts_page.form.last_result = None;
+                if let Some((result, first_invalid_field)) = self.account_form_validation_failure()
+                {
+                    self.fail_account_form_submission(result, first_invalid_field);
+                    return;
+                }
+                let account = self.account_form_data(false);
+                self.accounts_page.operation_in_flight = true;
+                self.accounts_page.throbber = ThrobberState::default();
                 self.pending_account_authorize = Some((account, true));
                 self.accounts_page.status = Some("Authorizing Gmail account...".into());
             }
@@ -117,6 +153,8 @@ impl App {
                     .selected_account()
                     .and_then(|account| account.key.clone())
                 {
+                    self.accounts_page.operation_in_flight = true;
+                    self.accounts_page.throbber = ThrobberState::default();
                     self.pending_account_set_default = Some(key);
                     self.accounts_page.status = Some("Setting default account...".into());
                 } else {
@@ -1141,9 +1179,9 @@ impl App {
             }
             Action::Help => {
                 self.help_modal_open = !self.help_modal_open;
-                if self.help_modal_open {
-                    self.help_scroll_offset = 0;
-                }
+                self.help_scroll_offset = 0;
+                self.help_query.clear();
+                self.help_selected = 0;
             }
             Action::Noop => {}
         }

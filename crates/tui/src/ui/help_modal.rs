@@ -1,9 +1,11 @@
 use crate::mxr_tui::action::UiContext;
 use crate::mxr_tui::keybindings::{all_bindings_for_context, ViewContext};
 use crate::mxr_tui::ui::command_palette::commands_for_context;
+use nucleo::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
+use nucleo::{Config, Matcher, Utf32Str};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone)]
 struct HelpSection {
@@ -11,11 +13,29 @@ struct HelpSection {
     entries: Vec<(String, String)>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HelpRow {
+    section: String,
+    shortcut: String,
+    label: String,
+    search_text: String,
+    order: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HelpSearchResult {
+    row: HelpRow,
+    score: u32,
+    priority: u8,
+}
+
 pub struct HelpModalState<'a> {
     pub open: bool,
     pub ui_context: UiContext,
     pub selected_count: usize,
     pub scroll_offset: u16,
+    pub query: &'a str,
+    pub selected: usize,
     pub _marker: std::marker::PhantomData<&'a ()>,
 }
 
@@ -40,23 +60,11 @@ pub fn draw(
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
 
-    let lines = render_sections(&help_sections(&state), theme);
-    let content_height = lines.len();
-    let paragraph = Paragraph::new(lines)
-        .scroll((state.scroll_offset, 0))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(paragraph, inner);
-
-    let mut scrollbar_state =
-        ScrollbarState::new(content_height.saturating_sub(inner.height as usize))
-            .position(state.scroll_offset as usize);
-    frame.render_stateful_widget(
-        Scrollbar::default()
-            .orientation(ScrollbarOrientation::VerticalRight)
-            .thumb_style(Style::default().fg(theme.warning)),
-        inner,
-        &mut scrollbar_state,
-    );
+    if state.query.is_empty() {
+        draw_grouped_help(frame, inner, &state, theme);
+    } else {
+        draw_search_results(frame, inner, &state, theme);
+    }
 }
 
 fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
@@ -64,8 +72,11 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
         HelpSection {
             title: "Start Here".into(),
             entries: vec![
-                ("o".into(), "Open onboarding walkthrough".into()),
-                ("Ctrl-p".into(), "Command Palette".into()),
+                ("Ctrl-p".into(), "Open command palette".into()),
+                (
+                    "palette: Start Here".into(),
+                    "Reopen onboarding walkthrough".into(),
+                ),
                 ("gc".into(), "Edit config in $EDITOR".into()),
                 ("?".into(), "Toggle Help".into()),
                 ("Esc".into(), "Back / Close".into()),
@@ -91,7 +102,10 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 "Unsubscribe".into(),
                 "Enter unsubscribe, a archive sender, Esc cancel".into(),
             ),
-            ("Bulk Confirm".into(), "Enter/y confirm, Esc/n cancel".into()),
+            (
+                "Bulk Confirm".into(),
+                "Enter/y confirm, Esc/n cancel".into(),
+            ),
         ],
     });
     sections.extend(command_sections(state.ui_context));
@@ -263,6 +277,129 @@ fn command_sections(context: UiContext) -> Vec<HelpSection> {
         .collect()
 }
 
+fn help_rows(state: &HelpModalState<'_>) -> Vec<HelpRow> {
+    let mut rows = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for section in help_sections(state) {
+        let title = section.title;
+        for (shortcut, label) in section.entries {
+            if !seen.insert((shortcut.clone(), label.clone())) {
+                continue;
+            }
+            rows.push(HelpRow {
+                section: title.clone(),
+                search_text: format!("{shortcut} {label} {title}"),
+                shortcut,
+                label,
+                order: rows.len(),
+            });
+        }
+    }
+
+    rows
+}
+
+fn search_results(state: &HelpModalState<'_>) -> Vec<HelpSearchResult> {
+    if state.query.is_empty() {
+        return Vec::new();
+    }
+
+    let query_lower = state.query.to_lowercase();
+    let pattern = Pattern::new(
+        state.query,
+        CaseMatching::Smart,
+        Normalization::Smart,
+        AtomKind::Fuzzy,
+    );
+    let mut matcher = Matcher::new(Config::DEFAULT);
+    let mut utf32_buf = Vec::new();
+    let mut results: Vec<_> = help_rows(state)
+        .into_iter()
+        .filter_map(|row| {
+            pattern
+                .score(
+                    Utf32Str::new(&row.search_text, &mut utf32_buf),
+                    &mut matcher,
+                )
+                .map(|score| HelpSearchResult {
+                    priority: match_priority(&row, &query_lower),
+                    row,
+                    score,
+                })
+        })
+        .collect();
+    results.sort_by(|left, right| {
+        left.priority
+            .cmp(&right.priority)
+            .then_with(|| right.score.cmp(&left.score))
+            .then_with(|| left.row.order.cmp(&right.row.order))
+    });
+    if is_short_query(&query_lower) {
+        let strict: Vec<_> = results
+            .iter()
+            .filter(|result| result.priority < 5)
+            .cloned()
+            .collect();
+        if !strict.is_empty() {
+            return strict;
+        }
+    }
+    results
+}
+
+fn match_priority(row: &HelpRow, query_lower: &str) -> u8 {
+    let shortcut = normalize(&row.shortcut);
+    if shortcut == query_lower {
+        return 0;
+    }
+    if !shortcut.is_empty() && shortcut.starts_with(query_lower) {
+        return 1;
+    }
+    if !shortcut.is_empty() && shortcut.contains(query_lower) {
+        return 2;
+    }
+    if has_word_prefix(&row.label, query_lower) || acronym(&row.label).starts_with(query_lower) {
+        return 3;
+    }
+    if has_word_prefix(&row.section, query_lower) || acronym(&row.section).starts_with(query_lower)
+    {
+        return 4;
+    }
+    5
+}
+
+fn is_short_query(query_lower: &str) -> bool {
+    query_lower.chars().count() <= 2
+}
+
+fn normalize(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_alphanumeric())
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
+}
+
+fn has_word_prefix(value: &str, query_lower: &str) -> bool {
+    value
+        .split(|ch: char| !ch.is_alphanumeric())
+        .any(|word| !word.is_empty() && normalize(word).starts_with(query_lower))
+}
+
+fn acronym(value: &str) -> String {
+    value
+        .split(|ch: char| !ch.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .filter_map(|word| word.chars().next())
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
+}
+
+pub(crate) fn search_result_count(state: &HelpModalState<'_>) -> usize {
+    search_results(state).len()
+}
+
 fn render_sections(
     sections: &[HelpSection],
     theme: &crate::mxr_tui::theme::Theme,
@@ -291,6 +428,179 @@ fn render_sections(
     lines
 }
 
+fn draw_grouped_help(
+    frame: &mut Frame,
+    area: Rect,
+    state: &HelpModalState<'_>,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
+    let lines = render_sections(&help_sections(state), theme);
+    let content_height = lines.len();
+    let paragraph = Paragraph::new(lines)
+        .scroll((state.scroll_offset, 0))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(paragraph, area);
+
+    let mut scrollbar_state =
+        ScrollbarState::new(content_height.saturating_sub(area.height as usize))
+            .position(state.scroll_offset as usize);
+    frame.render_stateful_widget(
+        Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .thumb_style(Style::default().fg(theme.warning)),
+        area,
+        &mut scrollbar_state,
+    );
+}
+
+fn draw_search_results(
+    frame: &mut Frame,
+    area: Rect,
+    state: &HelpModalState<'_>,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
+    if area.height < 7 {
+        return;
+    }
+
+    let results = search_results(state);
+    let selected = state.selected.min(results.len().saturating_sub(1));
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(3),
+            Constraint::Length(3),
+        ])
+        .split(area);
+
+    let query = Paragraph::new(Line::from(vec![
+        Span::styled("> ", Style::default().fg(theme.accent).bold()),
+        Span::styled(state.query, Style::default().fg(theme.text_primary)),
+    ]))
+    .block(
+        Block::bordered()
+            .title(format!(
+                " Query  {} matches  {} ",
+                results.len(),
+                state.ui_context.label()
+            ))
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.border_unfocused))
+            .style(Style::default().bg(theme.hint_bar_bg)),
+    );
+    frame.render_widget(query, chunks[0]);
+
+    let list_area = chunks[1];
+    let visible_len = list_area.height.saturating_sub(2) as usize;
+    let start = if visible_len == 0 {
+        0
+    } else {
+        selected.saturating_sub(visible_len.saturating_sub(1) / 2)
+    };
+    let rows: Vec<Row> = results
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(visible_len)
+        .map(|(index, result)| {
+            let style = if index == selected {
+                theme.highlight_style()
+            } else {
+                Style::default().fg(theme.text_secondary)
+            };
+            Row::new(vec![
+                Cell::from(Span::styled(
+                    &result.row.shortcut,
+                    Style::default().fg(theme.text_primary).bold(),
+                )),
+                Cell::from(Span::styled(
+                    &result.row.label,
+                    Style::default().fg(theme.text_primary),
+                )),
+                Cell::from(Span::styled(
+                    &result.row.section,
+                    Style::default().fg(theme.text_muted),
+                )),
+            ])
+            .style(style)
+        })
+        .collect();
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(20),
+            Constraint::Fill(1),
+            Constraint::Length(24),
+        ],
+    )
+    .column_spacing(1)
+    .block(
+        Block::bordered()
+            .title(" Matches ")
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.border_unfocused)),
+    );
+    frame.render_widget(table, list_area);
+
+    let mut scrollbar_state =
+        ScrollbarState::new(results.len().saturating_sub(visible_len)).position(start);
+    frame.render_stateful_widget(
+        Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight)
+            .thumb_style(Style::default().fg(theme.warning)),
+        list_area,
+        &mut scrollbar_state,
+    );
+
+    let footer_text = results
+        .get(selected)
+        .map(|result| {
+            Line::from(vec![
+                Span::styled("type ", Style::default().fg(theme.accent).bold()),
+                Span::styled("search", Style::default().fg(theme.text_secondary)),
+                Span::raw("   "),
+                Span::styled("↑↓ ", Style::default().fg(theme.accent).bold()),
+                Span::styled("move", Style::default().fg(theme.text_secondary)),
+                Span::raw("   "),
+                Span::styled("enter ", Style::default().fg(theme.accent).bold()),
+                Span::styled("close", Style::default().fg(theme.text_secondary)),
+                Span::raw("   "),
+                Span::styled(
+                    result.row.label.clone(),
+                    Style::default().fg(theme.text_primary).bold(),
+                ),
+                Span::styled(" · ", Style::default().fg(theme.text_muted)),
+                Span::styled(
+                    result.row.shortcut.clone(),
+                    Style::default().fg(theme.accent),
+                ),
+                Span::styled(" · ", Style::default().fg(theme.text_muted)),
+                Span::styled(
+                    result.row.section.clone(),
+                    Style::default().fg(theme.text_muted),
+                ),
+            ])
+        })
+        .unwrap_or_else(|| {
+            Line::from(vec![
+                Span::styled(
+                    "No matching help entries",
+                    Style::default().fg(theme.text_muted),
+                ),
+                Span::raw("   "),
+                Span::styled("Esc", Style::default().fg(theme.accent).bold()),
+                Span::styled(" close", Style::default().fg(theme.text_secondary)),
+            ])
+        });
+    let footer = Paragraph::new(footer_text).block(
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.border_unfocused)),
+    );
+    frame.render_widget(footer, chunks[2]);
+}
+
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
@@ -313,18 +623,26 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::{help_sections, HelpModalState};
+    use super::{draw, help_rows, help_sections, search_results, HelpModalState};
     use crate::mxr_tui::action::UiContext;
+    use mxr_test_support::render_to_string;
+    use ratatui::layout::Rect;
+
+    fn help_state(context: UiContext, query: &'static str) -> HelpModalState<'static> {
+        HelpModalState {
+            open: true,
+            ui_context: context,
+            selected_count: 2,
+            scroll_offset: 0,
+            query,
+            selected: 0,
+            _marker: std::marker::PhantomData,
+        }
+    }
 
     #[test]
     fn help_sections_cover_accounts_and_commands() {
-        let state = HelpModalState {
-            open: true,
-            ui_context: UiContext::AccountsList,
-            selected_count: 2,
-            scroll_offset: 0,
-            _marker: std::marker::PhantomData,
-        };
+        let state = help_state(UiContext::AccountsList, "");
         let titles: Vec<String> = help_sections(&state)
             .into_iter()
             .map(|section| section.title)
@@ -336,5 +654,70 @@ mod tests {
         assert!(!titles
             .iter()
             .any(|title| title.starts_with("Commands: Mail")));
+    }
+
+    #[test]
+    fn help_search_fuzzy_matches_descriptions() {
+        let state = help_state(UiContext::MailboxList, "fcmb");
+        let first = search_results(&state).into_iter().next().unwrap();
+        assert_eq!(first.row.shortcut, "Ctrl-f");
+        assert_eq!(first.row.label, "Filter current mailbox only");
+    }
+
+    #[test]
+    fn help_search_fuzzy_matches_shortcuts() {
+        let state = help_state(UiContext::MailboxList, "gc");
+        let results = search_results(&state);
+        assert_eq!(results[0].row.shortcut, "gc");
+        assert!(results[0].row.label.contains("Edit config"));
+    }
+
+    #[test]
+    fn help_short_queries_drop_weak_fuzzy_tail() {
+        let state = help_state(UiContext::MailboxList, "gc");
+        let labels: Vec<String> = search_results(&state)
+            .into_iter()
+            .map(|result| result.row.label)
+            .collect();
+        assert!(labels.iter().all(|label| !label.contains("Go to Sent")));
+        assert!(labels
+            .iter()
+            .all(|label| !label.contains("Generate Bug Report")));
+    }
+
+    #[test]
+    fn help_rows_deduplicate_duplicate_bindings() {
+        let state = help_state(UiContext::SearchEditor, "");
+        let duplicates = help_rows(&state)
+            .into_iter()
+            .filter(|row| row.shortcut == "Enter" && row.label == "Run search now")
+            .count();
+        assert_eq!(duplicates, 1);
+    }
+
+    #[test]
+    fn help_modal_grouped_snapshot() {
+        let snapshot = render_to_string(100, 28, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 28),
+                help_state(UiContext::MailboxList, ""),
+                &crate::mxr_tui::theme::Theme::default(),
+            );
+        });
+        insta::assert_snapshot!("help_modal_grouped_snapshot", snapshot);
+    }
+
+    #[test]
+    fn help_modal_filtered_snapshot() {
+        let snapshot = render_to_string(100, 28, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 28),
+                help_state(UiContext::MailboxList, "gc"),
+                &crate::mxr_tui::theme::Theme::default(),
+            );
+        });
+        insta::assert_snapshot!("help_modal_filtered_snapshot", snapshot);
     }
 }

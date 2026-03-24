@@ -1398,6 +1398,8 @@ pub async fn run() -> anyhow::Result<()> {
                                 Some(format!("Mailbox refresh failed: {e}"));
                         }
                         AsyncResult::AccountOperation(Ok(result)) => {
+                            app.accounts_page.operation_in_flight = false;
+                            app.accounts_page.throbber = Default::default();
                             app.accounts_page.status = Some(result.summary.clone());
                             app.accounts_page.last_result = Some(result.clone());
                             app.accounts_page.form.last_result = Some(result.clone());
@@ -1407,11 +1409,15 @@ pub async fn run() -> anyhow::Result<()> {
                                 .map(|step| step.ok)
                                 .unwrap_or(app.accounts_page.form.gmail_authorized);
                             if result.save.as_ref().is_some_and(|step| step.ok) {
+                                app.accounts_page.new_account_draft = None;
+                                app.accounts_page.resume_new_account_draft_prompt_open = false;
                                 app.accounts_page.form.visible = false;
                             }
                             app.accounts_page.refresh_pending = true;
                         }
                         AsyncResult::AccountOperation(Err(e)) => {
+                            app.accounts_page.operation_in_flight = false;
+                            app.accounts_page.throbber = Default::default();
                             app.accounts_page.status = Some(format!("Account error: {e}"));
                         }
                         AsyncResult::BugReport(Ok(content)) => {
@@ -3700,6 +3706,36 @@ mod tests {
     }
 
     #[test]
+    fn single_message_view_uses_jk_to_scroll() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::OpenSelected);
+
+        assert_eq!(app.active_pane, ActivePane::MessageView);
+        assert_eq!(app.viewed_thread_messages.len(), 1);
+        assert_eq!(app.thread_selected_index, 0);
+        assert_eq!(app.message_scroll_offset, 0);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+        assert_eq!(app.thread_selected_index, 0);
+        assert_eq!(app.message_scroll_offset, 1);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.thread_selected_index, 0);
+        assert_eq!(app.message_scroll_offset, 2);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+        assert_eq!(app.thread_selected_index, 0);
+        assert_eq!(app.message_scroll_offset, 1);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.thread_selected_index, 0);
+        assert_eq!(app.message_scroll_offset, 0);
+    }
+
+    #[test]
     fn thread_move_down_changes_reply_target() {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(2);
@@ -3820,9 +3856,223 @@ mod tests {
 
         app.apply(Action::Help);
         assert!(app.help_modal_open);
+        assert!(app.help_query.is_empty());
+        assert_eq!(app.help_selected, 0);
 
+        app.help_query = "config".into();
+        app.help_selected = 3;
         app.apply(Action::Help);
         assert!(!app.help_modal_open);
+        assert!(app.help_query.is_empty());
+        assert_eq!(app.help_selected, 0);
+    }
+
+    #[test]
+    fn help_modal_typing_enters_search_mode_and_backspace_clears_it() {
+        let mut app = App::new();
+        app.apply(Action::Help);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert_eq!(app.help_query, "g");
+        assert_eq!(app.help_selected, 0);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert_eq!(app.help_query, "gc");
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert_eq!(app.help_query, "g");
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert!(app.help_query.is_empty());
+        assert_eq!(app.help_selected, 0);
+    }
+
+    #[test]
+    fn help_modal_o_types_instead_of_reopening_onboarding() {
+        let mut app = App::new();
+        app.apply(Action::Help);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert_eq!(app.help_query, "o");
+        assert!(!app.onboarding.visible);
+    }
+
+    #[test]
+    fn account_form_validation_points_to_first_invalid_field() {
+        let mut app = App::new();
+        app.screen = Screen::Accounts;
+        app.accounts_page.form.visible = true;
+        app.accounts_page.form.mode = super::app::AccountFormMode::ImapSmtp;
+        app.accounts_page.form.key = "work".into();
+        app.accounts_page.form.email = "me@example.com".into();
+        app.accounts_page.form.imap_port = "993".into();
+        app.accounts_page.form.smtp_host = "smtp.example.com".into();
+        app.accounts_page.form.smtp_port = "587".into();
+        app.accounts_page.form.smtp_auth_required = false;
+
+        app.apply(Action::TestAccountForm);
+
+        assert_eq!(app.accounts_page.form.active_field, 4);
+        assert!(!app.accounts_page.operation_in_flight);
+        assert!(app.pending_account_test.is_none());
+        let result = app.accounts_page.form.last_result.as_ref().unwrap();
+        assert!(result.summary.contains("Account form has problems."));
+        assert_eq!(
+            result.sync.as_ref().unwrap().detail,
+            "IMAP host is required. IMAP auth is enabled, so IMAP password or IMAP pass ref is required."
+        );
+    }
+
+    #[test]
+    fn smtp_only_form_test_allows_no_auth_and_marks_operation_pending() {
+        let mut app = App::new();
+        app.screen = Screen::Accounts;
+        app.accounts_page.form.visible = true;
+        app.accounts_page.form.mode = super::app::AccountFormMode::SmtpOnly;
+        app.accounts_page.form.key = "relay".into();
+        app.accounts_page.form.email = "relay@example.com".into();
+        app.accounts_page.form.smtp_host = "smtp.example.com".into();
+        app.accounts_page.form.smtp_port = "25".into();
+        app.accounts_page.form.smtp_auth_required = false;
+        app.accounts_page.form.last_result = Some(crate::mxr_protocol::AccountOperationResult {
+            ok: false,
+            summary: "stale".into(),
+            save: None,
+            auth: None,
+            sync: None,
+            send: None,
+        });
+
+        app.apply(Action::TestAccountForm);
+
+        assert!(app.accounts_page.operation_in_flight);
+        assert!(app.accounts_page.form.last_result.is_none());
+        let pending = app.pending_account_test.take().unwrap();
+        match pending.send.unwrap() {
+            crate::mxr_protocol::AccountSendConfigData::Smtp {
+                auth_required,
+                username,
+                password_ref,
+                ..
+            } => {
+                assert!(!auth_required);
+                assert!(username.is_empty());
+                assert!(password_ref.is_empty());
+            }
+            other => panic!("expected smtp config, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn auth_required_form_generates_secret_refs_from_account_key() {
+        let mut app = App::new();
+        app.screen = Screen::Accounts;
+        app.accounts_page.form.visible = true;
+        app.accounts_page.form.is_new_account = true;
+        app.accounts_page.form.mode = super::app::AccountFormMode::ImapSmtp;
+        app.accounts_page.form.key = "work".into();
+        app.accounts_page.form.email = "me@example.com".into();
+        app.accounts_page.form.imap_host = "imap.example.com".into();
+        app.accounts_page.form.imap_port = "993".into();
+        app.accounts_page.form.imap_password = "imap-secret".into();
+        app.accounts_page.form.smtp_host = "smtp.example.com".into();
+        app.accounts_page.form.smtp_port = "587".into();
+        app.accounts_page.form.smtp_password = "smtp-secret".into();
+
+        app.apply(Action::TestAccountForm);
+
+        let pending = app.pending_account_test.take().unwrap();
+        match pending.sync.unwrap() {
+            crate::mxr_protocol::AccountSyncConfigData::Imap { password_ref, .. } => {
+                assert_eq!(password_ref, "mxr/work-imap");
+            }
+            other => panic!("expected imap config, got {other:?}"),
+        }
+        match pending.send.unwrap() {
+            crate::mxr_protocol::AccountSendConfigData::Smtp { password_ref, .. } => {
+                assert_eq!(password_ref, "mxr/work-smtp");
+            }
+            other => panic!("expected smtp config, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn closing_new_account_form_preserves_draft_and_resume_restores_it() {
+        let mut app = App::new();
+        app.screen = Screen::Accounts;
+        app.accounts_page.form.visible = true;
+        app.accounts_page.form.is_new_account = true;
+        app.accounts_page.form.key = "draft".into();
+        app.accounts_page.form.email = "draft@example.com".into();
+        app.accounts_page.form.smtp_host = "smtp.example.com".into();
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert!(!app.accounts_page.form.visible);
+        assert_eq!(
+            app.accounts_page.new_account_draft.as_ref().unwrap().key,
+            "draft"
+        );
+
+        app.apply(Action::OpenAccountFormNew);
+        assert!(app.accounts_page.resume_new_account_draft_prompt_open);
+        assert!(!app.accounts_page.form.visible);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert!(app.accounts_page.form.visible);
+        assert_eq!(app.accounts_page.form.key, "draft");
+        assert_eq!(app.accounts_page.form.email, "draft@example.com");
+        assert!(app.accounts_page.new_account_draft.is_none());
+    }
+
+    #[test]
+    fn new_account_draft_prompt_can_start_fresh_form() {
+        let mut app = App::new();
+        app.screen = Screen::Accounts;
+        app.accounts_page.form.visible = true;
+        app.accounts_page.form.is_new_account = true;
+        app.accounts_page.form.key = "draft".into();
+        app.accounts_page.form.email = "draft@example.com".into();
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert!(app.accounts_page.new_account_draft.is_some());
+
+        app.apply(Action::OpenAccountFormNew);
+        assert!(app.accounts_page.resume_new_account_draft_prompt_open);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+        assert!(action.is_none());
+        assert!(app.accounts_page.form.visible);
+        assert!(app.accounts_page.form.is_new_account);
+        assert!(app.accounts_page.form.key.is_empty());
+        assert!(app.accounts_page.new_account_draft.is_none());
+        assert!(!app.accounts_page.resume_new_account_draft_prompt_open);
+    }
+
+    #[test]
+    fn leaving_accounts_screen_preserves_new_account_draft() {
+        let mut app = App::new();
+        app.screen = Screen::Accounts;
+        app.accounts_page.form.visible = true;
+        app.accounts_page.form.is_new_account = true;
+        app.accounts_page.form.key = "draft".into();
+        app.accounts_page.form.email = "draft@example.com".into();
+
+        app.apply(Action::OpenMailboxScreen);
+
+        assert_eq!(app.screen, Screen::Mailbox);
+        assert!(!app.accounts_page.form.visible);
+        assert_eq!(
+            app.accounts_page.new_account_draft.as_ref().unwrap().email,
+            "draft@example.com"
+        );
     }
 
     #[test]

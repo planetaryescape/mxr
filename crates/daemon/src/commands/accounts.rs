@@ -81,6 +81,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                         port,
                         username,
                         password_ref,
+                        auth_required,
                         use_tls,
                     } => {
                         let account_id =
@@ -92,6 +93,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                                 port: *port,
                                 username: username.clone(),
                                 password_ref: password_ref.clone(),
+                                auth_required: *auth_required,
                                 use_tls: *use_tls,
                             },
                         );
@@ -111,6 +113,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                         port,
                         username,
                         password_ref,
+                        auth_required,
                         use_tls,
                     } => {
                         let provider = crate::mxr_provider_smtp::SmtpSendProvider::new(
@@ -119,6 +122,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                                 port: *port,
                                 username: username.clone(),
                                 password_ref: password_ref.clone(),
+                                auth_required: *auth_required,
                                 use_tls: *use_tls,
                             },
                         );
@@ -199,23 +203,36 @@ async fn add_imap(include_smtp: bool) -> anyhow::Result<()> {
 
     let imap_host = prompt("IMAP host: ")?;
     let imap_port = prompt_default("IMAP port", "993")?.parse::<u16>()?;
-    let imap_username = prompt_default("IMAP username", &email)?;
-    let imap_password = prompt_secret("IMAP password: ")?;
-    let imap_password_ref = format!("mxr/{account_name}-imap");
-    store_password(&imap_password_ref, &imap_username, &imap_password)?;
+    let imap_auth_required = prompt_bool("IMAP requires authentication", true)?;
+    let (imap_username, imap_password_ref) = if imap_auth_required {
+        let imap_username = prompt_default("IMAP username", &email)?;
+        let imap_password = prompt_secret("IMAP password: ")?;
+        let imap_password_ref = format!("mxr/{account_name}-imap");
+        store_password(&imap_password_ref, &imap_username, &imap_password)?;
+        (imap_username, imap_password_ref)
+    } else {
+        (String::new(), String::new())
+    };
 
     let send = if include_smtp {
         let smtp_host = prompt("SMTP host: ")?;
         let smtp_port = prompt_default("SMTP port", "587")?.parse::<u16>()?;
-        let smtp_username = prompt_default("SMTP username", &email)?;
-        let smtp_password = prompt_secret("SMTP password: ")?;
-        let smtp_password_ref = format!("mxr/{account_name}-smtp");
-        store_password(&smtp_password_ref, &smtp_username, &smtp_password)?;
+        let smtp_auth_required = prompt_bool("SMTP requires authentication", true)?;
+        let (smtp_username, smtp_password_ref) = if smtp_auth_required {
+            let smtp_username = prompt_default("SMTP username", &email)?;
+            let smtp_password = prompt_secret("SMTP password: ")?;
+            let smtp_password_ref = format!("mxr/{account_name}-smtp");
+            store_password(&smtp_password_ref, &smtp_username, &smtp_password)?;
+            (smtp_username, smtp_password_ref)
+        } else {
+            (String::new(), String::new())
+        };
         Some(crate::mxr_config::SendProviderConfig::Smtp {
             host: smtp_host,
             port: smtp_port,
             username: smtp_username,
             password_ref: smtp_password_ref,
+            auth_required: smtp_auth_required,
             use_tls: true,
         })
     } else {
@@ -232,6 +249,7 @@ async fn add_imap(include_smtp: bool) -> anyhow::Result<()> {
                 port: imap_port,
                 username: imap_username,
                 password_ref: imap_password_ref,
+                auth_required: imap_auth_required,
                 use_tls: true,
             }),
             send,
@@ -253,10 +271,16 @@ async fn add_smtp_only() -> anyhow::Result<()> {
     let email = prompt("Email address: ")?;
     let smtp_host = prompt("SMTP host: ")?;
     let smtp_port = prompt_default("SMTP port", "587")?.parse::<u16>()?;
-    let smtp_username = prompt_default("SMTP username", &email)?;
-    let smtp_password = prompt_secret("SMTP password: ")?;
-    let smtp_password_ref = format!("mxr/{account_name}-smtp");
-    store_password(&smtp_password_ref, &smtp_username, &smtp_password)?;
+    let smtp_auth_required = prompt_bool("SMTP requires authentication", true)?;
+    let (smtp_username, smtp_password_ref) = if smtp_auth_required {
+        let smtp_username = prompt_default("SMTP username", &email)?;
+        let smtp_password = prompt_secret("SMTP password: ")?;
+        let smtp_password_ref = format!("mxr/{account_name}-smtp");
+        store_password(&smtp_password_ref, &smtp_username, &smtp_password)?;
+        (smtp_username, smtp_password_ref)
+    } else {
+        (String::new(), String::new())
+    };
 
     upsert_account(
         account_name.clone(),
@@ -269,6 +293,7 @@ async fn add_smtp_only() -> anyhow::Result<()> {
                 port: smtp_port,
                 username: smtp_username,
                 password_ref: smtp_password_ref,
+                auth_required: smtp_auth_required,
                 use_tls: true,
             }),
         },
@@ -336,6 +361,19 @@ fn prompt_default(msg: &str, default: &str) -> anyhow::Result<String> {
         Ok(default.to_string())
     } else {
         Ok(value)
+    }
+}
+
+fn prompt_bool(msg: &str, default: bool) -> anyhow::Result<bool> {
+    let default_label = if default { "Y/n" } else { "y/N" };
+    let value = prompt(&format!("{msg}? [{default_label}]: "))?;
+    if value.is_empty() {
+        return Ok(default);
+    }
+    match value.trim().to_ascii_lowercase().as_str() {
+        "y" | "yes" => Ok(true),
+        "n" | "no" => Ok(false),
+        _ => anyhow::bail!("Please answer yes or no."),
     }
 }
 

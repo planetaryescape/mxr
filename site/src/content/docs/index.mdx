@@ -58,12 +58,10 @@ brew install mxr
 
 </div>
 <div class="install-method">
-<h4>Build from source</h4>
+<h4>crates.io</h4>
 
 ```bash
-git clone https://github.com/planetaryescape/mxr
-cd mxr
-cargo install --path crates/daemon --locked
+cargo install mxr
 ```
 
 </div>
@@ -77,7 +75,15 @@ macOS (Intel + Apple Silicon) and Linux x86_64.
 </div>
 </div>
 
-Today, the shipped surfaces are the CLI, TUI, daemon socket, and agent skill. A first-party MCP server is still on the roadmap. `cargo install mxr` is temporarily unavailable while the crates.io publish path is being fixed.
+If you want current `main` instead of the latest release:
+
+```bash
+git clone https://github.com/planetaryescape/mxr
+cd mxr
+cargo install --path . --locked
+```
+
+Today, the shipped surfaces are the CLI, TUI, daemon socket, and agent skill. Current public install paths are Homebrew, crates.io, and GitHub release tarballs. A first-party MCP server is still on the roadmap.
 
 </div>
 
@@ -117,6 +123,8 @@ Today, agents use mxr through the CLI and the skill guide. That keeps the curren
 
 Search happens through Tantivy. Reads come from SQLite. Reader mode keeps noisy HTML mail readable in the terminal, and when you need the original layout you can open it in the browser and move on.
 
+In the TUI, `/` jumps into full-index Search. `Ctrl-f` only filters the current mailbox.
+
 </div>
 
 <div class="landing-section features-section">
@@ -138,6 +146,9 @@ Search happens through Tantivy. Reads come from SQLite. Reader mode keeps noisy 
   </Card>
   <Card title="Saved searches and batch ops" icon="magnifier">
     Search is not a side filter. It is the navigation model, and it also drives batch work in the CLI.
+  </Card>
+  <Card title="Discoverable by default" icon="list">
+    First-run onboarding, context-aware help, and a command palette make the TUI usable without memorizing every key first.
   </Card>
   <Card title="Build your own client" icon="puzzle">
     The daemon speaks JSON over a Unix socket. The TUI is one client, not the only client.

@@ -10,10 +10,10 @@ The TUI has five top-level screens:
 - Mailbox
 - Search
 - Rules
-- Diagnostics
 - Accounts
+- Diagnostics
 
-Open them from the command palette with `Ctrl-p`.
+Open them with `1`-`5` or from the command palette with `Ctrl-p`.
 
 ## Mailbox screen
 
@@ -33,16 +33,20 @@ Behavior:
 
 ## Search screen
 
-- Query input
-- Result list
-- Preview pane
-- `Enter` or `o` opens the selected result into the normal mailbox flow
+- Fixed query input at the top
+- Result list on the left
+- Preview pane on the right
+- Live search against the full local index
+- `Ctrl-f` is separate and only filters the current mailbox
+- `Enter`, `o`, or `l` opens the selected result in preview
+- `Esc` moves preview -> results -> mailbox
 
 ## Rules screen
 
 - Rule list on the left
-- Details, history, dry-run, or form panel on the right
-- Form-driven create/edit for supported rule fields
+- Guided workspace on the right
+- Overview, history, dry-run, and edit states
+- Textarea-driven condition/action editing for supported rule fields
 
 ## Diagnostics screen
 
@@ -51,13 +55,16 @@ Behavior:
 - Recent events
 - Recent logs
 - Bug-report generation
+- Config edit and log-open shortcuts from inside the page
 
 ## Accounts screen
 
-- Runtime account inventory
+- Details on the left
+- Runtime account list on the right
 - Add IMAP/SMTP account
 - Test connectivity
 - Set default account
+- Edit config without leaving the TUI
 - Inspect runtime-only accounts such as browser-auth Gmail setups
 
 ## Modals and overlays
@@ -80,6 +87,8 @@ Behavior:
 
 ## Discovery model
 
+- First-run onboarding walkthrough
 - Command palette: broad action surface
 - Help modal: context-aware keybinding reference
 - Hint bar: context-sensitive shortcuts, including selection-aware actions
+- `gc`: edit config globally

@@ -1,0 +1,25 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+
+const frontmatter = {
+  title: '404',
+  description: 'Page not found.',
+  template: 'splash',
+  editUrl: false,
+  pagefind: false,
+  hero: {
+    tagline: 'The page you asked for is not here.',
+    actions: [
+      { text: 'Back to docs', link: '/', icon: 'right-arrow', variant: 'primary' },
+      {
+        text: 'Open GitHub',
+        link: 'https://github.com/planetaryescape/mxr',
+        icon: 'external',
+        variant: 'minimal',
+      },
+    ],
+  },
+};
+---
+
+<StarlightPage frontmatter={frontmatter} />

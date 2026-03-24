@@ -46,9 +46,13 @@ mxr thread THREAD_ID
 - Left sidebar: system labels, user labels, saved searches
 - Center list: threads by default
 - Right pane: preview or thread view
+- First-run walkthrough after account setup, plus `o` from Help to reopen it later
+- `1`-`5`: switch Mailbox, Search, Rules, Accounts, Diagnostics
 - `Ctrl-p`: command palette
 - `?`: full help modal
-- `/`: inline mailbox search
+- `/`: full-index Search
+- `Ctrl-f`: filter only the current mailbox
+- `gc`: edit config from anywhere
 
 ## If something looks wrong
 

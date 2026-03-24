@@ -28,14 +28,15 @@ mxr rules history
 
 The Rules page gives you:
 
-- Rule list
-- Details panel
-- History panel
-- Dry-run panel
-- Form-driven create and edit flows
+- Rule list on the left
+- Guided workspace on the right
+- Overview, History, Dry Run, and Edit states
+- Multiline condition/action editing
+- Starter examples and validation help in the form flow
 
 Open it from:
 
+- `3`
 - `Ctrl-p` then `Open Rules Page`
 
 Common actions:
@@ -45,6 +46,8 @@ Common actions:
 - `e`: enable or disable
 - `D`: dry-run
 - `H`: history
+- `Enter`: refresh overview for the selected rule
+- `Ctrl-s`: save the current form
 - `#`: delete
 
 ## Supported actions
@@ -68,8 +71,8 @@ Common actions:
 
 ## Recommended workflow
 
-1. Create a rule with `mxr rules add`.
+1. Create a rule with `mxr rules add` or `n` in the TUI.
 2. Validate it with `mxr rules validate`.
-3. Check impact with `mxr rules dry-run`.
+3. Dry-run it before save or enable.
 4. Let sync execute it automatically.
-5. Inspect `mxr rules history` if anything looks off.
+5. Inspect `mxr rules history` or the Rules history pane if anything looks off.

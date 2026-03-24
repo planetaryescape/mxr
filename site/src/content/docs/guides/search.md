@@ -19,17 +19,18 @@ mxr search "label:inbox" --format ids
 
 ## Dedicated search page
 
-The TUI has both:
+The TUI has two distinct search tools:
 
-- Inline search with `/`
-- A dedicated Search page for a broader search-and-preview workflow
+- `/` from Mailbox opens Search and hits the full local index
+- `Ctrl-f` from Mailbox filters only the current mailbox view
 
-The dedicated page gives you:
+The Search page gives you:
 
 - Query input
 - Result list
 - Preview pane
-- Normal open flow into mailbox/thread interaction
+- Lexical / hybrid / semantic modes
+- Normal open flow into mailbox/thread interaction once a result is previewed
 
 ## Useful combinations
 
@@ -40,11 +41,15 @@ The dedicated page gives you:
 
 ## TUI flow
 
-1. Press `/` to start a search.
-2. Refine with fields such as `from:`, `to:`, `subject:`, `label:`, `before:`, `after:`.
-3. Use `n` and `N` to move between matches.
-4. Open results with `Enter` or `o`.
-5. Use bulk select to mutate or export the result set.
+1. Press `/` in Mailbox to jump into Search.
+2. Start typing. The Search page runs live after a short debounce.
+3. Press `Enter` to run immediately when you do not want to wait for debounce.
+4. Use `Tab` to change lexical / hybrid / semantic mode while editing, or to switch results and preview when not editing.
+5. Use `j` / `k` to move the result cursor.
+6. Use `Enter`, `o`, or `l` to open the selected result in preview.
+7. Use `Esc` to move preview -> results -> mailbox.
+
+Search is full-corpus by design. It searches beyond the currently loaded mailbox slice.
 
 ## Saved searches
 

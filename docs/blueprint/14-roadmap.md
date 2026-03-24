@@ -121,6 +121,9 @@ You can export threads for AI, define rules that auto-organize your inbox, and s
 ### Goal
 Ready for public release.
 
+> **Current state note (`v0.4.22`)**
+> Public release is already live. `cargo install mxr`, `brew install mxr`, and GitHub release tarballs are working. Current binary targets are macOS (Apple Silicon + Intel) and Linux x86_64. Treat the checklist below as remaining polish/community scope beyond that shipped baseline, not as a claim that mxr is still unreleased.
+
 ### Deliverables
 
 - [ ] **Adapter kit**: Conformance test suite. Fixture data. "How to build an adapter" documentation.

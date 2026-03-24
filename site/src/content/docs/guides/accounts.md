@@ -16,22 +16,28 @@ The TUI Accounts page is built from runtime inventory, not from config file entr
 
 Open it with:
 
+- `4`
 - `Ctrl-p` then `Open Accounts Page`
 
 Actions:
 
+- `j` / `k`: move account selection
 - `n`: new IMAP/SMTP account
-- `Enter`: edit selected account
+- `Enter` / `o`: edit selected account
 - `t`: test selected account
 - `d`: set default account
+- `c`: edit config
 - `r`: refresh runtime account inventory
 
 The page shows:
 
+- Details on the left
+- Account list on the right
 - Runtime-only Gmail accounts
 - Editable IMAP/SMTP accounts
 - Default-account state
 - Provider kind and enabled state
+- Last test/status messaging
 
 ## CLI account actions
 
@@ -53,3 +59,4 @@ Compose, reply, and forward resolve the sender from the selected/default runtime
 - Sync can run per account.
 - The daemon tracks account health in status and diagnostics.
 - Changing editable accounts in the TUI triggers daemon reload so the runtime view updates without a restart.
+- Runtime-only accounts are inspectable in the TUI even when they are not editable there.

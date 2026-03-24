@@ -56,12 +56,14 @@ Inside a thread:
 
 Two search flows:
 
-- `/`: inline mailbox search
-- Dedicated Search page: global search workspace with results + preview
+- `/`: jump into Search and query the full local index
+- `Ctrl-f`: quick filter for the current mailbox only
 
-From Search:
+- From Search:
 
-- `Enter` or `o` opens the selected result into the normal mailbox/thread flow
+- Results search every synced account and label, not just what is loaded on screen
+- `Enter`, `o`, or `l` opens the selected result in the Search preview
+- `Esc` moves preview -> results -> mailbox
 
 ## Selection and bulk actions
 
@@ -105,5 +107,6 @@ Snoozing is local-first but also updates provider state where supported. For Gma
 
 - `?`: help modal with all keybindings
 - `Ctrl-p`: command palette
+- `o` from Help: reopen the onboarding walkthrough
 
-The help modal is context-aware. The command palette exposes mailbox, search, rules, diagnostics, and account actions.
+The help modal is context-aware. The command palette exposes mailbox, search, rules, diagnostics, account actions, config edit, and logs.

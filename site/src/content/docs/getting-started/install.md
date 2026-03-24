@@ -18,6 +18,12 @@ brew tap planetaryescape/mxr
 brew install mxr
 ```
 
+## crates.io
+
+```bash
+cargo install mxr
+```
+
 ## Pre-built binaries
 
 Download from [GitHub Releases](https://github.com/planetaryescape/mxr/releases/latest):
@@ -35,18 +41,16 @@ cp mxr ~/.local/bin/  # or /usr/local/bin
 
 ## Build from source (requires Rust 1.75+)
 
-`cargo install mxr` is temporarily unavailable while the crates.io publish path is being fixed.
-
 ```bash
 git clone https://github.com/planetaryescape/mxr
 cd mxr
-cargo install --path crates/daemon --locked
+cargo install --path . --locked
 ```
 
 ## Verify installation
 
 ```bash
-mxr version
+mxr --version
 mxr doctor --check
 mxr --help
 ```

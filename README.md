@@ -10,18 +10,27 @@ Today, the shipped surfaces are the CLI, TUI, daemon socket, and agent skill. A 
 
 ```bash
 # Homebrew
-brew tap planetaryescape/mxr && brew install mxr
+brew tap planetaryescape/mxr
+brew install mxr
 
-# Pre-built binaries
-# https://github.com/planetaryescape/mxr/releases/latest
+# crates.io
+cargo install mxr
 ```
 
-Cargo install is temporarily unavailable while the crates.io publish path is being fixed. For now, use Homebrew, a release tarball, or build from source:
+Pre-built release tarballs are also available for:
+
+- macOS Apple Silicon
+- macOS Intel
+- Linux x86_64
+
+[Download the latest release](https://github.com/planetaryescape/mxr/releases/latest)
+
+If you want current `main` instead of the latest release:
 
 ```bash
 git clone https://github.com/planetaryescape/mxr
 cd mxr
-cargo install --path crates/daemon --locked
+cargo install --path . --locked
 ```
 
 Current release shape:
@@ -68,6 +77,7 @@ That works because the CLI is the canonical surface: machine-readable when you n
 
 - Search stays local after sync.
 - Opening a message is a SQLite read, not a network round trip.
+- `/` in Mailbox jumps into full-index Search. `Ctrl-f` only filters the current mailbox.
 - Reader mode keeps HTML-heavy mail readable in the terminal.
 - When you need the original rendering, open it in the browser and keep going.
 - Provider adapters go through a conformance suite instead of one-off glue.
@@ -107,7 +117,7 @@ The short version:
 
 ```bash
 mxr daemon --foreground
-mxr restart
+mxr sync
 mxr
 mxr search "is:unread" --format json
 mxr archive --search "older:30d label:notifications" --dry-run

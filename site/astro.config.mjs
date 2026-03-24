@@ -2,13 +2,15 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
+  site: 'https://mxr-mail.vercel.app',
   integrations: [
     starlight({
       title: 'mxr',
       description: 'Local-first email infrastructure for humans and agents',
-      social: {
-        github: 'https://github.com/planetaryescape/mxr',
-      },
+      disable404Route: true,
+      social: [
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/planetaryescape/mxr' },
+      ],
       customCss: [
         './src/styles/custom.css',
       ],

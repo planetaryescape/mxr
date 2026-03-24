@@ -58,7 +58,6 @@ while IFS= read -r path; do
       ;;
     .github/workflows/release.yml|scripts/release_change_scope.sh)
       cli_changed=true
-      desktop_source_changed=true
       ;;
     scripts/render_homebrew_formula.sh|scripts/publish_workspace_crates.sh)
       cli_changed=true

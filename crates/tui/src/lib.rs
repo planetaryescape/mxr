@@ -332,6 +332,8 @@ pub async fn run() -> anyhow::Result<()> {
     } else {
         app.load(&mut client).await?;
         app.maybe_show_feature_onboarding();
+        // Load accounts for sidebar account section
+        app.accounts_page.refresh_pending = true;
     }
 
     let mut terminal = ratatui::init();

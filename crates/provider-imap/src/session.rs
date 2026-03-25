@@ -122,7 +122,7 @@ impl ImapSessionFactory for XOAuth2ImapSessionFactory {
             .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
 
         let mut client = async_imap::Client::new(tls_stream);
-        let _greeting = client
+        let greeting = client
             .read_response()
             .await
             .ok_or_else(|| {
@@ -130,15 +130,23 @@ impl ImapSessionFactory for XOAuth2ImapSessionFactory {
             })?
             .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
 
-        let authenticator = XOAuth2Authenticator {
-            user: self.username.clone(),
-            access_token,
+        // If the server sent PREAUTH, the session is already authenticated.
+        let session = match greeting.parsed() {
+            async_imap::imap_proto::Response::Data {
+                status: async_imap::imap_proto::Status::PreAuth,
+                ..
+            } => client.into_session(),
+            _ => {
+                let authenticator = XOAuth2Authenticator {
+                    user: self.username.clone(),
+                    access_token,
+                };
+                client
+                    .authenticate("XOAUTH2", authenticator)
+                    .await
+                    .map_err(|(e, _)| ImapProviderError::Auth(e.to_string()))?
+            }
         };
-
-        let session = client
-            .authenticate("XOAUTH2", authenticator)
-            .await
-            .map_err(|(e, _)| ImapProviderError::Auth(e.to_string()))?;
 
         Ok(Box::new(RealImapSession { session }))
     }

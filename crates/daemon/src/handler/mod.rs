@@ -1234,7 +1234,7 @@ async fn authorize_account_config(
     account: AccountConfigData,
     reauthorize: bool,
 ) -> AccountOperationResult {
-    // Outlook device-code flow
+    // Outlook device-code flow — check sync first, fall back to send for send-only accounts
     let outlook_tenant = match &account.sync {
         Some(AccountSyncConfigData::OutlookPersonal { .. }) => {
             Some(mxr_provider_outlook::OutlookTenant::Personal)
@@ -1242,7 +1242,15 @@ async fn authorize_account_config(
         Some(AccountSyncConfigData::OutlookWork { .. }) => {
             Some(mxr_provider_outlook::OutlookTenant::Work)
         }
-        _ => None,
+        _ => match &account.send {
+            Some(AccountSendConfigData::OutlookPersonal { .. }) => {
+                Some(crate::mxr_provider_outlook::OutlookTenant::Personal)
+            }
+            Some(AccountSendConfigData::OutlookWork { .. }) => {
+                Some(crate::mxr_provider_outlook::OutlookTenant::Work)
+            }
+            _ => None,
+        },
     };
     if let Some(tenant) = outlook_tenant {
         let (client_id, token_ref) = match &account.sync {
@@ -1250,7 +1258,11 @@ async fn authorize_account_config(
                 AccountSyncConfigData::OutlookPersonal { client_id, token_ref }
                 | AccountSyncConfigData::OutlookWork { client_id, token_ref },
             ) => (client_id.clone(), token_ref.clone()),
-            _ => unreachable!(),
+            _ => match &account.send {
+                Some(AccountSendConfigData::OutlookPersonal { token_ref }
+                | AccountSendConfigData::OutlookWork { token_ref }) => (None, token_ref.clone()),
+                _ => unreachable!(),
+            },
         };
         let cid = client_id
             .or_else(|| mxr_provider_outlook::OutlookAuth::bundled_client_id().map(String::from))

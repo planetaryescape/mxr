@@ -9,7 +9,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
             let config = mxr_config::load_config().unwrap_or_default();
             if config.accounts.is_empty() {
                 println!("No accounts configured.");
-                println!("Run: mxr accounts add gmail|imap|smtp|imap-smtp");
+                println!("Run: mxr accounts add gmail|imap|smtp|imap-smtp|outlook|outlook-work");
             } else {
                 for (key, acct) in &config.accounts {
                     println!(

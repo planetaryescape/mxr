@@ -1771,6 +1771,8 @@ impl App {
             form.smtp_username.trim(),
             form.smtp_password_ref.trim(),
             form.smtp_password.trim(),
+            form.outlook_client_id.trim(),
+            form.outlook_token_ref.trim(),
         ]
         .iter()
         .any(|value| !value.is_empty())

@@ -5,6 +5,8 @@ pub enum AccountFormMode {
     Gmail,
     ImapSmtp,
     SmtpOnly,
+    OutlookPersonal,
+    OutlookWork,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +30,9 @@ pub struct AccountFormState {
     pub gmail_client_secret: String,
     pub gmail_token_ref: String,
     pub gmail_authorized: bool,
+    pub outlook_client_id: String,
+    pub outlook_token_ref: String,
+    pub outlook_authorized: bool,
     pub imap_host: String,
     pub imap_port: String,
     pub imap_username: String,
@@ -61,6 +66,9 @@ impl Default for AccountFormState {
             gmail_client_secret: String::new(),
             gmail_token_ref: String::new(),
             gmail_authorized: false,
+            outlook_client_id: String::new(),
+            outlook_token_ref: String::new(),
+            outlook_authorized: false,
             imap_host: String::new(),
             imap_port: "993".into(),
             imap_username: String::new(),

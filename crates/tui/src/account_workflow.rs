@@ -30,7 +30,12 @@ pub(crate) async fn run_account_save_workflow(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     account: AccountConfigData,
 ) -> Result<AccountOperationResult, MxrError> {
-    let mut result = if matches!(account.sync, Some(AccountSyncConfigData::Gmail { .. })) {
+    let mut result = if matches!(
+        account.sync,
+        Some(AccountSyncConfigData::Gmail { .. })
+            | Some(AccountSyncConfigData::OutlookPersonal { .. })
+            | Some(AccountSyncConfigData::OutlookWork { .. })
+    ) {
         request_account_operation(
             bg,
             Request::AuthorizeAccountConfig {

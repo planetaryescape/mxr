@@ -3,53 +3,114 @@ title: Gmail setup
 description: Connect a Gmail account to mxr.
 ---
 
-## Why you need your own Google Cloud project
+mxr connects to Gmail through the Gmail API using OAuth. You have two options for credentials:
 
-mxr ships with a default OAuth client ID for quick testing, but Google shows a prominent "unverified app" warning screen when using it. This is normal for open-source projects, Google's verification process doesn't fit the local-first model.
+1. **Bundled credentials** — mxr ships with a default OAuth client. You can use it to get started fast, but Google will show a scary "unverified app" warning during authorization because the app hasn't gone through Google's verification process (and likely never will — Google's verification requirements don't fit open-source desktop apps well).
 
-For daily use, create your own Google Cloud project. Takes about 5 minutes, removes the warning screen entirely, and means your OAuth credentials are fully under your control. You've probably done this before.
+2. **Your own credentials** (recommended) — create your own Google Cloud project. Takes about 5 minutes. No warning screens, full control over your OAuth tokens, and no dependency on mxr's bundled client. Your credentials talk directly to Google with your own project — mxr never sees them.
+
+We strongly recommend option 2. The bundled credentials work, but the unverified warning is confusing, Google may throttle shared client IDs, and your own project gives you full control. The rest of this guide walks you through creating your own credentials and connecting your account.
 
 ## Create your Google Cloud project
 
+### 1. Create the project
+
 1. Open [Google Cloud Console](https://console.cloud.google.com).
 2. Create a new project (e.g., "mxr-email").
-3. Go to **APIs & Services > Library** and enable the **Gmail API**.
-4. Go to **APIs & Services > Credentials** and click **Create Credentials > OAuth client ID**.
-5. Select **Desktop app** as the application type.
-6. Copy the **Client ID** and **Client Secret**.
+
+### 2. Enable the Gmail API
+
+:::caution
+This step is required. If you skip it, mxr will show a sync error when it tries to fetch your email.
+:::
+
+1. In your new project, go to **APIs & Services > Library**.
+2. Search for **Gmail API**.
+3. Click **Enable**.
+
+### 3. Configure the OAuth consent screen
+
+1. Go to **APIs & Services > OAuth consent screen**.
+2. Select **External** user type (unless you have a Google Workspace org).
+3. Fill in the required fields (app name, user support email, developer contact).
+4. On the **Scopes** page, add: `https://mail.google.com/`
+5. On the **Test users** page, add your own Gmail address.
+6. Click **Save and Continue** through to the end.
+
+Your app will be in "Testing" mode. This is fine — it means only the test users you added can authorize. You don't need to publish or verify the app for personal use.
+
+### 4. Create OAuth credentials
+
+1. Go to **APIs & Services > Credentials**.
+2. Click **Create Credentials > OAuth client ID**.
+3. Select **Desktop app** as the application type.
+4. Copy the **Client ID** and **Client Secret**. You'll need both in the next step.
 
 ## Connect your Gmail account
 
-1. Run:
+### CLI setup
 
 ```bash
 mxr accounts add gmail
 ```
 
-6. Enter the client id and secret when prompted.
-7. Complete browser authorization.
-8. Verify the runtime account exists:
+When prompted:
+- Select **custom** for credential source.
+- Paste your Client ID and Client Secret.
+- Complete browser authorization when it opens.
+
+Verify the account:
 
 ```bash
 mxr status
-```
-
-9. Start syncing:
-
-```bash
 mxr sync
 ```
 
-## TUI account view
+### TUI setup
 
-The TUI Accounts page shows runtime accounts, not just config-file accounts. A Gmail account added through browser auth appears there even if it's not an editable IMAP/SMTP config entry.
+1. Press `4` to open the Accounts page.
+2. Press `n` to add a new account.
+3. Fill in your name and email, select Gmail as the sync and send provider.
+4. Select **custom** for credential source and paste your Client ID and Client Secret.
+5. Press `a` to authorize (opens browser for OAuth).
+6. Press `t` to test the connection.
+7. Press `s` to save.
 
-Open it with:
+## Using bundled credentials instead
 
-- `Ctrl-p` then `Open Accounts Page`
+If you want to skip creating your own project and accept the unverified app warning:
 
-## Notes
+```bash
+mxr accounts add gmail
+# Select "bundled" when prompted for credential source
+# Browser opens — click Advanced > Go to mxr (unsafe)
+# Complete authorization
+```
 
-- Gmail runtime accounts may be runtime-only.
-- IMAP/SMTP accounts are editable through the Accounts page and config-backed.
-- Compose resolves the sender from the active/default runtime account, not from a static status string.
+This works but we recommend switching to your own credentials when you have 5 minutes. To switch later, just re-run `mxr accounts add gmail` with custom credentials — it will replace the existing account.
+
+## Troubleshooting
+
+### "Gmail API has not been used in project X" or "accessNotConfigured"
+
+You need to enable the Gmail API. Go to **APIs & Services > Library** in Google Cloud Console, search for Gmail API, and click **Enable**.
+
+### "Access blocked: This app's request is invalid" or "invalid_client"
+
+Your Client ID or Client Secret is wrong. Double-check you copied them correctly. Make sure you created a **Desktop app** credential, not a Web application.
+
+### "Access blocked: mxr has not completed the Google verification process"
+
+This is the unverified app warning when using bundled credentials. Click **Advanced** at the bottom left, then **Go to mxr (unsafe)**. If you're using your own credentials, you shouldn't see this.
+
+### "This app is blocked" (no Advanced option)
+
+Your OAuth consent screen may not have your email as a test user. Go to **OAuth consent screen > Test users** and add your Gmail address.
+
+### Test passes but sync doesn't start
+
+Make sure you saved the account after testing. In the TUI: press `t` to test, then `s` to save. The test validates credentials but doesn't persist the account until you save.
+
+### Token expired or revoked
+
+Re-authorize by running `mxr accounts add gmail` again, or in the TUI press `a` on the account to re-authorize.

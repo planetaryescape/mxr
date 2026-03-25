@@ -1453,6 +1453,117 @@ async fn authorize_account_config(
     account: AccountConfigData,
     reauthorize: bool,
 ) -> AccountOperationResult {
+    // Outlook device-code flow — check sync first, fall back to send for send-only accounts
+    let outlook_tenant = match &account.sync {
+        Some(AccountSyncConfigData::OutlookPersonal { .. }) => {
+            Some(crate::mxr_provider_outlook::OutlookTenant::Personal)
+        }
+        Some(AccountSyncConfigData::OutlookWork { .. }) => {
+            Some(crate::mxr_provider_outlook::OutlookTenant::Work)
+        }
+        _ => match &account.send {
+            Some(AccountSendConfigData::OutlookPersonal { .. }) => {
+                Some(crate::mxr_provider_outlook::OutlookTenant::Personal)
+            }
+            Some(AccountSendConfigData::OutlookWork { .. }) => {
+                Some(crate::mxr_provider_outlook::OutlookTenant::Work)
+            }
+            _ => None,
+        },
+    };
+    if let Some(tenant) = outlook_tenant {
+        let (client_id, token_ref) = match &account.sync {
+            Some(
+                AccountSyncConfigData::OutlookPersonal { client_id, token_ref }
+                | AccountSyncConfigData::OutlookWork { client_id, token_ref },
+            ) => (client_id.clone(), token_ref.clone()),
+            _ => match &account.send {
+                Some(AccountSendConfigData::OutlookPersonal { token_ref }
+                | AccountSendConfigData::OutlookWork { token_ref }) => (None, token_ref.clone()),
+                _ => unreachable!(),
+            },
+        };
+        let cid = client_id
+            .or_else(|| crate::mxr_provider_outlook::OutlookAuth::bundled_client_id().map(String::from))
+            .unwrap_or_default();
+        if cid.is_empty() {
+            return account_operation_result(
+                false,
+                "Outlook authorization requires a client ID.".into(),
+                None,
+                Some(account_step(
+                    false,
+                    "No bundled client ID and none provided. Add client_id to account config.".into(),
+                )),
+                None,
+                None,
+            );
+        }
+        let auth = crate::mxr_provider_outlook::OutlookAuth::new(cid, token_ref, tenant);
+        if !reauthorize {
+            if let Ok(Some(_)) = auth.load_tokens() {
+                return account_operation_result(
+                    true,
+                    "Outlook authorization ready.".into(),
+                    None,
+                    Some(account_step(true, "Existing OAuth token loaded.".into())),
+                    None,
+                    None,
+                );
+            }
+        }
+        let device_resp = match auth.start_device_flow().await {
+            Ok(r) => r,
+            Err(e) => {
+                return account_operation_result(
+                    false,
+                    "Outlook authorization failed.".into(),
+                    None,
+                    Some(account_step(false, e.to_string())),
+                    None,
+                    None,
+                );
+            }
+        };
+        let _ = open::that(&device_resp.verification_uri);
+        tracing::info!(
+            user_code = %device_resp.user_code,
+            url = %device_resp.verification_uri,
+            "Outlook device code flow started — user must enter code in browser"
+        );
+        return match auth.poll_for_token(&device_resp.device_code, device_resp.interval).await {
+            Ok(tokens) => {
+                if let Err(e) = auth.save_tokens(&tokens) {
+                    account_operation_result(
+                        false,
+                        "Outlook authorization failed.".into(),
+                        None,
+                        Some(account_step(false, format!("Token save failed: {e}"))),
+                        None,
+                        None,
+                    )
+                } else {
+                    account_operation_result(
+                        true,
+                        "Outlook authorization complete.".into(),
+                        None,
+                        Some(account_step(true, "Token stored successfully.".into())),
+                        None,
+                        None,
+                    )
+                }
+            }
+            Err(e) => account_operation_result(
+                false,
+                "Outlook authorization failed.".into(),
+                None,
+                Some(account_step(false, e.to_string())),
+                None,
+                None,
+            ),
+        };
+    }
+
     let Some(AccountSyncConfigData::Gmail {
         credential_source,
         client_id,
@@ -1462,11 +1573,11 @@ async fn authorize_account_config(
     else {
         return account_operation_result(
             false,
-            "Authorization is only available for Gmail accounts.".into(),
+            "Authorization is only available for Gmail and Outlook accounts.".into(),
             None,
             Some(account_step(
                 false,
-                "Selected account does not use Gmail sync.".into(),
+                "Selected account does not use Gmail or Outlook sync.".into(),
             )),
             None,
             None,
@@ -1642,12 +1753,145 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                     }
                 }
             }
+            AccountSyncConfigData::OutlookPersonal { client_id, token_ref }
+            | AccountSyncConfigData::OutlookWork { client_id, token_ref } => {
+                let tenant = match &account.sync {
+                    Some(AccountSyncConfigData::OutlookWork { .. }) => {
+                        crate::mxr_provider_outlook::OutlookTenant::Work
+                    }
+                    _ => crate::mxr_provider_outlook::OutlookTenant::Personal,
+                };
+                let cid = client_id
+                    .or_else(|| crate::mxr_provider_outlook::BUNDLED_CLIENT_ID.map(String::from));
+                match cid {
+                    None => {
+                        ok = false;
+                        sync = Some(account_step(
+                            false,
+                            "No client_id and no bundled OUTLOOK_CLIENT_ID".into(),
+                        ));
+                    }
+                    Some(cid) => {
+                        let auth_inst = std::sync::Arc::new(
+                            crate::mxr_provider_outlook::OutlookAuth::new(cid, token_ref, tenant),
+                        );
+                        let email = account.email.clone();
+                        let token_fn: std::sync::Arc<
+                            dyn Fn() -> futures::future::BoxFuture<
+                                'static,
+                                anyhow::Result<String>,
+                            > + Send
+                                + Sync,
+                        > = std::sync::Arc::new(move || {
+                            let a = auth_inst.clone();
+                            Box::pin(async move {
+                                a.get_valid_access_token()
+                                    .await
+                                    .map_err(|e| anyhow::anyhow!(e))
+                            })
+                        });
+                        let factory = crate::mxr_provider_imap::XOAuth2ImapSessionFactory::new(
+                            "outlook.office365.com".to_string(),
+                            993,
+                            email.clone(),
+                            token_fn,
+                        );
+                        let provider = crate::mxr_provider_imap::ImapProvider::with_session_factory(
+                            crate::mxr_core::AccountId::from_provider_id("outlook", &email),
+                            crate::mxr_provider_imap::config::ImapConfig {
+                                host: "outlook.office365.com".to_string(),
+                                port: 993,
+                                username: email,
+                                password_ref: String::new(),
+                                auth_required: true,
+                                use_tls: true,
+                            },
+                            Box::new(factory),
+                        );
+                        match provider.sync_labels().await {
+                            Ok(folders) => {
+                                sync = Some(account_step(
+                                    true,
+                                    format!("Outlook IMAP ok: {} folders", folders.len()),
+                                ));
+                            }
+                            Err(error) => {
+                                ok = false;
+                                sync = Some(account_step(false, error.to_string()));
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
     match account.send {
         Some(AccountSendConfigData::Gmail) => {
             send = Some(account_step(true, "Gmail send configured.".into()));
+        }
+        Some(
+            send_cfg @ (AccountSendConfigData::OutlookPersonal { .. }
+                | AccountSendConfigData::OutlookWork { .. }),
+        ) => {
+            let (token_ref, tenant) = match send_cfg {
+                AccountSendConfigData::OutlookPersonal { token_ref } => {
+                    (token_ref, crate::mxr_provider_outlook::OutlookTenant::Personal)
+                }
+                AccountSendConfigData::OutlookWork { token_ref } => {
+                    (token_ref, crate::mxr_provider_outlook::OutlookTenant::Work)
+                }
+                _ => unreachable!(),
+            };
+            let cid = crate::mxr_provider_outlook::BUNDLED_CLIENT_ID.map(String::from);
+            match cid {
+                None => {
+                    ok = false;
+                    send = Some(account_step(
+                        false,
+                        "No bundled OUTLOOK_CLIENT_ID for Outlook send".into(),
+                    ));
+                }
+                Some(cid) => {
+                    let auth_inst = std::sync::Arc::new(
+                        crate::mxr_provider_outlook::OutlookAuth::new(cid, token_ref, tenant),
+                    );
+                    let email = account.email.clone();
+                    let token_fn: std::sync::Arc<
+                        dyn Fn() -> futures::future::BoxFuture<'static, anyhow::Result<String>>
+                            + Send
+                            + Sync,
+                    > = std::sync::Arc::new(move || {
+                        let a = auth_inst.clone();
+                        Box::pin(async move {
+                            a.get_valid_access_token()
+                                .await
+                                .map_err(|e| anyhow::anyhow!(e))
+                        })
+                    });
+                    let smtp_host = match tenant {
+                        crate::mxr_provider_outlook::OutlookTenant::Personal => {
+                            "smtp-mail.outlook.com"
+                        }
+                        crate::mxr_provider_outlook::OutlookTenant::Work => "smtp.office365.com",
+                    };
+                    let provider = crate::mxr_provider_outlook::OutlookSmtpSendProvider::new(
+                        smtp_host.to_string(),
+                        587,
+                        email,
+                        token_fn,
+                    );
+                    match provider.test_connection().await {
+                        Ok(()) => {
+                            send = Some(account_step(true, "Outlook SMTP ok".into()));
+                        }
+                        Err(error) => {
+                            ok = false;
+                            send = Some(account_step(false, error));
+                        }
+                    }
+                }
+            }
         }
         Some(AccountSendConfigData::Smtp {
             host,
@@ -1795,6 +2039,14 @@ fn sync_config_to_data(sync: crate::mxr_config::SyncProviderConfig) -> AccountSy
             auth_required,
             use_tls,
         },
+        crate::mxr_config::SyncProviderConfig::OutlookPersonal {
+            client_id,
+            token_ref,
+        } => AccountSyncConfigData::OutlookPersonal { client_id, token_ref },
+        crate::mxr_config::SyncProviderConfig::OutlookWork {
+            client_id,
+            token_ref,
+        } => AccountSyncConfigData::OutlookWork { client_id, token_ref },
     }
 }
 
@@ -1815,6 +2067,8 @@ fn config_sync_kind_label(sync: &crate::mxr_config::SyncProviderConfig) -> Strin
     match sync {
         crate::mxr_config::SyncProviderConfig::Gmail { .. } => "gmail".into(),
         crate::mxr_config::SyncProviderConfig::Imap { .. } => "imap".into(),
+        crate::mxr_config::SyncProviderConfig::OutlookPersonal { .. }
+        | crate::mxr_config::SyncProviderConfig::OutlookWork { .. } => "outlook".into(),
     }
 }
 
@@ -1822,6 +2076,8 @@ fn config_send_kind_label(send: &crate::mxr_config::SendProviderConfig) -> Strin
     match send {
         crate::mxr_config::SendProviderConfig::Gmail => "gmail".into(),
         crate::mxr_config::SendProviderConfig::Smtp { .. } => "smtp".into(),
+        crate::mxr_config::SendProviderConfig::OutlookPersonal { .. }
+        | crate::mxr_config::SendProviderConfig::OutlookWork { .. } => "outlook".into(),
     }
 }
 
@@ -1839,6 +2095,8 @@ fn provider_kind_label(kind: &crate::mxr_core::ProviderKind) -> &'static str {
         crate::mxr_core::ProviderKind::Gmail => "gmail",
         crate::mxr_core::ProviderKind::Imap => "imap",
         crate::mxr_core::ProviderKind::Smtp => "smtp",
+        crate::mxr_core::ProviderKind::OutlookPersonal => "outlook-personal",
+        crate::mxr_core::ProviderKind::OutlookWork => "outlook-work",
         crate::mxr_core::ProviderKind::Fake => "fake",
     }
 }
@@ -1846,6 +2104,12 @@ fn provider_kind_label(kind: &crate::mxr_core::ProviderKind) -> &'static str {
 fn send_config_to_data(send: crate::mxr_config::SendProviderConfig) -> AccountSendConfigData {
     match send {
         crate::mxr_config::SendProviderConfig::Gmail => AccountSendConfigData::Gmail,
+        crate::mxr_config::SendProviderConfig::OutlookPersonal { token_ref } => {
+            AccountSendConfigData::OutlookPersonal { token_ref }
+        }
+        crate::mxr_config::SendProviderConfig::OutlookWork { token_ref } => {
+            AccountSendConfigData::OutlookWork { token_ref }
+        }
         crate::mxr_config::SendProviderConfig::Smtp {
             host,
             port,
@@ -1903,6 +2167,12 @@ fn sync_data_to_config(
             auth_required,
             use_tls,
         }),
+        AccountSyncConfigData::OutlookPersonal { client_id, token_ref } => {
+            Ok(crate::mxr_config::SyncProviderConfig::OutlookPersonal { client_id, token_ref })
+        }
+        AccountSyncConfigData::OutlookWork { client_id, token_ref } => {
+            Ok(crate::mxr_config::SyncProviderConfig::OutlookWork { client_id, token_ref })
+        }
     }
 }
 
@@ -1911,6 +2181,12 @@ fn send_data_to_config(
 ) -> Result<crate::mxr_config::SendProviderConfig, String> {
     match data {
         AccountSendConfigData::Gmail => Ok(crate::mxr_config::SendProviderConfig::Gmail),
+        AccountSendConfigData::OutlookPersonal { token_ref } => {
+            Ok(crate::mxr_config::SendProviderConfig::OutlookPersonal { token_ref })
+        }
+        AccountSendConfigData::OutlookWork { token_ref } => {
+            Ok(crate::mxr_config::SendProviderConfig::OutlookWork { token_ref })
+        }
         AccountSendConfigData::Smtp {
             host,
             port,

@@ -123,6 +123,7 @@ keyring = { version = "3", features = ["apple-native"] }
 base64 = "0.22"
 mail-parser = "0.9"
 url = "2"
+open = "5"
 
 # TUI extras
 nucleo = "0.5"
@@ -200,6 +201,7 @@ undoc = { version = "0.1", optional = true }
 unicode-width = { workspace = true }
 unpdf = { version = "0.2", optional = true }
 url = { workspace = true }
+open = { workspace = true }
 uuid = { workspace = true }
 which = { workspace = true }
 yup-oauth2 = { workspace = true }

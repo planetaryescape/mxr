@@ -28,6 +28,8 @@ pub mod mxr_provider_gmail;
 pub mod mxr_provider_imap;
 #[path = "../../provider-smtp/src/lib.rs"]
 pub mod mxr_provider_smtp;
+#[path = "../../provider-outlook/src/lib.rs"]
+pub mod mxr_provider_outlook;
 #[path = "../../reader/src/lib.rs"]
 pub mod mxr_reader;
 #[path = "../../rules/src/lib.rs"]

@@ -10,6 +10,7 @@ use crate::mxr_core::provider::MailSyncProvider;
 use crate::mxr_core::types::*;
 use async_trait::async_trait;
 use config::ImapConfig;
+pub use session::XOAuth2ImapSessionFactory;
 use session::{ImapSessionFactory, RealImapSessionFactory};
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};
@@ -32,8 +33,7 @@ impl ImapProvider {
         }
     }
 
-    /// Constructor for tests — inject a mock session factory.
-    #[cfg(test)]
+    /// Constructor that accepts a custom session factory (e.g. XOAuth2ImapSessionFactory).
     pub fn with_session_factory(
         account_id: AccountId,
         _config: ImapConfig,

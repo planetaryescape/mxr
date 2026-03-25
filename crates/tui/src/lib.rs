@@ -1968,6 +1968,14 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             }
             app.restore_sidebar_selection(selected_sidebar);
         }
+        DaemonEvent::SyncError { account_id, error } => {
+            app.error_modal = Some(app::ErrorModalState::new(
+                "Sync Failed",
+                format!("Account: {account_id}\n\n{error}"),
+            ));
+            app.status_message = Some(format!("Sync error: {error}"));
+            app.pending_status_refresh = true;
+        }
         _ => {}
     }
 }
@@ -4468,8 +4476,8 @@ mod tests {
         let config = crate::mxr_config::MxrConfig::default();
         let app = App::from_config(&config);
 
-        assert_eq!(app.screen, Screen::Accounts);
-        assert!(app.accounts_page.refresh_pending);
+        // Onboarding modal shows on whatever page the user is on (mailbox by default)
+        assert_eq!(app.screen, Screen::Mailbox);
         assert!(app.accounts_page.onboarding_required);
         assert!(app.accounts_page.onboarding_modal_open);
     }

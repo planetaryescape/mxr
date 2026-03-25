@@ -330,6 +330,11 @@ impl App {
         );
 
         ui::onboarding_modal::draw(frame, area, &self.onboarding, theme);
+
+        // Account setup onboarding (shown on any page when no accounts configured)
+        if self.accounts_page.onboarding_modal_open {
+            ui::accounts_page::draw_account_setup_onboarding(frame, area, theme);
+        }
     }
 }
 

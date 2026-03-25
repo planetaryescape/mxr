@@ -1076,8 +1076,6 @@ impl App {
     }
 
     pub fn enter_account_setup_onboarding(&mut self) {
-        self.screen = Screen::Accounts;
-        self.accounts_page.refresh_pending = true;
         self.accounts_page.onboarding_required = true;
         self.accounts_page.onboarding_modal_open = true;
         self.onboarding.visible = false;
@@ -1089,6 +1087,8 @@ impl App {
 
     fn complete_account_setup_onboarding(&mut self) {
         self.accounts_page.onboarding_modal_open = false;
+        self.screen = Screen::Accounts;
+        self.accounts_page.refresh_pending = true;
         self.apply(Action::OpenAccountFormNew);
     }
 

@@ -191,9 +191,7 @@ pub fn draw(
     );
     frame.render_widget(footer, detail_chunks[1]);
 
-    if state.onboarding_modal_open {
-        draw_onboarding_modal(frame, area, theme);
-    } else if state.resume_new_account_draft_prompt_open {
+    if state.resume_new_account_draft_prompt_open {
         draw_resume_new_account_draft_modal(frame, area, theme);
     }
 }
@@ -683,7 +681,11 @@ fn mask(value: &str) -> String {
     }
 }
 
-fn draw_onboarding_modal(frame: &mut Frame, area: Rect, theme: &crate::mxr_tui::theme::Theme) {
+pub fn draw_account_setup_onboarding(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &crate::mxr_tui::theme::Theme,
+) {
     let popup = centered_rect(54, 28, area);
     frame.render_widget(Clear, popup);
 

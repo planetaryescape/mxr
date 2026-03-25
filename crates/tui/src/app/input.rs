@@ -132,6 +132,21 @@ impl App {
             };
         }
 
+        if self.accounts_page.onboarding_modal_open {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Enter | KeyCode::Char(' '), _) => {
+                    self.complete_account_setup_onboarding();
+                    None
+                }
+                (KeyCode::Char('q'), _) => Some(Action::QuitView),
+                (KeyCode::Esc, _) => {
+                    self.accounts_page.onboarding_modal_open = false;
+                    None
+                }
+                _ => None,
+            };
+        }
+
         if self.help_modal_open {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Enter, _)
@@ -903,21 +918,6 @@ impl App {
     }
 
     fn handle_accounts_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        if self.accounts_page.onboarding_modal_open {
-            return match (key.code, key.modifiers) {
-                (KeyCode::Enter | KeyCode::Char(' '), _) => {
-                    self.complete_account_setup_onboarding();
-                    None
-                }
-                (KeyCode::Char('q'), _) => Some(Action::QuitView),
-                (KeyCode::Esc, _) => {
-                    self.accounts_page.onboarding_modal_open = false;
-                    None
-                }
-                _ => None,
-            };
-        }
-
         if self.accounts_page.resume_new_account_draft_prompt_open {
             return match (key.code, key.modifiers) {
                 (KeyCode::Enter | KeyCode::Char('c'), _) => {

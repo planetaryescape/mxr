@@ -1892,10 +1892,13 @@ async fn run_account_save_workflow(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     account: crate::mxr_protocol::AccountConfigData,
 ) -> Result<crate::mxr_protocol::AccountOperationResult, MxrError> {
-    let mut result = if matches!(
+    let needs_auth = matches!(
         account.sync,
         Some(crate::mxr_protocol::AccountSyncConfigData::Gmail { .. })
-    ) {
+            | Some(crate::mxr_protocol::AccountSyncConfigData::OutlookPersonal { .. })
+            | Some(crate::mxr_protocol::AccountSyncConfigData::OutlookWork { .. })
+    );
+    let mut result = if needs_auth {
         request_account_operation(
             bg,
             Request::AuthorizeAccountConfig {
@@ -2170,6 +2173,12 @@ fn account_sync_kind_label(sync: &crate::mxr_protocol::AccountSyncConfigData) ->
     match sync {
         crate::mxr_protocol::AccountSyncConfigData::Gmail { .. } => "gmail".to_string(),
         crate::mxr_protocol::AccountSyncConfigData::Imap { .. } => "imap".to_string(),
+        crate::mxr_protocol::AccountSyncConfigData::OutlookPersonal { .. } => {
+            "outlook".to_string()
+        }
+        crate::mxr_protocol::AccountSyncConfigData::OutlookWork { .. } => {
+            "outlook-work".to_string()
+        }
     }
 }
 
@@ -2177,6 +2186,12 @@ fn account_send_kind_label(send: &crate::mxr_protocol::AccountSendConfigData) ->
     match send {
         crate::mxr_protocol::AccountSendConfigData::Gmail => "gmail".to_string(),
         crate::mxr_protocol::AccountSendConfigData::Smtp { .. } => "smtp".to_string(),
+        crate::mxr_protocol::AccountSendConfigData::OutlookPersonal { .. } => {
+            "outlook".to_string()
+        }
+        crate::mxr_protocol::AccountSendConfigData::OutlookWork { .. } => {
+            "outlook-work".to_string()
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use futures::TryStreamExt;
+use futures::{future::BoxFuture, TryStreamExt};
+use std::sync::Arc;
 
 use crate::mxr_provider_imap::config::ImapConfig;
 use crate::mxr_provider_imap::error::ImapProviderError;
@@ -55,6 +56,93 @@ impl async_imap::Authenticator for AnonymousAuthenticator {
         b""
     }
 }
+
+// -- XOAUTH2 authenticator ---------------------------------------------------
+
+/// SASL XOAUTH2 authenticator for OAuth2-based IMAP login (RFC 7628 / Google protocol).
+/// Used by Outlook/Exchange and Gmail IMAP when authenticating with OAuth2 tokens.
+pub struct XOAuth2Authenticator {
+    user: String,
+    access_token: String,
+}
+
+impl async_imap::Authenticator for XOAuth2Authenticator {
+    type Response = Vec<u8>;
+
+    fn process(&mut self, _challenge: &[u8]) -> Vec<u8> {
+        // async-imap base64-encodes this before sending, so we return raw bytes.
+        format!(
+            "user={}\x01auth=Bearer {}\x01\x01",
+            self.user, self.access_token
+        )
+        .into_bytes()
+    }
+}
+
+type TokenFn =
+    Arc<dyn Fn() -> BoxFuture<'static, anyhow::Result<String>> + Send + Sync>;
+
+/// IMAP session factory that authenticates using XOAUTH2.
+/// Accepts any async token-fetching callback, decoupled from the OAuth2 provider.
+pub struct XOAuth2ImapSessionFactory {
+    host: String,
+    port: u16,
+    username: String,
+    token_fn: TokenFn,
+}
+
+impl XOAuth2ImapSessionFactory {
+    pub fn new(host: String, port: u16, username: String, token_fn: TokenFn) -> Self {
+        Self {
+            host,
+            port,
+            username,
+            token_fn,
+        }
+    }
+}
+
+#[async_trait]
+impl ImapSessionFactory for XOAuth2ImapSessionFactory {
+    async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
+        let access_token = (self.token_fn)()
+            .await
+            .map_err(|e| ImapProviderError::Auth(format!("token fetch failed: {e}")))?;
+
+        let tcp = async_std::net::TcpStream::connect((&*self.host, self.port))
+            .await
+            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
+
+        let tls = async_native_tls::TlsConnector::new();
+        let tls_stream = tls
+            .connect(&self.host, tcp)
+            .await
+            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
+
+        let mut client = async_imap::Client::new(tls_stream);
+        let _greeting = client
+            .read_response()
+            .await
+            .ok_or_else(|| {
+                ImapProviderError::Connection("no greeting from server".into())
+            })?
+            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
+
+        let authenticator = XOAuth2Authenticator {
+            user: self.username.clone(),
+            access_token,
+        };
+
+        let session = client
+            .authenticate("XOAUTH2", authenticator)
+            .await
+            .map_err(|(e, _)| ImapProviderError::Auth(e.to_string()))?;
+
+        Ok(Box::new(RealImapSession { session }))
+    }
+}
+
+// -- Password-based session factory ------------------------------------------
 
 /// Production session factory that connects via TLS to an IMAP server.
 pub struct RealImapSessionFactory {

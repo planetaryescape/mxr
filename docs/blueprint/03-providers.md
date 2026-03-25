@@ -16,12 +16,12 @@ We initially considered:
 
 **Official adapters** (maintained in main repo):
 - Gmail (MailSyncProvider + MailSendProvider)
-- SMTP (MailSendProvider only)
+- IMAP + SMTP (MailSyncProvider + MailSendProvider)
+- Outlook Personal / Outlook Work (MailSyncProvider + MailSendProvider, via IMAP + XOAUTH2)
+- SMTP standalone (MailSendProvider only)
 - Fake/Testing (both traits, in-memory, deterministic)
 
 **Community adapter candidates** (supported by interface/docs, not maintained by us):
-- IMAP (+ SMTP for send)
-- Outlook / Microsoft Graph
 - JMAP (Fastmail, etc.)
 - Proton Bridge
 - Exchange (ActiveSync)
@@ -239,6 +239,74 @@ Or:
 - Send: Gmail API (simpler, no separate SMTP config needed)
 
 The user chooses based on their needs.
+
+## Outlook adapter details
+
+### Overview
+
+mxr ships two Outlook provider variants:
+
+- **`outlook`** — personal accounts (`@outlook.com`, `@hotmail.com`, `@live.com`). Uses the `/consumers` Azure endpoint.
+- **`outlook-work`** — work/school accounts (Microsoft 365, Exchange Online). Uses the `/organizations` Azure endpoint.
+
+Both use IMAP + SMTP over XOAUTH2. Sync is via `provider-imap` with an `XOAuth2ImapSessionFactory`; send is via `provider-outlook`'s `OutlookSmtpSendProvider`.
+
+IMAP host: `outlook.office365.com:993` (TLS)
+SMTP host: `smtp.office365.com:587` (STARTTLS)
+
+### Authentication
+
+Outlook uses the OAuth2 device code flow — no browser redirect required:
+
+1. User runs `mxr accounts add outlook` (or `outlook-work`).
+2. mxr calls the Azure device authorization endpoint and prints a short user code + URL.
+3. User visits the URL and enters the code in a browser (any device).
+4. mxr polls the token endpoint until the user approves.
+5. Access + refresh tokens are stored at `~/.local/share/mxr/tokens/<token_ref>.json` (permissions `0600`).
+6. On subsequent runs, the access token is auto-refreshed when within 5 minutes of expiry.
+
+**Why device code flow?** The OAuth2 installed-app (localhost redirect) flow requires a browser on the same machine. Device code works in headless environments and is the standard pattern for CLI tools targeting Microsoft identity.
+
+### Scopes requested
+
+```
+https://outlook.office.com/IMAP.AccessAsUser.All
+https://outlook.office.com/SMTP.Send
+offline_access
+```
+
+### Azure app registration requirement
+
+Like Gmail, Outlook OAuth requires an Azure app registration. mxr can ship a bundled `client_id` compiled in at build time. Without it users must provide their own.
+
+See [18-addendum-oauth.md](18-addendum-oauth.md) for the bundled client ID mechanism and BYOC instructions.
+
+### Configuration (auto-written by `mxr accounts add`)
+
+```toml
+[accounts.personal-outlook.sync]
+provider = "outlook-personal"
+token_ref = "mxr/personal-outlook"
+# client_id = "..."  # only needed if not using bundled client ID
+
+[accounts.personal-outlook.send]
+provider = "outlook-personal"
+token_ref = "mxr/personal-outlook"
+```
+
+```toml
+[accounts.work.sync]
+provider = "outlook-work"
+token_ref = "mxr/work-outlook"
+
+[accounts.work.send]
+provider = "outlook-work"
+token_ref = "mxr/work-outlook"
+```
+
+The `token_ref` value is a path under `~/.local/share/mxr/tokens/` (without the `.json` extension). Both sync and send share the same token file.
+
+---
 
 ## Fake/Testing adapter
 

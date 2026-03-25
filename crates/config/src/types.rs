@@ -64,6 +64,18 @@ pub enum SyncProviderConfig {
         auth_required: bool,
         use_tls: bool,
     },
+    OutlookPersonal {
+        /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.
+        client_id: Option<String>,
+        /// Token file reference (e.g., "mxr/adrian-outlook").
+        token_ref: String,
+    },
+    OutlookWork {
+        /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.
+        client_id: Option<String>,
+        /// Token file reference (e.g., "mxr/work-outlook").
+        token_ref: String,
+    },
 }
 
 /// Send provider configuration (tagged enum).
@@ -79,6 +91,14 @@ pub enum SendProviderConfig {
         #[serde(default = "default_auth_required")]
         auth_required: bool,
         use_tls: bool,
+    },
+    OutlookPersonal {
+        /// Token file reference — shared with sync provider.
+        token_ref: String,
+    },
+    OutlookWork {
+        /// Token file reference — shared with sync provider.
+        token_ref: String,
     },
 }
 

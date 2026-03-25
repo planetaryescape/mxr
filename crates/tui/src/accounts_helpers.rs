@@ -68,6 +68,8 @@ fn account_sync_kind_label(sync: &AccountSyncConfigData) -> String {
     match sync {
         AccountSyncConfigData::Gmail { .. } => "gmail".to_string(),
         AccountSyncConfigData::Imap { .. } => "imap".to_string(),
+        AccountSyncConfigData::OutlookPersonal { .. } => "outlook".to_string(),
+        AccountSyncConfigData::OutlookWork { .. } => "outlook-work".to_string(),
     }
 }
 
@@ -75,5 +77,7 @@ fn account_send_kind_label(send: &AccountSendConfigData) -> String {
     match send {
         AccountSendConfigData::Gmail => "gmail".to_string(),
         AccountSendConfigData::Smtp { .. } => "smtp".to_string(),
+        AccountSendConfigData::OutlookPersonal { .. } => "outlook".to_string(),
+        AccountSendConfigData::OutlookWork { .. } => "outlook-work".to_string(),
     }
 }

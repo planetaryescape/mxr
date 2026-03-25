@@ -198,7 +198,7 @@ fn draw_form(
     theme: &crate::theme::Theme,
 ) {
     let form = &state.form;
-    let titles = ["Gmail", "IMAP + SMTP", "SMTP only"]
+    let titles = ["Gmail", "IMAP + SMTP", "SMTP only", "Outlook", "Outlook (Work)"]
         .into_iter()
         .map(Line::from)
         .collect::<Vec<_>>();
@@ -206,6 +206,8 @@ fn draw_form(
         AccountFormMode::Gmail => 0,
         AccountFormMode::ImapSmtp => 1,
         AccountFormMode::SmtpOnly => 2,
+        AccountFormMode::OutlookPersonal => 3,
+        AccountFormMode::OutlookWork => 4,
     };
 
     let layout = Layout::default()
@@ -254,14 +256,24 @@ fn draw_form(
         .collect::<Vec<_>>();
 
     body_lines.push(Line::from(""));
-    body_lines.push(Line::from(format!(
-        "Auth state: {}",
-        if form.gmail_authorized {
-            "ready"
-        } else {
-            "not verified"
+    let auth_ready = match form.mode {
+        AccountFormMode::Gmail => form.gmail_authorized,
+        AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => {
+            form.outlook_authorized
         }
-    )));
+        _ => false,
+    };
+    if matches!(
+        form.mode,
+        AccountFormMode::Gmail
+            | AccountFormMode::OutlookPersonal
+            | AccountFormMode::OutlookWork
+    ) {
+        body_lines.push(Line::from(format!(
+            "Auth state: {}",
+            if auth_ready { "ready" } else { "not authorized" }
+        )));
+    }
     body_lines.push(Line::from(""));
     body_lines.extend(account_form_hint_lines(form, &fields, theme));
     let result_lines = format_account_result_lines(form.last_result.as_ref());
@@ -320,6 +332,8 @@ fn build_fields(form: &crate::app::AccountFormState) -> Vec<(&'static str, Strin
                 AccountFormMode::Gmail => "Gmail".to_string(),
                 AccountFormMode::ImapSmtp => "IMAP + SMTP".to_string(),
                 AccountFormMode::SmtpOnly => "SMTP only".to_string(),
+                AccountFormMode::OutlookPersonal => "Outlook".to_string(),
+                AccountFormMode::OutlookWork => "Outlook (Work)".to_string(),
             },
             false,
         ),
@@ -394,6 +408,10 @@ fn build_fields(form: &crate::app::AccountFormState) -> Vec<(&'static str, Strin
                 ("SMTP password", mask(&form.smtp_password), true),
             ]);
         }
+        AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => {
+            fields.push(("Azure client ID", form.outlook_client_id.clone(), true));
+            fields.push(("Token ref", form.outlook_token_ref.clone(), false));
+        }
     }
 
     fields
@@ -432,7 +450,8 @@ fn account_form_hint_lines(
 
 fn account_field_help_text(label: &str) -> &'static str {
     match label {
-        "Mode" => "Choose Gmail OAuth, IMAP + SMTP, or SMTP-only.",
+        "Mode" => "Choose Gmail OAuth, IMAP + SMTP, SMTP-only, Outlook (personal @outlook.com), or Outlook (Work) for Microsoft 365/Exchange.",
+        "Azure client ID" => "Optional: your own Azure app client ID. Leave blank to use the bundled mxr client ID (if available). Register at portal.azure.com as a multi-tenant public client app.",
         "Account key" => "Short internal ID used in config and secret refs, like work or personal.",
         "Display name" => "Shown as the sender name on outgoing mail.",
         "Email" => "Primary email address for this account.",

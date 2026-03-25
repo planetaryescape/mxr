@@ -167,7 +167,7 @@ impl OutlookAuth {
         interval: u64,
     ) -> Result<OutlookTokens, OutlookError> {
         let client = reqwest::Client::new();
-        let poll_interval = std::time::Duration::from_secs(interval.max(5));
+        let mut poll_interval = std::time::Duration::from_secs(interval.max(5));
 
         loop {
             tokio::time::sleep(poll_interval).await;
@@ -202,6 +202,11 @@ impl OutlookAuth {
                 }
                 Some("authorization_pending") => {
                     // Normal — user hasn't completed auth yet, keep polling
+                    continue;
+                }
+                Some("slow_down") => {
+                    // RFC 8628 §3.5: increase interval by 5 seconds and keep polling
+                    poll_interval += std::time::Duration::from_secs(5);
                     continue;
                 }
                 Some("authorization_declined") => {

@@ -212,6 +212,7 @@ fn action_name(action: &Action) -> Option<&'static str> {
         | Action::ConfirmUnsubscribeOnly
         | Action::ConfirmUnsubscribeAndArchiveSender
         | Action::CancelUnsubscribe
-        | Action::PatternSelect(_) => None,
+        | Action::PatternSelect(_)
+        | Action::SwitchAccount(_) => None,
     }
 }

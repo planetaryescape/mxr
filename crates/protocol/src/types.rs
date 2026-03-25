@@ -155,6 +155,7 @@ pub enum Request {
     },
     ListSavedSearches,
     ListSubscriptions {
+        account_id: Option<AccountId>,
         limit: u32,
     },
     GetSemanticStatus,

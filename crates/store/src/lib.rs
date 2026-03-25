@@ -461,7 +461,7 @@ mod tests {
         store.upsert_envelope(&trashed).await.unwrap();
         store.upsert_envelope(&no_unsub).await.unwrap();
 
-        let subscriptions = store.list_subscriptions(10).await.unwrap();
+        let subscriptions = store.list_subscriptions(None, 10).await.unwrap();
         assert_eq!(subscriptions.len(), 1);
         assert_eq!(subscriptions[0].sender_email, "hello@readwise.io");
         assert_eq!(subscriptions[0].message_count, 2);

@@ -909,7 +909,7 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::ListSubscriptions { limit: 500 }).await;
+                let resp = ipc_call(&bg, Request::ListSubscriptions { account_id: None, limit: 500 }).await;
                 let result = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Subscriptions { subscriptions },
@@ -1398,7 +1398,29 @@ pub async fn run() -> anyhow::Result<()> {
                                 Some(format!("Mailbox refresh failed: {e}"));
                         }
                         AsyncResult::AccountOperation(Ok(result)) => {
+                            let was_switch = app.pending_account_switch;
+                            app.pending_account_switch = false;
                             app.apply_account_operation_result(result);
+                            if was_switch {
+                                // Clear stale data from previous account
+                                app.viewing_envelope = None;
+                                app.envelopes.clear();
+                                app.all_envelopes.clear();
+                                app.search_page.results.clear();
+                                app.subscriptions_page.entries.clear();
+                                app.active_label = None;
+                                app.pending_active_label = None;
+                                app.pending_label_fetch = None;
+                                app.selected_index = 0;
+                                app.scroll_offset = 0;
+                                // Trigger full refresh for new account
+                                app.pending_labels_refresh = true;
+                                app.pending_all_envelopes_refresh = true;
+                                app.pending_subscriptions_refresh = true;
+                                app.pending_status_refresh = true;
+                                app.desired_system_mailbox = Some("INBOX".into());
+                                app.status_message = Some("Account switched".into());
+                            }
                         }
                         AsyncResult::AccountOperation(Err(e)) => {
                             app.accounts_page.operation_in_flight = false;
@@ -1453,7 +1475,13 @@ pub async fn run() -> anyhow::Result<()> {
                             let selected_id =
                                 app.selected_mail_row().map(|row| row.representative.id);
                             app.envelopes = envelopes;
-                            app.active_label = app.pending_active_label.take();
+                            // Only update active_label when this is a user-initiated
+                            // label switch (pending_active_label was set). For
+                            // refresh-only fetches triggered by sync or mutations,
+                            // pending_active_label is None — preserve current label.
+                            if app.pending_active_label.is_some() {
+                                app.active_label = app.pending_active_label.take();
+                            }
                             restore_mail_list_selection(&mut app, selected_id);
                             app.queue_body_window();
                         }

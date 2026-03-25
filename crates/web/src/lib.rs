@@ -1793,7 +1793,7 @@ async fn build_bridge_chrome(
     };
 
     let subscriptions =
-        match ipc_request(socket_path, Request::ListSubscriptions { limit: 8 }).await? {
+        match ipc_request(socket_path, Request::ListSubscriptions { account_id: None, limit: 8 }).await? {
             ResponseData::Subscriptions { subscriptions } => subscriptions,
             _ => return Err(BridgeError::UnexpectedResponse),
         };
@@ -2708,7 +2708,7 @@ mod tests {
                         searches: vec![saved_search.clone()],
                     },
                 }),
-                Request::ListSubscriptions { limit: 8 } => Some(Response::Ok {
+                Request::ListSubscriptions { account_id: None, limit: 8 } => Some(Response::Ok {
                     data: ResponseData::Subscriptions {
                         subscriptions: vec![subscription.clone()],
                     },
@@ -2798,7 +2798,7 @@ mod tests {
                         searches: vec![saved_search.clone()],
                     },
                 }),
-                Request::ListSubscriptions { limit: 8 } => Some(Response::Ok {
+                Request::ListSubscriptions { account_id: None, limit: 8 } => Some(Response::Ok {
                     data: ResponseData::Subscriptions {
                         subscriptions: vec![subscription.clone()],
                     },

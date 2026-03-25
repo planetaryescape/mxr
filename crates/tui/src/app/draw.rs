@@ -83,25 +83,7 @@ impl App {
                     ui::sidebar::draw(
                         frame,
                         chunks[0],
-                        &ui::sidebar::SidebarView {
-                            labels: &self.labels,
-                            active_pane: &self.active_pane,
-                            saved_searches: &self.saved_searches,
-                            sidebar_selected: self.sidebar_selected,
-                            all_mail_active: !self.search_active
-                                && self.mailbox_view == MailboxView::Messages
-                                && self.active_label.is_none()
-                                && self.pending_active_label.is_none(),
-                            subscriptions_active: self.mailbox_view == MailboxView::Subscriptions,
-                            subscription_count: self.subscriptions_page.entries.len(),
-                            system_expanded: self.sidebar_system_expanded,
-                            user_expanded: self.sidebar_user_expanded,
-                            saved_searches_expanded: self.sidebar_saved_searches_expanded,
-                            active_label: self
-                                .pending_active_label
-                                .as_ref()
-                                .or(self.active_label.as_ref()),
-                        },
+                        &self.sidebar_view(),
                         theme,
                     );
 
@@ -146,25 +128,7 @@ impl App {
                     ui::sidebar::draw(
                         frame,
                         chunks[0],
-                        &ui::sidebar::SidebarView {
-                            labels: &self.labels,
-                            active_pane: &self.active_pane,
-                            saved_searches: &self.saved_searches,
-                            sidebar_selected: self.sidebar_selected,
-                            all_mail_active: !self.search_active
-                                && self.mailbox_view == MailboxView::Messages
-                                && self.active_label.is_none()
-                                && self.pending_active_label.is_none(),
-                            subscriptions_active: self.mailbox_view == MailboxView::Subscriptions,
-                            subscription_count: self.subscriptions_page.entries.len(),
-                            system_expanded: self.sidebar_system_expanded,
-                            user_expanded: self.sidebar_user_expanded,
-                            saved_searches_expanded: self.sidebar_saved_searches_expanded,
-                            active_label: self
-                                .pending_active_label
-                                .as_ref()
-                                .or(self.active_label.as_ref()),
-                        },
+                        &self.sidebar_view(),
                         theme,
                     );
 

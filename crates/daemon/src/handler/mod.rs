@@ -168,8 +168,8 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         }
         Request::GetHeaders { message_id } => diagnostics::get_headers(state, message_id).await,
         Request::ListSavedSearches => diagnostics::list_saved_searches(state).await,
-        Request::ListSubscriptions { limit } => {
-            diagnostics::list_subscriptions(state, *limit).await
+        Request::ListSubscriptions { account_id, limit } => {
+            diagnostics::list_subscriptions(state, account_id.as_ref(), *limit).await
         }
         Request::GetSemanticStatus => diagnostics::semantic_status(state).await,
         Request::EnableSemantic { enabled } => diagnostics::enable_semantic(state, *enabled).await,

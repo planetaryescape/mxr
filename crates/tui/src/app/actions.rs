@@ -162,6 +162,11 @@ impl App {
                         Some("Runtime-only account cannot be set default from TUI.".into());
                 }
             }
+            Action::SwitchAccount(key) => {
+                self.pending_account_set_default = Some(key);
+                self.pending_account_switch = true;
+                self.status_message = Some("Switching account...".into());
+            }
             Action::MoveDown => {
                 if self.screen == Screen::Search {
                     if self.search_page.selected_index + 1 < self.search_row_count() {

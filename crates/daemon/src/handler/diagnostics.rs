@@ -184,10 +184,18 @@ pub(super) async fn list_saved_searches(state: &Arc<AppState>) -> HandlerResult 
     Ok(ResponseData::SavedSearches { searches })
 }
 
-pub(super) async fn list_subscriptions(state: &Arc<AppState>, limit: u32) -> HandlerResult {
+pub(super) async fn list_subscriptions(
+    state: &Arc<AppState>,
+    account_id: Option<&AccountId>,
+    limit: u32,
+) -> HandlerResult {
+    // Resolve to default account if not specified
+    let resolved = account_id
+        .cloned()
+        .or_else(|| state.default_account_id_opt());
     let subscriptions = state
         .store
-        .list_subscriptions(limit)
+        .list_subscriptions(resolved.as_ref(), limit)
         .await
         .map_err(|e| e.to_string())?;
     Ok(ResponseData::Subscriptions { subscriptions })

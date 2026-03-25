@@ -177,6 +177,7 @@ pub struct SubscriptionEntry {
 
 #[derive(Debug, Clone)]
 pub enum SidebarItem {
+    Account(crate::mxr_protocol::AccountSummaryData),
     AllMail,
     Subscriptions,
     Label(Label),
@@ -185,6 +186,7 @@ pub enum SidebarItem {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SidebarSelectionKey {
+    Account(String),
     AllMail,
     Subscriptions,
     Label(crate::mxr_core::LabelId),
@@ -686,6 +688,9 @@ pub struct App {
     pub pending_account_test: Option<crate::mxr_protocol::AccountConfigData>,
     pub pending_account_authorize: Option<(crate::mxr_protocol::AccountConfigData, bool)>,
     pub pending_account_set_default: Option<String>,
+    /// True when the set-default was triggered from sidebar account switching
+    /// (vs the Accounts tab). Used to trigger full state reset on completion.
+    pub pending_account_switch: bool,
     pub sidebar_selected: usize,
     pub sidebar_section: SidebarSection,
     pub help_modal_open: bool,
@@ -730,6 +735,7 @@ pub struct App {
     pub visual_anchor: Option<usize>,
     pub pending_export_thread: Option<crate::mxr_core::id::ThreadId>,
     pub snooze_config: crate::mxr_config::SnoozeConfig,
+    pub sidebar_accounts_expanded: bool,
     pub sidebar_system_expanded: bool,
     pub sidebar_user_expanded: bool,
     pub sidebar_saved_searches_expanded: bool,
@@ -826,6 +832,7 @@ impl App {
             pending_account_test: None,
             pending_account_authorize: None,
             pending_account_set_default: None,
+            pending_account_switch: false,
             sidebar_selected: 0,
             sidebar_section: SidebarSection::Labels,
             help_modal_open: false,
@@ -870,6 +877,7 @@ impl App {
             visual_anchor: None,
             pending_export_thread: None,
             snooze_config: snooze_config.clone(),
+            sidebar_accounts_expanded: true,
             sidebar_system_expanded: true,
             sidebar_user_expanded: true,
             sidebar_saved_searches_expanded: true,
@@ -925,6 +933,16 @@ impl App {
 
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
         let mut items = Vec::new();
+        // Accounts section (only shown when multiple accounts exist)
+        let sync_accounts: Vec<_> = self
+            .accounts_page
+            .accounts
+            .iter()
+            .filter(|a| a.sync_kind.is_some())
+            .collect();
+        if sync_accounts.len() > 1 && self.sidebar_accounts_expanded {
+            items.extend(sync_accounts.into_iter().cloned().map(SidebarItem::Account));
+        }
         let mut system_labels = Vec::new();
         let mut user_labels = Vec::new();
         for label in self.visible_labels() {
@@ -953,12 +971,50 @@ impl App {
         items
     }
 
+    pub fn sidebar_view(&self) -> crate::mxr_tui::ui::sidebar::SidebarView<'_> {
+        use crate::mxr_tui::ui::sidebar::{AccountInfo, SidebarView};
+        let accounts: Vec<AccountInfo> = self
+            .accounts_page
+            .accounts
+            .iter()
+            .filter(|a| a.sync_kind.is_some())
+            .map(|a| AccountInfo {
+                email: a.email.clone(),
+                is_default: a.is_default,
+            })
+            .collect();
+        SidebarView {
+            labels: &self.labels,
+            active_pane: &self.active_pane,
+            saved_searches: &self.saved_searches,
+            sidebar_selected: self.sidebar_selected,
+            all_mail_active: !self.search_active
+                && self.mailbox_view == MailboxView::Messages
+                && self.active_label.is_none()
+                && self.pending_active_label.is_none(),
+            subscriptions_active: self.mailbox_view == MailboxView::Subscriptions,
+            subscription_count: self.subscriptions_page.entries.len(),
+            accounts,
+            accounts_expanded: self.sidebar_accounts_expanded,
+            system_expanded: self.sidebar_system_expanded,
+            user_expanded: self.sidebar_user_expanded,
+            saved_searches_expanded: self.sidebar_saved_searches_expanded,
+            active_label: self
+                .pending_active_label
+                .as_ref()
+                .or(self.active_label.as_ref()),
+        }
+    }
+
     pub fn selected_sidebar_item(&self) -> Option<SidebarItem> {
         self.sidebar_items().get(self.sidebar_selected).cloned()
     }
 
     pub(crate) fn selected_sidebar_key(&self) -> Option<SidebarSelectionKey> {
         self.selected_sidebar_item().map(|item| match item {
+            SidebarItem::Account(account) => {
+                SidebarSelectionKey::Account(account.key.clone().unwrap_or_default())
+            }
             SidebarItem::AllMail => SidebarSelectionKey::AllMail,
             SidebarItem::Subscriptions => SidebarSelectionKey::Subscriptions,
             SidebarItem::Label(label) => SidebarSelectionKey::Label(label.id),
@@ -970,6 +1026,9 @@ impl App {
         let items = self.sidebar_items();
         match selection.and_then(|selection| {
             items.iter().position(|item| match (item, &selection) {
+                (SidebarItem::Account(account), SidebarSelectionKey::Account(key)) => {
+                    account.key.as_deref() == Some(key.as_str())
+                }
                 (SidebarItem::AllMail, SidebarSelectionKey::AllMail) => true,
                 (SidebarItem::Subscriptions, SidebarSelectionKey::Subscriptions) => true,
                 (SidebarItem::Label(label), SidebarSelectionKey::Label(label_id)) => {
@@ -1680,6 +1739,15 @@ impl App {
     /// Get the contextual envelope: the one being viewed, or the selected one.
     fn context_envelope(&self) -> Option<&Envelope> {
         if self.screen == Screen::Search {
+            // In the results pane, prefer the selected search result so that
+            // multi-select (ToggleSelect) targets the highlighted row rather
+            // than a stale viewing_envelope left over from the mailbox.
+            if self.search_page.active_pane == SearchPane::Results {
+                return self
+                    .selected_search_envelope()
+                    .or_else(|| self.focused_thread_envelope())
+                    .or(self.viewing_envelope.as_ref());
+            }
             return self
                 .focused_thread_envelope()
                 .or(self.viewing_envelope.as_ref())
@@ -1847,6 +1915,17 @@ impl App {
 
     fn sidebar_select(&mut self) -> Option<Action> {
         match self.selected_sidebar_item() {
+            Some(SidebarItem::Account(account)) => {
+                if let Some(key) = account.key {
+                    if !account.is_default {
+                        Some(Action::SwitchAccount(key))
+                    } else {
+                        None // already active
+                    }
+                } else {
+                    None
+                }
+            }
             Some(SidebarItem::AllMail) => Some(Action::GoToAllMail),
             Some(SidebarItem::Subscriptions) => Some(Action::OpenSubscriptions),
             Some(SidebarItem::Label(label)) => Some(Action::SelectLabel(label.id)),
@@ -2057,9 +2136,10 @@ impl App {
                 SidebarGroup::SystemLabels
             }
             Some(SidebarItem::Label(_)) => SidebarGroup::UserLabels,
-            Some(SidebarItem::AllMail) | Some(SidebarItem::Subscriptions) | None => {
-                SidebarGroup::SystemLabels
-            }
+            Some(SidebarItem::Account(_))
+            | Some(SidebarItem::AllMail)
+            | Some(SidebarItem::Subscriptions)
+            | None => SidebarGroup::SystemLabels,
         }
     }
 

@@ -46,7 +46,7 @@ fn render_table(subscriptions: &[SubscriptionSummary]) {
 
 pub async fn run(limit: u32, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let resp = client.request(Request::ListSubscriptions { limit }).await?;
+    let resp = client.request(Request::ListSubscriptions { account_id: None, limit }).await?;
 
     let fmt = resolve_format(format);
     match resp {

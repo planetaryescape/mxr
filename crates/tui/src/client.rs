@@ -192,7 +192,7 @@ impl Client {
         &mut self,
         limit: u32,
     ) -> Result<Vec<crate::mxr_core::types::SubscriptionSummary>, MxrError> {
-        let resp = self.request(Request::ListSubscriptions { limit }).await?;
+        let resp = self.request(Request::ListSubscriptions { account_id: None, limit }).await?;
         match resp {
             Response::Ok {
                 data: ResponseData::Subscriptions { subscriptions },

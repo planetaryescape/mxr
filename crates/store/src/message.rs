@@ -691,6 +691,7 @@ impl super::Store {
 
     pub async fn list_subscriptions(
         &self,
+        account_id: Option<&AccountId>,
         limit: u32,
     ) -> Result<Vec<SubscriptionSummary>, sqlx::Error> {
         let none_unsubscribe = serde_json::to_string(&UnsubscribeMethod::None).unwrap();
@@ -698,6 +699,7 @@ impl super::Store {
         let spam_flag = MessageFlags::SPAM.bits() as i64;
         let cutoff = future_date_cutoff_timestamp();
         let lim = limit as i64;
+        let account_id_str = account_id.map(|id| id.to_string());
 
         let rows = sqlx::query(
             r#"WITH ranked AS (
@@ -728,6 +730,7 @@ impl super::Store {
                   AND unsubscribe_method != ?
                   AND (flags & ?) = 0
                   AND (flags & ?) = 0
+                  AND (? IS NULL OR account_id = ?)
             )
             SELECT
                 id,
@@ -753,6 +756,8 @@ impl super::Store {
         .bind(none_unsubscribe)
         .bind(trash_flag)
         .bind(spam_flag)
+        .bind(&account_id_str)
+        .bind(&account_id_str)
         .bind(cutoff)
         .bind(lim)
         .fetch_all(self.reader())

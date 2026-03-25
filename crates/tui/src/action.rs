@@ -118,6 +118,9 @@ pub enum Action {
     // --- Phase 2: Export ---
     ExportThread,
 
+    // --- Account switching ---
+    SwitchAccount(String),
+
     // Help
     Help,
 

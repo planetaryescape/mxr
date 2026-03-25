@@ -4,6 +4,11 @@ use crate::mxr_tui::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+pub struct AccountInfo {
+    pub email: String,
+    pub is_default: bool,
+}
+
 pub struct SidebarView<'a> {
     pub labels: &'a [Label],
     pub active_pane: &'a ActivePane,
@@ -12,6 +17,8 @@ pub struct SidebarView<'a> {
     pub all_mail_active: bool,
     pub subscriptions_active: bool,
     pub subscription_count: usize,
+    pub accounts: Vec<AccountInfo>,
+    pub accounts_expanded: bool,
     pub system_expanded: bool,
     pub user_expanded: bool,
     pub saved_searches_expanded: bool,
@@ -22,6 +29,7 @@ pub struct SidebarView<'a> {
 enum SidebarEntry<'a> {
     Separator,
     Header { title: &'static str, expanded: bool },
+    Account { email: String, is_default: bool },
     AllMail,
     Subscriptions { count: usize },
     Label(&'a Label),
@@ -37,6 +45,8 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
         view.labels,
         view.saved_searches,
         view.subscription_count,
+        &view.accounts,
+        view.accounts_expanded,
         view.system_expanded,
         view.user_expanded,
         view.saved_searches_expanded,
@@ -60,6 +70,9 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
                 ),
                 Span::styled(*title, Style::default().fg(theme.accent).bold()),
             ])),
+            SidebarEntry::Account { email, is_default } => {
+                render_account_item(inner_width, email, *is_default, theme)
+            }
             SidebarEntry::AllMail => render_all_mail_item(inner_width, view.all_mail_active, theme),
             SidebarEntry::Subscriptions { count } => {
                 render_subscriptions_item(inner_width, *count, view.subscriptions_active, theme)
@@ -92,6 +105,8 @@ fn build_sidebar_entries<'a>(
     labels: &'a [Label],
     saved_searches: &'a [SavedSearch],
     subscription_count: usize,
+    accounts: &[AccountInfo],
+    accounts_expanded: bool,
     system_expanded: bool,
     user_expanded: bool,
     saved_searches_expanded: bool,
@@ -118,10 +133,27 @@ fn build_sidebar_entries<'a>(
         .collect();
     user_labels.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
 
-    let mut entries = vec![SidebarEntry::Header {
+    let mut entries = Vec::new();
+
+    // Accounts section (only shown when multiple accounts exist)
+    if accounts.len() > 1 {
+        entries.push(SidebarEntry::Header {
+            title: "Accounts",
+            expanded: accounts_expanded,
+        });
+        if accounts_expanded {
+            entries.extend(accounts.iter().map(|a| SidebarEntry::Account {
+                email: a.email.clone(),
+                is_default: a.is_default,
+            }));
+        }
+        entries.push(SidebarEntry::Separator);
+    }
+
+    entries.push(SidebarEntry::Header {
         title: "System",
         expanded: system_expanded,
-    }];
+    });
     if system_expanded {
         entries.extend(system_labels.into_iter().map(SidebarEntry::Label));
     }
@@ -166,7 +198,8 @@ fn visual_index_for_selection(
     let mut selectable = 0usize;
     for (visual_index, entry) in entries.iter().enumerate() {
         match entry {
-            SidebarEntry::AllMail
+            SidebarEntry::Account { .. }
+            | SidebarEntry::AllMail
             | SidebarEntry::Subscriptions { .. }
             | SidebarEntry::Label(_)
             | SidebarEntry::SavedSearch(_) => {
@@ -179,6 +212,28 @@ fn visual_index_for_selection(
         }
     }
     None
+}
+
+fn render_account_item<'a>(
+    inner_width: usize,
+    email: &str,
+    is_default: bool,
+    theme: &Theme,
+) -> ListItem<'a> {
+    let indicator = if is_default { " ●" } else { "" };
+    let name_part = format!("  {}", email);
+    let line = if is_default {
+        let padding = inner_width.saturating_sub(name_part.len() + indicator.len());
+        format!("{}{}{}", name_part, " ".repeat(padding), indicator)
+    } else {
+        name_part
+    };
+    let style = if is_default {
+        Style::default().fg(theme.accent).bold()
+    } else {
+        Style::default().fg(theme.text_muted)
+    };
+    ListItem::new(line).style(style)
 }
 
 fn render_all_mail_item<'a>(inner_width: usize, is_active: bool, theme: &Theme) -> ListItem<'a> {
@@ -356,7 +411,7 @@ mod tests {
             label("INBOX", LabelKind::System),
             label("Work", LabelKind::User),
         ];
-        let entries = build_sidebar_entries(&labels, &[], 3, true, true, true);
+        let entries = build_sidebar_entries(&labels, &[], 3, &[], true, true, true, true);
         assert!(matches!(
             entries[0],
             SidebarEntry::Header {
@@ -398,7 +453,7 @@ mod tests {
             position: 0,
             created_at: chrono::Utc::now(),
         }];
-        let entries = build_sidebar_entries(&labels, &searches, 2, true, true, true);
+        let entries = build_sidebar_entries(&labels, &searches, 2, &[], true, true, true, true);
         assert_eq!(visual_index_for_selection(&entries, 0), Some(1));
         assert_eq!(visual_index_for_selection(&entries, 1), Some(2));
         assert_eq!(visual_index_for_selection(&entries, 2), Some(3));

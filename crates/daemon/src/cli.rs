@@ -676,6 +676,20 @@ pub enum RulesAction {
 pub enum ConfigAction {
     /// Show config file path
     Path,
+    /// Open config in $EDITOR
+    Edit,
+    /// Get a config value
+    Get {
+        /// Dotted key path (e.g. general.sync_interval, appearance.theme)
+        key: String,
+    },
+    /// Set a config value
+    Set {
+        /// Dotted key path (e.g. general.sync_interval, appearance.theme)
+        key: String,
+        /// Value to set
+        value: String,
+    },
 }
 
 #[derive(Subcommand)]

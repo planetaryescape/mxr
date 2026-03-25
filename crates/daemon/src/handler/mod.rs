@@ -1857,8 +1857,14 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                                 .map_err(|e| anyhow::anyhow!(e))
                         })
                     });
+                    let smtp_host = match tenant {
+                        crate::mxr_provider_outlook::OutlookTenant::Personal => {
+                            "smtp-mail.outlook.com"
+                        }
+                        crate::mxr_provider_outlook::OutlookTenant::Work => "smtp.office365.com",
+                    };
                     let provider = crate::mxr_provider_outlook::OutlookSmtpSendProvider::new(
-                        "smtp.office365.com".to_string(),
+                        smtp_host.to_string(),
                         587,
                         email,
                         token_fn,

@@ -114,10 +114,23 @@ impl<R: Read + Write + Unpin> ImapStream<R> {
         match res {
             Ok(response) => Ok(Some(response)),
             Err((heads, err)) => {
-                self.buffer.return_block(heads);
                 match err {
-                    Some(err) => Err(err),
-                    None => Ok(None),
+                    Some(err) => {
+                        // Parse error: advance past the first \r\n so the stream stays
+                        // healthy for subsequent reads (e.g. servers send unrecognized
+                        // untagged responses like NAMESPACE that imap_proto can't parse).
+                        let used = self.buffer.used();
+                        if let Some(pos) = heads[..used].windows(2).position(|w| w == b"\r\n") {
+                            self.buffer.reset_with_data(&heads[pos + 2..used]);
+                        } else {
+                            self.buffer.return_block(heads);
+                        }
+                        Err(err)
+                    }
+                    None => {
+                        self.buffer.return_block(heads);
+                        Ok(None)
+                    }
                 }
             }
         }

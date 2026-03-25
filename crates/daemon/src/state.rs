@@ -306,9 +306,15 @@ impl AppState {
                             .map_err(|e| anyhow::anyhow!(e))
                     })
                 });
+                let smtp_host = match tenant {
+                    crate::mxr_provider_outlook::OutlookTenant::Personal => {
+                        "smtp-mail.outlook.com"
+                    }
+                    crate::mxr_provider_outlook::OutlookTenant::Work => "smtp.office365.com",
+                };
                 let send_provider = Arc::new(
                     crate::mxr_provider_outlook::OutlookSmtpSendProvider::new(
-                        "smtp.office365.com".to_string(),
+                        smtp_host.to_string(),
                         587,
                         acct_config.email.clone(),
                         token_fn,

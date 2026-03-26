@@ -136,8 +136,15 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
                     .map_err(|e| e.to_string())
             }
             MutationCommand::ModifyLabels { add, remove, .. } => {
+                let labels = state
+                    .store
+                    .list_labels_by_account(&envelope.account_id)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let resolved_add = resolve_to_provider_ids(&labels, add);
+                let resolved_remove = resolve_to_provider_ids(&labels, remove);
                 provider
-                    .modify_labels(provider_id, add, remove)
+                    .modify_labels(provider_id, &resolved_add, &resolved_remove)
                     .await
                     .map_err(|e| e.to_string())?;
                 persist_local_label_changes(state, message_id, add, remove)
@@ -145,10 +152,16 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
                     .map_err(|e| e.to_string())
             }
             MutationCommand::Move { target_label, .. } => {
+                let labels = state
+                    .store
+                    .list_labels_by_account(&envelope.account_id)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let resolved_target = resolve_to_provider_ids(&labels, std::slice::from_ref(target_label));
                 provider
                     .modify_labels(
                         provider_id,
-                        std::slice::from_ref(target_label),
+                        &resolved_target,
                         &["INBOX".to_string()],
                     )
                     .await
@@ -529,6 +542,29 @@ pub(super) async fn unsubscribe(
             }
         }
     }
+}
+
+/// Resolve label references (names or provider IDs) to provider IDs.
+///
+/// Both the TUI and CLI send label display names (e.g. "Follow Up") but
+/// the Gmail API requires provider IDs (e.g. "Label_123"). This function
+/// looks up each reference in the account's label list and returns the
+/// corresponding provider_id. If no match is found the original string
+/// is passed through (handles system labels like "INBOX", "SPAM" where
+/// name == provider_id).
+fn resolve_to_provider_ids(
+    labels: &[crate::mxr_core::types::Label],
+    refs: &[String],
+) -> Vec<String> {
+    refs.iter()
+        .map(|label_ref| {
+            labels
+                .iter()
+                .find(|l| l.name == *label_ref || l.provider_id == *label_ref)
+                .map(|l| l.provider_id.clone())
+                .unwrap_or_else(|| label_ref.clone())
+        })
+        .collect()
 }
 
 pub(super) async fn set_flags(

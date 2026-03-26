@@ -60,6 +60,7 @@ fn get_config_value(config: &crate::mxr_config::MxrConfig, key: &str) -> anyhow:
             .unwrap_or_else(|| "(not set)".into())),
         "render.reader_mode" => Ok(config.render.reader_mode.to_string()),
         "render.show_reader_stats" => Ok(config.render.show_reader_stats.to_string()),
+        "render.html_remote_content" => Ok(config.render.html_remote_content.to_string()),
         // search
         "search.default_sort" => Ok(format!("{:?}", config.search.default_sort).to_lowercase()),
         "search.max_results" => Ok(config.search.max_results.to_string()),
@@ -81,7 +82,7 @@ fn get_config_value(config: &crate::mxr_config::MxrConfig, key: &str) -> anyhow:
         "appearance.date_format" => Ok(config.appearance.date_format.clone()),
         "appearance.date_format_full" => Ok(config.appearance.date_format_full.clone()),
         "appearance.subject_max_width" => Ok(config.appearance.subject_max_width.to_string()),
-        _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats\n  search.default_sort, search.max_results, search.semantic.enabled\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme, appearance.sidebar, appearance.date_format, appearance.date_format_full, appearance.subject_max_width"),
+        _ => anyhow::bail!("Unknown config key: {key}\n\nAvailable keys:\n  general.editor, general.default_account, general.sync_interval, general.hook_timeout, general.attachment_dir\n  render.html_command, render.reader_mode, render.show_reader_stats, render.html_remote_content\n  search.default_sort, search.max_results, search.semantic.enabled\n  snooze.morning_hour, snooze.evening_hour, snooze.weekend_day, snooze.weekend_hour\n  logging.level, logging.max_size_mb, logging.max_files, logging.stderr, logging.event_retention_days\n  appearance.theme, appearance.sidebar, appearance.date_format, appearance.date_format_full, appearance.subject_max_width"),
     }
 }
 
@@ -114,6 +115,9 @@ fn set_config_value(
         }
         "render.show_reader_stats" => {
             config.render.show_reader_stats = parse_bool(value)?;
+        }
+        "render.html_remote_content" => {
+            config.render.html_remote_content = parse_bool(value)?;
         }
         // search
         "search.max_results" => {

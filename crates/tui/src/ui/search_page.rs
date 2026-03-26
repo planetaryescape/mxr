@@ -21,6 +21,10 @@ pub fn draw(
     mail_list_mode: MailListMode,
     preview_messages: &[message_view::ThreadMessageBlock],
     preview_scroll: u16,
+    html_images: &mut std::collections::HashMap<
+        crate::mxr_core::MessageId,
+        std::collections::HashMap<String, crate::mxr_tui::terminal_images::HtmlImageEntry>,
+    >,
     theme: &crate::mxr_tui::theme::Theme,
 ) {
     let chunks = Layout::default()
@@ -112,6 +116,7 @@ pub fn draw(
             preview_scroll,
             &preview_active_pane,
             theme,
+            html_images,
         );
     }
 }

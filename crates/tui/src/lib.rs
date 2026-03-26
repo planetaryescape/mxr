@@ -5,6 +5,7 @@ pub mod desktop_manifest;
 pub mod input;
 pub mod keybindings;
 pub mod local_state;
+pub mod terminal_images;
 pub mod theme;
 pub mod ui;
 
@@ -13,7 +14,8 @@ use crate::mxr_core::MxrError;
 use crate::mxr_protocol::{DaemonEvent, Request, Response, ResponseData};
 use app::{App, AttachmentOperation, ComposeAction, PendingSend};
 use client::Client;
-use crossterm::event::{Event, EventStream};
+use crossterm::event::EventStream;
+use ratatui::crossterm::event::Event;
 use futures::StreamExt;
 use std::path::Path;
 use std::process::Stdio;
@@ -171,6 +173,7 @@ fn request_supports_retry(request: &Request) -> bool {
             | Request::ListEnvelopesByIds { .. }
             | Request::GetEnvelope { .. }
             | Request::GetBody { .. }
+            | Request::GetHtmlImageAssets { .. }
             | Request::ListBodies { .. }
             | Request::GetThread { .. }
             | Request::ListLabels { .. }
@@ -337,6 +340,7 @@ pub async fn run() -> anyhow::Result<()> {
     }
 
     let mut terminal = ratatui::init();
+    app.set_terminal_image_support(crate::mxr_tui::terminal_images::TerminalImageSupport::detect());
     let mut events = EventStream::new();
 
     // Channels for async results
@@ -441,6 +445,58 @@ pub async fn run() -> anyhow::Result<()> {
                 };
                 let _ = tx.send(AsyncResult::Bodies { requested, result });
             });
+        }
+
+        if !app.queued_html_image_asset_fetches.is_empty() {
+            let ids = std::mem::take(&mut app.queued_html_image_asset_fetches);
+            for message_id in ids {
+                app.in_flight_html_image_asset_requests
+                    .insert(message_id.clone());
+                let bg = bg.clone();
+                let tx = result_tx.clone();
+                let allow_remote = app.remote_content_enabled;
+                tokio::spawn(async move {
+                    let resp = ipc_call(
+                        &bg,
+                        Request::GetHtmlImageAssets {
+                            message_id: message_id.clone(),
+                            allow_remote,
+                        },
+                    )
+                    .await;
+                    let result = match resp {
+                        Ok(Response::Ok {
+                            data: ResponseData::HtmlImageAssets { assets, .. },
+                        }) => Ok(assets),
+                        Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                        Err(error) => Err(error),
+                        _ => Err(MxrError::Ipc("unexpected response".into())),
+                    };
+                    let _ = tx.send(AsyncResult::HtmlImageAssets {
+                        message_id,
+                        allow_remote,
+                        result,
+                    });
+                });
+            }
+        }
+
+        if !app.queued_html_image_decodes.is_empty() {
+            let keys = std::mem::take(&mut app.queued_html_image_decodes);
+            for key in keys {
+                let path = app
+                    .html_image_assets
+                    .get(&key.message_id)
+                    .and_then(|assets| assets.get(&key.source))
+                    .and_then(|entry| entry.asset.path.clone());
+                if let Some(path) = path {
+                    crate::mxr_tui::terminal_images::spawn_image_decode(
+                        key,
+                        path,
+                        result_tx.clone(),
+                    );
+                }
+            }
         }
 
         if let Some(thread_id) = app.pending_thread_fetch.take() {
@@ -1519,6 +1575,45 @@ pub async fn run() -> anyhow::Result<()> {
                                 app.resolve_body_fetch_error(&message_id, message.clone());
                             }
                         }
+                        AsyncResult::HtmlImageAssets {
+                            message_id,
+                            allow_remote,
+                            result: Ok(assets),
+                        } => {
+                            app.resolve_html_image_assets_success(
+                                message_id,
+                                assets,
+                                allow_remote,
+                            );
+                        }
+                        AsyncResult::HtmlImageAssets {
+                            message_id,
+                            result: Err(error),
+                            ..
+                        } => {
+                            app.resolve_html_image_assets_error(&message_id, error.to_string());
+                        }
+                        AsyncResult::HtmlImageDecoded { key, result: Ok(image) } => {
+                            if let Some(support) = app.html_image_support.as_ref() {
+                                let protocol =
+                                    support.build_protocol(image, key.clone(), result_tx.clone());
+                                app.resolve_html_image_protocol(&key, protocol);
+                            } else {
+                                app.resolve_html_image_failure(
+                                    &key,
+                                    "terminal image support unavailable".into(),
+                                );
+                            }
+                        }
+                        AsyncResult::HtmlImageDecoded { key, result: Err(error) } => {
+                            app.resolve_html_image_failure(&key, error.to_string());
+                        }
+                        AsyncResult::HtmlImageResized { key, result: Ok(response) } => {
+                            app.resolve_html_image_resize(&key, response);
+                        }
+                        AsyncResult::HtmlImageResized { key, result: Err(error) } => {
+                            app.resolve_html_image_failure(&key, error.to_string());
+                        }
                         AsyncResult::Thread {
                             thread_id,
                             result: Ok((thread, messages)),
@@ -1669,7 +1764,7 @@ pub async fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-enum AsyncResult {
+pub(crate) enum AsyncResult {
     Search {
         target: app::SearchTarget,
         append: bool,
@@ -1704,6 +1799,19 @@ enum AsyncResult {
         requested: Vec<crate::mxr_core::MessageId>,
         result: Result<Vec<crate::mxr_core::MessageBody>, MxrError>,
     },
+    HtmlImageAssets {
+        message_id: crate::mxr_core::MessageId,
+        allow_remote: bool,
+        result: Result<Vec<crate::mxr_core::types::HtmlImageAsset>, MxrError>,
+    },
+    HtmlImageDecoded {
+        key: crate::mxr_tui::terminal_images::HtmlImageKey,
+        result: Result<image::DynamicImage, MxrError>,
+    },
+    HtmlImageResized {
+        key: crate::mxr_tui::terminal_images::HtmlImageKey,
+        result: Result<ratatui_image::thread::ResizeResponse, MxrError>,
+    },
     Thread {
         thread_id: crate::mxr_core::ThreadId,
         result: Result<(crate::mxr_core::Thread, Vec<crate::mxr_core::Envelope>), MxrError>,
@@ -1715,19 +1823,19 @@ enum AsyncResult {
     DaemonEvent(DaemonEvent),
 }
 
-struct ComposeReadyData {
+pub(crate) struct ComposeReadyData {
     draft_path: std::path::PathBuf,
     cursor_line: usize,
     initial_content: String,
 }
 
-struct SearchResultData {
+pub(crate) struct SearchResultData {
     envelopes: Vec<crate::mxr_core::types::Envelope>,
     scores: std::collections::HashMap<crate::mxr_core::MessageId, f32>,
     has_more: bool,
 }
 
-struct StatusSnapshot {
+pub(crate) struct StatusSnapshot {
     uptime_secs: u64,
     daemon_pid: Option<u32>,
     accounts: Vec<String>,
@@ -1735,7 +1843,7 @@ struct StatusSnapshot {
     sync_statuses: Vec<crate::mxr_protocol::AccountSyncStatus>,
 }
 
-struct UnsubscribeResultData {
+pub(crate) struct UnsubscribeResultData {
     archived_ids: Vec<crate::mxr_core::MessageId>,
     message: String,
 }
@@ -2191,7 +2299,7 @@ fn account_send_kind_label(send: &crate::mxr_protocol::AccountSendConfigData) ->
 mod tests {
     use super::action::Action;
     use super::app::{
-        ActivePane, App, BodySource, BodyViewState, LayoutMode, MutationEffect,
+        ActivePane, App, BodySource, BodyViewMetadata, BodyViewState, LayoutMode, MutationEffect,
         PendingSearchRequest, Screen, SearchPane, SearchTarget, SidebarItem, SEARCH_PAGE_SIZE,
     };
     use super::input::InputHandler;
@@ -2209,7 +2317,7 @@ mod tests {
     use crate::mxr_core::MxrError;
     use crate::mxr_protocol::{DaemonEvent, LabelCount, MutationCommand, Request};
     use crate::test_fixtures::TestEnvelopeBuilder;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use mxr_test_support::render_to_string;
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
@@ -3441,6 +3549,7 @@ mod tests {
             raw: "Hello".into(),
             rendered: "Hello".into(),
             source: BodySource::Plain,
+            metadata: BodyViewMetadata::default(),
         };
         assert_eq!(app.body_view_state.display_text(), Some("Hello"));
         app.apply(Action::CloseMessageView);
@@ -4677,6 +4786,9 @@ mod tests {
                     message_id: env.id.clone(),
                     filename: "report.pdf".into(),
                     mime_type: "application/pdf".into(),
+                    disposition: crate::mxr_core::types::AttachmentDisposition::Attachment,
+                    content_id: None,
+                    content_location: None,
                     size_bytes: 1024,
                     local_path: None,
                     provider_id: "att-1".into(),
@@ -4717,6 +4829,9 @@ mod tests {
                     message_id: env.id.clone(),
                     filename: "report.pdf".into(),
                     mime_type: "application/pdf".into(),
+                    disposition: crate::mxr_core::types::AttachmentDisposition::Attachment,
+                    content_id: None,
+                    content_location: None,
                     size_bytes: 1024,
                     local_path: None,
                     provider_id: "att-1".into(),
@@ -5090,6 +5205,7 @@ mod tests {
                 ref raw,
                 ref rendered,
                 source: BodySource::Plain,
+                ..
             } if raw == "Plain body" && rendered == "Plain body"
         ));
     }
@@ -5121,6 +5237,7 @@ mod tests {
                 ref raw,
                 ref rendered,
                 source: BodySource::Html,
+                ..
             } if raw == "<p>Hello html</p>"
                 && rendered.contains("Hello html")
                 && !rendered.contains("<p>")
@@ -5254,5 +5371,159 @@ mod tests {
             }
             other => panic!("expected ready state, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn html_view_toggle_updates_mode_and_remote_content_status() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        let env = app.envelopes[0].clone();
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some("Fallback plain".into()),
+                text_html: Some(
+                    "<p>Hello <img alt=\"Hero\" src=\"https://example.com/hero.png\"></p>".into(),
+                ),
+                attachments: vec![AttachmentMeta {
+                    id: AttachmentId::new(),
+                    message_id: env.id.clone(),
+                    filename: "logo.png".into(),
+                    mime_type: "image/png".into(),
+                    disposition: AttachmentDisposition::Inline,
+                    content_id: Some("logo@example.com".into()),
+                    content_location: None,
+                    size_bytes: 2048,
+                    local_path: None,
+                    provider_id: "att-inline".into(),
+                }],
+                fetched_at: chrono::Utc::now(),
+                metadata: MessageMetadata {
+                    text_plain_source: Some(BodyPartSource::Exact),
+                    text_html_source: Some(BodyPartSource::Exact),
+                    ..Default::default()
+                },
+            },
+        );
+
+        app.apply(Action::OpenSelected);
+
+        match &app.body_view_state {
+            BodyViewState::Ready {
+                source: BodySource::Plain,
+                metadata,
+                ..
+            } => {
+                assert_eq!(metadata.mode, super::app::BodyViewMode::Text);
+                assert!(metadata.inline_images);
+                assert!(metadata.remote_content_available);
+                assert!(metadata.remote_content_enabled);
+            }
+            other => panic!("expected text ready state, got {other:?}"),
+        }
+
+        app.apply(Action::ToggleHtmlView);
+
+        match &app.body_view_state {
+            BodyViewState::Ready {
+                source: BodySource::Html,
+                metadata,
+                ..
+            } => {
+                assert_eq!(metadata.mode, super::app::BodyViewMode::Html);
+                assert!(metadata.inline_images);
+                assert!(metadata.remote_content_available);
+                assert!(metadata.remote_content_enabled);
+            }
+            other => panic!("expected html ready state, got {other:?}"),
+        }
+        assert!(app
+            .status_bar_state()
+            .body_status
+            .as_deref()
+            .is_some_and(|status| status.contains("remote:on")));
+
+        app.apply(Action::ToggleRemoteContent);
+
+        match &app.body_view_state {
+            BodyViewState::Ready { metadata, .. } => {
+                assert_eq!(metadata.mode, super::app::BodyViewMode::Html);
+                assert!(!metadata.remote_content_enabled);
+            }
+            other => panic!("expected html ready state, got {other:?}"),
+        }
+        assert!(app
+            .status_bar_state()
+            .body_status
+            .as_deref()
+            .is_some_and(|status| status.contains("remote:off")));
+    }
+
+    #[test]
+    fn reader_mode_toggle_is_blocked_in_html_view() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        let env = app.envelopes[0].clone();
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: None,
+                text_html: Some("<p>Hello html</p>".into()),
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: MessageMetadata {
+                    text_html_source: Some(BodyPartSource::Exact),
+                    ..Default::default()
+                },
+            },
+        );
+
+        app.apply(Action::OpenSelected);
+        app.apply(Action::ToggleHtmlView);
+        let reader_mode_before = app.reader_mode;
+
+        app.apply(Action::ToggleReaderMode);
+
+        assert_eq!(app.reader_mode, reader_mode_before);
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Reader mode only applies in text view")
+        );
+    }
+
+    #[test]
+    fn reader_stats_visibility_respects_config() {
+        let mut app = App::new();
+        app.body_view_state = BodyViewState::Ready {
+            raw: "Hello".into(),
+            rendered: "Hello".into(),
+            source: BodySource::Plain,
+            metadata: BodyViewMetadata {
+                mode: super::app::BodyViewMode::Text,
+                provenance: Some(BodyPartSource::Exact),
+                reader_applied: true,
+                original_lines: Some(12),
+                cleaned_lines: Some(7),
+                ..BodyViewMetadata::default()
+            },
+        };
+
+        app.show_reader_stats = false;
+        assert!(app
+            .status_bar_state()
+            .body_status
+            .as_deref()
+            .is_some_and(|status| !status.contains("reader:7/12")));
+
+        app.show_reader_stats = true;
+        assert!(app
+            .status_bar_state()
+            .body_status
+            .as_deref()
+            .is_some_and(|status| status.contains("reader:7/12")));
     }
 }

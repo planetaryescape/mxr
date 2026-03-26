@@ -83,16 +83,18 @@ impl App {
                     ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
 
                     if self.mailbox_view == MailboxView::Subscriptions {
+                        let preview_blocks = self.thread_message_blocks();
                         ui::subscriptions_page::draw(
                             frame,
                             chunks[1],
-                            &ui::subscriptions_page::SubscriptionsPageView {
+                            &mut ui::subscriptions_page::SubscriptionsPageView {
                                 entries: &self.subscriptions_page.entries,
                                 selected_index: self.selected_index,
                                 scroll_offset: self.scroll_offset,
                                 active_pane: &self.active_pane,
-                                preview_blocks: &self.thread_message_blocks(),
+                                preview_blocks: &preview_blocks,
                                 message_scroll_offset: self.message_scroll_offset,
+                                html_images: &mut self.html_image_assets,
                             },
                             theme,
                         );
@@ -123,16 +125,18 @@ impl App {
                     ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
 
                     if self.mailbox_view == MailboxView::Subscriptions {
+                        let preview_blocks = self.thread_message_blocks();
                         ui::subscriptions_page::draw(
                             frame,
                             chunks[1],
-                            &ui::subscriptions_page::SubscriptionsPageView {
+                            &mut ui::subscriptions_page::SubscriptionsPageView {
                                 entries: &self.subscriptions_page.entries,
                                 selected_index: self.selected_index,
                                 scroll_offset: self.scroll_offset,
                                 active_pane: &self.active_pane,
-                                preview_blocks: &self.thread_message_blocks(),
+                                preview_blocks: &preview_blocks,
                                 message_scroll_offset: self.message_scroll_offset,
+                                html_images: &mut self.html_image_assets,
                             },
                             theme,
                         );
@@ -156,45 +160,52 @@ impl App {
                             },
                             theme,
                         );
+                        let preview_blocks = self.thread_message_blocks();
                         ui::message_view::draw(
                             frame,
                             inner[1],
-                            &self.thread_message_blocks(),
+                            &preview_blocks,
                             self.message_scroll_offset,
                             &self.active_pane,
                             theme,
+                            &mut self.html_image_assets,
                         );
                     }
                 }
                 LayoutMode::FullScreen => {
                     if self.mailbox_view == MailboxView::Subscriptions {
+                        let preview_blocks = self.thread_message_blocks();
                         ui::subscriptions_page::draw(
                             frame,
                             content_area,
-                            &ui::subscriptions_page::SubscriptionsPageView {
+                            &mut ui::subscriptions_page::SubscriptionsPageView {
                                 entries: &self.subscriptions_page.entries,
                                 selected_index: self.selected_index,
                                 scroll_offset: self.scroll_offset,
                                 active_pane: &self.active_pane,
-                                preview_blocks: &self.thread_message_blocks(),
+                                preview_blocks: &preview_blocks,
                                 message_scroll_offset: self.message_scroll_offset,
+                                html_images: &mut self.html_image_assets,
                             },
                             theme,
                         );
                     } else {
+                        let preview_blocks = self.thread_message_blocks();
                         ui::message_view::draw(
                             frame,
                             content_area,
-                            &self.thread_message_blocks(),
+                            &preview_blocks,
                             self.message_scroll_offset,
                             &self.active_pane,
                             theme,
+                            &mut self.html_image_assets,
                         );
                     }
                 }
             },
             Screen::Search => {
                 let rows = self.search_mail_list_rows();
+                let preview_blocks = self.thread_message_blocks();
                 ui::search_page::draw(
                     frame,
                     content_area,
@@ -202,8 +213,9 @@ impl App {
                     &rows,
                     &self.selected_set,
                     self.search_list_mode(),
-                    &self.thread_message_blocks(),
+                    &preview_blocks,
                     self.message_scroll_offset,
+                    &mut self.html_image_assets,
                     theme,
                 );
             }

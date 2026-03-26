@@ -1,6 +1,56 @@
 use super::*;
 
 impl App {
+    fn current_message_source_text(&self) -> Option<String> {
+        let body = self.current_viewing_body()?;
+        let BodyViewState::Ready { raw, .. } = &self.body_view_state else {
+            return None;
+        };
+
+        let mut source = String::new();
+        if let Some(headers) = body.metadata.raw_headers.as_deref() {
+            source.push_str(headers.trim_end());
+            source.push_str("\n\n");
+        }
+        source.push_str(raw);
+        Some(source)
+    }
+
+    fn open_current_message_source(&mut self) {
+        let Some(source) = self.current_message_source_text() else {
+            self.status_message = Some("No exact message source available".into());
+            return;
+        };
+
+        let Some(message_id) = self.viewing_envelope.as_ref().map(|env| env.id.as_str().to_string())
+        else {
+            self.status_message = Some("No message selected".into());
+            return;
+        };
+
+        let dir = crate::mxr_config::data_dir().join("source");
+        if let Err(error) = std::fs::create_dir_all(&dir) {
+            self.status_message = Some(format!("Failed to prepare source dir: {error}"));
+            return;
+        }
+
+        let path = dir.join(format!("{message_id}.txt"));
+        if let Err(error) = std::fs::write(&path, source) {
+            self.status_message = Some(format!("Failed to write source file: {error}"));
+            return;
+        }
+
+        let editor = crate::mxr_compose::editor::resolve_editor(None);
+        match std::process::Command::new(&editor).arg(&path).spawn() {
+            Ok(_) => {
+                self.status_message = Some(format!("Opened source: {}", path.display()));
+            }
+            Err(error) => {
+                self.status_message = Some(format!("Failed to launch editor '{editor}': {error}"));
+            }
+        }
+    }
+
     pub fn tick(&mut self) {
         self.input.check_timeout();
         if self.search_is_pending() {
@@ -1031,27 +1081,46 @@ impl App {
                 }
             }
             Action::OpenInBrowser => {
-                if let Some(env) = self.context_envelope() {
-                    let url = format!(
-                        "https://mail.google.com/mail/u/0/#inbox/{}",
-                        env.provider_id
-                    );
-                    #[cfg(target_os = "macos")]
-                    let _ = std::process::Command::new("open").arg(&url).spawn();
-                    #[cfg(target_os = "linux")]
-                    let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
-                    self.status_message = Some("Opened in browser".into());
-                }
+                self.open_current_message_source();
             }
 
             // Phase 2: Reader mode
             Action::ToggleReaderMode => {
-                if let BodyViewState::Ready { .. } = self.body_view_state {
+                if self.html_view {
+                    self.status_message = Some("Reader mode only applies in text view".into());
+                } else if let BodyViewState::Ready { .. } = self.body_view_state {
                     self.reader_mode = !self.reader_mode;
                     if let Some(env) = self.viewing_envelope.clone() {
                         self.body_view_state = self.resolve_body_view_state(&env);
                     }
                 }
+            }
+            Action::ToggleHtmlView => {
+                self.html_view = !self.html_view;
+                if self.html_view {
+                    self.queue_html_assets_for_current_view();
+                }
+                if let Some(env) = self.viewing_envelope.clone() {
+                    self.body_view_state = self.resolve_body_view_state(&env);
+                }
+                self.status_message = Some(if self.html_view {
+                    "HTML view enabled".into()
+                } else {
+                    "Text view enabled".into()
+                });
+            }
+            Action::ToggleRemoteContent => {
+                self.remote_content_enabled = !self.remote_content_enabled;
+                self.invalidate_html_assets_for_current_view();
+                self.queue_html_assets_for_current_view();
+                if let Some(env) = self.viewing_envelope.clone() {
+                    self.body_view_state = self.resolve_body_view_state(&env);
+                }
+                self.status_message = Some(if self.remote_content_enabled {
+                    "Remote content enabled".into()
+                } else {
+                    "Remote content disabled".into()
+                });
             }
             Action::ToggleSignature => {
                 self.signature_expanded = !self.signature_expanded;

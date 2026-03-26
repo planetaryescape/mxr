@@ -239,7 +239,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Mail".into(),
         },
         PaletteCommand {
-            label: "Open In Browser".into(),
+            label: "Open Message Source".into(),
             shortcut: "O".into(),
             action: Action::OpenInBrowser,
             category: "Mail".into(),
@@ -248,6 +248,18 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             label: "Toggle Reader Mode".into(),
             shortcut: "R".into(),
             action: Action::ToggleReaderMode,
+            category: "View".into(),
+        },
+        PaletteCommand {
+            label: "Toggle HTML View".into(),
+            shortcut: "H".into(),
+            action: Action::ToggleHtmlView,
+            category: "View".into(),
+        },
+        PaletteCommand {
+            label: "Toggle Remote Content".into(),
+            shortcut: "M".into(),
+            action: Action::ToggleRemoteContent,
             category: "View".into(),
         },
         PaletteCommand {

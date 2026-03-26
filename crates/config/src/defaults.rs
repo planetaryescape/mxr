@@ -18,6 +18,7 @@ impl Default for RenderConfig {
             html_command: None,
             reader_mode: true,
             show_reader_stats: true,
+            html_remote_content: true,
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::mxr_tui::action::Action;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
 
 const MULTI_KEY_TIMEOUT: Duration = Duration::from_millis(500);

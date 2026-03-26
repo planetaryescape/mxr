@@ -138,6 +138,8 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
                 "star",
                 "attachment_list",
                 "toggle_reader_mode",
+                "toggle_html_view",
+                "toggle_remote_content",
                 "help",
             ],
         ),
@@ -166,6 +168,8 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
                     "attachment_list",
                     "open_links",
                     "toggle_reader_mode",
+                    "toggle_html_view",
+                    "toggle_remote_content",
                     "help",
                 ],
             );

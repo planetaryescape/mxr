@@ -27,10 +27,10 @@ impl super::Store {
 
         let att_mid = message_id.as_str();
         let started_at = std::time::Instant::now();
-        let attachments_rows = sqlx::query!(
-            r#"SELECT id as "id!", message_id as "message_id!", filename as "filename!", mime_type as "mime_type!", size_bytes as "size_bytes!", local_path, provider_id as "provider_id!" FROM attachments WHERE message_id = ?"#,
-            att_mid,
+        let attachments_rows = sqlx::query(
+            r#"SELECT id, message_id, filename, mime_type, disposition, content_id, content_location, size_bytes, local_path, provider_id FROM attachments WHERE message_id = ?"#,
         )
+        .bind(att_mid)
         .fetch_all(self.reader())
         .await?;
         trace_query("body.get_body.attachments", started_at, attachments_rows.len());
@@ -39,13 +39,20 @@ impl super::Store {
             .into_iter()
             .map(|r| {
                 Ok(AttachmentMeta {
-                    id: decode_id(&r.id)?,
-                    message_id: decode_id(&r.message_id)?,
-                    filename: r.filename,
-                    mime_type: r.mime_type,
-                    size_bytes: r.size_bytes as u64,
-                    local_path: r.local_path.map(std::path::PathBuf::from),
-                    provider_id: r.provider_id,
+                    id: decode_id(r.try_get::<&str, _>("id")?)?,
+                    message_id: decode_id(r.try_get::<&str, _>("message_id")?)?,
+                    filename: r.try_get("filename")?,
+                    mime_type: r.try_get("mime_type")?,
+                    disposition: decode_attachment_disposition(r.try_get::<&str, _>(
+                        "disposition",
+                    )?)?,
+                    content_id: r.try_get("content_id")?,
+                    content_location: r.try_get("content_location")?,
+                    size_bytes: r.try_get::<i64, _>("size_bytes")? as u64,
+                    local_path: r
+                        .try_get::<Option<String>, _>("local_path")?
+                        .map(std::path::PathBuf::from),
+                    provider_id: r.try_get("provider_id")?,
                 })
             })
             .collect::<Result<_, sqlx::Error>>()?;
@@ -85,21 +92,44 @@ impl super::Store {
                 .as_ref()
                 .map(|p| p.to_string_lossy().to_string());
             let size_bytes = att.size_bytes as i64;
-            sqlx::query!(
-                "INSERT OR REPLACE INTO attachments (id, message_id, filename, mime_type, size_bytes, local_path, provider_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
-                att_id,
-                att_mid,
-                att.filename,
-                att.mime_type,
-                size_bytes,
-                local_path,
-                att.provider_id,
+            let disposition = encode_attachment_disposition(att.disposition);
+            sqlx::query(
+                "INSERT OR REPLACE INTO attachments (id, message_id, filename, mime_type, disposition, content_id, content_location, size_bytes, local_path, provider_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
+            .bind(att_id)
+            .bind(att_mid)
+            .bind(&att.filename)
+            .bind(&att.mime_type)
+            .bind(disposition)
+            .bind(&att.content_id)
+            .bind(&att.content_location)
+            .bind(size_bytes)
+            .bind(local_path)
+            .bind(&att.provider_id)
             .execute(self.writer())
             .await?;
         }
 
         Ok(())
+    }
+}
+
+fn encode_attachment_disposition(disposition: AttachmentDisposition) -> &'static str {
+    match disposition {
+        AttachmentDisposition::Attachment => "attachment",
+        AttachmentDisposition::Inline => "inline",
+        AttachmentDisposition::Unspecified => "unspecified",
+    }
+}
+
+fn decode_attachment_disposition(value: &str) -> Result<AttachmentDisposition, sqlx::Error> {
+    match value {
+        "attachment" => Ok(AttachmentDisposition::Attachment),
+        "inline" => Ok(AttachmentDisposition::Inline),
+        "unspecified" => Ok(AttachmentDisposition::Unspecified),
+        other => Err(sqlx::Error::Protocol(format!(
+            "invalid attachment disposition: {other}"
+        ))),
     }
 }

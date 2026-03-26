@@ -10,7 +10,7 @@ content_language: []
 from:
   email: noid@example.com
   name: No Id
-html_present: true
+html_present: false
 message_id: ~
 plain_excerpt: This message omits Message-ID on purpose.
 subject: Missing message id

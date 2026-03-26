@@ -158,6 +158,7 @@ pub(crate) fn request_supports_retry(request: &Request) -> bool {
             | Request::ListEnvelopesByIds { .. }
             | Request::GetEnvelope { .. }
             | Request::GetBody { .. }
+            | Request::GetHtmlImageAssets { .. }
             | Request::ListBodies { .. }
             | Request::GetThread { .. }
             | Request::ListLabels { .. }

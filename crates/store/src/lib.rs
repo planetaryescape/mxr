@@ -287,19 +287,43 @@ mod tests {
                 message_id: env.id.clone(),
                 filename: "report.pdf".to_string(),
                 mime_type: "application/pdf".to_string(),
+                disposition: AttachmentDisposition::Inline,
+                content_id: Some("report@example.com".to_string()),
+                content_location: Some("https://example.com/report.pdf".to_string()),
                 size_bytes: 50000,
                 local_path: None,
                 provider_id: "att-1".to_string(),
             }],
             fetched_at: chrono::Utc::now(),
-            metadata: MessageMetadata::default(),
+            metadata: MessageMetadata {
+                text_plain_format: Some(TextPlainFormat::Flowed { delsp: true }),
+                text_plain_source: Some(BodyPartSource::Exact),
+                text_html_source: Some(BodyPartSource::Exact),
+                ..MessageMetadata::default()
+            },
         };
         store.insert_body(&body).await.unwrap();
 
         let fetched = store.get_body(&env.id).await.unwrap().unwrap();
         assert_eq!(fetched.text_plain, body.text_plain);
+        assert_eq!(fetched.text_html, body.text_html);
+        assert_eq!(fetched.metadata.text_plain_format, body.metadata.text_plain_format);
+        assert_eq!(fetched.metadata.text_plain_source, body.metadata.text_plain_source);
+        assert_eq!(fetched.metadata.text_html_source, body.metadata.text_html_source);
         assert_eq!(fetched.attachments.len(), 1);
         assert_eq!(fetched.attachments[0].filename, "report.pdf");
+        assert_eq!(
+            fetched.attachments[0].disposition,
+            AttachmentDisposition::Inline
+        );
+        assert_eq!(
+            fetched.attachments[0].content_id.as_deref(),
+            Some("report@example.com")
+        );
+        assert_eq!(
+            fetched.attachments[0].content_location.as_deref(),
+            Some("https://example.com/report.pdf")
+        );
     }
 
     #[tokio::test]

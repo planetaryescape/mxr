@@ -1,10 +1,11 @@
 use crate::mxr_compose::parse::{
-    body_unsubscribe_from_html, calendar_metadata_from_text, decode_format_flowed,
+    body_unsubscribe_from_html, calendar_metadata_from_text,
     parse_address_list as parse_rfc_address_list, parse_headers_from_pairs,
 };
 use crate::mxr_core::{
-    AccountId, Address, AttachmentId, AttachmentMeta, Envelope, MessageBody, MessageFlags,
-    MessageId, TextPlainFormat, ThreadId, UnsubscribeMethod,
+    AccountId, Address, AttachmentDisposition, AttachmentId, AttachmentMeta, BodyPartSource,
+    Envelope, MessageBody, MessageFlags, MessageId, TextPlainFormat, ThreadId,
+    UnsubscribeMethod,
 };
 use crate::mxr_provider_gmail::types::{GmailHeader, GmailMessage, GmailPayload};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -161,19 +162,12 @@ fn check_has_attachments(payload: Option<&GmailPayload>) -> bool {
         Some(p) => p,
         None => return false,
     };
-
-    // If this part has a non-empty filename, it's an attachment
-    if let Some(ref filename) = payload.filename {
-        if !filename.is_empty() {
-            return true;
-        }
-    }
-
-    // If this part has an attachment_id in its body, it's an attachment
-    if let Some(ref body) = payload.body {
-        if body.attachment_id.is_some() {
-            return true;
-        }
+    let mime = payload
+        .mime_type
+        .as_deref()
+        .unwrap_or("application/octet-stream");
+    if is_attachment_part(payload, mime, payload_disposition(payload)) {
+        return true;
     }
 
     // Recurse into child parts
@@ -192,6 +186,7 @@ fn check_has_attachments(payload: Option<&GmailPayload>) -> bool {
 struct ExtractedBodyData {
     text_plain: Option<String>,
     text_html: Option<String>,
+    text_plain_format: Option<TextPlainFormat>,
     attachments: Vec<AttachmentMeta>,
     calendar: Option<crate::mxr_core::types::CalendarMetadata>,
 }
@@ -209,77 +204,78 @@ pub fn extract_body(msg: &GmailMessage) -> (Option<String>, Option<String>, Vec<
 fn extract_body_data(msg: &GmailMessage) -> ExtractedBodyData {
     let mut data = ExtractedBodyData::default();
     if let Some(ref payload) = msg.payload {
-        walk_parts(payload, &msg.id, &mut data);
+        walk_parts(payload, &msg.id, "0", &mut data);
     }
     data
 }
 
-fn walk_parts(payload: &GmailPayload, provider_msg_id: &str, body_data: &mut ExtractedBodyData) {
+fn walk_parts(
+    payload: &GmailPayload,
+    provider_msg_id: &str,
+    part_path: &str,
+    body_data: &mut ExtractedBodyData,
+) {
     let mime = payload
         .mime_type
         .as_deref()
         .unwrap_or("application/octet-stream");
-
-    // Check for attachment (has filename or attachment_id)
-    let is_attachment = payload
-        .filename
+    let disposition = payload_disposition(payload);
+    let filename = payload.filename.as_ref().filter(|value| !value.is_empty());
+    let provider_id = payload
+        .body
         .as_ref()
-        .map(|f| !f.is_empty())
-        .unwrap_or(false)
-        || payload
-            .body
-            .as_ref()
-            .and_then(|b| b.attachment_id.as_ref())
-            .is_some();
+        .and_then(|body| body.attachment_id.clone())
+        .unwrap_or_else(|| part_path.to_string());
+    let content_id = normalize_content_id(find_header_value(payload.headers.as_deref(), "Content-ID"));
+    let content_location = find_header_value(payload.headers.as_deref(), "Content-Location")
+        .map(str::to_string);
+    let decoded_text = payload
+        .body
+        .as_ref()
+        .and_then(|body| body.data.as_deref())
+        .and_then(|data| base64_decode_url(data).ok());
 
-    if is_attachment && !mime.starts_with("multipart/") {
-        let filename = payload
-            .filename
-            .clone()
-            .unwrap_or_else(|| "unnamed".to_string());
-        let size = payload.body.as_ref().and_then(|b| b.size).unwrap_or(0);
-        let provider_id = payload
-            .body
-            .as_ref()
-            .and_then(|b| b.attachment_id.clone())
-            .unwrap_or_default();
-
+    if is_attachment_part(payload, mime, disposition) {
         body_data.attachments.push(AttachmentMeta {
             id: AttachmentId::from_provider_id(
                 "gmail",
                 &format!("{provider_msg_id}:{provider_id}"),
             ),
             message_id: MessageId::from_provider_id("gmail", provider_msg_id),
-            filename,
+            filename: filename
+                .map(|value| (*value).clone())
+                .unwrap_or_else(|| format!("attachment-{part_path}")),
             mime_type: mime.to_string(),
-            size_bytes: size,
+            disposition,
+            content_id,
+            content_location,
+            size_bytes: payload.body.as_ref().and_then(|b| b.size).unwrap_or(0),
             local_path: None,
             provider_id,
         });
-        return;
     }
 
     // Leaf text node
     match mime {
         "text/plain" if body_data.text_plain.is_none() => {
-            if let Some(data) = payload.body.as_ref().and_then(|b| b.data.as_ref()) {
-                if let Ok(decoded) = base64_decode_url(data) {
+            if !is_attachment_part(payload, mime, disposition) {
+                if let Some(decoded) = decoded_text {
                     body_data.text_plain = Some(decoded);
+                    body_data.text_plain_format =
+                        parse_text_plain_format_from_payload(payload).or(Some(TextPlainFormat::Fixed));
                 }
             }
         }
         "text/html" if body_data.text_html.is_none() => {
-            if let Some(data) = payload.body.as_ref().and_then(|b| b.data.as_ref()) {
-                if let Ok(decoded) = base64_decode_url(data) {
+            if !is_attachment_part(payload, mime, disposition) {
+                if let Some(decoded) = decoded_text {
                     body_data.text_html = Some(decoded);
                 }
             }
         }
         "text/calendar" if body_data.calendar.is_none() => {
-            if let Some(data) = payload.body.as_ref().and_then(|b| b.data.as_ref()) {
-                if let Ok(decoded) = base64_decode_url(data) {
-                    body_data.calendar = calendar_metadata_from_text(&decoded);
-                }
+            if let Some(decoded) = decoded_text {
+                body_data.calendar = calendar_metadata_from_text(&decoded);
             }
         }
         _ => {}
@@ -287,8 +283,13 @@ fn walk_parts(payload: &GmailPayload, provider_msg_id: &str, body_data: &mut Ext
 
     // Recurse into child parts
     if let Some(ref parts) = payload.parts {
-        for part in parts {
-            walk_parts(part, provider_msg_id, body_data);
+        for (index, part) in parts.iter().enumerate() {
+            walk_parts(
+                part,
+                provider_msg_id,
+                &format!("{part_path}.{index}"),
+                body_data,
+            );
         }
     }
 }
@@ -311,21 +312,98 @@ pub fn extract_message_body(msg: &GmailMessage) -> MessageBody {
         .map(|parsed| parsed.metadata)
         .unwrap_or_default();
     metadata.calendar = body_data.calendar.clone();
-    let text_plain = match (&body_data.text_plain, &metadata.text_plain_format) {
-        (Some(text_plain), Some(TextPlainFormat::Flowed { delsp })) => {
-            Some(decode_format_flowed(text_plain, *delsp))
-        }
-        (Some(text_plain), _) => Some(text_plain.clone()),
-        (None, _) => None,
-    };
+    metadata.text_plain_format = body_data.text_plain_format.or(metadata.text_plain_format);
+    metadata.text_plain_source = body_data
+        .text_plain
+        .as_ref()
+        .map(|_| BodyPartSource::Exact);
+    metadata.text_html_source = body_data.text_html.as_ref().map(|_| BodyPartSource::Exact);
     MessageBody {
         message_id: MessageId::from_provider_id("gmail", &msg.id),
-        text_plain,
+        text_plain: body_data.text_plain,
         text_html: body_data.text_html,
         attachments: body_data.attachments,
         fetched_at: Utc::now(),
         metadata,
     }
+}
+
+fn is_attachment_part(
+    payload: &GmailPayload,
+    mime: &str,
+    disposition: AttachmentDisposition,
+) -> bool {
+    if mime.starts_with("multipart/") {
+        return false;
+    }
+
+    if payload
+        .body
+        .as_ref()
+        .and_then(|body| body.attachment_id.as_ref())
+        .is_some()
+    {
+        return true;
+    }
+
+    if payload
+        .filename
+        .as_ref()
+        .is_some_and(|value| !value.is_empty())
+    {
+        return true;
+    }
+
+    matches!(disposition, AttachmentDisposition::Attachment)
+        || (matches!(disposition, AttachmentDisposition::Inline)
+            && mime != "text/plain"
+            && mime != "text/html")
+}
+
+fn payload_disposition(payload: &GmailPayload) -> AttachmentDisposition {
+    match find_header_value(payload.headers.as_deref(), "Content-Disposition") {
+        Some(value) if value.trim_start().to_ascii_lowercase().starts_with("attachment") => {
+            AttachmentDisposition::Attachment
+        }
+        Some(value) if value.trim_start().to_ascii_lowercase().starts_with("inline") => {
+            AttachmentDisposition::Inline
+        }
+        _ => AttachmentDisposition::Unspecified,
+    }
+}
+
+fn find_header_value<'a>(headers: Option<&'a [GmailHeader]>, name: &str) -> Option<&'a str> {
+    headers?
+        .iter()
+        .find(|header| header.name.eq_ignore_ascii_case(name))
+        .map(|header| header.value.as_str())
+}
+
+fn parse_text_plain_format_from_payload(payload: &GmailPayload) -> Option<TextPlainFormat> {
+    let content_type = find_header_value(payload.headers.as_deref(), "Content-Type")?;
+    let lower = content_type.to_ascii_lowercase();
+    if !lower.starts_with("text/plain") {
+        return None;
+    }
+
+    let delsp = lower.contains("delsp=yes");
+    if lower.contains("format=flowed") {
+        Some(TextPlainFormat::Flowed { delsp })
+    } else {
+        Some(TextPlainFormat::Fixed)
+    }
+}
+
+fn normalize_content_id(content_id: Option<&str>) -> Option<String> {
+    content_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            value
+                .trim_start_matches('<')
+                .trim_end_matches('>')
+                .to_string()
+        })
 }
 
 #[cfg(test)]
@@ -917,5 +995,123 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[test]
+    fn plain_only_body_preserves_exact_text_and_does_not_invent_html() {
+        let plain = "Hello team, \nthis paragraph is flowed and \nshould stay exact.\n";
+        let msg = GmailMessage {
+            id: "msg-flowed".to_string(),
+            thread_id: "thread-flowed".to_string(),
+            label_ids: Some(vec!["INBOX".to_string()]),
+            snippet: Some("Hello team,".to_string()),
+            history_id: None,
+            internal_date: Some("1700000000000".to_string()),
+            size_estimate: Some(plain.len() as u64),
+            payload: Some(GmailPayload {
+                mime_type: Some("text/plain".to_string()),
+                headers: Some(make_headers(&[
+                    ("From", "Alice <alice@example.com>"),
+                    ("To", "Bob <bob@example.com>"),
+                    ("Subject", "Flowed body"),
+                    (
+                        "Content-Type",
+                        "text/plain; charset=UTF-8; format=flowed; delsp=yes",
+                    ),
+                ])),
+                body: Some(GmailBody {
+                    attachment_id: None,
+                    size: Some(plain.len() as u64),
+                    data: Some(URL_SAFE_NO_PAD.encode(plain.as_bytes())),
+                }),
+                parts: None,
+                filename: None,
+            }),
+        };
+
+        let body = extract_message_body(&msg);
+        assert_eq!(body.text_plain.as_deref(), Some(plain));
+        assert_eq!(body.text_html, None);
+        assert_eq!(
+            body.metadata.text_plain_format,
+            Some(TextPlainFormat::Flowed { delsp: true })
+        );
+        assert_eq!(body.metadata.text_plain_source, Some(BodyPartSource::Exact));
+        assert_eq!(body.metadata.text_html_source, None);
+    }
+
+    #[test]
+    fn extract_message_body_preserves_inline_asset_metadata() {
+        let html = r#"<p>Hello <img src="cid:logo@example.com" alt="Logo"></p>"#;
+        let msg = GmailMessage {
+            id: "msg-inline".to_string(),
+            thread_id: "thread-inline".to_string(),
+            label_ids: Some(vec!["INBOX".to_string()]),
+            snippet: Some("Hello".to_string()),
+            history_id: None,
+            internal_date: Some("1700000000000".to_string()),
+            size_estimate: Some(1024),
+            payload: Some(GmailPayload {
+                mime_type: Some("multipart/related".to_string()),
+                headers: Some(make_headers(&[
+                    ("From", "Alice <alice@example.com>"),
+                    ("To", "Bob <bob@example.com>"),
+                    ("Subject", "Inline image"),
+                ])),
+                body: None,
+                parts: Some(vec![
+                    GmailPayload {
+                        mime_type: Some("text/html".to_string()),
+                        headers: Some(make_headers(&[(
+                            "Content-Type",
+                            "text/html; charset=UTF-8",
+                        )])),
+                        body: Some(GmailBody {
+                            attachment_id: None,
+                            size: Some(html.len() as u64),
+                            data: Some(URL_SAFE_NO_PAD.encode(html.as_bytes())),
+                        }),
+                        parts: None,
+                        filename: None,
+                    },
+                    GmailPayload {
+                        mime_type: Some("image/png".to_string()),
+                        headers: Some(make_headers(&[
+                            (
+                                "Content-Disposition",
+                                "inline; filename=\"logo.png\"",
+                            ),
+                            ("Content-ID", "<logo@example.com>"),
+                            ("Content-Location", "https://example.com/logo.png"),
+                        ])),
+                        body: Some(GmailBody {
+                            attachment_id: Some("att-inline".to_string()),
+                            size: Some(256),
+                            data: None,
+                        }),
+                        parts: None,
+                        filename: Some("logo.png".to_string()),
+                    },
+                ]),
+                filename: None,
+            }),
+        };
+
+        let body = extract_message_body(&msg);
+        assert!(body
+            .text_html
+            .as_deref()
+            .is_some_and(|value| value.contains("cid:logo@example.com")));
+        assert_eq!(body.metadata.text_html_source, Some(BodyPartSource::Exact));
+        assert_eq!(body.attachments.len(), 1);
+
+        let attachment = &body.attachments[0];
+        assert_eq!(attachment.filename, "logo.png");
+        assert_eq!(attachment.disposition, AttachmentDisposition::Inline);
+        assert_eq!(attachment.content_id.as_deref(), Some("logo@example.com"));
+        assert_eq!(
+            attachment.content_location.as_deref(),
+            Some("https://example.com/logo.png")
+        );
     }
 }

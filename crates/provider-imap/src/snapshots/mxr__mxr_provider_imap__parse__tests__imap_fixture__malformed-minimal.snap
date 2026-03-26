@@ -11,7 +11,7 @@ content_language: []
 from:
   email: alice@example.com
   name: Alice
-html_present: true
+html_present: false
 message_id: ~
 plain_excerpt: No explicit content type here.
 subject: Missing content type

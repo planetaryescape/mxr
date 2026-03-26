@@ -52,7 +52,7 @@ members = [
 version = "0.4.28"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.75"
+rust-version = "1.88"
 repository = "https://github.com/planetaryescape/mxr"
 homepage = "https://github.com/planetaryescape/mxr"
 keywords = ["email", "terminal", "tui", "imap", "gmail"]
@@ -90,8 +90,10 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "uuid", "chrono
 tantivy = "0.22"
 
 # TUI
-ratatui = "0.29"
-crossterm = "0.28"
+ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
+crossterm = "0.29"
+ratatui-image = { version = "10.0.6", default-features = false, features = ["crossterm", "image-defaults", "tokio"] }
+image = { version = "0.25.6", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 
 # Types
 uuid = { version = "1", features = ["v5", "v7", "serde"] }
@@ -137,6 +139,9 @@ keyring = { version = "3", features = ["apple-native"] }
 base64 = "0.22"
 mail-parser = "0.9"
 url = "2"
+scraper = "0.24"
+data-url = "0.3"
+mime_guess = "2"
 
 # TUI extras
 nucleo = "0.5"
@@ -177,7 +182,7 @@ chrono = { workspace = true }
 clap = { workspace = true }
 clap_complete = { workspace = true }
 comrak = { workspace = true, default-features = false, features = ["shortcodes"] }
-crossterm = { version = "0.28", features = ["event-stream"] }
+crossterm = { workspace = true, features = ["event-stream"] }
 dirs = { workspace = true }
 fastembed = { version = "5.13", optional = true }
 futures = { workspace = true }
@@ -190,6 +195,7 @@ mail-parser = { workspace = true }
 nucleo = { workspace = true }
 once_cell = { workspace = true }
 ratatui = { workspace = true }
+ratatui-image = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
@@ -201,7 +207,7 @@ sqlx = { workspace = true }
 tantivy = { workspace = true }
 tempfile = { workspace = true, optional = true }
 thiserror = { workspace = true }
-throbber-widgets-tui = "0.8.0"
+throbber-widgets-tui = "0.11.0"
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 toml = { workspace = true }
@@ -209,15 +215,19 @@ tower = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tui-textarea = "0.7.0"
+tui-textarea = { package = "tui-textarea-2", version = "0.10.2" }
 undoc = { version = "0.1", optional = true }
 unicode-width = { workspace = true }
 unpdf = { version = "0.2", optional = true }
 url = { workspace = true }
 uuid = { workspace = true }
+scraper = { workspace = true }
+data-url = { workspace = true }
+mime_guess = { workspace = true }
 which = { workspace = true }
 yup-oauth2 = { workspace = true }
 parking_lot = { workspace = true }
+image = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }

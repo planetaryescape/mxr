@@ -47,8 +47,14 @@ pub enum Command {
     /// Display a message
     Cat {
         message_id: String,
+        #[arg(long, value_enum)]
+        view: Option<BodyViewArg>,
+        #[arg(long, conflicts_with = "view", conflicts_with = "raw", conflicts_with = "html")]
+        assets: bool,
+        #[arg(long, conflicts_with = "view")]
         #[arg(long)]
         raw: bool,
+        #[arg(long, conflicts_with = "view")]
         #[arg(long)]
         html: bool,
         #[arg(long)]
@@ -508,6 +514,14 @@ pub enum SavedAction {
     Delete { name: String },
     /// Run a saved search
     Run { name: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
+pub enum BodyViewArg {
+    Reader,
+    Raw,
+    Html,
+    Headers,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]

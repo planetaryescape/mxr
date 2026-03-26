@@ -151,12 +151,14 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         }
         Some(Command::Cat {
             message_id,
+            view,
+            assets,
             raw,
             html,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::cat::run(message_id, raw, html, format).await?;
+            commands::cat::run(message_id, view, assets, raw, html, format).await?;
         }
         Some(Command::Thread { thread_id, format }) => {
             crate::server::ensure_daemon_running().await?;

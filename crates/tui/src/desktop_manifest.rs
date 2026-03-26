@@ -3,7 +3,7 @@ use crate::mxr_tui::keybindings::{
     action_from_name, all_bindings_for_context, default_keybindings, format_keybinding, ViewContext,
 };
 use crate::mxr_tui::ui::command_palette::default_commands;
-use crossterm::event::KeyCode;
+use ratatui::crossterm::event::KeyCode;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,7 +97,7 @@ fn bindings_for_context(
 fn key_press_token(key: &crate::mxr_tui::keybindings::KeyPress) -> String {
     if key
         .modifiers
-        .contains(crossterm::event::KeyModifiers::CONTROL)
+        .contains(ratatui::crossterm::event::KeyModifiers::CONTROL)
     {
         if let KeyCode::Char(c) = key.code {
             return format!("Ctrl-{}", c.to_ascii_lowercase());
@@ -174,6 +174,8 @@ fn action_name(action: &Action) -> Option<&'static str> {
         Action::Snooze => Some("snooze"),
         Action::OpenInBrowser => Some("open_in_browser"),
         Action::ToggleReaderMode => Some("toggle_reader_mode"),
+        Action::ToggleHtmlView => Some("toggle_html_view"),
+        Action::ToggleRemoteContent => Some("toggle_remote_content"),
         Action::ToggleSignature => Some("toggle_signature"),
         Action::ToggleSelect => Some("toggle_select"),
         Action::VisualLineMode => Some("visual_line_mode"),

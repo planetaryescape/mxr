@@ -14,7 +14,7 @@ message_id: "<missing-content-type@example.com>"
 plain_excerpt: "No Content-Type header here.\nJust plain text."
 references: []
 subject: Missing content type
-text_plain_format: None
+text_plain_format: Some(Fixed)
 to:
   - email: bob@example.com
     name: Bob

@@ -490,21 +490,33 @@ pub async fn open_in_browser(message_id: String) -> anyhow::Result<()> {
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
     let resp = client
-        .request(Request::GetEnvelope { message_id: id })
+        .request(Request::GetBody {
+            message_id: id.clone(),
+        })
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::Envelope { envelope },
+            data: ResponseData::Body { body },
         } => {
-            let url = format!(
-                "https://mail.google.com/mail/u/0/#inbox/{}",
-                envelope.provider_id
-            );
-            #[cfg(target_os = "macos")]
-            std::process::Command::new("open").arg(&url).spawn()?;
-            #[cfg(target_os = "linux")]
-            std::process::Command::new("xdg-open").arg(&url).spawn()?;
-            println!("Opened in browser: {url}");
+            let dir = crate::mxr_config::data_dir().join("source");
+            std::fs::create_dir_all(&dir)?;
+            let path = dir.join(format!("{}.txt", id.as_str()));
+
+            let mut source = String::new();
+            if let Some(headers) = body.metadata.raw_headers.as_deref() {
+                source.push_str(headers.trim_end());
+                source.push_str("\n\n");
+            }
+            if let Some(html) = body.text_html.as_deref() {
+                source.push_str(html);
+            } else if let Some(text) = body.text_plain.as_deref() {
+                source.push_str(text);
+            }
+
+            std::fs::write(&path, source)?;
+            let editor = crate::mxr_compose::editor::resolve_editor(None);
+            std::process::Command::new(&editor).arg(&path).spawn()?;
+            println!("Opened local source: {}", path.display());
         }
         Response::Error { message } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),

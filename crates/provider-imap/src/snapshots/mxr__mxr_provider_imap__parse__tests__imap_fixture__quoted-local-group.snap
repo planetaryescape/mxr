@@ -12,7 +12,7 @@ content_language: []
 from:
   email: organizer@example.com
   name: Organizer
-html_present: true
+html_present: false
 message_id: "<group@example.com>"
 plain_excerpt: Tests group syntax and quoted local parts.
 subject: Group syntax

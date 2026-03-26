@@ -93,6 +93,7 @@ pub struct RenderConfig {
     pub html_command: Option<String>,
     pub reader_mode: bool,
     pub show_reader_stats: bool,
+    pub html_remote_content: bool,
 }
 
 /// Search configuration.

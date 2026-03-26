@@ -3,7 +3,6 @@ source: crates/provider-imap/src/parse.rs
 expression: "json!({\n    \"subject\": synced.envelope.subject, \"from\": synced.envelope.from,\n    \"unsubscribe\": format!(\"{:?}\", synced.envelope.unsubscribe),\n    \"attachment_filenames\":\n    synced.body.attachments.iter().map(|attachment|\n    attachment.filename.clone()).collect::<Vec<_>>(), \"calendar\":\n    synced.body.metadata.calendar, \"content_language\":\n    synced.body.metadata.content_language, \"auth_results\":\n    synced.body.metadata.auth_results, \"html_present\":\n    synced.body.text_html.is_some(), \"plain_present\":\n    synced.body.text_plain.is_some(),\n})"
 ---
 attachment_filenames:
-  - attachment-4
   - Q4-€-report.pdf
 auth_results: []
 calendar:

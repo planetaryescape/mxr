@@ -11,7 +11,7 @@ content_language: []
 from:
   email: news@example.com
   name: Newsletter
-html_present: true
+html_present: false
 message_id: "<unsubscribe@example.com>"
 plain_excerpt: This fixture validates RFC 8058 one-click handling.
 subject: One click unsubscribe

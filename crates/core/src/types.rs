@@ -177,8 +177,18 @@ pub struct MessageMetadata {
     #[serde(default)]
     pub content_language: Vec<String>,
     pub text_plain_format: Option<TextPlainFormat>,
+    pub text_plain_source: Option<BodyPartSource>,
+    pub text_html_source: Option<BodyPartSource>,
     pub calendar: Option<CalendarMetadata>,
     pub raw_headers: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BodyPartSource {
+    Exact,
+    DerivedFromPlain,
+    DerivedFromHtml,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -214,9 +224,52 @@ pub struct AttachmentMeta {
     pub message_id: MessageId,
     pub filename: String,
     pub mime_type: String,
+    #[serde(default)]
+    pub disposition: AttachmentDisposition,
+    pub content_id: Option<String>,
+    pub content_location: Option<String>,
     pub size_bytes: u64,
     pub local_path: Option<PathBuf>,
     pub provider_id: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AttachmentDisposition {
+    Attachment,
+    Inline,
+    #[default]
+    Unspecified,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HtmlImageAsset {
+    pub source: String,
+    pub kind: HtmlImageSourceKind,
+    pub status: HtmlImageAssetStatus,
+    pub mime_type: Option<String>,
+    pub path: Option<PathBuf>,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HtmlImageSourceKind {
+    Cid,
+    DataUri,
+    Remote,
+    ContentLocation,
+    File,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum HtmlImageAssetStatus {
+    Ready,
+    Blocked,
+    Missing,
+    Unsupported,
+    Failed,
 }
 
 // -- Thread -------------------------------------------------------------------

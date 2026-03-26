@@ -35,6 +35,10 @@ pub enum Request {
     GetBody {
         message_id: MessageId,
     },
+    GetHtmlImageAssets {
+        message_id: MessageId,
+        allow_remote: bool,
+    },
     DownloadAttachment {
         message_id: MessageId,
         attachment_id: AttachmentId,
@@ -301,6 +305,10 @@ pub enum ResponseData {
     },
     Body {
         body: MessageBody,
+    },
+    HtmlImageAssets {
+        message_id: MessageId,
+        assets: Vec<HtmlImageAsset>,
     },
     AttachmentFile {
         file: AttachmentFile,

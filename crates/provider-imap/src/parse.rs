@@ -1,14 +1,14 @@
 use crate::mxr_compose::parse::{
-    body_unsubscribe_from_html, calendar_metadata_from_text, decode_format_flowed,
-    extract_raw_header_block, parse_headers_from_raw,
+    body_unsubscribe_from_html, calendar_metadata_from_text, extract_raw_header_block,
+    parse_headers_from_raw,
 };
 use crate::mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};
 use crate::mxr_core::types::{
-    Address, AttachmentMeta, Envelope, MessageBody, MessageFlags, SyncedMessage, TextPlainFormat,
-    UnsubscribeMethod,
+    Address, AttachmentDisposition, AttachmentMeta, BodyPartSource, Envelope, MessageBody,
+    MessageFlags, SyncedMessage, TextPlainFormat, UnsubscribeMethod,
 };
 use chrono::{DateTime, TimeZone, Utc};
-use mail_parser::MimeHeaders;
+use mail_parser::{MimeHeaders, PartType};
 
 use crate::mxr_provider_imap::error::ImapProviderError;
 use crate::mxr_provider_imap::folders::format_provider_id;
@@ -158,47 +158,11 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
                 .and_then(|headers| parse_headers_from_raw(headers, None).ok())
                 .map(|parsed| parsed.metadata)
                 .unwrap_or_default();
-            let text_plain = match (msg.body_text(0), metadata.text_plain_format.as_ref()) {
-                (Some(text), Some(TextPlainFormat::Flowed { delsp })) => {
-                    Some(decode_format_flowed(&text, *delsp))
-                }
-                (Some(text), _) => Some(text.to_string()),
-                (None, _) => None,
-            };
-            let text_html = msg.body_html(0).map(|t| t.to_string());
-
+            let mut text_plain = None;
+            let mut text_html = None;
             let mut attachments = Vec::new();
             let mut calendar = None;
-            for attachment in msg.attachments() {
-                let idx = msg
-                    .parts
-                    .iter()
-                    .position(|p| std::ptr::eq(p, attachment))
-                    .unwrap_or(attachments.len());
-                let filename = attachment
-                    .attachment_name()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| format!("attachment-{idx}"));
-                let mime_type = attachment
-                    .content_type()
-                    .map(|ct| {
-                        let subtype = ct.subtype().unwrap_or("octet-stream");
-                        format!("{}/{subtype}", ct.ctype())
-                    })
-                    .unwrap_or_else(|| "application/octet-stream".to_string());
-                let size = attachment.len();
-
-                attachments.push(AttachmentMeta {
-                    id: AttachmentId::from_provider_id("imap", &format!("{message_id}:{idx}")),
-                    message_id: message_id.clone(),
-                    filename,
-                    mime_type,
-                    size_bytes: size as u64,
-                    local_path: None,
-                    provider_id: format!("{idx}"),
-                });
-            }
-            for part in &msg.parts {
+            for (idx, part) in msg.parts.iter().enumerate() {
                 if let Some(content_type) = part.content_type() {
                     let subtype = content_type.subtype().unwrap_or_default();
                     if content_type.ctype().eq_ignore_ascii_case("text")
@@ -208,6 +172,42 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
                             calendar = calendar.or_else(|| calendar_metadata_from_text(text));
                         }
                     }
+                }
+
+                let disposition = attachment_disposition(part);
+                if is_attachment_part(part, disposition) {
+                    let filename = part
+                        .attachment_name()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| format!("attachment-{idx}"));
+                    attachments.push(AttachmentMeta {
+                        id: AttachmentId::from_provider_id("imap", &format!("{message_id}:{idx}")),
+                        message_id: message_id.clone(),
+                        filename,
+                        mime_type: part_mime_type(part),
+                        disposition,
+                        content_id: normalize_content_id(part.content_id()),
+                        content_location: part.content_location().map(str::to_string),
+                        size_bytes: part.len() as u64,
+                        local_path: None,
+                        provider_id: format!("{idx}"),
+                    });
+                    continue;
+                }
+
+                match &part.body {
+                    PartType::Text(text) if text_plain.is_none() => {
+                        text_plain = Some(text.to_string());
+                        metadata.text_plain_source = Some(BodyPartSource::Exact);
+                        metadata.text_plain_format = part
+                            .content_type()
+                            .and_then(parse_text_plain_format_from_content_type);
+                    }
+                    PartType::Html(html) if text_html.is_none() => {
+                        text_html = Some(html.to_string());
+                        metadata.text_html_source = Some(BodyPartSource::Exact);
+                    }
+                    _ => {}
                 }
             }
             metadata.calendar = calendar;
@@ -230,6 +230,85 @@ pub fn parse_message_body(raw: &[u8], message_id: &MessageId) -> MessageBody {
             metadata: Default::default(),
         },
     }
+}
+
+fn parse_text_plain_format_from_content_type(
+    content_type: &mail_parser::ContentType<'_>,
+) -> Option<TextPlainFormat> {
+    if !content_type.ctype().eq_ignore_ascii_case("text")
+        || !content_type
+            .subtype()
+            .unwrap_or_default()
+            .eq_ignore_ascii_case("plain")
+    {
+        return None;
+    }
+
+    let delsp = content_type
+        .attribute("delsp")
+        .map(|value| value.eq_ignore_ascii_case("yes"))
+        .unwrap_or(false);
+
+    match content_type.attribute("format") {
+        Some(value) if value.eq_ignore_ascii_case("flowed") => {
+            Some(TextPlainFormat::Flowed { delsp })
+        }
+        _ => Some(TextPlainFormat::Fixed),
+    }
+}
+
+fn attachment_disposition<'a>(headers: &impl MimeHeaders<'a>) -> AttachmentDisposition {
+    match headers.content_disposition() {
+        Some(disposition) if disposition.is_attachment() => AttachmentDisposition::Attachment,
+        Some(disposition) if disposition.is_inline() => AttachmentDisposition::Inline,
+        _ => AttachmentDisposition::Unspecified,
+    }
+}
+
+fn is_attachment_part(
+    part: &mail_parser::MessagePart<'_>,
+    disposition: AttachmentDisposition,
+) -> bool {
+    if part.is_multipart() || part.is_message() {
+        return false;
+    }
+
+    if matches!(disposition, AttachmentDisposition::Attachment) {
+        return true;
+    }
+
+    if matches!(part.body, PartType::Binary(_) | PartType::InlineBinary(_)) {
+        return true;
+    }
+
+    if part.attachment_name().is_some() {
+        return true;
+    }
+
+    matches!(disposition, AttachmentDisposition::Inline)
+        && !part.is_content_type("text", "plain")
+        && !part.is_content_type("text", "html")
+}
+
+fn part_mime_type(part: &mail_parser::MessagePart<'_>) -> String {
+    part.content_type()
+        .map(|content_type| {
+            let subtype = content_type.subtype().unwrap_or("octet-stream");
+            format!("{}/{}", content_type.ctype(), subtype)
+        })
+        .unwrap_or_else(|| "application/octet-stream".to_string())
+}
+
+fn normalize_content_id(content_id: Option<&str>) -> Option<String> {
+    content_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| {
+            value
+                .trim_start_matches('<')
+                .trim_end_matches('>')
+                .to_string()
+        })
 }
 
 #[cfg(test)]
@@ -330,6 +409,103 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[test]
+    fn alternative_html_first_preserves_exact_plain_and_html_parts() {
+        let raw = standards_fixture_bytes("alternative-html-first.eml");
+        let account_id = AccountId::new();
+        let msg = FetchedMessage {
+            uid: 1,
+            flags: vec!["\\Seen".into()],
+            envelope: None,
+            body: Some(raw.clone()),
+            header: None,
+            size: Some(raw.len() as u32),
+        };
+
+        let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
+        assert_eq!(
+            synced.body.text_plain.as_deref().map(str::trim),
+            Some("Plain alternative second.")
+        );
+        assert!(synced
+            .body
+            .text_html
+            .as_deref()
+            .is_some_and(|html| html.contains("<p>HTML first.</p>")));
+        assert_eq!(
+            synced.body.metadata.text_plain_source,
+            Some(BodyPartSource::Exact)
+        );
+        assert_eq!(
+            synced.body.metadata.text_html_source,
+            Some(BodyPartSource::Exact)
+        );
+        assert_eq!(
+            synced.body.metadata.text_plain_format,
+            Some(TextPlainFormat::Fixed)
+        );
+    }
+
+    #[test]
+    fn folded_flowed_preserves_exact_plain_text_without_deriving_html() {
+        let raw = standards_fixture_bytes("folded-flowed.eml");
+        let account_id = AccountId::new();
+        let msg = FetchedMessage {
+            uid: 2,
+            flags: vec!["\\Seen".into()],
+            envelope: None,
+            body: Some(raw.clone()),
+            header: None,
+            size: Some(raw.len() as u32),
+        };
+
+        let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
+        let plain = synced.body.text_plain.as_deref().expect("plain body");
+        assert!(plain.contains("Hello team, \nthis paragraph is flowed and \nshould join cleanly."));
+        assert!(plain.contains("-- \nJosé"));
+        assert_eq!(synced.body.text_html, None);
+        assert_eq!(
+            synced.body.metadata.text_plain_source,
+            Some(BodyPartSource::Exact)
+        );
+        assert_eq!(synced.body.metadata.text_html_source, None);
+        assert_eq!(
+            synced.body.metadata.text_plain_format,
+            Some(TextPlainFormat::Flowed { delsp: true })
+        );
+    }
+
+    #[test]
+    fn nested_multipart_preserves_attachment_metadata() {
+        let raw = standards_fixture_bytes("nested-multipart.eml");
+        let account_id = AccountId::new();
+        let msg = FetchedMessage {
+            uid: 3,
+            flags: vec!["\\Seen".into()],
+            envelope: None,
+            body: Some(raw.clone()),
+            header: None,
+            size: Some(raw.len() as u32),
+        };
+
+        let synced = imap_fetch_to_synced_message(&msg, "INBOX", &account_id).unwrap();
+        assert_eq!(
+            synced.body.text_plain.as_deref().map(str::trim),
+            Some("Nested plain body.")
+        );
+        assert!(synced
+            .body
+            .text_html
+            .as_deref()
+            .is_some_and(|html| html.contains("<strong>HTML</strong>")));
+        assert_eq!(synced.body.attachments.len(), 1);
+        assert_eq!(synced.body.attachments[0].filename, "nested.pdf");
+        assert_eq!(
+            synced.body.attachments[0].disposition,
+            AttachmentDisposition::Attachment
+        );
     }
 
     #[test]

@@ -99,6 +99,8 @@ pub enum Action {
 
     // --- Phase 2: Reader mode ---
     ToggleReaderMode,
+    ToggleHtmlView,
+    ToggleRemoteContent,
     ToggleSignature,
 
     // --- Phase 2: Batch operations (A007) ---
@@ -286,6 +288,8 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | Snooze
                 | OpenInBrowser
                 | ToggleReaderMode
+                | ToggleHtmlView
+                | ToggleRemoteContent
                 | ToggleSignature
                 | ToggleSelect
                 | ClearSelection

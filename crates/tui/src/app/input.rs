@@ -1,4 +1,5 @@
 use super::*;
+use ratatui::crossterm;
 
 impl App {
     fn help_modal_state(&self) -> crate::mxr_tui::ui::help_modal::HelpModalState<'_> {

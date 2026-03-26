@@ -15,7 +15,7 @@ from:
 in_reply_to: "<parent@example.com>"
 list_id: ~
 message_id: "<folded-flowed@example.com>"
-plain_excerpt: "Hello team,this paragraph is flowed andshould join cleanly.\n"
+plain_excerpt: "Hello team, \nthis paragraph is flowed and "
 references:
   - "<root@example.com>"
   - "<parent@example.com>"

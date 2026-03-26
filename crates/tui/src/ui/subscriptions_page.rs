@@ -10,9 +10,17 @@ pub struct SubscriptionsPageView<'a> {
     pub active_pane: &'a ActivePane,
     pub preview_blocks: &'a [crate::mxr_tui::ui::message_view::ThreadMessageBlock],
     pub message_scroll_offset: u16,
+    pub html_images:
+        &'a mut std::collections::HashMap<
+            crate::mxr_core::MessageId,
+            std::collections::HashMap<
+                String,
+                crate::mxr_tui::terminal_images::HtmlImageEntry,
+            >,
+        >,
 }
 
-pub fn draw(frame: &mut Frame, area: Rect, view: &SubscriptionsPageView<'_>, theme: &Theme) {
+pub fn draw(frame: &mut Frame, area: Rect, view: &mut SubscriptionsPageView<'_>, theme: &Theme) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(42), Constraint::Percentage(58)])
@@ -63,6 +71,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SubscriptionsPageView<'_>, the
         view.message_scroll_offset,
         view.active_pane,
         theme,
+        view.html_images,
     );
 }
 

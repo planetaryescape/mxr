@@ -15,7 +15,7 @@ html_present: true
 message_id: "<nested@example.com>"
 plain_excerpt: Nested plain body.
 subject: Nested multipart
-text_plain_format: None
+text_plain_format: Some(Fixed)
 to:
   - email: bob@example.com
     name: Bob

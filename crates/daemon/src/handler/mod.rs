@@ -65,6 +65,10 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         }
         Request::GetEnvelope { message_id } => mailbox::get_envelope(state, message_id).await,
         Request::GetBody { message_id } => mailbox::get_body(state, message_id).await,
+        Request::GetHtmlImageAssets {
+            message_id,
+            allow_remote,
+        } => mailbox::get_html_image_assets(state, message_id, *allow_remote).await,
         Request::DownloadAttachment {
             message_id,
             attachment_id,
@@ -264,6 +268,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListEnvelopesByIds { .. } => "list_envelopes_by_ids",
         Request::GetEnvelope { .. } => "get_envelope",
         Request::GetBody { .. } => "get_body",
+        Request::GetHtmlImageAssets { .. } => "get_html_image_assets",
         Request::DownloadAttachment { .. } => "download_attachment",
         Request::OpenAttachment { .. } => "open_attachment",
         Request::ListBodies { .. } => "list_bodies",
@@ -3469,6 +3474,9 @@ mod tests {
                     message_id: id.clone(),
                     filename: "report.pdf".into(),
                     mime_type: "application/pdf".into(),
+                    disposition: crate::mxr_core::types::AttachmentDisposition::Attachment,
+                    content_id: None,
+                    content_location: None,
                     size_bytes: 1024,
                     local_path: None,
                     provider_id: "att-1".into(),
@@ -3497,6 +3505,211 @@ mod tests {
                 assert_eq!(bodies[0].attachments[0].filename, "report.pdf");
             }
             other => panic!("Expected Bodies, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_get_body_preserves_exact_sources_and_inline_metadata() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let id = sync_and_get_first_id(&state).await;
+        let attachment_id = crate::mxr_core::AttachmentId::new();
+
+        let stored = crate::mxr_core::types::MessageBody {
+            message_id: id.clone(),
+            text_plain: Some("Hello team, \n> exact quote\n".into()),
+            text_html: Some("<p>Hello <img src=\"cid:logo@example.com\"></p>".into()),
+            attachments: vec![crate::mxr_core::types::AttachmentMeta {
+                id: attachment_id.clone(),
+                message_id: id.clone(),
+                filename: "logo.png".into(),
+                mime_type: "image/png".into(),
+                disposition: crate::mxr_core::types::AttachmentDisposition::Inline,
+                content_id: Some("logo@example.com".into()),
+                content_location: Some("https://example.com/logo.png".into()),
+                size_bytes: 2048,
+                local_path: None,
+                provider_id: "att-inline".into(),
+            }],
+            fetched_at: chrono::Utc::now(),
+            metadata: crate::mxr_core::types::MessageMetadata {
+                text_plain_format: Some(crate::mxr_core::types::TextPlainFormat::Flowed {
+                    delsp: true,
+                }),
+                text_plain_source: Some(crate::mxr_core::types::BodyPartSource::Exact),
+                text_html_source: Some(crate::mxr_core::types::BodyPartSource::Exact),
+                ..Default::default()
+            },
+        };
+
+        state.store.insert_body(&stored).await.unwrap();
+
+        let msg = IpcMessage {
+            id: 15,
+            payload: IpcPayload::Request(Request::GetBody {
+                message_id: id.clone(),
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Body { body },
+            }) => {
+                assert_eq!(body.text_plain, stored.text_plain);
+                assert_eq!(body.text_html, stored.text_html);
+                assert_eq!(body.metadata.text_plain_format, stored.metadata.text_plain_format);
+                assert_eq!(body.metadata.text_plain_source, stored.metadata.text_plain_source);
+                assert_eq!(body.metadata.text_html_source, stored.metadata.text_html_source);
+                assert_eq!(body.attachments.len(), 1);
+                assert_eq!(body.attachments[0].id, attachment_id);
+                assert_eq!(
+                    body.attachments[0].content_id.as_deref(),
+                    Some("logo@example.com")
+                );
+                assert_eq!(
+                    body.attachments[0].content_location.as_deref(),
+                    Some("https://example.com/logo.png")
+                );
+            }
+            other => panic!("Expected Body, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_get_html_image_assets_resolves_inline_and_blocks_remote() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let id = sync_and_get_first_id(&state).await;
+        let attachment_id = crate::mxr_core::AttachmentId::new();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let inline_path = temp_dir.path().join("logo.png");
+        std::fs::write(&inline_path, tiny_png_bytes()).unwrap();
+
+        let stored = crate::mxr_core::types::MessageBody {
+            message_id: id.clone(),
+            text_plain: None,
+            text_html: Some(concat!(
+                "<img alt=\"Logo\" src=\"cid:logo@example.com\">",
+                "<img alt=\"Badge\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO9xw1QAAAAASUVORK5CYII=\">",
+                "<img alt=\"Hero\" src=\"https://example.com/hero.png\">"
+            ).into()),
+            attachments: vec![crate::mxr_core::types::AttachmentMeta {
+                id: attachment_id.clone(),
+                message_id: id.clone(),
+                filename: "logo.png".into(),
+                mime_type: "image/png".into(),
+                disposition: crate::mxr_core::types::AttachmentDisposition::Inline,
+                content_id: Some("logo@example.com".into()),
+                content_location: None,
+                size_bytes: 67,
+                local_path: Some(inline_path.clone()),
+                provider_id: "att-inline".into(),
+            }],
+            fetched_at: chrono::Utc::now(),
+            metadata: crate::mxr_core::types::MessageMetadata {
+                text_html_source: Some(crate::mxr_core::types::BodyPartSource::Exact),
+                ..Default::default()
+            },
+        };
+        state.store.insert_body(&stored).await.unwrap();
+
+        let msg = IpcMessage {
+            id: 16,
+            payload: IpcPayload::Request(Request::GetHtmlImageAssets {
+                message_id: id.clone(),
+                allow_remote: false,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::HtmlImageAssets { assets, .. },
+            }) => {
+                assert_eq!(assets.len(), 3);
+
+                let inline = assets
+                    .iter()
+                    .find(|asset| asset.source.starts_with("cid:"))
+                    .expect("cid asset");
+                assert_eq!(inline.status, crate::mxr_core::types::HtmlImageAssetStatus::Ready);
+                assert_eq!(inline.path.as_deref(), Some(inline_path.as_path()));
+
+                let embedded = assets
+                    .iter()
+                    .find(|asset| asset.source.starts_with("data:"))
+                    .expect("data asset");
+                assert_eq!(
+                    embedded.status,
+                    crate::mxr_core::types::HtmlImageAssetStatus::Ready,
+                    "embedded asset: {:?}",
+                    embedded
+                );
+                assert!(embedded.path.as_ref().is_some_and(|path| path.exists()));
+
+                let remote = assets
+                    .iter()
+                    .find(|asset| asset.source.starts_with("https://"))
+                    .expect("remote asset");
+                assert_eq!(
+                    remote.status,
+                    crate::mxr_core::types::HtmlImageAssetStatus::Blocked
+                );
+                assert!(remote.path.is_none());
+            }
+            other => panic!("Expected HtmlImageAssets, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_get_html_image_assets_fetches_remote_when_enabled() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let id = sync_and_get_first_id(&state).await;
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .insert_header("content-type", "image/png")
+                    .set_body_bytes(tiny_png_bytes()),
+            )
+            .mount(&server)
+            .await;
+
+        let stored = crate::mxr_core::types::MessageBody {
+            message_id: id.clone(),
+            text_plain: None,
+            text_html: Some(format!(r#"<img alt="Hero" src="{}/hero.png">"#, server.uri())),
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: crate::mxr_core::types::MessageMetadata {
+                text_html_source: Some(crate::mxr_core::types::BodyPartSource::Exact),
+                ..Default::default()
+            },
+        };
+        state.store.insert_body(&stored).await.unwrap();
+
+        let msg = IpcMessage {
+            id: 17,
+            payload: IpcPayload::Request(Request::GetHtmlImageAssets {
+                message_id: id.clone(),
+                allow_remote: true,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::HtmlImageAssets { assets, .. },
+            }) => {
+                assert_eq!(assets.len(), 1);
+                assert_eq!(
+                    assets[0].status,
+                    crate::mxr_core::types::HtmlImageAssetStatus::Ready
+                );
+                let path = assets[0].path.as_ref().expect("cached path");
+                assert!(path.exists());
+                assert_eq!(std::fs::read(path).unwrap(), tiny_png_bytes());
+            }
+            other => panic!("Expected HtmlImageAssets, got {:?}", other),
         }
     }
 
@@ -3608,6 +3821,13 @@ mod tests {
             }
             other => panic!("Expected Envelopes, got {:?}", other),
         }
+    }
+
+    fn tiny_png_bytes() -> Vec<u8> {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD
+            .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO9xw1QAAAAASUVORK5CYII=")
+            .expect("valid 1x1 png")
     }
 
     #[tokio::test]

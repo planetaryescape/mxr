@@ -6,6 +6,7 @@ use crate::mxr_core::id::{AccountId, AttachmentId, MessageId};
 use crate::mxr_core::types::*;
 use crate::mxr_core::MxrError;
 use crate::mxr_protocol::{MutationCommand, Request, Response, ResponseData};
+use crate::mxr_tui::terminal_images::{HtmlImageEntry, HtmlImageKey, TerminalImageSupport};
 use crate::mxr_tui::action::{Action, PatternKind, ScreenContext, UiContext};
 use crate::mxr_tui::client::Client;
 use crate::mxr_tui::input::InputHandler;
@@ -15,7 +16,7 @@ use crate::mxr_tui::ui::command_palette::CommandPalette;
 use crate::mxr_tui::ui::compose_picker::ComposePicker;
 use crate::mxr_tui::ui::label_picker::{LabelPicker, LabelPickerMode};
 use crate::mxr_tui::ui::search_bar::SearchBar;
-use crossterm::event::{KeyCode, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -142,6 +143,26 @@ pub enum BodySource {
     Snippet,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BodyViewMode {
+    #[default]
+    Text,
+    Html,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BodyViewMetadata {
+    pub mode: BodyViewMode,
+    pub provenance: Option<BodyPartSource>,
+    pub reader_applied: bool,
+    pub flowed: bool,
+    pub inline_images: bool,
+    pub remote_content_available: bool,
+    pub remote_content_enabled: bool,
+    pub original_lines: Option<usize>,
+    pub cleaned_lines: Option<usize>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BodyViewState {
     Loading {
@@ -151,6 +172,7 @@ pub enum BodyViewState {
         raw: String,
         rendered: String,
         source: BodySource,
+        metadata: BodyViewMetadata,
     },
     Empty {
         preview: Option<String>,
@@ -658,8 +680,13 @@ pub struct App {
     pub last_sync_status: Option<String>,
     pub visible_height: usize,
     pub body_cache: HashMap<MessageId, MessageBody>,
+    pub html_image_support: Option<TerminalImageSupport>,
+    pub html_image_assets: HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
     pub queued_body_fetches: Vec<MessageId>,
+    pub queued_html_image_asset_fetches: Vec<MessageId>,
+    pub queued_html_image_decodes: Vec<HtmlImageKey>,
     pub in_flight_body_requests: HashSet<MessageId>,
+    pub in_flight_html_image_asset_requests: HashSet<MessageId>,
     pub pending_thread_fetch: Option<crate::mxr_core::ThreadId>,
     pub in_flight_thread_fetch: Option<crate::mxr_core::ThreadId>,
     pub pending_search: Option<PendingSearchRequest>,
@@ -718,6 +745,10 @@ pub struct App {
     pub pending_unsubscribe_confirm: Option<PendingUnsubscribeConfirm>,
     pub pending_unsubscribe_action: Option<PendingUnsubscribeAction>,
     pub reader_mode: bool,
+    pub html_view: bool,
+    pub render_html_command: Option<String>,
+    pub show_reader_stats: bool,
+    pub remote_content_enabled: bool,
     pub signature_expanded: bool,
     pub label_picker: LabelPicker,
     pub compose_picker: ComposePicker,
@@ -766,6 +797,9 @@ impl App {
     pub fn apply_runtime_config(&mut self, config: &crate::mxr_config::MxrConfig) {
         self.theme = Theme::from_spec(&config.appearance.theme);
         self.reader_mode = config.render.reader_mode;
+        self.render_html_command = config.render.html_command.clone();
+        self.show_reader_stats = config.render.show_reader_stats;
+        self.remote_content_enabled = config.render.html_remote_content;
         self.snooze_config = config.snooze.clone();
     }
 
@@ -802,8 +836,13 @@ impl App {
             last_sync_status: None,
             visible_height: 20,
             body_cache: HashMap::new(),
+            html_image_support: None,
+            html_image_assets: HashMap::new(),
             queued_body_fetches: Vec::new(),
+            queued_html_image_asset_fetches: Vec::new(),
+            queued_html_image_decodes: Vec::new(),
             in_flight_body_requests: HashSet::new(),
+            in_flight_html_image_asset_requests: HashSet::new(),
             pending_thread_fetch: None,
             in_flight_thread_fetch: None,
             pending_search: None,
@@ -860,6 +899,10 @@ impl App {
             pending_unsubscribe_confirm: None,
             pending_unsubscribe_action: None,
             reader_mode: render.reader_mode,
+            html_view: false,
+            render_html_command: render.html_command.clone(),
+            show_reader_stats: render.show_reader_stats,
+            remote_content_enabled: render.html_remote_content,
             signature_expanded: false,
             label_picker: LabelPicker::default(),
             compose_picker: ComposePicker::default(),
@@ -2314,8 +2357,64 @@ impl App {
             })
     }
 
+    fn active_body_status(&self) -> Option<String> {
+        let BodyViewState::Ready {
+            source, metadata, ..
+        } = &self.body_view_state
+        else {
+            return None;
+        };
+
+        let mut chips = vec![match metadata.mode {
+            BodyViewMode::Text => "text".to_string(),
+            BodyViewMode::Html => "html".to_string(),
+        }];
+        chips.push(
+            match source {
+                BodySource::Plain => "plain",
+                BodySource::Html => "html-part",
+                BodySource::Snippet => "snippet",
+            }
+            .to_string(),
+        );
+        if let Some(provenance) = metadata.provenance {
+            chips.push(
+                match provenance {
+                    BodyPartSource::Exact => "source:exact",
+                    BodyPartSource::DerivedFromPlain => "source:plain-derived",
+                    BodyPartSource::DerivedFromHtml => "source:html-derived",
+                }
+                .to_string(),
+            );
+        }
+        if metadata.reader_applied {
+            chips.push("reader".into());
+        }
+        if metadata.flowed {
+            chips.push("flowed".into());
+        }
+        if metadata.inline_images {
+            chips.push("inline-images".into());
+        }
+        if metadata.mode == BodyViewMode::Html && metadata.remote_content_available {
+            chips.push(if metadata.remote_content_enabled {
+                "remote:on".into()
+            } else {
+                "remote:off".into()
+            });
+        }
+        if self.show_reader_stats {
+            if let (Some(original), Some(cleaned)) = (metadata.original_lines, metadata.cleaned_lines)
+            {
+                chips.push(format!("reader:{cleaned}/{original}"));
+            }
+        }
+        Some(chips.join(" "))
+    }
+
     pub fn status_bar_state(&self) -> ui::status_bar::StatusBarState {
         let starred_count = self.global_starred_count();
+        let body_status = self.active_body_status();
 
         if self.mailbox_view == MailboxView::Subscriptions {
             let unread_count = self
@@ -2329,6 +2428,7 @@ impl App {
                 total_count: self.subscriptions_page.entries.len(),
                 unread_count,
                 starred_count,
+                body_status: body_status.clone(),
                 sync_status: self.last_sync_status.clone(),
                 status_message: self.status_message.clone(),
                 pending_mutation_count: self.pending_mutation_count,
@@ -2351,6 +2451,7 @@ impl App {
                 total_count: results.len(),
                 unread_count,
                 starred_count,
+                body_status: body_status.clone(),
                 sync_status: self.last_sync_status.clone(),
                 status_message: self.status_message.clone(),
                 pending_mutation_count: self.pending_mutation_count,
@@ -2364,6 +2465,7 @@ impl App {
                 total_count: label.total_count as usize,
                 unread_count: label.unread_count as usize,
                 starred_count,
+                body_status: body_status.clone(),
                 sync_status: self.last_sync_status.clone(),
                 status_message: self.status_message.clone(),
                 pending_mutation_count: self.pending_mutation_count,
@@ -2385,6 +2487,7 @@ impl App {
                 .unwrap_or_else(|| self.all_envelopes.len()),
             unread_count,
             starred_count,
+            body_status,
             sync_status: self.last_sync_status.clone(),
             status_message: self.status_message.clone(),
             pending_mutation_count: self.pending_mutation_count,
@@ -2547,6 +2650,7 @@ impl App {
             self.queue_body_fetch(message.id);
         }
         self.queue_thread_fetch(env.thread_id.clone());
+        self.queue_html_assets_for_current_view();
         self.message_scroll_offset = 0;
         self.ensure_current_body_state();
     }
@@ -2757,16 +2861,76 @@ impl App {
         }
     }
 
-    fn render_body(raw: &str, source: BodySource, reader_mode: bool) -> String {
-        if !reader_mode {
-            return raw.to_string();
+    fn reader_config(&self) -> crate::mxr_reader::ReaderConfig {
+        crate::mxr_reader::ReaderConfig {
+            html_command: self.render_html_command.clone(),
+            ..Default::default()
+        }
+    }
+
+    fn render_body(&self, raw: &str, source: BodySource) -> (String, Option<(usize, usize)>) {
+        if !self.reader_mode || source == BodySource::Snippet {
+            return (raw.to_string(), None);
         }
 
-        let config = crate::mxr_reader::ReaderConfig::default();
-        match source {
-            BodySource::Plain => crate::mxr_reader::clean(Some(raw), None, &config).content,
-            BodySource::Html => crate::mxr_reader::clean(None, Some(raw), &config).content,
-            BodySource::Snippet => raw.to_string(),
+        let output = match source {
+            BodySource::Plain => crate::mxr_reader::clean(Some(raw), None, &self.reader_config()),
+            BodySource::Html => crate::mxr_reader::clean(None, Some(raw), &self.reader_config()),
+            BodySource::Snippet => unreachable!("snippet bodies bypass reader mode"),
+        };
+
+        (
+            output.content,
+            Some((output.original_lines, output.cleaned_lines)),
+        )
+    }
+
+    fn body_inline_images(body: &MessageBody) -> bool {
+        body.attachments.iter().any(|attachment| {
+            attachment.disposition == AttachmentDisposition::Inline
+                || attachment.content_id.is_some()
+                || attachment.content_location.is_some()
+        })
+    }
+
+    fn html_has_remote_content(html: &str) -> bool {
+        static REMOTE_IMAGE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        REMOTE_IMAGE_RE
+            .get_or_init(|| {
+                regex::Regex::new(r#"(?is)<img\b[^>]*\bsrc\s*=\s*["']https?://[^"']+["']"#)
+                    .expect("valid remote image regex")
+            })
+            .is_match(html)
+    }
+
+    fn body_view_metadata(
+        &self,
+        body: &MessageBody,
+        source: BodySource,
+        mode: BodyViewMode,
+        reader_applied: bool,
+        stats: Option<(usize, usize)>,
+    ) -> BodyViewMetadata {
+        BodyViewMetadata {
+            mode,
+            provenance: match source {
+                BodySource::Plain => body.metadata.text_plain_source,
+                BodySource::Html => body.metadata.text_html_source,
+                BodySource::Snippet => None,
+            },
+            reader_applied,
+            flowed: matches!(
+                body.metadata.text_plain_format,
+                Some(TextPlainFormat::Flowed { .. })
+            ),
+            inline_images: Self::body_inline_images(body),
+            remote_content_available: body
+                .text_html
+                .as_deref()
+                .is_some_and(Self::html_has_remote_content),
+            remote_content_enabled: self.remote_content_enabled,
+            original_lines: stats.map(|(original, _)| original),
+            cleaned_lines: stats.map(|(_, cleaned)| cleaned),
         }
     }
 
@@ -2774,21 +2938,71 @@ impl App {
         let preview = Self::envelope_preview(envelope);
 
         if let Some(body) = self.body_cache.get(&envelope.id) {
+            if self.html_view {
+                if let Some(raw) = body.text_html.clone() {
+                    let metadata = self.body_view_metadata(
+                        body,
+                        BodySource::Html,
+                        BodyViewMode::Html,
+                        false,
+                        None,
+                    );
+                    return BodyViewState::Ready {
+                        rendered: raw.clone(),
+                        raw,
+                        source: BodySource::Html,
+                        metadata,
+                    };
+                }
+
+                if let Some(raw) = body.text_plain.clone() {
+                    let metadata = self.body_view_metadata(
+                        body,
+                        BodySource::Plain,
+                        BodyViewMode::Html,
+                        false,
+                        None,
+                    );
+                    return BodyViewState::Ready {
+                        rendered: raw.clone(),
+                        raw,
+                        source: BodySource::Plain,
+                        metadata,
+                    };
+                }
+            }
+
             if let Some(raw) = body.text_plain.clone() {
-                let rendered = Self::render_body(&raw, BodySource::Plain, self.reader_mode);
+                let (rendered, stats) = self.render_body(&raw, BodySource::Plain);
+                let metadata = self.body_view_metadata(
+                    body,
+                    BodySource::Plain,
+                    BodyViewMode::Text,
+                    self.reader_mode,
+                    stats,
+                );
                 return BodyViewState::Ready {
                     raw,
                     rendered,
                     source: BodySource::Plain,
+                    metadata,
                 };
             }
 
             if let Some(raw) = body.text_html.clone() {
-                let rendered = Self::render_body(&raw, BodySource::Html, self.reader_mode);
+                let (rendered, stats) = self.render_body(&raw, BodySource::Html);
+                let metadata = self.body_view_metadata(
+                    body,
+                    BodySource::Html,
+                    BodyViewMode::Text,
+                    self.reader_mode,
+                    stats,
+                );
                 return BodyViewState::Ready {
                     raw,
                     rendered,
                     source: BodySource::Html,
+                    metadata,
                 };
             }
 
@@ -2806,6 +3020,7 @@ impl App {
         let message_id = body.message_id.clone();
         self.in_flight_body_requests.remove(&message_id);
         self.body_cache.insert(message_id.clone(), body);
+        self.queue_html_assets_for_message(&message_id);
 
         if self.viewing_envelope.as_ref().map(|env| env.id.clone()) == Some(message_id) {
             self.ensure_current_body_state();
@@ -2824,6 +3039,163 @@ impl App {
                 message,
                 preview: Self::envelope_preview(env),
             };
+        }
+    }
+
+    pub fn set_terminal_image_support(&mut self, support: TerminalImageSupport) {
+        self.html_image_support = Some(support);
+    }
+
+    pub fn queue_html_assets_for_current_view(&mut self) {
+        if !self.html_view {
+            return;
+        }
+
+        let message_ids = self
+            .viewed_thread_messages
+            .iter()
+            .map(|message| message.id.clone())
+            .collect::<Vec<_>>();
+        for message_id in message_ids {
+            self.queue_html_assets_for_message(&message_id);
+        }
+    }
+
+    pub fn queue_html_assets_for_message(&mut self, message_id: &MessageId) {
+        if !self.html_view {
+            return;
+        }
+        let Some(body) = self.body_cache.get(message_id) else {
+            return;
+        };
+        if body.text_html.is_none() {
+            return;
+        }
+        if self
+            .in_flight_html_image_asset_requests
+            .contains(message_id)
+            || self
+                .queued_html_image_asset_fetches
+                .iter()
+                .any(|queued| queued == message_id)
+        {
+            return;
+        }
+        self.queued_html_image_asset_fetches.push(message_id.clone());
+    }
+
+    pub fn invalidate_html_assets_for_current_view(&mut self) {
+        let message_ids = self
+            .viewed_thread_messages
+            .iter()
+            .map(|message| message.id.clone())
+            .collect::<Vec<_>>();
+        self.invalidate_html_assets_for_messages(&message_ids);
+    }
+
+    pub fn invalidate_html_assets_for_messages(&mut self, message_ids: &[MessageId]) {
+        for message_id in message_ids {
+            self.html_image_assets.remove(message_id);
+            self.in_flight_html_image_asset_requests.remove(message_id);
+            self.queued_html_image_asset_fetches
+                .retain(|queued| queued != message_id);
+            self.queued_html_image_decodes
+                .retain(|queued| &queued.message_id != message_id);
+        }
+    }
+
+    pub fn resolve_html_image_assets_success(
+        &mut self,
+        message_id: MessageId,
+        assets: Vec<HtmlImageAsset>,
+        allow_remote: bool,
+    ) {
+        self.in_flight_html_image_asset_requests.remove(&message_id);
+        let mut entries = HashMap::new();
+        for asset in assets {
+            let source = asset.source.clone();
+            let should_decode = asset.status == HtmlImageAssetStatus::Ready
+                && asset.path.is_some()
+                && !self
+                    .queued_html_image_decodes
+                    .iter()
+                    .any(|queued| queued.message_id == message_id && queued.source == source);
+            if should_decode {
+                self.queued_html_image_decodes.push(HtmlImageKey {
+                    message_id: message_id.clone(),
+                    source: source.clone(),
+                });
+            }
+            entries.insert(source, HtmlImageEntry::new(asset));
+        }
+        self.html_image_assets.insert(message_id.clone(), entries);
+
+        if self.remote_content_enabled != allow_remote {
+            return;
+        }
+        if self.viewing_envelope.as_ref().map(|env| env.id.clone()) == Some(message_id) {
+            self.ensure_current_body_state();
+        }
+    }
+
+    pub fn resolve_html_image_assets_error(&mut self, message_id: &MessageId, message: String) {
+        self.in_flight_html_image_asset_requests.remove(message_id);
+        let mut entries = HashMap::new();
+        entries.insert(
+            "__error__".into(),
+            HtmlImageEntry {
+                asset: HtmlImageAsset {
+                    source: "__error__".into(),
+                    kind: HtmlImageSourceKind::File,
+                    status: HtmlImageAssetStatus::Failed,
+                    mime_type: None,
+                    path: None,
+                    detail: Some(message),
+                },
+                render: crate::mxr_tui::terminal_images::HtmlImageRenderState::Failed(
+                    "asset resolution failed".into(),
+                ),
+            },
+        );
+        self.html_image_assets.insert(message_id.clone(), entries);
+    }
+
+    pub fn resolve_html_image_protocol(
+        &mut self,
+        key: &HtmlImageKey,
+        protocol: ratatui_image::thread::ThreadProtocol,
+    ) {
+        if let Some(entry) = self
+            .html_image_assets
+            .get_mut(&key.message_id)
+            .and_then(|assets| assets.get_mut(&key.source))
+        {
+            entry.render = crate::mxr_tui::terminal_images::HtmlImageRenderState::Ready(protocol);
+        }
+    }
+
+    pub fn resolve_html_image_resize(
+        &mut self,
+        key: &HtmlImageKey,
+        response: ratatui_image::thread::ResizeResponse,
+    ) {
+        if let Some(protocol) = self
+            .html_image_assets
+            .get_mut(&key.message_id)
+            .and_then(|assets| assets.get_mut(&key.source))
+            .and_then(HtmlImageEntry::ready_protocol_mut)
+        {
+            protocol.update_resized_protocol(response);
+        }
+    }
+
+    pub fn resolve_html_image_failure(&mut self, key: &HtmlImageKey, message: String) {
+        if let Some(entry) = self
+            .html_image_assets
+            .get_mut(&key.message_id)
+            .and_then(|assets| assets.get_mut(&key.source))
+        {
+            entry.render = crate::mxr_tui::terminal_images::HtmlImageRenderState::Failed(message);
         }
     }
 
@@ -3292,6 +3664,7 @@ impl App {
                 })
                 .unwrap_or_else(|| self.default_thread_selected_index());
             self.sync_focused_thread_envelope();
+            self.queue_html_assets_for_current_view();
         }
     }
 

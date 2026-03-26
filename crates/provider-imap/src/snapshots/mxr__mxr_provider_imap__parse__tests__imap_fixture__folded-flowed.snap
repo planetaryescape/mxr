@@ -14,9 +14,9 @@ content_language:
 from:
   email: jose@example.com
   name: José Example
-html_present: true
+html_present: false
 message_id: "<folded-flowed@example.com>"
-plain_excerpt: "Hello team,this paragraph is flowed andshould join cleanly.\n\n-- "
+plain_excerpt: "Hello team, \nthis paragraph is flowed and \nshould join cleanly."
 subject: Quarterly update — release notes
 text_plain_format: "Some(Flowed { delsp: true })"
 to:

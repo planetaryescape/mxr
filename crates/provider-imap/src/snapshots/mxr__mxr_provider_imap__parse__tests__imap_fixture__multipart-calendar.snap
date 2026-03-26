@@ -3,7 +3,6 @@ source: crates/provider-imap/src/parse.rs
 expression: "json!({\n    \"subject\": synced.envelope.subject, \"from\": synced.envelope.from, \"to\":\n    synced.envelope.to, \"cc\": synced.envelope.cc, \"message_id\":\n    synced.envelope.message_id_header, \"unsubscribe\":\n    format!(\"{:?}\", synced.envelope.unsubscribe), \"attachment_filenames\":\n    synced.body.attachments.iter().map(|attachment|\n    attachment.filename.clone()).collect::<Vec<_>>(), \"calendar\":\n    synced.body.metadata.calendar, \"content_language\":\n    synced.body.metadata.content_language, \"auth_results\":\n    synced.body.metadata.auth_results, \"text_plain_format\":\n    format!(\"{:?}\", synced.body.metadata.text_plain_format), \"plain_excerpt\":\n    synced.body.text_plain.as_deref().map(|body|\n    body.lines().take(3).collect::<Vec<_>>().join(\"\\n\")), \"html_present\":\n    synced.body.text_html.is_some(),\n})"
 ---
 attachment_filenames:
-  - attachment-4
   - Q4-€-report.pdf
 auth_results: []
 calendar:
@@ -18,7 +17,7 @@ html_present: true
 message_id: "<calendar@example.com>"
 plain_excerpt: Please join the planning meeting.
 subject: Planning meeting
-text_plain_format: None
+text_plain_format: Some(Fixed)
 to:
   - email: bob@example.com
     name: Bob Example

@@ -11,7 +11,7 @@ from:
 in_reply_to: ~
 list_id: ~
 message_id: "<rfc2231@example.com>"
-plain_excerpt: Attachment filename uses RFC2231 encoding.
+plain_excerpt: ~
 references: []
 subject: RFC2231 attachment
 text_plain_format: None

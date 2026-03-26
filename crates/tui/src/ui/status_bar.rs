@@ -7,6 +7,7 @@ pub struct StatusBarState {
     pub total_count: usize,
     pub unread_count: usize,
     pub starred_count: usize,
+    pub body_status: Option<String>,
     pub sync_status: Option<String>,
     pub status_message: Option<String>,
     pub pending_mutation_count: usize,
@@ -37,14 +38,19 @@ pub fn draw(
     } else if let Some(msg) = state.status_message.as_deref() {
         msg.to_string()
     } else {
-        format!(
+        let mut status = format!(
             "={} [Msgs:{} New:{} Starred:{}]= {}",
             state.mailbox_name,
             state.total_count,
             state.unread_count,
             state.starred_count,
             sync_part
-        )
+        );
+        if let Some(body_status) = state.body_status.as_deref() {
+            status.push_str(" | ");
+            status.push_str(body_status);
+        }
+        status
     };
 
     let bar = Paragraph::new(status).style(

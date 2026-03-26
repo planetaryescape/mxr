@@ -1,4 +1,5 @@
 use super::*;
+use ratatui::crossterm;
 
 impl App {
     pub(super) fn mail_action_key(&self, key: crossterm::event::KeyEvent) -> Option<Action> {

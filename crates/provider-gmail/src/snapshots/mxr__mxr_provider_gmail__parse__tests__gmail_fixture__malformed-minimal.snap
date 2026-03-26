@@ -15,7 +15,7 @@ message_id: ~
 plain_excerpt: No explicit content type here.
 references: []
 subject: Missing content type
-text_plain_format: None
+text_plain_format: Some(Fixed)
 to:
   - email: ops@example.com
     name: Ops

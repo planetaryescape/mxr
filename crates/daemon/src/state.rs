@@ -395,15 +395,14 @@ impl AppState {
 
     #[cfg(test)]
     pub async fn in_memory_without_accounts() -> anyhow::Result<Self> {
+        let mut config = crate::mxr_config::MxrConfig::default();
+        config.general.attachment_dir = test_attachment_dir();
         let store = Arc::new(Store::in_memory().await?);
         let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
         let semantic = Arc::new(Mutex::new(SemanticEngine::new(
             store.clone(),
             &std::env::temp_dir(),
-            crate::mxr_config::MxrConfig::default()
-                .search
-                .semantic
-                .clone(),
+            config.search.semantic.clone(),
         )));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
         let (event_tx, _) = broadcast::channel(256);
@@ -422,22 +421,21 @@ impl AppState {
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
             event_tx,
             start_time: Instant::now(),
-            config: RwLock::new(crate::mxr_config::MxrConfig::default()),
+            config: RwLock::new(config),
         })
     }
 
     #[cfg(test)]
     pub async fn in_memory_with_fake(
     ) -> anyhow::Result<(Self, Arc<crate::mxr_provider_fake::FakeProvider>)> {
+        let mut config = crate::mxr_config::MxrConfig::default();
+        config.general.attachment_dir = test_attachment_dir();
         let store = Arc::new(Store::in_memory().await?);
         let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
         let semantic = Arc::new(Mutex::new(SemanticEngine::new(
             store.clone(),
             &std::env::temp_dir(),
-            crate::mxr_config::MxrConfig::default()
-                .search
-                .semantic
-                .clone(),
+            config.search.semantic.clone(),
         )));
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
@@ -483,7 +481,7 @@ impl AppState {
                 sync_loop_accounts: ParkingMutex::new(HashSet::new()),
                 event_tx,
                 start_time: Instant::now(),
-                config: RwLock::new(crate::mxr_config::MxrConfig::default()),
+                config: RwLock::new(config),
             },
             fake,
         ))
@@ -497,6 +495,11 @@ impl AppState {
     pub fn set_attachment_dir_for_tests(&self, path: std::path::PathBuf) {
         self.config.write().general.attachment_dir = path;
     }
+}
+
+#[cfg(test)]
+fn test_attachment_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("mxr-attachments-test-{}", uuid::Uuid::new_v4()))
 }
 
 async fn open_search_index(

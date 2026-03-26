@@ -1,5 +1,5 @@
 use crate::mxr_tui::action::Action;
-use crossterm::event::{KeyCode, KeyModifiers};
+use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -134,6 +134,8 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "snooze" => Some(Action::Snooze),
         "open_in_browser" => Some(Action::OpenInBrowser),
         "toggle_reader_mode" => Some(Action::ToggleReaderMode),
+        "toggle_html_view" => Some(Action::ToggleHtmlView),
+        "toggle_remote_content" => Some(Action::ToggleRemoteContent),
         "export_thread" => Some(Action::ExportThread),
         "command_palette" => Some(Action::OpenCommandPalette),
         "switch_panes" => Some(Action::SwitchPane),
@@ -264,9 +266,11 @@ fn action_display_name(action: &str) -> String {
         "attachment_list" => "Attachments".into(),
         "open_links" => "Open Links".into(),
         "toggle_reader_mode" => "Reader".into(),
+        "toggle_html_view" => "HTML View".into(),
+        "toggle_remote_content" => "Remote Media".into(),
         "toggle_signature" => "Signature".into(),
         "export_thread" => "Export".into(),
-        "open_in_browser" => "Browser".into(),
+        "open_in_browser" => "Source".into(),
         "open_tab_1" => "Mailbox".into(),
         "open_tab_2" => "Search Page".into(),
         "open_tab_3" => "Rules Page".into(),
@@ -412,6 +416,8 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("j", "scroll_down"),
         ("k", "scroll_up"),
         ("R", "toggle_reader_mode"),
+        ("H", "toggle_html_view"),
+        ("M", "toggle_remote_content"),
         ("O", "open_in_browser"),
         ("A", "attachment_list"),
         ("L", "open_links"),
@@ -451,6 +457,8 @@ pub fn default_keybindings() -> KeybindingConfig {
         ("A", "attachment_list"),
         ("L", "open_links"),
         ("R", "toggle_reader_mode"),
+        ("H", "toggle_html_view"),
+        ("M", "toggle_remote_content"),
         ("E", "export_thread"),
         ("O", "open_in_browser"),
         ("e", "archive"),

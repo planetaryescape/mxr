@@ -11,11 +11,11 @@ content_language: []
 from:
   email: files@example.com
   name: Files
-html_present: true
+html_present: false
 message_id: "<rfc2231@example.com>"
 plain_excerpt: Attachment filename uses RFC2231 encoding.
 subject: RFC2231 attachment
-text_plain_format: None
+text_plain_format: Some(Fixed)
 to:
   - email: bob@example.com
     name: Bob

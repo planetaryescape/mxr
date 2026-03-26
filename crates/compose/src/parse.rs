@@ -216,6 +216,8 @@ fn extract_metadata(message: &Message<'_>, raw_headers: Option<String>) -> Messa
         auth_results,
         content_language,
         text_plain_format,
+        text_plain_source: None,
+        text_html_source: None,
         calendar: None,
         raw_headers,
     }

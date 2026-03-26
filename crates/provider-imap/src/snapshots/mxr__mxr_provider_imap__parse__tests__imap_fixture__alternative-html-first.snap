@@ -14,7 +14,7 @@ html_present: true
 message_id: "<alt-order@example.com>"
 plain_excerpt: Plain alternative second.
 subject: Alternative ordering
-text_plain_format: None
+text_plain_format: Some(Fixed)
 to:
   - email: bob@example.com
     name: Bob

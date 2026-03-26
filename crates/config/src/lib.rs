@@ -34,6 +34,7 @@ mod tests {
         );
         assert_eq!(deserialized.logging.event_retention_days, 90);
         assert!(deserialized.accounts.is_empty());
+        assert!(deserialized.render.html_remote_content);
     }
 
     #[test]
@@ -68,6 +69,7 @@ use_tls = true
 html_command = "w3m -dump -T text/html"
 reader_mode = false
 show_reader_stats = false
+html_remote_content = false
 
 [search]
 default_sort = "relevance"
@@ -125,6 +127,7 @@ subject_max_width = 80
         );
         assert_eq!(round_tripped.logging.max_files, 5);
         assert_eq!(round_tripped.appearance.theme, "catppuccin");
+        assert!(!round_tripped.render.html_remote_content);
     }
 
     #[test]

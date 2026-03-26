@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::expect_response;
 use crate::ipc_client::IpcClient;
 use crate::mxr_core::ThreadId;
 use crate::mxr_protocol::*;
@@ -12,36 +13,36 @@ pub async fn run(thread_id: String, format: Option<OutputFormat>) -> anyhow::Res
         .await?;
 
     let fmt = resolve_format(format);
-    match resp {
+    let (thread, messages) = expect_response(resp, |r| match r {
         Response::Ok {
             data: ResponseData::Thread { thread, messages },
-        } => match fmt {
-            OutputFormat::Json => {
+        } => Some((thread, messages)),
+        _ => None,
+    })?;
+    match fmt {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "thread": thread,
+                    "messages": messages,
+                }))?
+            );
+        }
+        _ => {
+            println!(
+                "Thread: {} ({} messages)",
+                thread.subject, thread.message_count
+            );
+            for env in &messages {
                 println!(
-                    "{}",
-                    serde_json::to_string_pretty(&serde_json::json!({
-                        "thread": thread,
-                        "messages": messages,
-                    }))?
+                    "  {} {} - {}",
+                    env.date.format("%Y-%m-%d %H:%M"),
+                    env.from.email,
+                    env.subject,
                 );
             }
-            _ => {
-                println!(
-                    "Thread: {} ({} messages)",
-                    thread.subject, thread.message_count
-                );
-                for env in &messages {
-                    println!(
-                        "  {} {} - {}",
-                        env.date.format("%Y-%m-%d %H:%M"),
-                        env.from.email,
-                        env.subject,
-                    );
-                }
-            }
-        },
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
+        }
     }
     Ok(())
 }

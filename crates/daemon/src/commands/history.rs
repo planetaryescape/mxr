@@ -44,15 +44,15 @@ pub async fn run(
         .await?;
 
     let fmt = resolve_format(format);
-    match resp {
+    let entries = crate::commands::expect_response(resp, |r| match r {
         Response::Ok {
             data: ResponseData::EventLogEntries { entries },
-        } => match fmt {
-            OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&entries)?),
-            _ => render_table(&entries),
-        },
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
+        } => Some(entries),
+        _ => None,
+    })?;
+    match fmt {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&entries)?),
+        _ => render_table(&entries),
     }
 
     Ok(())

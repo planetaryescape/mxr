@@ -1,0 +1,61 @@
+# cargo-deny configuration
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+targets = []
+all-features = true
+
+[advisories]
+unmaintained = "workspace"
+yanked = "warn"
+ignore = [
+    # Transitive dependencies with no safe upgrade available.
+    # These are pulled in by upstream crates we don't control.
+    { id = "RUSTSEC-2025-0052", reason = "async-std is a transitive dep of fastembed; no upgrade path" },
+    { id = "RUSTSEC-2025-0141", reason = "bincode is a transitive dep of fastembed/tokenizers; no upgrade path" },
+    { id = "RUSTSEC-2024-0384", reason = "instant is a transitive dep via rav1e; no upgrade path" },
+    { id = "RUSTSEC-2024-0436", reason = "paste is a transitive dep of tokenizers; no upgrade path" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is a transitive dep of yup-oauth2; no upgrade path" },
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    "0BSD",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "NCSA",
+    "zlib-acknowledgement",
+]
+confidence-threshold = 0.8
+
+exceptions = [
+    { allow = ["GPL-2.0-only"], crate = "self_cell" },
+    { allow = ["LGPL-2.1-or-later"], crate = "r-efi" },
+]
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# The async-imap fork is vendored as a path dependency, so no git source allow-list is needed.
+allow-git = []

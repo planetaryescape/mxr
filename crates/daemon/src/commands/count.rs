@@ -1,4 +1,5 @@
 use crate::cli::SearchModeArg;
+use crate::commands::expect_response;
 use crate::ipc_client::IpcClient;
 use crate::mxr_protocol::*;
 
@@ -11,14 +12,12 @@ pub async fn run(query: String, mode: Option<SearchModeArg>) -> anyhow::Result<(
         })
         .await?;
 
-    match resp {
+    let count = expect_response(resp, |r| match r {
         Response::Ok {
             data: ResponseData::Count { count },
-        } => {
-            println!("{}", count);
-        }
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
+        } => Some(count),
+        _ => None,
+    })?;
+    println!("{count}");
     Ok(())
 }

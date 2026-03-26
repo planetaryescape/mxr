@@ -911,7 +911,14 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let tx = result_tx.clone();
             tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::ListSubscriptions { account_id: None, limit: 500 }).await;
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListSubscriptions {
+                        account_id: None,
+                        limit: 500,
+                    },
+                )
+                .await;
                 let result = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Subscriptions { subscriptions },
@@ -2201,38 +2208,27 @@ mod tests {
     use crate::mxr_core::types::*;
     use crate::mxr_core::MxrError;
     use crate::mxr_protocol::{DaemonEvent, LabelCount, MutationCommand, Request};
+    use crate::test_fixtures::TestEnvelopeBuilder;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use mxr_test_support::render_to_string;
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
         (0..count)
-            .map(|i| Envelope {
-                id: MessageId::new(),
-                account_id: AccountId::new(),
-                provider_id: format!("fake-{}", i),
-                thread_id: ThreadId::new(),
-                message_id_header: None,
-                in_reply_to: None,
-                references: vec![],
-                from: Address {
-                    name: Some(format!("User {}", i)),
-                    email: format!("user{}@example.com", i),
-                },
-                to: vec![],
-                cc: vec![],
-                bcc: vec![],
-                subject: format!("Subject {}", i),
-                date: chrono::Utc::now(),
-                flags: if i % 2 == 0 {
-                    MessageFlags::READ
-                } else {
-                    MessageFlags::empty()
-                },
-                snippet: format!("Snippet {}", i),
-                has_attachments: false,
-                size_bytes: 1000,
-                unsubscribe: UnsubscribeMethod::None,
-                label_provider_ids: vec![],
+            .map(|i| {
+                TestEnvelopeBuilder::new()
+                    .provider_id(format!("fake-{}", i))
+                    .from_address(&format!("User {}", i), &format!("user{}@example.com", i))
+                    .to(vec![])
+                    .subject(format!("Subject {}", i))
+                    .message_id_header(None)
+                    .flags(if i % 2 == 0 {
+                        MessageFlags::READ
+                    } else {
+                        MessageFlags::empty()
+                    })
+                    .snippet(format!("Snippet {}", i))
+                    .size_bytes(1000)
+                    .build()
             })
             .collect()
     }
@@ -2240,32 +2236,19 @@ mod tests {
     fn make_unsubscribe_envelope(
         account_id: AccountId,
         sender_email: &str,
-        unsubscribe: UnsubscribeMethod,
+        unsub: UnsubscribeMethod,
     ) -> Envelope {
-        Envelope {
-            id: MessageId::new(),
-            account_id,
-            provider_id: "unsub-fixture".into(),
-            thread_id: ThreadId::new(),
-            message_id_header: None,
-            in_reply_to: None,
-            references: vec![],
-            from: Address {
-                name: Some("Newsletter".into()),
-                email: sender_email.into(),
-            },
-            to: vec![],
-            cc: vec![],
-            bcc: vec![],
-            subject: "Newsletter".into(),
-            date: chrono::Utc::now(),
-            flags: MessageFlags::empty(),
-            snippet: "newsletter".into(),
-            has_attachments: false,
-            size_bytes: 42,
-            unsubscribe,
-            label_provider_ids: vec![],
-        }
+        TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("unsub-fixture")
+            .from_address("Newsletter", sender_email)
+            .to(vec![])
+            .subject("Newsletter")
+            .message_id_header(None)
+            .snippet("newsletter")
+            .size_bytes(42)
+            .unsubscribe(unsub)
+            .build()
     }
 
     #[test]
@@ -2707,131 +2690,7 @@ mod tests {
     }
 
     fn make_test_labels() -> Vec<Label> {
-        vec![
-            Label {
-                id: LabelId::from_provider_id("test", "INBOX"),
-                account_id: AccountId::new(),
-                name: "INBOX".to_string(),
-                kind: LabelKind::System,
-                color: None,
-                provider_id: "INBOX".to_string(),
-                unread_count: 3,
-                total_count: 10,
-            },
-            Label {
-                id: LabelId::from_provider_id("test", "STARRED"),
-                account_id: AccountId::new(),
-                name: "STARRED".to_string(),
-                kind: LabelKind::System,
-                color: None,
-                provider_id: "STARRED".to_string(),
-                unread_count: 0,
-                total_count: 2,
-            },
-            Label {
-                id: LabelId::from_provider_id("test", "SENT"),
-                account_id: AccountId::new(),
-                name: "SENT".to_string(),
-                kind: LabelKind::System,
-                color: None,
-                provider_id: "SENT".to_string(),
-                unread_count: 0,
-                total_count: 5,
-            },
-            Label {
-                id: LabelId::from_provider_id("test", "DRAFT"),
-                account_id: AccountId::new(),
-                name: "DRAFT".to_string(),
-                kind: LabelKind::System,
-                color: None,
-                provider_id: "DRAFT".to_string(),
-                unread_count: 0,
-                total_count: 0,
-            },
-            Label {
-                id: LabelId::from_provider_id("test", "ARCHIVE"),
-                account_id: AccountId::new(),
-                name: "ARCHIVE".to_string(),
-                kind: LabelKind::System,
-                color: None,
-                provider_id: "ARCHIVE".to_string(),
-                unread_count: 0,
-                total_count: 0,
-            },
-            Label {
-                id: LabelId::from_provider_id("test", "SPAM"),
-                account_id: AccountId::new(),
-                name: "SPAM".to_string(),
-                kind: LabelKind::System,
-                color: None,
-                provider_id: "SPAM".to_string(),
-                unread_count: 0,
-                total_count: 0,
-            },
-            Label {
-                id: LabelId::from_provider_id("test", "TRASH"),
-                account_id: AccountId::new(),
-                name: "TRASH".to_string(),
-                kind: LabelKind::System,
-                color: None,
-                provider_id: "TRASH".to_string(),
-                unread_count: 0,
-                total_count: 0,
-            },
-            // Hidden system labels
-            Label {
-                id: LabelId::from_provider_id("test", "CHAT"),
-                account_id: AccountId::new(),
-                name: "CHAT".to_string(),
-                kind: LabelKind::System,
-                color: None,
-                provider_id: "CHAT".to_string(),
-                unread_count: 0,
-                total_count: 0,
-            },
-            Label {
-                id: LabelId::from_provider_id("test", "IMPORTANT"),
-                account_id: AccountId::new(),
-                name: "IMPORTANT".to_string(),
-                kind: LabelKind::System,
-                color: None,
-                provider_id: "IMPORTANT".to_string(),
-                unread_count: 0,
-                total_count: 5,
-            },
-            // User labels
-            Label {
-                id: LabelId::from_provider_id("test", "Work"),
-                account_id: AccountId::new(),
-                name: "Work".to_string(),
-                kind: LabelKind::User,
-                color: None,
-                provider_id: "Label_1".to_string(),
-                unread_count: 2,
-                total_count: 10,
-            },
-            Label {
-                id: LabelId::from_provider_id("test", "Personal"),
-                account_id: AccountId::new(),
-                name: "Personal".to_string(),
-                kind: LabelKind::User,
-                color: None,
-                provider_id: "Label_2".to_string(),
-                unread_count: 0,
-                total_count: 3,
-            },
-            // Hidden Gmail category
-            Label {
-                id: LabelId::from_provider_id("test", "CATEGORY_UPDATES"),
-                account_id: AccountId::new(),
-                name: "CATEGORY_UPDATES".to_string(),
-                kind: LabelKind::System,
-                color: None,
-                provider_id: "CATEGORY_UPDATES".to_string(),
-                unread_count: 0,
-                total_count: 50,
-            },
-        ]
+        crate::test_fixtures::test_system_labels(&AccountId::new())
     }
 
     // --- Navigation tests ---

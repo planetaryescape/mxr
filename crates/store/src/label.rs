@@ -1,5 +1,7 @@
 use crate::mxr_core::id::*;
 use crate::mxr_core::types::*;
+use crate::mxr_store::decode_id;
+use sqlx::Row;
 
 impl super::Store {
     pub async fn upsert_label(&self, label: &Label) -> Result<(), sqlx::Error> {
@@ -44,33 +46,15 @@ impl super::Store {
         account_id: &AccountId,
     ) -> Result<Vec<Label>, sqlx::Error> {
         let aid = account_id.as_str();
-        let rows = sqlx::query!(
-            r#"SELECT id as "id!", account_id as "account_id!", name as "name!",
-                      kind as "kind!", color, provider_id as "provider_id!",
-                      unread_count as "unread_count!", total_count as "total_count!"
+        let rows = sqlx::query(
+            r#"SELECT id, account_id, name, kind, color, provider_id, unread_count, total_count
                FROM labels WHERE account_id = ?"#,
-            aid,
         )
+        .bind(aid)
         .fetch_all(self.reader())
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|r| Label {
-                id: LabelId::from_uuid(uuid::Uuid::parse_str(&r.id).unwrap()),
-                account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&r.account_id).unwrap()),
-                name: r.name,
-                kind: match r.kind.as_str() {
-                    "system" => LabelKind::System,
-                    "folder" => LabelKind::Folder,
-                    _ => LabelKind::User,
-                },
-                color: r.color,
-                provider_id: r.provider_id,
-                unread_count: r.unread_count as u32,
-                total_count: r.total_count as u32,
-            })
-            .collect())
+        rows.into_iter().map(row_to_label).collect()
     }
 
     pub async fn update_label_counts(
@@ -201,10 +185,7 @@ impl super::Store {
             query = query.bind(pid);
         }
         let rows = query.fetch_all(self.reader()).await?;
-        Ok(rows
-            .into_iter()
-            .map(|id| LabelId::from_uuid(uuid::Uuid::parse_str(&id).unwrap()))
-            .collect())
+        rows.into_iter().map(|id| decode_id(&id)).collect()
     }
 
     pub async fn find_label_by_provider_id(
@@ -213,30 +194,32 @@ impl super::Store {
         provider_id: &str,
     ) -> Result<Option<Label>, sqlx::Error> {
         let aid = account_id.as_str();
-        let row = sqlx::query!(
-            r#"SELECT id as "id!", account_id as "account_id!", name as "name!",
-                      kind as "kind!", color, provider_id as "provider_id!",
-                      unread_count as "unread_count!", total_count as "total_count!"
+        let row = sqlx::query(
+            r#"SELECT id, account_id, name, kind, color, provider_id, unread_count, total_count
                FROM labels WHERE account_id = ? AND provider_id = ?"#,
-            aid,
-            provider_id,
         )
+        .bind(aid)
+        .bind(provider_id)
         .fetch_optional(self.reader())
         .await?;
 
-        Ok(row.map(|r| Label {
-            id: LabelId::from_uuid(uuid::Uuid::parse_str(&r.id).unwrap()),
-            account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&r.account_id).unwrap()),
-            name: r.name,
-            kind: match r.kind.as_str() {
-                "system" => LabelKind::System,
-                "folder" => LabelKind::Folder,
-                _ => LabelKind::User,
-            },
-            color: r.color,
-            provider_id: r.provider_id,
-            unread_count: r.unread_count as u32,
-            total_count: r.total_count as u32,
-        }))
+        row.map(row_to_label).transpose()
     }
+}
+
+fn row_to_label(row: sqlx::sqlite::SqliteRow) -> Result<Label, sqlx::Error> {
+    Ok(Label {
+        id: decode_id(&row.get::<String, _>("id"))?,
+        account_id: decode_id(&row.get::<String, _>("account_id"))?,
+        name: row.get::<String, _>("name"),
+        kind: match row.get::<String, _>("kind").as_str() {
+            "system" => LabelKind::System,
+            "folder" => LabelKind::Folder,
+            _ => LabelKind::User,
+        },
+        color: row.get::<Option<String>, _>("color"),
+        provider_id: row.get::<String, _>("provider_id"),
+        unread_count: row.get::<i64, _>("unread_count") as u32,
+        total_count: row.get::<i64, _>("total_count") as u32,
+    })
 }

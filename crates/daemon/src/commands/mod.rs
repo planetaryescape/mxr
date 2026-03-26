@@ -23,3 +23,17 @@ pub mod sync_cmd;
 pub mod thread;
 pub mod version;
 pub mod web;
+
+use crate::mxr_protocol::Response;
+
+/// Extract a typed value from a daemon `Response`, converting `Response::Error`
+/// into an `anyhow` error and rejecting unexpected variants.
+pub(crate) fn expect_response<F, T>(resp: Response, extract: F) -> anyhow::Result<T>
+where
+    F: FnOnce(Response) -> Option<T>,
+{
+    match resp {
+        Response::Error { message } => anyhow::bail!("{message}"),
+        other => extract(other).ok_or_else(|| anyhow::anyhow!("unexpected response from daemon")),
+    }
+}

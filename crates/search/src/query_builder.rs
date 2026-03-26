@@ -347,10 +347,11 @@ fn tokenize_text_value(value: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::*;
     use crate::mxr_core::types::*;
     use crate::mxr_search::index::SearchIndex;
     use crate::mxr_search::parser::parse_query;
+    use crate::test_fixtures::TestEnvelopeBuilder;
+    use proptest::prelude::*;
 
     fn make_test_envelope(
         subject: &str,
@@ -359,33 +360,17 @@ mod tests {
         flags: MessageFlags,
         has_attachments: bool,
     ) -> Envelope {
-        Envelope {
-            id: MessageId::new(),
-            account_id: AccountId::new(),
-            provider_id: format!("fake-{}", subject.len()),
-            thread_id: ThreadId::new(),
-            message_id_header: None,
-            in_reply_to: None,
-            references: vec![],
-            from: Address {
-                name: Some(from_name.to_string()),
-                email: from_email.to_string(),
-            },
-            to: vec![Address {
-                name: None,
-                email: "recipient@example.com".to_string(),
-            }],
-            cc: vec![],
-            bcc: vec![],
-            subject: subject.to_string(),
-            date: chrono::Utc::now(),
-            flags,
-            snippet: format!("Snippet for {}", subject),
-            has_attachments,
-            size_bytes: 1000,
-            unsubscribe: UnsubscribeMethod::None,
-            label_provider_ids: vec![],
-        }
+        TestEnvelopeBuilder::new()
+            .subject(subject)
+            .from_address(from_name, from_email)
+            .to_address(None, "recipient@example.com")
+            .provider_id(format!("fake-{}", subject.len()))
+            .message_id_header(None)
+            .flags(flags)
+            .has_attachments(has_attachments)
+            .snippet(format!("Snippet for {}", subject))
+            .size_bytes(1000)
+            .build()
     }
 
     fn build_test_index() -> (SearchIndex, Vec<Envelope>) {
@@ -547,5 +532,24 @@ mod tests {
             version_results.results[0].message_id,
             envelopes[3].id.as_str()
         );
+    }
+
+    proptest! {
+        #[test]
+        fn simple_text_queries_parse_and_execute(
+            words in prop::collection::vec("[A-Za-z0-9]{1,12}", 1..5)
+        ) {
+            let query_text = words.join(" ");
+            let ast = parse_query(&query_text)
+                .map_err(|error| TestCaseError::fail(error.to_string()))?;
+            let (idx, _) = build_test_index();
+            let schema = MxrSchema::build();
+            let qb = QueryBuilder::new(&schema);
+            let query = qb.build(&ast);
+            let results = idx
+                .search_ast(query, 10, 0, SortOrder::Relevance)
+                .map_err(|error| TestCaseError::fail(error.to_string()))?;
+            prop_assert!(results.results.len() <= 10);
+        }
     }
 }

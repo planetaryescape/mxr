@@ -367,23 +367,11 @@ pub fn should_hide_label(name: &str) -> bool {
 }
 
 pub fn is_primary_system_label(name: &str) -> bool {
-    matches!(
-        name,
-        "INBOX" | "STARRED" | "SENT" | "DRAFT" | "ARCHIVE" | "SPAM" | "TRASH"
-    )
+    crate::mxr_core::types::system_labels::is_primary(name)
 }
 
 pub fn system_label_order(name: &str) -> usize {
-    match name {
-        "INBOX" => 0,
-        "STARRED" => 1,
-        "SENT" => 2,
-        "DRAFT" => 3,
-        "ARCHIVE" => 4,
-        "SPAM" => 5,
-        "TRASH" => 6,
-        _ => 100,
-    }
+    crate::mxr_core::types::system_labels::display_order(name)
 }
 
 #[cfg(test)]

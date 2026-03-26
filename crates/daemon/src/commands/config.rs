@@ -36,10 +36,7 @@ pub fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn get_config_value(
-    config: &crate::mxr_config::MxrConfig,
-    key: &str,
-) -> anyhow::Result<String> {
+fn get_config_value(config: &crate::mxr_config::MxrConfig, key: &str) -> anyhow::Result<String> {
     match key {
         // general
         "general.editor" => Ok(config

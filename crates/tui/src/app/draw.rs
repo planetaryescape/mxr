@@ -80,12 +80,7 @@ impl App {
                         .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
                         .split(content_area);
 
-                    ui::sidebar::draw(
-                        frame,
-                        chunks[0],
-                        &self.sidebar_view(),
-                        theme,
-                    );
+                    ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
 
                     if self.mailbox_view == MailboxView::Subscriptions {
                         ui::subscriptions_page::draw(
@@ -125,12 +120,7 @@ impl App {
                         .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
                         .split(content_area);
 
-                    ui::sidebar::draw(
-                        frame,
-                        chunks[0],
-                        &self.sidebar_view(),
-                        theme,
-                    );
+                    ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
 
                     if self.mailbox_view == MailboxView::Subscriptions {
                         ui::subscriptions_page::draw(

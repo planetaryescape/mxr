@@ -1,5 +1,8 @@
 use crate::mxr_core::id::*;
 use crate::mxr_core::types::*;
+use crate::mxr_store::{
+    decode_id, decode_json, decode_timestamp, encode_json, trace_lookup, trace_query,
+};
 use sqlx::Row;
 
 impl super::Store {
@@ -8,12 +11,14 @@ impl super::Store {
         message_id: &MessageId,
     ) -> Result<Option<MessageBody>, sqlx::Error> {
         let mid = message_id.as_str();
+        let started_at = std::time::Instant::now();
         let row = sqlx::query(
             r#"SELECT message_id, text_plain, text_html, fetched_at, metadata_json FROM bodies WHERE message_id = ?"#,
         )
         .bind(mid)
         .fetch_optional(self.reader())
         .await?;
+        trace_lookup("body.get_body", started_at, row.is_some());
 
         let row = match row {
             Some(r) => r,
@@ -21,44 +26,45 @@ impl super::Store {
         };
 
         let att_mid = message_id.as_str();
+        let started_at = std::time::Instant::now();
         let attachments_rows = sqlx::query!(
             r#"SELECT id as "id!", message_id as "message_id!", filename as "filename!", mime_type as "mime_type!", size_bytes as "size_bytes!", local_path, provider_id as "provider_id!" FROM attachments WHERE message_id = ?"#,
             att_mid,
         )
         .fetch_all(self.reader())
         .await?;
+        trace_query("body.get_body.attachments", started_at, attachments_rows.len());
 
         let attachments: Vec<AttachmentMeta> = attachments_rows
             .into_iter()
-            .map(|r| AttachmentMeta {
-                id: AttachmentId::from_uuid(uuid::Uuid::parse_str(&r.id).unwrap()),
-                message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&r.message_id).unwrap()),
-                filename: r.filename,
-                mime_type: r.mime_type,
-                size_bytes: r.size_bytes as u64,
-                local_path: r.local_path.map(std::path::PathBuf::from),
-                provider_id: r.provider_id,
+            .map(|r| {
+                Ok(AttachmentMeta {
+                    id: decode_id(&r.id)?,
+                    message_id: decode_id(&r.message_id)?,
+                    filename: r.filename,
+                    mime_type: r.mime_type,
+                    size_bytes: r.size_bytes as u64,
+                    local_path: r.local_path.map(std::path::PathBuf::from),
+                    provider_id: r.provider_id,
+                })
             })
-            .collect();
+            .collect::<Result<_, sqlx::Error>>()?;
 
         let metadata_json: String = row.try_get("metadata_json")?;
         Ok(Some(MessageBody {
-            message_id: MessageId::from_uuid(
-                uuid::Uuid::parse_str(row.try_get::<&str, _>("message_id")?).unwrap(),
-            ),
+            message_id: decode_id(row.try_get::<&str, _>("message_id")?)?,
             text_plain: row.try_get("text_plain")?,
             text_html: row.try_get("text_html")?,
             attachments,
-            fetched_at: chrono::DateTime::from_timestamp(row.try_get("fetched_at")?, 0)
-                .unwrap_or_default(),
-            metadata: serde_json::from_str(&metadata_json).unwrap_or_default(),
+            fetched_at: decode_timestamp(row.try_get("fetched_at")?)?,
+            metadata: decode_json(&metadata_json)?,
         }))
     }
 
     pub async fn insert_body(&self, body: &MessageBody) -> Result<(), sqlx::Error> {
         let fetched_at = body.fetched_at.timestamp();
         let mid = body.message_id.as_str();
-        let metadata_json = serde_json::to_string(&body.metadata).unwrap_or_else(|_| "{}".into());
+        let metadata_json = encode_json(&body.metadata)?;
 
         sqlx::query(
             "INSERT OR REPLACE INTO bodies (message_id, text_plain, text_html, fetched_at, metadata_json) VALUES (?, ?, ?, ?, ?)",

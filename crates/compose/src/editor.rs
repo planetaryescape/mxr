@@ -52,71 +52,30 @@ pub async fn spawn_editor(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    /// Mutex to serialize tests that manipulate EDITOR/VISUAL env vars.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn resolve_editor_env_var() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let prev_editor = std::env::var("EDITOR").ok();
-        let prev_visual = std::env::var("VISUAL").ok();
-
-        unsafe { std::env::set_var("EDITOR", "nvim") };
-        let result = resolve_editor(None);
-
-        // Restore
-        match prev_editor {
-            Some(v) => unsafe { std::env::set_var("EDITOR", v) },
-            None => unsafe { std::env::remove_var("EDITOR") },
-        }
-        match prev_visual {
-            Some(v) => unsafe { std::env::set_var("VISUAL", v) },
-            None => unsafe { std::env::remove_var("VISUAL") },
-        }
+        let result = temp_env::with_var("EDITOR", Some("nvim"), || resolve_editor(None));
 
         assert_eq!(result, "nvim");
     }
 
     #[test]
     fn resolve_editor_fallback() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let prev_editor = std::env::var("EDITOR").ok();
-        let prev_visual = std::env::var("VISUAL").ok();
-
-        unsafe { std::env::remove_var("EDITOR") };
-        unsafe { std::env::remove_var("VISUAL") };
-        let result = resolve_editor(None);
-
-        // Restore
-        if let Some(v) = prev_editor {
-            unsafe { std::env::set_var("EDITOR", v) }
-        }
-        if let Some(v) = prev_visual {
-            unsafe { std::env::set_var("VISUAL", v) }
-        }
+        let result = temp_env::with_vars(
+            [("EDITOR", None::<&str>), ("VISUAL", None::<&str>)],
+            || resolve_editor(None),
+        );
 
         assert_eq!(result, "vi");
     }
 
     #[test]
     fn resolve_editor_config() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let prev_editor = std::env::var("EDITOR").ok();
-        let prev_visual = std::env::var("VISUAL").ok();
-
-        unsafe { std::env::remove_var("EDITOR") };
-        unsafe { std::env::remove_var("VISUAL") };
-        let result = resolve_editor(Some("nano"));
-
-        // Restore
-        if let Some(v) = prev_editor {
-            unsafe { std::env::set_var("EDITOR", v) }
-        }
-        if let Some(v) = prev_visual {
-            unsafe { std::env::set_var("VISUAL", v) }
-        }
+        let result = temp_env::with_vars(
+            [("EDITOR", None::<&str>), ("VISUAL", None::<&str>)],
+            || resolve_editor(Some("nano")),
+        );
 
         assert_eq!(result, "nano");
     }

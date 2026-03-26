@@ -1,5 +1,5 @@
 //! JWZ threading algorithm — reconstruct threads from In-Reply-To + References headers.
-//! See https://www.jwz.org/doc/threading.html
+//! See <https://www.jwz.org/doc/threading.html>.
 
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;

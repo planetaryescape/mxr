@@ -1,5 +1,8 @@
 use crate::mxr_core::id::*;
 use crate::mxr_core::types::*;
+use crate::mxr_store::{
+    decode_id, decode_json, decode_timestamp, encode_json, trace_lookup, trace_query,
+};
 use sqlx::Row;
 
 pub(crate) fn future_date_cutoff_timestamp() -> i64 {
@@ -12,13 +15,13 @@ impl super::Store {
         let account_id = envelope.account_id.as_str();
         let thread_id = envelope.thread_id.as_str();
         let from_name = envelope.from.name.as_deref();
-        let to_addrs = serde_json::to_string(&envelope.to).unwrap();
-        let cc_addrs = serde_json::to_string(&envelope.cc).unwrap();
-        let bcc_addrs = serde_json::to_string(&envelope.bcc).unwrap();
-        let refs = serde_json::to_string(&envelope.references).unwrap();
+        let to_addrs = encode_json(&envelope.to)?;
+        let cc_addrs = encode_json(&envelope.cc)?;
+        let bcc_addrs = encode_json(&envelope.bcc)?;
+        let refs = encode_json(&envelope.references)?;
         let date = envelope.date.timestamp();
         let flags = envelope.flags.bits() as i64;
-        let unsub = serde_json::to_string(&envelope.unsubscribe).unwrap();
+        let unsub = encode_json(&envelope.unsubscribe)?;
         let has_attachments = envelope.has_attachments;
         let size_bytes = envelope.size_bytes as i64;
 
@@ -74,6 +77,7 @@ impl super::Store {
 
     pub async fn get_envelope(&self, id: &MessageId) -> Result<Option<Envelope>, sqlx::Error> {
         let id_str = id.as_str();
+        let started_at = std::time::Instant::now();
         let row = sqlx::query!(
             r#"SELECT
                 id as "id!", account_id as "account_id!", provider_id as "provider_id!",
@@ -94,8 +98,9 @@ impl super::Store {
         )
         .fetch_optional(self.reader())
         .await?;
+        trace_lookup("message.get_envelope", started_at, row.is_some());
 
-        Ok(row.map(|r| {
+        row.map(|r| {
             record_to_envelope(
                 &r.id,
                 &r.account_id,
@@ -118,7 +123,8 @@ impl super::Store {
                 r.unsubscribe_method.as_deref(),
                 &r.label_provider_ids,
             )
-        }))
+        })
+        .transpose()
     }
 
     pub async fn list_envelopes_by_label(
@@ -131,6 +137,7 @@ impl super::Store {
         let cutoff = future_date_cutoff_timestamp();
         let lim = limit as i64;
         let off = offset as i64;
+        let started_at = std::time::Instant::now();
         let rows = sqlx::query!(
             r#"SELECT
                 m.id as "id!", m.account_id as "account_id!", m.provider_id as "provider_id!",
@@ -158,9 +165,9 @@ impl super::Store {
         )
         .fetch_all(self.reader())
         .await?;
+        trace_query("message.list_envelopes_by_label", started_at, rows.len());
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|r| {
                 record_to_envelope(
                     &r.id,
@@ -185,7 +192,7 @@ impl super::Store {
                     &r.label_provider_ids,
                 )
             })
-            .collect())
+            .collect()
     }
 
     pub async fn list_envelopes_by_account(
@@ -198,6 +205,7 @@ impl super::Store {
         let cutoff = future_date_cutoff_timestamp();
         let lim = limit as i64;
         let off = offset as i64;
+        let started_at = std::time::Instant::now();
         let rows = sqlx::query!(
             r#"SELECT
                 id as "id!", account_id as "account_id!", provider_id as "provider_id!",
@@ -224,9 +232,9 @@ impl super::Store {
         )
         .fetch_all(self.reader())
         .await?;
+        trace_query("message.list_envelopes_by_account", started_at, rows.len());
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|r| {
                 record_to_envelope(
                     &r.id,
@@ -251,7 +259,7 @@ impl super::Store {
                     &r.label_provider_ids,
                 )
             })
-            .collect())
+            .collect()
     }
 
     pub async fn list_envelopes_by_ids(
@@ -288,7 +296,9 @@ impl super::Store {
             query = query.bind(message_id.as_str());
         }
 
+        let started_at = std::time::Instant::now();
         let rows = query.fetch_all(self.reader()).await?;
+        trace_query("message.list_envelopes_by_ids", started_at, rows.len());
         let mut by_id = std::collections::HashMap::with_capacity(rows.len());
         for row in rows {
             let id = row.get::<String, _>(0);
@@ -332,7 +342,7 @@ impl super::Store {
                 size_bytes,
                 unsubscribe_method.as_deref(),
                 &label_provider_ids,
-            );
+            )?;
             by_id.insert(envelope.id.clone(), envelope);
         }
 
@@ -416,7 +426,7 @@ impl super::Store {
         .fetch_optional(self.reader())
         .await?;
 
-        Ok(row.map(|r| MessageId::from_uuid(uuid::Uuid::parse_str(&r.id).unwrap())))
+        row.map(|r| decode_id(&r.id)).transpose()
     }
 
     pub async fn count_messages_by_account(
@@ -468,8 +478,7 @@ impl super::Store {
         .fetch_all(self.reader())
         .await?;
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|r| {
                 record_to_envelope(
                     &r.id,
@@ -494,7 +503,7 @@ impl super::Store {
                     &r.label_provider_ids,
                 )
             })
-            .collect())
+            .collect()
     }
 
     /// Count all messages across all accounts. Used for reindexing.
@@ -599,10 +608,7 @@ impl super::Store {
         )
         .fetch_all(self.reader())
         .await?;
-        Ok(rows
-            .into_iter()
-            .map(|r| LabelId::from_uuid(uuid::Uuid::parse_str(&r.label_id).unwrap()))
-            .collect())
+        rows.into_iter().map(|r| decode_id(&r.label_id)).collect()
     }
 
     /// Add a label to a message.
@@ -694,7 +700,7 @@ impl super::Store {
         account_id: Option<&AccountId>,
         limit: u32,
     ) -> Result<Vec<SubscriptionSummary>, sqlx::Error> {
-        let none_unsubscribe = serde_json::to_string(&UnsubscribeMethod::None).unwrap();
+        let none_unsubscribe = encode_json(&UnsubscribeMethod::None)?;
         let trash_flag = MessageFlags::TRASH.bits() as i64;
         let spam_flag = MessageFlags::SPAM.bits() as i64;
         let cutoff = future_date_cutoff_timestamp();
@@ -763,36 +769,33 @@ impl super::Store {
         .fetch_all(self.reader())
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .map(|row| SubscriptionSummary {
-                account_id: AccountId::from_uuid(
-                    uuid::Uuid::parse_str(&row.get::<String, _>("account_id")).unwrap(),
-                ),
-                sender_name: row.get::<Option<String>, _>("from_name"),
-                sender_email: row.get::<String, _>("from_email"),
-                message_count: row.get::<i64, _>("message_count") as u32,
-                latest_message_id: MessageId::from_uuid(
-                    uuid::Uuid::parse_str(&row.get::<String, _>("id")).unwrap(),
-                ),
-                latest_provider_id: row.get::<String, _>("provider_id"),
-                latest_thread_id: ThreadId::from_uuid(
-                    uuid::Uuid::parse_str(&row.get::<String, _>("thread_id")).unwrap(),
-                ),
-                latest_subject: row.get::<String, _>("subject"),
-                latest_snippet: row.get::<String, _>("snippet"),
-                latest_date: chrono::DateTime::from_timestamp(row.get::<i64, _>("date"), 0)
-                    .unwrap_or_default(),
-                latest_flags: MessageFlags::from_bits_truncate(row.get::<i64, _>("flags") as u32),
-                latest_has_attachments: row.get::<bool, _>("has_attachments"),
-                latest_size_bytes: row.get::<i64, _>("size_bytes") as u64,
-                unsubscribe: row
-                    .get::<Option<String>, _>("unsubscribe_method")
-                    .as_deref()
-                    .map(|value| serde_json::from_str(value).unwrap_or(UnsubscribeMethod::None))
-                    .unwrap_or(UnsubscribeMethod::None),
+        rows.into_iter()
+            .map(|row| {
+                Ok(SubscriptionSummary {
+                    account_id: decode_id(&row.get::<String, _>("account_id"))?,
+                    sender_name: row.get::<Option<String>, _>("from_name"),
+                    sender_email: row.get::<String, _>("from_email"),
+                    message_count: row.get::<i64, _>("message_count") as u32,
+                    latest_message_id: decode_id(&row.get::<String, _>("id"))?,
+                    latest_provider_id: row.get::<String, _>("provider_id"),
+                    latest_thread_id: decode_id(&row.get::<String, _>("thread_id"))?,
+                    latest_subject: row.get::<String, _>("subject"),
+                    latest_snippet: row.get::<String, _>("snippet"),
+                    latest_date: decode_timestamp(row.get::<i64, _>("date"))?,
+                    latest_flags: MessageFlags::from_bits_truncate(
+                        row.get::<i64, _>("flags") as u32
+                    ),
+                    latest_has_attachments: row.get::<bool, _>("has_attachments"),
+                    latest_size_bytes: row.get::<i64, _>("size_bytes") as u64,
+                    unsubscribe: row
+                        .get::<Option<String>, _>("unsubscribe_method")
+                        .as_deref()
+                        .map(decode_json::<UnsubscribeMethod>)
+                        .transpose()?
+                        .unwrap_or(UnsubscribeMethod::None),
+                })
             })
-            .collect())
+            .collect()
     }
 }
 
@@ -821,32 +824,34 @@ pub(crate) fn record_to_envelope(
     size_bytes: i64,
     unsubscribe_method: Option<&str>,
     label_provider_ids: &str,
-) -> Envelope {
-    Envelope {
-        id: MessageId::from_uuid(uuid::Uuid::parse_str(id).unwrap()),
-        account_id: AccountId::from_uuid(uuid::Uuid::parse_str(account_id).unwrap()),
+) -> Result<Envelope, sqlx::Error> {
+    Ok(Envelope {
+        id: decode_id(id)?,
+        account_id: decode_id(account_id)?,
         provider_id: provider_id.to_string(),
-        thread_id: ThreadId::from_uuid(uuid::Uuid::parse_str(thread_id).unwrap()),
+        thread_id: decode_id(thread_id)?,
         message_id_header: message_id_header.map(|s| s.to_string()),
         in_reply_to: in_reply_to.map(|s| s.to_string()),
         references: reference_headers
-            .map(|r| serde_json::from_str(r).unwrap_or_default())
+            .map(decode_json::<Vec<String>>)
+            .transpose()?
             .unwrap_or_default(),
         from: Address {
             name: from_name.map(|s| s.to_string()),
             email: from_email.to_string(),
         },
-        to: serde_json::from_str(to_addrs).unwrap_or_default(),
-        cc: serde_json::from_str(cc_addrs).unwrap_or_default(),
-        bcc: serde_json::from_str(bcc_addrs).unwrap_or_default(),
+        to: decode_json(to_addrs)?,
+        cc: decode_json(cc_addrs)?,
+        bcc: decode_json(bcc_addrs)?,
         subject: subject.to_string(),
-        date: chrono::DateTime::from_timestamp(date, 0).unwrap_or_default(),
+        date: decode_timestamp(date)?,
         flags: MessageFlags::from_bits_truncate(flags as u32),
         snippet: snippet.to_string(),
         has_attachments,
         size_bytes: size_bytes as u64,
         unsubscribe: unsubscribe_method
-            .map(|u| serde_json::from_str(u).unwrap_or(UnsubscribeMethod::None))
+            .map(decode_json::<UnsubscribeMethod>)
+            .transpose()?
             .unwrap_or(UnsubscribeMethod::None),
         label_provider_ids: if label_provider_ids.is_empty() {
             vec![]
@@ -857,5 +862,5 @@ pub(crate) fn record_to_envelope(
                 .map(str::to_string)
                 .collect()
         },
-    }
+    })
 }

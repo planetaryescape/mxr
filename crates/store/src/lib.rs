@@ -22,54 +22,70 @@ pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecord
 pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 
+use chrono::{DateTime, Utc};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use std::error::Error as StdError;
+use std::str::FromStr;
+use std::time::Instant;
+
+pub(crate) fn encode_json<T: Serialize>(value: &T) -> Result<String, sqlx::Error> {
+    serde_json::to_string(value).map_err(|error| sqlx::Error::Encode(Box::new(error)))
+}
+
+pub(crate) fn decode_json<T: DeserializeOwned>(value: &str) -> Result<T, sqlx::Error> {
+    serde_json::from_str(value).map_err(sqlx::Error::decode)
+}
+
+pub(crate) fn decode_id<T>(value: &str) -> Result<T, sqlx::Error>
+where
+    T: FromStr,
+    T::Err: StdError + Send + Sync + 'static,
+{
+    value.parse().map_err(sqlx::Error::decode)
+}
+
+pub(crate) fn decode_timestamp(value: i64) -> Result<DateTime<Utc>, sqlx::Error> {
+    DateTime::from_timestamp(value, 0)
+        .ok_or_else(|| sqlx::Error::Protocol(format!("invalid unix timestamp: {value}")))
+}
+
+pub(crate) fn decode_optional_timestamp(
+    value: Option<i64>,
+) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    value.map(decode_timestamp).transpose()
+}
+
+pub(crate) fn trace_query(operation: &'static str, started_at: Instant, row_count: usize) {
+    tracing::trace!(
+        operation,
+        row_count,
+        elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+        "store query"
+    );
+}
+
+pub(crate) fn trace_lookup(operation: &'static str, started_at: Instant, found: bool) {
+    tracing::trace!(
+        operation,
+        found,
+        elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+        "store lookup"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::mxr_core::*;
+    use crate::test_fixtures::*;
     use chrono::TimeZone;
 
-    fn test_account() -> Account {
-        Account {
-            id: AccountId::new(),
-            name: "Test".to_string(),
-            email: "test@example.com".to_string(),
-            sync_backend: Some(BackendRef {
-                provider_kind: ProviderKind::Fake,
-                config_key: "fake".to_string(),
-            }),
-            send_backend: None,
-            enabled: true,
-        }
-    }
-
     fn test_envelope(account_id: &AccountId) -> Envelope {
-        Envelope {
-            id: MessageId::new(),
-            account_id: account_id.clone(),
-            provider_id: "fake-1".to_string(),
-            thread_id: ThreadId::new(),
-            message_id_header: Some("<test@example.com>".to_string()),
-            in_reply_to: None,
-            references: vec![],
-            from: Address {
-                name: Some("Alice".to_string()),
-                email: "alice@example.com".to_string(),
-            },
-            to: vec![Address {
-                name: None,
-                email: "bob@example.com".to_string(),
-            }],
-            cc: vec![],
-            bcc: vec![],
-            subject: "Test subject".to_string(),
-            date: chrono::Utc::now(),
-            flags: MessageFlags::READ | MessageFlags::STARRED,
-            snippet: "Preview text".to_string(),
-            has_attachments: false,
-            size_bytes: 1024,
-            unsubscribe: UnsubscribeMethod::None,
-            label_provider_ids: vec![],
-        }
+        TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .flags(MessageFlags::READ | MessageFlags::STARRED)
+            .build()
     }
 
     #[tokio::test]

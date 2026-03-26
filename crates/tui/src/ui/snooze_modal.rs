@@ -67,26 +67,7 @@ pub fn draw(
 }
 
 fn format_preset(preset: SnoozePreset, config: &SnoozeConfig) -> String {
-    match preset {
-        SnoozePreset::TomorrowMorning => {
-            format!("Tomorrow morning ({:02}:00)", config.morning_hour)
-        }
-        SnoozePreset::Tonight => format!("Tonight ({:02}:00)", config.evening_hour),
-        SnoozePreset::Weekend => format!(
-            "{} ({:02}:00)",
-            capitalize(&config.weekend_day),
-            config.weekend_hour
-        ),
-        SnoozePreset::NextMonday => format!("Monday ({:02}:00)", config.morning_hour),
-    }
-}
-
-fn capitalize(value: &str) -> String {
-    let mut chars = value.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        None => String::new(),
-    }
+    crate::mxr_config::snooze::format_preset(preset, config)
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {

@@ -42,39 +42,39 @@ pub async fn run(
         },
     };
 
-    match response {
+    let snapshot = crate::commands::expect_response(response, |r| match r {
         Response::Ok {
             data: ResponseData::SemanticStatus { snapshot },
-        } => match resolve_format(format) {
-            OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(&snapshot)?);
-            }
-            _ => {
-                println!(
-                    "enabled={} active_profile={}",
-                    snapshot.enabled,
-                    snapshot.active_profile.as_str()
-                );
-                if snapshot.profiles.is_empty() {
-                    println!("no semantic profiles installed");
-                } else {
-                    for profile in snapshot.profiles {
-                        println!(
-                            "{} status={:?} dims={} indexed_at={}",
-                            profile.profile.as_str(),
-                            profile.status,
-                            profile.dimensions,
-                            profile
-                                .last_indexed_at
-                                .map(|v| v.to_rfc3339())
-                                .unwrap_or_else(|| "-".to_string())
-                        );
-                    }
+        } => Some(snapshot),
+        _ => None,
+    })?;
+    match resolve_format(format) {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&snapshot)?);
+        }
+        _ => {
+            println!(
+                "enabled={} active_profile={}",
+                snapshot.enabled,
+                snapshot.active_profile.as_str()
+            );
+            if snapshot.profiles.is_empty() {
+                println!("no semantic profiles installed");
+            } else {
+                for profile in snapshot.profiles {
+                    println!(
+                        "{} status={:?} dims={} indexed_at={}",
+                        profile.profile.as_str(),
+                        profile.status,
+                        profile.dimensions,
+                        profile
+                            .last_indexed_at
+                            .map(|v| v.to_rfc3339())
+                            .unwrap_or_else(|| "-".to_string())
+                    );
                 }
             }
-        },
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
+        }
     }
 
     Ok(())

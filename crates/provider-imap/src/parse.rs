@@ -38,7 +38,7 @@ pub fn flags_from_imap(flags: &[String]) -> MessageFlags {
     result
 }
 
-/// Parse an IMAP date string into DateTime<Utc>.
+/// Parse an IMAP date string into `DateTime<Utc>`.
 /// Handles common RFC 2822 formats and IMAP INTERNALDATE formats.
 pub fn parse_imap_date(date_str: &str) -> Result<DateTime<Utc>, ImapProviderError> {
     // Try RFC 2822 first (most common in ENVELOPE)

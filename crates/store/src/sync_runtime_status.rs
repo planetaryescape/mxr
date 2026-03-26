@@ -1,4 +1,5 @@
 use crate::mxr_core::AccountId;
+use crate::mxr_store::{decode_id, decode_optional_timestamp, decode_timestamp};
 use chrono::{DateTime, Utc};
 use sqlx::Row;
 
@@ -30,26 +31,22 @@ pub struct SyncRuntimeStatusUpdate {
     pub last_synced_count: Option<u32>,
 }
 
-fn ts_or_default(ts: Option<i64>) -> Option<DateTime<Utc>> {
-    ts.and_then(|value| DateTime::from_timestamp(value, 0))
-}
-
-fn row_to_sync_runtime_status(row: &sqlx::sqlite::SqliteRow) -> SyncRuntimeStatus {
-    SyncRuntimeStatus {
-        account_id: AccountId::from_uuid(
-            uuid::Uuid::parse_str(&row.get::<String, _>(0)).expect("valid account uuid"),
-        ),
-        last_attempt_at: ts_or_default(row.get(1)),
-        last_success_at: ts_or_default(row.get(2)),
+fn row_to_sync_runtime_status(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<SyncRuntimeStatus, sqlx::Error> {
+    Ok(SyncRuntimeStatus {
+        account_id: decode_id(&row.get::<String, _>(0))?,
+        last_attempt_at: decode_optional_timestamp(row.get(1))?,
+        last_success_at: decode_optional_timestamp(row.get(2))?,
         last_error: row.get(3),
         failure_class: row.get(4),
         consecutive_failures: row.get::<i64, _>(5) as u32,
-        backoff_until: ts_or_default(row.get(6)),
+        backoff_until: decode_optional_timestamp(row.get(6))?,
         sync_in_progress: row.get::<i64, _>(7) != 0,
         current_cursor_summary: row.get(8),
         last_synced_count: row.get::<i64, _>(9) as u32,
-        updated_at: DateTime::from_timestamp(row.get(10), 0).unwrap_or_default(),
-    }
+        updated_at: decode_timestamp(row.get(10))?,
+    })
 }
 
 impl super::Store {
@@ -176,7 +173,7 @@ impl super::Store {
         .fetch_optional(self.reader())
         .await?;
 
-        Ok(row.map(|row| row_to_sync_runtime_status(&row)))
+        row.map(|row| row_to_sync_runtime_status(&row)).transpose()
     }
 
     pub async fn list_sync_runtime_statuses(&self) -> Result<Vec<SyncRuntimeStatus>, sqlx::Error> {
@@ -201,9 +198,8 @@ impl super::Store {
         .fetch_all(self.reader())
         .await?;
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|row| row_to_sync_runtime_status(&row))
-            .collect())
+            .collect()
     }
 }

@@ -46,18 +46,23 @@ fn render_table(subscriptions: &[SubscriptionSummary]) {
 
 pub async fn run(limit: u32, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let resp = client.request(Request::ListSubscriptions { account_id: None, limit }).await?;
+    let resp = client
+        .request(Request::ListSubscriptions {
+            account_id: None,
+            limit,
+        })
+        .await?;
 
     let fmt = resolve_format(format);
-    match resp {
+    let subscriptions = crate::commands::expect_response(resp, |r| match r {
         Response::Ok {
             data: ResponseData::Subscriptions { subscriptions },
-        } => match fmt {
-            OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&subscriptions)?),
-            _ => render_table(&subscriptions),
-        },
-        Response::Error { message } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response"),
+        } => Some(subscriptions),
+        _ => None,
+    })?;
+    match fmt {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&subscriptions)?),
+        _ => render_table(&subscriptions),
     }
 
     Ok(())

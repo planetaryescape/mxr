@@ -5,8 +5,9 @@ use crate::mxr_search::SearchIndex;
 use crate::mxr_semantic::SemanticEngine;
 use crate::mxr_store::Store;
 use crate::mxr_sync::SyncEngine;
+use parking_lot::{Mutex as ParkingMutex, RwLock};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex as StdMutex, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{broadcast, Mutex};
 
@@ -30,7 +31,7 @@ pub struct AppState {
     pub semantic: Arc<Mutex<SemanticEngine>>,
     pub sync_engine: Arc<SyncEngine>,
     runtime: RwLock<ProviderRuntime>,
-    sync_loop_accounts: StdMutex<HashSet<AccountId>>,
+    sync_loop_accounts: ParkingMutex<HashSet<AccountId>>,
     pub event_tx: broadcast::Sender<IpcMessage>,
     pub start_time: Instant,
     config: RwLock<crate::mxr_config::MxrConfig>,
@@ -70,7 +71,7 @@ impl AppState {
                 default_provider: provider_setup.default_provider,
                 default_send_provider: provider_setup.default_send_provider,
             }),
-            sync_loop_accounts: StdMutex::new(HashSet::new()),
+            sync_loop_accounts: ParkingMutex::new(HashSet::new()),
             event_tx,
             start_time: Instant::now(),
             config: RwLock::new(config),
@@ -136,21 +137,18 @@ impl AppState {
                     );
                     match auth.load_existing().await {
                         Ok(()) => {
-                            let client =
-                                crate::mxr_provider_gmail::client::GmailClient::new(auth);
-                            let provider =
-                                Arc::new(crate::mxr_provider_gmail::GmailProvider::new(
-                                    account_id.clone(),
-                                    client,
-                                ));
+                            let client = crate::mxr_provider_gmail::client::GmailClient::new(auth);
+                            let provider = Arc::new(crate::mxr_provider_gmail::GmailProvider::new(
+                                account_id.clone(),
+                                client,
+                            ));
                             let sync_provider: Arc<dyn MailSyncProvider> = provider.clone();
                             if matches!(
                                 acct_config.send,
                                 Some(crate::mxr_config::SendProviderConfig::Gmail)
                             ) {
                                 let send_provider: Arc<dyn MailSendProvider> = provider.clone();
-                                send_providers
-                                    .insert(account_id.clone(), send_provider.clone());
+                                send_providers.insert(account_id.clone(), send_provider.clone());
                                 if requested_default == Some(key.as_str())
                                     || default_send_provider.is_none()
                                 {
@@ -254,7 +252,7 @@ impl AppState {
     }
 
     pub fn config_snapshot(&self) -> crate::mxr_config::MxrConfig {
-        self.config.read().expect("config lock poisoned").clone()
+        self.config.read().clone()
     }
 
     pub fn attachment_dir(&self) -> std::path::PathBuf {
@@ -283,7 +281,7 @@ impl AppState {
             .lock()
             .await
             .apply_config(config.search.semantic.clone());
-        *self.config.write().expect("config lock poisoned") = config.clone();
+        *self.config.write() = config.clone();
         Ok(config)
     }
 
@@ -291,7 +289,6 @@ impl AppState {
     pub fn default_provider(&self) -> Arc<dyn MailSyncProvider> {
         self.runtime
             .read()
-            .expect("runtime lock poisoned")
             .default_provider
             .clone()
             .expect("no sync-capable accounts configured")
@@ -300,7 +297,6 @@ impl AppState {
     pub fn default_account_id_opt(&self) -> Option<AccountId> {
         self.runtime
             .read()
-            .expect("runtime lock poisoned")
             .default_provider
             .as_ref()
             .map(|provider| provider.account_id().clone())
@@ -315,12 +311,7 @@ impl AppState {
         &self,
         account_id: &AccountId,
     ) -> Option<Arc<dyn MailSyncProvider>> {
-        self.runtime
-            .read()
-            .expect("runtime lock poisoned")
-            .providers
-            .get(account_id)
-            .cloned()
+        self.runtime.read().providers.get(account_id).cloned()
     }
 
     /// Get provider for a specific account, or fall back to default.
@@ -328,7 +319,7 @@ impl AppState {
         &self,
         account_id: Option<&AccountId>,
     ) -> std::result::Result<Arc<dyn MailSyncProvider>, String> {
-        let runtime = self.runtime.read().expect("runtime lock poisoned");
+        let runtime = self.runtime.read();
         account_id
             .and_then(|id| runtime.providers.get(id).cloned())
             .or_else(|| runtime.default_provider.clone())
@@ -340,14 +331,14 @@ impl AppState {
         &self,
         account_id: Option<&AccountId>,
     ) -> Option<Arc<dyn MailSendProvider>> {
-        let runtime = self.runtime.read().expect("runtime lock poisoned");
+        let runtime = self.runtime.read();
         account_id
             .and_then(|id| runtime.send_providers.get(id).cloned())
             .or_else(|| runtime.default_send_provider.clone())
     }
 
     pub fn runtime_account_ids(&self) -> Vec<AccountId> {
-        let runtime = self.runtime.read().expect("runtime lock poisoned");
+        let runtime = self.runtime.read();
         runtime
             .providers
             .keys()
@@ -361,7 +352,6 @@ impl AppState {
     pub fn sync_provider_entries(&self) -> Vec<(AccountId, Arc<dyn MailSyncProvider>)> {
         self.runtime
             .read()
-            .expect("runtime lock poisoned")
             .providers
             .iter()
             .map(|(account_id, provider)| (account_id.clone(), provider.clone()))
@@ -369,10 +359,7 @@ impl AppState {
     }
 
     pub fn mark_sync_loop_spawned(&self, account_id: &AccountId) -> bool {
-        self.sync_loop_accounts
-            .lock()
-            .expect("sync-loop lock poisoned")
-            .insert(account_id.clone())
+        self.sync_loop_accounts.lock().insert(account_id.clone())
     }
 
     pub async fn reload_accounts_from_disk(self: &Arc<Self>) -> std::result::Result<(), String> {
@@ -382,7 +369,7 @@ impl AppState {
             .map_err(|e| e.to_string())?;
 
         {
-            let mut runtime = self.runtime.write().expect("runtime lock poisoned");
+            let mut runtime = self.runtime.write();
             *runtime = ProviderRuntime {
                 providers: provider_setup.providers,
                 send_providers: provider_setup.send_providers,
@@ -394,7 +381,7 @@ impl AppState {
             .lock()
             .await
             .apply_config(config.search.semantic.clone());
-        *self.config.write().expect("config lock poisoned") = config;
+        *self.config.write() = config;
         crate::loops::spawn_sync_loops(self.clone());
         Ok(())
     }
@@ -432,7 +419,7 @@ impl AppState {
                 default_provider: None,
                 default_send_provider: None,
             }),
-            sync_loop_accounts: StdMutex::new(HashSet::new()),
+            sync_loop_accounts: ParkingMutex::new(HashSet::new()),
             event_tx,
             start_time: Instant::now(),
             config: RwLock::new(crate::mxr_config::MxrConfig::default()),
@@ -493,7 +480,7 @@ impl AppState {
                     default_provider: Some(provider),
                     default_send_provider: send_provider,
                 }),
-                sync_loop_accounts: StdMutex::new(HashSet::new()),
+                sync_loop_accounts: ParkingMutex::new(HashSet::new()),
                 event_tx,
                 start_time: Instant::now(),
                 config: RwLock::new(crate::mxr_config::MxrConfig::default()),
@@ -508,11 +495,7 @@ impl AppState {
 
     #[cfg(test)]
     pub fn set_attachment_dir_for_tests(&self, path: std::path::PathBuf) {
-        self.config
-            .write()
-            .expect("config lock poisoned")
-            .general
-            .attachment_dir = path;
+        self.config.write().general.attachment_dir = path;
     }
 }
 

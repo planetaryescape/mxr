@@ -1,4 +1,5 @@
 use crate::mxr_core::{AccountId, SyncCursor};
+use crate::mxr_store::{decode_json, encode_json};
 
 impl super::Store {
     pub async fn get_sync_cursor(
@@ -8,10 +9,10 @@ impl super::Store {
         let aid = account_id.as_str();
         let row = sqlx::query!("SELECT sync_cursor FROM accounts WHERE id = ?", aid,)
             .fetch_optional(self.reader())
-            .await?;
+        .await?;
 
         match row {
-            Some(r) => Ok(r.sync_cursor.and_then(|c| serde_json::from_str(&c).ok())),
+            Some(r) => r.sync_cursor.map(|cursor| decode_json(&cursor)).transpose(),
             None => Ok(None),
         }
     }
@@ -21,7 +22,7 @@ impl super::Store {
         account_id: &AccountId,
         cursor: &SyncCursor,
     ) -> Result<(), sqlx::Error> {
-        let cursor_json = serde_json::to_string(cursor).unwrap();
+        let cursor_json = encode_json(cursor)?;
         let aid = account_id.as_str();
         sqlx::query!(
             "UPDATE accounts SET sync_cursor = ? WHERE id = ?",

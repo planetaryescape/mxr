@@ -1,4 +1,5 @@
 use crate::mxr_core::{Account, AccountId, BackendRef};
+use crate::mxr_store::{decode_id, decode_json, encode_json, trace_lookup, trace_query};
 
 impl super::Store {
     pub async fn insert_account(&self, account: &Account) -> Result<(), sqlx::Error> {
@@ -6,19 +7,23 @@ impl super::Store {
         let sync_provider = account
             .sync_backend
             .as_ref()
-            .map(|b| serde_json::to_string(&b.provider_kind).unwrap());
+            .map(|backend| encode_json(&backend.provider_kind))
+            .transpose()?;
         let send_provider = account
             .send_backend
             .as_ref()
-            .map(|b| serde_json::to_string(&b.provider_kind).unwrap());
+            .map(|backend| encode_json(&backend.provider_kind))
+            .transpose()?;
         let sync_config = account
             .sync_backend
             .as_ref()
-            .map(|b| serde_json::to_string(b).unwrap());
+            .map(encode_json)
+            .transpose()?;
         let send_config = account
             .send_backend
             .as_ref()
-            .map(|b| serde_json::to_string(b).unwrap());
+            .map(encode_json)
+            .transpose()?;
         let now = chrono::Utc::now().timestamp();
 
         sqlx::query!(
@@ -52,48 +57,60 @@ impl super::Store {
 
     pub async fn get_account(&self, id: &AccountId) -> Result<Option<Account>, sqlx::Error> {
         let id_str = id.as_str();
+        let started_at = std::time::Instant::now();
         let row = sqlx::query!(
             r#"SELECT id as "id!", name as "name!", email as "email!", sync_config, send_config, enabled as "enabled!: bool" FROM accounts WHERE id = ?"#,
             id_str,
         )
         .fetch_optional(self.reader())
         .await?;
+        trace_lookup("account.get_account", started_at, row.is_some());
 
-        Ok(row.map(|r| Account {
-            id: AccountId::from_uuid(uuid::Uuid::parse_str(&r.id).unwrap()),
-            name: r.name,
-            email: r.email,
-            sync_backend: r
-                .sync_config
-                .and_then(|c| serde_json::from_str::<BackendRef>(&c).ok()),
-            send_backend: r
-                .send_config
-                .and_then(|c| serde_json::from_str::<BackendRef>(&c).ok()),
-            enabled: r.enabled,
-        }))
+        row.map(|row| {
+            Ok(Account {
+                id: decode_id(&row.id)?,
+                name: row.name,
+                email: row.email,
+                sync_backend: row
+                    .sync_config
+                    .map(|value| decode_json::<BackendRef>(&value))
+                    .transpose()?,
+                send_backend: row
+                    .send_config
+                    .map(|value| decode_json::<BackendRef>(&value))
+                    .transpose()?,
+                enabled: row.enabled,
+            })
+        })
+        .transpose()
     }
 
     pub async fn list_accounts(&self) -> Result<Vec<Account>, sqlx::Error> {
+        let started_at = std::time::Instant::now();
         let rows = sqlx::query!(
             r#"SELECT id as "id!", name as "name!", email as "email!", sync_config, send_config, enabled as "enabled!: bool" FROM accounts WHERE enabled = 1"#
         )
         .fetch_all(self.reader())
         .await?;
+        trace_query("account.list_accounts", started_at, rows.len());
 
-        Ok(rows
-            .into_iter()
-            .map(|r| Account {
-                id: AccountId::from_uuid(uuid::Uuid::parse_str(&r.id).unwrap()),
-                name: r.name,
-                email: r.email,
-                sync_backend: r
-                    .sync_config
-                    .and_then(|c| serde_json::from_str::<BackendRef>(&c).ok()),
-                send_backend: r
-                    .send_config
-                    .and_then(|c| serde_json::from_str::<BackendRef>(&c).ok()),
-                enabled: r.enabled,
+        rows.into_iter()
+            .map(|row| {
+                Ok(Account {
+                    id: decode_id(&row.id)?,
+                    name: row.name,
+                    email: row.email,
+                    sync_backend: row
+                        .sync_config
+                        .map(|value| decode_json::<BackendRef>(&value))
+                        .transpose()?,
+                    send_backend: row
+                        .send_config
+                        .map(|value| decode_json::<BackendRef>(&value))
+                        .transpose()?,
+                    enabled: row.enabled,
+                })
             })
-            .collect())
+            .collect()
     }
 }

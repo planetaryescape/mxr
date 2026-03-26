@@ -99,6 +99,7 @@ pub enum ComposeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn parse_basic_frontmatter() {
@@ -169,5 +170,33 @@ mod tests {
         );
         assert_eq!(parsed_body, "My reply.");
         assert!(!parsed_body.contains("Original message"));
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_render_parse_roundtrip(
+            to_local in "[A-Za-z0-9._%+-]{1,16}",
+            from_local in "[A-Za-z0-9._%+-]{1,16}",
+            subject in "[A-Za-z0-9 .,_-]{1,40}",
+            body in "[A-Za-z0-9 .,!?\n-]{0,80}",
+        ) {
+            let fm = ComposeFrontmatter {
+                to: format!("{to_local}@example.com"),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: subject.clone(),
+                from: format!("{from_local}@example.com"),
+                in_reply_to: None,
+                references: Vec::new(),
+                attach: Vec::new(),
+            };
+
+            let rendered = render_compose_file(&fm, &body, None)?;
+            let (parsed_fm, parsed_body) = parse_compose_file(&rendered)?;
+            prop_assert_eq!(parsed_fm.to, fm.to);
+            prop_assert_eq!(parsed_fm.from, fm.from);
+            prop_assert_eq!(parsed_fm.subject, fm.subject);
+            prop_assert_eq!(parsed_body, body.trim().to_string());
+        }
     }
 }

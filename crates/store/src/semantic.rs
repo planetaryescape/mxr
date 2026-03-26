@@ -1,5 +1,8 @@
 use crate::mxr_core::id::*;
 use crate::mxr_core::types::*;
+use crate::mxr_store::{
+    decode_id, decode_json, decode_optional_timestamp, decode_timestamp, encode_json,
+};
 use sqlx::Row;
 
 impl super::Store {
@@ -14,7 +17,7 @@ impl super::Store {
         .fetch_all(self.reader())
         .await?;
 
-        Ok(rows.into_iter().map(row_to_semantic_profile).collect())
+        rows.into_iter().map(row_to_semantic_profile).collect()
     }
 
     pub async fn get_semantic_profile(
@@ -32,7 +35,7 @@ impl super::Store {
         .fetch_optional(self.reader())
         .await?;
 
-        Ok(row.map(row_to_semantic_profile))
+        row.map(row_to_semantic_profile).transpose()
     }
 
     pub async fn upsert_semantic_profile(
@@ -63,7 +66,7 @@ impl super::Store {
         .bind(&profile.backend)
         .bind(&profile.model_revision)
         .bind(profile.dimensions as i64)
-        .bind(serde_json::to_string(&profile.status).unwrap())
+        .bind(encode_json(&profile.status)?)
         .bind(profile.installed_at.map(|v| v.timestamp()))
         .bind(profile.activated_at.map(|v| v.timestamp()))
         .bind(profile.last_indexed_at.map(|v| v.timestamp()))
@@ -112,7 +115,7 @@ impl super::Store {
             )
             .bind(chunk.id.as_str())
             .bind(chunk.message_id.as_str())
-            .bind(serde_json::to_string(&chunk.source_kind).unwrap())
+            .bind(encode_json(&chunk.source_kind)?)
             .bind(chunk.ordinal as i64)
             .bind(&chunk.normalized)
             .bind(&chunk.content_hash)
@@ -132,7 +135,7 @@ impl super::Store {
             .bind(embedding.profile_id.as_str())
             .bind(embedding.dimensions as i64)
             .bind(&embedding.vector)
-            .bind(serde_json::to_string(&embedding.status).unwrap())
+            .bind(encode_json(&embedding.status)?)
             .bind(embedding.created_at.timestamp())
             .bind(embedding.updated_at.timestamp())
             .execute(&mut *tx)
@@ -172,79 +175,51 @@ impl super::Store {
         .fetch_all(self.reader())
         .await?;
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|row| {
                 let chunk = SemanticChunkRecord {
-                    id: SemanticChunkId::from_uuid(
-                        uuid::Uuid::parse_str(&row.get::<String, _>("chunk_id")).unwrap(),
-                    ),
-                    message_id: MessageId::from_uuid(
-                        uuid::Uuid::parse_str(&row.get::<String, _>("message_id")).unwrap(),
-                    ),
-                    source_kind: serde_json::from_str(&row.get::<String, _>("source_kind"))
-                        .unwrap(),
+                    id: decode_id(&row.get::<String, _>("chunk_id"))?,
+                    message_id: decode_id(&row.get::<String, _>("message_id"))?,
+                    source_kind: decode_json(&row.get::<String, _>("source_kind"))?,
                     ordinal: row.get::<i64, _>("ordinal") as u32,
                     normalized: row.get::<String, _>("normalized"),
                     content_hash: row.get::<String, _>("content_hash"),
-                    created_at: chrono::DateTime::from_timestamp(
-                        row.get::<i64, _>("chunk_created_at"),
-                        0,
-                    )
-                    .unwrap_or_default(),
-                    updated_at: chrono::DateTime::from_timestamp(
-                        row.get::<i64, _>("chunk_updated_at"),
-                        0,
-                    )
-                    .unwrap_or_default(),
+                    created_at: decode_timestamp(row.get::<i64, _>("chunk_created_at"))?,
+                    updated_at: decode_timestamp(row.get::<i64, _>("chunk_updated_at"))?,
                 };
                 let embedding = SemanticEmbeddingRecord {
                     chunk_id: chunk.id.clone(),
-                    profile_id: SemanticProfileId::from_uuid(
-                        uuid::Uuid::parse_str(&row.get::<String, _>("profile_id")).unwrap(),
-                    ),
+                    profile_id: decode_id(&row.get::<String, _>("profile_id"))?,
                     dimensions: row.get::<i64, _>("dimensions") as u32,
                     vector: row.get::<Vec<u8>, _>("vector_blob"),
-                    status: serde_json::from_str(&row.get::<String, _>("status")).unwrap(),
-                    created_at: chrono::DateTime::from_timestamp(
-                        row.get::<i64, _>("embedding_created_at"),
-                        0,
-                    )
-                    .unwrap_or_default(),
-                    updated_at: chrono::DateTime::from_timestamp(
-                        row.get::<i64, _>("embedding_updated_at"),
-                        0,
-                    )
-                    .unwrap_or_default(),
+                    status: decode_json(&row.get::<String, _>("status"))?,
+                    created_at: decode_timestamp(row.get::<i64, _>("embedding_created_at"))?,
+                    updated_at: decode_timestamp(row.get::<i64, _>("embedding_updated_at"))?,
                 };
-                (chunk, embedding)
+                Ok((chunk, embedding))
             })
-            .collect())
+            .collect()
     }
 }
 
-fn row_to_semantic_profile(row: sqlx::sqlite::SqliteRow) -> SemanticProfileRecord {
-    SemanticProfileRecord {
-        id: SemanticProfileId::from_uuid(
-            uuid::Uuid::parse_str(&row.get::<String, _>("id")).unwrap(),
-        ),
-        profile: serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("profile_name")))
-            .unwrap(),
+fn row_to_semantic_profile(
+    row: sqlx::sqlite::SqliteRow,
+) -> Result<SemanticProfileRecord, sqlx::Error> {
+    Ok(SemanticProfileRecord {
+        id: decode_id(&row.get::<String, _>("id"))?,
+        profile: serde_json::from_value(serde_json::Value::String(
+            row.get::<String, _>("profile_name"),
+        ))
+        .map_err(sqlx::Error::decode)?,
         backend: row.get::<String, _>("backend"),
         model_revision: row.get::<String, _>("model_revision"),
         dimensions: row.get::<i64, _>("dimensions") as u32,
-        status: serde_json::from_str(&row.get::<String, _>("status")).unwrap_or_default(),
-        installed_at: row
-            .get::<Option<i64>, _>("installed_at")
-            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
-        activated_at: row
-            .get::<Option<i64>, _>("activated_at")
-            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
-        last_indexed_at: row
-            .get::<Option<i64>, _>("last_indexed_at")
-            .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
+        status: decode_json(&row.get::<String, _>("status"))?,
+        installed_at: decode_optional_timestamp(row.get::<Option<i64>, _>("installed_at"))?,
+        activated_at: decode_optional_timestamp(row.get::<Option<i64>, _>("activated_at"))?,
+        last_indexed_at: decode_optional_timestamp(row.get::<Option<i64>, _>("last_indexed_at"))?,
         progress_completed: row.get::<i64, _>("progress_completed") as u32,
         progress_total: row.get::<i64, _>("progress_total") as u32,
         last_error: row.get::<Option<String>, _>("last_error"),
-    }
+    })
 }

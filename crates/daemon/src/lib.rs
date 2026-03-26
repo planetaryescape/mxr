@@ -1,13 +1,15 @@
 pub mod cli;
 pub mod commands;
-pub mod handler;
+pub(crate) mod handler;
 pub mod ipc_client;
-pub mod loops;
+pub(crate) mod loops;
 pub mod output;
 pub mod reindex;
 pub mod server;
 pub mod snooze;
-pub mod state;
+pub(crate) mod state;
+#[cfg(test)]
+pub(crate) mod test_fixtures;
 pub mod unsubscribe;
 
 #[path = "../../compose/src/lib.rs"]

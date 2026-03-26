@@ -4,6 +4,41 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+// -- System Labels ------------------------------------------------------------
+
+/// Well-known system label identifiers used across providers.
+pub mod system_labels {
+    pub const INBOX: &str = "INBOX";
+    pub const SENT: &str = "SENT";
+    pub const TRASH: &str = "TRASH";
+    pub const STARRED: &str = "STARRED";
+    pub const DRAFT: &str = "DRAFT";
+    pub const ARCHIVE: &str = "ARCHIVE";
+    pub const SPAM: &str = "SPAM";
+
+    /// Returns true for the primary system labels shown in the sidebar.
+    pub fn is_primary(name: &str) -> bool {
+        matches!(
+            name,
+            "INBOX" | "STARRED" | "SENT" | "DRAFT" | "ARCHIVE" | "SPAM" | "TRASH"
+        )
+    }
+
+    /// Deterministic sort order for system labels in the sidebar.
+    pub fn display_order(name: &str) -> usize {
+        match name {
+            "INBOX" => 0,
+            "STARRED" => 1,
+            "SENT" => 2,
+            "DRAFT" => 3,
+            "ARCHIVE" => 4,
+            "SPAM" => 5,
+            "TRASH" => 6,
+            _ => 100,
+        }
+    }
+}
+
 // -- Address ------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,5 +1,6 @@
 use crate::mxr_core::id::*;
 use crate::mxr_core::types::*;
+use crate::mxr_store::{decode_id, decode_timestamp, trace_lookup, trace_query};
 
 use crate::mxr_store::message::{future_date_cutoff_timestamp, record_to_envelope};
 
@@ -7,6 +8,7 @@ impl super::Store {
     pub async fn get_thread(&self, thread_id: &ThreadId) -> Result<Option<Thread>, sqlx::Error> {
         let tid = thread_id.as_str();
         let cutoff = future_date_cutoff_timestamp();
+        let started_at = std::time::Instant::now();
         let row = sqlx::query!(
             r#"SELECT
                 thread_id as "thread_id!",
@@ -24,6 +26,7 @@ impl super::Store {
         )
         .fetch_optional(self.reader())
         .await?;
+        trace_lookup("thread.get_thread", started_at, row.is_some());
 
         let row = match row {
             Some(r) => r,
@@ -32,12 +35,14 @@ impl super::Store {
 
         // Get participants
         let tid2 = thread_id.as_str();
+        let started_at = std::time::Instant::now();
         let participant_rows = sqlx::query!(
             r#"SELECT DISTINCT from_name, from_email as "from_email!" FROM messages WHERE thread_id = ?"#,
             tid2,
         )
         .fetch_all(self.reader())
         .await?;
+        trace_query("thread.get_thread.participants", started_at, participant_rows.len());
 
         let participants: Vec<Address> = participant_rows
             .into_iter()
@@ -48,13 +53,13 @@ impl super::Store {
             .collect();
 
         Ok(Some(Thread {
-            id: ThreadId::from_uuid(uuid::Uuid::parse_str(&row.thread_id).unwrap()),
-            account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&row.account_id).unwrap()),
+            id: decode_id(&row.thread_id)?,
+            account_id: decode_id(&row.account_id)?,
             subject: row.subject,
             participants,
             message_count: row.message_count as u32,
             unread_count: row.unread_count as u32,
-            latest_date: chrono::DateTime::from_timestamp(row.latest_date, 0).unwrap_or_default(),
+            latest_date: decode_timestamp(row.latest_date)?,
             snippet: row.snippet,
         }))
     }
@@ -65,6 +70,7 @@ impl super::Store {
     ) -> Result<Vec<Envelope>, sqlx::Error> {
         let tid = thread_id.as_str();
         let cutoff = future_date_cutoff_timestamp();
+        let started_at = std::time::Instant::now();
         let rows = sqlx::query!(
             r#"SELECT
                 id as "id!", account_id as "account_id!", provider_id as "provider_id!",
@@ -88,9 +94,9 @@ impl super::Store {
         )
         .fetch_all(self.reader())
         .await?;
+        trace_query("thread.get_thread_envelopes", started_at, rows.len());
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|r| {
                 record_to_envelope(
                     &r.id,
@@ -115,6 +121,6 @@ impl super::Store {
                     &r.label_provider_ids,
                 )
             })
-            .collect())
+            .collect()
     }
 }

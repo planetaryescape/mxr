@@ -1,5 +1,11 @@
 # mxr
 
+[![CI](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml/badge.svg)](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/mxr.svg)](https://crates.io/crates/mxr)
+[![docs.rs](https://docs.rs/mxr/badge.svg)](https://docs.rs/mxr)
+[![License](https://img.shields.io/crates/l/mxr.svg)](https://github.com/planetaryescape/mxr#license)
+[![MSRV](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://github.com/planetaryescape/mxr/blob/main/Cargo.toml)
+
 **Local-first email infrastructure.**
 
 mxr syncs Gmail and IMAP into SQLite on your machine. You read mail in the TUI, script it from the CLI, and hand it to an agent when that helps. Same local data. Same daemon. Same commands.
@@ -32,6 +38,10 @@ git clone https://github.com/planetaryescape/mxr
 cd mxr
 cargo install --path . --locked
 ```
+
+## Demo
+
+A renderable terminal demo tape lives at [`docs/demo.tape`](docs/demo.tape). It runs `mxr` inside isolated temp config/data dirs so the walkthrough doesn't touch your real local state.
 
 Current release shape:
 

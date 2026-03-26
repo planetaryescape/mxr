@@ -7,6 +7,9 @@ repository.workspace = true
 homepage.workspace = true
 description = "Shared test fixtures and helpers for mxr"
 
+[lints]
+workspace = true
+
 [dependencies]
 regex = { workspace = true }
 ratatui = { workspace = true }

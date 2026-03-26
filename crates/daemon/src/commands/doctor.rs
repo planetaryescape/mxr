@@ -646,14 +646,7 @@ fn protocol_event_entry(entry: crate::mxr_store::EventLogEntry) -> EventLogEntry
     }
 }
 
-fn latest_successful_sync_at(sync_statuses: &[AccountSyncStatus]) -> Option<String> {
-    sync_statuses
-        .iter()
-        .filter_map(|status| status.last_success_at.as_deref())
-        .filter_map(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-        .max()
-        .map(|value| value.to_rfc3339())
-}
+use crate::handler::latest_successful_sync_at;
 
 fn lexical_index_freshness(
     index_exists: bool,

@@ -34,6 +34,7 @@ impl SyncEngine {
     ) -> Result<SyncOutcome, MxrError> {
         let account_id = provider.account_id();
         let mut recovered_gmail_cursor_not_found = false;
+        tracing::debug!(account = %account_id, "sync_account_with_outcome: starting");
 
         loop {
             let cursor = self
@@ -79,7 +80,15 @@ impl SyncEngine {
                     recovered_gmail_cursor_not_found = true;
                     continue;
                 }
-                Err(error) => return Err(error),
+                Err(error) => {
+                    tracing::error!(
+                        account = %account_id,
+                        cursor = ?cursor,
+                        error = %error,
+                        "provider sync failed"
+                    );
+                    return Err(error);
+                }
             };
             let synced_count = batch.upserted.len() as u32;
             let upserted_message_ids = batch
@@ -231,6 +240,7 @@ impl SyncEngine {
     }
 
     async fn rethread_account(&self, account_id: &AccountId) -> Result<(), MxrError> {
+        tracing::debug!(account = %account_id, "rethreading account");
         let envelopes = self
             .store
             .list_envelopes_by_account(account_id, 10_000, 0)

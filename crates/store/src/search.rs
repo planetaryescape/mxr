@@ -1,13 +1,16 @@
 use crate::mxr_core::id::*;
 use crate::mxr_core::types::*;
+use crate::mxr_store::{
+    decode_id, decode_json, decode_timestamp, encode_json, trace_lookup, trace_query,
+};
 use sqlx::Row;
 
 impl super::Store {
     pub async fn insert_saved_search(&self, search: &SavedSearch) -> Result<(), sqlx::Error> {
         let id = search.id.as_str();
         let account_id = search.account_id.as_ref().map(|id| id.as_str());
-        let search_mode = serde_json::to_string(&search.search_mode).unwrap();
-        let sort = serde_json::to_string(&search.sort).unwrap();
+        let search_mode = encode_json(&search.search_mode)?;
+        let sort = encode_json(&search.sort)?;
         let created_at = search.created_at.timestamp();
         let position = search.position as i64;
 
@@ -31,14 +34,16 @@ impl super::Store {
     }
 
     pub async fn list_saved_searches(&self) -> Result<Vec<SavedSearch>, sqlx::Error> {
+        let started_at = std::time::Instant::now();
         let rows = sqlx::query(
             r#"SELECT id, account_id, name, query, search_mode, sort_order, icon, position, created_at
                FROM saved_searches ORDER BY position ASC"#,
         )
         .fetch_all(self.reader())
         .await?;
+        trace_query("search.list_saved_searches", started_at, rows.len());
 
-        Ok(rows.into_iter().map(row_to_saved_search).collect())
+        rows.into_iter().map(row_to_saved_search).collect()
     }
 
     pub async fn delete_saved_search(&self, id: &SavedSearchId) -> Result<(), sqlx::Error> {
@@ -53,6 +58,7 @@ impl super::Store {
         &self,
         name: &str,
     ) -> Result<Option<SavedSearch>, sqlx::Error> {
+        let started_at = std::time::Instant::now();
         let row = sqlx::query(
             r#"SELECT id, account_id, name, query, search_mode, sort_order, icon, position, created_at
                FROM saved_searches WHERE name = ?"#,
@@ -60,8 +66,9 @@ impl super::Store {
         .bind(name)
         .fetch_optional(self.reader())
         .await?;
+        trace_lookup("search.get_saved_search_by_name", started_at, row.is_some());
 
-        Ok(row.map(row_to_saved_search))
+        row.map(row_to_saved_search).transpose()
     }
 
     pub async fn delete_saved_search_by_name(&self, name: &str) -> Result<bool, sqlx::Error> {
@@ -72,20 +79,19 @@ impl super::Store {
     }
 }
 
-fn row_to_saved_search(row: sqlx::sqlite::SqliteRow) -> SavedSearch {
-    SavedSearch {
-        id: SavedSearchId::from_uuid(uuid::Uuid::parse_str(&row.get::<String, _>("id")).unwrap()),
+fn row_to_saved_search(row: sqlx::sqlite::SqliteRow) -> Result<SavedSearch, sqlx::Error> {
+    Ok(SavedSearch {
+        id: decode_id(&row.get::<String, _>("id"))?,
         account_id: row
             .get::<Option<String>, _>("account_id")
-            .map(|s| AccountId::from_uuid(uuid::Uuid::parse_str(&s).unwrap())),
+            .map(|value| decode_id(&value))
+            .transpose()?,
         name: row.get::<String, _>("name"),
         query: row.get::<String, _>("query"),
-        search_mode: serde_json::from_str(&row.get::<String, _>("search_mode")).unwrap_or_default(),
-        sort: serde_json::from_str(&row.get::<String, _>("sort_order"))
-            .unwrap_or(SortOrder::DateDesc),
+        search_mode: decode_json(&row.get::<String, _>("search_mode"))?,
+        sort: decode_json(&row.get::<String, _>("sort_order"))?,
         icon: row.get::<Option<String>, _>("icon"),
         position: row.get::<i64, _>("position") as i32,
-        created_at: chrono::DateTime::from_timestamp(row.get::<i64, _>("created_at"), 0)
-            .unwrap_or_default(),
-    }
+        created_at: decode_timestamp(row.get::<i64, _>("created_at"))?,
+    })
 }

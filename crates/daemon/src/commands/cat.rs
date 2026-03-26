@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::commands::expect_response;
 use crate::ipc_client::IpcClient;
 use crate::mxr_core::MessageId;
 use crate::mxr_protocol::*;
@@ -15,29 +16,29 @@ pub async fn run(
     let resp = client.request(Request::GetBody { message_id: mid }).await?;
 
     let fmt = resolve_format(format);
-    match resp {
+    let body = expect_response(resp, |r| match r {
         Response::Ok {
             data: ResponseData::Body { body },
-        } => match fmt {
-            OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(&body)?);
-            }
-            _ => {
-                if html {
-                    if let Some(ref h) = body.text_html {
-                        println!("{}", h);
-                    } else {
-                        println!("(no HTML body)");
-                    }
-                } else if let Some(ref t) = body.text_plain {
-                    println!("{}", t);
+        } => Some(body),
+        _ => None,
+    })?;
+    match fmt {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&body)?);
+        }
+        _ => {
+            if html {
+                if let Some(ref h) = body.text_html {
+                    println!("{h}");
                 } else {
-                    println!("(no text body)");
+                    println!("(no HTML body)");
                 }
+            } else if let Some(ref t) = body.text_plain {
+                println!("{t}");
+            } else {
+                println!("(no text body)");
             }
-        },
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
+        }
     }
     Ok(())
 }

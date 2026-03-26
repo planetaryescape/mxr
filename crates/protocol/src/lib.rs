@@ -10,7 +10,9 @@ pub const IPC_PROTOCOL_VERSION: u32 = 1;
 mod tests {
     use super::*;
     use crate::mxr_core::id::*;
+    use crate::mxr_core::{SearchMode, SortOrder};
     use bytes::BytesMut;
+    use proptest::prelude::*;
     use tokio_util::codec::{Decoder, Encoder};
 
     #[test]
@@ -168,6 +170,49 @@ mod tests {
                 assert!(!repair_required);
             }
             other => panic!("unexpected payload: {other:?}"),
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn search_ipc_message_serde_roundtrip(
+            id in any::<u64>(),
+            limit in 0u32..128,
+            offset in 0u32..64,
+            explain in any::<bool>(),
+            query in "[ -~]{0,64}",
+        ) {
+            let msg = IpcMessage {
+                id,
+                payload: IpcPayload::Request(Request::Search {
+                    query: query.clone(),
+                    limit,
+                    offset,
+                    mode: Some(SearchMode::Lexical),
+                    sort: Some(SortOrder::DateDesc),
+                    explain,
+                }),
+            };
+
+            let json = serde_json::to_string(&msg)?;
+            let parsed: IpcMessage = serde_json::from_str(&json)?;
+            prop_assert_eq!(parsed.id, id);
+
+            match parsed.payload {
+                IpcPayload::Request(Request::Search {
+                    query: parsed_query,
+                    limit: parsed_limit,
+                    offset: parsed_offset,
+                    explain: parsed_explain,
+                    ..
+                }) => {
+                    prop_assert_eq!(parsed_query, query);
+                    prop_assert_eq!(parsed_limit, limit);
+                    prop_assert_eq!(parsed_offset, offset);
+                    prop_assert_eq!(parsed_explain, explain);
+                }
+                other => prop_assert!(false, "unexpected payload: {other:?}"),
+            }
         }
     }
 }

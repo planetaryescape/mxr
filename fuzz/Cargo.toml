@@ -1,0 +1,36 @@
+[package]
+name = "mxr-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+mxr = { path = ".." }
+serde_json = "1"
+
+[[bin]]
+name = "fuzz_search_query"
+path = "fuzz_targets/fuzz_search_query.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_ipc_message"
+path = "fuzz_targets/fuzz_ipc_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_frontmatter"
+path = "fuzz_targets/fuzz_frontmatter.rs"
+test = false
+doc = false
+bench = false

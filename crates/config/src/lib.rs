@@ -1,5 +1,6 @@
 mod defaults;
 mod resolve;
+pub mod snooze;
 mod types;
 
 pub use resolve::{
@@ -11,11 +12,7 @@ pub use types::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use tempfile::TempDir;
-
-    /// Mutex to serialize tests that touch environment variables.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn default_config_is_valid() {
@@ -159,107 +156,100 @@ editor = "emacs"
 
     #[test]
     fn env_override_sync_interval() {
-        let _guard = ENV_LOCK.lock().unwrap();
         let tmp = TempDir::new().expect("create temp dir");
         let config_path = tmp.path().join("config.toml");
         std::fs::write(&config_path, "[general]\nsync_interval = 60\n").expect("write config");
 
-        // Set env var, load, then clean up
-        unsafe { std::env::set_var("MXR_SYNC_INTERVAL", "30") };
-        let config = load_config_from_path(&config_path).expect("load config");
-        unsafe { std::env::remove_var("MXR_SYNC_INTERVAL") };
+        let config = temp_env::with_var("MXR_SYNC_INTERVAL", Some("30"), || {
+            load_config_from_path(&config_path)
+        })
+        .expect("load config");
 
         assert_eq!(config.general.sync_interval, 30);
     }
 
     #[test]
     fn xdg_paths_correct() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::remove_var("MXR_INSTANCE") };
+        temp_env::with_var("MXR_INSTANCE", None::<&str>, || {
+            let cfg = config_dir();
+            assert!(
+                cfg.ends_with("mxr"),
+                "config_dir should end with 'mxr': {:?}",
+                cfg
+            );
 
-        let cfg = config_dir();
-        assert!(
-            cfg.ends_with("mxr"),
-            "config_dir should end with 'mxr': {:?}",
-            cfg
-        );
+            let data = data_dir();
+            assert!(
+                data.ends_with(app_instance_name()),
+                "data_dir should end with instance name '{}': {:?}",
+                app_instance_name(),
+                data
+            );
 
-        let data = data_dir();
-        assert!(
-            data.ends_with(app_instance_name()),
-            "data_dir should end with instance name '{}': {:?}",
-            app_instance_name(),
-            data
-        );
+            let file = config_file_path();
+            assert!(
+                file.ends_with("config.toml"),
+                "config_file_path should end with 'config.toml': {:?}",
+                file
+            );
 
-        let file = config_file_path();
-        assert!(
-            file.ends_with("config.toml"),
-            "config_file_path should end with 'config.toml': {:?}",
-            file
-        );
-
-        let socket = socket_path();
-        assert!(
-            socket.ends_with("mxr.sock"),
-            "socket_path should end with 'mxr.sock': {:?}",
-            socket
-        );
+            let socket = socket_path();
+            assert!(
+                socket.ends_with("mxr.sock"),
+                "socket_path should end with 'mxr.sock': {:?}",
+                socket
+            );
+        });
     }
 
     #[test]
     fn instance_name_can_be_overridden() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::set_var("MXR_INSTANCE", "mxr-test") };
-        assert_eq!(app_instance_name(), "mxr-test");
-        assert!(data_dir().ends_with("mxr-test"));
-        unsafe { std::env::remove_var("MXR_INSTANCE") };
+        temp_env::with_var("MXR_INSTANCE", Some("mxr-test"), || {
+            assert_eq!(app_instance_name(), "mxr-test");
+            assert!(data_dir().ends_with("mxr-test"));
+        });
     }
 
     #[test]
     fn path_overrides_can_be_set_via_env() {
-        let _guard = ENV_LOCK.lock().unwrap();
         let tmp = TempDir::new().expect("create temp dir");
         let config_dir_override = tmp.path().join("cfg");
         let data_dir_override = tmp.path().join("data");
         let socket_path_override = tmp.path().join("sock").join("mxr.sock");
 
-        unsafe {
-            std::env::set_var("MXR_CONFIG_DIR", &config_dir_override);
-            std::env::set_var("MXR_DATA_DIR", &data_dir_override);
-            std::env::set_var("MXR_SOCKET_PATH", &socket_path_override);
-        }
-
-        assert_eq!(config_dir(), config_dir_override);
-        assert_eq!(config_file_path(), config_dir_override.join("config.toml"));
-        assert_eq!(data_dir(), data_dir_override);
-        assert_eq!(socket_path(), socket_path_override);
-
-        unsafe {
-            std::env::remove_var("MXR_CONFIG_DIR");
-            std::env::remove_var("MXR_DATA_DIR");
-            std::env::remove_var("MXR_SOCKET_PATH");
-        }
+        temp_env::with_vars(
+            [
+                ("MXR_CONFIG_DIR", Some(config_dir_override.as_os_str())),
+                ("MXR_DATA_DIR", Some(data_dir_override.as_os_str())),
+                ("MXR_SOCKET_PATH", Some(socket_path_override.as_os_str())),
+            ],
+            || {
+                assert_eq!(config_dir(), config_dir_override);
+                assert_eq!(config_file_path(), config_dir_override.join("config.toml"));
+                assert_eq!(data_dir(), data_dir_override);
+                assert_eq!(socket_path(), socket_path_override);
+            },
+        );
     }
 
     #[test]
     fn missing_file_returns_defaults() {
-        let _guard = ENV_LOCK.lock().unwrap();
         let tmp = TempDir::new().expect("create temp dir");
         let config_path = tmp.path().join("nonexistent.toml");
 
-        // Clear env vars that could interfere
-        unsafe {
-            std::env::remove_var("MXR_EDITOR");
-            std::env::remove_var("MXR_SYNC_INTERVAL");
-            std::env::remove_var("MXR_DEFAULT_ACCOUNT");
-            std::env::remove_var("MXR_ATTACHMENT_DIR");
-            std::env::remove_var("MXR_CONFIG_DIR");
-            std::env::remove_var("MXR_DATA_DIR");
-            std::env::remove_var("MXR_SOCKET_PATH");
-        }
-
-        let config = load_config_from_path(&config_path).expect("load missing file");
+        let config = temp_env::with_vars(
+            [
+                ("MXR_EDITOR", None::<&str>),
+                ("MXR_SYNC_INTERVAL", None::<&str>),
+                ("MXR_DEFAULT_ACCOUNT", None::<&str>),
+                ("MXR_ATTACHMENT_DIR", None::<&str>),
+                ("MXR_CONFIG_DIR", None::<&str>),
+                ("MXR_DATA_DIR", None::<&str>),
+                ("MXR_SOCKET_PATH", None::<&str>),
+            ],
+            || load_config_from_path(&config_path),
+        )
+        .expect("load missing file");
         assert_eq!(config.general.sync_interval, 60);
         assert!(config.accounts.is_empty());
         assert!(config.render.reader_mode);

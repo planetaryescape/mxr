@@ -36,6 +36,14 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
 }
 
 async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
+    let started_at = std::time::Instant::now();
+    let request = request_kind(req);
+    let account_id = request_account_id(req)
+        .map(|id| id.as_str())
+        .unwrap_or_else(|| "-".to_string());
+    let account_key = request_account_key(req).unwrap_or("-");
+    tracing::debug!(request, account_id, account_key, "handling request");
+
     let result = match req {
         Request::ListEnvelopes {
             label_id,
@@ -226,8 +234,133 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
     };
 
     match result {
-        Ok(data) => Response::Ok { data },
-        Err(message) => Response::Error { message },
+        Ok(data) => {
+            tracing::debug!(
+                request,
+                account_id,
+                account_key,
+                elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+                "request completed"
+            );
+            Response::Ok { data }
+        }
+        Err(message) => {
+            tracing::warn!(
+                request,
+                account_id,
+                account_key,
+                elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+                error = %message,
+                "request failed"
+            );
+            Response::Error { message }
+        }
+    }
+}
+
+fn request_kind(req: &Request) -> &'static str {
+    match req {
+        Request::ListEnvelopes { .. } => "list_envelopes",
+        Request::ListEnvelopesByIds { .. } => "list_envelopes_by_ids",
+        Request::GetEnvelope { .. } => "get_envelope",
+        Request::GetBody { .. } => "get_body",
+        Request::DownloadAttachment { .. } => "download_attachment",
+        Request::OpenAttachment { .. } => "open_attachment",
+        Request::ListBodies { .. } => "list_bodies",
+        Request::GetThread { .. } => "get_thread",
+        Request::ListLabels { .. } => "list_labels",
+        Request::CreateLabel { .. } => "create_label",
+        Request::DeleteLabel { .. } => "delete_label",
+        Request::RenameLabel { .. } => "rename_label",
+        Request::ListRules => "list_rules",
+        Request::ListAccounts => "list_accounts",
+        Request::ListAccountsConfig => "list_accounts_config",
+        Request::AuthorizeAccountConfig { .. } => "authorize_account_config",
+        Request::UpsertAccountConfig { .. } => "upsert_account_config",
+        Request::SetDefaultAccount { .. } => "set_default_account",
+        Request::TestAccountConfig { .. } => "test_account_config",
+        Request::GetRule { .. } => "get_rule",
+        Request::GetRuleForm { .. } => "get_rule_form",
+        Request::UpsertRule { .. } => "upsert_rule",
+        Request::UpsertRuleForm { .. } => "upsert_rule_form",
+        Request::DeleteRule { .. } => "delete_rule",
+        Request::DryRunRules { .. } => "dry_run_rules",
+        Request::ListEvents { .. } => "list_events",
+        Request::GetLogs { .. } => "get_logs",
+        Request::GetDoctorReport => "get_doctor_report",
+        Request::GenerateBugReport { .. } => "generate_bug_report",
+        Request::ListRuleHistory { .. } => "list_rule_history",
+        Request::Search { .. } => "search",
+        Request::SyncNow { .. } => "sync_now",
+        Request::GetSyncStatus { .. } => "get_sync_status",
+        Request::SetFlags { .. } => "set_flags",
+        Request::Count { .. } => "count",
+        Request::GetHeaders { .. } => "get_headers",
+        Request::ListSavedSearches => "list_saved_searches",
+        Request::ListSubscriptions { .. } => "list_subscriptions",
+        Request::GetSemanticStatus => "get_semantic_status",
+        Request::EnableSemantic { .. } => "enable_semantic",
+        Request::InstallSemanticProfile { .. } => "install_semantic_profile",
+        Request::UseSemanticProfile { .. } => "use_semantic_profile",
+        Request::ReindexSemantic => "reindex_semantic",
+        Request::CreateSavedSearch { .. } => "create_saved_search",
+        Request::DeleteSavedSearch { .. } => "delete_saved_search",
+        Request::RunSavedSearch { .. } => "run_saved_search",
+        Request::Mutation(cmd) => mutation_kind(cmd),
+        Request::Unsubscribe { .. } => "unsubscribe",
+        Request::Snooze { .. } => "snooze",
+        Request::Unsnooze { .. } => "unsnooze",
+        Request::ListSnoozed => "list_snoozed",
+        Request::PrepareReply { .. } => "prepare_reply",
+        Request::PrepareForward { .. } => "prepare_forward",
+        Request::SendDraft { .. } => "send_draft",
+        Request::SaveDraftToServer { .. } => "save_draft_to_server",
+        Request::ListDrafts => "list_drafts",
+        Request::ExportThread { .. } => "export_thread",
+        Request::ExportSearch { .. } => "export_search",
+        Request::GetStatus => "get_status",
+        Request::Ping => "ping",
+        Request::Shutdown => "shutdown",
+    }
+}
+
+fn mutation_kind(cmd: &MutationCommand) -> &'static str {
+    match cmd {
+        MutationCommand::Archive { .. } => "mutation.archive",
+        MutationCommand::ReadAndArchive { .. } => "mutation.read_and_archive",
+        MutationCommand::Trash { .. } => "mutation.trash",
+        MutationCommand::Spam { .. } => "mutation.spam",
+        MutationCommand::Star { .. } => "mutation.star",
+        MutationCommand::SetRead { .. } => "mutation.set_read",
+        MutationCommand::ModifyLabels { .. } => "mutation.modify_labels",
+        MutationCommand::Move { .. } => "mutation.move",
+    }
+}
+
+fn request_account_id(req: &Request) -> Option<&crate::mxr_core::AccountId> {
+    match req {
+        Request::ListEnvelopes { account_id, .. }
+        | Request::ListLabels { account_id }
+        | Request::DeleteLabel { account_id, .. }
+        | Request::CreateLabel { account_id, .. }
+        | Request::RenameLabel { account_id, .. }
+        | Request::ListSubscriptions { account_id, .. }
+        | Request::SyncNow { account_id } => account_id.as_ref(),
+        Request::GetSyncStatus { account_id } => Some(account_id),
+        Request::SendDraft { draft } | Request::SaveDraftToServer { draft } => {
+            Some(&draft.account_id)
+        }
+        _ => None,
+    }
+}
+
+fn request_account_key(req: &Request) -> Option<&str> {
+    match req {
+        Request::AuthorizeAccountConfig { account, .. }
+        | Request::UpsertAccountConfig { account }
+        | Request::TestAccountConfig { account } => Some(account.key.as_str()),
+        Request::SetDefaultAccount { key } => Some(key.as_str()),
+        _ => None,
     }
 }
 fn build_reply_references(envelope: &crate::mxr_core::types::Envelope) -> Vec<String> {
@@ -1082,7 +1215,7 @@ fn file_size(path: &std::path::Path) -> u64 {
     std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
 }
 
-fn latest_successful_sync_at(
+pub(crate) fn latest_successful_sync_at(
     sync_statuses: &[crate::mxr_protocol::AccountSyncStatus],
 ) -> Option<String> {
     sync_statuses
@@ -2003,7 +2136,7 @@ async fn dry_run_rules(
     let after = after
         .map(|value| {
             chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d")
-                .map(|date| date.and_hms_opt(0, 0, 0).unwrap())
+                .map(|date| date.and_time(chrono::NaiveTime::MIN))
                 .map(|dt| {
                     chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
                 })

@@ -512,13 +512,7 @@ pub struct AttachmentPanelState {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SnoozePreset {
-    TomorrowMorning,
-    Tonight,
-    Weekend,
-    NextMonday,
-}
+pub use crate::mxr_config::snooze::{SnoozeOption as SnoozePreset, SNOOZE_PRESETS};
 
 #[derive(Debug, Clone, Default)]
 pub struct SnoozePanelState {
@@ -3808,79 +3802,13 @@ pub fn resolve_snooze_preset(
     preset: SnoozePreset,
     config: &crate::mxr_config::SnoozeConfig,
 ) -> chrono::DateTime<chrono::Utc> {
-    use chrono::{Datelike, Duration, Local, NaiveTime, Weekday};
-
-    let now = Local::now();
-    match preset {
-        SnoozePreset::TomorrowMorning => {
-            let tomorrow = now.date_naive() + Duration::days(1);
-            let time = NaiveTime::from_hms_opt(config.morning_hour as u32, 0, 0).unwrap();
-            tomorrow
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&chrono::Utc)
-        }
-        SnoozePreset::Tonight => {
-            let today = now.date_naive();
-            let time = NaiveTime::from_hms_opt(config.evening_hour as u32, 0, 0).unwrap();
-            let tonight = today
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&chrono::Utc);
-            if tonight <= chrono::Utc::now() {
-                tonight + Duration::days(1)
-            } else {
-                tonight
-            }
-        }
-        SnoozePreset::Weekend => {
-            let target_day = match config.weekend_day.as_str() {
-                "sunday" => Weekday::Sun,
-                _ => Weekday::Sat,
-            };
-            let days_until = (target_day.num_days_from_monday() as i64
-                - now.weekday().num_days_from_monday() as i64
-                + 7)
-                % 7;
-            let days = if days_until == 0 { 7 } else { days_until };
-            let weekend = now.date_naive() + Duration::days(days);
-            let time = NaiveTime::from_hms_opt(config.weekend_hour as u32, 0, 0).unwrap();
-            weekend
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&chrono::Utc)
-        }
-        SnoozePreset::NextMonday => {
-            let days_until_monday = (Weekday::Mon.num_days_from_monday() as i64
-                - now.weekday().num_days_from_monday() as i64
-                + 7)
-                % 7;
-            let days = if days_until_monday == 0 {
-                7
-            } else {
-                days_until_monday
-            };
-            let monday = now.date_naive() + Duration::days(days);
-            let time = NaiveTime::from_hms_opt(config.morning_hour as u32, 0, 0).unwrap();
-            monday
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&chrono::Utc)
-        }
-    }
+    crate::mxr_config::snooze::resolve_snooze_time(preset, config)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_fixtures::TestEnvelopeBuilder;
     use chrono::TimeZone;
 
     fn test_envelope(
@@ -3888,30 +3816,16 @@ mod tests {
         subject: &str,
         date: chrono::DateTime<chrono::Utc>,
     ) -> Envelope {
-        Envelope {
-            id: MessageId::new(),
-            account_id: AccountId::new(),
-            provider_id: subject.to_string(),
-            thread_id,
-            message_id_header: None,
-            in_reply_to: None,
-            references: vec![],
-            from: Address {
-                name: Some("Alice".to_string()),
-                email: "alice@example.com".to_string(),
-            },
-            to: vec![],
-            cc: vec![],
-            bcc: vec![],
-            subject: subject.to_string(),
-            date,
-            flags: MessageFlags::empty(),
-            snippet: String::new(),
-            has_attachments: false,
-            size_bytes: 0,
-            unsubscribe: UnsubscribeMethod::None,
-            label_provider_ids: vec![],
-        }
+        TestEnvelopeBuilder::new()
+            .thread_id(thread_id)
+            .subject(subject)
+            .provider_id(subject)
+            .date(date)
+            .to(vec![])
+            .message_id_header(None)
+            .snippet("")
+            .size_bytes(0)
+            .build()
     }
 
     #[test]

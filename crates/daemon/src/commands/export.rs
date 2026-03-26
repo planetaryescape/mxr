@@ -55,13 +55,13 @@ pub async fn run(
         (None, None) => anyhow::bail!("Provide THREAD_ID or --search"),
     };
 
-    match response {
+    let content = crate::commands::expect_response(response, |r| match r {
         Response::Ok {
             data: ResponseData::ExportResult { content },
-        } => emit(content, output),
-        Response::Error { message } => anyhow::bail!("{}", message),
-        _ => anyhow::bail!("Unexpected response"),
-    }
+        } => Some(content),
+        _ => None,
+    })?;
+    emit(content, output)
 }
 
 #[cfg(test)]

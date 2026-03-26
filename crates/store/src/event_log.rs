@@ -104,24 +104,22 @@ impl super::Store {
 
         let rows = query.fetch_all(self.reader()).await?;
 
-        Ok(rows
-            .iter()
+        rows.iter()
             .map(|r| {
                 let aid: Option<String> = r.get("account_id");
-                EventLogEntry {
+                Ok(EventLogEntry {
                     id: r.get("id"),
                     timestamp: r.get("timestamp"),
                     level: r.get("level"),
                     category: r.get("category"),
-                    account_id: aid
-                        .map(|s| AccountId::from_uuid(uuid::Uuid::parse_str(&s).unwrap())),
+                    account_id: aid.map(|value| decode_id(&value)).transpose()?,
                     message_id: r.get("message_id"),
                     rule_id: r.get("rule_id"),
                     summary: r.get("summary"),
                     details: r.get("details"),
-                }
+                })
             })
-            .collect())
+            .collect()
     }
 
     pub async fn prune_events_before(&self, cutoff_timestamp: i64) -> Result<u64, sqlx::Error> {
@@ -154,3 +152,4 @@ impl super::Store {
             .and_then(|timestamp| chrono::DateTime::from_timestamp(timestamp, 0)))
     }
 }
+use crate::mxr_store::decode_id;

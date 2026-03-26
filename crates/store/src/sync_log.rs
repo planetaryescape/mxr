@@ -1,4 +1,5 @@
 use crate::mxr_core::AccountId;
+use crate::mxr_store::{decode_id, decode_optional_timestamp, decode_timestamp, trace_lookup};
 use chrono::{DateTime, Utc};
 
 pub struct SyncLogEntry {
@@ -85,6 +86,7 @@ impl super::Store {
         account_id: &AccountId,
     ) -> Result<Option<SyncLogEntry>, sqlx::Error> {
         let aid = account_id.as_str();
+        let started_at = std::time::Instant::now();
         let row = sqlx::query!(
             r#"SELECT id as "id!", account_id as "account_id!", started_at as "started_at!",
                       finished_at, status as "status!", messages_synced as "messages_synced!",
@@ -94,15 +96,19 @@ impl super::Store {
         )
         .fetch_optional(self.reader())
         .await?;
+        trace_lookup("sync_log.get_last_sync", started_at, row.is_some());
 
-        Ok(row.map(|r| SyncLogEntry {
-            id: r.id,
-            account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&r.account_id).unwrap()),
-            started_at: DateTime::from_timestamp(r.started_at, 0).unwrap_or_default(),
-            finished_at: r.finished_at.and_then(|ts| DateTime::from_timestamp(ts, 0)),
-            status: SyncStatus::from_str(&r.status),
-            messages_synced: r.messages_synced as u32,
-            error_message: r.error_message,
-        }))
+        row.map(|r| {
+            Ok(SyncLogEntry {
+                id: r.id,
+                account_id: decode_id(&r.account_id)?,
+                started_at: decode_timestamp(r.started_at)?,
+                finished_at: decode_optional_timestamp(r.finished_at)?,
+                status: SyncStatus::from_str(&r.status),
+                messages_synced: r.messages_synced as u32,
+                error_message: r.error_message,
+            })
+        })
+        .transpose()
     }
 }

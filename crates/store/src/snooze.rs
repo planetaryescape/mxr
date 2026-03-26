@@ -1,12 +1,15 @@
 use crate::mxr_core::id::*;
 use crate::mxr_core::types::*;
+use crate::mxr_store::{
+    decode_id, decode_json, decode_timestamp, encode_json, trace_lookup, trace_query,
+};
 use chrono::{DateTime, Utc};
 
 impl super::Store {
     pub async fn insert_snooze(&self, snoozed: &Snoozed) -> Result<(), sqlx::Error> {
         let mid = snoozed.message_id.as_str();
         let aid = snoozed.account_id.as_str();
-        let original_labels = serde_json::to_string(&snoozed.original_labels).unwrap();
+        let original_labels = encode_json(&snoozed.original_labels)?;
         let snoozed_at = snoozed.snoozed_at.timestamp();
         let wake_at = snoozed.wake_at.timestamp();
 
@@ -27,6 +30,7 @@ impl super::Store {
 
     pub async fn get_due_snoozes(&self, now: DateTime<Utc>) -> Result<Vec<Snoozed>, sqlx::Error> {
         let now_ts = now.timestamp();
+        let started_at = std::time::Instant::now();
         let rows = sqlx::query!(
             r#"SELECT message_id as "message_id!", account_id as "account_id!",
                       snoozed_at as "snoozed_at!", wake_at as "wake_at!",
@@ -36,20 +40,24 @@ impl super::Store {
         )
         .fetch_all(self.reader())
         .await?;
+        trace_query("snooze.get_due_snoozes", started_at, rows.len());
 
-        Ok(rows
+        rows
             .into_iter()
-            .map(|r| Snoozed {
-                message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&r.message_id).unwrap()),
-                account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&r.account_id).unwrap()),
-                snoozed_at: DateTime::from_timestamp(r.snoozed_at, 0).unwrap_or_default(),
-                wake_at: DateTime::from_timestamp(r.wake_at, 0).unwrap_or_default(),
-                original_labels: serde_json::from_str(&r.original_labels).unwrap_or_default(),
+            .map(|r| {
+                Ok(Snoozed {
+                    message_id: decode_id(&r.message_id)?,
+                    account_id: decode_id(&r.account_id)?,
+                    snoozed_at: decode_timestamp(r.snoozed_at)?,
+                    wake_at: decode_timestamp(r.wake_at)?,
+                    original_labels: decode_json(&r.original_labels)?,
+                })
             })
-            .collect())
+            .collect()
     }
 
     pub async fn list_snoozed(&self) -> Result<Vec<Snoozed>, sqlx::Error> {
+        let started_at = std::time::Instant::now();
         let rows = sqlx::query!(
             r#"SELECT message_id as "message_id!", account_id as "account_id!",
                       snoozed_at as "snoozed_at!", wake_at as "wake_at!",
@@ -58,21 +66,25 @@ impl super::Store {
         )
         .fetch_all(self.reader())
         .await?;
+        trace_query("snooze.list_snoozed", started_at, rows.len());
 
-        Ok(rows
+        rows
             .into_iter()
-            .map(|r| Snoozed {
-                message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&r.message_id).unwrap()),
-                account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&r.account_id).unwrap()),
-                snoozed_at: DateTime::from_timestamp(r.snoozed_at, 0).unwrap_or_default(),
-                wake_at: DateTime::from_timestamp(r.wake_at, 0).unwrap_or_default(),
-                original_labels: serde_json::from_str(&r.original_labels).unwrap_or_default(),
+            .map(|r| {
+                Ok(Snoozed {
+                    message_id: decode_id(&r.message_id)?,
+                    account_id: decode_id(&r.account_id)?,
+                    snoozed_at: decode_timestamp(r.snoozed_at)?,
+                    wake_at: decode_timestamp(r.wake_at)?,
+                    original_labels: decode_json(&r.original_labels)?,
+                })
             })
-            .collect())
+            .collect()
     }
 
     pub async fn get_snooze(&self, message_id: &MessageId) -> Result<Option<Snoozed>, sqlx::Error> {
         let mid = message_id.as_str();
+        let started_at = std::time::Instant::now();
         let row = sqlx::query_as::<_, (String, String, i64, i64, String)>(
             r#"SELECT message_id, account_id, snoozed_at, wake_at, original_labels
                FROM snoozed WHERE message_id = ?"#,
@@ -80,16 +92,20 @@ impl super::Store {
         .bind(mid)
         .fetch_optional(self.reader())
         .await?;
+        trace_lookup("snooze.get_snooze", started_at, row.is_some());
 
-        Ok(row.map(
-            |(message_id, account_id, snoozed_at, wake_at, original_labels)| Snoozed {
-                message_id: MessageId::from_uuid(uuid::Uuid::parse_str(&message_id).unwrap()),
-                account_id: AccountId::from_uuid(uuid::Uuid::parse_str(&account_id).unwrap()),
-                snoozed_at: DateTime::from_timestamp(snoozed_at, 0).unwrap_or_default(),
-                wake_at: DateTime::from_timestamp(wake_at, 0).unwrap_or_default(),
-                original_labels: serde_json::from_str(&original_labels).unwrap_or_default(),
+        row.map(
+            |(message_id, account_id, snoozed_at, wake_at, original_labels)| {
+                Ok(Snoozed {
+                    message_id: decode_id(&message_id)?,
+                    account_id: decode_id(&account_id)?,
+                    snoozed_at: decode_timestamp(snoozed_at)?,
+                    wake_at: decode_timestamp(wake_at)?,
+                    original_labels: decode_json(&original_labels)?,
+                })
             },
-        ))
+        )
+        .transpose()
     }
 
     pub async fn remove_snooze(&self, message_id: &MessageId) -> Result<(), sqlx::Error> {

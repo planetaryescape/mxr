@@ -1,5 +1,22 @@
 # Contributing to mxr
 
+## Dev setup
+
+```bash
+git clone https://github.com/planetaryescape/mxr
+cd mxr
+cargo build --workspace
+cargo test --workspace
+```
+
+If you need the docs site too:
+
+```bash
+cd site
+npm install
+npm run build
+```
+
 ## Non-negotiables
 
 - local-first first
@@ -30,9 +47,10 @@ Run all of these before sending changes:
 
 ```bash
 cargo fmt --all -- --check
-cargo test --workspace
+cargo nextest run --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo sqlx prepare --check --workspace
+cargo deny check
 ```
 
 If you touch the docs site:
@@ -55,6 +73,20 @@ mxr doctor --check
 ```
 
 If you changed rules, exports, labels, notify, events, or logs, exercise the matching CLI surface too.
+
+## Running the daemon
+
+`mxr daemon --foreground` is the canonical manual-test entrypoint. Keep it running in one terminal, then use a second terminal for CLI smoke tests like `mxr status`, `mxr sync --status`, `mxr search`, and the mutation flow you changed.
+
+## PR process
+
+1. Fork the repo.
+2. Create a focused branch from `main`.
+3. Keep the diff surgical.
+4. Run the required checks.
+5. Open a PR with enough context to reproduce and verify.
+
+CI must pass before review or merge.
 
 ## Rules for changes
 
@@ -82,8 +114,17 @@ When adding or changing an adapter:
 - Keep `.github/workflows/` aligned with the actual build and release process.
 - Keep issue templates and bug-report flow current.
 
+## Architecture pointer
+
+Start with [ARCHITECTURE.md](ARCHITECTURE.md), then use the blueprint and implementation docs for the settled design and phase plans.
+
+## Good first issues
+
+Look for the [`good first issue`](https://github.com/planetaryescape/mxr/labels/good%20first%20issue) label if you want a bounded starting point.
+
 ## Useful references
 
+- [ARCHITECTURE.md](ARCHITECTURE.md)
 - `docs/blueprint/`
 - `docs/implementation/`
 - `docs/blueprint/15-decision-log.md`

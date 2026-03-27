@@ -128,8 +128,9 @@ mod tests {
 
     #[tokio::test]
     async fn hook_success_exit_zero() {
-        let result = execute_shell_hook("cat > /dev/null", &sample_payload(), None).await;
-        assert!(result.is_ok());
+        execute_shell_hook("cat > /dev/null", &sample_payload(), None)
+            .await
+            .expect("exit 0 hook should succeed");
     }
 
     #[tokio::test]
@@ -163,36 +164,32 @@ mod tests {
     #[tokio::test]
     async fn hook_receives_valid_json_on_stdin() {
         // Use python to validate JSON on stdin
-        let result = execute_shell_hook(
+        execute_shell_hook(
             "python3 -c 'import sys, json; d = json.load(sys.stdin); assert d[\"id\"] == \"msg_123\"'",
             &sample_payload(),
             None,
         )
-        .await;
-        assert!(
-            result.is_ok(),
-            "Hook should receive valid JSON: {:?}",
-            result
-        );
+        .await
+        .expect("hook should receive valid JSON");
     }
 
     #[tokio::test]
     async fn hook_payload_contains_all_fields() {
         // Extract and verify specific fields from the JSON
-        let result = execute_shell_hook(
+        execute_shell_hook(
             "python3 -c 'import sys, json; d = json.load(sys.stdin); assert d[\"from\"][\"email\"] == \"alice@example.com\"; assert d[\"subject\"] == \"Invoice #2847\"; assert len(d[\"attachments\"]) == 1'",
             &sample_payload(),
             None,
         )
-        .await;
-        assert!(result.is_ok(), "Payload field check failed: {:?}", result);
+        .await
+        .expect("payload field check should pass");
     }
 
     #[tokio::test]
     async fn hook_with_pipe_command() {
         // Test that shell pipes work
-        let result =
-            execute_shell_hook("cat | head -c 1 > /dev/null", &sample_payload(), None).await;
-        assert!(result.is_ok());
+        execute_shell_hook("cat | head -c 1 > /dev/null", &sample_payload(), None)
+            .await
+            .expect("piped shell hook should succeed");
     }
 }

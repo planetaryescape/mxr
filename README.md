@@ -139,6 +139,7 @@ mxr history --category mutation
 - Site: [mxr-mail.vercel.app](https://mxr-mail.vercel.app)
 - Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
 - Blueprint: [docs/blueprint/README.md](docs/blueprint/README.md)
+- Test standard: [docs/idiomatic-rust-tests.md](docs/idiomatic-rust-tests.md)
 
 ## Open source
 

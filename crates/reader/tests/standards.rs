@@ -10,6 +10,9 @@ fn standards_fixture_reader_snapshot() {
     let text = message.body_text(0);
     let html = message.body_html(0);
     let output = clean(text.as_deref(), html.as_deref(), &ReaderConfig::default());
+    assert!(output.cleaned_lines <= output.original_lines);
+    assert!(output.content.trim().len() > 0);
+    assert_eq!(output.quoted_messages.len(), 0);
 
     insta::assert_yaml_snapshot!(
         "reader_fixture_output",
@@ -31,6 +34,8 @@ fn standards_fixture_reader_matrix_snapshots() {
         let text = message.body_text(0);
         let html = message.body_html(0);
         let output = clean(text.as_deref(), html.as_deref(), &ReaderConfig::default());
+        assert!(output.cleaned_lines <= output.original_lines, "fixture={fixture}");
+        assert!(output.content.trim().len() > 0, "fixture={fixture}");
 
         insta::assert_yaml_snapshot!(
             format!("reader_fixture__{}", fixture_stem(fixture)),

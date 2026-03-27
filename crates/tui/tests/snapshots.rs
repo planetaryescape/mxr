@@ -117,6 +117,8 @@ fn message_view_snapshot() {
             &mxr_tui::theme::Theme::default(),
         );
     });
+    assert!(snapshot.contains("Snapshot fixture"));
+    assert!(snapshot.contains("report.pdf"));
     insta::assert_snapshot!("message_view_snapshot", snapshot);
 }
 
@@ -135,6 +137,7 @@ fn command_palette_snapshot() {
             &mxr_tui::theme::Theme::default(),
         );
     });
+    assert!(snapshot.contains("> un"));
     insta::assert_snapshot!("command_palette_snapshot", snapshot);
 }
 

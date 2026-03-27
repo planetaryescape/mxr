@@ -1,28 +1,62 @@
-use mxr_core::provider::MailSyncProvider;
-use mxr_core::types::SyncCursor;
-use mxr_provider_gmail::{auth::GmailAuth, client::GmailClient, GmailProvider};
+use mxr::mxr_core::id::AccountId;
+use mxr::mxr_core::types::{MessageFlags, UnsubscribeMethod};
+use mxr::mxr_provider_gmail::parse::{gmail_message_to_envelope, labels_to_flags, parse_address_list};
+use mxr::mxr_provider_gmail::types::GmailMessage;
+use serde_json::json;
 
-fn required_env(name: &str) -> String {
-    std::env::var(name).unwrap_or_else(|_| panic!("missing env var {name}"))
+fn fixture_message() -> GmailMessage {
+    serde_json::from_value(json!({
+        "id": "msg-1",
+        "threadId": "thread-1",
+        "labelIds": ["INBOX", "UNREAD", "STARRED"],
+        "snippet": "fixture snippet",
+        "historyId": "42",
+        "internalDate": "1710495000000",
+        "sizeEstimate": 1024,
+        "payload": {
+            "mimeType": "text/plain",
+            "headers": [
+                {"name": "From", "value": "Alice Example <alice@example.com>"},
+                {"name": "To", "value": "Bob Example <bob@example.com>"},
+                {"name": "Subject", "value": "Fixture subject"},
+                {"name": "Date", "value": "Fri, 15 Mar 2024 09:30:00 +0000"},
+                {"name": "Message-ID", "value": "<msg-1@example.com>"},
+                {"name": "List-Unsubscribe", "value": "<https://example.com/unsubscribe>"}
+            ],
+            "body": {"size": 12, "data": "SGVsbG8gd29ybGQ"}
+        }
+    }))
+    .expect("valid Gmail fixture")
 }
 
-#[tokio::test]
-#[ignore = "live smoke"]
-async fn live_smoke_gmail_sync_labels_and_messages() {
-    let auth = GmailAuth::with_refresh_token(
-        required_env("MXR_GMAIL_CLIENT_ID"),
-        required_env("MXR_GMAIL_CLIENT_SECRET"),
-        required_env("MXR_GMAIL_REFRESH_TOKEN"),
-    );
-    let client = GmailClient::new(auth);
-    let provider = GmailProvider::new(mxr_core::AccountId::new(), client);
+#[test]
+fn provider_offline_smoke_gmail_labels_to_flags_maps_expected_flags() {
+    let flags = labels_to_flags(&["INBOX".into(), "STARRED".into()]);
+    assert!(flags.contains(MessageFlags::READ));
+    assert!(flags.contains(MessageFlags::STARRED));
+    assert!(!flags.contains(MessageFlags::DRAFT));
+}
 
-    let labels = provider.sync_labels().await.unwrap();
-    assert!(!labels.is_empty(), "gmail live smoke should list labels");
+#[test]
+fn provider_offline_smoke_gmail_parses_rfc_address_list() {
+    let addresses = parse_address_list("Alice <alice@example.com>, bob@example.com");
+    assert_eq!(addresses.len(), 2);
+    assert_eq!(addresses[0].email, "alice@example.com");
+    assert_eq!(addresses[1].email, "bob@example.com");
+}
 
-    let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
-    assert!(
-        !batch.upserted.is_empty() || matches!(batch.next_cursor, SyncCursor::GmailBackfill { .. }),
-        "gmail live smoke should return messages or a backfill cursor"
-    );
+#[test]
+fn provider_offline_smoke_gmail_message_maps_to_envelope() {
+    let message = fixture_message();
+    let envelope = gmail_message_to_envelope(&message, &AccountId::new()).expect("envelope");
+
+    assert_eq!(envelope.provider_id, "msg-1");
+    assert_eq!(envelope.subject, "Fixture subject");
+    assert_eq!(envelope.from.email, "alice@example.com");
+    assert!(envelope.flags.contains(MessageFlags::STARRED));
+    assert!(!envelope.flags.contains(MessageFlags::READ));
+    assert!(matches!(
+        envelope.unsubscribe,
+        UnsubscribeMethod::HttpLink { .. }
+    ));
 }

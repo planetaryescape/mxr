@@ -626,11 +626,27 @@ mod tests {
         engine.sync_account(&provider).await.unwrap();
 
         // Delta sync — should not crash on unknown message
-        let result = engine.sync_account(&provider).await;
-        assert!(
-            result.is_ok(),
-            "Delta sync should gracefully skip unknown messages"
-        );
+        engine
+            .sync_account(&provider)
+            .await
+            .expect("delta sync should gracefully skip unknown messages");
+
+        // Existing message should remain intact after unknown-label delta event.
+        let envelopes = store
+            .list_envelopes_by_account(&account_id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(envelopes.len(), 1);
+        assert_eq!(envelopes[0].provider_id, "prov-msg-3");
+
+        let msg_id = store
+            .get_message_id_by_provider_id(&account_id, "prov-msg-3")
+            .await
+            .unwrap()
+            .unwrap();
+        let labels_after = store.get_message_label_ids(&msg_id).await.unwrap();
+        assert_eq!(labels_after.len(), 1);
+        assert!(labels_after.contains(&inbox.id));
     }
 
     #[tokio::test]
@@ -662,7 +678,10 @@ mod tests {
             .await
             .search("deployment", 10, 0, SortOrder::DateDesc)
             .unwrap();
+        assert_eq!(results.has_more, false);
         assert!(!results.results.is_empty());
+        assert!(results.results.len() <= 10);
+        assert!(results.results.iter().all(|r| r.score >= 0.0));
     }
 
     #[tokio::test]
@@ -689,7 +708,8 @@ mod tests {
 
         // Body should already be in store — fetched eagerly during sync
         let body = engine.get_body(msg_id).await.unwrap();
-        assert!(body.text_plain.is_some());
+        let body_text = body.text_plain.as_deref().unwrap_or_default();
+        assert!(!body_text.is_empty());
 
         // Second read — same result
         let body2 = engine.get_body(msg_id).await.unwrap();
@@ -755,13 +775,10 @@ mod tests {
 
         // After sync, cursor should match FakeProvider's next_cursor (Gmail { history_id: 1 })
         let cursor_after = store.get_sync_cursor(&account_id).await.unwrap();
-        assert!(cursor_after.is_some(), "Cursor should be set after sync");
-        let cursor_json = serde_json::to_string(&cursor_after.unwrap()).unwrap();
-        assert!(
-            cursor_json.contains("Gmail") && cursor_json.contains("1"),
-            "Cursor should be Gmail {{ history_id: 1 }}, got: {}",
-            cursor_json
-        );
+        match cursor_after {
+            Some(SyncCursor::Gmail { history_id }) => assert_eq!(history_id, 1),
+            other => panic!("expected Gmail cursor with history_id=1, got: {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -810,7 +827,7 @@ mod tests {
         engine.sync_account(&provider).await.unwrap();
 
         let labels = store.list_labels_by_account(&account_id).await.unwrap();
-        assert!(!labels.is_empty(), "Should have labels after sync");
+        assert_eq!(labels.len(), 8, "Fake provider should expose fixture labels");
 
         let has_counts = labels
             .iter()

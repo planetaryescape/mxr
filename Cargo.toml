@@ -256,5 +256,17 @@ harness = false
 name = "reader_pipeline"
 harness = false
 
+[[test]]
+name = "provider_gmail_offline_smoke"
+path = "crates/provider-gmail/tests/live_smoke.rs"
+
+[[test]]
+name = "provider_imap_offline_smoke"
+path = "crates/provider-imap/tests/live_smoke.rs"
+
+[[test]]
+name = "provider_smtp_offline_smoke"
+path = "crates/provider-smtp/tests/live_smoke.rs"
+
 [lints]
 workspace = true

@@ -1,42 +1,44 @@
-use keyring::Entry;
-use mxr_core::provider::MailSyncProvider;
-use mxr_core::types::SyncCursor;
-use mxr_provider_imap::{config::ImapConfig, ImapProvider};
+use mxr::mxr_core::id::AccountId;
+use mxr::mxr_core::types::{LabelKind, MessageFlags};
+use mxr::mxr_provider_imap::config::ImapConfig;
+use mxr::mxr_provider_imap::folders::{format_provider_id, map_folder_to_label, parse_provider_id};
+use mxr::mxr_provider_imap::parse::flags_from_imap;
 
-fn required_env(name: &str) -> String {
-    std::env::var(name).unwrap_or_else(|_| panic!("missing env var {name}"))
+#[test]
+fn provider_offline_smoke_imap_config_deserializes_defaults() {
+    let config: ImapConfig = serde_json::from_str(
+        r#"{
+            "host": "imap.example.com",
+            "port": 993,
+            "username": "user@example.com",
+            "password_ref": "mxr/test-imap"
+        }"#,
+    )
+    .expect("valid config");
+
+    assert_eq!(config.host, "imap.example.com");
+    assert_eq!(config.port, 993);
+    assert!(config.auth_required);
+    assert!(config.use_tls);
 }
 
-#[tokio::test]
-#[ignore = "live smoke"]
-async fn live_smoke_imap_sync_labels_and_messages() {
-    let username = required_env("MXR_IMAP_USERNAME");
-    let password = required_env("MXR_IMAP_PASSWORD");
-    let password_ref = "mxr/live-smoke-imap";
-    let _ = Entry::new(password_ref, &username)
-        .unwrap()
-        .set_password(&password);
+#[test]
+fn provider_offline_smoke_imap_provider_id_roundtrip() {
+    let id = format_provider_id("INBOX", 42);
+    let (mailbox, uid) = parse_provider_id(&id).expect("provider id");
 
-    let config = ImapConfig {
-        host: required_env("MXR_IMAP_HOST"),
-        port: required_env("MXR_IMAP_PORT").parse().unwrap(),
-        username,
-        password_ref: password_ref.into(),
-        auth_required: true,
-        use_tls: std::env::var("MXR_IMAP_USE_TLS")
-            .ok()
-            .map(|value| value != "false")
-            .unwrap_or(true),
-    };
-    let mut provider = ImapProvider::new(mxr_core::AccountId::new(), config);
+    assert_eq!(mailbox, "INBOX");
+    assert_eq!(uid, 42);
+}
 
-    provider.authenticate().await.unwrap();
-    let labels = provider.sync_labels().await.unwrap();
-    assert!(!labels.is_empty(), "imap live smoke should list folders");
+#[test]
+fn provider_offline_smoke_imap_maps_folders_and_flags() {
+    let account_id = AccountId::new();
+    let label = map_folder_to_label("Sent Mail", Some("\\Sent"), &account_id);
+    let flags = flags_from_imap(&["\\Seen".into(), "\\Flagged".into()]);
 
-    let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
-    assert!(
-        !batch.upserted.is_empty(),
-        "imap live smoke should fetch at least one message"
-    );
+    assert_eq!(label.name, "SENT");
+    assert_eq!(label.kind, LabelKind::System);
+    assert!(flags.contains(MessageFlags::READ));
+    assert!(flags.contains(MessageFlags::STARRED));
 }

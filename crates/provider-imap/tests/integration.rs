@@ -209,8 +209,14 @@ fn parse_message_body_multipart_with_attachment() {
     let msg_id = MessageId::new();
     let body = parse_message_body(raw.as_bytes(), &msg_id);
 
-    assert!(body.text_plain.is_some());
-    assert!(body.text_html.is_some());
+    assert_eq!(
+        body.text_plain.as_deref(),
+        Some("Please find the report attached.\r\n")
+    );
+    assert_eq!(
+        body.text_html.as_deref(),
+        Some("<p>Please find the report attached.</p>\r\n")
+    );
     assert_eq!(body.attachments.len(), 1);
     assert_eq!(body.attachments[0].filename, "Q4-report.pdf");
     assert!(body.attachments[0].mime_type.contains("pdf"));

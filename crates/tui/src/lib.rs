@@ -3241,7 +3241,7 @@ mod tests {
         app.all_envelopes = app.envelopes.clone();
         let removed_id = app.envelopes[0].id.clone();
         app.apply(Action::Archive);
-        assert!(!app.pending_mutation_queue.is_empty());
+        assert_eq!(app.pending_mutation_queue.len(), 1);
         assert_eq!(app.envelopes.len(), 4);
         assert!(!app
             .envelopes
@@ -3257,7 +3257,7 @@ mod tests {
         // First envelope is READ (even index), not starred
         assert!(!app.envelopes[0].flags.contains(MessageFlags::STARRED));
         app.apply(Action::Star);
-        assert!(!app.pending_mutation_queue.is_empty());
+        assert_eq!(app.pending_mutation_queue.len(), 1);
         assert_eq!(app.pending_mutation_count, 1);
         assert!(app.envelopes[0].flags.contains(MessageFlags::STARRED));
     }
@@ -3278,7 +3278,16 @@ mod tests {
 
         app.apply(Action::MarkRead);
         assert!(app.pending_mutation_queue.is_empty());
-        assert!(app.pending_bulk_confirm.is_some());
+        match app.pending_bulk_confirm.as_ref() {
+            Some(confirm) => match &confirm.request {
+                Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
+                    assert_eq!(*read, true);
+                    assert_eq!(message_ids.len(), 3);
+                }
+                other => panic!("Expected SetRead bulk request, got {other:?}"),
+            },
+            None => panic!("Expected pending bulk confirmation"),
+        }
         assert!(app
             .envelopes
             .iter()
@@ -3357,7 +3366,15 @@ mod tests {
             .collect();
 
         app.apply(Action::MarkReadAndArchive);
-        assert!(app.pending_bulk_confirm.is_some());
+        match app.pending_bulk_confirm.as_ref() {
+            Some(confirm) => match &confirm.request {
+                Request::Mutation(MutationCommand::ReadAndArchive { message_ids }) => {
+                    assert_eq!(message_ids.len(), 3);
+                }
+                other => panic!("Expected ReadAndArchive bulk request, got {other:?}"),
+            },
+            None => panic!("Expected pending bulk confirmation"),
+        }
         assert_eq!(app.envelopes.len(), 3);
 
         app.apply(Action::OpenSelected);
@@ -3380,10 +3397,15 @@ mod tests {
         app.show_mutation_failure(&MxrError::Ipc("boom".into()));
         app.refresh_mailbox_after_mutation_failure();
 
-        assert!(app.error_modal.is_some());
         assert_eq!(
             app.error_modal.as_ref().map(|modal| modal.title.as_str()),
             Some("Mutation Failed")
+        );
+        assert_eq!(
+            app.error_modal
+                .as_ref()
+                .map(|modal| modal.detail.contains("boom")),
+            Some(true)
         );
         assert!(app.pending_labels_refresh);
         assert!(app.pending_all_envelopes_refresh);
@@ -3409,8 +3431,12 @@ mod tests {
         app.all_envelopes = app.envelopes.clone();
         // Open first message
         app.apply(Action::OpenSelected);
-        assert!(app.viewing_envelope.is_some());
-        let viewing_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+        let viewing_id = app
+            .viewing_envelope
+            .as_ref()
+            .expect("open selected should populate viewing envelope")
+            .id
+            .clone();
         // The pending_mutation_queue is empty — Archive wasn't pressed yet
         // Press archive while viewing
         app.apply(Action::Archive);
@@ -4114,7 +4140,13 @@ mod tests {
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(action.is_none());
-        assert!(app.accounts_page.new_account_draft.is_some());
+        assert_eq!(
+            app.accounts_page
+                .new_account_draft
+                .as_ref()
+                .map(|draft| draft.email.as_str()),
+            Some("draft@example.com")
+        );
 
         app.apply(Action::OpenAccountFormNew);
         assert!(app.accounts_page.resume_new_account_draft_prompt_open);
@@ -4922,7 +4954,12 @@ mod tests {
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
 
-        assert!(app.pending_send_confirm.is_some());
+        assert_eq!(
+            app.pending_send_confirm
+                .as_ref()
+                .map(|pending| pending.allow_send),
+            Some(false)
+        );
         assert!(app.pending_mutation_queue.is_empty());
     }
 
@@ -5070,7 +5107,15 @@ mod tests {
         app.apply(Action::Archive);
 
         assert!(app.pending_mutation_queue.is_empty());
-        assert!(app.pending_bulk_confirm.is_some());
+        match app.pending_bulk_confirm.as_ref() {
+            Some(confirm) => match &confirm.request {
+                Request::Mutation(MutationCommand::Archive { message_ids }) => {
+                    assert_eq!(message_ids.len(), 3);
+                }
+                other => panic!("Expected Archive bulk request, got {other:?}"),
+            },
+            None => panic!("Expected pending bulk confirmation"),
+        }
     }
 
     #[test]

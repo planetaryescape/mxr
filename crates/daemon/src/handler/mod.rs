@@ -2777,7 +2777,10 @@ mod tests {
                 data: ResponseData::RuleDryRun { results },
             }) => {
                 assert_eq!(results.len(), 1);
-                assert!(!results[0]["matches"].as_array().unwrap().is_empty());
+                let matches = results[0]["matches"]
+                    .as_array()
+                    .expect("matches should be an array");
+                assert!(matches.len() >= 1);
             }
             other => panic!("Expected RuleDryRun, got {:?}", other),
         }
@@ -3082,8 +3085,23 @@ mod tests {
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::SearchResults { results, .. },
-            }) => assert!(!results.is_empty(), "saved search should return results"),
+                data: ResponseData::SearchResults {
+                    results,
+                    has_more,
+                    explain,
+                },
+            }) => {
+                assert_eq!(has_more, false);
+                assert_eq!(explain.is_none(), true);
+                assert!(results.len() >= 1);
+                assert!(results.len() <= 10);
+                assert!(
+                    results
+                        .iter()
+                        .all(|item| item.mode == crate::mxr_core::SearchMode::Lexical),
+                    "saved search should return lexical results"
+                );
+            }
             other => panic!("Expected SearchResults, got {:?}", other),
         }
     }
@@ -3113,13 +3131,16 @@ mod tests {
                         repair_required,
                     },
             }) => {
-                assert!(!accounts.is_empty());
-                assert!(daemon_pid.is_some());
-                assert!(!sync_statuses.is_empty());
+                assert_eq!(accounts.len(), 1);
+                let daemon_pid = daemon_pid.expect("daemon pid should be present");
+                assert!(daemon_pid > 0);
+                assert_eq!(sync_statuses.len(), 1);
                 assert!(protocol_version >= crate::mxr_protocol::IPC_PROTOCOL_VERSION);
-                assert!(daemon_version.is_some());
-                assert!(daemon_build_id.is_some());
-                assert!(!repair_required);
+                let daemon_version = daemon_version.expect("daemon version should be present");
+                assert_ne!(daemon_version, "");
+                let daemon_build_id = daemon_build_id.expect("daemon build id should be present");
+                assert_ne!(daemon_build_id, "");
+                assert_eq!(repair_required, false);
             }
             other => panic!("Expected Status, got {:?}", other),
         }
@@ -3165,8 +3186,10 @@ mod tests {
             }) => {
                 assert!(report.database_path.contains("mxr.db"));
                 assert!(report.index_path.contains("search_index"));
-                assert!(report.daemon_version.is_some());
-                assert!(report.daemon_build_id.is_some());
+                let daemon_version = report.daemon_version.expect("doctor report daemon version");
+                assert_ne!(daemon_version, "");
+                let daemon_build_id = report.daemon_build_id.expect("doctor report build id");
+                assert_ne!(daemon_build_id, "");
             }
             other => panic!("Expected DoctorReport, got {:?}", other),
         }
@@ -3186,8 +3209,11 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::SyncStatus { sync },
             }) => {
-                assert!(!sync.account_name.is_empty());
-                assert!(sync.current_cursor_summary.is_some());
+                assert_ne!(sync.account_name, "");
+                let summary = sync
+                    .current_cursor_summary
+                    .expect("sync status should include cursor summary");
+                assert_ne!(summary, "");
             }
             other => panic!("Expected SyncStatus, got {:?}", other),
         }
@@ -3221,10 +3247,8 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::SearchResults { results, .. },
             }) => {
-                assert!(
-                    !results.is_empty(),
-                    "Search for 'deployment' should return results"
-                );
+                assert!(results.len() >= 1, "Search for 'deployment' should return results");
+                assert!(results.len() <= 10);
                 assert_eq!(results[0].mode, crate::mxr_core::SearchMode::Lexical);
             }
             other => panic!("Expected SearchResults, got {:?}", other),
@@ -3262,12 +3286,13 @@ mod tests {
                         ..
                     },
             }) => {
-                assert!(!results.is_empty());
+                assert!(results.len() >= 1);
+                assert!(results.len() <= 5);
                 assert_eq!(explain.requested_mode, crate::mxr_core::SearchMode::Lexical);
                 assert_eq!(explain.executed_mode, crate::mxr_core::SearchMode::Lexical);
                 assert_eq!(explain.dense_candidates, 0);
                 assert_eq!(explain.final_results as usize, results.len());
-                assert!(!explain.results.is_empty());
+                assert_eq!(explain.results.len(), results.len());
             }
             other => panic!(
                 "Expected SearchResults with explain payload, got {:?}",
@@ -3301,7 +3326,8 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::SearchResults { results, .. },
             }) => {
-                assert!(!results.is_empty());
+                assert!(results.len() >= 1);
+                assert!(results.len() <= 10);
             }
             other => panic!("Expected SearchResults, got {:?}", other),
         }
@@ -3403,7 +3429,7 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::Envelopes { envelopes },
             }) => {
-                assert!(!envelopes.is_empty());
+                assert_eq!(envelopes.len(), 1);
                 envelopes[0].id.clone()
             }
             other => panic!("Expected Envelopes, got {:?}", other),
@@ -3816,7 +3842,7 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::Envelopes { envelopes },
             }) => {
-                assert!(!envelopes.is_empty());
+                assert_eq!(envelopes.len(), 1);
                 envelopes[0].id.clone()
             }
             other => panic!("Expected Envelopes, got {:?}", other),
@@ -4031,8 +4057,10 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::ReplyContext { context },
             }) => {
-                assert!(!context.reply_to.is_empty(), "reply_to should be non-empty");
-                assert!(!context.subject.is_empty(), "subject should be non-empty");
+                assert!(context.reply_to.contains('@'));
+                assert!(
+                    context.subject.starts_with("Re:") || context.subject.starts_with("RE:")
+                );
             }
             other => panic!("Expected ReplyContext, got {:?}", other),
         }
@@ -4064,8 +4092,10 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::ReplyContext { context },
             }) => {
-                assert!(!context.reply_to.is_empty(), "reply_to should be non-empty");
-                assert!(!context.subject.is_empty(), "subject should be non-empty");
+                assert!(context.reply_to.contains('@'));
+                assert!(
+                    context.subject.starts_with("Re:") || context.subject.starts_with("RE:")
+                );
                 // cc may or may not be empty depending on the message, but the field should exist
             }
             other => panic!("Expected ReplyContext, got {:?}", other),
@@ -4132,7 +4162,11 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::ForwardContext { context },
             }) => {
-                assert!(!context.subject.is_empty(), "subject should be non-empty");
+                assert!(
+                    context.subject.starts_with("Fwd:")
+                        || context.subject.starts_with("FWD:")
+                        || context.subject.starts_with("FW:")
+                );
                 assert!(
                     !context.forwarded_content.is_empty(),
                     "forwarded_content should be non-empty"
@@ -4861,7 +4895,8 @@ mod tests {
                 let messages = parsed["messages"]
                     .as_array()
                     .expect("export search should include messages");
-                assert!(!messages.is_empty(), "export search should return results");
+                assert!(messages.len() >= 1, "export search should return results");
+                assert!(messages[0].as_object().is_some());
             }
             other => panic!("Expected ExportResult, got {:?}", other),
         }

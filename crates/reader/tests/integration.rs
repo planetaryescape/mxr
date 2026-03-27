@@ -5,7 +5,7 @@ fn newsletter_stripped_to_content() {
     let html = include_str!("fixtures/newsletter.html");
     let output = clean(None, Some(html), &ReaderConfig::default());
     assert!(output.cleaned_lines < output.original_lines);
-    assert!(!output.content.is_empty());
+    assert!(output.content.contains("newsletter"));
     // Should not contain tracking junk
     assert!(!output
         .content
@@ -25,7 +25,7 @@ fn plain_email_with_signature() {
         output.content.trim(),
         "Hey,\n\nCan we meet tomorrow at 3pm?\n\nThanks,"
     );
-    assert!(output.signature.is_some());
+    assert_eq!(output.signature.as_deref(), Some("Alice\nSenior Engineer"));
 }
 
 #[test]
@@ -44,7 +44,7 @@ fn email_with_quotes_and_signature() {
         .content
         .contains("[previous message from bob@example.com]"));
     assert!(!output.content.contains("We should deploy"));
-    assert!(output.signature.is_some());
+    assert_eq!(output.signature.as_deref(), Some("Alice Smith"));
     assert_eq!(output.quoted_messages.len(), 1);
 }
 

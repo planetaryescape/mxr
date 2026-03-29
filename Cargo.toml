@@ -131,7 +131,7 @@ toml = "1.1"
 
 # Gmail/OAuth
 yup-oauth2 = "12"
-reqwest = { version = "0.13", features = ["json"] }
+reqwest = { version = "0.13", features = ["json", "form"] }
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors"] }
 tower = { version = "0.5", features = ["util"] }

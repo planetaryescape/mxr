@@ -20,6 +20,7 @@ pub(crate) fn test_account() -> Account {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn test_account_with_id(id: AccountId) -> Account {
     Account {
         id,
@@ -58,6 +59,7 @@ pub(crate) struct TestEnvelopeBuilder {
     label_provider_ids: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl TestEnvelopeBuilder {
     pub(crate) fn new() -> Self {
         Self {
@@ -206,12 +208,14 @@ impl TestEnvelopeBuilder {
 }
 
 /// Shorthand: returns a default test envelope (same defaults as TestEnvelopeBuilder::new).
+#[allow(dead_code)]
 pub(crate) fn test_envelope() -> Envelope {
     TestEnvelopeBuilder::new().build()
 }
 
 // -- Label --------------------------------------------------------------------
 
+#[allow(dead_code)]
 pub(crate) fn test_label(account_id: &AccountId, name: &str, provider_id: &str) -> Label {
     Label {
         id: LabelId::new(),
@@ -282,6 +286,7 @@ pub(crate) fn test_system_labels(account_id: &AccountId) -> Vec<Label> {
 
 // -- MessageBody --------------------------------------------------------------
 
+#[allow(dead_code)]
 pub(crate) fn make_empty_body(message_id: &MessageId) -> MessageBody {
     MessageBody {
         message_id: message_id.clone(),

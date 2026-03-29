@@ -307,9 +307,18 @@ mod tests {
         let fetched = store.get_body(&env.id).await.unwrap().unwrap();
         assert_eq!(fetched.text_plain, body.text_plain);
         assert_eq!(fetched.text_html, body.text_html);
-        assert_eq!(fetched.metadata.text_plain_format, body.metadata.text_plain_format);
-        assert_eq!(fetched.metadata.text_plain_source, body.metadata.text_plain_source);
-        assert_eq!(fetched.metadata.text_html_source, body.metadata.text_html_source);
+        assert_eq!(
+            fetched.metadata.text_plain_format,
+            body.metadata.text_plain_format
+        );
+        assert_eq!(
+            fetched.metadata.text_plain_source,
+            body.metadata.text_plain_source
+        );
+        assert_eq!(
+            fetched.metadata.text_html_source,
+            body.metadata.text_html_source
+        );
         assert_eq!(fetched.attachments.len(), 1);
         assert_eq!(fetched.attachments[0].filename, "report.pdf");
         assert_eq!(

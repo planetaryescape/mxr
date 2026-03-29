@@ -29,6 +29,10 @@ path = "crates/daemon/src/lib.rs"
 name = "mxr"
 path = "crates/daemon/src/main.rs"
 
+[[example]]
+name = "export_desktop_manifest"
+path = "crates/tui/examples/export_desktop_manifest.rs"
+
 [features]
 default = ["semantic-local"]
 semantic-local = ["local"]

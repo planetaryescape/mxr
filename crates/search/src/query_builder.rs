@@ -19,6 +19,8 @@ pub struct QueryBuilder {
     body_text: Field,
     attachment_filenames: Field,
     labels: Field,
+    date: Field,
+    size_bytes: Field,
     is_read: Field,
     is_starred: Field,
     is_draft: Field,
@@ -42,6 +44,8 @@ impl QueryBuilder {
             body_text: schema.body_text,
             attachment_filenames: schema.attachment_filenames,
             labels: schema.labels,
+            date: schema.date,
+            size_bytes: schema.size_bytes,
             is_read: schema.is_read,
             is_starred: schema.is_starred,
             is_draft: schema.is_draft,
@@ -222,58 +226,48 @@ impl QueryBuilder {
 
     fn build_date_query(&self, bound: &DateBound, date_val: &DateValue) -> Box<dyn Query> {
         let resolved = resolve_date(date_val);
-        let field_name = "date".to_string();
         let start = self.date_to_tantivy(resolved);
 
         match bound {
-            DateBound::After => Box::new(RangeQuery::new_date_bounds(
-                field_name,
-                Bound::Included(start),
+            DateBound::After => Box::new(RangeQuery::new(
+                Bound::Included(Term::from_field_date_for_search(self.date, start)),
                 Bound::Unbounded,
             )),
-            DateBound::Before => Box::new(RangeQuery::new_date_bounds(
-                field_name,
+            DateBound::Before => Box::new(RangeQuery::new(
                 Bound::Unbounded,
-                Bound::Excluded(start),
+                Bound::Excluded(Term::from_field_date_for_search(self.date, start)),
             )),
             DateBound::Exact => {
                 let end_date = resolved.succ_opt().unwrap_or(resolved);
                 let end = self.date_to_tantivy(end_date);
-                Box::new(RangeQuery::new_date_bounds(
-                    field_name,
-                    Bound::Included(start),
-                    Bound::Excluded(end),
+                Box::new(RangeQuery::new(
+                    Bound::Included(Term::from_field_date_for_search(self.date, start)),
+                    Bound::Excluded(Term::from_field_date_for_search(self.date, end)),
                 ))
             }
         }
     }
 
     fn build_size_query(&self, op: &SizeOp, bytes: u64) -> Box<dyn Query> {
-        let field_name = "size_bytes".to_string();
         match op {
-            SizeOp::LessThan => Box::new(RangeQuery::new_u64_bounds(
-                field_name,
+            SizeOp::LessThan => Box::new(RangeQuery::new(
                 Bound::Unbounded,
-                Bound::Excluded(bytes),
+                Bound::Excluded(Term::from_field_u64(self.size_bytes, bytes)),
             )),
-            SizeOp::LessThanOrEqual => Box::new(RangeQuery::new_u64_bounds(
-                field_name,
+            SizeOp::LessThanOrEqual => Box::new(RangeQuery::new(
                 Bound::Unbounded,
-                Bound::Included(bytes),
+                Bound::Included(Term::from_field_u64(self.size_bytes, bytes)),
             )),
-            SizeOp::Equal => Box::new(RangeQuery::new_u64_bounds(
-                field_name,
-                Bound::Included(bytes),
-                Bound::Included(bytes),
+            SizeOp::Equal => Box::new(RangeQuery::new(
+                Bound::Included(Term::from_field_u64(self.size_bytes, bytes)),
+                Bound::Included(Term::from_field_u64(self.size_bytes, bytes)),
             )),
-            SizeOp::GreaterThan => Box::new(RangeQuery::new_u64_bounds(
-                field_name,
-                Bound::Excluded(bytes),
+            SizeOp::GreaterThan => Box::new(RangeQuery::new(
+                Bound::Excluded(Term::from_field_u64(self.size_bytes, bytes)),
                 Bound::Unbounded,
             )),
-            SizeOp::GreaterThanOrEqual => Box::new(RangeQuery::new_u64_bounds(
-                field_name,
-                Bound::Included(bytes),
+            SizeOp::GreaterThanOrEqual => Box::new(RangeQuery::new(
+                Bound::Included(Term::from_field_u64(self.size_bytes, bytes)),
                 Bound::Unbounded,
             )),
         }

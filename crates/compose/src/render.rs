@@ -24,7 +24,7 @@ pub fn render_markdown(markdown: &str) -> RenderedMessage {
     options.extension.table = true;
     options.extension.autolink = true;
     options.extension.tasklist = true;
-    options.render.unsafe_ = false;
+    options.render.r#unsafe = false;
 
     let html_content = markdown_to_html(markdown, &options);
     let html = HTML_TEMPLATE.replace("{content}", &html_content);

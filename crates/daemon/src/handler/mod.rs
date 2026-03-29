@@ -3085,11 +3085,12 @@ mod tests {
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::SearchResults {
-                    results,
-                    has_more,
-                    explain,
-                },
+                data:
+                    ResponseData::SearchResults {
+                        results,
+                        has_more,
+                        explain,
+                    },
             }) => {
                 assert_eq!(has_more, false);
                 assert_eq!(explain.is_none(), true);
@@ -3247,7 +3248,10 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::SearchResults { results, .. },
             }) => {
-                assert!(results.len() >= 1, "Search for 'deployment' should return results");
+                assert!(
+                    results.len() >= 1,
+                    "Search for 'deployment' should return results"
+                );
                 assert!(results.len() <= 10);
                 assert_eq!(results[0].mode, crate::mxr_core::SearchMode::Lexical);
             }
@@ -3583,9 +3587,18 @@ mod tests {
             }) => {
                 assert_eq!(body.text_plain, stored.text_plain);
                 assert_eq!(body.text_html, stored.text_html);
-                assert_eq!(body.metadata.text_plain_format, stored.metadata.text_plain_format);
-                assert_eq!(body.metadata.text_plain_source, stored.metadata.text_plain_source);
-                assert_eq!(body.metadata.text_html_source, stored.metadata.text_html_source);
+                assert_eq!(
+                    body.metadata.text_plain_format,
+                    stored.metadata.text_plain_format
+                );
+                assert_eq!(
+                    body.metadata.text_plain_source,
+                    stored.metadata.text_plain_source
+                );
+                assert_eq!(
+                    body.metadata.text_html_source,
+                    stored.metadata.text_html_source
+                );
                 assert_eq!(body.attachments.len(), 1);
                 assert_eq!(body.attachments[0].id, attachment_id);
                 assert_eq!(
@@ -3657,7 +3670,10 @@ mod tests {
                     .iter()
                     .find(|asset| asset.source.starts_with("cid:"))
                     .expect("cid asset");
-                assert_eq!(inline.status, crate::mxr_core::types::HtmlImageAssetStatus::Ready);
+                assert_eq!(
+                    inline.status,
+                    crate::mxr_core::types::HtmlImageAssetStatus::Ready
+                );
                 assert_eq!(inline.path.as_deref(), Some(inline_path.as_path()));
 
                 let embedded = assets
@@ -3703,7 +3719,10 @@ mod tests {
         let stored = crate::mxr_core::types::MessageBody {
             message_id: id.clone(),
             text_plain: None,
-            text_html: Some(format!(r#"<img alt="Hero" src="{}/hero.png">"#, server.uri())),
+            text_html: Some(format!(
+                r#"<img alt="Hero" src="{}/hero.png">"#,
+                server.uri()
+            )),
             attachments: vec![],
             fetched_at: chrono::Utc::now(),
             metadata: crate::mxr_core::types::MessageMetadata {
@@ -4035,6 +4054,13 @@ mod tests {
     async fn dispatch_prepare_reply() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
+        let expected_subject = state
+            .store
+            .get_envelope(&id)
+            .await
+            .unwrap()
+            .unwrap()
+            .subject;
 
         // Fetch body first so it's cached
         let body_msg = IpcMessage {
@@ -4058,9 +4084,7 @@ mod tests {
                 data: ResponseData::ReplyContext { context },
             }) => {
                 assert!(context.reply_to.contains('@'));
-                assert!(
-                    context.subject.starts_with("Re:") || context.subject.starts_with("RE:")
-                );
+                assert_eq!(context.subject, expected_subject);
             }
             other => panic!("Expected ReplyContext, got {:?}", other),
         }
@@ -4070,6 +4094,13 @@ mod tests {
     async fn dispatch_prepare_reply_all() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
+        let expected_subject = state
+            .store
+            .get_envelope(&id)
+            .await
+            .unwrap()
+            .unwrap()
+            .subject;
 
         // Fetch body first
         let body_msg = IpcMessage {
@@ -4093,9 +4124,7 @@ mod tests {
                 data: ResponseData::ReplyContext { context },
             }) => {
                 assert!(context.reply_to.contains('@'));
-                assert!(
-                    context.subject.starts_with("Re:") || context.subject.starts_with("RE:")
-                );
+                assert_eq!(context.subject, expected_subject);
                 // cc may or may not be empty depending on the message, but the field should exist
             }
             other => panic!("Expected ReplyContext, got {:?}", other),
@@ -4143,6 +4172,13 @@ mod tests {
     async fn dispatch_prepare_forward() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
+        let expected_subject = state
+            .store
+            .get_envelope(&id)
+            .await
+            .unwrap()
+            .unwrap()
+            .subject;
 
         // Fetch body first
         let body_msg = IpcMessage {
@@ -4162,11 +4198,7 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::ForwardContext { context },
             }) => {
-                assert!(
-                    context.subject.starts_with("Fwd:")
-                        || context.subject.starts_with("FWD:")
-                        || context.subject.starts_with("FW:")
-                );
+                assert_eq!(context.subject, expected_subject);
                 assert!(
                     !context.forwarded_content.is_empty(),
                     "forwarded_content should be non-empty"

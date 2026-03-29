@@ -70,9 +70,11 @@ impl Store {
         let _ = sqlx::raw_sql(include_str!("../migrations/004_semantic_search.sql"))
             .execute(&self.writer)
             .await;
-        let _ = sqlx::raw_sql(include_str!("../migrations/005_inline_attachment_metadata.sql"))
-            .execute(&self.writer)
-            .await;
+        let _ = sqlx::raw_sql(include_str!(
+            "../migrations/005_inline_attachment_metadata.sql"
+        ))
+        .execute(&self.writer)
+        .await;
         Ok(())
     }
 

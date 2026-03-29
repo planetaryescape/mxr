@@ -49,7 +49,12 @@ pub enum Command {
         message_id: String,
         #[arg(long, value_enum)]
         view: Option<BodyViewArg>,
-        #[arg(long, conflicts_with = "view", conflicts_with = "raw", conflicts_with = "html")]
+        #[arg(
+            long,
+            conflicts_with = "view",
+            conflicts_with = "raw",
+            conflicts_with = "html"
+        )]
         assets: bool,
         #[arg(long, conflicts_with = "view")]
         #[arg(long)]

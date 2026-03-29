@@ -22,6 +22,24 @@ TUI / CLI / scripts / agents
 
 The daemon is the system. SQLite is the source of truth. Tantivy is rebuildable from SQLite. Provider adapters map into one internal model.
 
+## IPC buckets
+
+mxr keeps one flat IPC wire format, but the contract is easier to maintain if you sort it mentally into four buckets:
+
+1. `core-mail`
+2. `mxr-platform`
+3. `admin-maintenance`
+4. `client-specific`
+
+Only the first three belong in daemon IPC.
+
+- `core-mail`: search, sync, envelopes, bodies, threads, labels, drafts, send, mutations, attachments, export
+- `mxr-platform`: accounts, rules, saved searches, subscriptions, semantic runtime
+- `admin-maintenance`: status, events, logs, doctor, bug reports, repair/inspection
+- `client-specific`: sidebar grouping, pane state, right-rail shaping, selection state; keep this in TUI/web/CLI layers
+
+The daemon serves reusable truth and workflows, not screen payloads.
+
 ## Why it is shaped this way
 
 ### Local-first

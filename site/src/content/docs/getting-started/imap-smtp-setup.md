@@ -5,6 +5,8 @@ description: Connect any email provider to mxr using IMAP for sync and SMTP for 
 
 IMAP and SMTP are first-party adapters in mxr, shipped alongside Gmail. Any email provider that supports IMAP and SMTP works: Fastmail, ProtonMail (with Bridge), Outlook, Yahoo, your company's Exchange server, self-hosted Dovecot, anything.
 
+They sync into the same local runtime and IPC surface as Gmail accounts. The daemon still speaks the internal mxr model; IMAP folder semantics are handled in the adapter.
+
 ## Add an IMAP/SMTP account
 
 Edit your mxr config file:

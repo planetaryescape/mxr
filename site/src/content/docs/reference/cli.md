@@ -7,6 +7,14 @@ description: Daemon-backed CLI reference for mxr.
 
 mxr is a single binary with subcommands. Running `mxr` without arguments launches the TUI.
 
+Conceptually, the CLI spans three daemon IPC buckets:
+
+- `core-mail`
+- `mxr-platform`
+- `admin-maintenance`
+
+It does not get special screen-only payloads from the daemon. Formatting stays in the CLI/output layer.
+
 ## Core commands
 
 | Command | Purpose |

@@ -14,6 +14,7 @@ That is the current story. It is simple, it is scriptable, and it does not prete
 | CLI | shipped | structured output, batch ops, dry runs |
 | Skill | shipped | documents the CLI for coding agents |
 | Daemon socket | shipped | available for custom clients |
+| Web bridge | shipped | HTTP/WebSocket client over daemon IPC |
 | First-party MCP server | not shipped | still on the roadmap |
 
 ## Why the CLI works well
@@ -24,6 +25,16 @@ That is the current story. It is simple, it is scriptable, and it does not prete
 - `mxr history` shows persisted mutation history
 
 This is enough for a lot of useful agent work without inventing a new tool surface first.
+
+## IPC boundaries matter
+
+If you use the socket directly, think in buckets:
+
+- `core-mail`
+- `mxr-platform`
+- `admin-maintenance`
+
+Do not push `client-specific` shaping into the daemon because a screen wants a convenient payload. Web/TUI already derive their own view models from reusable daemon data.
 
 ## Good patterns
 

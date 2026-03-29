@@ -30,6 +30,8 @@ That means:
 - adapters depend on core
 - daemon uses the traits, not provider-specific client types
 
+Provider weirdness stops here. Above this layer, the daemon and IPC should speak internal mail/runtime concepts, not Gmail- or IMAP-specific payloads.
+
 ## Conformance
 
 `mxr-provider-fake` exports conformance helpers and canonical fixtures so adapter authors can test behavior before plugging anything into the daemon.

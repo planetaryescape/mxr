@@ -1,6 +1,6 @@
 ---
 title: Accounts
-description: Manage Gmail runtime accounts and editable IMAP/SMTP accounts.
+description: Manage runtime accounts and config-backed account definitions across Gmail, IMAP, and SMTP.
 ---
 
 ## Account model
@@ -8,7 +8,7 @@ description: Manage Gmail runtime accounts and editable IMAP/SMTP accounts.
 mxr distinguishes between:
 
 - Runtime accounts: what the daemon is actually running now
-- Config-backed accounts: editable account definitions, mainly IMAP/SMTP
+- Config-backed accounts: editable account definitions used to produce runtime accounts
 
 The TUI Accounts page is built from runtime inventory, not from config file entries alone.
 
@@ -33,8 +33,8 @@ The page shows:
 
 - Details on the left
 - Account list on the right
-- Runtime-only Gmail accounts
-- Editable IMAP/SMTP accounts
+- Runtime Gmail, IMAP, and SMTP-backed accounts
+- Editable config-backed accounts where supported
 - Default-account state
 - Provider kind and enabled state
 - Last test/status messaging

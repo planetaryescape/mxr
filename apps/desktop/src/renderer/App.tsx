@@ -1,4 +1,4 @@
-import { Database, Inbox, ScanSearch, Sparkles, UserRoundCog } from "lucide-react";
+import { Database, Inbox, RefreshCw, ScanSearch, Sparkles, UserRoundCog } from "lucide-react";
 import {
   startTransition,
   useDeferredValue,
@@ -53,6 +53,8 @@ import { useMailboxDialogActions } from "./state/useMailboxDialogActions";
 import { useRulesAccountsActions } from "./state/useRulesAccountsActions";
 import { useWorkbenchShellActions } from "./state/useWorkbenchShellActions";
 import { useWorkbenchCoreState } from "./state/useWorkbenchCoreState";
+import type { ConnectionStatus } from "./state/useEventStream";
+import { useContextMenu, ContextMenuOverlay, type ContextMenuItem } from "./lib/context-menu";
 import { DesktopDialogs } from "./surfaces/DesktopDialogs";
 import {
   BridgeErrorView,
@@ -200,6 +202,8 @@ export default function App() {
     setMailListMode,
     signatureExpanded,
     setSignatureExpanded,
+    remoteContentEnabled,
+    setRemoteContentEnabled,
     selectedMessageIds,
     setSelectedMessageIds,
     visualMode,
@@ -238,6 +242,10 @@ export default function App() {
     setGoToLabelOpen,
     jumpTargetLabel,
     setJumpTargetLabel,
+    savedSearchDialogOpen,
+    setSavedSearchDialogOpen,
+    savedSearchName,
+    setSavedSearchName,
     attachmentDialogOpen,
     setAttachmentDialogOpen,
     linksDialogOpen,
@@ -371,25 +379,49 @@ export default function App() {
     [isMacPlatform],
   );
 
+  const [mailboxFilterOpen, setMailboxFilterOpen] = useState(false);
+  const [mailboxFilterQuery, setMailboxFilterQuery] = useState("");
+  const contextMenu = useContextMenu();
+
   useActionNoticeTimeout(actionNotice, setActionNotice);
   usePruneSelectedMessages(mailbox.groups, searchState.groups, setSelectedMessageIds);
+
+  useEffect(() => {
+    document.body.setAttribute("data-remote-content", String(remoteContentEnabled));
+  }, [remoteContentEnabled]);
 
   const showNotice = useEffectEvent((message: string) => {
     setActionNotice(message);
   });
 
   const commandActions = useMemo(
-    () =>
-      commandPaletteEntries().map((item) => ({
+    () => [
+      ...commandPaletteEntries().map((item) => ({
         ...item,
         shortcut: displayShortcut(item.action, item.shortcut, isMacPlatform),
       })),
-    [isMacPlatform],
+      { action: "filter_mailbox", category: "Navigation", label: "Filter mailbox", shortcut: "Ctrl-F" },
+      { action: "select_all", category: "Selection", label: "Select all", shortcut: "" },
+      { action: "select_none", category: "Selection", label: "Select none", shortcut: "" },
+      { action: "select_read", category: "Selection", label: "Select read", shortcut: "" },
+      { action: "select_unread", category: "Selection", label: "Select unread", shortcut: "" },
+      { action: "select_starred", category: "Selection", label: "Select starred", shortcut: "" },
+      { action: "create_saved_search", category: "Search", label: "Save current search", shortcut: "" },
+      { action: "toggle_remote_content", category: "View", label: "Toggle remote content", shortcut: "M" },
+      ...accountsState.accounts.map((a) => ({
+        action: `switch_account:${a.key ?? a.account_id}`,
+        category: "Account",
+        label: `Switch to ${a.name}`,
+        shortcut: "",
+      })),
+    ],
+    [isMacPlatform, accountsState.accounts],
   );
 
   const {
     loadMailbox,
     loadSearch,
+    loadMoreSearch,
     loadThread,
     loadRules,
     loadAccounts,
@@ -421,6 +453,7 @@ export default function App() {
     setSelectedSearchThreadId,
     setShowInboxZero,
     setWorkbenchReady,
+    searchState,
     setSearchState,
     setRulesState,
     setSelectedRuleId,
@@ -471,6 +504,7 @@ export default function App() {
     submitComposeAction,
     discardComposeSession,
     launchComposeEditor,
+    setComposeBody,
   } = useComposeActions({
     bridge,
     composeSession,
@@ -778,6 +812,8 @@ export default function App() {
     openLinksPanel,
     signatureExpanded,
     setSignatureExpanded,
+    remoteContentEnabled,
+    setRemoteContentEnabled,
     visualMode,
     setVisualMode,
     visualAnchorMessageId,
@@ -785,6 +821,14 @@ export default function App() {
     selectedMessageIds,
     setSelectedMessageIds,
     openGoToLabelDialog,
+    openSavedSearchDialog: () => {
+      setSavedSearchName("");
+      setSavedSearchDialogOpen(true);
+      setFocusContext("dialog");
+    },
+    openMailboxFilter: () => {
+      setMailboxFilterOpen(true);
+    },
     setMailListMode,
     exportSelectedThread,
     generateBugReport,
@@ -800,6 +844,22 @@ export default function App() {
     testCurrentAccount,
     makeSelectedAccountDefault,
     formatPendingMutationLabel,
+    triggerSync: async () => {
+      if (bridge.kind !== "ready") return;
+      await fetchJson(bridge.baseUrl, bridge.authToken, "/sync", { method: "POST" });
+    },
+    switchAccount: async (key: string) => {
+      if (bridge.kind !== "ready") return;
+      await fetchJson(bridge.baseUrl, bridge.authToken, "/accounts/default", {
+        method: "POST",
+        body: JSON.stringify({ key }),
+      });
+      await refreshCurrentView({ preserveReader: false });
+    },
+    composeOpen,
+    composeSession,
+    setComposeSession,
+    setComposeDraft,
   });
 
   useDesktopKeyboardShortcuts({
@@ -816,12 +876,20 @@ export default function App() {
     modalOpen,
     composeOpen,
     closeComposeShell,
+    submitCompose: (action) => {
+      if (action === "send") void submitComposeAction("/compose/session/send", "Sent");
+      else if (action === "save") void submitComposeAction("/compose/session/save", "Draft saved");
+    },
     closeAllDialogs,
     setFocusContext,
     selectedMessageIds,
     visualMode,
     dispatchAction,
   });
+
+  // Event stream status is managed by EventStreamBridge in main.tsx (Electron context only).
+  // In test environments, this stays "disconnected".
+  const eventStreamStatus: ConnectionStatus = "disconnected";
 
   const bridgeGate = renderBridgeGate({
     bridge,
@@ -854,6 +922,11 @@ export default function App() {
     openComposeShell,
     openApplyLabelDialog,
     openSnoozeDialog,
+    refreshCurrentView,
+    mailboxFilterOpen,
+    mailboxFilterQuery,
+    setMailboxFilterOpen,
+    setMailboxFilterQuery,
     mailbox,
     mailboxRows,
     mailListMode,
@@ -881,6 +954,7 @@ export default function App() {
     setSearchExplain,
     searchState,
     searchRows,
+    loadMoreSearch: () => loadMoreSearch(),
     selectedSearchThreadId,
     setSelectedSearchThreadId,
     rulesState,
@@ -931,7 +1005,9 @@ export default function App() {
     launchComposeEditor,
     refreshComposeSession,
     submitComposeAction,
+    persistComposeDraft,
     discardComposeSession,
+    setComposeBody,
     labelDialogOpen,
     labelOptions,
     selectedLabels,
@@ -960,6 +1036,25 @@ export default function App() {
     setGoToLabelOpen,
     setJumpTargetLabel,
     applyJumpTarget,
+    savedSearchDialogOpen,
+    savedSearchName,
+    setSavedSearchDialogOpen,
+    setSavedSearchName,
+    submitSavedSearch: async () => {
+      if (bridge.kind !== "ready" || !savedSearchName.trim()) return;
+      await fetchJson(bridge.baseUrl, bridge.authToken, "/saved-searches/create", {
+        method: "POST",
+        body: JSON.stringify({
+          name: savedSearchName.trim(),
+          query: searchQuery,
+          search_mode: searchMode,
+        }),
+      });
+      setSavedSearchDialogOpen(false);
+      setSavedSearchName("");
+      setFocusContext("sidebar");
+      await refreshCurrentView();
+    },
     attachmentDialogOpen,
     threadAttachments,
     setAttachmentDialogOpen,
@@ -984,6 +1079,8 @@ export default function App() {
     setAccountFormOpen,
     setAccountDraftJson,
     saveAccountDraft,
+    eventStreamStatus,
+    contextMenu,
   });
 }
 
@@ -992,6 +1089,21 @@ function flattenGroups(groups: MailboxGroup[]): FlattenedEntry[] {
     { kind: "header" as const, id: `header-${group.id}`, label: group.label },
     ...group.rows.map((row) => ({ kind: "row" as const, id: row.id, row })),
   ]);
+}
+
+function buildKnownSenders(groups: MailboxGroup[]): Array<{ name: string; email: string }> {
+  const seen = new Map<string, { name: string; email: string }>();
+  for (const group of groups) {
+    for (const row of group.rows) {
+      const email = row.sender_detail ?? row.sender;
+      if (!seen.has(email)) {
+        seen.set(email, { name: row.sender, email });
+      }
+    }
+  }
+  const senders = Array.from(seen.values());
+  senders.sort((a, b) => a.email.toLowerCase().localeCompare(b.email.toLowerCase()));
+  return senders;
 }
 
 function displayShortcut(action: string, display: string, isMacPlatform: boolean) {
@@ -1022,6 +1134,11 @@ function renderDesktopWorkbench(props: {
   openComposeShell: (kind: "new" | "reply" | "forward", messageId?: string) => Promise<void>;
   openApplyLabelDialog: () => void;
   openSnoozeDialog: () => Promise<void>;
+  refreshCurrentView: (options?: { preserveReader?: boolean }) => Promise<void>;
+  mailboxFilterOpen: boolean;
+  mailboxFilterQuery: string;
+  setMailboxFilterOpen: StateSetter<boolean>;
+  setMailboxFilterQuery: StateSetter<string>;
   mailbox: MailboxPayload;
   mailboxRows: FlattenedEntry[];
   mailListMode: "threads" | "messages";
@@ -1049,6 +1166,7 @@ function renderDesktopWorkbench(props: {
   setSearchExplain: StateSetter<boolean>;
   searchState: SearchResponse;
   searchRows: FlattenedEntry[];
+  loadMoreSearch: () => Promise<void>;
   selectedSearchThreadId: string | null;
   setSelectedSearchThreadId: StateSetter<string | null>;
   rulesState: RulesResponse;
@@ -1073,6 +1191,8 @@ function renderDesktopWorkbench(props: {
   testCurrentAccount: () => Promise<void>;
   makeSelectedAccountDefault: () => Promise<void>;
   readyBridge: Extract<BridgeState, { kind: "ready" }>;
+  eventStreamStatus: ConnectionStatus;
+  contextMenu: ReturnType<typeof useContextMenu>;
   diagnosticsState: DiagnosticsResponse | null;
   generateBugReport: () => Promise<void>;
   focusContext: FocusContext;
@@ -1111,7 +1231,9 @@ function renderDesktopWorkbench(props: {
     path: "/compose/session/send" | "/compose/session/save",
     successMessage: string,
   ) => Promise<void>;
+  persistComposeDraft: () => Promise<ComposeSession | null>;
   discardComposeSession: () => Promise<void>;
+  setComposeBody: (body: string) => void;
   labelDialogOpen: boolean;
   labelOptions: string[];
   selectedLabels: string[];
@@ -1140,6 +1262,11 @@ function renderDesktopWorkbench(props: {
   setGoToLabelOpen: StateSetter<boolean>;
   setJumpTargetLabel: StateSetter<string>;
   applyJumpTarget: () => Promise<void>;
+  savedSearchDialogOpen: boolean;
+  savedSearchName: string;
+  setSavedSearchDialogOpen: StateSetter<boolean>;
+  setSavedSearchName: StateSetter<string>;
+  submitSavedSearch: () => Promise<void>;
   attachmentDialogOpen: boolean;
   threadAttachments: Array<{
     id: string;
@@ -1190,6 +1317,7 @@ function renderDesktopWorkbench(props: {
             props.setComposeOpen(true);
             props.setFocusContext("compose");
           }}
+          onSync={() => void props.refreshCurrentView({ preserveReader: true })}
           onCompose={() => void props.openComposeShell("new")}
           onReply={() =>
             props.selectedRow && void props.openComposeShell("reply", props.selectedRow.id)
@@ -1209,6 +1337,15 @@ function renderDesktopWorkbench(props: {
             <NavigationSidebar
               unreadCount={props.mailbox.counts.unread}
               sidebar={props.sidebar}
+              accountLabel={props.shell.accountLabel}
+              accounts={props.accountsState.accounts.map((a) => ({ key: a.key ?? a.account_id, name: a.name, is_default: a.is_default }))}
+              onSwitchAccount={async (key) => {
+                await fetchJson(props.readyBridge.baseUrl, props.readyBridge.authToken, "/accounts/default", {
+                  method: "POST",
+                  body: JSON.stringify({ key }),
+                });
+                await props.refreshCurrentView({ preserveReader: false });
+              }}
               onApplySidebarLens={(item) => void props.applySidebarLens(item)}
             />
           ) : null}
@@ -1235,6 +1372,31 @@ function renderDesktopWorkbench(props: {
               onArchive={() => void props.archiveSelected()}
               onCloseReader={props.closeReader}
               utilityRail={props.utilityRail}
+              filterQuery={props.mailboxFilterQuery}
+              filterOpen={props.mailboxFilterOpen}
+              onFilterChange={(q) => props.setMailboxFilterQuery(q)}
+              onFilterClose={() => {
+                props.setMailboxFilterOpen(false);
+                props.setMailboxFilterQuery("");
+              }}
+              onRowContextMenu={(e, threadId) => {
+                props.setSelectedMailboxThreadId(threadId);
+                props.contextMenu.show(e, [
+                  { label: "Archive", shortcut: "E", onClick: () => props.dispatchAction("archive") },
+                  { label: "Star", shortcut: "S", onClick: () => props.dispatchAction("star") },
+                  { label: "Mark read", shortcut: "I", onClick: () => props.dispatchAction("mark_read"), separator: true },
+                  { label: "Apply label", shortcut: "L", onClick: () => props.dispatchAction("apply_label") },
+                  { label: "Move to", shortcut: "V", onClick: () => props.dispatchAction("move_label") },
+                  { label: "Snooze", shortcut: "Z", onClick: () => props.dispatchAction("snooze"), separator: true },
+                  { label: "Reply", shortcut: "R", onClick: () => props.dispatchAction("reply") },
+                  { label: "Reply all", shortcut: "A", onClick: () => props.dispatchAction("reply_all") },
+                  { label: "Forward", shortcut: "F", onClick: () => props.dispatchAction("forward"), separator: true },
+                  { label: "Open in browser", shortcut: "O", onClick: () => props.dispatchAction("open_in_browser") },
+                  { label: "Export", shortcut: "E", onClick: () => props.dispatchAction("export_thread"), separator: true },
+                  { label: "Spam", shortcut: "!", danger: true, onClick: () => props.dispatchAction("spam") },
+                  { label: "Trash", shortcut: "#", danger: true, onClick: () => props.dispatchAction("trash") },
+                ]);
+              }}
               searchInputRef={props.searchInputRef}
               searchQuery={props.searchQuery}
               onSearchQueryChange={props.setSearchQuery}
@@ -1253,6 +1415,7 @@ function renderDesktopWorkbench(props: {
                 props.setSelectedSearchThreadId(threadId);
                 props.setFocusContext("search");
               }}
+              onLoadMoreSearch={props.loadMoreSearch}
               rulesState={props.rulesState}
               selectedRuleId={props.selectedRuleId}
               rulePanelMode={props.rulePanelMode}
@@ -1292,6 +1455,7 @@ function renderDesktopWorkbench(props: {
               focusContext={props.focusContext}
               commandHint={props.shell.commandHint}
               totalThreads={props.mailbox.counts.total}
+              eventStreamStatus={props.eventStreamStatus}
             />
           </main>
         </div>
@@ -1339,6 +1503,32 @@ function renderDesktopWorkbench(props: {
         onSendCompose={() => void props.submitComposeAction("/compose/session/send", "Sent")}
         onSaveCompose={() => void props.submitComposeAction("/compose/session/save", "Draft saved")}
         onDiscardCompose={() => void props.discardComposeSession()}
+        onPersistComposeDraft={async () => { await props.persistComposeDraft(); }}
+        onComposeBodyChange={props.setComposeBody}
+        fetchContactSuggestions={async (query) => {
+          try {
+            const data = await fetchJson<SearchResponse>(
+              props.readyBridge.baseUrl,
+              props.readyBridge.authToken,
+              `/search?q=from:${encodeURIComponent(query)}&scope=messages&mode=lexical&sort=recent&limit=10`,
+            );
+            const seen = new Set<string>();
+            const results: Array<{ label: string; value: string }> = [];
+            for (const group of data.groups) {
+              for (const row of group.rows) {
+                const email = row.sender_detail ?? row.sender;
+                if (!seen.has(email)) {
+                  seen.add(email);
+                  results.push({ label: row.sender, value: email });
+                }
+              }
+            }
+            return results;
+          } catch {
+            return [];
+          }
+        }}
+        knownSenders={buildKnownSenders(props.mailbox.groups)}
         labelDialogOpen={props.labelDialogOpen}
         labelOptions={props.labelOptions}
         selectedLabels={props.selectedLabels}
@@ -1388,6 +1578,16 @@ function renderDesktopWorkbench(props: {
         }}
         onJumpTargetLabelChange={props.setJumpTargetLabel}
         onSubmitJumpTarget={() => void props.applyJumpTarget()}
+        savedSearchDialogOpen={props.savedSearchDialogOpen}
+        savedSearchName={props.savedSearchName}
+        savedSearchQuery={props.searchQuery}
+        savedSearchMode={props.searchMode}
+        onCloseSavedSearchDialog={() => {
+          props.setSavedSearchDialogOpen(false);
+          props.setFocusContext(props.screen === "search" ? "search" : "mailList");
+        }}
+        onSavedSearchNameChange={props.setSavedSearchName}
+        onSubmitSavedSearch={() => void props.submitSavedSearch()}
         attachmentDialogOpen={props.attachmentDialogOpen}
         threadAttachments={props.threadAttachments}
         onCloseAttachmentDialog={() => {
@@ -1435,6 +1635,7 @@ function renderDesktopWorkbench(props: {
         onTestAccount={() => void props.testCurrentAccount()}
         onSaveAccount={() => void props.saveAccountDraft()}
       />
+      <ContextMenuOverlay menu={props.contextMenu.menu} onClose={props.contextMenu.close} />
     </div>
   );
 }
@@ -1709,8 +1910,10 @@ function useWorkbenchLifecycle(props: {
   useEffect(() => {
     if (bridge.kind === "ready") {
       void refreshMailbox();
+      void loadAccounts();
     }
   }, [bridge.kind]);
+
 
   useEffect(() => {
     if (bridge.kind === "ready" && screen === "search") {

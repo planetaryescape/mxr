@@ -1,5 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type {
+  ComposeFrontmatter,
+  ComposeSession,
   ComposeSessionKind,
   FocusContext,
   LayoutMode,
@@ -61,7 +63,7 @@ export type DesktopActionContext = {
   loadAccounts: () => Promise<void>;
   loadDiagnostics: () => Promise<void>;
   applySidebarLensById: (itemId: string) => Promise<void>;
-  applySidebarLens: (item: SidebarItem) => Promise<void>;
+  applySidebarLens: (item: SidebarItem, options?: { preserveFocus?: boolean }) => Promise<void>;
   archiveSelected: () => Promise<void>;
   mutateSelected: (
     path: string,
@@ -84,6 +86,8 @@ export type DesktopActionContext = {
   openLinksPanel: () => void;
   signatureExpanded: boolean;
   setSignatureExpanded: Dispatch<SetStateAction<boolean>>;
+  remoteContentEnabled: boolean;
+  setRemoteContentEnabled: Dispatch<SetStateAction<boolean>>;
   visualMode: boolean;
   setVisualMode: Dispatch<SetStateAction<boolean>>;
   visualAnchorMessageId: string | null;
@@ -91,6 +95,8 @@ export type DesktopActionContext = {
   selectedMessageIds: Set<string>;
   setSelectedMessageIds: Dispatch<SetStateAction<Set<string>>>;
   openGoToLabelDialog: () => void;
+  openSavedSearchDialog: () => void;
+  openMailboxFilter?: () => void;
   setMailListMode: Dispatch<SetStateAction<"threads" | "messages">>;
   exportSelectedThread: () => Promise<void>;
   generateBugReport: () => Promise<void>;
@@ -106,6 +112,12 @@ export type DesktopActionContext = {
   testCurrentAccount: () => Promise<void>;
   makeSelectedAccountDefault: () => Promise<void>;
   formatPendingMutationLabel: (verb: string, count: number, detail?: string) => string;
+  switchAccount?: (key: string) => Promise<void>;
+  triggerSync: () => Promise<void>;
+  composeOpen: boolean;
+  composeSession: ComposeSession | null;
+  setComposeSession: Dispatch<SetStateAction<ComposeSession | null>>;
+  setComposeDraft: Dispatch<SetStateAction<ComposeFrontmatter | null>>;
 };
 
 export function runDesktopAction(action: DesktopAction | string, context: DesktopActionContext) {
@@ -265,10 +277,20 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       );
       return;
     case "open":
+      // In sidebar: Enter opens the label and moves focus to mail list
+      if (context.focusContext === "sidebar") {
+        context.setFocusContext("mailList");
+        return;
+      }
       context.openThread();
       return;
     case "back":
     case "quit_view":
+      // Clear stale compose state that could leave the app in a confused state
+      if (context.composeSession && !context.composeOpen) {
+        context.setComposeSession(null);
+        context.setComposeDraft(null);
+      }
       if (context.showInboxZero) {
         context.setShowInboxZero(false);
         return;
@@ -469,6 +491,9 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
     case "toggle_reader_mode":
       context.setReaderMode((current) => nextReaderMode(current));
       return;
+    case "toggle_remote_content":
+      context.setRemoteContentEnabled((current) => !current);
+      return;
     case "help":
       context.setHelpOpen(true);
       return;
@@ -482,8 +507,8 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       void context.loadDiagnostics();
       return;
     case "sync":
-      void context.refreshCurrentView({ preserveReader: true });
-      context.showNotice("Refreshing local workspace");
+      void context.triggerSync().then(() => context.refreshCurrentView({ preserveReader: true }));
+      context.showNotice("Syncing with server");
       return;
     case "compose":
       void context.openComposeShell("new");
@@ -504,6 +529,11 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       }
       return;
     case "apply_label":
+      // In sidebar: l opens the active label's mailbox (like TUI)
+      if (context.focusContext === "sidebar") {
+        context.setFocusContext("mailList");
+        return;
+      }
       if (context.selectedRow) {
         context.openApplyLabelDialog();
       }
@@ -582,8 +612,46 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       context.setVisualAnchorMessageId(null);
       context.showNotice("Selection cleared");
       return;
+    case "select_all": {
+      const rows = activeRows(context);
+      const ids = new Set(rows.filter((e) => e.kind === "row").map((e) => e.kind === "row" ? e.row.id : ""));
+      context.setSelectedMessageIds(ids);
+      context.showNotice(`${ids.size} selected`);
+      return;
+    }
+    case "select_none":
+      context.setSelectedMessageIds(new Set());
+      context.showNotice("Selection cleared");
+      return;
+    case "select_read": {
+      const rows = activeRows(context);
+      const ids = new Set(rows.filter((e) => e.kind === "row" && !e.row.unread).map((e) => e.kind === "row" ? e.row.id : ""));
+      context.setSelectedMessageIds(ids);
+      context.showNotice(`${ids.size} read selected`);
+      return;
+    }
+    case "select_unread": {
+      const rows = activeRows(context);
+      const ids = new Set(rows.filter((e) => e.kind === "row" && e.row.unread).map((e) => e.kind === "row" ? e.row.id : ""));
+      context.setSelectedMessageIds(ids);
+      context.showNotice(`${ids.size} unread selected`);
+      return;
+    }
+    case "select_starred": {
+      const rows = activeRows(context);
+      const ids = new Set(rows.filter((e) => e.kind === "row" && e.row.starred).map((e) => e.kind === "row" ? e.row.id : ""));
+      context.setSelectedMessageIds(ids);
+      context.showNotice(`${ids.size} starred selected`);
+      return;
+    }
+    case "filter_mailbox":
+      context.openMailboxFilter?.();
+      return;
     case "go_label":
       context.openGoToLabelDialog();
+      return;
+    case "create_saved_search":
+      context.openSavedSearchDialog();
       return;
     case "toggle_mail_list_mode":
       context.setMailListMode((current) => (current === "threads" ? "messages" : "threads"));
@@ -628,6 +696,13 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       void context.makeSelectedAccountDefault();
       return;
     default:
+      // Dynamic actions like switch_account:key
+      if (action.startsWith("switch_account:")) {
+        const key = action.slice("switch_account:".length);
+        if (key && context.switchAccount) {
+          void context.switchAccount(key);
+        }
+      }
       return;
   }
 }
@@ -786,7 +861,7 @@ function clampIndex(index: number, length: number) {
 async function moveSidebarSelection(
   delta: number,
   sidebar: SidebarPayload,
-  applySidebarLens: (item: SidebarItem) => Promise<void>,
+  applySidebarLens: (item: SidebarItem, options?: { preserveFocus?: boolean }) => Promise<void>,
 ) {
   const items = sidebar.sections.flatMap((section) => section.items);
   if (items.length === 0) {
@@ -796,14 +871,14 @@ async function moveSidebarSelection(
   const nextIndex = clampIndex(currentIndex < 0 ? 0 : currentIndex + delta, items.length);
   const next = items[nextIndex];
   if (next) {
-    await applySidebarLens(next);
+    await applySidebarLens(next, { preserveFocus: true });
   }
 }
 
 async function jumpSidebarSelection(
   direction: "top" | "bottom",
   sidebar: SidebarPayload,
-  applySidebarLens: (item: SidebarItem) => Promise<void>,
+  applySidebarLens: (item: SidebarItem, options?: { preserveFocus?: boolean }) => Promise<void>,
 ) {
   const items = sidebar.sections.flatMap((section) => section.items);
   if (items.length === 0) {
@@ -811,6 +886,10 @@ async function jumpSidebarSelection(
   }
   const next = direction === "top" ? items[0] : items[items.length - 1];
   if (next) {
-    await applySidebarLens(next);
+    await applySidebarLens(next, { preserveFocus: true });
   }
+}
+
+function activeRows(context: DesktopActionContext): FlattenedEntry[] {
+  return context.screen === "search" ? context.searchRows : context.mailboxRows;
 }

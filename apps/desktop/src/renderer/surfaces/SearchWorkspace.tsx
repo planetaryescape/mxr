@@ -10,6 +10,7 @@ import type {
   ThreadResponse,
 } from "../../shared/types";
 import { cn } from "../lib/cn";
+import { MailRow, DateGroupHeader } from "../components/MailRow";
 import { ReaderPane } from "./ReaderPane";
 import type { FlattenedEntry } from "./types";
 
@@ -36,6 +37,7 @@ export function SearchWorkspace(props: {
   readerMode: ReaderMode;
   setReaderMode: (mode: ReaderMode) => void;
   signatureExpanded: boolean;
+  onLoadMore?: () => void;
 }) {
   const resultsRef = useRef<HTMLDivElement | null>(null);
 
@@ -51,21 +53,25 @@ export function SearchWorkspace(props: {
     }
   }, [props.rows, props.selectedThreadId]);
 
+  const scopeTabClass = cn(
+    "px-2 py-1 text-[length:var(--text-xs)] uppercase text-foreground-subtle",
+    "data-[selected]:bg-accent/12 data-[selected]:text-accent",
+  );
+
   return (
     <div className="grid h-full min-h-0 grid-cols-1 xl:grid-cols-[minmax(22rem,0.92fr)_minmax(32rem,1.15fr)]">
       <section className="min-h-0 border-r border-outline bg-panel">
-        <div className="border-b border-outline px-2.5 py-2.5">
+        {/* Search header */}
+        <div className="border-b border-outline px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="mono-meta">Search</p>
-              <h1 className="mt-0.5 text-balance text-[1.15rem] font-semibold leading-none text-foreground">
-                Search local mail
-              </h1>
-            </div>
-            <div className="flex items-center gap-2">
+            <span className="text-[length:var(--text-base)] font-semibold text-foreground">
+              Search
+            </span>
+            <div className="flex items-center gap-1.5">
               <select
                 aria-label="Search mode"
-                className="border border-outline bg-canvas-elevated px-1.5 py-1 text-[10px] text-foreground-muted outline-none"
+                className="border border-outline bg-canvas-elevated px-1.5 py-1 text-[length:var(--text-xs)] text-foreground-muted outline-none"
+                style={{ borderRadius: "var(--radius-sm)" }}
                 value={props.mode}
                 onChange={(event) => props.onModeChange(event.target.value as SearchMode)}
               >
@@ -75,7 +81,8 @@ export function SearchWorkspace(props: {
               </select>
               <select
                 aria-label="Sort"
-                className="border border-outline bg-canvas-elevated px-1.5 py-1 text-[10px] text-foreground-muted outline-none"
+                className="border border-outline bg-canvas-elevated px-1.5 py-1 text-[length:var(--text-xs)] text-foreground-muted outline-none"
+                style={{ borderRadius: "var(--radius-sm)" }}
                 value={props.sort}
                 onChange={(event) => props.onSortChange(event.target.value as SearchSort)}
               >
@@ -84,50 +91,47 @@ export function SearchWorkspace(props: {
               </select>
             </div>
           </div>
-          <div className="mt-2 flex items-center gap-2 border border-outline bg-canvas-elevated px-2 py-1.5">
+
+          {/* Search input */}
+          <div
+            className="mt-2 flex items-center gap-2 border border-outline bg-canvas-elevated px-2.5 py-2"
+            style={{ borderRadius: "var(--radius-sm)" }}
+          >
             <MailSearch className="size-3.5 text-foreground-subtle" />
             <input
               ref={props.inputRef}
-              className="min-w-0 flex-1 bg-transparent text-[11px] text-foreground outline-none placeholder:text-foreground-subtle"
+              className="min-w-0 flex-1 bg-transparent text-[length:var(--text-sm)] text-foreground outline-none placeholder:text-foreground-subtle"
               value={props.query}
               onChange={(event) => props.onQueryChange(event.target.value)}
               placeholder="Search subjects, senders, snippets"
             />
           </div>
+
+          {/* Scope tabs */}
           <Tabs.Root
             value={props.scope}
             onValueChange={(value) => props.onScopeChange((value ?? "threads") as SearchScope)}
             className="mt-2"
           >
-            <Tabs.List className="flex gap-1">
-              <Tabs.Tab
-                value="threads"
-                className="border border-outline px-1.5 py-1 text-[10px] uppercase text-foreground-muted data-[selected]:border-accent/35 data-[selected]:bg-accent/10 data-[selected]:text-foreground"
-              >
+            <Tabs.List className="flex gap-0.5">
+              <Tabs.Tab value="threads" className={scopeTabClass} style={{ borderRadius: "var(--radius-sm)" }}>
                 Threads
               </Tabs.Tab>
-              <Tabs.Tab
-                value="messages"
-                className="border border-outline px-1.5 py-1 text-[10px] uppercase text-foreground-muted data-[selected]:border-accent/35 data-[selected]:bg-accent/10 data-[selected]:text-foreground"
-              >
+              <Tabs.Tab value="messages" className={scopeTabClass} style={{ borderRadius: "var(--radius-sm)" }}>
                 Messages
               </Tabs.Tab>
-              <Tabs.Tab
-                value="attachments"
-                className="border border-outline px-1.5 py-1 text-[10px] uppercase text-foreground-muted data-[selected]:border-accent/35 data-[selected]:bg-accent/10 data-[selected]:text-foreground"
-              >
+              <Tabs.Tab value="attachments" className={scopeTabClass} style={{ borderRadius: "var(--radius-sm)" }}>
                 Attachments
               </Tabs.Tab>
             </Tabs.List>
           </Tabs.Root>
-          <div className="mt-2 flex items-center justify-between gap-3 border border-outline bg-panel-muted px-2 py-1.5">
-            <div>
-              <p className="mono-meta">Ranking</p>
-              <p className="mt-0.5 text-[10px] text-foreground-muted">
-                {props.mode} mode · {props.sort} sort
-              </p>
-            </div>
-            <label className="flex items-center gap-2 text-[10px] text-foreground-muted">
+
+          {/* Ranking info */}
+          <div className="mt-2 flex items-center justify-between gap-3 text-[length:var(--text-xs)]">
+            <span className="text-foreground-subtle">
+              {props.state.total} results · {props.mode} · {props.sort}
+            </span>
+            <label className="flex items-center gap-1.5 text-foreground-subtle">
               <input
                 type="checkbox"
                 checked={props.explain}
@@ -137,69 +141,53 @@ export function SearchWorkspace(props: {
             </label>
           </div>
         </div>
+
+        {/* Results */}
         <div
           ref={resultsRef}
-          className="subtle-scrollbar h-[calc(100%-9rem)] overflow-y-auto px-2.5 py-2.5"
+          className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto"
+          style={{ height: "calc(100% - 10rem)" }}
         >
-          <p className="mono-meta">{props.state.total} results</p>
-          {props.explain ? (
-            <div className="mt-2 border border-outline bg-panel-muted px-2 py-2">
+          {props.explain && props.state.explain ? (
+            <div className="border-b border-outline bg-panel-muted px-3 py-2">
               <p className="mono-meta">Explain</p>
-              <pre className="mt-2 whitespace-pre-wrap text-[10px] leading-4.5 text-foreground-muted">
-                {props.state.explain
-                  ? JSON.stringify(props.state.explain, null, 2)
-                  : "No explain payload for this query."}
+              <pre className="mt-1.5 whitespace-pre-wrap text-[length:var(--text-xs)] leading-relaxed text-foreground-muted">
+                {JSON.stringify(props.state.explain, null, 2)}
               </pre>
             </div>
           ) : null}
-          <div className="mt-2 space-y-px">
+
+          <div>
             {props.rows.map((entry) =>
               entry.kind === "header" ? (
-                <div key={entry.id} className="mono-meta border-b border-outline/60 pb-1 pt-2 first:pt-0">
-                  {entry.label}
-                </div>
+                <DateGroupHeader key={entry.id} label={entry.label} />
               ) : (
-                <button
+                <MailRow
                   key={entry.id}
-                  data-thread-id={entry.row.thread_id}
-                  className={cn(
-                    "w-full border px-2 py-1.5 text-left transition-colors",
-                    props.selectedThreadId === entry.row.thread_id
-                      ? "border-accent/35 bg-panel-elevated"
-                      : props.selectedMessageIds.has(entry.row.id)
-                        ? "border-success/35 bg-success/10"
-                        : "border-transparent bg-transparent hover:bg-panel-elevated/55",
-                  )}
-                  onClick={() => props.onSelect(entry.row.thread_id)}
-                  onDoubleClick={props.onOpen}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-[11px] font-medium text-foreground">
-                        {entry.row.subject}
-                      </div>
-                      <p className="mt-0.5 text-[10px] text-foreground-muted">{entry.row.sender}</p>
-                      <p className="mt-0.5 line-clamp-1 text-[10px] leading-4 text-foreground-subtle">
-                        {entry.row.snippet}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 flex-col items-end gap-1">
-                      {props.pendingMessageIds.has(entry.row.id) ? (
-                        <span className="border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[9px] text-accent">
-                          Syncing
-                        </span>
-                      ) : null}
-                      <span className="font-mono text-[9px] tabular-nums text-foreground-subtle">
-                        {entry.row.date_label}
-                      </span>
-                    </div>
-                  </div>
-                </button>
+                  row={entry.row}
+                  selected={props.selectedThreadId === entry.row.thread_id}
+                  multiSelected={props.selectedMessageIds.has(entry.row.id)}
+                  pending={props.pendingMessageIds.has(entry.row.id)}
+                  removing={false}
+                  onSelect={() => props.onSelect(entry.row.thread_id)}
+                  onOpen={props.onOpen}
+                  onContextMenu={() => {}}
+                />
               ),
             )}
           </div>
+          {props.state.has_more && props.onLoadMore ? (
+            <button
+              type="button"
+              className="w-full border-t border-outline px-3 py-2.5 text-center text-[length:var(--text-xs)] text-accent hover:bg-panel-elevated"
+              onClick={props.onLoadMore}
+            >
+              Load more results
+            </button>
+          ) : null}
         </div>
       </section>
+
       <ReaderPane
         className="hidden min-h-0 xl:flex"
         thread={props.thread}

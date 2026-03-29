@@ -45,6 +45,7 @@ export function useWorkbenchShellActions(props: {
   setSelectedSearchThreadId: StateSetter<string | null>;
   setShowInboxZero: StateSetter<boolean>;
   setWorkbenchReady: StateSetter<boolean>;
+  searchState: SearchResponse;
   setSearchState: StateSetter<SearchResponse>;
   setRulesState: StateSetter<RulesResponse>;
   setSelectedRuleId: StateSetter<string | null>;
@@ -114,6 +115,33 @@ export function useWorkbenchShellActions(props: {
       props.setSelectedSearchThreadId(
         payload.groups.flatMap((group) => group.rows)[0]?.thread_id ?? null,
       );
+    });
+  });
+
+  const loadMoreSearch = useEffectEvent(async () => {
+    if (props.bridge.kind !== "ready") {
+      return;
+    }
+
+    const currentTotal = props.searchState.groups.flatMap((g) => g.rows).length;
+    const params = new URLSearchParams();
+    if (props.deferredSearchQuery) {
+      params.set("q", props.deferredSearchQuery);
+    }
+    params.set("scope", props.searchScope);
+    params.set("mode", props.searchMode);
+    params.set("sort", props.searchSort);
+    params.set("limit", String(currentTotal + 50));
+    if (props.searchExplain) {
+      params.set("explain", "true");
+    }
+    const payload = await fetchJson<SearchResponse>(
+      props.bridge.baseUrl,
+      props.bridge.authToken,
+      `/search?${params.toString()}`,
+    );
+    startTransition(() => {
+      props.setSearchState(payload);
     });
   });
 
@@ -213,9 +241,11 @@ export function useWorkbenchShellActions(props: {
     props.setBridge(next);
   });
 
-  const applySidebarLens = useEffectEvent(async (item: SidebarItem) => {
+  const applySidebarLens = useEffectEvent(async (item: SidebarItem, options?: { preserveFocus?: boolean }) => {
     props.setSidebar((current) => setActiveSidebarItem(current, item.id));
-    props.setFocusContext("mailList");
+    if (!options?.preserveFocus) {
+      props.setFocusContext("mailList");
+    }
     await loadMailbox(item.lens);
   });
 
@@ -246,6 +276,7 @@ export function useWorkbenchShellActions(props: {
   return {
     loadMailbox,
     loadSearch,
+    loadMoreSearch,
     loadThread,
     loadRules,
     loadAccounts,

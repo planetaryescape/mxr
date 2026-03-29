@@ -20,7 +20,7 @@ function ComposeField(props: {
     <label className="grid gap-2">
       <span className="mono-meta">{props.label}</span>
       <input
-        className="rounded-xl border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none placeholder:text-foreground-subtle"
+        className="rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none placeholder:text-foreground-subtle"
         value={props.value}
         placeholder={props.placeholder}
         onChange={(event) => props.onChange(event.target.value)}
@@ -43,7 +43,7 @@ export function LabelDialog(props: {
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(32rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-outline bg-panel px-6 py-6 outline-none">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(32rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none">
           <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
             Apply label
           </Dialog.Title>
@@ -54,7 +54,7 @@ export function LabelDialog(props: {
             {props.options.map((label) => (
               <label
                 key={label}
-                className="flex items-center gap-3 rounded-2xl border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground-muted"
+                className="flex items-center gap-3 rounded-md border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground-muted"
               >
                 <input
                   type="checkbox"
@@ -68,7 +68,7 @@ export function LabelDialog(props: {
           <label className="mt-5 grid gap-2">
             <span className="mono-meta">Custom labels</span>
             <input
-              className="rounded-xl border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none placeholder:text-foreground-subtle"
+              className="rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none placeholder:text-foreground-subtle"
               placeholder="Follow Up, Waiting"
               value={props.customLabel}
               onChange={(event) => props.onCustomLabelChange(event.target.value)}
@@ -77,14 +77,14 @@ export function LabelDialog(props: {
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded-xl border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
+              className="rounded border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
               onClick={props.onClose}
             >
               Cancel
             </button>
             <button
               type="button"
-              className="rounded-xl border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
+              className="rounded border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
               onClick={props.onSubmit}
             >
               Apply
@@ -108,7 +108,7 @@ export function MoveDialog(props: {
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(28rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-outline bg-panel px-6 py-6 outline-none">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(28rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none">
           <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
             Move message
           </Dialog.Title>
@@ -118,7 +118,7 @@ export function MoveDialog(props: {
           <label className="mt-5 grid gap-2">
             <span className="mono-meta">Target</span>
             <select
-              className="rounded-xl border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none"
+              className="rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none"
               value={props.value}
               onChange={(event) => props.onValueChange(event.target.value)}
             >
@@ -132,14 +132,14 @@ export function MoveDialog(props: {
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded-xl border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
+              className="rounded border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
               onClick={props.onClose}
             >
               Cancel
             </button>
             <button
               type="button"
-              className="rounded-xl border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
+              className="rounded border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
               onClick={props.onSubmit}
             >
               Move
@@ -163,7 +163,7 @@ export function SnoozeDialog(props: {
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(28rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-outline bg-panel px-6 py-6 outline-none">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(28rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none">
           <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
             Snooze message
           </Dialog.Title>
@@ -175,7 +175,7 @@ export function SnoozeDialog(props: {
               <label
                 key={preset.id}
                 className={cn(
-                  "flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm",
+                  "flex items-start gap-3 rounded-md border px-4 py-3 text-sm",
                   props.value === preset.id
                     ? "border-accent/35 bg-accent/10 text-foreground"
                     : "border-outline bg-panel-elevated text-foreground-muted",
@@ -198,14 +198,14 @@ export function SnoozeDialog(props: {
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded-xl border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
+              className="rounded border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
               onClick={props.onClose}
             >
               Cancel
             </button>
             <button
               type="button"
-              className="rounded-xl border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
+              className="rounded border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
               onClick={props.onSubmit}
             >
               Snooze
@@ -227,7 +227,7 @@ export function UnsubscribeDialog(props: {
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(26rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-outline bg-panel px-6 py-6 outline-none">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(26rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none">
           <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
             Unsubscribe
           </Dialog.Title>
@@ -238,14 +238,14 @@ export function UnsubscribeDialog(props: {
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded-xl border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
+              className="rounded border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
               onClick={props.onClose}
             >
               Cancel
             </button>
             <button
               type="button"
-              className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger"
+              className="rounded border border-danger/30 bg-danger/10 px-4 py-2 text-sm text-danger"
               onClick={props.onSubmit}
             >
               Unsubscribe
@@ -269,14 +269,14 @@ export function GoToLabelDialog(props: {
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(28rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-outline bg-panel px-6 py-6 outline-none">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(28rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none">
           <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
             Go to label
           </Dialog.Title>
           <label className="mt-5 grid gap-2">
             <span className="mono-meta">Lens</span>
             <select
-              className="rounded-xl border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none"
+              className="rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none"
               value={props.value}
               onChange={(event) => props.onValueChange(event.target.value)}
             >
@@ -290,14 +290,14 @@ export function GoToLabelDialog(props: {
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
-              className="rounded-xl border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
+              className="rounded border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
               onClick={props.onClose}
             >
               Cancel
             </button>
             <button
               type="button"
-              className="rounded-xl border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
+              className="rounded border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
               onClick={props.onSubmit}
             >
               Open
@@ -320,7 +320,7 @@ export function AttachmentDialog(props: {
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(40rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-outline bg-panel px-6 py-6 outline-none">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(40rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none">
           <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
             Attachments
           </Dialog.Title>
@@ -328,7 +328,7 @@ export function AttachmentDialog(props: {
             {props.attachments.map((attachment) => (
               <div
                 key={attachment.id}
-                className="flex items-center justify-between gap-4 rounded-2xl border border-outline bg-panel-elevated px-4 py-4"
+                className="flex items-center justify-between gap-4 rounded-md border border-outline bg-panel-elevated px-4 py-4"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm text-foreground">{attachment.filename}</p>
@@ -365,7 +365,7 @@ export function LinksDialog(props: {
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(40rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-outline bg-panel px-6 py-6 outline-none">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(40rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none">
           <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
             Links in thread
           </Dialog.Title>
@@ -373,7 +373,7 @@ export function LinksDialog(props: {
             {props.links.map((link) => (
               <div
                 key={link}
-                className="flex items-center justify-between gap-4 rounded-2xl border border-outline bg-panel-elevated px-4 py-4"
+                className="flex items-center justify-between gap-4 rounded-md border border-outline bg-panel-elevated px-4 py-4"
               >
                 <p className="min-w-0 truncate text-sm text-foreground-muted">{link}</p>
                 <HeaderActionButton label="Open" onClick={() => props.onOpen(link)} />
@@ -396,7 +396,7 @@ export function ReportDialog(props: {
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed inset-6 z-40 overflow-hidden rounded-3xl border border-outline bg-panel outline-none">
+        <Dialog.Popup className="fixed inset-6 z-40 overflow-hidden rounded-md border border-outline bg-panel outline-none">
           <section className="flex h-full min-h-0 flex-col">
             <div className="flex items-center justify-between gap-4 border-b border-outline px-6 py-5">
               <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
@@ -434,7 +434,7 @@ export function RuleFormDialog(props: {
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(44rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-outline bg-panel px-6 py-6 outline-none">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(44rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none">
           <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
             {props.form.id ? "Edit rule" : "New rule"}
           </Dialog.Title>
@@ -447,7 +447,7 @@ export function RuleFormDialog(props: {
             <label className="grid gap-2">
               <span className="mono-meta">Condition</span>
               <textarea
-                className="min-h-24 rounded-xl border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none"
+                className="min-h-24 rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none"
                 value={props.form.condition}
                 onChange={(event) =>
                   props.onChange((current) => ({ ...current, condition: event.target.value }))
@@ -457,7 +457,7 @@ export function RuleFormDialog(props: {
             <label className="grid gap-2">
               <span className="mono-meta">Action</span>
               <textarea
-                className="min-h-28 rounded-xl border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none"
+                className="min-h-28 rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none"
                 value={props.form.action}
                 onChange={(event) =>
                   props.onChange((current) => ({ ...current, action: event.target.value }))
@@ -468,7 +468,7 @@ export function RuleFormDialog(props: {
               <label className="grid gap-2">
                 <span className="mono-meta">Priority</span>
                 <input
-                  className="rounded-xl border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none"
+                  className="rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none"
                   type="number"
                   value={props.form.priority}
                   onChange={(event) =>
@@ -479,7 +479,7 @@ export function RuleFormDialog(props: {
                   }
                 />
               </label>
-              <label className="flex items-center gap-3 rounded-xl border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground-muted">
+              <label className="flex items-center gap-3 rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground-muted">
                 <input
                   type="checkbox"
                   checked={props.form.enabled}
@@ -497,12 +497,75 @@ export function RuleFormDialog(props: {
               <HeaderActionButton label="Cancel" onClick={props.onClose} />
               <button
                 type="button"
-                className="rounded-xl border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
+                className="rounded border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
                 onClick={props.onSubmit}
               >
                 Save rule
               </button>
             </div>
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+export function SavedSearchDialog(props: {
+  open: boolean;
+  name: string;
+  query: string;
+  mode: string;
+  onClose: () => void;
+  onNameChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(28rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none">
+          <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
+            Save search
+          </Dialog.Title>
+          <Dialog.Description className="mt-3 text-sm text-foreground-muted">
+            Save the current search as a sidebar lens for quick access.
+          </Dialog.Description>
+          <div className="mt-5 grid gap-4">
+            <ComposeField
+              label="Name"
+              value={props.name}
+              placeholder="My search"
+              onChange={props.onNameChange}
+            />
+            {props.query ? (
+              <div className="grid gap-2">
+                <span className="mono-meta">Query</span>
+                <p className="rounded border border-outline bg-panel-elevated px-4 py-3 font-mono text-sm text-foreground-muted">
+                  {props.query}
+                </p>
+              </div>
+            ) : null}
+            <div className="grid gap-2">
+              <span className="mono-meta">Mode</span>
+              <p className="text-sm text-foreground-muted">{props.mode}</p>
+            </div>
+          </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <button
+              type="button"
+              className="rounded border border-outline bg-panel-elevated px-4 py-2 text-sm text-foreground-muted"
+              onClick={props.onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
+              onClick={props.onSubmit}
+              disabled={!props.name.trim()}
+            >
+              Save
+            </button>
           </div>
         </Dialog.Popup>
       </Dialog.Portal>
@@ -524,7 +587,7 @@ export function AccountFormDialog(props: {
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed inset-6 z-40 overflow-hidden rounded-3xl border border-outline bg-panel outline-none">
+        <Dialog.Popup className="fixed inset-6 z-40 overflow-hidden rounded-md border border-outline bg-panel outline-none">
           <section className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="flex min-h-0 flex-col">
               <div className="border-b border-outline px-6 py-5">
@@ -537,7 +600,7 @@ export function AccountFormDialog(props: {
               </div>
               <div className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
                 <textarea
-                  className="min-h-full w-full rounded-3xl border border-outline bg-panel-muted px-5 py-5 font-mono text-sm leading-7 text-foreground outline-none"
+                  className="min-h-full w-full rounded-md border border-outline bg-panel-muted px-5 py-5 font-mono text-sm leading-7 text-foreground outline-none"
                   value={props.draftJson}
                   onChange={(event) => props.onChange(event.target.value)}
                 />
@@ -549,7 +612,7 @@ export function AccountFormDialog(props: {
                   <HeaderActionButton label="Test" onClick={props.onTest} />
                   <button
                     type="button"
-                    className="rounded-xl border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
+                    className="rounded border border-accent/30 bg-accent/12 px-4 py-2 text-sm text-accent"
                     onClick={props.onSave}
                   >
                     Save account

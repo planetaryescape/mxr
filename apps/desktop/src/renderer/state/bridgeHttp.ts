@@ -14,7 +14,11 @@ export async function fetchJson<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    let detail = "";
+    try { detail = await response.text(); } catch { /* ignore */ }
+    const msg = `${init?.method ?? "GET"} ${path} → ${response.status}${detail ? ` — ${detail}` : ""}`;
+    console.error("[bridge:http]", msg);
+    throw new Error(msg);
   }
 
   return (await response.json()) as T;

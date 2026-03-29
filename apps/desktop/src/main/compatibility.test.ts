@@ -54,4 +54,58 @@ describe("compatibility", () => {
       }),
     ).toThrow(/legacy \/mailbox payload/);
   });
+
+  it("returns null when protocols match", () => {
+    const result = evaluateCompatibility({
+      expectedProtocol: 1,
+      actual: {
+        protocol_version: 1,
+        daemon_version: "0.4.4",
+      },
+      binaryPath: "/usr/local/bin/mxr",
+      usingBundled: true,
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("returns mismatch when actual status is null", () => {
+    const result = evaluateCompatibility({
+      expectedProtocol: 1,
+      actual: null,
+      binaryPath: "/usr/local/bin/mxr",
+      usingBundled: false,
+    });
+
+    expect(result?.kind).toBe("mismatch");
+    expect(result?.actualProtocol).toBeNull();
+    expect(result?.daemonVersion).toBeNull();
+  });
+
+  it("throws on invalid JSON in parseStatusOutput", () => {
+    expect(() => parseStatusOutput("not json")).toThrow();
+  });
+
+  it("throws when protocol_version is missing from status output", () => {
+    expect(() => parseStatusOutput('{"daemon_version":"0.4.4"}')).toThrow(
+      /missing protocol_version/,
+    );
+  });
+
+  it("defaults daemon_build_id to null when absent", () => {
+    const result = parseStatusOutput('{"protocol_version":2,"daemon_version":"0.5.0"}');
+    expect(result.daemon_build_id).toBeNull();
+    expect(result.protocol_version).toBe(2);
+    expect(result.daemon_version).toBe("0.5.0");
+  });
+
+  it("rejects mailbox payload missing sidebar.sections array", () => {
+    expect(() =>
+      assertBridgeMailboxContract({
+        mailbox: { groups: [] },
+        sidebar: {},
+        shell: {},
+      }),
+    ).toThrow(/missing sidebar\.sections/);
+  });
 });

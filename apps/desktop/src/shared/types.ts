@@ -187,6 +187,7 @@ export interface SearchResponse {
   sort: SearchSort;
   mode: SearchMode;
   total: number;
+  has_more?: boolean;
   groups: MailboxGroup[];
   explain: unknown | null;
 }

@@ -37,6 +37,7 @@ type UiChromeState = {
   workbenchReady: boolean;
   mailListMode: "threads" | "messages";
   signatureExpanded: boolean;
+  remoteContentEnabled: boolean;
   selectedMessageIds: Set<string>;
   visualMode: boolean;
   visualAnchorMessageId: string | null;
@@ -62,6 +63,8 @@ type DialogState = {
   unsubscribeDialogOpen: boolean;
   goToLabelOpen: boolean;
   jumpTargetLabel: string;
+  savedSearchDialogOpen: boolean;
+  savedSearchName: string;
   attachmentDialogOpen: boolean;
   linksDialogOpen: boolean;
   reportOpen: boolean;
@@ -94,7 +97,7 @@ const INITIAL_SEARCH_CONTROLS: SearchControlsState = {
   searchQuery: "",
   searchScope: "threads",
   searchMode: "lexical",
-  searchSort: "relevant",
+  searchSort: "recent",
   searchExplain: false,
 };
 
@@ -109,6 +112,7 @@ const INITIAL_UI_CHROME: UiChromeState = {
   workbenchReady: false,
   mailListMode: "threads",
   signatureExpanded: false,
+  remoteContentEnabled: false,
   selectedMessageIds: new Set(),
   visualMode: false,
   visualAnchorMessageId: null,
@@ -134,6 +138,8 @@ const INITIAL_DIALOG_STATE: DialogState = {
   unsubscribeDialogOpen: false,
   goToLabelOpen: false,
   jumpTargetLabel: "",
+  savedSearchDialogOpen: false,
+  savedSearchName: "",
   attachmentDialogOpen: false,
   linksDialogOpen: false,
   reportOpen: false,
@@ -202,6 +208,7 @@ export function useDesktopAppState() {
     dialogState.snoozeDialogOpen ||
     dialogState.unsubscribeDialogOpen ||
     dialogState.goToLabelOpen ||
+    dialogState.savedSearchDialogOpen ||
     dialogState.attachmentDialogOpen ||
     dialogState.linksDialogOpen ||
     dialogState.reportOpen ||
@@ -217,6 +224,7 @@ export function useDesktopAppState() {
         snoozeDialogOpen: false,
         unsubscribeDialogOpen: false,
         goToLabelOpen: false,
+        savedSearchDialogOpen: false,
         attachmentDialogOpen: false,
         linksDialogOpen: false,
         reportOpen: false,
@@ -273,6 +281,9 @@ export function useDesktopAppState() {
     signatureExpanded: uiChrome.signatureExpanded,
     setSignatureExpanded: (updater: SetStateAction<boolean>) =>
       updateField(dispatchUiChrome, "signatureExpanded", updater),
+    remoteContentEnabled: uiChrome.remoteContentEnabled,
+    setRemoteContentEnabled: (updater: SetStateAction<boolean>) =>
+      updateField(dispatchUiChrome, "remoteContentEnabled", updater),
     selectedMessageIds: uiChrome.selectedMessageIds,
     setSelectedMessageIds: (updater: SetStateAction<Set<string>>) =>
       updateField(dispatchUiChrome, "selectedMessageIds", updater),
@@ -332,6 +343,12 @@ export function useDesktopAppState() {
     jumpTargetLabel: dialogState.jumpTargetLabel,
     setJumpTargetLabel: (updater: SetStateAction<string>) =>
       updateField(dispatchDialogState, "jumpTargetLabel", updater),
+    savedSearchDialogOpen: dialogState.savedSearchDialogOpen,
+    setSavedSearchDialogOpen: (updater: SetStateAction<boolean>) =>
+      updateField(dispatchDialogState, "savedSearchDialogOpen", updater),
+    savedSearchName: dialogState.savedSearchName,
+    setSavedSearchName: (updater: SetStateAction<string>) =>
+      updateField(dispatchDialogState, "savedSearchName", updater),
     attachmentDialogOpen: dialogState.attachmentDialogOpen,
     setAttachmentDialogOpen: (updater: SetStateAction<boolean>) =>
       updateField(dispatchDialogState, "attachmentDialogOpen", updater),

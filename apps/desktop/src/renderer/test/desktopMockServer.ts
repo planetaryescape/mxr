@@ -410,6 +410,10 @@ export const desktopMockServer = setupServer(
       });
     }
 
+    if (path === "/actions/snooze" || path === "/actions/unsubscribe") {
+      return HttpResponse.json({ ok: true });
+    }
+
     if (path === "/actions/snooze/presets") {
       return HttpResponse.json({
         presets: [
@@ -441,6 +445,16 @@ export const desktopMockServer = setupServer(
       return HttpResponse.json({ ok: true });
     }
 
+    if (
+      path === "/mutations/archive" ||
+      path === "/mutations/trash" ||
+      path === "/mutations/spam" ||
+      path === "/mutations/labels" ||
+      path === "/mutations/move"
+    ) {
+      return HttpResponse.json({ ok: true });
+    }
+
     if (path === "/mutations/star") {
       const payload = parseJsonBody<{ message_ids?: string[]; starred?: boolean }>(bodyText);
       for (const messageId of payload.message_ids ?? []) {
@@ -449,6 +463,8 @@ export const desktopMockServer = setupServer(
       return HttpResponse.json({ ok: true });
     }
 
+    // Fallback: return ok for unhandled paths to prevent test hangs.
+    // In production, these would be real API calls.
     return HttpResponse.json({ ok: true });
   }),
 );

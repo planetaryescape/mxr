@@ -40,6 +40,11 @@ export function WorkbenchContent(props: {
   onArchive: () => void;
   onCloseReader: () => void;
   utilityRail: UtilityRailPayload;
+  filterQuery: string;
+  filterOpen: boolean;
+  onFilterChange: (query: string) => void;
+  onFilterClose: () => void;
+  onRowContextMenu?: (e: React.MouseEvent, threadId: string) => void;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
@@ -55,6 +60,7 @@ export function WorkbenchContent(props: {
   searchRows: FlattenedEntry[];
   selectedSearchThreadId: string | null;
   onSelectSearchThread: (threadId: string | null) => void;
+  onLoadMoreSearch?: () => void;
   rulesState: RulesResponse;
   selectedRuleId: string | null;
   rulePanelMode: "details" | "history" | "dryRun";
@@ -101,6 +107,11 @@ export function WorkbenchContent(props: {
           onArchive={props.onArchive}
           onCloseReader={props.onCloseReader}
           utilityRail={props.utilityRail}
+          filterQuery={props.filterQuery}
+          filterOpen={props.filterOpen}
+          onFilterChange={props.onFilterChange}
+          onFilterClose={props.onFilterClose}
+          onRowContextMenu={props.onRowContextMenu}
         />
       ) : null}
 
@@ -128,6 +139,7 @@ export function WorkbenchContent(props: {
           readerMode={props.readerMode}
           setReaderMode={props.setReaderMode}
           signatureExpanded={props.signatureExpanded}
+          onLoadMore={props.onLoadMoreSearch}
         />
       ) : null}
 

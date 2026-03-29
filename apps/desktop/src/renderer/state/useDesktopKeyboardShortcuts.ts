@@ -18,6 +18,7 @@ export function useDesktopKeyboardShortcuts(props: {
   modalOpen: boolean;
   composeOpen: boolean;
   closeComposeShell: () => void;
+  submitCompose?: (action: "send" | "save") => void;
   closeAllDialogs: () => void;
   setFocusContext: (context: FocusContext) => void;
   selectedMessageIds: Set<string>;
@@ -38,6 +39,7 @@ export function useDesktopKeyboardShortcuts(props: {
     modalOpen,
     composeOpen,
     closeComposeShell,
+    submitCompose,
     closeAllDialogs,
     setFocusContext,
     selectedMessageIds,
@@ -129,6 +131,18 @@ export function useDesktopKeyboardShortcuts(props: {
       }
 
       if (modalOpen) {
+        if (composeOpen) {
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            submitCompose?.("send");
+            return;
+          }
+          if (event.key === "s" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            submitCompose?.("save");
+            return;
+          }
+        }
         if (event.key === "Escape") {
           event.preventDefault();
           if (composeOpen) {

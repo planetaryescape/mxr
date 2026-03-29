@@ -5,9 +5,11 @@ import type {
   ThreadResponse,
   UtilityRailPayload,
 } from "../../shared/types";
-import { Paperclip, Star } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Filter, X } from "lucide-react";
+import { useEffect, useMemo, useRef } from "react";
 import { cn } from "../lib/cn";
+import { MailRow, DateGroupHeader } from "../components/MailRow";
+import { SkeletonMailList } from "../lib/skeleton";
 import { ReaderPane } from "./ReaderPane";
 import type { FlattenedEntry } from "./types";
 
@@ -18,8 +20,14 @@ export function MailboxWorkspace(props: {
   selectedThreadId: string | null;
   selectedMessageIds: Set<string>;
   pendingMessageIds: Set<string>;
+  removingIds?: Set<string>;
+  filterQuery: string;
+  filterOpen: boolean;
+  onFilterChange: (query: string) => void;
+  onFilterClose: () => void;
   onSelect: (threadId: string) => void;
   onOpen: () => void;
+  onRowContextMenu?: (e: React.MouseEvent, threadId: string) => void;
   layoutMode: LayoutMode;
   thread: ThreadResponse | null;
   readerMode: ReaderMode;
@@ -31,6 +39,7 @@ export function MailboxWorkspace(props: {
 }) {
   const showReader = props.layoutMode !== "twoPane";
   const listRef = useRef<HTMLElement | null>(null);
+  const filterRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!props.selectedThreadId) {
@@ -44,6 +53,30 @@ export function MailboxWorkspace(props: {
     }
   }, [props.rows, props.selectedThreadId]);
 
+  // Client-side filter
+  const filteredRows = useMemo(() => {
+    if (!props.filterOpen || !props.filterQuery) return props.rows;
+    const q = props.filterQuery.toLowerCase();
+    return props.rows.filter((entry) => {
+      if (entry.kind === "header") return true;
+      return (
+        entry.row.sender.toLowerCase().includes(q) ||
+        entry.row.subject.toLowerCase().includes(q) ||
+        entry.row.snippet.toLowerCase().includes(q)
+      );
+    });
+  }, [props.rows, props.filterOpen, props.filterQuery]);
+
+  // Auto-focus filter input when opened
+  useEffect(() => {
+    if (props.filterOpen && filterRef.current) {
+      filterRef.current.focus();
+    }
+  }, [props.filterOpen]);
+
+  const displayRows = filteredRows;
+  const hasRows = displayRows.length > 0;
+
   return (
     <div
       className={cn(
@@ -54,112 +87,81 @@ export function MailboxWorkspace(props: {
       <section
         ref={listRef}
         className={cn(
-          "subtle-scrollbar min-h-0 overflow-y-auto border-r border-outline bg-panel px-2.5 py-2.5",
+          "subtle-scrollbar flex min-h-0 flex-col border-r border-outline bg-panel",
           props.layoutMode === "fullScreen" ? "hidden" : "",
         )}
       >
-        <div className="flex items-end justify-between gap-2 border-b border-outline pb-2">
-          <div>
-            <p className="mono-meta">Mailbox</p>
-            <h1 className="mt-0.5 text-balance text-[1.15rem] font-semibold leading-none text-foreground">
-              {props.mailListMode === "threads" ? "Threads" : "Messages"}
+        {/* Compact list header */}
+        <div className="flex items-center justify-between gap-2 border-b border-outline px-3 py-2">
+          <div className="flex items-center gap-2">
+            <h1 className="text-[length:var(--text-base)] font-semibold text-foreground">
+              {props.mailbox.lensLabel}
             </h1>
-            <p className="mt-0.5 text-[11px] text-foreground-muted">
-              Active lens <span className="font-medium text-foreground">{props.mailbox.lensLabel}</span>
-            </p>
+            {props.mailbox.counts.unread > 0 ? (
+              <span className="font-mono text-[length:var(--text-xs)] tabular-nums text-accent">
+                {props.mailbox.counts.unread}
+              </span>
+            ) : null}
           </div>
-          <div className="text-right tabular-nums">
-            <p className="font-mono text-[9px] text-foreground-subtle">
-              {props.mailbox.counts.unread} unread
-            </p>
-            <p className="mt-0.5 font-mono text-[9px] text-foreground-subtle">
-              {props.mailbox.counts.total} total
-            </p>
-          </div>
+          <span className="font-mono text-[length:var(--text-xs)] tabular-nums text-foreground-subtle">
+            {props.mailbox.counts.total}
+          </span>
         </div>
 
-        <div className="mt-1.5 space-y-px">
-          {props.rows.map((entry) =>
-            entry.kind === "header" ? (
-              <div
-                key={entry.id}
-                className="border-b border-outline/60 pb-1 pt-1.5 text-[9px] uppercase text-foreground-subtle first:pt-0"
-              >
-                {entry.label}
-              </div>
-            ) : (
-              <button
-                key={entry.id}
-                data-thread-id={entry.row.thread_id}
-                className={cn(
-                  "w-full border px-2 py-1.5 text-left transition-colors",
-                  props.selectedThreadId === entry.row.thread_id
-                    ? "border-accent/40 bg-panel-elevated"
-                    : props.selectedMessageIds.has(entry.row.id)
-                      ? "border-success/30 bg-success/8"
-                      : "border-transparent bg-transparent hover:bg-panel-elevated/55",
-                )}
-                onClick={() => props.onSelect(entry.row.thread_id)}
-                onDoubleClick={props.onOpen}
-              >
-                <div className="flex items-start gap-1.5">
-                  <span
-                    className={cn(
-                      "mt-[3px] size-1.5 shrink-0 rounded-full",
-                      entry.row.unread ? "bg-accent" : "bg-outline",
-                    )}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1">
-                          <span
-                            className={cn(
-                              "truncate text-[10px]",
-                              entry.row.unread
-                                ? "font-semibold text-foreground"
-                                : "font-medium text-foreground-muted",
-                            )}
-                          >
-                            {entry.row.sender}
-                          </span>
-                          {entry.row.starred ? (
-                            <Star className="size-3.5 shrink-0 fill-warning text-warning" />
-                          ) : null}
-                          {entry.row.has_attachments ? (
-                            <Paperclip className="size-3.5 shrink-0 text-foreground-subtle" />
-                          ) : null}
-                        </div>
-                        <p
-                          className={cn(
-                            "mt-0.5 line-clamp-1 text-[11px] leading-4",
-                            entry.row.unread
-                              ? "font-semibold text-foreground"
-                              : "font-medium text-foreground",
-                          )}
-                        >
-                          {entry.row.subject}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
-                        {props.pendingMessageIds.has(entry.row.id) ? (
-                          <span className="border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[9px] text-accent">
-                            Syncing
-                          </span>
-                        ) : null}
-                        <span className="font-mono text-[9px] tabular-nums text-foreground-subtle">
-                          {entry.row.date_label}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-0.5 line-clamp-1 text-[10px] leading-3.5 text-foreground-subtle text-pretty">
-                      {entry.row.snippet}
-                    </p>
-                  </div>
-                </div>
-              </button>
-            ),
-          )}
+        {/* Inline filter bar */}
+        {props.filterOpen ? (
+          <div className="flex items-center gap-2 border-b border-outline bg-canvas-elevated px-3 py-1.5">
+            <Filter className="size-3 text-foreground-subtle" />
+            <input
+              ref={filterRef}
+              className="min-w-0 flex-1 bg-transparent text-[length:var(--text-sm)] text-foreground outline-none placeholder:text-foreground-subtle"
+              value={props.filterQuery}
+              onChange={(e) => props.onFilterChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  props.onFilterClose();
+                }
+              }}
+              placeholder="Filter by sender, subject, snippet..."
+            />
+            <span className="text-[length:var(--text-xs)] text-foreground-subtle">
+              {displayRows.filter((e) => e.kind === "row").length}
+            </span>
+            <button
+              className="flex size-5 items-center justify-center text-foreground-subtle hover:text-foreground"
+              onClick={props.onFilterClose}
+            >
+              <X className="size-3" />
+            </button>
+          </div>
+        ) : null}
+
+        {/* Mail list */}
+        <div className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto">
+        {hasRows ? (
+          <div>
+            {displayRows.map((entry) =>
+              entry.kind === "header" ? (
+                <DateGroupHeader key={entry.id} label={entry.label} />
+              ) : (
+                <MailRow
+                  key={entry.id}
+                  row={entry.row}
+                  selected={props.selectedThreadId === entry.row.thread_id}
+                  multiSelected={props.selectedMessageIds.has(entry.row.id)}
+                  pending={props.pendingMessageIds.has(entry.row.id)}
+                  removing={props.removingIds?.has(entry.row.id) ?? false}
+                  onSelect={() => props.onSelect(entry.row.thread_id)}
+                  onOpen={props.onOpen}
+                  onContextMenu={(e) => props.onRowContextMenu?.(e, entry.row.thread_id)}
+                />
+              ),
+            )}
+          </div>
+        ) : (
+          <SkeletonMailList />
+        )}
         </div>
       </section>
 

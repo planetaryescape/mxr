@@ -1,6 +1,7 @@
 import { AlertTriangle, Command } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 import type { BridgeState } from "../../shared/types";
+import { cn } from "../lib/cn";
 import { HeaderActionButton, StatCard } from "./shared";
 
 export function BridgeFrame({ children }: { children: ReactNode }) {
@@ -155,41 +156,77 @@ export function CommandPaletteOverlay(props: {
     return null;
   }
 
+  // Group commands by category
+  const grouped: Array<{ category: string; items: Array<{ index: number; action: string; label: string; shortcut: string }> }> = [];
+  let currentCategory = "";
+  for (let i = 0; i < props.commands.length; i++) {
+    const cmd = props.commands[i];
+    if (cmd.category !== currentCategory) {
+      currentCategory = cmd.category;
+      grouped.push({ category: cmd.category, items: [] });
+    }
+    grouped[grouped.length - 1].items.push({ index: i, action: cmd.action, label: cmd.label, shortcut: cmd.shortcut });
+  }
+
   return (
-    <div className="absolute inset-0 z-30 flex items-start justify-center bg-canvas/75 px-4 pt-16 backdrop-blur-sm">
-      <section className="surface w-full max-w-2xl">
-        <div className="flex items-center gap-2 border-b border-outline px-3 py-2">
+    <div
+      className="absolute inset-0 z-30 flex items-start justify-center px-4 pt-16"
+      style={{
+        background: "rgba(11, 15, 22, 0.75)",
+        backdropFilter: "blur(8px)",
+        animation: "fadeIn var(--duration-fast) var(--ease-out-expo)",
+      }}
+    >
+      <section
+        className="surface w-full max-w-2xl shadow-2xl"
+        style={{
+          borderRadius: "var(--radius-md)",
+          animation: "scaleIn var(--duration-normal) var(--spring-command)",
+          transformOrigin: "top center",
+        }}
+      >
+        <div className="flex items-center gap-2.5 border-b border-outline px-4 py-3">
           <Command className="size-4 text-foreground-subtle" />
           <input
             ref={props.inputRef}
-            className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-foreground-subtle"
-            placeholder="Search commands"
+            className="flex-1 bg-transparent text-[length:var(--text-base)] text-foreground outline-none placeholder:text-foreground-subtle"
+            placeholder="Search commands..."
             value={props.query}
             onChange={(event) => props.onQueryChange(event.target.value)}
           />
         </div>
-        <div className="max-h-[28rem] overflow-y-auto px-1 py-1">
-          {props.commands.map((item, index) => (
-            <button
-              key={`${item.category}-${item.action}-${item.label}`}
-              type="button"
-              aria-selected={props.selectedIndex === index}
-              className={`flex w-full items-center justify-between border-b border-outline/50 px-3 py-2 text-left text-sm ${
-                props.selectedIndex === index
-                  ? "bg-panel-elevated text-foreground"
-                  : "text-foreground-muted hover:bg-panel-elevated hover:text-foreground"
-              }`}
-              onMouseEnter={() => props.onHighlight(index)}
-              onClick={() => props.onSelect(item.action)}
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm text-foreground">{item.label}</div>
-                <div className="mt-1 text-xs text-foreground-subtle">{item.category}</div>
+        <div className="subtle-scrollbar max-h-[28rem] overflow-y-auto py-1">
+          {grouped.map((group) => (
+            <div key={group.category}>
+              <div className="sticky top-0 z-10 bg-panel px-4 pb-1 pt-2">
+                <span className="mono-meta">{group.category}</span>
               </div>
-              <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground-subtle">
-                {item.shortcut || " "}
-              </span>
-            </button>
+              {group.items.map((item) => (
+                <button
+                  key={`${group.category}-${item.action}`}
+                  type="button"
+                  aria-selected={props.selectedIndex === item.index}
+                  className={cn(
+                    "flex w-full items-center justify-between px-4 py-2 text-left transition-colors",
+                    props.selectedIndex === item.index
+                      ? "border-l-2 border-l-accent bg-panel-elevated text-foreground"
+                      : "border-l-2 border-l-transparent text-foreground-muted hover:bg-panel-elevated/60 hover:text-foreground",
+                  )}
+                  onMouseEnter={() => props.onHighlight(item.index)}
+                  onClick={() => props.onSelect(item.action)}
+                >
+                  <span className="truncate text-[length:var(--text-sm)]">{item.label}</span>
+                  {item.shortcut ? (
+                    <kbd
+                      className="ml-3 inline-flex h-5 shrink-0 items-center border border-outline bg-canvas-elevated px-1.5 font-mono text-[length:var(--text-xs)] uppercase text-foreground-subtle"
+                      style={{ borderRadius: "var(--radius-sm)" }}
+                    >
+                      {item.shortcut}
+                    </kbd>
+                  ) : null}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
       </section>

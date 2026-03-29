@@ -7,6 +7,7 @@ import {
   MoveDialog,
   ReportDialog,
   RuleFormDialog,
+  SavedSearchDialog,
   SnoozeDialog,
   UnsubscribeDialog,
 } from "../dialogs";
@@ -42,6 +43,10 @@ export function DesktopDialogs(props: {
   onSendCompose: () => void;
   onSaveCompose: () => void;
   onDiscardCompose: () => void;
+  onPersistComposeDraft: () => Promise<void>;
+  onComposeBodyChange: (body: string) => void;
+  fetchContactSuggestions: (query: string) => Promise<Array<{ label: string; value: string }>>;
+  knownSenders: Array<{ name: string; email: string }>;
   labelDialogOpen: boolean;
   labelOptions: string[];
   selectedLabels: string[];
@@ -104,6 +109,13 @@ export function DesktopDialogs(props: {
   onAccountDraftChange: (value: string) => void;
   onTestAccount: () => void;
   onSaveAccount: () => void;
+  savedSearchDialogOpen: boolean;
+  savedSearchName: string;
+  savedSearchQuery: string;
+  savedSearchMode: string;
+  onCloseSavedSearchDialog: () => void;
+  onSavedSearchNameChange: (value: string) => void;
+  onSubmitSavedSearch: () => void;
 }) {
   return (
     <>
@@ -121,6 +133,10 @@ export function DesktopDialogs(props: {
         onSend={props.onSendCompose}
         onSave={props.onSaveCompose}
         onDiscard={props.onDiscardCompose}
+        onPersistDraft={props.onPersistComposeDraft}
+        onBodyChange={props.onComposeBodyChange}
+        fetchContactSuggestions={props.fetchContactSuggestions}
+        knownSenders={props.knownSenders}
       />
 
       <LabelDialog
@@ -197,6 +213,16 @@ export function DesktopDialogs(props: {
         onClose={props.onCloseRuleFormDialog}
         onChange={props.onRuleFormChange}
         onSubmit={props.onSubmitRuleForm}
+      />
+
+      <SavedSearchDialog
+        open={props.savedSearchDialogOpen}
+        name={props.savedSearchName}
+        query={props.savedSearchQuery}
+        mode={props.savedSearchMode}
+        onClose={props.onCloseSavedSearchDialog}
+        onNameChange={props.onSavedSearchNameChange}
+        onSubmit={props.onSubmitSavedSearch}
       />
 
       <AccountFormDialog

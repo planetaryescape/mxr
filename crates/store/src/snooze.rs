@@ -42,8 +42,7 @@ impl super::Store {
         .await?;
         trace_query("snooze.get_due_snoozes", started_at, rows.len());
 
-        rows
-            .into_iter()
+        rows.into_iter()
             .map(|r| {
                 Ok(Snoozed {
                     message_id: decode_id(&r.message_id)?,
@@ -68,8 +67,7 @@ impl super::Store {
         .await?;
         trace_query("snooze.list_snoozed", started_at, rows.len());
 
-        rows
-            .into_iter()
+        rows.into_iter()
             .map(|r| {
                 Ok(Snoozed {
                     message_id: decode_id(&r.message_id)?,

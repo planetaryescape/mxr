@@ -124,7 +124,8 @@ pub(crate) fn spawn_image_decode(
 }
 
 fn decode_image(path: &PathBuf) -> Result<DynamicImage, MxrError> {
-    let reader = image::ImageReader::open(path).map_err(|error| MxrError::Ipc(error.to_string()))?;
+    let reader =
+        image::ImageReader::open(path).map_err(|error| MxrError::Ipc(error.to_string()))?;
     let reader = reader
         .with_guessed_format()
         .map_err(|error| MxrError::Ipc(error.to_string()))?;

@@ -12,11 +12,7 @@ impl super::Store {
         let cc_addrs = encode_json(&draft.cc)?;
         let bcc_addrs = encode_json(&draft.bcc)?;
         let attachments = encode_json(&draft.attachments)?;
-        let in_reply_to = draft
-            .reply_headers
-            .as_ref()
-            .map(encode_json)
-            .transpose()?;
+        let in_reply_to = draft.reply_headers.as_ref().map(encode_json).transpose()?;
         let created_at = draft.created_at.timestamp();
         let updated_at = draft.updated_at.timestamp();
 
@@ -89,8 +85,7 @@ impl super::Store {
         .await?;
         trace_query("draft.list_drafts", started_at, rows.len());
 
-        rows
-            .into_iter()
+        rows.into_iter()
             .map(|r| {
                 Ok(Draft {
                     id: decode_id(&r.id)?,

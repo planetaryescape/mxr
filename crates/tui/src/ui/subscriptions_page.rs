@@ -10,14 +10,10 @@ pub struct SubscriptionsPageView<'a> {
     pub active_pane: &'a ActivePane,
     pub preview_blocks: &'a [crate::mxr_tui::ui::message_view::ThreadMessageBlock],
     pub message_scroll_offset: u16,
-    pub html_images:
-        &'a mut std::collections::HashMap<
-            crate::mxr_core::MessageId,
-            std::collections::HashMap<
-                String,
-                crate::mxr_tui::terminal_images::HtmlImageEntry,
-            >,
-        >,
+    pub html_images: &'a mut std::collections::HashMap<
+        crate::mxr_core::MessageId,
+        std::collections::HashMap<String, crate::mxr_tui::terminal_images::HtmlImageEntry>,
+    >,
 }
 
 pub fn draw(frame: &mut Frame, area: Rect, view: &mut SubscriptionsPageView<'_>, theme: &Theme) {

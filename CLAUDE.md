@@ -67,6 +67,8 @@ Rules:
 
 The internal model is the most important design decision in mxr. All application logic speaks this language. Gmail and IMAP (and any future provider) map INTO this model. The model never bends to accommodate provider quirks — that's the adapter's job.
 
+Provider-agnostic does not mean lowest-common-denominator semantics. Keep provider truth visible where behavior differs: `LabelKind::Folder`, `provider_id`, provider cursors/capabilities, and native-thread-vs-JWZ threading. Labels-vs-folders is the delicate seam; do not simplify IMAP into Gmail labels.
+
 ### Key principles
 
 1. **Provider-agnostic**: No Gmail-specific or IMAP-specific concepts in the core types.

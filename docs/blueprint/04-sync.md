@@ -12,7 +12,7 @@ The sync engine orchestrates data flow between providers and local state (SQLite
 2. Fetch all labels/folders → upsert into `labels` table
 3. Fetch messages in batches (newest first, paginated)
    - Gmail: `messages.list` with `maxResults=100`, paging through all messages
-   - Store each batch of envelopes in SQLite
+   - Store each batch of envelopes + bodies in SQLite
    - Index each batch in Tantivy
    - Parse `List-Unsubscribe` header and store on envelope
 4. Store the initial sync cursor (Gmail: latest `historyId`)
@@ -75,7 +75,7 @@ If a message was modified both locally and remotely between syncs:
 - Remote state wins for server-managed metadata (labels, read status)
 - Local-only state is preserved (snooze, draft progress, saved searches)
 
-This is simpler than full CRDT-style conflict resolution and correct for the common case. The ProviderMeta table stores the last-known remote state for conflict detection.
+This is simpler than full CRDT-style conflict resolution and correct for the common case. The live provider-truth surfaces today are provider IDs, sync cursors, and explicit capability flags. `ProviderMeta` remains a reserved/dormant escape hatch, not active runtime conflict state.
 
 ### Cursor invalidation
 
@@ -150,6 +150,8 @@ User presses Z on a message
 ```
 
 When snooze wakes, the message reappears in both mxr and Gmail's web UI. This is critical for inbox-zero workflows — the state must be consistent across clients.
+
+For folder-backed providers, archive/restore style mutations should reconcile through provider sync instead of optimistic local label edits. That keeps store/search aligned with provider truth even when a move materializes as delete+create.
 
 ## Attachment handling
 

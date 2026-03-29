@@ -67,7 +67,7 @@ Your email lives on your machine. SQLite is the canonical state store. The searc
 
 ### 2. Provider-agnostic internal model
 
-All application logic speaks one language: the mxr internal model. Gmail labels, IMAP folders, and flags all normalize into this model. No provider-specific concepts leak into core code. If a provider disappears, only its adapter crate needs rewriting.
+All application logic speaks one language: the mxr internal model. Gmail labels, IMAP folders, and flags map into that model, but not as a dishonest lowest-common-denominator flattening. The labels-vs-folders seam stays explicit through `LabelKind::Folder`, provider IDs, and capability flags like `SyncCapabilities.labels` / `native_thread_ids`. No provider-specific logic leaks into core code. If a provider disappears, only its adapter crate needs rewriting.
 
 ### 3. Daemon-backed architecture
 

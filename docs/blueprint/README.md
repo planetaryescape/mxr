@@ -8,9 +8,9 @@
 |---|---|---|
 | 00 | [Overview](00-overview.md) | Project identity, pitch, core principles, differentiators, language choice, name |
 | 01 | [Architecture](01-architecture.md) | Daemon design, crate map, dependency rules, external crate choices |
-| 02 | [Data Model](02-data-model.md) | Internal types, SQLite schema, ProviderMeta, typed IDs, UnsubscribeMethod, Snooze |
-| 03 | [Providers](03-providers.md) | Split traits, Gmail API details, SMTP, fake provider, adapter kit, adapter strategy |
-| 04 | [Sync](04-sync.md) | Sync lifecycle, delta sync, body fetch, snooze wake loop, error handling, diagnostics |
+| 02 | [Data Model](02-data-model.md) | Internal types, SQLite schema, identity/capability seams, typed IDs, UnsubscribeMethod, Snooze |
+| 03 | [Providers](03-providers.md) | Split traits, Gmail, IMAP, SMTP, fake provider, adapter kit, adapter strategy |
+| 04 | [Sync](04-sync.md) | Sync lifecycle, delta sync, eager body fetch, snooze wake loop, error handling, diagnostics |
 | 05 | [Search](05-search.md) | Tantivy BM25, semantic profiles, search modes, RRF hybrid search, saved searches, operator notes |
 | 06 | [Compose](06-compose.md) | $EDITOR flow, YAML frontmatter, context block, markdown→multipart, draft management |
 | 07 | [Rendering](07-rendering.md) | Plain text first, reader mode, HTML conversion, unsubscribe feature, distraction-free philosophy |
@@ -25,6 +25,7 @@
 | 16 | [Addendum](16-addendum.md) | Post-blueprint amendments (A001-A009): inline CLI compose, full CLI surface, vim+Gmail keybindings, daemon observability, TUI batch ops, IMAP first-party, bug reporting |
 | 17 | [Release Pipeline](17-release-pipeline.md) | CI/CD pipeline: PR checks, release automation, cross-compiled binaries, Homebrew, changelog, docs deployment (D066-D071) |
 | 18 | [Bug Reporting](18-bug-reporting.md) | `mxr bug-report` command, log sanitization, log retention, diagnostic capture workflow (D072-D074) |
+| — | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
 | — | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
 
 ## For coding agents

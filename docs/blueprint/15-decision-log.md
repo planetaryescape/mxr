@@ -136,19 +136,19 @@ Every significant design decision, what alternatives were considered, and why we
 
 ---
 
-## D008: Label model — Labels as universal, but ProviderMeta preserves truth
+## D008: Label model — Unified organizer surface, explicit folder seam
 
-**Chosen**: Labels as the unified concept in the app model, with ProviderMeta storing provider-specific state separately.
+**Chosen**: Labels as the unified organizer surface in the app model, with explicit honesty seams for folder-backed providers (`LabelKind::Folder`, provider IDs, `SyncCapabilities.labels == false`).
 
 **Considered**: Labels only (flatten everything), labels + separate mailbox_membership + flags, labels + ProviderMeta blob
 
 **Why this approach**:
 - App logic sees labels: clean, unified, simple.
-- Sync engine sees ProviderMeta: the ugly truth (Gmail raw labels, IMAP UIDVALIDITY, IMAP mailbox membership, raw server flags).
 - We initially tried stuffing everything into Envelope, but that polluted the canonical model with provider-specific concerns.
 - IMAP folder membership has different semantics than Gmail labeling (COPY+DELETE vs label add/remove). Flattening too aggressively causes subtle bugs.
+- Provider truth stays visible through provider-scoped IDs, sync cursors, capability flags, and folder-vs-label distinction.
 
-**ProviderMeta table**: Keyed by message_id + provider. Application logic NEVER reads it. Only sync engine and provider adapters touch it.
+**ProviderMeta note**: The type/schema remain as a reserved escape hatch, but current sync/store flows do not materially depend on it at runtime.
 
 ---
 

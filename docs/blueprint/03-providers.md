@@ -2,25 +2,25 @@
 
 ## Provider philosophy
 
-mxr ships with first-party Gmail sync and SMTP send support. Other providers are enabled through a stable adapter interface. The core project is designed to make third-party adapters straightforward to implement. First-party support is driven by actual maintainer usage, not checkbox coverage.
+mxr ships with first-party Gmail sync/send, IMAP sync, and SMTP send support. Other providers are enabled through a stable adapter interface. The core project is designed to make third-party adapters straightforward to implement. First-party support is driven by actual maintainer usage, not checkbox coverage.
 
 ### What we considered and rejected
 
 We initially considered:
 - **Google Workspace CLI (gws)**: Rejected because it's a CLI wrapper (shell out + parse stdout = fragile), pre-1.0 with expected breaking changes, adds an external binary dependency, and prevents efficient delta sync via Gmail's history.list API.
 - **Single unified `EmailProvider` trait**: Rejected because it forces SMTP to implement sync methods it can't support. Split traits are more honest.
-- **IMAP as first adapter**: Considered because it's the open standard. Rejected for v1 because Gmail is the maintainer's actual use case, and Gmail's API is significantly better for sync (delta via history.list vs IMAP full re-scan). IMAP is a great community adapter candidate.
+- **IMAP as first adapter**: Considered because it's the open standard. Rejected for v1 because Gmail was the maintainer's immediate use case and Gmail's delta API was the fastest first path. IMAP was later promoted to first-party support in Phase 2.
 - **Generated Google API crate (`google-gmail1`)**: Rejected because it's bloated and awkward. Raw `reqwest` + serde gives full control with less code.
 
 ### Provider support levels
 
 **Official adapters** (maintained in main repo):
 - Gmail (MailSyncProvider + MailSendProvider)
+- IMAP (MailSyncProvider)
 - SMTP (MailSendProvider only)
 - Fake/Testing (both traits, in-memory, deterministic)
 
 **Community adapter candidates** (supported by interface/docs, not maintained by us):
-- IMAP (+ SMTP for send)
 - Outlook / Microsoft Graph
 - JMAP (Fastmail, etc.)
 - Proton Bridge
@@ -59,11 +59,6 @@ pub trait MailSyncProvider: Send + Sync {
     /// If cursor is Initial, performs full initial sync.
     async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch>;
 
-    // -- On-demand fetch --------------------------------------------------
-
-    /// Fetch the full body of a single message.
-    async fn fetch_body(&self, provider_message_id: &str) -> Result<MessageBody>;
-
     /// Download an attachment's raw bytes.
     async fn fetch_attachment(
         &self,
@@ -73,7 +68,7 @@ pub trait MailSyncProvider: Send + Sync {
 
     // -- Mutations ---------------------------------------------------------
 
-    /// Add or remove labels/flags on a message.
+    /// Apply provider-native placement/label state.
     async fn modify_labels(
         &self,
         provider_message_id: &str,
@@ -99,13 +94,18 @@ pub trait MailSyncProvider: Send + Sync {
 }
 
 pub struct SyncCapabilities {
-    pub labels: bool,           // Multi-assign labels (Gmail: yes, IMAP: no)
-    pub server_search: bool,    // Server-side search (Gmail: yes, IMAP: partial)
-    pub delta_sync: bool,       // Incremental sync (Gmail: yes via history.list, IMAP: partial via UID)
+    pub labels: bool,           // Stable multi-assign labels (Gmail: yes, IMAP folders: no)
+    pub server_search: bool,    // Provider can search remotely; app may still choose local search
+    pub delta_sync: bool,       // Incremental sync (Gmail: yes via history.list, IMAP: yes/partial)
     pub push: bool,             // Push notifications (Gmail: pub/sub, IMAP: IDLE)
     pub batch_operations: bool, // Batch API calls (Gmail: yes, IMAP: no)
+    pub native_thread_ids: bool,// Native provider thread ids (Gmail: yes, IMAP: no)
 }
 ```
+
+`SyncCapabilities.labels == false` does not mean "no folders." It means callers must not assume Gmail-style stable multi-assign label semantics. Folder-backed providers may map the same `modify_labels` request to move or copy behavior instead.
+
+`server_search` is provider truth, not a promise that the app always routes search there.
 
 ### MailSendProvider (outbound mail only)
 
@@ -117,6 +117,9 @@ pub trait MailSendProvider: Send + Sync {
 
     /// Send a composed draft. Returns a receipt with the sent message ID.
     async fn send(&self, draft: &Draft, from: &Address) -> Result<SendReceipt>;
+
+    /// Save a draft to the mail server if supported.
+    async fn save_draft(&self, draft: &Draft, from: &Address) -> Result<Option<String>>;
 }
 
 pub struct SendReceipt {
@@ -125,11 +128,13 @@ pub struct SendReceipt {
 }
 ```
 
+Server drafts are optional provider capability, not the canonical mxr draft model. Providers that do not support them should return `Ok(None)`.
+
 ### Why split traits?
 
 - Gmail adapter implements both `MailSyncProvider` + `MailSendProvider`
 - SMTP adapter implements only `MailSendProvider`
-- Future IMAP adapter implements `MailSyncProvider` while SMTP handles send
+- IMAP adapter implements `MailSyncProvider` while SMTP or Gmail can handle send
 - Outlook adapter could implement both
 - The type system prevents you from accidentally calling sync methods on an SMTP backend
 

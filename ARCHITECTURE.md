@@ -17,7 +17,7 @@ TUI / CLI / web / scripts / agents
          provider adapters
 ```
 
-SQLite is the source of truth. Tantivy is rebuildable from SQLite. Provider adapters map Gmail and IMAP into the internal model instead of leaking provider semantics upward.
+SQLite is the source of truth. Tantivy is rebuildable from SQLite. Provider adapters map Gmail and IMAP into the internal model instead of leaking provider semantics upward. Provider-agnostic at the app layer does not mean flattening away real differences: labels-vs-folders is the main seam, and threading uses native IDs when available plus reconstruction otherwise.
 
 ## IPC contract
 
@@ -40,7 +40,7 @@ The contract has four buckets:
 
 Daemon rule: serve reusable truth and workflows, not screen payloads.
 
-Provider rule: provider weirdness is handled below this layer in adapter crates.
+Provider rule: provider weirdness is handled below this layer in adapter crates, but capability differences stay visible where behavior actually differs.
 
 ## Principles
 

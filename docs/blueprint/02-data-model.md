@@ -70,8 +70,9 @@ pub struct BackendRef {
 
 pub enum ProviderKind {
     Gmail,
+    Imap,
     Smtp,
-    // Future: Imap, Outlook, Jmap, etc.
+    Fake,
 }
 ```
 
@@ -80,7 +81,7 @@ pub enum ProviderKind {
 - Gmail can do both sync and send
 - SMTP can only send
 - A user might use Gmail for inbox sync but their company's SMTP relay for sending
-- Future IMAP adapter handles sync while SMTP handles send
+- IMAP handles sync while SMTP or Gmail can handle send
 
 We considered a single `provider` field per account but rejected it because it forces every provider to implement both sync and send, which SMTP cannot do. The split model reflects reality.
 
@@ -114,15 +115,14 @@ Our model uses labels as the universal concept:
 - IMAP folders → Label { kind: Folder }
 - IMAP flags → Label { kind: System } (e.g., \Seen → system label "read")
 
-Messages can have multiple labels. This is the superset model.
+Messages can expose multiple labels at the app layer. That is honest for Gmail. It is NOT blanket truth for IMAP.
 
-**Important nuance**: We initially considered flattening everything into just labels, but the feedback was that this flattens too aggressively. IMAP folder membership has different semantics than Gmail labeling (an IMAP COPY+DELETE has different failure modes than a Gmail label add/remove). So internally we also maintain:
+The honesty seam is:
+- `LabelKind::Folder` for folder-backed placement
+- `SyncCapabilities.labels = false` for providers without stable multi-assign label semantics
+- provider-scoped message identity (`provider_id`, deterministic `MessageId`) so moves/copies can stay provider-truthful
 
-- **labels**: the universal organizer (what the UI shows)
-- **mailbox_memberships**: which IMAP mailbox a message belongs to (provider-specific, stored in ProviderMeta)
-- **flags**: IMAP flags as distinct from labels (also in ProviderMeta)
-
-The app logic sees labels. The sync engine sees the full picture including mailbox membership and flags through ProviderMeta.
+This is the rule for contributors: unify the organizer surface, but do not paper over folder semantics into fake Gmail labels.
 
 ### Message flags (bitfield)
 
@@ -149,7 +149,7 @@ Stored as a single integer in SQLite. Fast bitwise checks for common queries lik
 pub struct Envelope {
     pub id: MessageId,
     pub account_id: AccountId,
-    pub provider_id: String,         // Gmail msg ID or IMAP UID
+    pub provider_id: String,         // Provider-instance ID; mailbox-scoped for IMAP today
     pub thread_id: ThreadId,
     pub message_id_header: Option<String>,  // RFC 2822 Message-ID
     pub in_reply_to: Option<String>,
@@ -168,7 +168,9 @@ pub struct Envelope {
 }
 ```
 
-Envelopes are synced eagerly. Every message in the account has an envelope in SQLite. This is what powers fast list views, search results, and thread summaries. The body is NOT here — it's fetched lazily.
+Envelopes are synced eagerly. Every message in the account has an envelope in SQLite. This is what powers fast list views, search results, and thread summaries.
+
+**Identity note**: `provider_id` is provider-instance identity, not a universal logical-message identity. Gmail thread/message IDs are stable. IMAP identity is mailbox-scoped in the current model, so a move/copy may materialize as delete+create rather than "same message, new label."
 
 ### UnsubscribeMethod
 
@@ -192,7 +194,7 @@ pub enum UnsubscribeMethod {
 
 If the header isn't present, we fall back to scanning the HTML body for common unsubscribe link patterns (href containing "unsubscribe", "opt-out", "manage preferences"). This is fuzzier but catches stragglers.
 
-### MessageBody (fetched on demand, cached)
+### MessageBody (fetched eagerly during sync)
 
 ```rust
 pub struct MessageBody {
@@ -201,13 +203,14 @@ pub struct MessageBody {
     pub text_html: Option<String>,
     pub attachments: Vec<AttachmentMeta>,
     pub fetched_at: DateTime<Utc>,
+    pub metadata: MessageMetadata,
 }
 ```
 
-Bodies are fetched the first time a user opens a message and then cached in SQLite. This means:
-- Initial sync is fast (headers only)
-- Storage grows incrementally as the user reads messages
-- Offline access to read messages works after first view
+Bodies are fetched alongside envelopes during sync and then cached in SQLite. This means:
+- Opening a message is a pure SQLite read
+- Full-text search can index body text immediately
+- Offline access works for all synced messages
 
 ### AttachmentMeta
 
@@ -240,7 +243,7 @@ pub struct Thread {
 }
 ```
 
-Threads are computed/aggregated from messages sharing a thread_id. Gmail provides thread IDs natively. For IMAP, threads are constructed from `In-Reply-To` and `References` headers using JWZ threading algorithm.
+Threads are computed/aggregated from messages sharing a `thread_id`. Gmail provides thread IDs natively. Providers without native thread IDs use JWZ threading from `In-Reply-To` and `References`, with a subject fallback for headerless replies. This split is intentional and already a strong seam in the live model.
 
 ### Draft (compose state)
 
@@ -248,7 +251,7 @@ Threads are computed/aggregated from messages sharing a thread_id. Gmail provide
 pub struct Draft {
     pub id: DraftId,
     pub account_id: AccountId,
-    pub in_reply_to: Option<MessageId>,
+    pub reply_headers: Option<ReplyHeaders>,
     pub to: Vec<Address>,
     pub cc: Vec<Address>,
     pub bcc: Vec<Address>,
@@ -260,7 +263,7 @@ pub struct Draft {
 }
 ```
 
-Drafts are local-first. They exist in SQLite before they're sent. The compose flow creates a draft, opens $EDITOR with a temp file, and updates the draft on save. Sending converts the markdown body to multipart and dispatches via the send provider.
+Drafts are local-first. They exist in SQLite before they're sent. The compose flow creates a draft, opens `$EDITOR`, and updates the draft on save. `reply_headers` is the canonical threading surface for replies. Server-side drafts are optional provider capability, not the canonical draft model.
 
 ### SavedSearch
 
@@ -285,7 +288,7 @@ pub enum SortOrder {
 
 Saved searches are a core primitive. They appear in the sidebar, in the command palette, and are the primary way users organize their view. They are stored queries, not materialized views — results are computed live from the search index.
 
-### ProviderMeta (the ugly truth the sync engine needs)
+### ProviderMeta (reserved, not live sync truth today)
 
 ```rust
 pub struct ProviderMeta {
@@ -301,27 +304,25 @@ pub struct ProviderMeta {
 }
 ```
 
-**Why this exists**: The canonical model (Envelope, Label, etc.) is what the app sees. But sync engines always need the ugly truth: the exact provider state as it was last seen. This is essential for:
-- Detecting remote changes during delta sync
-- Resolving conflicts between local and remote state
-- Debugging sync issues ("what did Gmail actually return?")
-- Round-tripping mutations back to the provider accurately
-
-ProviderMeta lives in its own table. Application logic NEVER reads it. Only the sync engine and provider adapters touch it.
-
-We initially tried to stuff everything into the Envelope type but realized this polluted the canonical model with provider-specific concerns. Separating ProviderMeta keeps the internal model clean while preserving the data the sync engine needs.
+`ProviderMeta` remains in the type/schema surface as a reserved escape hatch for future provider-truth needs, but current sync/store flows do not materially depend on it. Do not describe it as active runtime truth unless code starts reading/writing it again.
 
 ### SyncCursor
 
 ```rust
 pub enum SyncCursor {
     Gmail { history_id: u64 },
-    Imap { uid_validity: u32, uid_next: u32 },
+    GmailBackfill { history_id: u64, page_token: String },
+    Imap {
+        uid_validity: u32,
+        uid_next: u32,
+        mailboxes: Vec<ImapMailboxCursor>,
+        capabilities: Option<ImapCapabilityState>,
+    },
     Initial,  // Fresh account, no sync yet
 }
 ```
 
-Opaque cursor stored per-account. The sync engine passes it to the provider on each sync cycle. The provider returns an updated cursor with the response.
+Opaque cursor stored per-account. The sync engine passes it to the provider on each sync cycle. The provider returns an updated cursor with the response. The extra IMAP mailbox/capability state is intentional: capability and cursor differences stay visible where provider behavior actually differs.
 
 ### SyncedMessage & SyncBatch
 
@@ -466,7 +467,7 @@ CREATE TABLE IF NOT EXISTS message_labels (
 CREATE INDEX idx_message_labels_label ON message_labels(label_id);
 
 -- =========================================================================
--- Message bodies (fetched on demand, cached)
+-- Message bodies (eagerly fetched during sync)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS bodies (
     message_id  TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
@@ -491,7 +492,7 @@ CREATE TABLE IF NOT EXISTS attachments (
 CREATE INDEX idx_attachments_message ON attachments(message_id);
 
 -- =========================================================================
--- Provider metadata (sync engine's private state)
+-- Provider metadata (reserved escape hatch; not live sync truth today)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS provider_meta (
     message_id      TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
@@ -507,12 +508,12 @@ CREATE TABLE IF NOT EXISTS provider_meta (
 );
 
 -- =========================================================================
--- Drafts (local compose state)
+-- Drafts (local compose state; legacy `in_reply_to` column stores serialized ReplyHeaders)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS drafts (
     id              TEXT PRIMARY KEY,
     account_id      TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    in_reply_to     TEXT,
+    in_reply_to     TEXT, -- serialized ReplyHeaders for now
     to_addrs        TEXT NOT NULL DEFAULT '[]',
     cc_addrs        TEXT NOT NULL DEFAULT '[]',
     bcc_addrs       TEXT NOT NULL DEFAULT '[]',

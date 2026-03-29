@@ -15,8 +15,8 @@ use crate::mxr_protocol::{DaemonEvent, Request, Response, ResponseData};
 use app::{App, AttachmentOperation, ComposeAction, PendingSend};
 use client::Client;
 use crossterm::event::EventStream;
-use ratatui::crossterm::event::Event;
 use futures::StreamExt;
+use ratatui::crossterm::event::Event;
 use std::path::Path;
 use std::process::Stdio;
 use tokio::sync::{mpsc, oneshot};
@@ -2317,8 +2317,8 @@ mod tests {
     use crate::mxr_core::MxrError;
     use crate::mxr_protocol::{DaemonEvent, LabelCount, MutationCommand, Request};
     use crate::test_fixtures::TestEnvelopeBuilder;
-    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use mxr_test_support::render_to_string;
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
         (0..count)

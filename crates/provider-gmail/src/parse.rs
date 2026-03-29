@@ -4,8 +4,7 @@ use crate::mxr_compose::parse::{
 };
 use crate::mxr_core::{
     AccountId, Address, AttachmentDisposition, AttachmentId, AttachmentMeta, BodyPartSource,
-    Envelope, MessageBody, MessageFlags, MessageId, TextPlainFormat, ThreadId,
-    UnsubscribeMethod,
+    Envelope, MessageBody, MessageFlags, MessageId, TextPlainFormat, ThreadId, UnsubscribeMethod,
 };
 use crate::mxr_provider_gmail::types::{GmailHeader, GmailMessage, GmailPayload};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -226,9 +225,10 @@ fn walk_parts(
         .as_ref()
         .and_then(|body| body.attachment_id.clone())
         .unwrap_or_else(|| part_path.to_string());
-    let content_id = normalize_content_id(find_header_value(payload.headers.as_deref(), "Content-ID"));
-    let content_location = find_header_value(payload.headers.as_deref(), "Content-Location")
-        .map(str::to_string);
+    let content_id =
+        normalize_content_id(find_header_value(payload.headers.as_deref(), "Content-ID"));
+    let content_location =
+        find_header_value(payload.headers.as_deref(), "Content-Location").map(str::to_string);
     let decoded_text = payload
         .body
         .as_ref()
@@ -261,8 +261,8 @@ fn walk_parts(
             if !is_attachment_part(payload, mime, disposition) {
                 if let Some(decoded) = decoded_text {
                     body_data.text_plain = Some(decoded);
-                    body_data.text_plain_format =
-                        parse_text_plain_format_from_payload(payload).or(Some(TextPlainFormat::Fixed));
+                    body_data.text_plain_format = parse_text_plain_format_from_payload(payload)
+                        .or(Some(TextPlainFormat::Fixed));
                 }
             }
         }
@@ -313,10 +313,7 @@ pub fn extract_message_body(msg: &GmailMessage) -> MessageBody {
         .unwrap_or_default();
     metadata.calendar = body_data.calendar.clone();
     metadata.text_plain_format = body_data.text_plain_format.or(metadata.text_plain_format);
-    metadata.text_plain_source = body_data
-        .text_plain
-        .as_ref()
-        .map(|_| BodyPartSource::Exact);
+    metadata.text_plain_source = body_data.text_plain.as_ref().map(|_| BodyPartSource::Exact);
     metadata.text_html_source = body_data.text_html.as_ref().map(|_| BodyPartSource::Exact);
     MessageBody {
         message_id: MessageId::from_provider_id("gmail", &msg.id),
@@ -362,10 +359,20 @@ fn is_attachment_part(
 
 fn payload_disposition(payload: &GmailPayload) -> AttachmentDisposition {
     match find_header_value(payload.headers.as_deref(), "Content-Disposition") {
-        Some(value) if value.trim_start().to_ascii_lowercase().starts_with("attachment") => {
+        Some(value)
+            if value
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("attachment") =>
+        {
             AttachmentDisposition::Attachment
         }
-        Some(value) if value.trim_start().to_ascii_lowercase().starts_with("inline") => {
+        Some(value)
+            if value
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("inline") =>
+        {
             AttachmentDisposition::Inline
         }
         _ => AttachmentDisposition::Unspecified,
@@ -1077,10 +1084,7 @@ mod tests {
                     GmailPayload {
                         mime_type: Some("image/png".to_string()),
                         headers: Some(make_headers(&[
-                            (
-                                "Content-Disposition",
-                                "inline; filename=\"logo.png\"",
-                            ),
+                            ("Content-Disposition", "inline; filename=\"logo.png\""),
                             ("Content-ID", "<logo@example.com>"),
                             ("Content-Location", "https://example.com/logo.png"),
                         ])),

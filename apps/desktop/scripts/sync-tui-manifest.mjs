@@ -9,7 +9,7 @@ const outputPath = resolve(repoRoot, "apps/desktop/src/shared/generated/tui-mani
 
 const manifestJson = execFileSync(
   "cargo",
-  ["run", "-q", "-p", "mxr-tui", "--example", "export_desktop_manifest"],
+  ["run", "-q", "-p", "mxr", "--example", "export_desktop_manifest"],
   {
     cwd: repoRoot,
     encoding: "utf8",

@@ -57,12 +57,15 @@ pub async fn execute_shell_hook(
             error: e.to_string(),
         })?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(json.as_bytes())
-            .await
-            .map_err(|e| ShellHookError::StdinWriteFailed(e.to_string()))?;
-    }
+    let stdin_write_error = if let Some(mut stdin) = child.stdin.take() {
+        match stdin.write_all(json.as_bytes()).await {
+            Ok(()) => None,
+            Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => None,
+            Err(error) => Some(error.to_string()),
+        }
+    } else {
+        None
+    };
 
     let result = timeout(timeout_dur, child.wait_with_output())
         .await
@@ -71,6 +74,10 @@ pub async fn execute_shell_hook(
             timeout: timeout_dur,
         })?
         .map_err(|e| ShellHookError::WaitFailed(e.to_string()))?;
+
+    if let Some(error) = stdin_write_error {
+        return Err(ShellHookError::StdinWriteFailed(error));
+    }
 
     if result.status.success() {
         Ok(())

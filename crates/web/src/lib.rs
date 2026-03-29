@@ -2407,7 +2407,10 @@ mod tests {
                             .await;
                         return;
                     }
-                    while let Some(Ok(message)) = framed.next().await {
+                    while let Some(message) = framed.next().await {
+                        let Ok(message) = message else {
+                            break;
+                        };
                         if let IpcPayload::Request(request) = message.payload {
                             let Some(response) = responder(request) else {
                                 continue;

@@ -827,7 +827,11 @@ mod tests {
         engine.sync_account(&provider).await.unwrap();
 
         let labels = store.list_labels_by_account(&account_id).await.unwrap();
-        assert_eq!(labels.len(), 8, "Fake provider should expose fixture labels");
+        assert_eq!(
+            labels.len(),
+            8,
+            "Fake provider should expose fixture labels"
+        );
 
         let has_counts = labels
             .iter()

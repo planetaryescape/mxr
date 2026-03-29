@@ -273,7 +273,6 @@ impl SearchIndex {
                 .search(&query, &TopDocs::with_limit(fetch_limit).and_offset(offset))
                 .map_err(|e| MxrError::Search(e.to_string()))?
                 .into_iter()
-                .map(|(score, doc_address)| (score, doc_address))
                 .collect::<Vec<_>>(),
             SortOrder::DateDesc => searcher
                 .search(
@@ -365,7 +364,6 @@ impl SearchIndex {
                 )
                 .map_err(|e| MxrError::Search(e.to_string()))?
                 .into_iter()
-                .map(|(score, doc_address)| (score, doc_address))
                 .collect::<Vec<_>>(),
             SortOrder::DateDesc => searcher
                 .search(

@@ -137,7 +137,8 @@ pub(super) async fn get_html_image_assets(
 
     let mut assets = Vec::new();
     for source in collect_html_image_sources(html) {
-        assets.push(resolve_html_image_asset(state, message_id, &body, &source, allow_remote).await);
+        assets
+            .push(resolve_html_image_asset(state, message_id, &body, &source, allow_remote).await);
     }
 
     Ok(ResponseData::HtmlImageAssets {
@@ -249,20 +250,23 @@ async fn resolve_html_image_asset(
                 },
             }
         }
-        HtmlImageSourceKind::Cid | HtmlImageSourceKind::ContentLocation | HtmlImageSourceKind::File => {
-            let attachment = match find_html_image_attachment(body, normalized_source.as_str(), kind) {
-                Some(attachment) => attachment,
-                None => {
-                    return HtmlImageAsset {
-                        source: source.to_string(),
-                        kind,
-                        status: HtmlImageAssetStatus::Missing,
-                        mime_type: None,
-                        path: None,
-                        detail: Some("no matching inline attachment".into()),
-                    };
-                }
-            };
+        HtmlImageSourceKind::Cid
+        | HtmlImageSourceKind::ContentLocation
+        | HtmlImageSourceKind::File => {
+            let attachment =
+                match find_html_image_attachment(body, normalized_source.as_str(), kind) {
+                    Some(attachment) => attachment,
+                    None => {
+                        return HtmlImageAsset {
+                            source: source.to_string(),
+                            kind,
+                            status: HtmlImageAssetStatus::Missing,
+                            mime_type: None,
+                            path: None,
+                            detail: Some("no matching inline attachment".into()),
+                        };
+                    }
+                };
 
             match materialize_attachment_file(state, message_id, &attachment.id).await {
                 Ok(file) => HtmlImageAsset {
@@ -307,7 +311,9 @@ fn normalize_remote_source(source: &str) -> Option<String> {
     if source.starts_with("http://") || source.starts_with("https://") {
         return Some(source.to_string());
     }
-    source.strip_prefix("//").map(|rest| format!("https://{rest}"))
+    source
+        .strip_prefix("//")
+        .map(|rest| format!("https://{rest}"))
 }
 
 fn normalize_content_id(value: &str) -> String {
@@ -386,15 +392,17 @@ async fn materialize_data_uri_asset(
     let mime_type = Some(data_url.mime_type().to_string());
     let bytes = match data_url.decode_to_vec() {
         Ok((bytes, _)) => bytes,
-        Err(error) => decode_base64_data_uri_fallback(source)
-            .map_err(|fallback_error| format!("{error}; fallback decode failed: {fallback_error}"))?,
+        Err(error) => decode_base64_data_uri_fallback(source).map_err(|fallback_error| {
+            format!("{error}; fallback decode failed: {fallback_error}")
+        })?,
     };
 
     let target_dir = html_image_dir(state, message_id).join("data");
     tokio::fs::create_dir_all(&target_dir)
         .await
         .map_err(|error| error.to_string())?;
-    let path = target_dir.join(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, source.as_bytes()).to_string());
+    let path = target_dir
+        .join(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, source.as_bytes()).to_string());
     if !path.exists() {
         tokio::fs::write(&path, bytes)
             .await
@@ -435,7 +443,8 @@ async fn materialize_remote_asset(
     tokio::fs::create_dir_all(&target_dir)
         .await
         .map_err(|error| error.to_string())?;
-    let path = target_dir.join(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, source.as_bytes()).to_string());
+    let path = target_dir
+        .join(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, source.as_bytes()).to_string());
     if path.exists() {
         return Ok((path, None));
     }

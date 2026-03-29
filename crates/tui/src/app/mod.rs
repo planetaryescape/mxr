@@ -6,10 +6,10 @@ use crate::mxr_core::id::{AccountId, AttachmentId, MessageId};
 use crate::mxr_core::types::*;
 use crate::mxr_core::MxrError;
 use crate::mxr_protocol::{MutationCommand, Request, Response, ResponseData};
-use crate::mxr_tui::terminal_images::{HtmlImageEntry, HtmlImageKey, TerminalImageSupport};
 use crate::mxr_tui::action::{Action, PatternKind, ScreenContext, UiContext};
 use crate::mxr_tui::client::Client;
 use crate::mxr_tui::input::InputHandler;
+use crate::mxr_tui::terminal_images::{HtmlImageEntry, HtmlImageKey, TerminalImageSupport};
 use crate::mxr_tui::theme::Theme;
 use crate::mxr_tui::ui;
 use crate::mxr_tui::ui::command_palette::CommandPalette;
@@ -2404,7 +2404,8 @@ impl App {
             });
         }
         if self.show_reader_stats {
-            if let (Some(original), Some(cleaned)) = (metadata.original_lines, metadata.cleaned_lines)
+            if let (Some(original), Some(cleaned)) =
+                (metadata.original_lines, metadata.cleaned_lines)
             {
                 chips.push(format!("reader:{cleaned}/{original}"));
             }
@@ -3081,7 +3082,8 @@ impl App {
         {
             return;
         }
-        self.queued_html_image_asset_fetches.push(message_id.clone());
+        self.queued_html_image_asset_fetches
+            .push(message_id.clone());
     }
 
     pub fn invalidate_html_assets_for_current_view(&mut self) {

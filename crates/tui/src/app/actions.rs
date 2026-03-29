@@ -22,7 +22,10 @@ impl App {
             return;
         };
 
-        let Some(message_id) = self.viewing_envelope.as_ref().map(|env| env.id.as_str().to_string())
+        let Some(message_id) = self
+            .viewing_envelope
+            .as_ref()
+            .map(|env| env.id.as_str().to_string())
         else {
             self.status_message = Some("No message selected".into());
             return;

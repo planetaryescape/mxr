@@ -157,13 +157,10 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
                     .list_labels_by_account(&envelope.account_id)
                     .await
                     .map_err(|e| e.to_string())?;
-                let resolved_target = resolve_to_provider_ids(&labels, std::slice::from_ref(target_label));
+                let resolved_target =
+                    resolve_to_provider_ids(&labels, std::slice::from_ref(target_label));
                 provider
-                    .modify_labels(
-                        provider_id,
-                        &resolved_target,
-                        &["INBOX".to_string()],
-                    )
+                    .modify_labels(provider_id, &resolved_target, &["INBOX".to_string()])
                     .await
                     .map_err(|e| e.to_string())?;
                 persist_local_label_changes(

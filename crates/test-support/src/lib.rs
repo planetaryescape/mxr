@@ -35,19 +35,25 @@ pub fn standards_fixture_path(name: &str) -> PathBuf {
 }
 
 pub fn standards_fixture_bytes(name: &str) -> Vec<u8> {
-    std::fs::read(standards_fixture_path(name)).unwrap()
+    std::fs::read(standards_fixture_path(name))
+        .expect("test fixture bytes should exist and be readable")
 }
 
 pub fn standards_fixture_string(name: &str) -> String {
-    std::fs::read_to_string(standards_fixture_path(name)).unwrap()
+    std::fs::read_to_string(standards_fixture_path(name))
+        .expect("test fixture string should exist and be readable")
 }
 
 pub fn redact_rfc822(raw: &str) -> String {
     static MESSAGE_ID_RE: OnceLock<Regex> = OnceLock::new();
     static DATE_RE: OnceLock<Regex> = OnceLock::new();
-    let message_id_re =
-        MESSAGE_ID_RE.get_or_init(|| Regex::new(r"(?m)^Message-ID:\s*<[^>\r\n]+>\r?$").unwrap());
-    let date_re = DATE_RE.get_or_init(|| Regex::new(r"(?m)^Date:\s*[^\r\n]+\r?$").unwrap());
+    let message_id_re = MESSAGE_ID_RE.get_or_init(|| {
+        Regex::new(r"(?m)^Message-ID:\s*<[^>\r\n]+>\r?$")
+            .expect("message-id redaction regex should compile")
+    });
+    let date_re = DATE_RE.get_or_init(|| {
+        Regex::new(r"(?m)^Date:\s*[^\r\n]+\r?$").expect("date redaction regex should compile")
+    });
 
     let mut redacted = message_id_re
         .replace_all(raw, "Message-ID: <redacted@example.com>")
@@ -56,7 +62,8 @@ pub fn redact_rfc822(raw: &str) -> String {
         .replace_all(&redacted, "Date: Fri, 20 Mar 2026 00:00:00 +0000")
         .to_string();
 
-    let boundary_re = Regex::new(r#"boundary="([^"]+)""#).unwrap();
+    let boundary_re =
+        Regex::new(r#"boundary="([^"]+)""#).expect("boundary redaction regex should compile");
     let boundaries = boundary_re
         .captures_iter(raw)
         .enumerate()
@@ -81,7 +88,7 @@ where
     F: FnOnce(&mut ratatui::Frame<'_>),
 {
     let backend = TestBackend::new(width, height);
-    let mut terminal = Terminal::new(backend).unwrap();
-    terminal.draw(draw).unwrap();
+    let mut terminal = Terminal::new(backend).expect("test terminal should initialize");
+    terminal.draw(draw).expect("test draw should succeed");
     format!("{}", terminal.backend())
 }

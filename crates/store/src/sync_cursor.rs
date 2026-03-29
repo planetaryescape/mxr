@@ -9,7 +9,7 @@ impl super::Store {
         let aid = account_id.as_str();
         let row = sqlx::query!("SELECT sync_cursor FROM accounts WHERE id = ?", aid,)
             .fetch_optional(self.reader())
-        .await?;
+            .await?;
 
         match row {
             Some(r) => r.sync_cursor.map(|cursor| decode_json(&cursor)).transpose(),

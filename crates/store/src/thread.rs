@@ -42,7 +42,11 @@ impl super::Store {
         )
         .fetch_all(self.reader())
         .await?;
-        trace_query("thread.get_thread.participants", started_at, participant_rows.len());
+        trace_query(
+            "thread.get_thread.participants",
+            started_at,
+            participant_rows.len(),
+        );
 
         let participants: Vec<Address> = participant_rows
             .into_iter()

@@ -15,7 +15,6 @@ use app::{App, AttachmentOperation, ComposeAction, PendingSend};
 use client::Client;
 use crossterm::event::EventStream;
 use futures::StreamExt;
-use ratatui::crossterm::event::Event;
 use mxr_config::{load_config, socket_path as config_socket_path};
 use mxr_core::MxrError;
 use mxr_protocol::{DaemonEvent, Request, Response, ResponseData};

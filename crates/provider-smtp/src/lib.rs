@@ -176,14 +176,11 @@ mod tests {
     impl TestSender for RecordedSender {
         async fn send(&self, message: lettre::Message) -> Result<(), String> {
             let envelope = message.envelope();
-            self.messages
-                .lock()
-                .unwrap()
-                .push(RecordedMessage {
-                    formatted: String::from_utf8(message.formatted()).unwrap(),
-                    envelope_from: envelope.from().map(ToString::to_string),
-                    envelope_to: envelope.to().iter().map(ToString::to_string).collect(),
-                });
+            self.messages.lock().unwrap().push(RecordedMessage {
+                formatted: String::from_utf8(message.formatted()).unwrap(),
+                envelope_from: envelope.from().map(ToString::to_string),
+                envelope_to: envelope.to().iter().map(ToString::to_string).collect(),
+            });
             Ok(())
         }
 
@@ -243,7 +240,9 @@ mod tests {
         mxr_provider_fake::conformance::run_send_conformance(&provider).await;
         let messages = sender.messages.lock().unwrap();
         assert_eq!(messages.len(), 1);
-        assert!(messages[0].formatted.contains("Subject: Conformance test draft"));
+        assert!(messages[0]
+            .formatted
+            .contains("Subject: Conformance test draft"));
     }
 
     #[tokio::test]
@@ -291,10 +290,16 @@ mod tests {
                 "hidden@example.com".to_string(),
             ]
         );
-        assert!(message.formatted.contains("To: Alice <alice@example.com>\r\n"));
-        assert!(message.formatted.contains("Cc: Carol <carol@example.com>\r\n"));
+        assert!(message
+            .formatted
+            .contains("To: Alice <alice@example.com>\r\n"));
+        assert!(message
+            .formatted
+            .contains("Cc: Carol <carol@example.com>\r\n"));
         assert!(!message.formatted.contains("\r\nBcc:"));
-        assert!(message.formatted.contains("Content-Type: multipart/alternative"));
+        assert!(message
+            .formatted
+            .contains("Content-Type: multipart/alternative"));
         assert!(message.formatted.contains("Hello **world**!"));
         assert!(message.formatted.contains("<strong>world</strong>"));
     }

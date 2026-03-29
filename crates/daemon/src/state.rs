@@ -391,6 +391,56 @@ impl AppState {
     }
 
     #[cfg(test)]
+    pub async fn in_memory_with_sync_provider(
+        account: Account,
+        provider: Arc<dyn MailSyncProvider>,
+        send_provider: Option<Arc<dyn MailSendProvider>>,
+    ) -> anyhow::Result<Self> {
+        debug_assert_eq!(provider.account_id(), &account.id);
+
+        let mut config = mxr_config::MxrConfig::default();
+        config.general.attachment_dir = test_attachment_dir();
+        let store = Arc::new(Store::in_memory().await?);
+        let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
+        let semantic = Arc::new(Mutex::new(SemanticEngine::new(
+            store.clone(),
+            &std::env::temp_dir(),
+            config.search.semantic.clone(),
+        )));
+        let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
+
+        store.insert_account(&account).await?;
+
+        let account_id = account.id.clone();
+        let mut providers = HashMap::new();
+        providers.insert(account_id.clone(), provider.clone());
+
+        let mut send_providers = HashMap::new();
+        if let Some(send_provider) = &send_provider {
+            send_providers.insert(account_id.clone(), send_provider.clone());
+        }
+
+        let (event_tx, _) = broadcast::channel(256);
+
+        Ok(Self {
+            store,
+            search,
+            semantic,
+            sync_engine,
+            runtime: RwLock::new(ProviderRuntime {
+                providers,
+                send_providers,
+                default_provider: Some(provider),
+                default_send_provider: send_provider,
+            }),
+            sync_loop_accounts: ParkingMutex::new(HashSet::new()),
+            event_tx,
+            start_time: Instant::now(),
+            config: RwLock::new(config),
+        })
+    }
+
+    #[cfg(test)]
     pub async fn in_memory_without_accounts() -> anyhow::Result<Self> {
         let mut config = mxr_config::MxrConfig::default();
         config.general.attachment_dir = test_attachment_dir();

@@ -260,6 +260,137 @@ impl super::Store {
             .collect()
     }
 
+    pub async fn list_envelopes_by_message_id_header(
+        &self,
+        account_id: &AccountId,
+        message_id_header: &str,
+    ) -> Result<Vec<Envelope>, sqlx::Error> {
+        let aid = account_id.as_str();
+        let started_at = std::time::Instant::now();
+        let rows = sqlx::query(
+            r#"SELECT
+                id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
+                reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
+                subject, date, flags, snippet, has_attachments, size_bytes, unsubscribe_method,
+                COALESCE((
+                    SELECT GROUP_CONCAT(labels.provider_id, char(31))
+                    FROM message_labels
+                    JOIN labels ON labels.id = message_labels.label_id
+                    WHERE message_labels.message_id = messages.id
+                ), '') as label_provider_ids
+             FROM messages
+             WHERE account_id = ? AND message_id_header = ?
+             ORDER BY date DESC, id DESC"#,
+        )
+        .bind(aid)
+        .bind(message_id_header)
+        .fetch_all(self.reader())
+        .await?;
+        trace_query(
+            "message.list_envelopes_by_message_id_header",
+            started_at,
+            rows.len(),
+        );
+
+        rows.into_iter()
+            .map(|r| {
+                record_to_envelope(
+                    &r.get::<String, _>("id"),
+                    &r.get::<String, _>("account_id"),
+                    &r.get::<String, _>("provider_id"),
+                    &r.get::<String, _>("thread_id"),
+                    r.get::<Option<String>, _>("message_id_header").as_deref(),
+                    r.get::<Option<String>, _>("in_reply_to").as_deref(),
+                    r.get::<Option<String>, _>("reference_headers").as_deref(),
+                    r.get::<Option<String>, _>("from_name").as_deref(),
+                    &r.get::<String, _>("from_email"),
+                    &r.get::<String, _>("to_addrs"),
+                    &r.get::<String, _>("cc_addrs"),
+                    &r.get::<String, _>("bcc_addrs"),
+                    &r.get::<String, _>("subject"),
+                    r.get::<i64, _>("date"),
+                    r.get::<i64, _>("flags"),
+                    &r.get::<String, _>("snippet"),
+                    r.get::<bool, _>("has_attachments"),
+                    r.get::<i64, _>("size_bytes"),
+                    r.get::<Option<String>, _>("unsubscribe_method").as_deref(),
+                    &r.get::<String, _>("label_provider_ids"),
+                )
+            })
+            .collect()
+    }
+
+    pub async fn list_envelopes_by_remote_fingerprint(
+        &self,
+        account_id: &AccountId,
+        subject: &str,
+        from_email: &str,
+        date: chrono::DateTime<chrono::Utc>,
+        size_bytes: u64,
+    ) -> Result<Vec<Envelope>, sqlx::Error> {
+        let aid = account_id.as_str();
+        let started_at = std::time::Instant::now();
+        let rows = sqlx::query(
+            r#"SELECT
+                id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
+                reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
+                subject, date, flags, snippet, has_attachments, size_bytes, unsubscribe_method,
+                COALESCE((
+                    SELECT GROUP_CONCAT(labels.provider_id, char(31))
+                    FROM message_labels
+                    JOIN labels ON labels.id = message_labels.label_id
+                    WHERE message_labels.message_id = messages.id
+                ), '') as label_provider_ids
+             FROM messages
+             WHERE account_id = ?
+               AND message_id_header IS NULL
+               AND subject = ?
+               AND from_email = ?
+               AND date = ?
+               AND size_bytes = ?
+             ORDER BY id DESC"#,
+        )
+        .bind(aid)
+        .bind(subject)
+        .bind(from_email)
+        .bind(date.timestamp())
+        .bind(size_bytes as i64)
+        .fetch_all(self.reader())
+        .await?;
+        trace_query(
+            "message.list_envelopes_by_remote_fingerprint",
+            started_at,
+            rows.len(),
+        );
+
+        rows.into_iter()
+            .map(|r| {
+                record_to_envelope(
+                    &r.get::<String, _>("id"),
+                    &r.get::<String, _>("account_id"),
+                    &r.get::<String, _>("provider_id"),
+                    &r.get::<String, _>("thread_id"),
+                    r.get::<Option<String>, _>("message_id_header").as_deref(),
+                    r.get::<Option<String>, _>("in_reply_to").as_deref(),
+                    r.get::<Option<String>, _>("reference_headers").as_deref(),
+                    r.get::<Option<String>, _>("from_name").as_deref(),
+                    &r.get::<String, _>("from_email"),
+                    &r.get::<String, _>("to_addrs"),
+                    &r.get::<String, _>("cc_addrs"),
+                    &r.get::<String, _>("bcc_addrs"),
+                    &r.get::<String, _>("subject"),
+                    r.get::<i64, _>("date"),
+                    r.get::<i64, _>("flags"),
+                    &r.get::<String, _>("snippet"),
+                    r.get::<bool, _>("has_attachments"),
+                    r.get::<i64, _>("size_bytes"),
+                    r.get::<Option<String>, _>("unsubscribe_method").as_deref(),
+                    &r.get::<String, _>("label_provider_ids"),
+                )
+            })
+            .collect()
+    }
+
     pub async fn list_envelopes_by_ids(
         &self,
         message_ids: &[MessageId],

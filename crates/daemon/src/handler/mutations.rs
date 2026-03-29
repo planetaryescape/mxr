@@ -1,5 +1,5 @@
 use super::{
-    apply_snooze, build_reply_references, persist_local_label_changes, render_message_context,
+    apply_snooze, build_reply_references, reconcile_label_mutation, render_message_context,
     restore_snoozed_message, HandlerResult,
 };
 use crate::state::AppState;
@@ -68,17 +68,14 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
                     .modify_labels(provider_id, &[], &["INBOX".to_string()])
                     .await
                     .map_err(|e| e.to_string())?;
-                let mut label_ids = state
-                    .store
-                    .get_message_label_ids(message_id)
-                    .await
-                    .unwrap_or_default();
-                label_ids.retain(|label_id| label_id.as_str() != "INBOX");
-                state
-                    .store
-                    .set_message_labels(message_id, &label_ids)
-                    .await
-                    .map_err(|e| e.to_string())
+                reconcile_label_mutation(
+                    state,
+                    provider.as_ref(),
+                    message_id,
+                    &[],
+                    &["INBOX".to_string()],
+                )
+                .await
             }
             MutationCommand::ReadAndArchive { .. } => {
                 provider
@@ -94,17 +91,14 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
                     .modify_labels(provider_id, &[], &["INBOX".to_string()])
                     .await
                     .map_err(|e| e.to_string())?;
-                let mut label_ids = state
-                    .store
-                    .get_message_label_ids(message_id)
-                    .await
-                    .unwrap_or_default();
-                label_ids.retain(|label_id| label_id.as_str() != "INBOX");
-                state
-                    .store
-                    .set_message_labels(message_id, &label_ids)
-                    .await
-                    .map_err(|e| e.to_string())
+                reconcile_label_mutation(
+                    state,
+                    provider.as_ref(),
+                    message_id,
+                    &[],
+                    &["INBOX".to_string()],
+                )
+                .await
             }
             MutationCommand::Trash { .. } => {
                 provider.trash(provider_id).await.map_err(|e| e.to_string())
@@ -147,9 +141,14 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
                     .modify_labels(provider_id, &resolved_add, &resolved_remove)
                     .await
                     .map_err(|e| e.to_string())?;
-                persist_local_label_changes(state, message_id, add, remove)
-                    .await
-                    .map_err(|e| e.to_string())
+                reconcile_label_mutation(
+                    state,
+                    provider.as_ref(),
+                    message_id,
+                    &resolved_add,
+                    &resolved_remove,
+                )
+                .await
             }
             MutationCommand::Move { target_label, .. } => {
                 let labels = state
@@ -163,14 +162,14 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
                     .modify_labels(provider_id, &resolved_target, &["INBOX".to_string()])
                     .await
                     .map_err(|e| e.to_string())?;
-                persist_local_label_changes(
+                reconcile_label_mutation(
                     state,
+                    provider.as_ref(),
                     message_id,
-                    std::slice::from_ref(target_label),
+                    &resolved_target,
                     &["INBOX".to_string()],
                 )
                 .await
-                .map_err(|e| e.to_string())
             }
         };
 
@@ -363,7 +362,7 @@ pub(super) async fn prepare_reply(
             references: build_reply_references(&envelope),
             reply_to: envelope.from.email.clone(),
             cc,
-            subject: prefixed_subject(&envelope.subject, &["re:"]),
+            subject: envelope.subject.clone(),
             from,
             thread_context,
         },
@@ -397,31 +396,11 @@ pub(super) async fn prepare_forward(
 
     Ok(ResponseData::ForwardContext {
         context: ForwardContext {
-            subject: prefixed_subject(&envelope.subject, &["fwd:", "fw:"]),
+            subject: envelope.subject.clone(),
             from,
             forwarded_content,
         },
     })
-}
-
-fn prefixed_subject(subject: &str, existing_prefixes: &[&str]) -> String {
-    let trimmed = subject.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    if existing_prefixes
-        .iter()
-        .any(|prefix| lower.starts_with(prefix))
-    {
-        trimmed.to_string()
-    } else {
-        let prefix = existing_prefixes.first().copied().unwrap_or_default();
-        let canonical = match prefix {
-            "re:" => "Re:",
-            "fwd:" => "Fwd:",
-            "fw:" => "FW:",
-            _ => prefix,
-        };
-        format!("{canonical} {trimmed}")
-    }
 }
 
 pub(super) async fn send_draft(state: &Arc<AppState>, draft: &Draft) -> HandlerResult {

@@ -116,6 +116,10 @@ bitflags! {
 pub struct Envelope {
     pub id: MessageId,
     pub account_id: AccountId,
+    /// Provider-instance identity used for sync and mutations.
+    ///
+    /// Stable for Gmail message IDs.
+    /// For IMAP, this is mailbox-scoped today and may change across moves/copies.
     pub provider_id: String,
     pub thread_id: ThreadId,
     pub message_id_header: Option<String>,
@@ -559,6 +563,10 @@ pub enum ExportFormat {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderMeta {
+    /// Reserved provider-truth escape hatch.
+    ///
+    /// The type and schema exist, but current sync/store flows do not materially depend on this
+    /// record at runtime. Treat it as dormant until a concrete need reactivates it.
     pub message_id: MessageId,
     pub provider: ProviderKind,
     pub remote_id: String,
@@ -574,6 +582,9 @@ pub struct ProviderMeta {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncCapabilities {
+    /// True only for providers with stable multi-assign label semantics.
+    /// False means placement is folder/mailbox-based, even if `sync_labels()` exposes folders
+    /// through the shared `Label` type.
     pub labels: bool,
     pub server_search: bool,
     pub delta_sync: bool,

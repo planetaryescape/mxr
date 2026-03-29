@@ -23,6 +23,13 @@ pub trait MailSyncProvider: Send + Sync {
         provider_attachment_id: &str,
     ) -> Result<Vec<u8>>;
 
+    /// Apply provider-native placement/label state.
+    ///
+    /// For providers with `capabilities().labels == true`, callers may treat this as
+    /// stable multi-assign label semantics.
+    ///
+    /// For folder-based providers (`labels == false`), callers must not assume Gmail-style
+    /// label behavior. The same request may map to move or copy semantics instead.
     async fn modify_labels(
         &self,
         provider_message_id: &str,

@@ -534,6 +534,78 @@ async fn persist_local_label_changes(
     Ok(())
 }
 
+pub(crate) async fn reconcile_label_mutation(
+    state: &Arc<AppState>,
+    provider: &dyn MailSyncProvider,
+    message_id: &mxr_core::MessageId,
+    add: &[String],
+    remove: &[String],
+) -> Result<(), String> {
+    if provider.capabilities().labels {
+        persist_local_label_changes(state, message_id, add, remove)
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        state
+            .sync_engine
+            .sync_account(provider)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+fn same_remote_message(candidate: &mxr_core::Envelope, original: &mxr_core::Envelope) -> bool {
+    candidate.account_id == original.account_id
+        && candidate.message_id_header == original.message_id_header
+        && candidate.subject == original.subject
+        && candidate.from.email == original.from.email
+        && candidate.date == original.date
+        && candidate.size_bytes == original.size_bytes
+}
+
+async fn find_reconciled_message_id(
+    state: &Arc<AppState>,
+    original: &mxr_core::Envelope,
+    previous_message_id: &mxr_core::MessageId,
+) -> Result<mxr_core::MessageId, String> {
+    let mut candidates = if let Some(header) = original.message_id_header.as_deref() {
+        state
+            .store
+            .list_envelopes_by_message_id_header(&original.account_id, header)
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        state
+            .store
+            .list_envelopes_by_remote_fingerprint(
+                &original.account_id,
+                &original.subject,
+                &original.from.email,
+                original.date,
+                original.size_bytes,
+            )
+            .await
+            .map_err(|e| e.to_string())?
+    };
+
+    candidates.retain(|candidate| {
+        candidate.id != *previous_message_id && same_remote_message(candidate, original)
+    });
+
+    match candidates.len() {
+        1 => Ok(candidates.remove(0).id),
+        0 => Err(format!(
+            "Reconciled message not found after folder mutation for {}",
+            previous_message_id
+        )),
+        _ => Err(format!(
+            "Ambiguous reconciled message after folder mutation for {}",
+            previous_message_id
+        )),
+    }
+}
+
 pub(crate) async fn apply_snooze(
     state: &Arc<AppState>,
     message_id: &mxr_core::MessageId,
@@ -556,18 +628,28 @@ pub(crate) async fn apply_snooze(
         .get_message_label_ids(message_id)
         .await
         .map_err(|e| e.to_string())?;
-    state
-        .get_provider(Some(&envelope.account_id))?
+    let provider = state.get_provider(Some(&envelope.account_id))?;
+    provider
         .modify_labels(&provider_id, &[], &["INBOX".to_string()])
         .await
         .map_err(|e| e.to_string())?;
-    persist_local_label_changes(state, message_id, &[], &["INBOX".to_string()])
-        .await
-        .map_err(|e| e.to_string())?;
+    reconcile_label_mutation(
+        state,
+        provider.as_ref(),
+        message_id,
+        &[],
+        &["INBOX".to_string()],
+    )
+    .await?;
+    let snoozed_message_id = if provider.capabilities().labels {
+        message_id.clone()
+    } else {
+        find_reconciled_message_id(state, &envelope, message_id).await?
+    };
     state
         .store
         .insert_snooze(&Snoozed {
-            message_id: message_id.clone(),
+            message_id: snoozed_message_id,
             account_id: envelope.account_id,
             snoozed_at: chrono::Utc::now(),
             wake_at: *wake_at,
@@ -598,21 +680,19 @@ pub(crate) async fn restore_snoozed_message(
         .map(|label| label.provider_id.clone())
         .collect();
 
-    state
-        .get_provider(Some(&snoozed.account_id))?
+    let provider = state.get_provider(Some(&snoozed.account_id))?;
+    provider
         .modify_labels(&provider_id, &restore_provider_ids, &[])
         .await
         .map_err(|e| e.to_string())?;
-    state
-        .store
-        .set_message_labels(&snoozed.message_id, &snoozed.original_labels)
-        .await
-        .map_err(|e| e.to_string())?;
-    state
-        .store
-        .recalculate_label_counts(&snoozed.account_id)
-        .await
-        .map_err(|e| e.to_string())?;
+    reconcile_label_mutation(
+        state,
+        provider.as_ref(),
+        &snoozed.message_id,
+        &restore_provider_ids,
+        &[],
+    )
+    .await?;
     state
         .store
         .remove_snooze(&snoozed.message_id)
@@ -2459,6 +2539,325 @@ fn open_local_file(path: &str) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use chrono::TimeZone;
+    use std::sync::Mutex as StdMutex;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum FolderCopyReanchorMode {
+        Normal,
+        MissingAfterArchive,
+    }
+
+    struct FolderCopyProvider {
+        account_id: mxr_core::AccountId,
+        reanchor_mode: FolderCopyReanchorMode,
+        folders: StdMutex<Vec<String>>,
+        last_synced_provider_ids: StdMutex<Vec<String>>,
+    }
+
+    impl FolderCopyProvider {
+        fn with_reanchor_mode(
+            account_id: mxr_core::AccountId,
+            reanchor_mode: FolderCopyReanchorMode,
+        ) -> Self {
+            Self {
+                account_id,
+                reanchor_mode,
+                folders: StdMutex::new(vec!["INBOX".to_string()]),
+                last_synced_provider_ids: StdMutex::new(Vec::new()),
+            }
+        }
+
+        fn current_provider_ids(&self) -> Vec<String> {
+            self.folders
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|folder| format!("{folder}:1"))
+                .collect()
+        }
+
+        fn synced_messages(&self) -> Vec<mxr_core::SyncedMessage> {
+            self.folders
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|folder| {
+                    let provider_id = format!("{folder}:1");
+                    let message_id =
+                        mxr_core::MessageId::from_provider_id("folder-copy", &provider_id);
+                    let envelope = mxr_core::Envelope {
+                        id: message_id.clone(),
+                        account_id: self.account_id.clone(),
+                        provider_id,
+                        thread_id: mxr_core::ThreadId::from_provider_id("folder-copy", "thread-1"),
+                        message_id_header: Some("<folder-copy@example.com>".to_string()),
+                        in_reply_to: None,
+                        references: vec![],
+                        from: mxr_core::Address {
+                            name: Some("Folder Provider".to_string()),
+                            email: "folder-provider@example.com".to_string(),
+                        },
+                        to: vec![mxr_core::Address {
+                            name: Some("Receiver".to_string()),
+                            email: "receiver@example.com".to_string(),
+                        }],
+                        cc: vec![],
+                        bcc: vec![],
+                        subject: "Folder-backed message".to_string(),
+                        date: chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+                        flags: mxr_core::MessageFlags::READ,
+                        snippet: format!("copy in {folder}"),
+                        has_attachments: false,
+                        size_bytes: 128,
+                        unsubscribe: mxr_core::UnsubscribeMethod::None,
+                        label_provider_ids: vec![folder.clone()],
+                    };
+                    let body = mxr_core::MessageBody {
+                        message_id,
+                        text_plain: Some(format!("body in {folder}")),
+                        text_html: None,
+                        attachments: vec![],
+                        fetched_at: chrono::Utc::now(),
+                        metadata: mxr_core::MessageMetadata::default(),
+                    };
+                    mxr_core::SyncedMessage { envelope, body }
+                })
+                .collect()
+        }
+
+        fn sync_labels_for_account(&self) -> Vec<mxr_core::Label> {
+            let folders = self.folders.lock().unwrap().clone();
+            ["INBOX", "Archive"]
+                .into_iter()
+                .map(|name| {
+                    let kind = if name == "INBOX" {
+                        mxr_core::LabelKind::System
+                    } else {
+                        mxr_core::LabelKind::Folder
+                    };
+                    let count = folders
+                        .iter()
+                        .filter(|folder| folder.eq_ignore_ascii_case(name))
+                        .count() as u32;
+                    mxr_core::Label {
+                        id: mxr_core::LabelId::from_provider_id("folder-copy", name),
+                        account_id: self.account_id.clone(),
+                        name: name.to_string(),
+                        kind,
+                        color: None,
+                        provider_id: name.to_string(),
+                        unread_count: 0,
+                        total_count: count,
+                    }
+                })
+                .collect()
+        }
+    }
+
+    #[async_trait]
+    impl mxr_core::MailSyncProvider for FolderCopyProvider {
+        fn name(&self) -> &str {
+            "folder-copy"
+        }
+
+        fn account_id(&self) -> &mxr_core::AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> mxr_core::SyncCapabilities {
+            mxr_core::SyncCapabilities {
+                labels: false,
+                server_search: false,
+                delta_sync: false,
+                push: false,
+                batch_operations: false,
+                native_thread_ids: true,
+            }
+        }
+
+        async fn authenticate(&mut self) -> Result<(), mxr_core::MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), mxr_core::MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<mxr_core::Label>, mxr_core::MxrError> {
+            Ok(self.sync_labels_for_account())
+        }
+
+        async fn sync_messages(
+            &self,
+            _cursor: &mxr_core::SyncCursor,
+        ) -> Result<mxr_core::SyncBatch, mxr_core::MxrError> {
+            let current_provider_ids = self.current_provider_ids();
+            let mut last_synced = self.last_synced_provider_ids.lock().unwrap();
+            let deleted_provider_ids = last_synced
+                .iter()
+                .filter(|provider_id| !current_provider_ids.contains(provider_id))
+                .cloned()
+                .collect();
+            *last_synced = current_provider_ids;
+
+            Ok(mxr_core::SyncBatch {
+                upserted: self.synced_messages(),
+                deleted_provider_ids,
+                label_changes: vec![],
+                next_cursor: mxr_core::SyncCursor::Initial,
+            })
+        }
+
+        async fn fetch_attachment(
+            &self,
+            _provider_message_id: &str,
+            _provider_attachment_id: &str,
+        ) -> Result<Vec<u8>, mxr_core::MxrError> {
+            Ok(vec![])
+        }
+
+        async fn modify_labels(
+            &self,
+            provider_message_id: &str,
+            add: &[String],
+            remove: &[String],
+        ) -> Result<(), mxr_core::MxrError> {
+            let source_folder = provider_message_id
+                .rsplit_once(':')
+                .map(|(folder, _)| folder.to_string())
+                .unwrap_or_else(|| "INBOX".to_string());
+            let mut folders = self.folders.lock().unwrap();
+
+            let added_folders: Vec<String> = add
+                .iter()
+                .filter(|label| {
+                    !matches!(
+                        label.to_ascii_uppercase().as_str(),
+                        "READ" | "SEEN" | "STARRED" | "FLAGGED" | "DRAFT" | "DRAFTS" | "ANSWERED"
+                    )
+                })
+                .cloned()
+                .collect();
+            let removed_folders: Vec<String> = remove
+                .iter()
+                .filter(|label| {
+                    !matches!(
+                        label.to_ascii_uppercase().as_str(),
+                        "READ" | "SEEN" | "STARRED" | "FLAGGED" | "DRAFT" | "DRAFTS" | "ANSWERED"
+                    )
+                })
+                .cloned()
+                .collect();
+
+            if removed_folders
+                .iter()
+                .any(|folder| folder.eq_ignore_ascii_case("INBOX"))
+                && added_folders.is_empty()
+            {
+                if self.reanchor_mode == FolderCopyReanchorMode::MissingAfterArchive {
+                    folders.clear();
+                    return Ok(());
+                }
+
+                folders.retain(|folder| !folder.eq_ignore_ascii_case("INBOX"));
+                if !folders
+                    .iter()
+                    .any(|folder| folder.eq_ignore_ascii_case("Archive"))
+                {
+                    folders.push("Archive".to_string());
+                }
+                return Ok(());
+            }
+
+            if added_folders
+                .iter()
+                .any(|folder| folder.eq_ignore_ascii_case("INBOX"))
+                && folders
+                    .iter()
+                    .all(|folder| !folder.eq_ignore_ascii_case("INBOX"))
+                && folders
+                    .iter()
+                    .any(|folder| folder.eq_ignore_ascii_case("Archive"))
+                && removed_folders.is_empty()
+            {
+                folders.clear();
+                folders.push("INBOX".to_string());
+                return Ok(());
+            }
+
+            folders.retain(|folder| {
+                !removed_folders
+                    .iter()
+                    .any(|removed| removed.eq_ignore_ascii_case(folder))
+            });
+
+            for folder in added_folders {
+                if !folders
+                    .iter()
+                    .any(|existing| existing.eq_ignore_ascii_case(&folder))
+                {
+                    folders.push(folder);
+                }
+            }
+
+            if folders.is_empty() {
+                folders.push(source_folder);
+            }
+
+            Ok(())
+        }
+
+        async fn trash(&self, _provider_message_id: &str) -> Result<(), mxr_core::MxrError> {
+            Ok(())
+        }
+
+        async fn set_read(
+            &self,
+            _provider_message_id: &str,
+            _read: bool,
+        ) -> Result<(), mxr_core::MxrError> {
+            Ok(())
+        }
+
+        async fn set_starred(
+            &self,
+            _provider_message_id: &str,
+            _starred: bool,
+        ) -> Result<(), mxr_core::MxrError> {
+            Ok(())
+        }
+    }
+
+    async fn folder_copy_state() -> Arc<AppState> {
+        folder_copy_state_with_mode(FolderCopyReanchorMode::Normal).await
+    }
+
+    async fn folder_copy_state_with_mode(reanchor_mode: FolderCopyReanchorMode) -> Arc<AppState> {
+        let account_id = mxr_core::AccountId::from_provider_id("imap", "folder-copy@example.com");
+        let account = mxr_core::Account {
+            id: account_id.clone(),
+            name: "Folder Copy".to_string(),
+            email: "folder-copy@example.com".to_string(),
+            sync_backend: Some(mxr_core::BackendRef {
+                provider_kind: mxr_core::ProviderKind::Imap,
+                config_key: "folder-copy".to_string(),
+            }),
+            send_backend: None,
+            enabled: true,
+        };
+        let provider = Arc::new(FolderCopyProvider::with_reanchor_mode(
+            account_id,
+            reanchor_mode,
+        ));
+        let provider: Arc<dyn mxr_core::MailSyncProvider> = provider;
+        Arc::new(
+            AppState::in_memory_with_sync_provider(account, provider, None)
+                .await
+                .unwrap(),
+        )
+    }
 
     #[tokio::test]
     async fn dispatch_ping_returns_pong() {
@@ -3863,6 +4262,182 @@ mod tests {
             }
             other => panic!("Expected Envelope, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn modify_labels_on_folder_provider_does_not_leave_one_message_in_two_folders() {
+        let state = folder_copy_state().await;
+        let id = sync_and_get_first_id(&state).await;
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Mutation(MutationCommand::ModifyLabels {
+                message_ids: vec![id],
+                add: vec!["Archive".to_string()],
+                remove: vec![],
+            })),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("Expected Ack, got {:?}", other),
+        }
+
+        let envelopes = state
+            .store
+            .list_envelopes_by_account(&state.default_account_id(), 20, 0)
+            .await
+            .unwrap();
+        assert_eq!(
+            envelopes.len(),
+            2,
+            "expected exactly one inbox copy and one archive copy after folder add: {envelopes:?}"
+        );
+        assert!(
+            !envelopes.iter().any(|envelope| {
+                envelope
+                    .label_provider_ids
+                    .iter()
+                    .any(|provider_id| provider_id == "INBOX")
+                    && envelope
+                        .label_provider_ids
+                        .iter()
+                        .any(|provider_id| provider_id == "Archive")
+            }),
+            "folder-based providers should not be flattened into one message with two folders: {envelopes:?}"
+        );
+        assert!(
+            envelopes
+                .iter()
+                .any(|envelope| envelope.label_provider_ids == vec!["INBOX".to_string()]),
+            "expected inbox copy after folder add"
+        );
+        assert!(
+            envelopes
+                .iter()
+                .any(|envelope| envelope.label_provider_ids == vec!["Archive".to_string()]),
+            "expected archive copy after folder add"
+        );
+    }
+
+    #[tokio::test]
+    async fn snooze_on_folder_provider_reanchors_to_reconciled_message_copy() {
+        let state = folder_copy_state().await;
+        let original_id = sync_and_get_first_id(&state).await;
+
+        let snooze = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Snooze {
+                message_id: original_id.clone(),
+                wake_at: chrono::Utc::now() + chrono::Duration::hours(4),
+            }),
+        };
+        match handle_request(&state, &snooze).await.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("Expected Ack for Snooze, got {:?}", other),
+        }
+
+        let snoozed = state.store.list_snoozed().await.unwrap();
+        assert_eq!(snoozed.len(), 1, "expected one snoozed message");
+        assert_ne!(
+            snoozed[0].message_id, original_id,
+            "folder-backed snooze should track the reconciled message copy"
+        );
+
+        let archived = state
+            .store
+            .list_envelopes_by_account(&state.default_account_id(), 20, 0)
+            .await
+            .unwrap();
+        assert_eq!(
+            archived.len(),
+            1,
+            "expected exactly one archived copy after snooze: {archived:?}"
+        );
+        assert!(
+            archived
+                .iter()
+                .all(|envelope| envelope.label_provider_ids == vec!["Archive".to_string()]),
+            "expected only archived copy after snooze: {archived:?}"
+        );
+
+        let unsnooze = IpcMessage {
+            id: 2,
+            payload: IpcPayload::Request(Request::Unsnooze {
+                message_id: snoozed[0].message_id.clone(),
+            }),
+        };
+        match handle_request(&state, &unsnooze).await.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("Expected Ack for Unsnooze, got {:?}", other),
+        }
+
+        let inbox = state
+            .store
+            .list_envelopes_by_account(&state.default_account_id(), 20, 0)
+            .await
+            .unwrap();
+        assert_eq!(
+            inbox.len(),
+            1,
+            "expected exactly one inbox copy after unsnooze: {inbox:?}"
+        );
+        assert!(
+            inbox
+                .iter()
+                .all(|envelope| envelope.label_provider_ids == vec!["INBOX".to_string()]),
+            "expected only inbox copy after unsnooze: {inbox:?}"
+        );
+        assert!(
+            state.store.list_snoozed().await.unwrap().is_empty(),
+            "expected snooze row to be cleared after unsnooze"
+        );
+    }
+
+    #[tokio::test]
+    async fn snooze_on_folder_provider_errors_when_reconciled_copy_is_missing() {
+        let state = folder_copy_state_with_mode(FolderCopyReanchorMode::MissingAfterArchive).await;
+        let original_id = sync_and_get_first_id(&state).await;
+
+        let snooze = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Snooze {
+                message_id: original_id,
+                wake_at: chrono::Utc::now() + chrono::Duration::hours(4),
+            }),
+        };
+        match handle_request(&state, &snooze).await.payload {
+            IpcPayload::Response(Response::Error { message }) => {
+                assert!(
+                    message.contains("Reconciled message not found"),
+                    "expected missing reanchor error, got: {message}"
+                );
+            }
+            other => panic!(
+                "Expected Error for missing reconciled snooze copy, got {:?}",
+                other
+            ),
+        }
+
+        assert!(
+            state.store.list_snoozed().await.unwrap().is_empty(),
+            "expected no snooze row after failed reanchor"
+        );
+        assert!(
+            state
+                .store
+                .list_envelopes_by_account(&state.default_account_id(), 20, 0)
+                .await
+                .unwrap()
+                .is_empty(),
+            "expected provider sync to reflect the missing reconciled copy"
+        );
     }
 
     #[tokio::test]

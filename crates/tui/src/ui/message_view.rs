@@ -68,8 +68,8 @@ pub fn draw(
             blocks.push(RenderBlock::Text(vec![
                 Line::from(""),
                 Line::from(Span::styled(
-                "────────────────────────────────────────",
-                Style::default().fg(theme.text_muted),
+                    "────────────────────────────────────────",
+                    Style::default().fg(theme.text_muted),
                 )),
                 Line::from(""),
             ]));
@@ -622,7 +622,9 @@ fn render_blocks(
         let block_area = Rect::new(area.x, y, area.width, visible_height);
 
         match block {
-            RenderBlock::Text(lines) => render_text_block(frame, block_area, &lines, remaining_scroll),
+            RenderBlock::Text(lines) => {
+                render_text_block(frame, block_area, &lines, remaining_scroll)
+            }
             RenderBlock::Image(image) => render_image_block(
                 frame,
                 block_area,
@@ -653,7 +655,9 @@ fn render_block_height(
         RenderBlock::Text(lines) => Paragraph::new(lines.clone())
             .wrap(Wrap { trim: false })
             .line_count(width) as u16,
-        RenderBlock::Image(image) => image_block_total_height(image, width, viewport_height, html_images),
+        RenderBlock::Image(image) => {
+            image_block_total_height(image, width, viewport_height, html_images)
+        }
     }
 }
 
@@ -706,13 +710,15 @@ fn render_image_block(
     };
 
     let caption_height = u16::from(!image.label.trim().is_empty());
-    let image_height = entry.height_for(area.width, max_image_height(total_height.max(area.height)));
+    let image_height =
+        entry.height_for(area.width, max_image_height(total_height.max(area.height)));
     let fully_visible = scroll == 0 && area.height >= total_height;
 
     if fully_visible {
         if let Some(protocol) = entry.ready_protocol_mut() {
             if image_height > 0 {
-                let image_area = Rect::new(area.x, area.y, area.width, image_height.min(area.height));
+                let image_area =
+                    Rect::new(area.x, area.y, area.width, image_height.min(area.height));
                 frame.render_widget(Clear, image_area);
                 frame.render_widget(
                     Block::new().style(Style::default().bg(theme.hint_bar_bg)),
@@ -815,17 +821,14 @@ fn rich_line_to_blocks(
     let image_specs = tagged
         .iter()
         .filter_map(|tagged| {
-            tagged
-                .tag
-                .iter()
-                .find_map(|annotation| match annotation {
-                    RichAnnotation::Image(source) => Some(HtmlImageBlock {
-                        message_id: message_id.clone(),
-                        source: source.clone(),
-                        label: tagged.s.trim().to_string(),
-                    }),
-                    _ => None,
-                })
+            tagged.tag.iter().find_map(|annotation| match annotation {
+                RichAnnotation::Image(source) => Some(HtmlImageBlock {
+                    message_id: message_id.clone(),
+                    source: source.clone(),
+                    label: tagged.s.trim().to_string(),
+                }),
+                _ => None,
+            })
         })
         .collect::<Vec<_>>();
 
@@ -844,12 +847,7 @@ fn rich_line_to_blocks(
         let spans = tagged
             .into_iter()
             .filter_map(|tagged| {
-                let span = rich_span(
-                    tagged.s.clone(),
-                    &tagged.tag,
-                    theme,
-                    remote_content_enabled,
-                );
+                let span = rich_span(tagged.s.clone(), &tagged.tag, theme, remote_content_enabled);
                 (!span.content.is_empty()).then_some(span)
             })
             .collect::<Vec<_>>();
@@ -874,9 +872,7 @@ fn rich_span(
         match annotation {
             RichAnnotation::Default => {}
             RichAnnotation::Link(url) => {
-                style = style
-                    .fg(theme.link_fg)
-                    .add_modifier(Modifier::UNDERLINED);
+                style = style.fg(theme.link_fg).add_modifier(Modifier::UNDERLINED);
                 if text.is_empty() {
                     text = url.clone();
                 }
@@ -950,14 +946,10 @@ fn image_placeholder_lines(
             ),
             HtmlImageAssetStatus::Failed => (
                 format!("[image unavailable: {label}]"),
-                entry
-                    .asset
-                    .detail
-                    .clone()
-                    .or_else(|| match &entry.render {
-                        HtmlImageRenderState::Failed(message) => Some(message.clone()),
-                        HtmlImageRenderState::Pending | HtmlImageRenderState::Ready(_) => None,
-                    }),
+                entry.asset.detail.clone().or_else(|| match &entry.render {
+                    HtmlImageRenderState::Failed(message) => Some(message.clone()),
+                    HtmlImageRenderState::Pending | HtmlImageRenderState::Ready(_) => None,
+                }),
             ),
             HtmlImageAssetStatus::Ready => match &entry.render {
                 HtmlImageRenderState::Pending => (

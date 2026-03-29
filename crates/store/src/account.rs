@@ -14,16 +14,8 @@ impl super::Store {
             .as_ref()
             .map(|backend| encode_json(&backend.provider_kind))
             .transpose()?;
-        let sync_config = account
-            .sync_backend
-            .as_ref()
-            .map(encode_json)
-            .transpose()?;
-        let send_config = account
-            .send_backend
-            .as_ref()
-            .map(encode_json)
-            .transpose()?;
+        let sync_config = account.sync_backend.as_ref().map(encode_json).transpose()?;
+        let send_config = account.send_backend.as_ref().map(encode_json).transpose()?;
         let now = chrono::Utc::now().timestamp();
 
         sqlx::query!(

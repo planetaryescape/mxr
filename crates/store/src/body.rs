@@ -33,7 +33,11 @@ impl super::Store {
         .bind(att_mid)
         .fetch_all(self.reader())
         .await?;
-        trace_query("body.get_body.attachments", started_at, attachments_rows.len());
+        trace_query(
+            "body.get_body.attachments",
+            started_at,
+            attachments_rows.len(),
+        );
 
         let attachments: Vec<AttachmentMeta> = attachments_rows
             .into_iter()
@@ -43,9 +47,9 @@ impl super::Store {
                     message_id: decode_id(r.try_get::<&str, _>("message_id")?)?,
                     filename: r.try_get("filename")?,
                     mime_type: r.try_get("mime_type")?,
-                    disposition: decode_attachment_disposition(r.try_get::<&str, _>(
-                        "disposition",
-                    )?)?,
+                    disposition: decode_attachment_disposition(
+                        r.try_get::<&str, _>("disposition")?,
+                    )?,
                     content_id: r.try_get("content_id")?,
                     content_location: r.try_get("content_location")?,
                     size_bytes: r.try_get::<i64, _>("size_bytes")? as u64,

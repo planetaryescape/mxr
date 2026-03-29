@@ -15,7 +15,7 @@ jobs:
       has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
       is_release_pr_merge: ${{ steps.release-merge.outputs.is_release_pr_merge }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - id: previous-tag

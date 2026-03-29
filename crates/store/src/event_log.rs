@@ -1,4 +1,4 @@
-use crate::mxr_core::AccountId;
+use mxr_core::AccountId;
 use sqlx::Row;
 
 pub struct EventLogEntry {
@@ -152,4 +152,4 @@ impl super::Store {
             .and_then(|timestamp| chrono::DateTime::from_timestamp(timestamp, 0)))
     }
 }
-use crate::mxr_store::decode_id;
+use crate::decode_id;

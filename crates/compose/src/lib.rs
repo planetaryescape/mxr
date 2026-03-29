@@ -5,7 +5,7 @@ pub mod frontmatter;
 pub mod parse;
 pub mod render;
 
-use crate::mxr_compose::frontmatter::{ComposeError, ComposeFrontmatter};
+use crate::frontmatter::{ComposeError, ComposeFrontmatter};
 use std::path::PathBuf;
 use uuid::Uuid;
 

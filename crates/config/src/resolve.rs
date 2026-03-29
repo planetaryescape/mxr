@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::mxr_config::types::MxrConfig;
+use crate::types::MxrConfig;
 
 /// Errors that can occur during config loading.
 #[derive(Debug, thiserror::Error)]

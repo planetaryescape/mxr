@@ -1,4 +1,4 @@
-use crate::mxr_core::{SearchMode as CoreSearchMode, SemanticProfile};
+use mxr_core::{SearchMode as CoreSearchMode, SemanticProfile};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;

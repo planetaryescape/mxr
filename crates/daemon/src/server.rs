@@ -1,13 +1,13 @@
 use crate::handler::handle_request;
 use crate::ipc_client::IpcClient;
 use crate::loops;
-use crate::mxr_protocol::{
-    AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
-    ResponseData, IPC_PROTOCOL_VERSION,
-};
 use crate::reindex::{reindex, ReindexProgress};
 use crate::state::AppState;
 use futures::{FutureExt, SinkExt, StreamExt};
+use mxr_protocol::{
+    AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
+    ResponseData, IPC_PROTOCOL_VERSION,
+};
 use std::any::Any;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -149,13 +149,13 @@ pub async fn ensure_daemon_supports_tui() -> anyhow::Result<()> {
         fetch_daemon_status_snapshot_from_path(&AppState::socket_path(), STATUS_REQUEST_TIMEOUT)
             .await?;
 
-    if snapshot.protocol_version >= crate::mxr_protocol::IPC_PROTOCOL_VERSION {
+    if snapshot.protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION {
         Ok(())
     } else {
         anyhow::bail!(
             "The running daemon is using IPC protocol {} but this TUI expects {}. Restart the existing daemon after upgrading, then rerun `mxr`.",
             snapshot.protocol_version,
-            crate::mxr_protocol::IPC_PROTOCOL_VERSION
+            mxr_protocol::IPC_PROTOCOL_VERSION
         )
     }
 }
@@ -226,7 +226,7 @@ pub(crate) async fn search_requires_repair(state: &Arc<AppState>, total_messages
         return false;
     };
 
-    match search.search("*", 1, 0, crate::mxr_core::types::SortOrder::DateDesc) {
+    match search.search("*", 1, 0, mxr_core::types::SortOrder::DateDesc) {
         Ok(results) => results.results.is_empty(),
         Err(_) => true,
     }
@@ -505,17 +505,17 @@ mod tests {
         classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_status,
         guard_ipc_response, is_index_lock_error, spawn_startup_maintenance,
     };
-    use crate::mxr_core::{
-        id::{AccountId, MessageId, ThreadId},
-        types::{Address, Envelope, MessageFlags, UnsubscribeMethod},
-    };
-    use crate::mxr_protocol::{
-        AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
-        ResponseData, IPC_PROTOCOL_VERSION,
-    };
     use crate::{handler::handle_request, state::AppState};
     use chrono::Utc;
     use futures::{SinkExt, StreamExt};
+    use mxr_core::{
+        id::{AccountId, MessageId, ThreadId},
+        types::{Address, Envelope, MessageFlags, UnsubscribeMethod},
+    };
+    use mxr_protocol::{
+        AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
+        ResponseData, IPC_PROTOCOL_VERSION,
+    };
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::net::UnixListener;
@@ -536,12 +536,12 @@ mod tests {
     fn restart_required_for_build_mismatch() {
         assert!(daemon_requires_restart(0, Some("0.0.0"), None));
         assert!(daemon_requires_restart(
-            crate::mxr_protocol::IPC_PROTOCOL_VERSION,
+            mxr_protocol::IPC_PROTOCOL_VERSION,
             Some(env!("CARGO_PKG_VERSION")),
             Some("other-build"),
         ));
         assert!(!daemon_requires_restart(
-            crate::mxr_protocol::IPC_PROTOCOL_VERSION,
+            mxr_protocol::IPC_PROTOCOL_VERSION,
             Some(env!("CARGO_PKG_VERSION")),
             Some(current_build_id().as_str()),
         ));
@@ -662,12 +662,7 @@ mod tests {
             .search
             .lock()
             .await
-            .search(
-                "missing",
-                10,
-                0,
-                crate::mxr_core::types::SortOrder::DateDesc
-            )
+            .search("missing", 10, 0, mxr_core::types::SortOrder::DateDesc)
             .expect("pre-maintenance search")
             .results
             .is_empty());
@@ -681,12 +676,7 @@ mod tests {
             .search
             .lock()
             .await
-            .search(
-                "missing",
-                10,
-                0,
-                crate::mxr_core::types::SortOrder::DateDesc,
-            )
+            .search("missing", 10, 0, mxr_core::types::SortOrder::DateDesc)
             .expect("search after reindex");
         assert_eq!(results.results.len(), 1);
     }
@@ -731,12 +721,7 @@ mod tests {
             .search
             .lock()
             .await
-            .search(
-                "startup",
-                10,
-                0,
-                crate::mxr_core::types::SortOrder::DateDesc
-            )
+            .search("startup", 10, 0, mxr_core::types::SortOrder::DateDesc)
             .expect("empty search")
             .results
             .is_empty());
@@ -765,12 +750,7 @@ mod tests {
             .search
             .lock()
             .await
-            .search(
-                "startup",
-                10,
-                0,
-                crate::mxr_core::types::SortOrder::DateDesc,
-            )
+            .search("startup", 10, 0, mxr_core::types::SortOrder::DateDesc)
             .expect("search after reindex");
         assert_eq!(results.results.len(), 1);
     }

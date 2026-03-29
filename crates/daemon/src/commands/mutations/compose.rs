@@ -1,5 +1,5 @@
 use crate::ipc_client::IpcClient;
-use crate::mxr_protocol::*;
+use mxr_protocol::*;
 use std::path::PathBuf;
 
 use super::helpers::parse_message_id;
@@ -21,7 +21,7 @@ pub(super) fn resolve_compose_from_address(explicit_from: Option<String>) -> Str
         return from;
     }
 
-    let config = crate::mxr_config::load_config().unwrap_or_default();
+    let config = mxr_config::load_config().unwrap_or_default();
     if let Some(default_key) = config.general.default_account.as_deref() {
         if let Some(account) = config.accounts.get(default_key) {
             return account.email.clone();
@@ -43,7 +43,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     }
 
     let (path, cursor_line) =
-        crate::mxr_compose::create_draft_file(crate::mxr_compose::ComposeKind::New, &from_addr)?;
+        mxr_compose::create_draft_file(mxr_compose::ComposeKind::New, &from_addr)?;
 
     // If inline body provided, append it to the draft file
     if let Some(b) = &options.body {
@@ -81,8 +81,8 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         std::fs::write(&path, updated)?;
     }
 
-    let editor = crate::mxr_compose::editor::resolve_editor(None);
-    crate::mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
+    let editor = mxr_compose::editor::resolve_editor(None);
+    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
 
     println!("Draft saved to {}", path.display());
     Ok(())
@@ -118,8 +118,8 @@ pub async fn reply(
         return Ok(());
     }
 
-    let (path, cursor_line) = crate::mxr_compose::create_draft_file(
-        crate::mxr_compose::ComposeKind::Reply {
+    let (path, cursor_line) = mxr_compose::create_draft_file(
+        mxr_compose::ComposeKind::Reply {
             in_reply_to: ctx.in_reply_to,
             references: ctx.references,
             to: ctx.reply_to,
@@ -141,8 +141,8 @@ pub async fn reply(
         std::fs::write(&path, format!("{content}{stdin_body}"))?;
     }
 
-    let editor = crate::mxr_compose::editor::resolve_editor(None);
-    crate::mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
+    let editor = mxr_compose::editor::resolve_editor(None);
+    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
 
     println!("Draft saved to {}", path.display());
     Ok(())
@@ -178,8 +178,8 @@ pub async fn reply_all(
         return Ok(());
     }
 
-    let (path, cursor_line) = crate::mxr_compose::create_draft_file(
-        crate::mxr_compose::ComposeKind::Reply {
+    let (path, cursor_line) = mxr_compose::create_draft_file(
+        mxr_compose::ComposeKind::Reply {
             in_reply_to: ctx.in_reply_to,
             references: ctx.references,
             to: ctx.reply_to,
@@ -201,8 +201,8 @@ pub async fn reply_all(
         std::fs::write(&path, format!("{content}{stdin_body}"))?;
     }
 
-    let editor = crate::mxr_compose::editor::resolve_editor(None);
-    crate::mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
+    let editor = mxr_compose::editor::resolve_editor(None);
+    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
 
     println!("Draft saved to {}", path.display());
     Ok(())
@@ -236,8 +236,8 @@ pub async fn forward(
         return Ok(());
     }
 
-    let (path, cursor_line) = crate::mxr_compose::create_draft_file(
-        crate::mxr_compose::ComposeKind::Forward {
+    let (path, cursor_line) = mxr_compose::create_draft_file(
+        mxr_compose::ComposeKind::Forward {
             subject: ctx.subject,
             original_context: ctx.forwarded_content,
         },
@@ -262,8 +262,8 @@ pub async fn forward(
         std::fs::write(&path, format!("{content}{stdin_body}"))?;
     }
 
-    let editor = crate::mxr_compose::editor::resolve_editor(None);
-    crate::mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
+    let editor = mxr_compose::editor::resolve_editor(None);
+    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
 
     println!("Draft saved to {}", path.display());
     Ok(())
@@ -306,7 +306,7 @@ mod tests {
     use crate::commands::mutations::helpers::{
         render_selection_preview_lines, requires_confirmation, MutationSelection,
     };
-    use crate::mxr_core::types::Envelope;
+    use mxr_core::types::Envelope;
 
     #[test]
     fn compose_from_prefers_explicit_value() {

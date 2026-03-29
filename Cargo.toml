@@ -7,6 +7,7 @@ repository.workspace = true
 homepage.workspace = true
 description = "A programmable, agent-native email client. One CLI across all your providers."
 readme = "README.md"
+publish = false
 include = [
     "Cargo.toml",
     "Cargo.lock",
@@ -36,20 +37,37 @@ path = "crates/tui/examples/export_desktop_manifest.rs"
 [features]
 default = ["semantic-local"]
 semantic-local = ["local"]
-local = [
-    "dep:calamine",
-    "dep:fastembed",
-    "dep:hnsw_rs",
-    "dep:sha2",
-    "dep:tempfile",
-    "dep:undoc",
-    "dep:unpdf",
-]
+local = ["mxr-semantic/local"]
 
 [workspace]
 resolver = "2"
 members = [
+    ".",
+    "crates/compose",
+    "crates/config",
+    "crates/core",
+    "crates/export",
+    "crates/mail-parse",
+    "crates/outbound",
+    "crates/protocol",
+    "crates/provider-fake",
+    "crates/provider-gmail",
+    "crates/provider-imap",
+    "crates/provider-smtp",
+    "crates/reader",
+    "crates/rules",
+    "crates/search",
+    "crates/semantic",
+    "crates/store",
+    "crates/sync",
     "crates/test-support",
+    "crates/tui",
+    "crates/web",
+]
+default-members = ["."]
+exclude = [
+    "examples/adapter-skeleton",
+    "fuzz",
 ]
 
 [workspace.package]
@@ -72,11 +90,32 @@ panic = "warn"
 todo = "warn"
 
 [workspace.dependencies]
+mxr-compose = { path = "crates/compose", version = "0.4.29" }
+mxr-config = { path = "crates/config", version = "0.4.29" }
+mxr-core = { path = "crates/core", version = "0.4.29" }
+mxr-export = { path = "crates/export", version = "0.4.29" }
+mxr-mail-parse = { path = "crates/mail-parse", version = "0.4.29" }
+mxr-outbound = { path = "crates/outbound", version = "0.4.29" }
+mxr-protocol = { path = "crates/protocol", version = "0.4.29" }
+mxr-provider-fake = { path = "crates/provider-fake", version = "0.4.29" }
+mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.4.29" }
+mxr-provider-imap = { path = "crates/provider-imap", version = "0.4.29" }
+mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.4.29" }
+mxr-reader = { path = "crates/reader", version = "0.4.29" }
+mxr-rules = { path = "crates/rules", version = "0.4.29" }
+mxr-search = { path = "crates/search", version = "0.4.29" }
+mxr-semantic = { path = "crates/semantic", version = "0.4.29" }
+mxr-store = { path = "crates/store", version = "0.4.29" }
+mxr-sync = { path = "crates/sync", version = "0.4.29" }
+mxr-test-support = { path = "crates/test-support", version = "0.4.29" }
+mxr-tui = { path = "crates/tui", version = "0.4.29" }
+mxr-web = { path = "crates/web", version = "0.4.29" }
+
 glob-match = "0.2"
 which = "7"
 
 # IMAP (fork with ENABLE/NAMESPACE support, published as mxr-async-imap)
-async-imap = { package = "mxr-async-imap", path = "vendor/async-imap", version = "0.10.6" }
+async-imap = { package = "mxr-async-imap", version = "0.10.6" }
 async-native-tls = "0.5"
 
 # Async
@@ -170,8 +209,27 @@ pretty_assertions = "1"
 insta = { version = "1", features = ["yaml"] }
 assert_cmd = "2"
 predicates = "3"
+proptest = "1"
 
 [dependencies]
+mxr-compose = { workspace = true }
+mxr-config = { workspace = true }
+mxr-core = { workspace = true }
+mxr-export = { workspace = true }
+mxr-protocol = { workspace = true }
+mxr-provider-fake = { workspace = true }
+mxr-provider-gmail = { workspace = true }
+mxr-provider-imap = { workspace = true }
+mxr-provider-smtp = { workspace = true }
+mxr-reader = { workspace = true }
+mxr-rules = { workspace = true }
+mxr-search = { workspace = true }
+mxr-semantic = { workspace = true }
+mxr-store = { workspace = true }
+mxr-sync = { workspace = true }
+mxr-tui = { workspace = true }
+mxr-web = { workspace = true }
+
 anyhow = { workspace = true }
 async-imap = { workspace = true }
 async-native-tls = { workspace = true }
@@ -181,17 +239,14 @@ axum = { workspace = true }
 base64 = { workspace = true }
 bitflags = { workspace = true }
 bytes = { workspace = true }
-calamine = { version = "0.34", optional = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 clap_complete = { workspace = true }
 comrak = { workspace = true, default-features = false, features = ["shortcodes"] }
 crossterm = { workspace = true, features = ["event-stream"] }
 dirs = { workspace = true }
-fastembed = { version = "5.13", optional = true }
 futures = { workspace = true }
 glob-match = { workspace = true }
-hnsw_rs = { version = "0.3.4", optional = true }
 html2text = { workspace = true }
 keyring = { workspace = true }
 lettre = { workspace = true }
@@ -206,10 +261,8 @@ serde = { workspace = true }
 serde_bytes = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
-sha2 = { version = "0.10", optional = true }
 sqlx = { workspace = true }
 tantivy = { workspace = true }
-tempfile = { workspace = true, optional = true }
 thiserror = { workspace = true }
 throbber-widgets-tui = "0.11.0"
 tokio = { workspace = true }
@@ -220,9 +273,7 @@ tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tui-textarea = { package = "tui-textarea-2", version = "0.10.2" }
-undoc = { version = "0.1", optional = true }
 unicode-width = { workspace = true }
-unpdf = { version = "0.2", optional = true }
 url = { workspace = true }
 uuid = { workspace = true }
 scraper = { workspace = true }
@@ -237,7 +288,7 @@ image = { workspace = true }
 assert_cmd = { workspace = true }
 criterion = "0.5"
 insta = { workspace = true }
-mxr-test-support = { path = "crates/test-support" }
+mxr-test-support = { workspace = true }
 predicates = { workspace = true }
 pretty_assertions = { workspace = true }
 proptest = "1"
@@ -259,18 +310,6 @@ harness = false
 [[bench]]
 name = "reader_pipeline"
 harness = false
-
-[[test]]
-name = "provider_gmail_offline_smoke"
-path = "crates/provider-gmail/tests/live_smoke.rs"
-
-[[test]]
-name = "provider_imap_offline_smoke"
-path = "crates/provider-imap/tests/live_smoke.rs"
-
-[[test]]
-name = "provider_smtp_offline_smoke"
-path = "crates/provider-smtp/tests/live_smoke.rs"
 
 [lints]
 workspace = true

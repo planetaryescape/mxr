@@ -1,0 +1,27 @@
+[package]
+name = "mxr-sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+mxr-search = { workspace = true }
+mxr-store = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mxr-provider-fake = { workspace = true }
+pretty_assertions = { workspace = true }
+sqlx = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }

@@ -1,4 +1,4 @@
-use crate::mxr_rules::RuleId;
+use crate::RuleId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 

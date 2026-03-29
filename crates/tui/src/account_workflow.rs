@@ -1,10 +1,10 @@
-use crate::mxr_config::socket_path as config_socket_path;
-use crate::mxr_core::MxrError;
-use crate::mxr_protocol::{
+use mxr_config::socket_path as config_socket_path;
+use mxr_core::MxrError;
+use mxr_protocol::{
     AccountConfigData, AccountOperationResult, AccountSyncConfigData, Request, Response,
     ResponseData,
 };
-use crate::mxr_tui::ipc::{ipc_call, IpcRequest};
+use crate::ipc::{ipc_call, IpcRequest};
 use tokio::sync::mpsc;
 
 pub(crate) fn daemon_socket_path() -> std::path::PathBuf {

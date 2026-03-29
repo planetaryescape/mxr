@@ -1,5 +1,5 @@
 use crate::ipc_client::IpcClient;
-use crate::mxr_protocol::*;
+use mxr_protocol::*;
 use std::path::PathBuf;
 
 use super::helpers::{
@@ -49,7 +49,7 @@ pub async fn attachments_download(
     let mut client = IpcClient::connect().await?;
     let attachments = load_attachments(&mut client, &id).await?;
 
-    let selected: Vec<(usize, &crate::mxr_core::AttachmentMeta)> = match index {
+    let selected: Vec<(usize, &mxr_core::AttachmentMeta)> = match index {
         Some(index) => vec![(index, attachment_by_index(&attachments, index)?)],
         None => attachments
             .iter()

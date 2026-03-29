@@ -1,7 +1,7 @@
 use super::{diagnostics_impl, HandlerResult};
-use crate::mxr_core::id::AccountId;
-use crate::mxr_core::types::{SearchMode, SemanticProfile};
 use crate::state::AppState;
+use mxr_core::id::AccountId;
+use mxr_core::types::{SearchMode, SemanticProfile};
 use std::sync::Arc;
 
 pub(super) async fn list_saved_searches(state: &Arc<AppState>) -> HandlerResult {

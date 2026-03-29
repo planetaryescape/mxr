@@ -1,11 +1,8 @@
-use crate::mxr_core::types::system_labels;
-use crate::mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp};
 use chrono::Datelike;
+use mxr_core::types::system_labels;
+use mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp};
 
-pub(super) fn matches_structured_filters(
-    node: &QueryNode,
-    envelope: &crate::mxr_core::Envelope,
-) -> bool {
+pub(super) fn matches_structured_filters(node: &QueryNode, envelope: &mxr_core::Envelope) -> bool {
     match node {
         QueryNode::Text(_) | QueryNode::Phrase(_) => true,
         QueryNode::Field { field, value } => match field {
@@ -54,24 +51,16 @@ fn address_matches(email: &str, name: Option<&str>, value: &str) -> bool {
             .contains(&needle)
 }
 
-fn matches_filter(filter: &FilterKind, envelope: &crate::mxr_core::Envelope) -> bool {
+fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
     match filter {
-        FilterKind::Unread => !envelope.flags.contains(crate::mxr_core::MessageFlags::READ),
-        FilterKind::Read => envelope.flags.contains(crate::mxr_core::MessageFlags::READ),
-        FilterKind::Starred => envelope
-            .flags
-            .contains(crate::mxr_core::MessageFlags::STARRED),
-        FilterKind::Draft => envelope
-            .flags
-            .contains(crate::mxr_core::MessageFlags::DRAFT),
-        FilterKind::Sent => envelope.flags.contains(crate::mxr_core::MessageFlags::SENT),
-        FilterKind::Trash => envelope
-            .flags
-            .contains(crate::mxr_core::MessageFlags::TRASH),
-        FilterKind::Spam => envelope.flags.contains(crate::mxr_core::MessageFlags::SPAM),
-        FilterKind::Answered => envelope
-            .flags
-            .contains(crate::mxr_core::MessageFlags::ANSWERED),
+        FilterKind::Unread => !envelope.flags.contains(mxr_core::MessageFlags::READ),
+        FilterKind::Read => envelope.flags.contains(mxr_core::MessageFlags::READ),
+        FilterKind::Starred => envelope.flags.contains(mxr_core::MessageFlags::STARRED),
+        FilterKind::Draft => envelope.flags.contains(mxr_core::MessageFlags::DRAFT),
+        FilterKind::Sent => envelope.flags.contains(mxr_core::MessageFlags::SENT),
+        FilterKind::Trash => envelope.flags.contains(mxr_core::MessageFlags::TRASH),
+        FilterKind::Spam => envelope.flags.contains(mxr_core::MessageFlags::SPAM),
+        FilterKind::Answered => envelope.flags.contains(mxr_core::MessageFlags::ANSWERED),
         FilterKind::Inbox => envelope
             .label_provider_ids
             .iter()
@@ -81,20 +70,16 @@ fn matches_filter(filter: &FilterKind, envelope: &crate::mxr_core::Envelope) -> 
                 .label_provider_ids
                 .iter()
                 .any(|label| label.eq_ignore_ascii_case(system_labels::INBOX))
-                && !envelope.flags.contains(crate::mxr_core::MessageFlags::SENT)
-                && !envelope
-                    .flags
-                    .contains(crate::mxr_core::MessageFlags::DRAFT)
-                && !envelope
-                    .flags
-                    .contains(crate::mxr_core::MessageFlags::TRASH)
-                && !envelope.flags.contains(crate::mxr_core::MessageFlags::SPAM)
+                && !envelope.flags.contains(mxr_core::MessageFlags::SENT)
+                && !envelope.flags.contains(mxr_core::MessageFlags::DRAFT)
+                && !envelope.flags.contains(mxr_core::MessageFlags::TRASH)
+                && !envelope.flags.contains(mxr_core::MessageFlags::SPAM)
         }
         FilterKind::HasAttachment => envelope.has_attachments,
     }
 }
 
-fn matches_date(bound: &DateBound, date: &DateValue, envelope: &crate::mxr_core::Envelope) -> bool {
+fn matches_date(bound: &DateBound, date: &DateValue, envelope: &mxr_core::Envelope) -> bool {
     let message_date = envelope.date.date_naive();
     let resolved = resolve_date_value(date);
     match bound {

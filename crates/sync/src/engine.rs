@@ -1,13 +1,13 @@
-use crate::mxr_core::id::*;
-use crate::mxr_core::types::*;
-use crate::mxr_core::{MailSyncProvider, MxrError};
-use crate::mxr_search::SearchIndex;
-use crate::mxr_store::Store;
+use mxr_core::id::*;
+use mxr_core::types::*;
+use mxr_core::{MailSyncProvider, MxrError};
+use mxr_search::SearchIndex;
+use mxr_store::Store;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::mxr_sync::threading::{thread_messages, MessageForThreading};
+use crate::threading::{thread_messages, MessageForThreading};
 
 pub struct SyncOutcome {
     pub synced_count: u32,

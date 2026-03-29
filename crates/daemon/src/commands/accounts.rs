@@ -1,11 +1,11 @@
 use crate::cli::AccountsAction;
-use crate::mxr_core::provider::MailSyncProvider;
-use crate::mxr_provider_gmail::auth::{GmailAuth, BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET};
+use mxr_core::provider::MailSyncProvider;
+use mxr_provider_gmail::auth::{GmailAuth, BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET};
 
 pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
     match action {
         None => {
-            let config = crate::mxr_config::load_config().unwrap_or_default();
+            let config = mxr_config::load_config().unwrap_or_default();
             if config.accounts.is_empty() {
                 println!("No accounts configured.");
                 println!("Run: mxr accounts add gmail|imap|smtp|imap-smtp");
@@ -33,7 +33,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
             ),
         },
         Some(AccountsAction::Show { name }) => {
-            let config = crate::mxr_config::load_config().unwrap_or_default();
+            let config = mxr_config::load_config().unwrap_or_default();
             match config.accounts.get(&name) {
                 Some(acct) => {
                     println!("Name:  {}", acct.name);
@@ -45,7 +45,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
             }
         }
         Some(AccountsAction::Test { name }) => {
-            let config = crate::mxr_config::load_config().unwrap_or_default();
+            let config = mxr_config::load_config().unwrap_or_default();
             let acct = config
                 .accounts
                 .get(&name)
@@ -53,7 +53,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
 
             if let Some(sync) = &acct.sync {
                 match sync {
-                    crate::mxr_config::SyncProviderConfig::Gmail {
+                    mxr_config::SyncProviderConfig::Gmail {
                         credential_source: _,
                         client_id,
                         client_secret,
@@ -66,8 +66,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                             token_ref.clone(),
                         );
                         auth.load_existing().await?;
-                        let gmail_client =
-                            crate::mxr_provider_gmail::client::GmailClient::new(auth);
+                        let gmail_client = mxr_provider_gmail::client::GmailClient::new(auth);
                         let count = gmail_client
                             .list_labels()
                             .await?
@@ -76,7 +75,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                             .unwrap_or(0);
                         println!("Gmail sync ok for '{}': {} labels", name, count);
                     }
-                    crate::mxr_config::SyncProviderConfig::Imap {
+                    mxr_config::SyncProviderConfig::Imap {
                         host,
                         port,
                         username,
@@ -84,11 +83,10 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                         auth_required,
                         use_tls,
                     } => {
-                        let account_id =
-                            crate::mxr_core::AccountId::from_provider_id("imap", &acct.email);
-                        let provider = crate::mxr_provider_imap::ImapProvider::new(
+                        let account_id = mxr_core::AccountId::from_provider_id("imap", &acct.email);
+                        let provider = mxr_provider_imap::ImapProvider::new(
                             account_id,
-                            crate::mxr_provider_imap::config::ImapConfig {
+                            mxr_provider_imap::config::ImapConfig {
                                 host: host.clone(),
                                 port: *port,
                                 username: username.clone(),
@@ -105,10 +103,10 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
 
             if let Some(send) = &acct.send {
                 match send {
-                    crate::mxr_config::SendProviderConfig::Gmail => {
+                    mxr_config::SendProviderConfig::Gmail => {
                         println!("Gmail send ok for '{}'", name);
                     }
-                    crate::mxr_config::SendProviderConfig::Smtp {
+                    mxr_config::SendProviderConfig::Smtp {
                         host,
                         port,
                         username,
@@ -116,8 +114,8 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                         auth_required,
                         use_tls,
                     } => {
-                        let provider = crate::mxr_provider_smtp::SmtpSendProvider::new(
-                            crate::mxr_provider_smtp::config::SmtpConfig {
+                        let provider = mxr_provider_smtp::SmtpSendProvider::new(
+                            mxr_provider_smtp::config::SmtpConfig {
                                 host: host.clone(),
                                 port: *port,
                                 username: username.clone(),
@@ -144,7 +142,7 @@ async fn add_gmail() -> anyhow::Result<()> {
             (Some(id), Some(secret)) => {
                 println!("Using bundled OAuth credentials.");
                 (
-                    crate::mxr_config::GmailCredentialSource::Bundled,
+                    mxr_config::GmailCredentialSource::Bundled,
                     id.to_string(),
                     secret.to_string(),
                 )
@@ -158,7 +156,7 @@ async fn add_gmail() -> anyhow::Result<()> {
                 );
                 let id = prompt("Client ID: ")?;
                 let secret = prompt("Client Secret: ")?;
-                (crate::mxr_config::GmailCredentialSource::Custom, id, secret)
+                (mxr_config::GmailCredentialSource::Custom, id, secret)
             }
         };
 
@@ -174,16 +172,16 @@ async fn add_gmail() -> anyhow::Result<()> {
 
     upsert_account(
         account_name.clone(),
-        crate::mxr_config::AccountConfig {
+        mxr_config::AccountConfig {
             name: account_name.clone(),
             email,
-            sync: Some(crate::mxr_config::SyncProviderConfig::Gmail {
+            sync: Some(mxr_config::SyncProviderConfig::Gmail {
                 credential_source,
                 client_id,
                 client_secret: Some(client_secret),
                 token_ref,
             }),
-            send: Some(crate::mxr_config::SendProviderConfig::Gmail),
+            send: Some(mxr_config::SendProviderConfig::Gmail),
         },
     )?;
 
@@ -227,7 +225,7 @@ async fn add_imap(include_smtp: bool) -> anyhow::Result<()> {
         } else {
             (String::new(), String::new())
         };
-        Some(crate::mxr_config::SendProviderConfig::Smtp {
+        Some(mxr_config::SendProviderConfig::Smtp {
             host: smtp_host,
             port: smtp_port,
             username: smtp_username,
@@ -241,10 +239,10 @@ async fn add_imap(include_smtp: bool) -> anyhow::Result<()> {
 
     upsert_account(
         account_name.clone(),
-        crate::mxr_config::AccountConfig {
+        mxr_config::AccountConfig {
             name: display_name,
             email,
-            sync: Some(crate::mxr_config::SyncProviderConfig::Imap {
+            sync: Some(mxr_config::SyncProviderConfig::Imap {
                 host: imap_host,
                 port: imap_port,
                 username: imap_username,
@@ -284,11 +282,11 @@ async fn add_smtp_only() -> anyhow::Result<()> {
 
     upsert_account(
         account_name.clone(),
-        crate::mxr_config::AccountConfig {
+        mxr_config::AccountConfig {
             name: display_name,
             email,
             sync: None,
-            send: Some(crate::mxr_config::SendProviderConfig::Smtp {
+            send: Some(mxr_config::SendProviderConfig::Smtp {
                 host: smtp_host,
                 port: smtp_port,
                 username: smtp_username,
@@ -306,36 +304,36 @@ async fn add_smtp_only() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn upsert_account(name: String, account: crate::mxr_config::AccountConfig) -> anyhow::Result<()> {
-    let mut config = crate::mxr_config::load_config().unwrap_or_default();
+fn upsert_account(name: String, account: mxr_config::AccountConfig) -> anyhow::Result<()> {
+    let mut config = mxr_config::load_config().unwrap_or_default();
     config.accounts.insert(name.clone(), account);
     if config.general.default_account.is_none() {
         config.general.default_account = Some(name);
     }
-    crate::mxr_config::save_config(&config)?;
+    mxr_config::save_config(&config)?;
     Ok(())
 }
 
 fn ensure_account_available(name: &str) -> anyhow::Result<()> {
-    let config = crate::mxr_config::load_config().unwrap_or_default();
+    let config = mxr_config::load_config().unwrap_or_default();
     if config.accounts.contains_key(name) {
         anyhow::bail!("Account '{}' already exists", name);
     }
     Ok(())
 }
 
-fn describe_sync(sync: Option<&crate::mxr_config::SyncProviderConfig>) -> &'static str {
+fn describe_sync(sync: Option<&mxr_config::SyncProviderConfig>) -> &'static str {
     match sync {
-        Some(crate::mxr_config::SyncProviderConfig::Gmail { .. }) => "gmail",
-        Some(crate::mxr_config::SyncProviderConfig::Imap { .. }) => "imap",
+        Some(mxr_config::SyncProviderConfig::Gmail { .. }) => "gmail",
+        Some(mxr_config::SyncProviderConfig::Imap { .. }) => "imap",
         None => "none",
     }
 }
 
-fn describe_send(send: Option<&crate::mxr_config::SendProviderConfig>) -> &'static str {
+fn describe_send(send: Option<&mxr_config::SendProviderConfig>) -> &'static str {
     match send {
-        Some(crate::mxr_config::SendProviderConfig::Gmail) => "gmail",
-        Some(crate::mxr_config::SendProviderConfig::Smtp { .. }) => "smtp",
+        Some(mxr_config::SendProviderConfig::Gmail) => "gmail",
+        Some(mxr_config::SendProviderConfig::Smtp { .. }) => "smtp",
         None => "none",
     }
 }

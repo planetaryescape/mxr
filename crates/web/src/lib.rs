@@ -1,19 +1,6 @@
 mod chrome;
 mod envelope_list;
 
-use crate::mxr_compose::{
-    frontmatter::{parse_compose_file, render_compose_file, ComposeFrontmatter},
-    parse::parse_address_list,
-    render::render_markdown,
-    validate_draft, ComposeKind, ComposeValidation,
-};
-use crate::mxr_config::load_config;
-use crate::mxr_core::{
-    id::LabelId,
-    id::{AccountId, DraftId, MessageId, ThreadId},
-    types::{Draft, Envelope, Label, MessageBody, ReplyHeaders, SearchMode, SortOrder},
-};
-use crate::mxr_protocol::{IpcCodec, IpcMessage, IpcPayload, Request, ResponseData};
 use axum::{
     extract::ws::{Message as WebSocketMessage, WebSocket, WebSocketUpgrade},
     extract::{Path as AxumPath, Query, State},
@@ -30,6 +17,19 @@ use envelope_list::{
     thread_reader_mode,
 };
 use futures::{SinkExt, StreamExt};
+use mxr_compose::{
+    frontmatter::{parse_compose_file, render_compose_file, ComposeFrontmatter},
+    render::render_markdown,
+    validate_draft, ComposeKind, ComposeValidation,
+};
+use mxr_config::load_config;
+use mxr_core::{
+    id::LabelId,
+    id::{AccountId, DraftId, MessageId, ThreadId},
+    types::{Draft, Envelope, Label, MessageBody, ReplyHeaders, SearchMode, SortOrder},
+};
+use mxr_mail_parse::parse_address_list;
+use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload, Request, ResponseData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::net::SocketAddr;
@@ -525,7 +525,7 @@ async fn export_thread(
         &state.config.socket_path,
         Request::ExportThread {
             thread_id: parse_thread_id(&thread_id)?,
-            format: crate::mxr_core::types::ExportFormat::Markdown,
+            format: mxr_core::types::ExportFormat::Markdown,
         },
     )
     .await?
@@ -973,7 +973,7 @@ async fn test_account(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
-    Json(account): Json<crate::mxr_protocol::AccountConfigData>,
+    Json(account): Json<mxr_protocol::AccountConfigData>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     match ipc_request(
@@ -991,7 +991,7 @@ async fn upsert_account(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
-    Json(account): Json<crate::mxr_protocol::AccountConfigData>,
+    Json(account): Json<mxr_protocol::AccountConfigData>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let result = run_account_save_workflow(&state.config.socket_path, account).await?;
@@ -1058,7 +1058,7 @@ async fn archive(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::Archive {
+        mxr_protocol::MutationCommand::Archive {
             message_ids: parse_message_ids(&request.message_ids)?,
         },
     )
@@ -1074,7 +1074,7 @@ async fn trash(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::Trash {
+        mxr_protocol::MutationCommand::Trash {
             message_ids: parse_message_ids(&request.message_ids)?,
         },
     )
@@ -1090,7 +1090,7 @@ async fn spam(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::Spam {
+        mxr_protocol::MutationCommand::Spam {
             message_ids: parse_message_ids(&request.message_ids)?,
         },
     )
@@ -1106,7 +1106,7 @@ async fn star(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::Star {
+        mxr_protocol::MutationCommand::Star {
             message_ids: parse_message_ids(&request.message_ids)?,
             starred: request.starred,
         },
@@ -1123,7 +1123,7 @@ async fn mark_read(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::SetRead {
+        mxr_protocol::MutationCommand::SetRead {
             message_ids: parse_message_ids(&request.message_ids)?,
             read: request.read,
         },
@@ -1140,7 +1140,7 @@ async fn mark_read_and_archive(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::ReadAndArchive {
+        mxr_protocol::MutationCommand::ReadAndArchive {
             message_ids: parse_message_ids(&request.message_ids)?,
         },
     )
@@ -1156,7 +1156,7 @@ async fn modify_labels(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::ModifyLabels {
+        mxr_protocol::MutationCommand::ModifyLabels {
             message_ids: parse_message_ids(&request.message_ids)?,
             add: request.add,
             remove: request.remove,
@@ -1174,7 +1174,7 @@ async fn move_messages(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::Move {
+        mxr_protocol::MutationCommand::Move {
             message_ids: parse_message_ids(&request.message_ids)?,
             target_label: request.target_label,
         },
@@ -1212,10 +1212,8 @@ async fn ipc_request(socket_path: &Path, request: Request) -> Result<ResponseDat
     loop {
         match framed.next().await {
             Some(Ok(response)) => match response.payload {
-                IpcPayload::Response(crate::mxr_protocol::Response::Ok { data }) => {
-                    return Ok(data)
-                }
-                IpcPayload::Response(crate::mxr_protocol::Response::Error { message }) => {
+                IpcPayload::Response(mxr_protocol::Response::Ok { data }) => return Ok(data),
+                IpcPayload::Response(mxr_protocol::Response::Error { message }) => {
                     return Err(BridgeError::Ipc(message));
                 }
                 IpcPayload::Event(_) => continue,
@@ -1278,9 +1276,9 @@ fn parse_message_id(value: &str) -> Result<MessageId, BridgeError> {
         .map_err(|_| BridgeError::Ipc(format!("invalid message id: {value}")))
 }
 
-fn parse_attachment_id(value: &str) -> Result<crate::mxr_core::AttachmentId, BridgeError> {
+fn parse_attachment_id(value: &str) -> Result<mxr_core::AttachmentId, BridgeError> {
     Uuid::parse_str(value)
-        .map(crate::mxr_core::AttachmentId::from_uuid)
+        .map(mxr_core::AttachmentId::from_uuid)
         .map_err(|_| BridgeError::Ipc(format!("invalid attachment id: {value}")))
 }
 
@@ -1382,9 +1380,8 @@ async fn create_compose_session(
     } else {
         from
     };
-    let (draft_path, resolved_cursor_line) =
-        crate::mxr_compose::create_draft_file(kind, &compose_from)
-            .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let (draft_path, resolved_cursor_line) = mxr_compose::create_draft_file(kind, &compose_from)
+        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let mut session = load_compose_session(&draft_path)?;
     if let Some(cursor_line) = cursor_line {
         session["cursorLine"] = json!(cursor_line);
@@ -1527,7 +1524,7 @@ async fn default_account(socket_path: &Path) -> Result<(AccountId, String), Brid
 async fn account_summary(
     socket_path: &Path,
     account_id: &AccountId,
-) -> Result<crate::mxr_protocol::AccountSummaryData, BridgeError> {
+) -> Result<mxr_protocol::AccountSummaryData, BridgeError> {
     match ipc_request(socket_path, Request::ListAccounts).await? {
         ResponseData::Accounts { accounts } => accounts
             .into_iter()
@@ -1563,7 +1560,7 @@ fn resolved_editor_command() -> String {
 async fn request_account_operation(
     socket_path: &Path,
     request: Request,
-) -> Result<crate::mxr_protocol::AccountOperationResult, BridgeError> {
+) -> Result<mxr_protocol::AccountOperationResult, BridgeError> {
     match ipc_request(socket_path, request).await? {
         ResponseData::AccountOperation { result } => Ok(result),
         _ => Err(BridgeError::UnexpectedResponse),
@@ -1572,14 +1569,13 @@ async fn request_account_operation(
 
 async fn run_account_save_workflow(
     socket_path: &Path,
-    account: crate::mxr_protocol::AccountConfigData,
-) -> Result<crate::mxr_protocol::AccountOperationResult, BridgeError> {
-    let mut result = if account.sync.as_ref().is_some_and(|sync| {
-        matches!(
-            sync,
-            crate::mxr_protocol::AccountSyncConfigData::Gmail { .. }
-        )
-    }) {
+    account: mxr_protocol::AccountConfigData,
+) -> Result<mxr_protocol::AccountOperationResult, BridgeError> {
+    let mut result = if account
+        .sync
+        .as_ref()
+        .is_some_and(|sync| matches!(sync, mxr_protocol::AccountSyncConfigData::Gmail { .. }))
+    {
         request_account_operation(
             socket_path,
             Request::AuthorizeAccountConfig {
@@ -1619,8 +1615,8 @@ async fn run_account_save_workflow(
     Ok(result)
 }
 
-fn empty_account_operation_result() -> crate::mxr_protocol::AccountOperationResult {
-    crate::mxr_protocol::AccountOperationResult {
+fn empty_account_operation_result() -> mxr_protocol::AccountOperationResult {
+    mxr_protocol::AccountOperationResult {
         ok: true,
         summary: String::new(),
         save: None,
@@ -1631,8 +1627,8 @@ fn empty_account_operation_result() -> crate::mxr_protocol::AccountOperationResu
 }
 
 fn merge_account_operation_result(
-    base: &mut crate::mxr_protocol::AccountOperationResult,
-    next: crate::mxr_protocol::AccountOperationResult,
+    base: &mut mxr_protocol::AccountOperationResult,
+    next: mxr_protocol::AccountOperationResult,
 ) {
     base.ok &= next.ok;
     if !next.summary.is_empty() {
@@ -1655,7 +1651,7 @@ fn merge_account_operation_result(
 fn build_snooze_preset(
     name: &str,
     label: &str,
-    config: &crate::mxr_config::SnoozeConfig,
+    config: &mxr_config::SnoozeConfig,
 ) -> serde_json::Value {
     let wake_at = resolve_snooze_until(name, config).unwrap_or_else(|_| Utc::now());
     json!({
@@ -1667,7 +1663,7 @@ fn build_snooze_preset(
 
 fn resolve_snooze_until(
     until: &str,
-    config: &crate::mxr_config::SnoozeConfig,
+    config: &mxr_config::SnoozeConfig,
 ) -> Result<DateTime<Utc>, BridgeError> {
     use chrono::{Datelike, Duration, NaiveTime, Weekday};
 
@@ -1966,19 +1962,19 @@ async fn trigger_semantic_reindex(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::{
+    use chrono::Utc;
+    use futures::{SinkExt, StreamExt};
+    use mxr_core::{
         id::{AccountId, MessageId, ThreadId},
         types::{
             Address, Envelope, Label, LabelKind, MessageBody, MessageFlags, MessageMetadata,
             SavedSearch, SortOrder, SubscriptionSummary, Thread, UnsubscribeMethod,
         },
     };
-    use crate::mxr_protocol::{
+    use mxr_protocol::{
         DaemonEvent, IpcCodec, IpcMessage, IpcPayload, Request, Response, ResponseData,
         SearchResultItem, IPC_PROTOCOL_VERSION,
     };
-    use chrono::Utc;
-    use futures::{SinkExt, StreamExt};
     use tempfile::TempDir;
     use tokio::net::UnixListener;
     use tokio_tungstenite::tungstenite::Message;
@@ -2182,7 +2178,7 @@ mod tests {
     fn sample_labels(account_id: &AccountId) -> Vec<Label> {
         vec![
             Label {
-                id: crate::mxr_core::LabelId::new(),
+                id: mxr_core::LabelId::new(),
                 account_id: account_id.clone(),
                 name: "Inbox".into(),
                 kind: LabelKind::System,
@@ -2192,7 +2188,7 @@ mod tests {
                 total_count: 144,
             },
             Label {
-                id: crate::mxr_core::LabelId::new(),
+                id: mxr_core::LabelId::new(),
                 account_id: account_id.clone(),
                 name: "All Mail".into(),
                 kind: LabelKind::System,
@@ -2202,7 +2198,7 @@ mod tests {
                 total_count: 8124,
             },
             Label {
-                id: crate::mxr_core::LabelId::new(),
+                id: mxr_core::LabelId::new(),
                 account_id: account_id.clone(),
                 name: "Follow Up".into(),
                 kind: LabelKind::User,
@@ -2216,7 +2212,7 @@ mod tests {
 
     fn sample_saved_search(account_id: AccountId) -> SavedSearch {
         SavedSearch {
-            id: crate::mxr_core::SavedSearchId::new(),
+            id: mxr_core::SavedSearchId::new(),
             account_id: Some(account_id),
             name: "Today".into(),
             query: "in:inbox newer_than:1d".into(),
@@ -2247,8 +2243,8 @@ mod tests {
         }
     }
 
-    fn sample_account(account_id: &AccountId) -> crate::mxr_protocol::AccountSummaryData {
-        crate::mxr_protocol::AccountSummaryData {
+    fn sample_account(account_id: &AccountId) -> mxr_protocol::AccountSummaryData {
+        mxr_protocol::AccountSummaryData {
             account_id: account_id.clone(),
             key: Some("personal".into()),
             name: "Personal".into(),
@@ -2258,8 +2254,8 @@ mod tests {
             send_kind: Some("smtp".into()),
             enabled: true,
             is_default: true,
-            source: crate::mxr_protocol::AccountSourceData::Runtime,
-            editable: crate::mxr_protocol::AccountEditModeData::Full,
+            source: mxr_protocol::AccountSourceData::Runtime,
+            editable: mxr_protocol::AccountEditModeData::Full,
             sync: None,
             send: None,
         }
@@ -2639,7 +2635,7 @@ mod tests {
             account_id: envelope.account_id.clone(),
             thread_id: envelope.thread_id.clone(),
             score: 9.5,
-            mode: crate::mxr_core::types::SearchMode::Lexical,
+            mode: mxr_core::types::SearchMode::Lexical,
         };
         let message_id = result.message_id.to_string();
         let message_ids = vec![result.message_id.clone()];
@@ -2739,17 +2735,17 @@ mod tests {
             account_id: older.account_id.clone(),
             thread_id: older.thread_id.clone(),
             score: 1.5,
-            mode: crate::mxr_core::types::SearchMode::Semantic,
+            mode: mxr_core::types::SearchMode::Semantic,
         };
         let newer_result = SearchResultItem {
             message_id: newer.id.clone(),
             account_id: newer.account_id.clone(),
             thread_id: newer.thread_id.clone(),
             score: 0.8,
-            mode: crate::mxr_core::types::SearchMode::Semantic,
+            mode: mxr_core::types::SearchMode::Semantic,
         };
         let requested_ids = vec![newer.id.clone(), older.id.clone()];
-        let explain = crate::mxr_protocol::SearchExplain {
+        let explain = mxr_protocol::SearchExplain {
             requested_mode: SearchMode::Semantic,
             executed_mode: SearchMode::Semantic,
             semantic_query: Some("deploy".into()),
@@ -2760,7 +2756,7 @@ mod tests {
             final_results: 2,
             rrf_k: Some(60),
             notes: vec!["semantic rerank".into()],
-            results: vec![crate::mxr_protocol::SearchExplainResult {
+            results: vec![mxr_protocol::SearchExplainResult {
                 rank: 1,
                 message_id: newer.id.clone(),
                 final_score: 1.0,
@@ -2848,14 +2844,14 @@ mod tests {
                 account_id: first.account_id.clone(),
                 thread_id: first.thread_id.clone(),
                 score: 9.5,
-                mode: crate::mxr_core::types::SearchMode::Lexical,
+                mode: mxr_core::types::SearchMode::Lexical,
             },
             SearchResultItem {
                 message_id: second.id.clone(),
                 account_id: second.account_id.clone(),
                 thread_id: second.thread_id.clone(),
                 score: 9.0,
-                mode: crate::mxr_core::types::SearchMode::Lexical,
+                mode: mxr_core::types::SearchMode::Lexical,
             },
         ];
         let requested_ids = vec![first.id.clone()];
@@ -2941,7 +2937,7 @@ mod tests {
                     reply_all: false,
                 } if message_id == expected_message_id => Some(Response::Ok {
                     data: ResponseData::ReplyContext {
-                        context: crate::mxr_protocol::ReplyContext {
+                        context: mxr_protocol::ReplyContext {
                             in_reply_to: "<msg-1@example.com>".into(),
                             references: vec!["<root@example.com>".into()],
                             reply_to: "sender@example.com".into(),
@@ -2997,9 +2993,7 @@ mod tests {
         let _ipc = spawn_fake_ipc_server(
             &socket_path,
             move |request| match request {
-                Request::Mutation(crate::mxr_protocol::MutationCommand::Archive {
-                    message_ids,
-                }) => {
+                Request::Mutation(mxr_protocol::MutationCommand::Archive { message_ids }) => {
                     *captured_ids.lock().unwrap() =
                         message_ids.iter().map(ToString::to_string).collect();
                     Some(Response::Ok {
@@ -3046,7 +3040,7 @@ mod tests {
         let _ipc = spawn_fake_ipc_server(
             &socket_path,
             move |request| match request {
-                Request::Mutation(crate::mxr_protocol::MutationCommand::Star {
+                Request::Mutation(mxr_protocol::MutationCommand::Star {
                     message_ids,
                     starred,
                 }) => {
@@ -3184,7 +3178,7 @@ mod tests {
         let _ipc = spawn_fake_ipc_server(
             &socket_path,
             move |request| match request {
-                Request::Mutation(crate::mxr_protocol::MutationCommand::ReadAndArchive {
+                Request::Mutation(mxr_protocol::MutationCommand::ReadAndArchive {
                     message_ids,
                 }) => {
                     assert_eq!(message_ids, vec![expected_message_id.clone()]);

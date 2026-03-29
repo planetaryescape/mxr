@@ -12,41 +12,6 @@ pub(crate) mod state;
 pub(crate) mod test_fixtures;
 pub mod unsubscribe;
 
-#[path = "../../compose/src/lib.rs"]
-pub mod mxr_compose;
-#[path = "../../config/src/lib.rs"]
-pub mod mxr_config;
-#[path = "../../core/src/lib.rs"]
-pub mod mxr_core;
-#[path = "../../export/src/lib.rs"]
-pub mod mxr_export;
-#[path = "../../protocol/src/lib.rs"]
-pub mod mxr_protocol;
-#[path = "../../provider-fake/src/lib.rs"]
-pub mod mxr_provider_fake;
-#[path = "../../provider-gmail/src/lib.rs"]
-pub mod mxr_provider_gmail;
-#[path = "../../provider-imap/src/lib.rs"]
-pub mod mxr_provider_imap;
-#[path = "../../provider-smtp/src/lib.rs"]
-pub mod mxr_provider_smtp;
-#[path = "../../reader/src/lib.rs"]
-pub mod mxr_reader;
-#[path = "../../rules/src/lib.rs"]
-pub mod mxr_rules;
-#[path = "../../search/src/lib.rs"]
-pub mod mxr_search;
-#[path = "../../semantic/src/lib.rs"]
-pub mod mxr_semantic;
-#[path = "../../store/src/lib.rs"]
-pub mod mxr_store;
-#[path = "../../sync/src/lib.rs"]
-pub mod mxr_sync;
-#[path = "../../tui/src/lib.rs"]
-pub mod mxr_tui;
-#[path = "../../web/src/lib.rs"]
-pub mod mxr_web;
-
 use clap::Parser;
 use cli::{unsupported_command_guidance, Cli, Command};
 
@@ -455,7 +420,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         None => {
             crate::server::ensure_daemon_running().await?;
             crate::server::ensure_daemon_supports_tui().await?;
-            crate::mxr_tui::run().await?;
+            mxr_tui::run().await?;
         }
     }
 

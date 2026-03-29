@@ -1,5 +1,5 @@
-use crate::mxr_core::id::*;
-use crate::mxr_core::types::*;
+use mxr_core::id::*;
+use mxr_core::types::*;
 use serde::{Deserialize, Serialize};
 
 /// IPC items are grouped conceptually, even though the wire format stays flat.
@@ -471,16 +471,16 @@ pub enum ResponseData {
         results: Vec<serde_json::Value>,
     },
     SavedSearches {
-        searches: Vec<crate::mxr_core::types::SavedSearch>,
+        searches: Vec<mxr_core::types::SavedSearch>,
     },
     Subscriptions {
-        subscriptions: Vec<crate::mxr_core::types::SubscriptionSummary>,
+        subscriptions: Vec<mxr_core::types::SubscriptionSummary>,
     },
     SemanticStatus {
         snapshot: SemanticStatusSnapshot,
     },
     SavedSearchData {
-        search: crate::mxr_core::types::SavedSearch,
+        search: mxr_core::types::SavedSearch,
     },
 
     // Admin / maintenance / operational responses.

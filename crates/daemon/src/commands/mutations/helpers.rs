@@ -1,8 +1,8 @@
 use crate::ipc_client::IpcClient;
-use crate::mxr_core::id::MessageId;
-use crate::mxr_core::types::{Envelope, SortOrder};
-use crate::mxr_protocol::*;
 use chrono::Utc;
+use mxr_core::id::MessageId;
+use mxr_core::types::{Envelope, SortOrder};
+use mxr_protocol::*;
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
@@ -200,8 +200,8 @@ pub(super) struct MutationRunOptions<'a> {
 }
 
 pub(super) fn parse_snooze_until(until: &str) -> anyhow::Result<chrono::DateTime<Utc>> {
-    let config = crate::mxr_config::load_config().unwrap_or_default().snooze;
-    crate::mxr_config::snooze::parse_snooze_until(until, &config).ok_or_else(|| {
+    let config = mxr_config::load_config().unwrap_or_default().snooze;
+    mxr_config::snooze::parse_snooze_until(until, &config).ok_or_else(|| {
         anyhow::anyhow!(
             "Cannot parse '{until}'. Use: tomorrow, tonight, monday, weekend, or ISO 8601"
         )
@@ -221,7 +221,7 @@ pub(super) fn format_bytes(bytes: u64) -> String {
 pub(super) async fn load_attachments(
     client: &mut IpcClient,
     message_id: &MessageId,
-) -> anyhow::Result<Vec<crate::mxr_core::AttachmentMeta>> {
+) -> anyhow::Result<Vec<mxr_core::AttachmentMeta>> {
     let resp = client
         .request(Request::GetBody {
             message_id: message_id.clone(),
@@ -242,9 +242,9 @@ pub(super) async fn load_attachments(
 }
 
 pub(super) fn attachment_by_index(
-    attachments: &[crate::mxr_core::AttachmentMeta],
+    attachments: &[mxr_core::AttachmentMeta],
     index: usize,
-) -> anyhow::Result<&crate::mxr_core::AttachmentMeta> {
+) -> anyhow::Result<&mxr_core::AttachmentMeta> {
     attachments
         .get(index.saturating_sub(1))
         .ok_or_else(|| anyhow::anyhow!("Attachment index {index} out of range"))

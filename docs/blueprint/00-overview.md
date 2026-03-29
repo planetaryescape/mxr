@@ -152,7 +152,6 @@ The tradeoff is slower iteration speed and a higher contributor barrier. We acce
 - Short, distinctive, terminal-friendly, easy to type
 - Subtle connection to MX records (the DNS record type for mail servers) without being on-the-nose
 - "Mixer" works as a metaphor: multiple backends, mail + automation, local engine + TUI, structured search + workflows
-- Available on crates.io
 - No conflicts with existing CLI tools or significant GitHub repos
 
 ## License

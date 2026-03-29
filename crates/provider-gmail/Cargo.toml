@@ -1,0 +1,39 @@
+[package]
+name = "mxr-provider-gmail"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+mxr-mail-parse = { workspace = true }
+mxr-outbound = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+futures = { workspace = true }
+keyring = { workspace = true }
+mail-parser = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+yup-oauth2 = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+mxr-provider-fake = { workspace = true }
+mxr-test-support = { workspace = true }
+tokio = { workspace = true }
+wiremock = { workspace = true }

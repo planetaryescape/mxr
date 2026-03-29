@@ -11,7 +11,7 @@ macro_rules! simple_mutation_handler {
             ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
             ack_mutation(
                 &state.config.socket_path,
-                crate::mxr_protocol::MutationCommand::$variant {
+                mxr_protocol::MutationCommand::$variant {
                     message_ids: parse_message_ids(&request.message_ids)?,
                 },
             )
@@ -34,7 +34,7 @@ pub(crate) async fn star(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::Star {
+        mxr_protocol::MutationCommand::Star {
             message_ids: parse_message_ids(&request.message_ids)?,
             starred: request.starred,
         },
@@ -51,7 +51,7 @@ pub(crate) async fn mark_read(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::SetRead {
+        mxr_protocol::MutationCommand::SetRead {
             message_ids: parse_message_ids(&request.message_ids)?,
             read: request.read,
         },
@@ -68,7 +68,7 @@ pub(crate) async fn modify_labels(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::ModifyLabels {
+        mxr_protocol::MutationCommand::ModifyLabels {
             message_ids: parse_message_ids(&request.message_ids)?,
             add: request.add,
             remove: request.remove,
@@ -86,7 +86,7 @@ pub(crate) async fn move_messages(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     ack_mutation(
         &state.config.socket_path,
-        crate::mxr_protocol::MutationCommand::Move {
+        mxr_protocol::MutationCommand::Move {
             message_ids: parse_message_ids(&request.message_ids)?,
             target_label: request.target_label,
         },

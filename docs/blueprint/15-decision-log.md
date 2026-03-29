@@ -407,3 +407,35 @@ Superseded by D049. Bodies and body text are now indexed at sync time.
 
 - breaks the local-first story
 - adds network latency and privacy concerns to core search
+
+---
+
+## D051: Workspace boundaries — real crates, one product surface
+
+**Chosen**:
+
+- keep the repo-root package `mxr` as the install/product surface
+- make the logical seams under `crates/` real workspace crates
+- default internal crates to `publish = false`
+- enforce seams with normal Cargo dependencies, not `#[path]` source inclusion
+
+**Why**:
+
+- architectural seams only matter if Cargo enforces them
+- one product package is simpler for users than publishing a constellation of crates
+- private workspace crates avoid accidental coupling without creating crates.io noise
+- daemon remains the integration root, which is correct for the application architecture
+
+**Trade-offs accepted**:
+
+- more `Cargo.toml` files in the repo
+- one new shared utility crate (`mxr-outbound`) exists because outbound message building is a real seam shared by compose and send adapters
+- clients still use some local utility crates (`config`, `compose`, `reader`, `mail-parse`) even though they remain runtime clients of the daemon
+
+**What changed**:
+
+- `crates/daemon/src/lib.rs` no longer source-includes pseudo-crates via `#[path]`
+- internal seams are normal workspace crates with path dependencies
+- shared mail parsing moved into `mxr-mail-parse`
+- shared outbound message building moved into `mxr-outbound`
+- `mxr-search` no longer owns store-backed saved-search service glue

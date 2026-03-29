@@ -1,8 +1,8 @@
-use crate::mxr_core::SearchMode;
-use crate::mxr_tui::app::{
+use crate::app::{
     ActivePane, MailListMode, MailListRow, SearchPageState, SearchPane, SearchUiStatus,
 };
-use crate::mxr_tui::ui::{mail_list, message_view, search_query::highlight_search_query};
+use crate::ui::{mail_list, message_view, search_query::highlight_search_query};
+use mxr_core::SearchMode;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::HashSet;
@@ -17,15 +17,15 @@ pub fn draw(
     area: Rect,
     state: &SearchPageState,
     rows: &[MailListRow],
-    selected_set: &HashSet<crate::mxr_core::MessageId>,
+    selected_set: &HashSet<mxr_core::MessageId>,
     mail_list_mode: MailListMode,
     preview_messages: &[message_view::ThreadMessageBlock],
     preview_scroll: u16,
     html_images: &mut std::collections::HashMap<
-        crate::mxr_core::MessageId,
-        std::collections::HashMap<String, crate::mxr_tui::terminal_images::HtmlImageEntry>,
+        mxr_core::MessageId,
+        std::collections::HashMap<String, crate::terminal_images::HtmlImageEntry>,
     >,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -143,7 +143,7 @@ fn query_title(state: &SearchPageState) -> String {
 fn query_status_line(
     state: &SearchPageState,
     result_count: usize,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) -> Line<'static> {
     let status = match state.ui_status {
         SearchUiStatus::Idle if state.query.is_empty() => {

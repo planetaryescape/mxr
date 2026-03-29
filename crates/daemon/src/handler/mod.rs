@@ -8,18 +8,18 @@ mod platform;
 mod rules;
 mod runtime;
 
-use crate::mxr_core::provider::MailSyncProvider;
+use crate::state::AppState;
+use mxr_core::provider::MailSyncProvider;
 #[cfg(test)]
-use crate::mxr_core::types::UnsubscribeMethod;
-use crate::mxr_core::types::{ExportFormat, Snoozed};
-use crate::mxr_export::{ExportAttachment, ExportMessage, ExportThread};
-use crate::mxr_protocol::*;
-use crate::mxr_reader::ReaderConfig;
-use crate::mxr_rules::{
+use mxr_core::types::UnsubscribeMethod;
+use mxr_core::types::{ExportFormat, Snoozed};
+use mxr_export::{ExportAttachment, ExportMessage, ExportThread};
+use mxr_protocol::*;
+use mxr_reader::ReaderConfig;
+use mxr_rules::{
     Conditions, DryRunResult, FieldCondition, Rule, RuleAction, RuleEngine, StringMatch,
 };
-use crate::mxr_search::parse_query;
-use crate::state::AppState;
+use mxr_search::parse_query;
 use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 
@@ -198,8 +198,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                 *limit,
                 *offset,
                 mode.unwrap_or(state.config_snapshot().search.default_mode),
-                sort.clone()
-                    .unwrap_or(crate::mxr_core::types::SortOrder::DateDesc),
+                sort.clone().unwrap_or(mxr_core::types::SortOrder::DateDesc),
                 *explain,
             )
             .await
@@ -349,7 +348,7 @@ fn mutation_kind(cmd: &MutationCommand) -> &'static str {
     }
 }
 
-fn request_account_id(req: &Request) -> Option<&crate::mxr_core::AccountId> {
+fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
     match req {
         Request::ListEnvelopes { account_id, .. }
         | Request::ListLabels { account_id }
@@ -375,7 +374,7 @@ fn request_account_key(req: &Request) -> Option<&str> {
         _ => None,
     }
 }
-fn build_reply_references(envelope: &crate::mxr_core::types::Envelope) -> Vec<String> {
+fn build_reply_references(envelope: &mxr_core::types::Envelope) -> Vec<String> {
     let mut references = envelope.references.clone();
     if let Some(message_id) = &envelope.message_id_header {
         if !references.iter().any(|reference| reference == message_id) {
@@ -388,7 +387,7 @@ fn build_reply_references(envelope: &crate::mxr_core::types::Envelope) -> Vec<St
 /// Build an ExportThread from a thread_id by fetching envelopes and bodies from the store.
 async fn build_export_thread(
     state: &Arc<AppState>,
-    thread_id: &crate::mxr_core::ThreadId,
+    thread_id: &mxr_core::ThreadId,
 ) -> Result<ExportThread, String> {
     let thread = state
         .store
@@ -446,9 +445,9 @@ async fn build_export_thread(
 
 async fn find_label_by_name(
     state: &Arc<AppState>,
-    account_id: &crate::mxr_core::AccountId,
+    account_id: &mxr_core::AccountId,
     name: &str,
-) -> Result<crate::mxr_core::Label, String> {
+) -> Result<mxr_core::Label, String> {
     let labels = state
         .store
         .list_labels_by_account(account_id)
@@ -460,8 +459,8 @@ async fn find_label_by_name(
         .ok_or_else(|| format!("Label not found: {name}"))
 }
 
-fn render_message_context(body: &crate::mxr_core::types::MessageBody) -> String {
-    crate::mxr_reader::clean(
+fn render_message_context(body: &mxr_core::types::MessageBody) -> String {
+    mxr_reader::clean(
         body.text_plain.as_deref(),
         body.text_html.as_deref(),
         &ReaderConfig::default(),
@@ -471,8 +470,8 @@ fn render_message_context(body: &crate::mxr_core::types::MessageBody) -> String 
 
 async fn populate_envelope_label_provider_ids(
     state: &Arc<AppState>,
-    envelope: &mut crate::mxr_core::types::Envelope,
-    labels: &[crate::mxr_core::types::Label],
+    envelope: &mut mxr_core::types::Envelope,
+    labels: &[mxr_core::types::Label],
 ) -> Result<(), String> {
     let label_ids = state
         .store
@@ -489,7 +488,7 @@ async fn populate_envelope_label_provider_ids(
 
 async fn persist_local_label_changes(
     state: &Arc<AppState>,
-    message_id: &crate::mxr_core::MessageId,
+    message_id: &mxr_core::MessageId,
     add: &[String],
     remove: &[String],
 ) -> Result<(), sqlx::Error> {
@@ -537,7 +536,7 @@ async fn persist_local_label_changes(
 
 pub(crate) async fn apply_snooze(
     state: &Arc<AppState>,
-    message_id: &crate::mxr_core::MessageId,
+    message_id: &mxr_core::MessageId,
     wake_at: &chrono::DateTime<chrono::Utc>,
 ) -> Result<(), String> {
     let envelope = state
@@ -641,7 +640,7 @@ async fn build_rule_from_form(
             .await
             .map_err(|e| e.to_string())?
             .map(|row| {
-                serde_json::from_value::<Rule>(crate::mxr_store::row_to_rule_json(&row))
+                serde_json::from_value::<Rule>(mxr_store::row_to_rule_json(&row))
                     .map_err(|e| e.to_string())
             })
             .transpose()?
@@ -670,8 +669,8 @@ fn parse_rule_condition_string(input: &str) -> Result<Conditions, String> {
     query_ast_to_conditions(ast)
 }
 
-fn query_ast_to_conditions(node: crate::mxr_search::ast::QueryNode) -> Result<Conditions, String> {
-    use crate::mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp};
+fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Conditions, String> {
+    use mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp};
 
     Ok(match node {
         QueryNode::And(left, right) => Conditions::And {
@@ -823,13 +822,13 @@ fn parse_rule_action_string(value: &str) -> Result<RuleAction, String> {
     Err(format!("Unsupported action: {value}"))
 }
 
-fn rule_to_form_data(rule: &Rule) -> Result<crate::mxr_protocol::RuleFormData, String> {
+fn rule_to_form_data(rule: &Rule) -> Result<mxr_protocol::RuleFormData, String> {
     let action = rule
         .actions
         .first()
         .ok_or_else(|| "rule has no actions".to_string())
         .and_then(rule_action_to_string)?;
-    Ok(crate::mxr_protocol::RuleFormData {
+    Ok(mxr_protocol::RuleFormData {
         id: Some(rule.id.to_string()),
         name: rule.name.clone(),
         condition: conditions_to_query(&rule.conditions)?,
@@ -918,10 +917,8 @@ fn string_match_to_query(field: &str, pattern: &StringMatch) -> Result<String, S
     }
 }
 
-fn protocol_event_entry(
-    entry: crate::mxr_store::EventLogEntry,
-) -> crate::mxr_protocol::EventLogEntry {
-    crate::mxr_protocol::EventLogEntry {
+fn protocol_event_entry(entry: mxr_store::EventLogEntry) -> mxr_protocol::EventLogEntry {
+    mxr_protocol::EventLogEntry {
         timestamp: entry.timestamp,
         level: entry.level,
         category: entry.category,
@@ -934,7 +931,7 @@ fn protocol_event_entry(
 }
 
 fn recent_log_lines(limit: usize, level: Option<&str>) -> Result<Vec<String>, std::io::Error> {
-    let log_path = crate::mxr_config::data_dir().join("logs").join("mxr.log");
+    let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
     if !log_path.exists() {
         return Ok(vec!["(no recent logs)".to_string()]);
     }
@@ -954,16 +951,16 @@ fn recent_log_lines(limit: usize, level: Option<&str>) -> Result<Vec<String>, st
     Ok(lines.split_off(start))
 }
 
-fn should_fallback_to_tantivy(query: &str, error: &crate::mxr_search::ParseError) -> bool {
+fn should_fallback_to_tantivy(query: &str, error: &mxr_search::ParseError) -> bool {
     if looks_structured_query(query) {
         return false;
     }
 
     matches!(
         error,
-        crate::mxr_search::ParseError::UnexpectedToken(_)
-            | crate::mxr_search::ParseError::UnexpectedEnd
-            | crate::mxr_search::ParseError::UnmatchedParen
+        mxr_search::ParseError::UnexpectedToken(_)
+            | mxr_search::ParseError::UnexpectedEnd
+            | mxr_search::ParseError::UnmatchedParen
     )
 }
 
@@ -1009,7 +1006,7 @@ async fn collect_status_snapshot(
 
 async fn build_account_sync_status(
     state: &Arc<AppState>,
-    account_id: &crate::mxr_core::AccountId,
+    account_id: &mxr_core::AccountId,
 ) -> Result<AccountSyncStatus, String> {
     let account = state
         .store
@@ -1078,13 +1075,13 @@ async fn build_account_sync_status(
     })
 }
 
-fn describe_cursor_for_status(cursor: Option<&crate::mxr_core::types::SyncCursor>) -> String {
+fn describe_cursor_for_status(cursor: Option<&mxr_core::types::SyncCursor>) -> String {
     match cursor {
-        Some(crate::mxr_core::types::SyncCursor::Initial) | None => "initial".to_string(),
-        Some(crate::mxr_core::types::SyncCursor::Gmail { history_id }) => {
+        Some(mxr_core::types::SyncCursor::Initial) | None => "initial".to_string(),
+        Some(mxr_core::types::SyncCursor::Gmail { history_id }) => {
             format!("gmail history_id={history_id}")
         }
-        Some(crate::mxr_core::types::SyncCursor::GmailBackfill {
+        Some(mxr_core::types::SyncCursor::GmailBackfill {
             history_id,
             page_token,
         }) => {
@@ -1095,7 +1092,7 @@ fn describe_cursor_for_status(cursor: Option<&crate::mxr_core::types::SyncCursor
                 format!("gmail_backfill history_id={history_id} page_token={short}")
             }
         }
-        Some(crate::mxr_core::types::SyncCursor::Imap {
+        Some(mxr_core::types::SyncCursor::Imap {
             uid_validity,
             uid_next,
             mailboxes,
@@ -1109,8 +1106,8 @@ fn describe_cursor_for_status(cursor: Option<&crate::mxr_core::types::SyncCursor
 
 async fn collect_doctor_report(
     state: &Arc<AppState>,
-) -> Result<crate::mxr_protocol::DoctorReport, String> {
-    let data_dir = crate::mxr_config::data_dir();
+) -> Result<mxr_protocol::DoctorReport, String> {
+    let data_dir = mxr_config::data_dir();
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
     let log_path = data_dir.join("logs").join("mxr.log");
@@ -1162,10 +1159,8 @@ async fn collect_doctor_report(
         .map(protocol_event_entry)
         .collect();
     let recent_error_logs = recent_log_lines(10, Some("error")).unwrap_or_default();
-    let recommended_next_steps = if matches!(
-        health_class,
-        crate::mxr_protocol::DaemonHealthClass::Healthy
-    ) {
+    let recommended_next_steps = if matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy)
+    {
         vec!["mxr status".to_string()]
     } else {
         vec![
@@ -1179,12 +1174,9 @@ async fn collect_doctor_report(
         && database_exists
         && index_exists
         && socket_exists
-        && matches!(
-            health_class,
-            crate::mxr_protocol::DaemonHealthClass::Healthy
-        );
+        && matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy);
 
-    Ok(crate::mxr_protocol::DoctorReport {
+    Ok(mxr_protocol::DoctorReport {
         healthy,
         health_class,
         lexical_index_freshness,
@@ -1203,7 +1195,7 @@ async fn collect_doctor_report(
         stale_socket: false,
         daemon_running: true,
         daemon_pid: Some(std::process::id()),
-        daemon_protocol_version: crate::mxr_protocol::IPC_PROTOCOL_VERSION,
+        daemon_protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
         daemon_version: Some(crate::server::current_daemon_version().to_string()),
         daemon_build_id: Some(crate::server::current_build_id()),
         index_lock_held: false,
@@ -1228,7 +1220,7 @@ fn file_size(path: &std::path::Path) -> u64 {
 }
 
 pub(crate) fn latest_successful_sync_at(
-    sync_statuses: &[crate::mxr_protocol::AccountSyncStatus],
+    sync_statuses: &[mxr_protocol::AccountSyncStatus],
 ) -> Option<String> {
     sync_statuses
         .iter()
@@ -1242,24 +1234,24 @@ fn lexical_index_freshness(
     index_exists: bool,
     repair_required: bool,
     restart_required: bool,
-) -> crate::mxr_protocol::IndexFreshness {
+) -> mxr_protocol::IndexFreshness {
     if repair_required || !index_exists {
-        crate::mxr_protocol::IndexFreshness::RepairRequired
+        mxr_protocol::IndexFreshness::RepairRequired
     } else if restart_required {
-        crate::mxr_protocol::IndexFreshness::Stale
+        mxr_protocol::IndexFreshness::Stale
     } else {
-        crate::mxr_protocol::IndexFreshness::Current
+        mxr_protocol::IndexFreshness::Current
     }
 }
 
 fn semantic_freshness_from_snapshot(
-    snapshot: Option<&crate::mxr_core::types::SemanticStatusSnapshot>,
+    snapshot: Option<&mxr_core::types::SemanticStatusSnapshot>,
     enabled_fallback: bool,
     active_profile_fallback: &str,
 ) -> (
     bool,
     Option<String>,
-    crate::mxr_protocol::IndexFreshness,
+    mxr_protocol::IndexFreshness,
     Option<String>,
 ) {
     let Some(snapshot) = snapshot else {
@@ -1267,26 +1259,16 @@ fn semantic_freshness_from_snapshot(
             (
                 true,
                 Some(active_profile_fallback.to_string()),
-                crate::mxr_protocol::IndexFreshness::Unknown,
+                mxr_protocol::IndexFreshness::Unknown,
                 None,
             )
         } else {
-            (
-                false,
-                None,
-                crate::mxr_protocol::IndexFreshness::Disabled,
-                None,
-            )
+            (false, None, mxr_protocol::IndexFreshness::Disabled, None)
         };
     };
 
     if !snapshot.enabled {
-        return (
-            false,
-            None,
-            crate::mxr_protocol::IndexFreshness::Disabled,
-            None,
-        );
+        return (false, None, mxr_protocol::IndexFreshness::Disabled, None);
     }
 
     let active_profile = snapshot.active_profile.as_str().to_string();
@@ -1295,17 +1277,15 @@ fn semantic_freshness_from_snapshot(
         .iter()
         .find(|profile| profile.profile == snapshot.active_profile);
     let freshness = match active_record.map(|profile| profile.status) {
-        Some(crate::mxr_core::types::SemanticProfileStatus::Ready) => {
-            crate::mxr_protocol::IndexFreshness::Current
+        Some(mxr_core::types::SemanticProfileStatus::Ready) => {
+            mxr_protocol::IndexFreshness::Current
         }
-        Some(crate::mxr_core::types::SemanticProfileStatus::Indexing)
-        | Some(crate::mxr_core::types::SemanticProfileStatus::Pending) => {
-            crate::mxr_protocol::IndexFreshness::Indexing
+        Some(mxr_core::types::SemanticProfileStatus::Indexing)
+        | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
+            mxr_protocol::IndexFreshness::Indexing
         }
-        Some(crate::mxr_core::types::SemanticProfileStatus::Error) => {
-            crate::mxr_protocol::IndexFreshness::Error
-        }
-        None => crate::mxr_protocol::IndexFreshness::Stale,
+        Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
+        None => mxr_protocol::IndexFreshness::Stale,
     };
 
     (
@@ -1318,10 +1298,8 @@ fn semantic_freshness_from_snapshot(
     )
 }
 
-fn doctor_data_stats(
-    counts: crate::mxr_store::StoreRecordCounts,
-) -> crate::mxr_protocol::DoctorDataStats {
-    crate::mxr_protocol::DoctorDataStats {
+fn doctor_data_stats(counts: mxr_store::StoreRecordCounts) -> mxr_protocol::DoctorDataStats {
+    mxr_protocol::DoctorDataStats {
         accounts: counts.accounts,
         labels: counts.labels,
         messages: counts.messages,
@@ -1372,7 +1350,7 @@ async fn persist_rule(state: &Arc<AppState>, rule: &Rule) -> Result<(), String> 
     let actions_json = serde_json::to_string(&rule.actions).map_err(|e| e.to_string())?;
     state
         .store
-        .upsert_rule(crate::mxr_store::RuleRecordInput {
+        .upsert_rule(mxr_store::RuleRecordInput {
             id: &rule.id.0,
             name: &rule.name,
             enabled: rule.enabled,
@@ -1387,7 +1365,7 @@ async fn persist_rule(state: &Arc<AppState>, rule: &Rule) -> Result<(), String> 
 }
 
 fn row_to_rule(row: &sqlx::sqlite::SqliteRow) -> Result<Rule, String> {
-    serde_json::from_value(crate::mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string())
+    serde_json::from_value(mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string())
 }
 
 async fn list_runtime_accounts(state: &Arc<AppState>) -> Result<Vec<AccountSummaryData>, String> {
@@ -1502,7 +1480,7 @@ async fn list_runtime_accounts(state: &Arc<AppState>) -> Result<Vec<AccountSumma
 }
 
 fn list_account_configs() -> Result<Vec<AccountConfigData>, String> {
-    let config = crate::mxr_config::load_config().map_err(|e| e.to_string())?;
+    let config = mxr_config::load_config().map_err(|e| e.to_string())?;
     let default_account = config.general.default_account.clone();
     let mut accounts = config
         .accounts
@@ -1525,12 +1503,12 @@ async fn upsert_account_config(
     account: AccountConfigData,
 ) -> AccountOperationResult {
     let save_result = (|| -> Result<String, String> {
-        let mut config = crate::mxr_config::load_config().map_err(|e| e.to_string())?;
+        let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
         persist_account_passwords(&account).map_err(|e| e.to_string())?;
 
         config.accounts.insert(
             account.key.clone(),
-            crate::mxr_config::AccountConfig {
+            mxr_config::AccountConfig {
                 name: account.name.clone(),
                 email: account.email.clone(),
                 sync: account.sync.clone().map(sync_data_to_config).transpose()?,
@@ -1540,7 +1518,7 @@ async fn upsert_account_config(
         if account.is_default || config.general.default_account.is_none() {
             config.general.default_account = Some(account.key.clone());
         }
-        crate::mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
         Ok(format!("Saved account '{}' to config.", account.key))
     })();
 
@@ -1584,12 +1562,12 @@ async fn upsert_account_config(
 }
 
 async fn set_default_account(state: &Arc<AppState>, key: &str) -> Result<String, String> {
-    let mut config = crate::mxr_config::load_config().map_err(|e| e.to_string())?;
+    let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
     if !config.accounts.contains_key(key) {
         return Err(format!("Account '{}' cannot be set as default", key));
     }
     config.general.default_account = Some(key.to_string());
-    crate::mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+    mxr_config::save_config(&config).map_err(|e| e.to_string())?;
     state.reload_accounts_from_disk().await?;
     Ok(format!("Default account set to '{}'.", key))
 }
@@ -1633,8 +1611,7 @@ async fn authorize_account_config(
             }
         };
 
-    let mut auth =
-        crate::mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
+    let mut auth = mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
     let auth_result = if reauthorize {
         auth.interactive_auth().await
     } else {
@@ -1703,7 +1680,7 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                 let creds = resolve_gmail_credentials(credential_source, client_id, client_secret);
                 match creds {
                     Ok((client_id, client_secret)) => {
-                        let mut gmail_auth = crate::mxr_provider_gmail::auth::GmailAuth::new(
+                        let mut gmail_auth = mxr_provider_gmail::auth::GmailAuth::new(
                             client_id,
                             client_secret,
                             token_ref,
@@ -1718,7 +1695,7 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                             Ok(detail) => {
                                 auth = Some(account_step(true, detail));
                                 let client =
-                                    crate::mxr_provider_gmail::client::GmailClient::new(gmail_auth);
+                                    mxr_provider_gmail::client::GmailClient::new(gmail_auth);
                                 match client.list_labels().await {
                                     Ok(response) => {
                                         let count =
@@ -1763,9 +1740,9 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                 use_tls,
                 ..
             } => {
-                let provider = crate::mxr_provider_imap::ImapProvider::new(
-                    crate::mxr_core::AccountId::from_provider_id("imap", &account.email),
-                    crate::mxr_provider_imap::config::ImapConfig {
+                let provider = mxr_provider_imap::ImapProvider::new(
+                    mxr_core::AccountId::from_provider_id("imap", &account.email),
+                    mxr_provider_imap::config::ImapConfig {
                         host,
                         port,
                         username,
@@ -1803,16 +1780,15 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
             use_tls,
             ..
         }) => {
-            let provider = crate::mxr_provider_smtp::SmtpSendProvider::new(
-                crate::mxr_provider_smtp::config::SmtpConfig {
+            let provider =
+                mxr_provider_smtp::SmtpSendProvider::new(mxr_provider_smtp::config::SmtpConfig {
                     host,
                     port,
                     username,
                     password_ref,
                     auth_required,
                     use_tls,
-                },
-            );
+                });
             match provider.test_connection().await {
                 Ok(()) => {
                     send = Some(account_step(true, "SMTP send ok".into()));
@@ -1877,8 +1853,8 @@ fn resolve_gmail_credentials(
     match credential_source {
         GmailCredentialSourceData::Bundled => {
             match (
-                crate::mxr_provider_gmail::auth::BUNDLED_CLIENT_ID,
-                crate::mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET,
+                mxr_provider_gmail::auth::BUNDLED_CLIENT_ID,
+                mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET,
             ) {
                 (Some(id), Some(secret)) => Ok((id.to_string(), secret.to_string())),
                 _ => {
@@ -1904,27 +1880,23 @@ fn resolve_gmail_credentials(
     }
 }
 
-fn sync_config_to_data(sync: crate::mxr_config::SyncProviderConfig) -> AccountSyncConfigData {
+fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfigData {
     match sync {
-        crate::mxr_config::SyncProviderConfig::Gmail {
+        mxr_config::SyncProviderConfig::Gmail {
             credential_source,
             client_id,
             client_secret,
             token_ref,
         } => AccountSyncConfigData::Gmail {
             credential_source: match credential_source {
-                crate::mxr_config::GmailCredentialSource::Bundled => {
-                    GmailCredentialSourceData::Bundled
-                }
-                crate::mxr_config::GmailCredentialSource::Custom => {
-                    GmailCredentialSourceData::Custom
-                }
+                mxr_config::GmailCredentialSource::Bundled => GmailCredentialSourceData::Bundled,
+                mxr_config::GmailCredentialSource::Custom => GmailCredentialSourceData::Custom,
             },
             client_id,
             client_secret,
             token_ref,
         },
-        crate::mxr_config::SyncProviderConfig::Imap {
+        mxr_config::SyncProviderConfig::Imap {
             host,
             port,
             username,
@@ -1943,34 +1915,31 @@ fn sync_config_to_data(sync: crate::mxr_config::SyncProviderConfig) -> AccountSy
     }
 }
 
-fn config_account_id(
-    key: &str,
-    account: &crate::mxr_config::AccountConfig,
-) -> crate::mxr_core::AccountId {
+fn config_account_id(key: &str, account: &mxr_config::AccountConfig) -> mxr_core::AccountId {
     let kind = account
         .sync
         .as_ref()
         .map(config_sync_kind_label)
         .or_else(|| account.send.as_ref().map(config_send_kind_label))
         .unwrap_or_else(|| key.to_string());
-    crate::mxr_core::AccountId::from_provider_id(&kind, &account.email)
+    mxr_core::AccountId::from_provider_id(&kind, &account.email)
 }
 
-fn config_sync_kind_label(sync: &crate::mxr_config::SyncProviderConfig) -> String {
+fn config_sync_kind_label(sync: &mxr_config::SyncProviderConfig) -> String {
     match sync {
-        crate::mxr_config::SyncProviderConfig::Gmail { .. } => "gmail".into(),
-        crate::mxr_config::SyncProviderConfig::Imap { .. } => "imap".into(),
+        mxr_config::SyncProviderConfig::Gmail { .. } => "gmail".into(),
+        mxr_config::SyncProviderConfig::Imap { .. } => "imap".into(),
     }
 }
 
-fn config_send_kind_label(send: &crate::mxr_config::SendProviderConfig) -> String {
+fn config_send_kind_label(send: &mxr_config::SendProviderConfig) -> String {
     match send {
-        crate::mxr_config::SendProviderConfig::Gmail => "gmail".into(),
-        crate::mxr_config::SendProviderConfig::Smtp { .. } => "smtp".into(),
+        mxr_config::SendProviderConfig::Gmail => "gmail".into(),
+        mxr_config::SendProviderConfig::Smtp { .. } => "smtp".into(),
     }
 }
 
-fn account_primary_provider_kind(account: &crate::mxr_config::AccountConfig) -> String {
+fn account_primary_provider_kind(account: &mxr_config::AccountConfig) -> String {
     account
         .sync
         .as_ref()
@@ -1979,19 +1948,19 @@ fn account_primary_provider_kind(account: &crate::mxr_config::AccountConfig) -> 
         .unwrap_or_else(|| "unknown".into())
 }
 
-fn provider_kind_label(kind: &crate::mxr_core::ProviderKind) -> &'static str {
+fn provider_kind_label(kind: &mxr_core::ProviderKind) -> &'static str {
     match kind {
-        crate::mxr_core::ProviderKind::Gmail => "gmail",
-        crate::mxr_core::ProviderKind::Imap => "imap",
-        crate::mxr_core::ProviderKind::Smtp => "smtp",
-        crate::mxr_core::ProviderKind::Fake => "fake",
+        mxr_core::ProviderKind::Gmail => "gmail",
+        mxr_core::ProviderKind::Imap => "imap",
+        mxr_core::ProviderKind::Smtp => "smtp",
+        mxr_core::ProviderKind::Fake => "fake",
     }
 }
 
-fn send_config_to_data(send: crate::mxr_config::SendProviderConfig) -> AccountSendConfigData {
+fn send_config_to_data(send: mxr_config::SendProviderConfig) -> AccountSendConfigData {
     match send {
-        crate::mxr_config::SendProviderConfig::Gmail => AccountSendConfigData::Gmail,
-        crate::mxr_config::SendProviderConfig::Smtp {
+        mxr_config::SendProviderConfig::Gmail => AccountSendConfigData::Gmail,
+        mxr_config::SendProviderConfig::Smtp {
             host,
             port,
             username,
@@ -2012,21 +1981,17 @@ fn send_config_to_data(send: crate::mxr_config::SendProviderConfig) -> AccountSe
 
 fn sync_data_to_config(
     data: AccountSyncConfigData,
-) -> Result<crate::mxr_config::SyncProviderConfig, String> {
+) -> Result<mxr_config::SyncProviderConfig, String> {
     match data {
         AccountSyncConfigData::Gmail {
             credential_source,
             client_id,
             client_secret,
             token_ref,
-        } => Ok(crate::mxr_config::SyncProviderConfig::Gmail {
+        } => Ok(mxr_config::SyncProviderConfig::Gmail {
             credential_source: match credential_source {
-                GmailCredentialSourceData::Bundled => {
-                    crate::mxr_config::GmailCredentialSource::Bundled
-                }
-                GmailCredentialSourceData::Custom => {
-                    crate::mxr_config::GmailCredentialSource::Custom
-                }
+                GmailCredentialSourceData::Bundled => mxr_config::GmailCredentialSource::Bundled,
+                GmailCredentialSourceData::Custom => mxr_config::GmailCredentialSource::Custom,
             },
             client_id,
             client_secret,
@@ -2040,7 +2005,7 @@ fn sync_data_to_config(
             auth_required,
             use_tls,
             ..
-        } => Ok(crate::mxr_config::SyncProviderConfig::Imap {
+        } => Ok(mxr_config::SyncProviderConfig::Imap {
             host,
             port,
             username,
@@ -2053,9 +2018,9 @@ fn sync_data_to_config(
 
 fn send_data_to_config(
     data: AccountSendConfigData,
-) -> Result<crate::mxr_config::SendProviderConfig, String> {
+) -> Result<mxr_config::SendProviderConfig, String> {
     match data {
-        AccountSendConfigData::Gmail => Ok(crate::mxr_config::SendProviderConfig::Gmail),
+        AccountSendConfigData::Gmail => Ok(mxr_config::SendProviderConfig::Gmail),
         AccountSendConfigData::Smtp {
             host,
             port,
@@ -2064,7 +2029,7 @@ fn send_data_to_config(
             auth_required,
             use_tls,
             ..
-        } => Ok(crate::mxr_config::SendProviderConfig::Smtp {
+        } => Ok(mxr_config::SendProviderConfig::Smtp {
             host,
             port,
             username,
@@ -2200,7 +2165,7 @@ async fn dry_run_rules(
         .iter()
         .map(|message| {
             (
-                message as &dyn crate::mxr_rules::MessageView,
+                message as &dyn mxr_rules::MessageView,
                 message.id.as_str(),
                 message.from.as_str(),
                 message.subject.as_str(),
@@ -2240,8 +2205,8 @@ struct DryRunMessage {
 
 impl DryRunMessage {
     fn from_parts(
-        envelope: crate::mxr_core::Envelope,
-        body: Option<crate::mxr_core::MessageBody>,
+        envelope: mxr_core::Envelope,
+        body: Option<mxr_core::MessageBody>,
         labels: Vec<String>,
     ) -> Self {
         Self {
@@ -2253,20 +2218,18 @@ impl DryRunMessage {
             has_attachment: envelope.has_attachments,
             size_bytes: envelope.size_bytes,
             date: envelope.date,
-            is_unread: !envelope.flags.contains(crate::mxr_core::MessageFlags::READ),
-            is_starred: envelope
-                .flags
-                .contains(crate::mxr_core::MessageFlags::STARRED),
+            is_unread: !envelope.flags.contains(mxr_core::MessageFlags::READ),
+            is_starred: envelope.flags.contains(mxr_core::MessageFlags::STARRED),
             has_unsubscribe: !matches!(
                 envelope.unsubscribe,
-                crate::mxr_core::types::UnsubscribeMethod::None
+                mxr_core::types::UnsubscribeMethod::None
             ),
             body_text: body.and_then(|body| body.text_plain.or(body.text_html)),
         }
     }
 }
 
-impl crate::mxr_rules::MessageView for DryRunMessage {
+impl mxr_rules::MessageView for DryRunMessage {
     fn sender_email(&self) -> &str {
         &self.from
     }
@@ -2314,13 +2277,13 @@ impl crate::mxr_rules::MessageView for DryRunMessage {
 
 async fn handle_export_thread(
     state: &Arc<AppState>,
-    thread_id: &crate::mxr_core::ThreadId,
+    thread_id: &mxr_core::ThreadId,
     format: &ExportFormat,
 ) -> Response {
     match build_export_thread(state, thread_id).await {
         Ok(export_thread) => {
             let reader_config = ReaderConfig::default();
-            let content = crate::mxr_export::export(&export_thread, format, &reader_config);
+            let content = mxr_export::export(&export_thread, format, &reader_config);
             Response::Ok {
                 data: ResponseData::ExportResult { content },
             }
@@ -2335,26 +2298,24 @@ async fn handle_export_search(
     format: &ExportFormat,
 ) -> Response {
     let search = state.search.lock().await;
-    let search_results =
-        match search.search(query, 100, 0, crate::mxr_core::types::SortOrder::DateDesc) {
-            Ok(results) => results,
-            Err(e) => {
-                return Response::Error {
-                    message: e.to_string(),
-                }
+    let search_results = match search.search(query, 100, 0, mxr_core::types::SortOrder::DateDesc) {
+        Ok(results) => results,
+        Err(e) => {
+            return Response::Error {
+                message: e.to_string(),
             }
-        };
+        }
+    };
     drop(search);
 
     // Collect unique thread IDs from search results
-    let thread_ids: Vec<crate::mxr_core::ThreadId> = {
+    let thread_ids: Vec<mxr_core::ThreadId> = {
         let mut seen = std::collections::HashSet::new();
         search_results
             .results
             .iter()
             .filter_map(|r| {
-                let tid =
-                    crate::mxr_core::ThreadId::from_uuid(uuid::Uuid::parse_str(&r.thread_id).ok()?);
+                let tid = mxr_core::ThreadId::from_uuid(uuid::Uuid::parse_str(&r.thread_id).ok()?);
                 if seen.insert(tid.clone()) {
                     Some(tid)
                 } else {
@@ -2370,11 +2331,7 @@ async fn handle_export_search(
     for tid in &thread_ids {
         match build_export_thread(state, tid).await {
             Ok(export_thread) => {
-                all_content.push_str(&crate::mxr_export::export(
-                    &export_thread,
-                    format,
-                    &reader_config,
-                ));
+                all_content.push_str(&mxr_export::export(&export_thread, format, &reader_config));
                 all_content.push('\n');
             }
             Err(e) => {
@@ -2392,15 +2349,15 @@ async fn handle_export_search(
 
 async fn materialize_attachment_file(
     state: &Arc<AppState>,
-    message_id: &crate::mxr_core::MessageId,
-    attachment_id: &crate::mxr_core::AttachmentId,
-) -> Result<crate::mxr_protocol::AttachmentFile, crate::mxr_core::MxrError> {
+    message_id: &mxr_core::MessageId,
+    attachment_id: &mxr_core::AttachmentId,
+) -> Result<mxr_protocol::AttachmentFile, mxr_core::MxrError> {
     let envelope = state
         .store
         .get_envelope(message_id)
         .await
-        .map_err(|err| crate::mxr_core::MxrError::Store(err.to_string()))?
-        .ok_or_else(|| crate::mxr_core::MxrError::NotFound(format!("message {message_id}")))?;
+        .map_err(|err| mxr_core::MxrError::Store(err.to_string()))?
+        .ok_or_else(|| mxr_core::MxrError::NotFound(format!("message {message_id}")))?;
 
     let mut body = state.sync_engine.get_body(message_id).await?;
     let attachment = body
@@ -2408,12 +2365,10 @@ async fn materialize_attachment_file(
         .iter()
         .find(|attachment| &attachment.id == attachment_id)
         .cloned()
-        .ok_or_else(|| {
-            crate::mxr_core::MxrError::NotFound(format!("attachment {attachment_id}"))
-        })?;
+        .ok_or_else(|| mxr_core::MxrError::NotFound(format!("attachment {attachment_id}")))?;
 
     if let Some(path) = attachment.local_path.as_ref().filter(|path| path.exists()) {
-        return Ok(crate::mxr_protocol::AttachmentFile {
+        return Ok(mxr_protocol::AttachmentFile {
             attachment_id: attachment.id,
             filename: attachment.filename,
             path: path.display().to_string(),
@@ -2422,7 +2377,7 @@ async fn materialize_attachment_file(
 
     let provider = state
         .get_provider(Some(&envelope.account_id))
-        .map_err(crate::mxr_core::MxrError::Provider)?;
+        .map_err(mxr_core::MxrError::Provider)?;
     let bytes = provider
         .fetch_attachment(&envelope.provider_id, &attachment.provider_id)
         .await?;
@@ -2430,13 +2385,13 @@ async fn materialize_attachment_file(
     let target_dir = state.attachment_dir().join(message_id.as_str());
     tokio::fs::create_dir_all(&target_dir)
         .await
-        .map_err(crate::mxr_core::MxrError::Io)?;
+        .map_err(mxr_core::MxrError::Io)?;
 
     let filename = sanitized_attachment_filename(&attachment.filename, &attachment.id);
     let path = target_dir.join(filename);
     tokio::fs::write(&path, bytes)
         .await
-        .map_err(crate::mxr_core::MxrError::Io)?;
+        .map_err(mxr_core::MxrError::Io)?;
 
     for existing in &mut body.attachments {
         if existing.id == *attachment_id {
@@ -2447,19 +2402,16 @@ async fn materialize_attachment_file(
         .store
         .insert_body(&body)
         .await
-        .map_err(|err| crate::mxr_core::MxrError::Store(err.to_string()))?;
+        .map_err(|err| mxr_core::MxrError::Store(err.to_string()))?;
 
-    Ok(crate::mxr_protocol::AttachmentFile {
+    Ok(mxr_protocol::AttachmentFile {
         attachment_id: attachment.id,
         filename: attachment.filename,
         path: path.display().to_string(),
     })
 }
 
-fn sanitized_attachment_filename(
-    filename: &str,
-    attachment_id: &crate::mxr_core::AttachmentId,
-) -> String {
+fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::AttachmentId) -> String {
     let candidate = std::path::Path::new(filename)
         .file_name()
         .and_then(|name| name.to_str())
@@ -2996,7 +2948,7 @@ mod tests {
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "Important".to_string(),
                 query: "is:starred".to_string(),
-                search_mode: crate::mxr_core::SearchMode::Lexical,
+                search_mode: mxr_core::SearchMode::Lexical,
             }),
         };
         let resp = handle_request(&state, &create_msg).await;
@@ -3006,7 +2958,7 @@ mod tests {
             }) => {
                 assert_eq!(search.name, "Important");
                 assert_eq!(search.query, "is:starred");
-                assert_eq!(search.search_mode, crate::mxr_core::SearchMode::Lexical);
+                assert_eq!(search.search_mode, mxr_core::SearchMode::Lexical);
             }
             other => panic!("Expected SavedSearchData, got {:?}", other),
         }
@@ -3023,10 +2975,7 @@ mod tests {
             }) => {
                 assert_eq!(searches.len(), 1);
                 assert_eq!(searches[0].name, "Important");
-                assert_eq!(
-                    searches[0].search_mode,
-                    crate::mxr_core::SearchMode::Lexical
-                );
+                assert_eq!(searches[0].search_mode, mxr_core::SearchMode::Lexical);
             }
             other => panic!("Expected SavedSearches, got {:?}", other),
         }
@@ -3040,7 +2989,7 @@ mod tests {
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "Hybrid".to_string(),
                 query: "deployment".to_string(),
-                search_mode: crate::mxr_core::SearchMode::Hybrid,
+                search_mode: mxr_core::SearchMode::Hybrid,
             }),
         };
 
@@ -3049,7 +2998,7 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::SavedSearchData { search },
             }) => {
-                assert_eq!(search.search_mode, crate::mxr_core::SearchMode::Hybrid);
+                assert_eq!(search.search_mode, mxr_core::SearchMode::Hybrid);
             }
             other => panic!("Expected SavedSearchData, got {:?}", other),
         }
@@ -3060,7 +3009,7 @@ mod tests {
             .await
             .unwrap()
             .expect("saved search");
-        assert_eq!(saved.search_mode, crate::mxr_core::SearchMode::Hybrid);
+        assert_eq!(saved.search_mode, mxr_core::SearchMode::Hybrid);
     }
 
     #[tokio::test]
@@ -3077,7 +3026,7 @@ mod tests {
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "Deploy".into(),
                 query: "deployment".into(),
-                search_mode: crate::mxr_core::SearchMode::Lexical,
+                search_mode: mxr_core::SearchMode::Lexical,
             }),
         };
         handle_request(&state, &create).await;
@@ -3106,7 +3055,7 @@ mod tests {
                 assert!(
                     results
                         .iter()
-                        .all(|item| item.mode == crate::mxr_core::SearchMode::Lexical),
+                        .all(|item| item.mode == mxr_core::SearchMode::Lexical),
                     "saved search should return lexical results"
                 );
             }
@@ -3143,7 +3092,7 @@ mod tests {
                 let daemon_pid = daemon_pid.expect("daemon pid should be present");
                 assert!(daemon_pid > 0);
                 assert_eq!(sync_statuses.len(), 1);
-                assert!(protocol_version >= crate::mxr_protocol::IPC_PROTOCOL_VERSION);
+                assert!(protocol_version >= mxr_protocol::IPC_PROTOCOL_VERSION);
                 let daemon_version = daemon_version.expect("daemon version should be present");
                 assert_ne!(daemon_version, "");
                 let daemon_build_id = daemon_build_id.expect("daemon build id should be present");
@@ -3260,7 +3209,7 @@ mod tests {
                     "Search for 'deployment' should return results"
                 );
                 assert!(results.len() <= 10);
-                assert_eq!(results[0].mode, crate::mxr_core::SearchMode::Lexical);
+                assert_eq!(results[0].mode, mxr_core::SearchMode::Lexical);
             }
             other => panic!("Expected SearchResults, got {:?}", other),
         }
@@ -3281,8 +3230,8 @@ mod tests {
                 query: "deployment".to_string(),
                 limit: 5,
                 offset: 0,
-                mode: Some(crate::mxr_core::SearchMode::Lexical),
-                sort: Some(crate::mxr_core::types::SortOrder::DateDesc),
+                mode: Some(mxr_core::SearchMode::Lexical),
+                sort: Some(mxr_core::types::SortOrder::DateDesc),
                 explain: true,
             }),
         };
@@ -3299,8 +3248,8 @@ mod tests {
             }) => {
                 assert!(results.len() >= 1);
                 assert!(results.len() <= 5);
-                assert_eq!(explain.requested_mode, crate::mxr_core::SearchMode::Lexical);
-                assert_eq!(explain.executed_mode, crate::mxr_core::SearchMode::Lexical);
+                assert_eq!(explain.requested_mode, mxr_core::SearchMode::Lexical);
+                assert_eq!(explain.executed_mode, mxr_core::SearchMode::Lexical);
                 assert_eq!(explain.dense_candidates, 0);
                 assert_eq!(explain.final_results as usize, results.len());
                 assert_eq!(explain.results.len(), results.len());
@@ -3327,8 +3276,8 @@ mod tests {
                 query: "is:unread".to_string(),
                 limit: 10,
                 offset: 0,
-                mode: Some(crate::mxr_core::SearchMode::Semantic),
-                sort: Some(crate::mxr_core::types::SortOrder::DateDesc),
+                mode: Some(mxr_core::SearchMode::Semantic),
+                sort: Some(mxr_core::types::SortOrder::DateDesc),
                 explain: false,
             }),
         };
@@ -3359,8 +3308,8 @@ mod tests {
                 query: "is:unread".to_string(),
                 limit: 10,
                 offset: 0,
-                mode: Some(crate::mxr_core::SearchMode::Semantic),
-                sort: Some(crate::mxr_core::types::SortOrder::DateDesc),
+                mode: Some(mxr_core::SearchMode::Semantic),
+                sort: Some(mxr_core::types::SortOrder::DateDesc),
                 explain: true,
             }),
         };
@@ -3373,11 +3322,8 @@ mod tests {
                         ..
                     },
             }) => {
-                assert_eq!(
-                    explain.requested_mode,
-                    crate::mxr_core::SearchMode::Semantic
-                );
-                assert_eq!(explain.executed_mode, crate::mxr_core::SearchMode::Lexical);
+                assert_eq!(explain.requested_mode, mxr_core::SearchMode::Semantic);
+                assert_eq!(explain.executed_mode, mxr_core::SearchMode::Lexical);
                 assert!(explain
                     .notes
                     .iter()
@@ -3471,7 +3417,7 @@ mod tests {
     #[tokio::test]
     async fn dispatch_list_bodies_omits_missing_rows() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
-        let missing_id = crate::mxr_core::MessageId::new();
+        let missing_id = mxr_core::MessageId::new();
 
         let msg = IpcMessage {
             id: 13,
@@ -3498,20 +3444,20 @@ mod tests {
     async fn dispatch_list_bodies_preserves_attachments() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
-        let attachment_id = crate::mxr_core::AttachmentId::new();
+        let attachment_id = mxr_core::AttachmentId::new();
 
         state
             .store
-            .insert_body(&crate::mxr_core::types::MessageBody {
+            .insert_body(&mxr_core::types::MessageBody {
                 message_id: id.clone(),
                 text_plain: Some("hello".into()),
                 text_html: None,
-                attachments: vec![crate::mxr_core::types::AttachmentMeta {
+                attachments: vec![mxr_core::types::AttachmentMeta {
                     id: attachment_id.clone(),
                     message_id: id.clone(),
                     filename: "report.pdf".into(),
                     mime_type: "application/pdf".into(),
-                    disposition: crate::mxr_core::types::AttachmentDisposition::Attachment,
+                    disposition: mxr_core::types::AttachmentDisposition::Attachment,
                     content_id: None,
                     content_location: None,
                     size_bytes: 1024,
@@ -3549,18 +3495,18 @@ mod tests {
     async fn dispatch_get_body_preserves_exact_sources_and_inline_metadata() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
-        let attachment_id = crate::mxr_core::AttachmentId::new();
+        let attachment_id = mxr_core::AttachmentId::new();
 
-        let stored = crate::mxr_core::types::MessageBody {
+        let stored = mxr_core::types::MessageBody {
             message_id: id.clone(),
             text_plain: Some("Hello team, \n> exact quote\n".into()),
             text_html: Some("<p>Hello <img src=\"cid:logo@example.com\"></p>".into()),
-            attachments: vec![crate::mxr_core::types::AttachmentMeta {
+            attachments: vec![mxr_core::types::AttachmentMeta {
                 id: attachment_id.clone(),
                 message_id: id.clone(),
                 filename: "logo.png".into(),
                 mime_type: "image/png".into(),
-                disposition: crate::mxr_core::types::AttachmentDisposition::Inline,
+                disposition: mxr_core::types::AttachmentDisposition::Inline,
                 content_id: Some("logo@example.com".into()),
                 content_location: Some("https://example.com/logo.png".into()),
                 size_bytes: 2048,
@@ -3568,12 +3514,10 @@ mod tests {
                 provider_id: "att-inline".into(),
             }],
             fetched_at: chrono::Utc::now(),
-            metadata: crate::mxr_core::types::MessageMetadata {
-                text_plain_format: Some(crate::mxr_core::types::TextPlainFormat::Flowed {
-                    delsp: true,
-                }),
-                text_plain_source: Some(crate::mxr_core::types::BodyPartSource::Exact),
-                text_html_source: Some(crate::mxr_core::types::BodyPartSource::Exact),
+            metadata: mxr_core::types::MessageMetadata {
+                text_plain_format: Some(mxr_core::types::TextPlainFormat::Flowed { delsp: true }),
+                text_plain_source: Some(mxr_core::types::BodyPartSource::Exact),
+                text_html_source: Some(mxr_core::types::BodyPartSource::Exact),
                 ..Default::default()
             },
         };
@@ -3625,12 +3569,12 @@ mod tests {
     async fn dispatch_get_html_image_assets_resolves_inline_and_blocks_remote() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
-        let attachment_id = crate::mxr_core::AttachmentId::new();
+        let attachment_id = mxr_core::AttachmentId::new();
         let temp_dir = tempfile::tempdir().unwrap();
         let inline_path = temp_dir.path().join("logo.png");
         std::fs::write(&inline_path, tiny_png_bytes()).unwrap();
 
-        let stored = crate::mxr_core::types::MessageBody {
+        let stored = mxr_core::types::MessageBody {
             message_id: id.clone(),
             text_plain: None,
             text_html: Some(concat!(
@@ -3638,12 +3582,12 @@ mod tests {
                 "<img alt=\"Badge\" src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO9xw1QAAAAASUVORK5CYII=\">",
                 "<img alt=\"Hero\" src=\"https://example.com/hero.png\">"
             ).into()),
-            attachments: vec![crate::mxr_core::types::AttachmentMeta {
+            attachments: vec![mxr_core::types::AttachmentMeta {
                 id: attachment_id.clone(),
                 message_id: id.clone(),
                 filename: "logo.png".into(),
                 mime_type: "image/png".into(),
-                disposition: crate::mxr_core::types::AttachmentDisposition::Inline,
+                disposition: mxr_core::types::AttachmentDisposition::Inline,
                 content_id: Some("logo@example.com".into()),
                 content_location: None,
                 size_bytes: 67,
@@ -3651,8 +3595,8 @@ mod tests {
                 provider_id: "att-inline".into(),
             }],
             fetched_at: chrono::Utc::now(),
-            metadata: crate::mxr_core::types::MessageMetadata {
-                text_html_source: Some(crate::mxr_core::types::BodyPartSource::Exact),
+            metadata: mxr_core::types::MessageMetadata {
+                text_html_source: Some(mxr_core::types::BodyPartSource::Exact),
                 ..Default::default()
             },
         };
@@ -3677,10 +3621,7 @@ mod tests {
                     .iter()
                     .find(|asset| asset.source.starts_with("cid:"))
                     .expect("cid asset");
-                assert_eq!(
-                    inline.status,
-                    crate::mxr_core::types::HtmlImageAssetStatus::Ready
-                );
+                assert_eq!(inline.status, mxr_core::types::HtmlImageAssetStatus::Ready);
                 assert_eq!(inline.path.as_deref(), Some(inline_path.as_path()));
 
                 let embedded = assets
@@ -3689,7 +3630,7 @@ mod tests {
                     .expect("data asset");
                 assert_eq!(
                     embedded.status,
-                    crate::mxr_core::types::HtmlImageAssetStatus::Ready,
+                    mxr_core::types::HtmlImageAssetStatus::Ready,
                     "embedded asset: {:?}",
                     embedded
                 );
@@ -3701,7 +3642,7 @@ mod tests {
                     .expect("remote asset");
                 assert_eq!(
                     remote.status,
-                    crate::mxr_core::types::HtmlImageAssetStatus::Blocked
+                    mxr_core::types::HtmlImageAssetStatus::Blocked
                 );
                 assert!(remote.path.is_none());
             }
@@ -3723,7 +3664,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let stored = crate::mxr_core::types::MessageBody {
+        let stored = mxr_core::types::MessageBody {
             message_id: id.clone(),
             text_plain: None,
             text_html: Some(format!(
@@ -3732,8 +3673,8 @@ mod tests {
             )),
             attachments: vec![],
             fetched_at: chrono::Utc::now(),
-            metadata: crate::mxr_core::types::MessageMetadata {
-                text_html_source: Some(crate::mxr_core::types::BodyPartSource::Exact),
+            metadata: mxr_core::types::MessageMetadata {
+                text_html_source: Some(mxr_core::types::BodyPartSource::Exact),
                 ..Default::default()
             },
         };
@@ -3755,7 +3696,7 @@ mod tests {
                 assert_eq!(assets.len(), 1);
                 assert_eq!(
                     assets[0].status,
-                    crate::mxr_core::types::HtmlImageAssetStatus::Ready
+                    mxr_core::types::HtmlImageAssetStatus::Ready
                 );
                 let path = assets[0].path.as_ref().expect("cached path");
                 assert!(path.exists());
@@ -3847,7 +3788,7 @@ mod tests {
     }
 
     /// Helper: sync, list envelopes, return first envelope's id.
-    async fn sync_and_get_first_id(state: &Arc<AppState>) -> crate::mxr_core::MessageId {
+    async fn sync_and_get_first_id(state: &Arc<AppState>) -> mxr_core::MessageId {
         state
             .sync_engine
             .sync_account(state.default_provider().as_ref())
@@ -3915,7 +3856,7 @@ mod tests {
                 assert!(
                     envelope
                         .flags
-                        .contains(crate::mxr_core::types::MessageFlags::STARRED),
+                        .contains(mxr_core::types::MessageFlags::STARRED),
                     "Expected STARRED flag to be set, got {:?}",
                     envelope.flags
                 );
@@ -3954,9 +3895,7 @@ mod tests {
                 data: ResponseData::Envelope { envelope },
             }) => {
                 assert!(
-                    envelope
-                        .flags
-                        .contains(crate::mxr_core::types::MessageFlags::READ),
+                    envelope.flags.contains(mxr_core::types::MessageFlags::READ),
                     "Expected READ flag to be set, got {:?}",
                     envelope.flags
                 );
@@ -4020,9 +3959,7 @@ mod tests {
             .await
             .unwrap()
             .expect("message should still exist");
-        assert!(envelope
-            .flags
-            .contains(crate::mxr_core::types::MessageFlags::READ));
+        assert!(envelope.flags.contains(mxr_core::types::MessageFlags::READ));
 
         let label_ids = state.store.get_message_label_ids(&id).await.unwrap();
         assert!(!label_ids
@@ -4145,7 +4082,7 @@ mod tests {
 
         state
             .store
-            .insert_body(&crate::mxr_core::types::MessageBody {
+            .insert_body(&mxr_core::types::MessageBody {
                 message_id: id.clone(),
                 text_plain: None,
                 text_html: Some("<p>Hello <b>world</b></p>".into()),
@@ -4377,11 +4314,11 @@ mod tests {
     async fn dispatch_send_draft() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
 
-        let draft = crate::mxr_core::types::Draft {
-            id: crate::mxr_core::DraftId::new(),
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
             account_id: state.default_account_id(),
             reply_headers: None,
-            to: vec![crate::mxr_core::types::Address {
+            to: vec![mxr_core::types::Address {
                 name: None,
                 email: "test@example.com".to_string(),
             }],
@@ -4533,7 +4470,7 @@ mod tests {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
 
-        use crate::mxr_core::types::MessageFlags;
+        use mxr_core::types::MessageFlags;
         let flags = MessageFlags::READ | MessageFlags::STARRED;
         let msg = IpcMessage {
             id: 1,
@@ -4637,7 +4574,7 @@ mod tests {
     async fn dispatch_mutation_nonexistent_message() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
 
-        let fake_id = crate::mxr_core::MessageId::new();
+        let fake_id = mxr_core::MessageId::new();
         let msg = IpcMessage {
             id: 1,
             payload: IpcPayload::Request(Request::Mutation(MutationCommand::Star {
@@ -4687,7 +4624,7 @@ mod tests {
             payload: IpcPayload::Request(Request::CreateSavedSearch {
                 name: "ToDelete".to_string(),
                 query: "is:unread".to_string(),
-                search_mode: crate::mxr_core::SearchMode::Lexical,
+                search_mode: mxr_core::SearchMode::Lexical,
             }),
         };
         let resp = handle_request(&state, &create_msg).await;
@@ -4784,7 +4721,7 @@ mod tests {
             id: 2,
             payload: IpcPayload::Request(Request::ExportThread {
                 thread_id,
-                format: crate::mxr_core::types::ExportFormat::Markdown,
+                format: mxr_core::types::ExportFormat::Markdown,
             }),
         };
         let resp = handle_request(&state, &export_msg).await;
@@ -4851,7 +4788,7 @@ mod tests {
             id: 2,
             payload: IpcPayload::Request(Request::ExportThread {
                 thread_id,
-                format: crate::mxr_core::types::ExportFormat::Json,
+                format: mxr_core::types::ExportFormat::Json,
             }),
         };
         let resp = handle_request(&state, &export_msg).await;
@@ -4920,7 +4857,7 @@ mod tests {
             id: 4,
             payload: IpcPayload::Request(Request::ExportSearch {
                 query: "deployment".into(),
-                format: crate::mxr_core::types::ExportFormat::Json,
+                format: mxr_core::types::ExportFormat::Json,
             }),
         };
         let resp = handle_request(&state, &msg).await;
@@ -4945,11 +4882,11 @@ mod tests {
     async fn dispatch_save_draft_to_server() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
 
-        let draft = crate::mxr_core::types::Draft {
-            id: crate::mxr_core::DraftId::new(),
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
             account_id: state.default_account_id(),
             reply_headers: None,
-            to: vec![crate::mxr_core::types::Address {
+            to: vec![mxr_core::types::Address {
                 name: Some("Recipient".into()),
                 email: "recipient@example.com".into(),
             }],

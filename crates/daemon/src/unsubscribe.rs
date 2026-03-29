@@ -1,4 +1,4 @@
-use crate::mxr_core::types::UnsubscribeMethod;
+use mxr_core::types::UnsubscribeMethod;
 use reqwest::Client;
 
 /// Result of an unsubscribe attempt.

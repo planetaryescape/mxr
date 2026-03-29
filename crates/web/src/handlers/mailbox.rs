@@ -92,7 +92,7 @@ pub(crate) async fn export_thread(
         &state.config.socket_path,
         Request::ExportThread {
             thread_id: parse_thread_id(&thread_id)?,
-            format: crate::mxr_core::types::ExportFormat::Markdown,
+            format: mxr_core::types::ExportFormat::Markdown,
         },
     )
     .await?

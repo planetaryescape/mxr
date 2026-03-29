@@ -26,5 +26,5 @@ pub fn save(state: &TuiLocalState) -> std::io::Result<()> {
 }
 
 fn file_path() -> PathBuf {
-    crate::mxr_config::config_dir().join("tui-state.json")
+    mxr_config::config_dir().join("tui-state.json")
 }

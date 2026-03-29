@@ -1,12 +1,12 @@
-use crate::mxr_rules::{DryRunResult, Rule, RuleEngine};
+use mxr_rules::{DryRunResult, Rule, RuleEngine};
 use crate::state::AppState;
 use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 
 pub(super) fn protocol_event_entry(
-    entry: crate::mxr_store::EventLogEntry,
-) -> crate::mxr_protocol::EventLogEntry {
-    crate::mxr_protocol::EventLogEntry {
+    entry: mxr_store::EventLogEntry,
+) -> mxr_protocol::EventLogEntry {
+    mxr_protocol::EventLogEntry {
         timestamp: entry.timestamp,
         level: entry.level,
         category: entry.category,
@@ -22,7 +22,7 @@ pub(super) fn recent_log_lines(
     limit: usize,
     level: Option<&str>,
 ) -> Result<Vec<String>, std::io::Error> {
-    let log_path = crate::mxr_config::data_dir().join("logs").join("mxr.log");
+    let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
     if !log_path.exists() {
         return Ok(vec!["(no recent logs)".to_string()]);
     }
@@ -44,7 +44,7 @@ pub(super) fn recent_log_lines(
 
 pub(super) fn should_fallback_to_tantivy(
     query: &str,
-    error: &crate::mxr_search::ParseError,
+    error: &mxr_search::ParseError,
 ) -> bool {
     if looks_structured_query(query) {
         return false;
@@ -52,9 +52,9 @@ pub(super) fn should_fallback_to_tantivy(
 
     matches!(
         error,
-        crate::mxr_search::ParseError::UnexpectedToken(_)
-            | crate::mxr_search::ParseError::UnexpectedEnd
-            | crate::mxr_search::ParseError::UnmatchedParen
+        mxr_search::ParseError::UnexpectedToken(_)
+            | mxr_search::ParseError::UnexpectedEnd
+            | mxr_search::ParseError::UnmatchedParen
     )
 }
 
@@ -74,7 +74,7 @@ pub(super) async fn persist_rule(state: &Arc<AppState>, rule: &Rule) -> Result<(
     let actions_json = serde_json::to_string(&rule.actions).map_err(|e| e.to_string())?;
     state
         .store
-        .upsert_rule(crate::mxr_store::RuleRecordInput {
+        .upsert_rule(mxr_store::RuleRecordInput {
             id: &rule.id.0,
             name: &rule.name,
             enabled: rule.enabled,
@@ -89,7 +89,7 @@ pub(super) async fn persist_rule(state: &Arc<AppState>, rule: &Rule) -> Result<(
 }
 
 pub(super) fn row_to_rule(row: &sqlx::sqlite::SqliteRow) -> Result<Rule, String> {
-    serde_json::from_value(crate::mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string())
+    serde_json::from_value(mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string())
 }
 
 pub(super) async fn dry_run_rules(
@@ -171,7 +171,7 @@ pub(super) async fn dry_run_rules(
         .iter()
         .map(|message| {
             (
-                message as &dyn crate::mxr_rules::MessageView,
+                message as &dyn mxr_rules::MessageView,
                 message.id.as_str(),
                 message.from.as_str(),
                 message.subject.as_str(),
@@ -211,8 +211,8 @@ pub(super) struct DryRunMessage {
 
 impl DryRunMessage {
     fn from_parts(
-        envelope: crate::mxr_core::Envelope,
-        body: Option<crate::mxr_core::MessageBody>,
+        envelope: mxr_core::Envelope,
+        body: Option<mxr_core::MessageBody>,
         labels: Vec<String>,
     ) -> Self {
         Self {
@@ -224,20 +224,20 @@ impl DryRunMessage {
             has_attachment: envelope.has_attachments,
             size_bytes: envelope.size_bytes,
             date: envelope.date,
-            is_unread: !envelope.flags.contains(crate::mxr_core::MessageFlags::READ),
+            is_unread: !envelope.flags.contains(mxr_core::MessageFlags::READ),
             is_starred: envelope
                 .flags
-                .contains(crate::mxr_core::MessageFlags::STARRED),
+                .contains(mxr_core::MessageFlags::STARRED),
             has_unsubscribe: !matches!(
                 envelope.unsubscribe,
-                crate::mxr_core::types::UnsubscribeMethod::None
+                mxr_core::types::UnsubscribeMethod::None
             ),
             body_text: body.and_then(|body| body.text_plain.or(body.text_html)),
         }
     }
 }
 
-impl crate::mxr_rules::MessageView for DryRunMessage {
+impl mxr_rules::MessageView for DryRunMessage {
     fn sender_email(&self) -> &str {
         &self.from
     }

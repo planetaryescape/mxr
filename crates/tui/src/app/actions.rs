@@ -31,7 +31,7 @@ impl App {
             return;
         };
 
-        let dir = crate::mxr_config::data_dir().join("source");
+        let dir = mxr_config::data_dir().join("source");
         if let Err(error) = std::fs::create_dir_all(&dir) {
             self.status_message = Some(format!("Failed to prepare source dir: {error}"));
             return;
@@ -43,7 +43,7 @@ impl App {
             return;
         }
 
-        let editor = crate::mxr_compose::editor::resolve_editor(None);
+        let editor = mxr_compose::editor::resolve_editor(None);
         match std::process::Command::new(&editor).arg(&path).spawn() {
             Ok(_) => {
                 self.status_message = Some(format!("Opened source: {}", path.display()));
@@ -718,7 +718,7 @@ impl App {
                 let mut seen = std::collections::HashMap::new();
                 for env in &self.all_envelopes {
                     seen.entry(env.from.email.clone()).or_insert_with(|| {
-                        crate::mxr_tui::ui::compose_picker::Contact {
+                        crate::ui::compose_picker::Contact {
                             name: env.from.name.clone().unwrap_or_default(),
                             email: env.from.email.clone(),
                         }

@@ -1,9 +1,6 @@
 # mxr
 
 [![CI](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml/badge.svg)](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml)
-[![crates.io](https://img.shields.io/crates/v/mxr.svg)](https://crates.io/crates/mxr)
-[![docs.rs](https://docs.rs/mxr/badge.svg)](https://docs.rs/mxr)
-[![License](https://img.shields.io/crates/l/mxr.svg)](https://github.com/planetaryescape/mxr#license)
 [![MSRV](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://github.com/planetaryescape/mxr/blob/main/Cargo.toml)
 
 **Local-first email infrastructure.**
@@ -19,8 +16,8 @@ Today, the shipped surfaces are the CLI, TUI, daemon socket, and agent skill. A 
 brew tap planetaryescape/mxr
 brew install mxr
 
-# crates.io
-cargo install mxr
+# Cargo (release tag)
+cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.29 --locked mxr
 ```
 
 Pre-built release tarballs are also available for:
@@ -34,6 +31,9 @@ Pre-built release tarballs are also available for:
 If you want current `main` instead of the latest release:
 
 ```bash
+cargo install --git https://github.com/planetaryescape/mxr --locked mxr
+
+# or clone locally
 git clone https://github.com/planetaryescape/mxr
 cd mxr
 cargo install --path . --locked

@@ -115,19 +115,26 @@ mxr/
 │   │                             # Depends on: core
 │   │
 │   ├── provider-smtp/            # SMTP send adapter (MailSendProvider only)
-│   │                             # Via lettre. Depends on: core
+│   │                             # Via lettre. Depends on: core, outbound
 │   │
 │   ├── provider-fake/            # In-memory test double (both traits)
 │   │                             # Deterministic, no network. For tests and adapter authors.
+│   │                             # Depends on: core
+│   │
+│   ├── mail-parse/               # Shared RFC 5322/mail parsing helpers
+│   │                             # Depends on: core
+│   │
+│   ├── outbound/                 # Shared outbound message rendering/building
+│   │                             # Markdown render, attachments, RFC 5322 assembly.
 │   │                             # Depends on: core
 │   │
 │   ├── sync/                     # Sync engine: orchestrates providers ↔ store ↔ search
 │   │                             # Delta tracking, conflict resolution, snooze wake loop.
 │   │                             # Depends on: core, store, search
 │   │
-│   ├── compose/                  # $EDITOR workflow, frontmatter parsing, markdown→multipart
+│   ├── compose/                  # $EDITOR workflow, frontmatter parsing, draft UX
 │   │                             # Draft management, context block generation.
-│   │                             # Depends on: core, store
+│   │                             # Depends on: core, outbound
 │   │
 │   ├── reader/                   # Reader mode: HTML→text, signature stripping,
 │   │                             # quote collapsing, boilerplate removal.
@@ -148,14 +155,16 @@ mxr/
 │   ├── daemon/                   # Background process: socket server, sync loop,
 │   │                             # snooze waker, rules executor, search indexer.
 │   │                             # Depends on: core, store, search, sync, compose,
-│   │                             #             rules, export, protocol, providers
+│   │                             #             rules, export, protocol, mail-parse, providers
 │   │
 │   └── tui/                      # Ratatui frontend: panes, vim navigation,
 │   │                             # command palette, keybinding dispatch.
-│   │                             # Depends on: core, protocol
+│   │                             # Depends on: core, protocol, config,
+│   │                             #             compose, reader, mail-parse
 │   │
 │   └── web/                      # HTTP/WebSocket bridge client over daemon IPC.
-│                                 # Depends on: core, protocol
+│                                 # Depends on: core, protocol, config,
+│                                 #             compose, mail-parse
 │
 ├── migrations/                   # SQLite migrations (used by store crate)
 ├── config/
@@ -177,12 +186,18 @@ These are strict. Violations should be caught in code review:
 
 1. **`core` depends on nothing internal.** It is the leaf node. All other crates depend on it.
 2. **`protocol` depends only on `core`.** It defines the IPC contract between daemon and clients.
-3. **Provider crates depend only on `core`.** They implement traits defined in core. They do NOT depend on store, search, or sync. This is what makes them swappable and independently buildable.
-4. **`store` and `search` depend only on `core`.** They are storage backends, not business logic.
+3. **Provider crates depend on `core` plus shared mail utility crates only.** Today that means `mail-parse` and `outbound`. They do NOT depend on store, search, sync, daemon, TUI, or web.
+4. **`store` depends only on `core`, and `search` depends only on `core`.** They are storage backends, not business logic.
 5. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
 6. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
-7. **`tui` depends only on `core` and `protocol`.** It talks to the daemon via IPC, never directly to providers, store, or search. This enforces the client-server boundary.
-8. **`web` is also a client surface.** It should shape shell/sidebar/thread presentation from reusable daemon data, not by adding screen-specific IPC.
+7. **`tui` and `web` are clients.** They may depend on `core`, `protocol`, and client-local utility crates such as `config`, `compose`, `reader`, and `mail-parse`, but they must not depend on daemon, store, search, sync, semantic, or provider crates.
+8. **Architectural seams are Cargo seams.** Do not fake crate boundaries with `#[path]` source inclusion; use real workspace crates and normal path dependencies.
+
+### Package surface
+
+- The repo-root package `mxr` is the install/product surface.
+- Internal crates under `crates/` are workspace implementation details and default to `publish = false`.
+- The IMAP adapter depends on the published `mxr-async-imap` fork from crates.io; vendored source is not part of the workspace boundary model.
 
 ### Key dependencies (external crates)
 

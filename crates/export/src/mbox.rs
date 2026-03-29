@@ -1,4 +1,4 @@
-use crate::mxr_export::ExportThread;
+use crate::ExportThread;
 
 /// Export thread as RFC 4155 mbox format.
 /// Each message starts with "From " line followed by RFC 2822 headers + body.
@@ -49,8 +49,8 @@ pub fn export_mbox(thread: &ExportThread) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_export::tests::{empty_body_thread, sample_thread};
-    use crate::mxr_export::{ExportMessage, ExportThread};
+    use crate::tests::{empty_body_thread, sample_thread};
+    use crate::{ExportMessage, ExportThread};
     use chrono::TimeZone;
     use mxr_test_support::standards_fixture_string;
 

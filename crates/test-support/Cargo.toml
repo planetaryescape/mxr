@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Shared test fixtures and helpers for mxr"
+publish = false
 
 [lints]
 workspace = true

@@ -1,4 +1,4 @@
-use crate::mxr_tui::action::{action_allowed_in_context, Action, UiContext};
+use crate::action::{action_allowed_in_context, Action, UiContext};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -499,12 +499,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
     ]
 }
 
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    palette: &CommandPalette,
-    theme: &crate::mxr_tui::theme::Theme,
-) {
+pub fn draw(frame: &mut Frame, area: Rect, palette: &CommandPalette, theme: &crate::theme::Theme) {
     if !palette.visible {
         return;
     }
@@ -696,7 +691,7 @@ pub fn draw(
     frame.render_widget(footer, chunks[2]);
 }
 
-fn category_style(category: &str, theme: &crate::mxr_tui::theme::Theme) -> (&'static str, Color) {
+fn category_style(category: &str, theme: &crate::theme::Theme) -> (&'static str, Color) {
     match category {
         "Mail" => ("@", theme.warning),
         "Navigation" => (">", theme.accent),
@@ -714,7 +709,7 @@ fn category_style(category: &str, theme: &crate::mxr_tui::theme::Theme) -> (&'st
 #[cfg(test)]
 mod tests {
     use super::{commands_for_context, CommandPalette};
-    use crate::mxr_tui::action::UiContext;
+    use crate::action::UiContext;
 
     #[test]
     fn rules_context_hides_mail_only_commands() {

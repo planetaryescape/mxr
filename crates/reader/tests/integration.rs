@@ -5,7 +5,10 @@ fn newsletter_stripped_to_content() {
     let html = include_str!("fixtures/newsletter.html");
     let output = clean(None, Some(html), &ReaderConfig::default());
     assert!(output.cleaned_lines < output.original_lines);
-    assert!(output.content.contains("newsletter"));
+    assert!(output.content.contains("Weekly Tech Roundup"));
+    assert!(output
+        .content
+        .contains("Rust 2026 edition brings exciting new features"));
     // Should not contain tracking junk
     assert!(!output
         .content
@@ -25,7 +28,10 @@ fn plain_email_with_signature() {
         output.content.trim(),
         "Hey,\n\nCan we meet tomorrow at 3pm?\n\nThanks,"
     );
-    assert_eq!(output.signature.as_deref(), Some("Alice\nSenior Engineer"));
+    assert_eq!(
+        output.signature.as_deref(),
+        Some("Alice\nSenior Engineer\n+1 555-0123\nalice@company.com")
+    );
 }
 
 #[test]
@@ -44,7 +50,10 @@ fn email_with_quotes_and_signature() {
         .content
         .contains("[previous message from bob@example.com]"));
     assert!(!output.content.contains("We should deploy"));
-    assert_eq!(output.signature.as_deref(), Some("Alice Smith"));
+    assert_eq!(
+        output.signature.as_deref(),
+        Some("Alice Smith\nalice@example.com\n+1 555-0100")
+    );
     assert_eq!(output.quoted_messages.len(), 1);
 }
 

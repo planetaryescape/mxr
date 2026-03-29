@@ -1,7 +1,7 @@
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
-use crate::mxr_protocol::DaemonEvent;
 use crate::output::resolve_format;
+use mxr_protocol::DaemonEvent;
 
 pub fn event_matches_type(event: &DaemonEvent, event_type: Option<&str>) -> bool {
     let Some(event_type) = event_type else {
@@ -62,7 +62,7 @@ pub async fn run(event_type: Option<String>, format: Option<OutputFormat>) -> an
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::{id::AccountId, MessageId};
+    use mxr_core::{id::AccountId, MessageId};
 
     #[test]
     fn sync_filter_matches_sync_events() {

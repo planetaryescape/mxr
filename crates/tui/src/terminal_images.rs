@@ -1,8 +1,8 @@
-use crate::mxr_core::id::MessageId;
-use crate::mxr_core::types::HtmlImageAsset;
-use crate::mxr_core::MxrError;
-use crate::mxr_tui::AsyncResult;
+use crate::AsyncResult;
 use image::DynamicImage;
+use mxr_core::id::MessageId;
+use mxr_core::types::HtmlImageAsset;
+use mxr_core::MxrError;
 use ratatui::layout::Rect;
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::thread::{ResizeRequest, ThreadProtocol};

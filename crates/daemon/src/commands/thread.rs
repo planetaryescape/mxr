@@ -1,9 +1,9 @@
 use crate::cli::OutputFormat;
 use crate::commands::expect_response;
 use crate::ipc_client::IpcClient;
-use crate::mxr_core::ThreadId;
-use crate::mxr_protocol::*;
 use crate::output::resolve_format;
+use mxr_core::ThreadId;
+use mxr_protocol::*;
 
 pub async fn run(thread_id: String, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let tid = ThreadId::from_uuid(uuid::Uuid::parse_str(&thread_id)?);

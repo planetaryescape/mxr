@@ -1,7 +1,7 @@
 # 00 — Workspace Setup
 
 > **Current Layout Note**
-> This plan describes the historical multi-crate workspace bootstrap. Current code still uses a Cargo workspace, but first-party code now ships as a single publishable package, `mxr`. References to `mxr-*` crates in later phase docs now map to modules mounted from `crates/*/src` under the root package.
+> This plan describes the historical workspace bootstrap. Current code still uses a Cargo workspace, but `mxr-*` names under `crates/` are real internal crates again, with the repo-root package `mxr` as the install surface.
 
 ## Goal
 

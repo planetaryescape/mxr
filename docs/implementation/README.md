@@ -3,7 +3,7 @@
 Phased implementation plans for building mxr. Each document is designed to be consumed by a coding agent for autonomous implementation.
 
 > **Current Layout Note**
-> These plans were written against the historical multi-crate workspace (`mxr-core`, `mxr-store`, `mxr-tui`, etc.). Current code ships as one publishable package, `mxr`. Old crate names now map to modules mounted from `crates/*/src` under the root package. Follow the paths and behavior, not the old package boundaries.
+> These plans were written before the workspace-boundary cleanup. Current code uses real internal workspace crates under `crates/`, with the repo-root package `mxr` as the product/install surface. Old `mxr-*` names are real internal crates again, but crates.io-specific release steps in these plans are historical unless explicitly updated elsewhere.
 
 ## How to Use These Docs
 
@@ -24,7 +24,7 @@ Phased implementation plans for building mxr. Each document is designed to be co
 | 02 | [Phase 1](02-phase-1.md) | 1 | Gmail read-only + search: Gmail adapter, real sync, query parser, TUI enhancements, config. Includes A004 read CLIs (cat/thread/headers/count/saved), A005 g-prefix navigation, A006 basic status/logs. |
 | 03 | [Phase 2](03-phase-2.md) | 2 | Compose + mutations + reader mode + IMAP. Includes A001 inline compose, A002 markdown rendering, A004 full mutation CLIs + batch --search, A005 Gmail-native keybindings, A007 basic batch ops (x/V select), A008 IMAP first-party adapter. |
 | 04 | [Phase 3](04-phase-3.md) | 3 | Export + rules + polish. Includes A004 remaining CLIs (labels/notify/events), A006 full observability (logs/status/events/doctor --check), A007 advanced batch (pattern select/vim counts). |
-| 05 | [Phase 4](05-phase-4.md) | 4 | Community + release: adapter kit (validates against both Gmail + IMAP), binary releases (musl static + cross-compilation), single-package crates.io publishing for `mxr`, changelog (git-cliff), Homebrew auto-update, install methods, docs site with full CLI/keybinding/observability reference. Integrates release pipeline addendum (D066-D071). |
+| 05 | [Phase 4](05-phase-4.md) | 4 | Community + release: adapter kit (validates against both Gmail + IMAP), binary releases (musl static + cross-compilation), one install surface for `mxr`, changelog (git-cliff), Homebrew auto-update, install methods, docs site with full CLI/keybinding/observability reference. Integrates release pipeline addendum (D066-D071). |
 | 06 | [Hybrid Search](06-hybrid-search.md) | cross-phase | Lexical search stabilization, semantic schema/profile state, local model delivery, hybrid retrieval, CLI/TUI wiring, rebuild/status/profile flows. |
 
 ## Addendum Feature Distribution
@@ -63,7 +63,7 @@ These decisions are settled (see [decision log](../blueprint/15-decision-log.md)
 - JSON/JSONL output is part of the product surface, not an afterthought
 - Semver + conventional commits + git-cliff for changelogs (D066)
 - Cross-compilation: `cross` for Linux musl, native for macOS (D067)
-- Single-package crates.io publish for `mxr` (current release layout)
+- One install surface for `mxr`; Cargo installs use git/path rather than crates.io
 - Homebrew tap with auto-update on release (D069)
 - No Windows builds in v1 (D070)
 - cargo-binstall compatibility via naming convention (D071)

@@ -10,7 +10,7 @@ impl App {
                     .iter()
                     .find(|label| &label.provider_id == provider_id)
                     .map(|label| {
-                        crate::mxr_tui::ui::sidebar::humanize_label(&label.name).to_string()
+                        crate::ui::sidebar::humanize_label(&label.name).to_string()
                     })
             })
             .collect()
@@ -167,7 +167,7 @@ impl App {
 
     pub(super) fn open_account_result_details_modal(
         &mut self,
-        result: &crate::mxr_protocol::AccountOperationResult,
+        result: &mxr_protocol::AccountOperationResult,
     ) {
         self.show_error_modal(
             account_result_modal_title(result),
@@ -272,7 +272,7 @@ impl App {
         }
     }
 
-    pub fn resolve_thread_fetch_error(&mut self, thread_id: &crate::mxr_core::ThreadId) {
+    pub fn resolve_thread_fetch_error(&mut self, thread_id: &mxr_core::ThreadId) {
         if self.in_flight_thread_fetch.as_ref() == Some(thread_id) {
             self.in_flight_thread_fetch = None;
         }

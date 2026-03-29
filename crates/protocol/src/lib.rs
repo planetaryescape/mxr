@@ -9,12 +9,12 @@ pub const IPC_PROTOCOL_VERSION: u32 = 1;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::*;
-    use crate::mxr_core::{
+    use bytes::BytesMut;
+    use mxr_core::id::*;
+    use mxr_core::{
         Address, Draft, ExportFormat, SavedSearch, SearchMode, SemanticProfile,
         SemanticStatusSnapshot, SortOrder,
     };
-    use bytes::BytesMut;
     use proptest::prelude::*;
     use tokio_util::codec::{Decoder, Encoder};
 
@@ -56,8 +56,8 @@ mod tests {
         }
     }
 
-    fn sample_envelope() -> crate::mxr_core::Envelope {
-        crate::mxr_core::Envelope {
+    fn sample_envelope() -> mxr_core::Envelope {
+        mxr_core::Envelope {
             id: MessageId::new(),
             account_id: AccountId::new(),
             provider_id: "provider-1".into(),
@@ -71,32 +71,32 @@ mod tests {
             bcc: Vec::new(),
             subject: "hello".into(),
             date: chrono::Utc::now(),
-            flags: crate::mxr_core::types::MessageFlags::READ,
+            flags: mxr_core::types::MessageFlags::READ,
             snippet: "snippet".into(),
             has_attachments: false,
             size_bytes: 42,
-            unsubscribe: crate::mxr_core::types::UnsubscribeMethod::None,
+            unsubscribe: mxr_core::types::UnsubscribeMethod::None,
             label_provider_ids: Vec::new(),
         }
     }
 
-    fn sample_body() -> crate::mxr_core::MessageBody {
-        crate::mxr_core::MessageBody {
+    fn sample_body() -> mxr_core::MessageBody {
+        mxr_core::MessageBody {
             message_id: MessageId::new(),
             text_plain: Some("plain".into()),
             text_html: Some("<p>html</p>".into()),
             attachments: Vec::new(),
             fetched_at: chrono::Utc::now(),
-            metadata: crate::mxr_core::types::MessageMetadata::default(),
+            metadata: mxr_core::types::MessageMetadata::default(),
         }
     }
 
-    fn sample_label() -> crate::mxr_core::Label {
-        crate::mxr_core::Label {
+    fn sample_label() -> mxr_core::Label {
+        mxr_core::Label {
             id: LabelId::new(),
             account_id: AccountId::new(),
             name: "Inbox".into(),
-            kind: crate::mxr_core::types::LabelKind::System,
+            kind: mxr_core::types::LabelKind::System,
             color: None,
             provider_id: "INBOX".into(),
             unread_count: 1,
@@ -104,8 +104,8 @@ mod tests {
         }
     }
 
-    fn sample_thread() -> crate::mxr_core::Thread {
-        crate::mxr_core::Thread {
+    fn sample_thread() -> mxr_core::Thread {
+        mxr_core::Thread {
             id: ThreadId::new(),
             account_id: AccountId::new(),
             subject: "hello".into(),
@@ -370,7 +370,7 @@ mod tests {
             (
                 Request::SetFlags {
                     message_id: MessageId::new(),
-                    flags: crate::mxr_core::types::MessageFlags::READ,
+                    flags: mxr_core::types::MessageFlags::READ,
                 },
                 IpcCategory::CoreMail,
             ),

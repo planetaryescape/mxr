@@ -1,5 +1,5 @@
 #[cfg(feature = "local")]
-use crate::mxr_core::types::SemanticProfile;
+use mxr_core::types::SemanticProfile;
 #[cfg(feature = "local")]
 use fastembed::EmbeddingModel;
 #[cfg(feature = "local")]

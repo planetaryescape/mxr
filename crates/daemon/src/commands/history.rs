@@ -1,7 +1,7 @@
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
-use crate::mxr_protocol::{EventLogEntry, Request, Response, ResponseData};
 use crate::output::resolve_format;
+use mxr_protocol::{EventLogEntry, Request, Response, ResponseData};
 
 fn render_table(entries: &[EventLogEntry]) {
     if entries.is_empty() {
@@ -61,7 +61,7 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::AccountId;
+    use mxr_core::id::AccountId;
 
     fn sample_entry(summary: &str) -> EventLogEntry {
         EventLogEntry {

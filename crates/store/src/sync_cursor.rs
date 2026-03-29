@@ -1,5 +1,5 @@
-use crate::mxr_core::{AccountId, SyncCursor};
-use crate::mxr_store::{decode_json, encode_json};
+use crate::{decode_json, encode_json};
+use mxr_core::{AccountId, SyncCursor};
 
 impl super::Store {
     pub async fn get_sync_cursor(

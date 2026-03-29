@@ -1,7 +1,7 @@
 # Phase 0 — Implementation Plan
 
 > **Current Layout Note**
-> This phase plan was written for the old multi-crate workspace. Current code ships as one publishable package, `mxr`. Names like `mxr-core`, `mxr-store`, `mxr-protocol`, and `mxr-tui` now refer to modules mounted from `crates/*/src` under the root package.
+> This phase plan was written before the workspace-boundary cleanup. Names like `mxr-core`, `mxr-store`, `mxr-protocol`, and `mxr-tui` are real internal workspace crates again, with the repo-root package `mxr` as the install surface.
 
 ## Goal
 

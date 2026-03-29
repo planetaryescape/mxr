@@ -1,4 +1,4 @@
-use crate::mxr_tui::app::{RuleFormState, RulesPageState, RulesPanel};
+use crate::app::{RuleFormState, RulesPageState, RulesPanel};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use tui_textarea::TextArea;
@@ -9,7 +9,7 @@ pub fn draw(
     state: &RulesPageState,
     condition_editor: &TextArea<'static>,
     action_editor: &TextArea<'static>,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -97,7 +97,7 @@ fn draw_rule_list(
     frame: &mut Frame,
     area: Rect,
     state: &RulesPageState,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     if state.rules.is_empty() {
         frame.render_widget(
@@ -175,7 +175,7 @@ fn draw_form(
     form: &RuleFormState,
     condition_editor: &TextArea<'static>,
     action_editor: &TextArea<'static>,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -398,7 +398,7 @@ fn summary_line(
     label: &str,
     value: &str,
     active: bool,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) -> Line<'static> {
     Line::from(vec![
         Span::styled(
@@ -413,7 +413,7 @@ fn summary_line(
     ])
 }
 
-fn draw_footer(frame: &mut Frame, area: Rect, text: &str, theme: &crate::mxr_tui::theme::Theme) {
+fn draw_footer(frame: &mut Frame, area: Rect, text: &str, theme: &crate::theme::Theme) {
     frame.render_widget(
         Paragraph::new(text).block(
             Block::default()

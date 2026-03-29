@@ -1,4 +1,4 @@
-use crate::mxr_protocol::types::IpcMessage;
+use crate::types::IpcMessage;
 use bytes::BytesMut;
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 

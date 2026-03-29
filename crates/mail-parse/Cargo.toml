@@ -1,0 +1,24 @@
+[package]
+name = "mxr-mail-parse"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+chrono = { workspace = true }
+mail-parser = { workspace = true }
+regex = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+mxr-test-support = { workspace = true }
+serde_json = { workspace = true }

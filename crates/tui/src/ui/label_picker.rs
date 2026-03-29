@@ -1,4 +1,4 @@
-use crate::mxr_core::types::Label;
+use mxr_core::types::Label;
 use nucleo::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo::{Config, Matcher, Utf32Str};
 use ratatui::prelude::*;
@@ -151,12 +151,7 @@ fn has_word_prefix(haystack: &str, query_lower: &str) -> bool {
         .any(|word| !word.is_empty() && word.to_lowercase().starts_with(query_lower))
 }
 
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    picker: &LabelPicker,
-    theme: &crate::mxr_tui::theme::Theme,
-) {
+pub fn draw(frame: &mut Frame, area: Rect, picker: &LabelPicker, theme: &crate::theme::Theme) {
     if !picker.visible {
         return;
     }
@@ -240,8 +235,8 @@ fn humanize_label(name: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::{AccountId, LabelId};
-    use crate::mxr_core::types::LabelKind;
+    use mxr_core::id::{AccountId, LabelId};
+    use mxr_core::types::LabelKind;
 
     fn label(name: &str, kind: LabelKind) -> Label {
         Label {

@@ -1,7 +1,7 @@
 use super::*;
 
 impl App {
-    pub(super) fn selected_account_config(&self) -> Option<crate::mxr_protocol::AccountConfigData> {
+    pub(super) fn selected_account_config(&self) -> Option<mxr_protocol::AccountConfigData> {
         self.selected_account().and_then(account_summary_to_config)
     }
 
@@ -9,7 +9,7 @@ impl App {
         match self.accounts_page.form.mode {
             AccountFormMode::Gmail => {
                 if self.accounts_page.form.gmail_credential_source
-                    == crate::mxr_protocol::GmailCredentialSourceData::Custom
+                    == mxr_protocol::GmailCredentialSourceData::Custom
                 {
                     8
                 } else {
@@ -24,7 +24,7 @@ impl App {
     pub(super) fn account_form_data(
         &self,
         is_default: bool,
-    ) -> crate::mxr_protocol::AccountConfigData {
+    ) -> mxr_protocol::AccountConfigData {
         let form = &self.accounts_page.form;
         let key = form.key.trim().to_string();
         let name = if form.name.trim().is_empty() {
@@ -69,7 +69,7 @@ impl App {
             form.gmail_token_ref.trim().to_string()
         };
         let sync = match form.mode {
-            AccountFormMode::Gmail => Some(crate::mxr_protocol::AccountSyncConfigData::Gmail {
+            AccountFormMode::Gmail => Some(mxr_protocol::AccountSyncConfigData::Gmail {
                 credential_source: form.gmail_credential_source.clone(),
                 client_id: form.gmail_client_id.trim().to_string(),
                 client_secret: if form.gmail_client_secret.trim().is_empty() {
@@ -79,7 +79,7 @@ impl App {
                 },
                 token_ref: gmail_token_ref,
             }),
-            AccountFormMode::ImapSmtp => Some(crate::mxr_protocol::AccountSyncConfigData::Imap {
+            AccountFormMode::ImapSmtp => Some(mxr_protocol::AccountSyncConfigData::Imap {
                 host: form.imap_host.trim().to_string(),
                 port: form.imap_port.parse().unwrap_or(993),
                 username: imap_username,
@@ -95,9 +95,9 @@ impl App {
             AccountFormMode::SmtpOnly => None,
         };
         let send = match form.mode {
-            AccountFormMode::Gmail => Some(crate::mxr_protocol::AccountSendConfigData::Gmail),
+            AccountFormMode::Gmail => Some(mxr_protocol::AccountSendConfigData::Gmail),
             AccountFormMode::ImapSmtp | AccountFormMode::SmtpOnly => {
-                Some(crate::mxr_protocol::AccountSendConfigData::Smtp {
+                Some(mxr_protocol::AccountSendConfigData::Smtp {
                     host: form.smtp_host.trim().to_string(),
                     port: form.smtp_port.parse().unwrap_or(587),
                     username: smtp_username,
@@ -112,7 +112,7 @@ impl App {
                 })
             }
         };
-        crate::mxr_protocol::AccountConfigData {
+        mxr_protocol::AccountConfigData {
             key,
             name,
             email,
@@ -124,7 +124,7 @@ impl App {
 
     pub(super) fn account_form_validation_failure(
         &self,
-    ) -> Option<(crate::mxr_protocol::AccountOperationResult, usize)> {
+    ) -> Option<(mxr_protocol::AccountOperationResult, usize)> {
         let form = &self.accounts_page.form;
         let mut first_invalid = None;
         let mut remember_first_invalid = |field: usize| {
@@ -143,7 +143,7 @@ impl App {
             remember_first_invalid(3);
         }
 
-        let save = (!form_issues.is_empty()).then(|| crate::mxr_protocol::AccountOperationStep {
+        let save = (!form_issues.is_empty()).then(|| mxr_protocol::AccountOperationStep {
             ok: false,
             detail: form_issues.join(" "),
         });
@@ -155,7 +155,7 @@ impl App {
         match form.mode {
             AccountFormMode::Gmail => {
                 if form.gmail_credential_source
-                    == crate::mxr_protocol::GmailCredentialSourceData::Custom
+                    == mxr_protocol::GmailCredentialSourceData::Custom
                 {
                     let mut auth_issues = Vec::new();
                     if form.gmail_client_id.trim().is_empty() {
@@ -169,7 +169,7 @@ impl App {
                         remember_first_invalid(6);
                     }
                     if !auth_issues.is_empty() {
-                        auth = Some(crate::mxr_protocol::AccountOperationStep {
+                        auth = Some(mxr_protocol::AccountOperationStep {
                             ok: false,
                             detail: auth_issues.join(" "),
                         });
@@ -205,7 +205,7 @@ impl App {
                     }
                 }
                 if !sync_issues.is_empty() {
-                    sync = Some(crate::mxr_protocol::AccountOperationStep {
+                    sync = Some(mxr_protocol::AccountOperationStep {
                         ok: false,
                         detail: sync_issues.join(" "),
                     });
@@ -239,7 +239,7 @@ impl App {
                     }
                 }
                 if !send_issues.is_empty() {
-                    send = Some(crate::mxr_protocol::AccountOperationStep {
+                    send = Some(mxr_protocol::AccountOperationStep {
                         ok: false,
                         detail: send_issues.join(" "),
                     });
@@ -274,7 +274,7 @@ impl App {
                     }
                 }
                 if !send_issues.is_empty() {
-                    send = Some(crate::mxr_protocol::AccountOperationStep {
+                    send = Some(mxr_protocol::AccountOperationStep {
                         ok: false,
                         detail: send_issues.join(" "),
                     });
@@ -287,7 +287,7 @@ impl App {
         }
 
         Some((
-            crate::mxr_protocol::AccountOperationResult {
+            mxr_protocol::AccountOperationResult {
                 ok: false,
                 summary: "Account form has problems. Fix the listed fields and try again.".into(),
                 save,
@@ -301,7 +301,7 @@ impl App {
 
     pub(super) fn fail_account_form_submission(
         &mut self,
-        result: crate::mxr_protocol::AccountOperationResult,
+        result: mxr_protocol::AccountOperationResult,
         first_invalid_field: usize,
     ) {
         self.accounts_page.operation_in_flight = false;
@@ -481,9 +481,9 @@ impl App {
 }
 
 pub(super) fn account_summary_to_config(
-    account: &crate::mxr_protocol::AccountSummaryData,
-) -> Option<crate::mxr_protocol::AccountConfigData> {
-    Some(crate::mxr_protocol::AccountConfigData {
+    account: &mxr_protocol::AccountSummaryData,
+) -> Option<mxr_protocol::AccountConfigData> {
+    Some(mxr_protocol::AccountConfigData {
         key: account.key.clone()?,
         name: account.name.clone(),
         email: account.email.clone(),
@@ -494,7 +494,7 @@ pub(super) fn account_summary_to_config(
 }
 
 pub(super) fn account_form_from_config(
-    account: crate::mxr_protocol::AccountConfigData,
+    account: mxr_protocol::AccountConfigData,
 ) -> AccountFormState {
     let mut form = AccountFormState {
         visible: true,
@@ -507,7 +507,7 @@ pub(super) fn account_form_from_config(
 
     if let Some(sync) = account.sync {
         match sync {
-            crate::mxr_protocol::AccountSyncConfigData::Gmail {
+            mxr_protocol::AccountSyncConfigData::Gmail {
                 credential_source,
                 client_id,
                 client_secret,
@@ -519,7 +519,7 @@ pub(super) fn account_form_from_config(
                 form.gmail_client_secret = client_secret.unwrap_or_default();
                 form.gmail_token_ref = token_ref;
             }
-            crate::mxr_protocol::AccountSyncConfigData::Imap {
+            mxr_protocol::AccountSyncConfigData::Imap {
                 host,
                 port,
                 username,
@@ -540,7 +540,7 @@ pub(super) fn account_form_from_config(
     }
 
     match account.send {
-        Some(crate::mxr_protocol::AccountSendConfigData::Smtp {
+        Some(mxr_protocol::AccountSendConfigData::Smtp {
             host,
             port,
             username,
@@ -554,7 +554,7 @@ pub(super) fn account_form_from_config(
             form.smtp_password_ref = password_ref;
             form.smtp_auth_required = auth_required;
         }
-        Some(crate::mxr_protocol::AccountSendConfigData::Gmail) => {
+        Some(mxr_protocol::AccountSendConfigData::Gmail) => {
             if form.gmail_token_ref.is_empty() {
                 form.gmail_token_ref = format!("mxr/{}-gmail", form.key);
             }
@@ -574,13 +574,13 @@ pub(super) fn account_form_field_value(form: &AccountFormState) -> Option<&str> 
         (AccountFormMode::Gmail, 4) => None,
         (AccountFormMode::Gmail, 5)
             if form.gmail_credential_source
-                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
+                == mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             Some(form.gmail_client_id.as_str())
         }
         (AccountFormMode::Gmail, 6)
             if form.gmail_credential_source
-                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
+                == mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             Some(form.gmail_client_secret.as_str())
         }
@@ -622,13 +622,13 @@ where
         (_, 3) => &mut form.email,
         (AccountFormMode::Gmail, 5)
             if form.gmail_credential_source
-                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
+                == mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             &mut form.gmail_client_id
         }
         (AccountFormMode::Gmail, 6)
             if form.gmail_credential_source
-                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
+                == mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             &mut form.gmail_client_secret
         }
@@ -694,27 +694,27 @@ fn char_to_byte_index(value: &str, char_index: usize) -> usize {
 }
 
 pub(super) fn next_gmail_credential_source(
-    current: crate::mxr_protocol::GmailCredentialSourceData,
+    current: mxr_protocol::GmailCredentialSourceData,
     forward: bool,
-) -> crate::mxr_protocol::GmailCredentialSourceData {
+) -> mxr_protocol::GmailCredentialSourceData {
     match (current, forward) {
-        (crate::mxr_protocol::GmailCredentialSourceData::Bundled, true) => {
-            crate::mxr_protocol::GmailCredentialSourceData::Custom
+        (mxr_protocol::GmailCredentialSourceData::Bundled, true) => {
+            mxr_protocol::GmailCredentialSourceData::Custom
         }
-        (crate::mxr_protocol::GmailCredentialSourceData::Custom, true) => {
-            crate::mxr_protocol::GmailCredentialSourceData::Bundled
+        (mxr_protocol::GmailCredentialSourceData::Custom, true) => {
+            mxr_protocol::GmailCredentialSourceData::Bundled
         }
-        (crate::mxr_protocol::GmailCredentialSourceData::Bundled, false) => {
-            crate::mxr_protocol::GmailCredentialSourceData::Custom
+        (mxr_protocol::GmailCredentialSourceData::Bundled, false) => {
+            mxr_protocol::GmailCredentialSourceData::Custom
         }
-        (crate::mxr_protocol::GmailCredentialSourceData::Custom, false) => {
-            crate::mxr_protocol::GmailCredentialSourceData::Bundled
+        (mxr_protocol::GmailCredentialSourceData::Custom, false) => {
+            mxr_protocol::GmailCredentialSourceData::Bundled
         }
     }
 }
 
 pub(super) fn account_result_has_details(
-    result: Option<&crate::mxr_protocol::AccountOperationResult>,
+    result: Option<&mxr_protocol::AccountOperationResult>,
 ) -> bool {
     let Some(result) = result else {
         return false;
@@ -724,7 +724,7 @@ pub(super) fn account_result_has_details(
 }
 
 pub(super) fn account_result_modal_title(
-    result: &crate::mxr_protocol::AccountOperationResult,
+    result: &mxr_protocol::AccountOperationResult,
 ) -> String {
     if result.summary.contains("test failed") {
         "Account Test Failed".into()
@@ -738,7 +738,7 @@ pub(super) fn account_result_modal_title(
 }
 
 pub(super) fn account_result_modal_detail(
-    result: &crate::mxr_protocol::AccountOperationResult,
+    result: &mxr_protocol::AccountOperationResult,
 ) -> String {
     let mut lines = vec![result.summary.clone()];
     for (label, step) in [

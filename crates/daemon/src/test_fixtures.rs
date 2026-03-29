@@ -1,7 +1,7 @@
 #![cfg(test)]
-use crate::mxr_core::id::*;
-use crate::mxr_core::types::*;
-use crate::mxr_core::Account;
+use mxr_core::id::*;
+use mxr_core::types::*;
+use mxr_core::Account;
 
 // -- Account ------------------------------------------------------------------
 

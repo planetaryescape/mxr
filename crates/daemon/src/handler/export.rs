@@ -1,14 +1,14 @@
-use crate::mxr_core::types::ExportFormat;
-use crate::mxr_export::{ExportAttachment, ExportMessage, ExportThread};
-use crate::mxr_protocol::*;
-use crate::mxr_reader::ReaderConfig;
+use mxr_core::types::ExportFormat;
+use mxr_export::{ExportAttachment, ExportMessage, ExportThread};
+use mxr_protocol::*;
+use mxr_reader::ReaderConfig;
 use crate::state::AppState;
 use std::sync::Arc;
 
 /// Build an ExportThread from a thread_id by fetching envelopes and bodies from the store.
 async fn build_export_thread(
     state: &Arc<AppState>,
-    thread_id: &crate::mxr_core::ThreadId,
+    thread_id: &mxr_core::ThreadId,
 ) -> Result<ExportThread, String> {
     let thread = state
         .store
@@ -66,13 +66,13 @@ async fn build_export_thread(
 
 pub(super) async fn handle_export_thread(
     state: &Arc<AppState>,
-    thread_id: &crate::mxr_core::ThreadId,
+    thread_id: &mxr_core::ThreadId,
     format: &ExportFormat,
 ) -> Response {
     match build_export_thread(state, thread_id).await {
         Ok(export_thread) => {
             let reader_config = ReaderConfig::default();
-            let content = crate::mxr_export::export(&export_thread, format, &reader_config);
+            let content = mxr_export::export(&export_thread, format, &reader_config);
             Response::Ok {
                 data: ResponseData::ExportResult { content },
             }
@@ -88,7 +88,7 @@ pub(super) async fn handle_export_search(
 ) -> Response {
     let search = state.search.lock().await;
     let search_results =
-        match search.search(query, 100, 0, crate::mxr_core::types::SortOrder::DateDesc) {
+        match search.search(query, 100, 0, mxr_core::types::SortOrder::DateDesc) {
             Ok(results) => results,
             Err(e) => {
                 return Response::Error {
@@ -99,14 +99,14 @@ pub(super) async fn handle_export_search(
     drop(search);
 
     // Collect unique thread IDs from search results
-    let thread_ids: Vec<crate::mxr_core::ThreadId> = {
+    let thread_ids: Vec<mxr_core::ThreadId> = {
         let mut seen = std::collections::HashSet::new();
         search_results
             .results
             .iter()
             .filter_map(|r| {
                 let tid =
-                    crate::mxr_core::ThreadId::from_uuid(uuid::Uuid::parse_str(&r.thread_id).ok()?);
+                    mxr_core::ThreadId::from_uuid(uuid::Uuid::parse_str(&r.thread_id).ok()?);
                 if seen.insert(tid.clone()) {
                     Some(tid)
                 } else {
@@ -122,7 +122,7 @@ pub(super) async fn handle_export_search(
     for tid in &thread_ids {
         match build_export_thread(state, tid).await {
             Ok(export_thread) => {
-                all_content.push_str(&crate::mxr_export::export(
+                all_content.push_str(&mxr_export::export(
                     &export_thread,
                     format,
                     &reader_config,
@@ -144,15 +144,15 @@ pub(super) async fn handle_export_search(
 
 pub(super) async fn materialize_attachment_file(
     state: &Arc<AppState>,
-    message_id: &crate::mxr_core::MessageId,
-    attachment_id: &crate::mxr_core::AttachmentId,
-) -> Result<crate::mxr_protocol::AttachmentFile, crate::mxr_core::MxrError> {
+    message_id: &mxr_core::MessageId,
+    attachment_id: &mxr_core::AttachmentId,
+) -> Result<mxr_protocol::AttachmentFile, mxr_core::MxrError> {
     let envelope = state
         .store
         .get_envelope(message_id)
         .await
-        .map_err(|err| crate::mxr_core::MxrError::Store(err.to_string()))?
-        .ok_or_else(|| crate::mxr_core::MxrError::NotFound(format!("message {message_id}")))?;
+        .map_err(|err| mxr_core::MxrError::Store(err.to_string()))?
+        .ok_or_else(|| mxr_core::MxrError::NotFound(format!("message {message_id}")))?;
 
     let mut body = state.sync_engine.get_body(message_id).await?;
     let attachment = body
@@ -161,11 +161,11 @@ pub(super) async fn materialize_attachment_file(
         .find(|attachment| &attachment.id == attachment_id)
         .cloned()
         .ok_or_else(|| {
-            crate::mxr_core::MxrError::NotFound(format!("attachment {attachment_id}"))
+            mxr_core::MxrError::NotFound(format!("attachment {attachment_id}"))
         })?;
 
     if let Some(path) = attachment.local_path.as_ref().filter(|path| path.exists()) {
-        return Ok(crate::mxr_protocol::AttachmentFile {
+        return Ok(mxr_protocol::AttachmentFile {
             attachment_id: attachment.id,
             filename: attachment.filename,
             path: path.display().to_string(),
@@ -174,7 +174,7 @@ pub(super) async fn materialize_attachment_file(
 
     let provider = state
         .get_provider(Some(&envelope.account_id))
-        .map_err(crate::mxr_core::MxrError::Provider)?;
+        .map_err(mxr_core::MxrError::Provider)?;
     let bytes = provider
         .fetch_attachment(&envelope.provider_id, &attachment.provider_id)
         .await?;
@@ -182,13 +182,13 @@ pub(super) async fn materialize_attachment_file(
     let target_dir = state.attachment_dir().join(message_id.as_str());
     tokio::fs::create_dir_all(&target_dir)
         .await
-        .map_err(crate::mxr_core::MxrError::Io)?;
+        .map_err(mxr_core::MxrError::Io)?;
 
     let filename = sanitized_attachment_filename(&attachment.filename, &attachment.id);
     let path = target_dir.join(filename);
     tokio::fs::write(&path, bytes)
         .await
-        .map_err(crate::mxr_core::MxrError::Io)?;
+        .map_err(mxr_core::MxrError::Io)?;
 
     for existing in &mut body.attachments {
         if existing.id == *attachment_id {
@@ -199,9 +199,9 @@ pub(super) async fn materialize_attachment_file(
         .store
         .insert_body(&body)
         .await
-        .map_err(|err| crate::mxr_core::MxrError::Store(err.to_string()))?;
+        .map_err(|err| mxr_core::MxrError::Store(err.to_string()))?;
 
-    Ok(crate::mxr_protocol::AttachmentFile {
+    Ok(mxr_protocol::AttachmentFile {
         attachment_id: attachment.id,
         filename: attachment.filename,
         path: path.display().to_string(),
@@ -210,7 +210,7 @@ pub(super) async fn materialize_attachment_file(
 
 pub(super) fn sanitized_attachment_filename(
     filename: &str,
-    attachment_id: &crate::mxr_core::AttachmentId,
+    attachment_id: &mxr_core::AttachmentId,
 ) -> String {
     let candidate = std::path::Path::new(filename)
         .file_name()

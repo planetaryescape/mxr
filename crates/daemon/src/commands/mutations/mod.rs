@@ -6,11 +6,11 @@ pub use attachments::{attachments_download, attachments_list, attachments_open};
 pub use compose::{compose, drafts, forward, reply, reply_all, send_draft, ComposeOptions};
 
 use crate::ipc_client::IpcClient;
-use crate::mxr_protocol::*;
 use helpers::{
     confirm_action, parse_message_id, parse_snooze_until, print_selection_preview,
     requires_confirmation, resolve_mutation_selection, run_simple_mutation, MutationRunOptions,
 };
+use mxr_protocol::*;
 
 // ---------------------------------------------------------------------------
 // Simple mutations
@@ -498,7 +498,7 @@ pub async fn open_in_browser(message_id: String) -> anyhow::Result<()> {
         Response::Ok {
             data: ResponseData::Body { body },
         } => {
-            let dir = crate::mxr_config::data_dir().join("source");
+            let dir = mxr_config::data_dir().join("source");
             std::fs::create_dir_all(&dir)?;
             let path = dir.join(format!("{}.txt", id.as_str()));
 
@@ -514,7 +514,7 @@ pub async fn open_in_browser(message_id: String) -> anyhow::Result<()> {
             }
 
             std::fs::write(&path, source)?;
-            let editor = crate::mxr_compose::editor::resolve_editor(None);
+            let editor = mxr_compose::editor::resolve_editor(None);
             std::process::Command::new(&editor).arg(&path).spawn()?;
             println!("Opened local source: {}", path.display());
         }

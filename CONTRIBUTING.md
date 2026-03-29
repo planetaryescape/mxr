@@ -53,15 +53,18 @@ Keep these intact:
 
 1. `mxr-core` depends on nothing internal.
 2. `mxr-protocol` depends only on `mxr-core`.
-3. Provider crates depend only on `mxr-core`.
+3. Provider crates depend on `mxr-core` plus shared mail utility crates only (`mail-parse`, `outbound`).
 4. `mxr-store` and `mxr-search` depend only on `mxr-core`.
 5. `mxr-sync` depends on `core + store + search`.
 6. `mxr` (daemon crate) is the integration point.
-7. `mxr-tui` depends only on `core + protocol`.
+7. `mxr-tui` and `mxr-web` are client crates. They may use local utility crates (`config`, `compose`, `reader`, `mail-parse`), but never daemon/store/search/sync/provider crates.
+8. Do not use `#[path]` includes to simulate crate boundaries.
 
 Repo reality:
 
-- The code is currently shipped as one Cargo package with path-mounted conceptual crates under `crates/`.
+- The product/install/package surface is the repo-root package `mxr`.
+- Internal crates under `crates/` are real workspace crates and are private by default (`publish = false`).
+- The IMAP adapter depends on the published `mxr-async-imap` fork from crates.io; vendored source is not part of the workspace boundary model.
 - Provider paths are `provider-gmail`, `provider-imap`, `provider-smtp`, and `provider-fake`.
 - `crates/web` is a current client/bridge surface.
 

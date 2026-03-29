@@ -1,7 +1,7 @@
 #[cfg(feature = "local")]
-use crate::mxr_core::types::AttachmentMeta;
+use mxr_core::types::AttachmentMeta;
 #[cfg(feature = "local")]
-use crate::mxr_reader::{clean, ReaderConfig};
+use mxr_reader::{clean, ReaderConfig};
 #[cfg(feature = "local")]
 use calamine::{open_workbook_auto, Reader};
 #[cfg(feature = "local")]
@@ -291,7 +291,7 @@ fn run_tesseract(path: &StdPath) -> Option<String> {
 #[cfg(all(test, feature = "local"))]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::{AttachmentId, MessageId};
+    use mxr_core::id::{AttachmentId, MessageId};
     use std::fs::File;
     use std::io::Write;
     use std::path::Path as StdPath;
@@ -305,7 +305,7 @@ mod tests {
             message_id: MessageId::new(),
             filename: filename.to_string(),
             mime_type: mime_type.to_string(),
-            disposition: crate::mxr_core::types::AttachmentDisposition::Attachment,
+            disposition: mxr_core::types::AttachmentDisposition::Attachment,
             content_id: None,
             content_location: None,
             size_bytes: std::fs::metadata(path).unwrap().len(),

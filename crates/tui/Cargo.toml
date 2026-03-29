@@ -1,0 +1,43 @@
+[package]
+name = "mxr-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+mxr-compose = { workspace = true }
+mxr-config = { workspace = true }
+mxr-core = { workspace = true }
+mxr-mail-parse = { workspace = true }
+mxr-protocol = { workspace = true }
+mxr-reader = { workspace = true }
+chrono = { workspace = true }
+crossterm = { workspace = true, features = ["event-stream"] }
+futures = { workspace = true }
+html2text = { workspace = true }
+image = { workspace = true }
+nucleo = { workspace = true }
+ratatui = { workspace = true }
+ratatui-image = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+throbber-widgets-tui = "0.11.0"
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+toml = { workspace = true }
+tui-textarea = { package = "tui-textarea-2", version = "0.10.2" }
+unicode-width = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+mxr-test-support = { workspace = true }
+pretty_assertions = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

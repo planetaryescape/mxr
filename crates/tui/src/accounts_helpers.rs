@@ -1,9 +1,9 @@
-use crate::mxr_core::{AccountId, MxrError};
-use crate::mxr_protocol::{
+use mxr_core::{AccountId, MxrError};
+use mxr_protocol::{
     AccountConfigData, AccountEditModeData, AccountSendConfigData, AccountSourceData,
     AccountSummaryData, AccountSyncConfigData, Request, Response, ResponseData,
 };
-use crate::mxr_tui::ipc::{ipc_call, IpcRequest};
+use crate::ipc::{ipc_call, IpcRequest};
 use tokio::sync::mpsc;
 
 pub(crate) async fn load_accounts_page_accounts(

@@ -1,4 +1,4 @@
-use crate::mxr_tui::action::Action;
+use crate::action::Action;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::{Duration, Instant};
 

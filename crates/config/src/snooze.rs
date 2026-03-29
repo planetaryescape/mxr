@@ -1,4 +1,4 @@
-use crate::mxr_config::types::SnoozeConfig;
+use crate::types::SnoozeConfig;
 use chrono::{DateTime, Datelike, Duration, Local, NaiveTime, TimeZone, Utc, Weekday};
 use serde::{Deserialize, Serialize};
 

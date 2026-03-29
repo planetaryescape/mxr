@@ -1,9 +1,7 @@
-use mxr::mxr_core::id::AccountId;
-use mxr::mxr_core::types::{MessageFlags, UnsubscribeMethod};
-use mxr::mxr_provider_gmail::parse::{
-    gmail_message_to_envelope, labels_to_flags, parse_address_list,
-};
-use mxr::mxr_provider_gmail::types::GmailMessage;
+use mxr_core::id::AccountId;
+use mxr_core::types::{MessageFlags, UnsubscribeMethod};
+use mxr_provider_gmail::parse::{gmail_message_to_envelope, labels_to_flags, parse_address_list};
+use mxr_provider_gmail::types::GmailMessage;
 use serde_json::json;
 
 fn fixture_message() -> GmailMessage {

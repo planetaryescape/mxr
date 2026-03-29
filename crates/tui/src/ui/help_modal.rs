@@ -1,6 +1,6 @@
-use crate::mxr_tui::action::UiContext;
-use crate::mxr_tui::keybindings::{all_bindings_for_context, ViewContext};
-use crate::mxr_tui::ui::command_palette::commands_for_context;
+use crate::action::UiContext;
+use crate::keybindings::{all_bindings_for_context, ViewContext};
+use crate::ui::command_palette::commands_for_context;
 use nucleo::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo::{Config, Matcher, Utf32Str};
 use ratatui::prelude::*;
@@ -39,12 +39,7 @@ pub struct HelpModalState<'a> {
     pub _marker: std::marker::PhantomData<&'a ()>,
 }
 
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    state: HelpModalState<'_>,
-    theme: &crate::mxr_tui::theme::Theme,
-) {
+pub fn draw(frame: &mut Frame, area: Rect, state: HelpModalState<'_>, theme: &crate::theme::Theme) {
     if !state.open {
         return;
     }
@@ -400,10 +395,7 @@ pub(crate) fn search_result_count(state: &HelpModalState<'_>) -> usize {
     search_results(state).len()
 }
 
-fn render_sections(
-    sections: &[HelpSection],
-    theme: &crate::mxr_tui::theme::Theme,
-) -> Vec<Line<'static>> {
+fn render_sections(sections: &[HelpSection], theme: &crate::theme::Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     for (index, section) in sections.iter().enumerate() {
@@ -432,7 +424,7 @@ fn draw_grouped_help(
     frame: &mut Frame,
     area: Rect,
     state: &HelpModalState<'_>,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     let lines = render_sections(&help_sections(state), theme);
     let content_height = lines.len();
@@ -457,7 +449,7 @@ fn draw_search_results(
     frame: &mut Frame,
     area: Rect,
     state: &HelpModalState<'_>,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     if area.height < 7 {
         return;
@@ -624,7 +616,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::{draw, help_rows, help_sections, search_results, HelpModalState};
-    use crate::mxr_tui::action::UiContext;
+    use crate::action::UiContext;
     use mxr_test_support::render_to_string;
     use ratatui::layout::Rect;
 
@@ -702,7 +694,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 100, 28),
                 help_state(UiContext::MailboxList, ""),
-                &crate::mxr_tui::theme::Theme::default(),
+                &crate::theme::Theme::default(),
             );
         });
         insta::assert_snapshot!("help_modal_grouped_snapshot", snapshot);
@@ -715,7 +707,7 @@ mod tests {
                 frame,
                 Rect::new(0, 0, 100, 28),
                 help_state(UiContext::MailboxList, "gc"),
-                &crate::mxr_tui::theme::Theme::default(),
+                &crate::theme::Theme::default(),
             );
         });
         insta::assert_snapshot!("help_modal_filtered_snapshot", snapshot);

@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use futures::TryStreamExt;
 
-use crate::mxr_provider_imap::config::ImapConfig;
-use crate::mxr_provider_imap::error::ImapProviderError;
-use crate::mxr_provider_imap::types::{
+use crate::config::ImapConfig;
+use crate::error::ImapProviderError;
+use crate::types::{
     FetchedMessage, FolderInfo, ImapAddress, ImapCapabilities, ImapEnvelope, MailboxInfo,
     NamespaceInfo, QresyncInfo,
 };
@@ -801,7 +801,7 @@ pub mod mock {
 mod tests {
     use super::mock::*;
     use super::*;
-    use crate::mxr_provider_imap::types::*;
+    use crate::types::*;
     use std::sync::{Arc, Mutex};
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-use crate::mxr_tui::app::PendingBulkConfirm;
+use crate::app::PendingBulkConfirm;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -6,7 +6,7 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     pending: Option<&PendingBulkConfirm>,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     let Some(pending) = pending else {
         return;
@@ -54,8 +54,8 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::draw;
-    use crate::mxr_protocol::{MutationCommand, Request};
-    use crate::mxr_tui::app::{MutationEffect, PendingBulkConfirm};
+    use crate::app::{MutationEffect, PendingBulkConfirm};
+    use mxr_protocol::{MutationCommand, Request};
 
     #[test]
     fn pending_bulk_confirm_is_constructible() {

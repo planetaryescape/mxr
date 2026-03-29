@@ -20,10 +20,10 @@ pub(crate) async fn ipc_request(
     loop {
         match framed.next().await {
             Some(Ok(response)) => match response.payload {
-                IpcPayload::Response(crate::mxr_protocol::Response::Ok { data }) => {
+                IpcPayload::Response(mxr_protocol::Response::Ok { data }) => {
                     return Ok(data)
                 }
-                IpcPayload::Response(crate::mxr_protocol::Response::Error { message }) => {
+                IpcPayload::Response(mxr_protocol::Response::Error { message }) => {
                     return Err(BridgeError::Ipc(message));
                 }
                 IpcPayload::Event(_) => continue,
@@ -88,9 +88,9 @@ pub(crate) fn parse_message_id(value: &str) -> Result<MessageId, BridgeError> {
 
 pub(crate) fn parse_attachment_id(
     value: &str,
-) -> Result<crate::mxr_core::AttachmentId, BridgeError> {
+) -> Result<mxr_core::AttachmentId, BridgeError> {
     Uuid::parse_str(value)
-        .map(crate::mxr_core::AttachmentId::from_uuid)
+        .map(mxr_core::AttachmentId::from_uuid)
         .map_err(|_| BridgeError::Ipc(format!("invalid attachment id: {value}")))
 }
 

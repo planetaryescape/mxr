@@ -1,12 +1,13 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 339
+assertion_line: 355
 expression: snapshot
 ---
 "╭ Search All Mail [lexical] ─────────────────────────────────────────────────────────────╮"
 "│deployment                                                                              │"
+"│loaded 1 of 1 matches                                                                   │"
 "╰────────────────────────────────────────────────────────────────────────────────────────╯"
-"┌  Search Results · lexical · showing 1 ┐╭ Message ──────────────────────────────────────╮"
+"┌  Search Results / lexical / showing 1 ┐╭ Message ──────────────────────────────────────╮"
 "│>  1   ★  U  Alice Example  03/15/24 📎││From:     Alice Example <alice@example.com>    │" Hidden by multi-width symbols: [(39, " ")]
 "│                                       ││To:       Bob Example <bob@example.com>        │"
 "│                                       ││Date:     2024-03-15 09:30                     │"
@@ -14,10 +15,9 @@ expression: snapshot
 "│                                       ││ INBOX                                         │"
 "│                                       ││List:      unsubscribe                         │"
 "│                                       ││                                               │"
+"│                                       ││ text  plain                                   │"
+"│                                       ││                                               │"
 "│                                       ││Preview body                                   │"
-"│                                       ││                                               │"
-"│                                       ││                                               │"
-"│                                       ││                                               │"
 "│                                       ││                                               │"
 "│                                       ││                                               │"
 "│                                       ││                                               │"

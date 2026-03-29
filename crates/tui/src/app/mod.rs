@@ -1,21 +1,21 @@
 mod actions;
 mod draw;
 mod input;
-use crate::mxr_config::RenderConfig;
-use crate::mxr_core::id::{AccountId, AttachmentId, MessageId};
-use crate::mxr_core::types::*;
-use crate::mxr_core::MxrError;
-use crate::mxr_protocol::{MutationCommand, Request, Response, ResponseData};
-use crate::mxr_tui::action::{Action, PatternKind, ScreenContext, UiContext};
-use crate::mxr_tui::client::Client;
-use crate::mxr_tui::input::InputHandler;
-use crate::mxr_tui::terminal_images::{HtmlImageEntry, HtmlImageKey, TerminalImageSupport};
-use crate::mxr_tui::theme::Theme;
-use crate::mxr_tui::ui;
-use crate::mxr_tui::ui::command_palette::CommandPalette;
-use crate::mxr_tui::ui::compose_picker::ComposePicker;
-use crate::mxr_tui::ui::label_picker::{LabelPicker, LabelPickerMode};
-use crate::mxr_tui::ui::search_bar::SearchBar;
+use crate::action::{Action, PatternKind, ScreenContext, UiContext};
+use crate::client::Client;
+use crate::input::InputHandler;
+use crate::terminal_images::{HtmlImageEntry, HtmlImageKey, TerminalImageSupport};
+use crate::theme::Theme;
+use crate::ui;
+use crate::ui::command_palette::CommandPalette;
+use crate::ui::compose_picker::ComposePicker;
+use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
+use crate::ui::search_bar::SearchBar;
+use mxr_config::RenderConfig;
+use mxr_core::id::{AccountId, AttachmentId, MessageId};
+use mxr_core::types::*;
+use mxr_core::MxrError;
+use mxr_protocol::{MutationCommand, Request, Response, ResponseData};
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -61,7 +61,7 @@ pub enum MutationEffect {
 
 /// Draft waiting for user confirmation after editor closes.
 pub struct PendingSend {
-    pub fm: crate::mxr_compose::frontmatter::ComposeFrontmatter,
+    pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
     pub body: String,
     pub draft_path: std::path::PathBuf,
     pub allow_send: bool,
@@ -185,7 +185,7 @@ pub enum BodyViewState {
 
 #[derive(Debug, Clone)]
 pub struct MailListRow {
-    pub thread_id: crate::mxr_core::ThreadId,
+    pub thread_id: mxr_core::ThreadId,
     pub representative: Envelope,
     pub message_count: usize,
     pub unread_count: usize,
@@ -199,11 +199,11 @@ pub struct SubscriptionEntry {
 
 #[derive(Debug, Clone)]
 pub enum SidebarItem {
-    Account(crate::mxr_protocol::AccountSummaryData),
+    Account(mxr_protocol::AccountSummaryData),
     AllMail,
     Subscriptions,
     Label(Label),
-    SavedSearch(crate::mxr_core::SavedSearch),
+    SavedSearch(mxr_core::SavedSearch),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -211,7 +211,7 @@ pub(crate) enum SidebarSelectionKey {
     Account(String),
     AllMail,
     Subscriptions,
-    Label(crate::mxr_core::LabelId),
+    Label(mxr_core::LabelId),
     SavedSearch(String),
 }
 
@@ -373,9 +373,9 @@ pub struct DiagnosticsPageState {
     pub daemon_pid: Option<u32>,
     pub accounts: Vec<String>,
     pub total_messages: Option<u32>,
-    pub sync_statuses: Vec<crate::mxr_protocol::AccountSyncStatus>,
-    pub doctor: Option<crate::mxr_protocol::DoctorReport>,
-    pub events: Vec<crate::mxr_protocol::EventLogEntry>,
+    pub sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
+    pub doctor: Option<mxr_protocol::DoctorReport>,
+    pub events: Vec<mxr_protocol::EventLogEntry>,
     pub logs: Vec<String>,
     pub status: Option<String>,
     pub refresh_pending: bool,
@@ -445,7 +445,7 @@ pub struct AccountFormState {
     pub key: String,
     pub name: String,
     pub email: String,
-    pub gmail_credential_source: crate::mxr_protocol::GmailCredentialSourceData,
+    pub gmail_credential_source: mxr_protocol::GmailCredentialSourceData,
     pub gmail_client_id: String,
     pub gmail_client_secret: String,
     pub gmail_token_ref: String,
@@ -465,7 +465,7 @@ pub struct AccountFormState {
     pub active_field: usize,
     pub editing_field: bool,
     pub field_cursor: usize,
-    pub last_result: Option<crate::mxr_protocol::AccountOperationResult>,
+    pub last_result: Option<mxr_protocol::AccountOperationResult>,
 }
 
 impl Default for AccountFormState {
@@ -478,7 +478,7 @@ impl Default for AccountFormState {
             key: String::new(),
             name: String::new(),
             email: String::new(),
-            gmail_credential_source: crate::mxr_protocol::GmailCredentialSourceData::Bundled,
+            gmail_credential_source: mxr_protocol::GmailCredentialSourceData::Bundled,
             gmail_client_id: String::new(),
             gmail_client_secret: String::new(),
             gmail_token_ref: String::new(),
@@ -505,10 +505,10 @@ impl Default for AccountFormState {
 
 #[derive(Debug, Clone, Default)]
 pub struct AccountsPageState {
-    pub accounts: Vec<crate::mxr_protocol::AccountSummaryData>,
+    pub accounts: Vec<mxr_protocol::AccountSummaryData>,
     pub selected_index: usize,
     pub status: Option<String>,
-    pub last_result: Option<crate::mxr_protocol::AccountOperationResult>,
+    pub last_result: Option<mxr_protocol::AccountOperationResult>,
     pub operation_in_flight: bool,
     pub throbber: ThrobberState,
     pub refresh_pending: bool,
@@ -534,7 +534,7 @@ pub struct AttachmentPanelState {
     pub status: Option<String>,
 }
 
-pub use crate::mxr_config::snooze::{SnoozeOption as SnoozePreset, SNOOZE_PRESETS};
+pub use mxr_config::snooze::{SnoozeOption as SnoozePreset, SNOOZE_PRESETS};
 
 #[derive(Debug, Clone, Default)]
 pub struct SnoozePanelState {
@@ -687,8 +687,8 @@ pub struct App {
     pub queued_html_image_decodes: Vec<HtmlImageKey>,
     pub in_flight_body_requests: HashSet<MessageId>,
     pub in_flight_html_image_asset_requests: HashSet<MessageId>,
-    pub pending_thread_fetch: Option<crate::mxr_core::ThreadId>,
-    pub in_flight_thread_fetch: Option<crate::mxr_core::ThreadId>,
+    pub pending_thread_fetch: Option<mxr_core::ThreadId>,
+    pub in_flight_thread_fetch: Option<mxr_core::ThreadId>,
     pub pending_search: Option<PendingSearchRequest>,
     pub pending_search_count: Option<PendingSearchCountRequest>,
     pub pending_search_debounce: Option<PendingSearchDebounce>,
@@ -705,9 +705,9 @@ pub struct App {
     pub pending_config_edit: bool,
     pub pending_log_open: bool,
     pub pending_diagnostics_details: Option<DiagnosticsPaneKind>,
-    pub pending_account_save: Option<crate::mxr_protocol::AccountConfigData>,
-    pub pending_account_test: Option<crate::mxr_protocol::AccountConfigData>,
-    pub pending_account_authorize: Option<(crate::mxr_protocol::AccountConfigData, bool)>,
+    pub pending_account_save: Option<mxr_protocol::AccountConfigData>,
+    pub pending_account_test: Option<mxr_protocol::AccountConfigData>,
+    pub pending_account_authorize: Option<(mxr_protocol::AccountConfigData, bool)>,
     pub pending_account_set_default: Option<String>,
     /// True when the set-default was triggered from sidebar account switching
     /// (vs the Accounts tab). Used to trigger full state reset on completion.
@@ -718,16 +718,16 @@ pub struct App {
     pub help_scroll_offset: u16,
     pub help_query: String,
     pub help_selected: usize,
-    pub saved_searches: Vec<crate::mxr_core::SavedSearch>,
+    pub saved_searches: Vec<mxr_core::SavedSearch>,
     pub subscriptions_page: SubscriptionsPageState,
     pub rules_page: RulesPageState,
     pub diagnostics_page: DiagnosticsPageState,
     pub accounts_page: AccountsPageState,
     pub onboarding: FeatureOnboardingState,
     pub pending_local_state_save: bool,
-    pub active_label: Option<crate::mxr_core::LabelId>,
-    pub pending_label_fetch: Option<crate::mxr_core::LabelId>,
-    pub pending_active_label: Option<crate::mxr_core::LabelId>,
+    pub active_label: Option<mxr_core::LabelId>,
+    pub pending_label_fetch: Option<mxr_core::LabelId>,
+    pub pending_active_label: Option<mxr_core::LabelId>,
     pub pending_labels_refresh: bool,
     pub pending_all_envelopes_refresh: bool,
     pub pending_subscriptions_refresh: bool,
@@ -758,8 +758,8 @@ pub struct App {
     pub selected_set: HashSet<MessageId>,
     pub visual_mode: bool,
     pub visual_anchor: Option<usize>,
-    pub pending_export_thread: Option<crate::mxr_core::id::ThreadId>,
-    pub snooze_config: crate::mxr_config::SnoozeConfig,
+    pub pending_export_thread: Option<mxr_core::id::ThreadId>,
+    pub snooze_config: mxr_config::SnoozeConfig,
     pub sidebar_accounts_expanded: bool,
     pub sidebar_system_expanded: bool,
     pub sidebar_user_expanded: bool,
@@ -781,11 +781,11 @@ impl App {
     pub fn new() -> Self {
         Self::from_render_and_snooze(
             &RenderConfig::default(),
-            &crate::mxr_config::SnoozeConfig::default(),
+            &mxr_config::SnoozeConfig::default(),
         )
     }
 
-    pub fn from_config(config: &crate::mxr_config::MxrConfig) -> Self {
+    pub fn from_config(config: &mxr_config::MxrConfig) -> Self {
         let mut app = Self::from_render_and_snooze(&config.render, &config.snooze);
         app.apply_runtime_config(config);
         if config.accounts.is_empty() {
@@ -794,7 +794,7 @@ impl App {
         app
     }
 
-    pub fn apply_runtime_config(&mut self, config: &crate::mxr_config::MxrConfig) {
+    pub fn apply_runtime_config(&mut self, config: &mxr_config::MxrConfig) {
         self.theme = Theme::from_spec(&config.appearance.theme);
         self.reader_mode = config.render.reader_mode;
         self.render_html_command = config.render.html_command.clone();
@@ -804,12 +804,12 @@ impl App {
     }
 
     pub fn from_render_config(render: &RenderConfig) -> Self {
-        Self::from_render_and_snooze(render, &crate::mxr_config::SnoozeConfig::default())
+        Self::from_render_and_snooze(render, &mxr_config::SnoozeConfig::default())
     }
 
     fn from_render_and_snooze(
         render: &RenderConfig,
-        snooze_config: &crate::mxr_config::SnoozeConfig,
+        snooze_config: &mxr_config::SnoozeConfig,
     ) -> Self {
         Self {
             theme: Theme::default(),
@@ -1008,8 +1008,8 @@ impl App {
         items
     }
 
-    pub fn sidebar_view(&self) -> crate::mxr_tui::ui::sidebar::SidebarView<'_> {
-        use crate::mxr_tui::ui::sidebar::{AccountInfo, SidebarView};
+    pub fn sidebar_view(&self) -> crate::ui::sidebar::SidebarView<'_> {
+        use crate::ui::sidebar::{AccountInfo, SidebarView};
         let accounts: Vec<AccountInfo> = self
             .accounts_page
             .accounts
@@ -1107,7 +1107,7 @@ impl App {
         self.rules_page.rules.get(self.rules_page.selected_index)
     }
 
-    pub fn selected_account(&self) -> Option<&crate::mxr_protocol::AccountSummaryData> {
+    pub fn selected_account(&self) -> Option<&mxr_protocol::AccountSummaryData> {
         self.accounts_page
             .accounts
             .get(self.accounts_page.selected_index)
@@ -1240,7 +1240,7 @@ impl App {
         }
     }
 
-    fn selected_account_config(&self) -> Option<crate::mxr_protocol::AccountConfigData> {
+    fn selected_account_config(&self) -> Option<mxr_protocol::AccountConfigData> {
         self.selected_account().and_then(account_summary_to_config)
     }
 
@@ -1248,7 +1248,7 @@ impl App {
         match self.accounts_page.form.mode {
             AccountFormMode::Gmail => {
                 if self.accounts_page.form.gmail_credential_source
-                    == crate::mxr_protocol::GmailCredentialSourceData::Custom
+                    == mxr_protocol::GmailCredentialSourceData::Custom
                 {
                     8
                 } else {
@@ -1260,7 +1260,7 @@ impl App {
         }
     }
 
-    fn account_form_data(&self, is_default: bool) -> crate::mxr_protocol::AccountConfigData {
+    fn account_form_data(&self, is_default: bool) -> mxr_protocol::AccountConfigData {
         let form = &self.accounts_page.form;
         let key = form.key.trim().to_string();
         let name = if form.name.trim().is_empty() {
@@ -1305,7 +1305,7 @@ impl App {
             form.gmail_token_ref.trim().to_string()
         };
         let sync = match form.mode {
-            AccountFormMode::Gmail => Some(crate::mxr_protocol::AccountSyncConfigData::Gmail {
+            AccountFormMode::Gmail => Some(mxr_protocol::AccountSyncConfigData::Gmail {
                 credential_source: form.gmail_credential_source.clone(),
                 client_id: form.gmail_client_id.trim().to_string(),
                 client_secret: if form.gmail_client_secret.trim().is_empty() {
@@ -1315,7 +1315,7 @@ impl App {
                 },
                 token_ref: gmail_token_ref,
             }),
-            AccountFormMode::ImapSmtp => Some(crate::mxr_protocol::AccountSyncConfigData::Imap {
+            AccountFormMode::ImapSmtp => Some(mxr_protocol::AccountSyncConfigData::Imap {
                 host: form.imap_host.trim().to_string(),
                 port: form.imap_port.parse().unwrap_or(993),
                 username: imap_username,
@@ -1331,9 +1331,9 @@ impl App {
             AccountFormMode::SmtpOnly => None,
         };
         let send = match form.mode {
-            AccountFormMode::Gmail => Some(crate::mxr_protocol::AccountSendConfigData::Gmail),
+            AccountFormMode::Gmail => Some(mxr_protocol::AccountSendConfigData::Gmail),
             AccountFormMode::ImapSmtp | AccountFormMode::SmtpOnly => {
-                Some(crate::mxr_protocol::AccountSendConfigData::Smtp {
+                Some(mxr_protocol::AccountSendConfigData::Smtp {
                     host: form.smtp_host.trim().to_string(),
                     port: form.smtp_port.parse().unwrap_or(587),
                     username: smtp_username,
@@ -1348,7 +1348,7 @@ impl App {
                 })
             }
         };
-        crate::mxr_protocol::AccountConfigData {
+        mxr_protocol::AccountConfigData {
             key,
             name,
             email,
@@ -1360,7 +1360,7 @@ impl App {
 
     fn account_form_validation_failure(
         &self,
-    ) -> Option<(crate::mxr_protocol::AccountOperationResult, usize)> {
+    ) -> Option<(mxr_protocol::AccountOperationResult, usize)> {
         let form = &self.accounts_page.form;
         let mut first_invalid = None;
         let mut remember_first_invalid = |field: usize| {
@@ -1379,7 +1379,7 @@ impl App {
             remember_first_invalid(3);
         }
 
-        let save = (!form_issues.is_empty()).then(|| crate::mxr_protocol::AccountOperationStep {
+        let save = (!form_issues.is_empty()).then(|| mxr_protocol::AccountOperationStep {
             ok: false,
             detail: form_issues.join(" "),
         });
@@ -1390,9 +1390,7 @@ impl App {
 
         match form.mode {
             AccountFormMode::Gmail => {
-                if form.gmail_credential_source
-                    == crate::mxr_protocol::GmailCredentialSourceData::Custom
-                {
+                if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom {
                     let mut auth_issues = Vec::new();
                     if form.gmail_client_id.trim().is_empty() {
                         auth_issues
@@ -1405,7 +1403,7 @@ impl App {
                         remember_first_invalid(6);
                     }
                     if !auth_issues.is_empty() {
-                        auth = Some(crate::mxr_protocol::AccountOperationStep {
+                        auth = Some(mxr_protocol::AccountOperationStep {
                             ok: false,
                             detail: auth_issues.join(" "),
                         });
@@ -1441,7 +1439,7 @@ impl App {
                     }
                 }
                 if !sync_issues.is_empty() {
-                    sync = Some(crate::mxr_protocol::AccountOperationStep {
+                    sync = Some(mxr_protocol::AccountOperationStep {
                         ok: false,
                         detail: sync_issues.join(" "),
                     });
@@ -1475,7 +1473,7 @@ impl App {
                     }
                 }
                 if !send_issues.is_empty() {
-                    send = Some(crate::mxr_protocol::AccountOperationStep {
+                    send = Some(mxr_protocol::AccountOperationStep {
                         ok: false,
                         detail: send_issues.join(" "),
                     });
@@ -1510,7 +1508,7 @@ impl App {
                     }
                 }
                 if !send_issues.is_empty() {
-                    send = Some(crate::mxr_protocol::AccountOperationStep {
+                    send = Some(mxr_protocol::AccountOperationStep {
                         ok: false,
                         detail: send_issues.join(" "),
                     });
@@ -1523,7 +1521,7 @@ impl App {
         }
 
         Some((
-            crate::mxr_protocol::AccountOperationResult {
+            mxr_protocol::AccountOperationResult {
                 ok: false,
                 summary: "Account form has problems. Fix the listed fields and try again.".into(),
                 save,
@@ -1537,7 +1535,7 @@ impl App {
 
     fn fail_account_form_submission(
         &mut self,
-        result: crate::mxr_protocol::AccountOperationResult,
+        result: mxr_protocol::AccountOperationResult,
         first_invalid_field: usize,
     ) {
         self.accounts_page.operation_in_flight = false;
@@ -1743,8 +1741,8 @@ impl App {
                 })
                 .collect(),
             MailListMode::Threads => {
-                let mut order: Vec<crate::mxr_core::ThreadId> = Vec::new();
-                let mut rows: HashMap<crate::mxr_core::ThreadId, MailListRow> = HashMap::new();
+                let mut order: Vec<mxr_core::ThreadId> = Vec::new();
+                let mut rows: HashMap<mxr_core::ThreadId, MailListRow> = HashMap::new();
                 for envelope in envelopes {
                     let entry = rows.entry(envelope.thread_id.clone()).or_insert_with(|| {
                         order.push(envelope.thread_id.clone());
@@ -1885,7 +1883,7 @@ impl App {
         daemon_pid: Option<u32>,
         accounts: Vec<String>,
         total_messages: u32,
-        sync_statuses: Vec<crate::mxr_protocol::AccountSyncStatus>,
+        sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
     ) {
         self.diagnostics_page.uptime_secs = Some(uptime_secs);
         self.diagnostics_page.daemon_pid = daemon_pid;
@@ -1905,21 +1903,21 @@ impl App {
         let mut system: Vec<&Label> = self
             .labels
             .iter()
-            .filter(|l| !crate::mxr_tui::ui::sidebar::should_hide_label(&l.name))
-            .filter(|l| l.kind == crate::mxr_core::types::LabelKind::System)
+            .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
+            .filter(|l| l.kind == mxr_core::types::LabelKind::System)
             .filter(|l| {
-                crate::mxr_tui::ui::sidebar::is_primary_system_label(&l.name)
+                crate::ui::sidebar::is_primary_system_label(&l.name)
                     || l.total_count > 0
                     || l.unread_count > 0
             })
             .collect();
-        system.sort_by_key(|l| crate::mxr_tui::ui::sidebar::system_label_order(&l.name));
+        system.sort_by_key(|l| crate::ui::sidebar::system_label_order(&l.name));
 
         let mut user: Vec<&Label> = self
             .labels
             .iter()
-            .filter(|l| !crate::mxr_tui::ui::sidebar::should_hide_label(&l.name))
-            .filter(|l| l.kind != crate::mxr_core::types::LabelKind::System)
+            .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
+            .filter(|l| l.kind != mxr_core::types::LabelKind::System)
             .collect();
         user.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
@@ -2318,7 +2316,7 @@ impl App {
             .or(self.active_label.as_ref())
         {
             if let Some(label) = self.labels.iter().find(|l| &l.id == label_id) {
-                let name = crate::mxr_tui::ui::sidebar::humanize_label(&label.name);
+                let name = crate::ui::sidebar::humanize_label(&label.name);
                 format!("{name} {list_name} ({list_count})")
             } else {
                 format!("{list_name} ({list_count})")
@@ -2496,7 +2494,7 @@ impl App {
         }
     }
 
-    fn summarize_sync_status(sync_statuses: &[crate::mxr_protocol::AccountSyncStatus]) -> String {
+    fn summarize_sync_status(sync_statuses: &[mxr_protocol::AccountSyncStatus]) -> String {
         if sync_statuses.is_empty() {
             return "not synced".into();
         }
@@ -2844,7 +2842,7 @@ impl App {
         self.queued_body_fetches.push(message_id);
     }
 
-    fn queue_thread_fetch(&mut self, thread_id: crate::mxr_core::ThreadId) {
+    fn queue_thread_fetch(&mut self, thread_id: mxr_core::ThreadId) {
         if self.pending_thread_fetch.as_ref() == Some(&thread_id)
             || self.in_flight_thread_fetch.as_ref() == Some(&thread_id)
         {
@@ -2862,8 +2860,8 @@ impl App {
         }
     }
 
-    fn reader_config(&self) -> crate::mxr_reader::ReaderConfig {
-        crate::mxr_reader::ReaderConfig {
+    fn reader_config(&self) -> mxr_reader::ReaderConfig {
+        mxr_reader::ReaderConfig {
             html_command: self.render_html_command.clone(),
             ..Default::default()
         }
@@ -2875,8 +2873,8 @@ impl App {
         }
 
         let output = match source {
-            BodySource::Plain => crate::mxr_reader::clean(Some(raw), None, &self.reader_config()),
-            BodySource::Html => crate::mxr_reader::clean(None, Some(raw), &self.reader_config()),
+            BodySource::Plain => mxr_reader::clean(Some(raw), None, &self.reader_config()),
+            BodySource::Html => mxr_reader::clean(None, Some(raw), &self.reader_config()),
             BodySource::Snippet => unreachable!("snippet bodies bypass reader mode"),
         };
 
@@ -3154,7 +3152,7 @@ impl App {
                     path: None,
                     detail: Some(message),
                 },
-                render: crate::mxr_tui::terminal_images::HtmlImageRenderState::Failed(
+                render: crate::terminal_images::HtmlImageRenderState::Failed(
                     "asset resolution failed".into(),
                 ),
             },
@@ -3172,7 +3170,7 @@ impl App {
             .get_mut(&key.message_id)
             .and_then(|assets| assets.get_mut(&key.source))
         {
-            entry.render = crate::mxr_tui::terminal_images::HtmlImageRenderState::Ready(protocol);
+            entry.render = crate::terminal_images::HtmlImageRenderState::Ready(protocol);
         }
     }
 
@@ -3197,7 +3195,7 @@ impl App {
             .get_mut(&key.message_id)
             .and_then(|assets| assets.get_mut(&key.source))
         {
-            entry.render = crate::mxr_tui::terminal_images::HtmlImageRenderState::Failed(message);
+            entry.render = crate::terminal_images::HtmlImageRenderState::Failed(message);
         }
     }
 
@@ -3277,7 +3275,7 @@ impl App {
         });
     }
 
-    pub fn resolve_attachment_file(&mut self, file: &crate::mxr_protocol::AttachmentFile) {
+    pub fn resolve_attachment_file(&mut self, file: &mxr_protocol::AttachmentFile) {
         let path = std::path::PathBuf::from(&file.path);
         for attachment in &mut self.attachment_panel.attachments {
             if attachment.id == file.attachment_id {
@@ -3301,9 +3299,7 @@ impl App {
                 self.labels
                     .iter()
                     .find(|label| &label.provider_id == provider_id)
-                    .map(|label| {
-                        crate::mxr_tui::ui::sidebar::humanize_label(&label.name).to_string()
-                    })
+                    .map(|label| crate::ui::sidebar::humanize_label(&label.name).to_string())
             })
             .collect()
     }
@@ -3451,7 +3447,7 @@ impl App {
 
     pub(crate) fn apply_account_operation_result(
         &mut self,
-        result: crate::mxr_protocol::AccountOperationResult,
+        result: mxr_protocol::AccountOperationResult,
     ) {
         self.accounts_page.operation_in_flight = false;
         self.accounts_page.throbber = Default::default();
@@ -3486,10 +3482,7 @@ impl App {
         }
     }
 
-    fn open_account_result_details_modal(
-        &mut self,
-        result: &crate::mxr_protocol::AccountOperationResult,
-    ) {
+    fn open_account_result_details_modal(&mut self, result: &mxr_protocol::AccountOperationResult) {
         self.show_error_modal(
             account_result_modal_title(result),
             account_result_modal_detail(result),
@@ -3670,7 +3663,7 @@ impl App {
         }
     }
 
-    pub fn resolve_thread_fetch_error(&mut self, thread_id: &crate::mxr_core::ThreadId) {
+    pub fn resolve_thread_fetch_error(&mut self, thread_id: &mxr_core::ThreadId) {
         if self.in_flight_thread_fetch.as_ref() == Some(thread_id) {
             self.in_flight_thread_fetch = None;
         }
@@ -3886,9 +3879,7 @@ fn subscription_summary_to_envelope(summary: &SubscriptionSummary) -> Envelope {
     }
 }
 
-fn account_result_has_details(
-    result: Option<&crate::mxr_protocol::AccountOperationResult>,
-) -> bool {
+fn account_result_has_details(result: Option<&mxr_protocol::AccountOperationResult>) -> bool {
     let Some(result) = result else {
         return false;
     };
@@ -3896,7 +3887,7 @@ fn account_result_has_details(
     result.save.is_some() || result.auth.is_some() || result.sync.is_some() || result.send.is_some()
 }
 
-fn account_result_modal_title(result: &crate::mxr_protocol::AccountOperationResult) -> String {
+fn account_result_modal_title(result: &mxr_protocol::AccountOperationResult) -> String {
     if result.summary.contains("test failed") {
         "Account Test Failed".into()
     } else if result.summary.contains("test passed") {
@@ -3908,7 +3899,7 @@ fn account_result_modal_title(result: &crate::mxr_protocol::AccountOperationResu
     }
 }
 
-fn account_result_modal_detail(result: &crate::mxr_protocol::AccountOperationResult) -> String {
+fn account_result_modal_detail(result: &mxr_protocol::AccountOperationResult) -> String {
     let mut lines = vec![result.summary.clone()];
     for (label, step) in [
         ("Save", result.save.as_ref()),
@@ -3933,9 +3924,9 @@ fn account_result_modal_detail(result: &crate::mxr_protocol::AccountOperationRes
 }
 
 fn account_summary_to_config(
-    account: &crate::mxr_protocol::AccountSummaryData,
-) -> Option<crate::mxr_protocol::AccountConfigData> {
-    Some(crate::mxr_protocol::AccountConfigData {
+    account: &mxr_protocol::AccountSummaryData,
+) -> Option<mxr_protocol::AccountConfigData> {
+    Some(mxr_protocol::AccountConfigData {
         key: account.key.clone()?,
         name: account.name.clone(),
         email: account.email.clone(),
@@ -3945,7 +3936,7 @@ fn account_summary_to_config(
     })
 }
 
-fn account_form_from_config(account: crate::mxr_protocol::AccountConfigData) -> AccountFormState {
+fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> AccountFormState {
     let mut form = AccountFormState {
         visible: true,
         is_new_account: false,
@@ -3957,7 +3948,7 @@ fn account_form_from_config(account: crate::mxr_protocol::AccountConfigData) -> 
 
     if let Some(sync) = account.sync {
         match sync {
-            crate::mxr_protocol::AccountSyncConfigData::Gmail {
+            mxr_protocol::AccountSyncConfigData::Gmail {
                 credential_source,
                 client_id,
                 client_secret,
@@ -3969,7 +3960,7 @@ fn account_form_from_config(account: crate::mxr_protocol::AccountConfigData) -> 
                 form.gmail_client_secret = client_secret.unwrap_or_default();
                 form.gmail_token_ref = token_ref;
             }
-            crate::mxr_protocol::AccountSyncConfigData::Imap {
+            mxr_protocol::AccountSyncConfigData::Imap {
                 host,
                 port,
                 username,
@@ -3990,7 +3981,7 @@ fn account_form_from_config(account: crate::mxr_protocol::AccountConfigData) -> 
     }
 
     match account.send {
-        Some(crate::mxr_protocol::AccountSendConfigData::Smtp {
+        Some(mxr_protocol::AccountSendConfigData::Smtp {
             host,
             port,
             username,
@@ -4004,7 +3995,7 @@ fn account_form_from_config(account: crate::mxr_protocol::AccountConfigData) -> 
             form.smtp_password_ref = password_ref;
             form.smtp_auth_required = auth_required;
         }
-        Some(crate::mxr_protocol::AccountSendConfigData::Gmail) => {
+        Some(mxr_protocol::AccountSendConfigData::Gmail) => {
             if form.gmail_token_ref.is_empty() {
                 form.gmail_token_ref = format!("mxr/{}-gmail", form.key);
             }
@@ -4023,14 +4014,12 @@ fn account_form_field_value(form: &AccountFormState) -> Option<&str> {
         (_, 3) => Some(form.email.as_str()),
         (AccountFormMode::Gmail, 4) => None,
         (AccountFormMode::Gmail, 5)
-            if form.gmail_credential_source
-                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             Some(form.gmail_client_id.as_str())
         }
         (AccountFormMode::Gmail, 6)
-            if form.gmail_credential_source
-                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             Some(form.gmail_client_secret.as_str())
         }
@@ -4071,14 +4060,12 @@ where
         (_, 2) => &mut form.name,
         (_, 3) => &mut form.email,
         (AccountFormMode::Gmail, 5)
-            if form.gmail_credential_source
-                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             &mut form.gmail_client_id
         }
         (AccountFormMode::Gmail, 6)
-            if form.gmail_credential_source
-                == crate::mxr_protocol::GmailCredentialSourceData::Custom =>
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom =>
         {
             &mut form.gmail_client_secret
         }
@@ -4145,21 +4132,21 @@ fn char_to_byte_index(value: &str, char_index: usize) -> usize {
 }
 
 fn next_gmail_credential_source(
-    current: crate::mxr_protocol::GmailCredentialSourceData,
+    current: mxr_protocol::GmailCredentialSourceData,
     forward: bool,
-) -> crate::mxr_protocol::GmailCredentialSourceData {
+) -> mxr_protocol::GmailCredentialSourceData {
     match (current, forward) {
-        (crate::mxr_protocol::GmailCredentialSourceData::Bundled, true) => {
-            crate::mxr_protocol::GmailCredentialSourceData::Custom
+        (mxr_protocol::GmailCredentialSourceData::Bundled, true) => {
+            mxr_protocol::GmailCredentialSourceData::Custom
         }
-        (crate::mxr_protocol::GmailCredentialSourceData::Custom, true) => {
-            crate::mxr_protocol::GmailCredentialSourceData::Bundled
+        (mxr_protocol::GmailCredentialSourceData::Custom, true) => {
+            mxr_protocol::GmailCredentialSourceData::Bundled
         }
-        (crate::mxr_protocol::GmailCredentialSourceData::Bundled, false) => {
-            crate::mxr_protocol::GmailCredentialSourceData::Custom
+        (mxr_protocol::GmailCredentialSourceData::Bundled, false) => {
+            mxr_protocol::GmailCredentialSourceData::Custom
         }
-        (crate::mxr_protocol::GmailCredentialSourceData::Custom, false) => {
-            crate::mxr_protocol::GmailCredentialSourceData::Bundled
+        (mxr_protocol::GmailCredentialSourceData::Custom, false) => {
+            mxr_protocol::GmailCredentialSourceData::Bundled
         }
     }
 }
@@ -4175,9 +4162,9 @@ pub fn snooze_presets() -> [SnoozePreset; 4] {
 
 pub fn resolve_snooze_preset(
     preset: SnoozePreset,
-    config: &crate::mxr_config::SnoozeConfig,
+    config: &mxr_config::SnoozeConfig,
 ) -> chrono::DateTime<chrono::Utc> {
-    crate::mxr_config::snooze::resolve_snooze_time(preset, config)
+    mxr_config::snooze::resolve_snooze_time(preset, config)
 }
 
 #[cfg(test)]
@@ -4187,7 +4174,7 @@ mod tests {
     use chrono::TimeZone;
 
     fn test_envelope(
-        thread_id: crate::mxr_core::ThreadId,
+        thread_id: mxr_core::ThreadId,
         subject: &str,
         date: chrono::DateTime<chrono::Utc>,
     ) -> Envelope {
@@ -4205,7 +4192,7 @@ mod tests {
 
     #[test]
     fn build_mail_list_rows_ignores_impossible_future_thread_dates() {
-        let thread_id = crate::mxr_core::ThreadId::new();
+        let thread_id = mxr_core::ThreadId::new();
         let poisoned = test_envelope(
             thread_id.clone(),
             "Poisoned future",

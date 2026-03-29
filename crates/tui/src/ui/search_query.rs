@@ -1,4 +1,4 @@
-use crate::mxr_tui::theme::Theme;
+use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::style::Modifier;
 

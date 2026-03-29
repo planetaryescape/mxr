@@ -1,6 +1,6 @@
-use crate::mxr_compose::email::{build_message, format_message_for_gmail};
-use crate::mxr_core::types::{Address, Draft};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use mxr_core::types::{Address, Draft};
+use mxr_outbound::email::{build_message, format_message_for_gmail};
 
 /// Build an RFC 5322 message from a Draft and return the raw bytes.
 pub fn build_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
@@ -25,8 +25,8 @@ pub enum GmailSendError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::{AccountId, DraftId};
-    use crate::mxr_core::types::ReplyHeaders;
+    use mxr_core::id::{AccountId, DraftId};
+    use mxr_core::types::ReplyHeaders;
 
     fn test_draft() -> Draft {
         Draft {
@@ -81,11 +81,13 @@ mod tests {
     }
 
     #[test]
-    fn encode_for_gmail_base64url() {
+    fn encode_for_gmail_base64url_round_trips_without_padding() {
         let rfc2822 = b"From: test@test.com\r\nTo: alice@test.com\r\n\r\nHello";
         let encoded = encode_for_gmail(rfc2822);
         assert!(!encoded.contains('+'));
         assert!(!encoded.contains('/'));
+        assert!(!encoded.contains('='));
+        assert_eq!(URL_SAFE_NO_PAD.decode(&encoded).unwrap(), rfc2822);
     }
 
     #[test]
@@ -97,5 +99,21 @@ mod tests {
         }];
         let msg = String::from_utf8(build_rfc2822(&draft, &from()).unwrap()).unwrap();
         assert!(msg.contains("Bcc: hidden@example.com\r\n"));
+    }
+
+    #[test]
+    fn build_rfc2822_surfaces_message_build_errors() {
+        let draft = test_draft();
+        let invalid_from = Address {
+            name: None,
+            email: "not-valid".into(),
+        };
+
+        match build_rfc2822(&draft, &invalid_from) {
+            Err(GmailSendError::Build(message)) => {
+                assert!(message.contains("invalid address"));
+            }
+            other => panic!("expected GmailSendError::Build, got {other:?}"),
+        }
     }
 }

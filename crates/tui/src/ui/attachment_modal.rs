@@ -1,4 +1,4 @@
-use crate::mxr_tui::app::AttachmentPanelState;
+use crate::app::AttachmentPanelState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -6,7 +6,7 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     panel: &AttachmentPanelState,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     if !panel.visible {
         return;

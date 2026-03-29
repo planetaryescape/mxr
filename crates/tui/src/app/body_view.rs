@@ -283,7 +283,7 @@ impl App {
         self.queued_body_fetches.push(message_id);
     }
 
-    pub(super) fn queue_thread_fetch(&mut self, thread_id: crate::mxr_core::ThreadId) {
+    pub(super) fn queue_thread_fetch(&mut self, thread_id: mxr_core::ThreadId) {
         if self.pending_thread_fetch.as_ref() == Some(&thread_id)
             || self.in_flight_thread_fetch.as_ref() == Some(&thread_id)
         {
@@ -306,10 +306,10 @@ impl App {
             return raw.to_string();
         }
 
-        let config = crate::mxr_reader::ReaderConfig::default();
+        let config = mxr_reader::ReaderConfig::default();
         match source {
-            BodySource::Plain => crate::mxr_reader::clean(Some(raw), None, &config).content,
-            BodySource::Html => crate::mxr_reader::clean(None, Some(raw), &config).content,
+            BodySource::Plain => mxr_reader::clean(Some(raw), None, &config).content,
+            BodySource::Html => mxr_reader::clean(None, Some(raw), &config).content,
             BodySource::Snippet => raw.to_string(),
         }
     }

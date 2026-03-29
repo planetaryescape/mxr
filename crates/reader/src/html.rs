@@ -1,4 +1,4 @@
-use crate::mxr_reader::pipeline::ReaderConfig;
+use crate::pipeline::ReaderConfig;
 use std::process::Command;
 
 /// Convert HTML to plain text.

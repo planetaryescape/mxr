@@ -1,10 +1,10 @@
-use crate::mxr_core::{Envelope, Label, MessageBody, MessageId, Thread, ThreadId, MxrError};
-use crate::mxr_core::types::SubscriptionSummary;
-use crate::mxr_protocol::{
+use mxr_core::{Envelope, Label, MessageBody, MessageId, Thread, ThreadId, MxrError};
+use mxr_core::types::SubscriptionSummary;
+use mxr_protocol::{
     AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, DaemonEvent,
     Response, RuleFormData,
 };
-use crate::mxr_tui::app::{AttachmentOperation, MutationEffect, SearchTarget};
+use crate::app::{AttachmentOperation, MutationEffect, SearchTarget};
 
 pub(crate) enum AsyncResult {
     Search {

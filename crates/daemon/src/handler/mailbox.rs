@@ -2,12 +2,10 @@ use super::{
     find_label_by_name, materialize_attachment_file, open_local_file,
     populate_envelope_label_provider_ids, HandlerResult,
 };
-use crate::mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
-use crate::mxr_core::types::{
-    HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind, MessageBody,
-};
-use crate::mxr_protocol::ResponseData;
 use crate::state::AppState;
+use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
+use mxr_core::types::{HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind, MessageBody};
+use mxr_protocol::ResponseData;
 use scraper::{Html, Selector};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -328,7 +326,7 @@ fn find_html_image_attachment<'a>(
     body: &'a MessageBody,
     source: &str,
     kind: HtmlImageSourceKind,
-) -> Option<&'a crate::mxr_core::types::AttachmentMeta> {
+) -> Option<&'a mxr_core::types::AttachmentMeta> {
     match kind {
         HtmlImageSourceKind::Cid => body.attachments.iter().find(|attachment| {
             attachment
@@ -486,7 +484,7 @@ pub(super) async fn list_bodies(state: &Arc<AppState>, message_ids: &[MessageId]
             } else {
                 (None, full.text_html)
             };
-            bodies.push(crate::mxr_core::types::MessageBody {
+            bodies.push(mxr_core::types::MessageBody {
                 message_id: full.message_id,
                 text_plain: plain,
                 text_html: html,

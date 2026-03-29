@@ -1,0 +1,29 @@
+---
+source: crates/tui/tests/snapshots.rs
+assertion_line: 481
+expression: snapshot
+---
+"╭ Search All Mail [lexical] / query ─────────────────────────────────────────────────────╮"
+"│invoice                                                                                 │"
+"│⠷ searching full local index                                                            │"
+"╰────────────────────────────────────────────────────────────────────────────────────────╯"
+"┌ Search Results / lexical / searching ─┐┌ Preview ──────────────────────────────────────┐"
+"│Searching the full local index...      ││Loading preview...                             │"
+"│                                       ││                                               │"
+"│Looking beyond the currently loaded    ││Results will appear here as soon as a message  │"
+"│mailbox slice.                         ││is selected.                                   │"
+"│Counting total matches in parallel.    ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"│                                       ││                                               │"
+"└───────────────────────────────────────┘└───────────────────────────────────────────────┘"

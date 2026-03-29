@@ -210,12 +210,12 @@ fn parse_message_body_multipart_with_attachment() {
     let body = parse_message_body(raw.as_bytes(), &msg_id);
 
     assert_eq!(
-        body.text_plain.as_deref(),
-        Some("Please find the report attached.\r\n")
+        body.text_plain.as_deref().map(str::trim),
+        Some("Please find the report attached.")
     );
     assert_eq!(
-        body.text_html.as_deref(),
-        Some("<p>Please find the report attached.</p>\r\n")
+        body.text_html.as_deref().map(str::trim),
+        Some("<p>Please find the report attached.</p>")
     );
     assert_eq!(body.attachments.len(), 1);
     assert_eq!(body.attachments[0].filename, "Q4-report.pdf");

@@ -1,16 +1,16 @@
 #[cfg(feature = "local")]
-use crate::mxr_config::SemanticConfig;
-use crate::mxr_core::id::MessageId;
+use mxr_config::SemanticConfig;
+use mxr_core::id::MessageId;
 #[cfg(feature = "local")]
-use crate::mxr_core::id::SemanticProfileId;
+use mxr_core::id::SemanticProfileId;
 #[cfg(feature = "local")]
-use crate::mxr_core::types::{
+use mxr_core::types::{
     Envelope, MessageBody, SemanticChunkRecord, SemanticChunkSourceKind, SemanticEmbeddingRecord,
     SemanticEmbeddingStatus, SemanticProfileStatus,
 };
-use crate::mxr_core::types::{SemanticProfile, SemanticProfileRecord, SemanticStatusSnapshot};
+use mxr_core::types::{SemanticProfile, SemanticProfileRecord, SemanticStatusSnapshot};
 #[cfg(feature = "local")]
-use crate::mxr_reader::{clean, ReaderConfig};
+use mxr_reader::{clean, ReaderConfig};
 #[cfg(feature = "local")]
 use anyhow::Context;
 use anyhow::{anyhow, Result};
@@ -40,7 +40,7 @@ use fastembed::{TextEmbedding, TextInitOptions};
 
 #[cfg(feature = "local")]
 impl SemanticEngine {
-    pub fn new(store: Arc<crate::mxr_store::Store>, data_dir: &Path, config: SemanticConfig) -> Self {
+    pub fn new(store: Arc<mxr_store::Store>, data_dir: &Path, config: SemanticConfig) -> Self {
         Self {
             store,
             cache_dir: data_dir.join("models"),
@@ -353,12 +353,12 @@ impl SemanticEngine {
 
 #[cfg(not(feature = "local"))]
 impl SemanticEngine {
-    pub fn new(store: std::sync::Arc<crate::mxr_store::Store>, data_dir: &Path, config: crate::mxr_config::SemanticConfig) -> Self {
+    pub fn new(store: std::sync::Arc<mxr_store::Store>, data_dir: &Path, config: mxr_config::SemanticConfig) -> Self {
         let _ = data_dir;
         Self { store, config }
     }
 
-    pub fn apply_config(&mut self, config: crate::mxr_config::SemanticConfig) {
+    pub fn apply_config(&mut self, config: mxr_config::SemanticConfig) {
         self.config = config;
     }
 
@@ -430,8 +430,8 @@ fn semantic_chunk_id(
     message_id: &str,
     source_kind: &SemanticChunkSourceKind,
     ordinal: u32,
-) -> crate::mxr_core::SemanticChunkId {
-    crate::mxr_core::SemanticChunkId::from_provider_id(
+) -> mxr_core::SemanticChunkId {
+    mxr_core::SemanticChunkId::from_provider_id(
         "semantic_chunk",
         &format!("{message_id}:{source_kind:?}:{ordinal}"),
     )

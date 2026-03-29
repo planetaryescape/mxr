@@ -1,18 +1,18 @@
-use crate::mxr_compose::parse::{
-    body_unsubscribe_from_html, calendar_metadata_from_text, extract_raw_header_block,
-    parse_headers_from_raw,
-};
-use crate::mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};
-use crate::mxr_core::types::{
+use chrono::{DateTime, TimeZone, Utc};
+use mail_parser::{MimeHeaders, PartType};
+use mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};
+use mxr_core::types::{
     Address, AttachmentDisposition, AttachmentMeta, BodyPartSource, Envelope, MessageBody,
     MessageFlags, SyncedMessage, TextPlainFormat, UnsubscribeMethod,
 };
-use chrono::{DateTime, TimeZone, Utc};
-use mail_parser::{MimeHeaders, PartType};
+use mxr_mail_parse::{
+    body_unsubscribe_from_html, calendar_metadata_from_text, extract_raw_header_block,
+    parse_headers_from_raw,
+};
 
-use crate::mxr_provider_imap::error::ImapProviderError;
-use crate::mxr_provider_imap::folders::format_provider_id;
-use crate::mxr_provider_imap::types::FetchedMessage;
+use crate::error::ImapProviderError;
+use crate::folders::format_provider_id;
+use crate::types::FetchedMessage;
 
 /// Convert IMAP flags to mxr MessageFlags.
 pub fn flags_from_imap(flags: &[String]) -> MessageFlags {

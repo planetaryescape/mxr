@@ -1,15 +1,15 @@
-use crate::mxr_core::{
+use async_trait::async_trait;
+use mxr_core::{
     AccountId, Address, Draft, Label, LabelChange, LabelId, LabelKind, MailSendProvider,
     MailSyncProvider, MxrError, SendReceipt, SyncBatch, SyncCapabilities, SyncCursor,
 };
-use async_trait::async_trait;
 use tracing::{debug, warn};
 
-use crate::mxr_core::types::SyncedMessage;
-use crate::mxr_provider_gmail::client::{GmailApi, GmailClient, MessageFormat};
-use crate::mxr_provider_gmail::error::GmailError;
-use crate::mxr_provider_gmail::parse::{extract_message_body, gmail_message_to_envelope};
-use crate::mxr_provider_gmail::send;
+use crate::client::{GmailApi, GmailClient, MessageFormat};
+use crate::error::GmailError;
+use crate::parse::{extract_message_body, gmail_message_to_envelope};
+use crate::send;
+use mxr_core::types::SyncedMessage;
 
 pub struct GmailProvider {
     account_id: AccountId,
@@ -29,7 +29,7 @@ impl GmailProvider {
         Self { account_id, client }
     }
 
-    fn map_label(&self, gl: crate::mxr_provider_gmail::types::GmailLabel) -> Label {
+    fn map_label(&self, gl: crate::types::GmailLabel) -> Label {
         let kind = match gl.label_type.as_deref() {
             Some("system") => LabelKind::System,
             _ => LabelKind::User,
@@ -356,17 +356,17 @@ impl MailSyncProvider for GmailProvider {
         }
     }
 
-    async fn authenticate(&mut self) -> crate::mxr_core::provider::Result<()> {
+    async fn authenticate(&mut self) -> mxr_core::provider::Result<()> {
         // Auth is managed by GmailAuth externally before constructing the provider
         Ok(())
     }
 
-    async fn refresh_auth(&mut self) -> crate::mxr_core::provider::Result<()> {
+    async fn refresh_auth(&mut self) -> mxr_core::provider::Result<()> {
         // Token refresh is handled automatically by yup-oauth2
         Ok(())
     }
 
-    async fn sync_labels(&self) -> crate::mxr_core::provider::Result<Vec<Label>> {
+    async fn sync_labels(&self) -> mxr_core::provider::Result<Vec<Label>> {
         let resp = self.client.list_labels().await.map_err(MxrError::from)?;
 
         let gmail_labels = resp.labels.unwrap_or_default();
@@ -379,10 +379,7 @@ impl MailSyncProvider for GmailProvider {
         Ok(labels)
     }
 
-    async fn sync_messages(
-        &self,
-        cursor: &SyncCursor,
-    ) -> crate::mxr_core::provider::Result<SyncBatch> {
+    async fn sync_messages(&self, cursor: &SyncCursor) -> mxr_core::provider::Result<SyncBatch> {
         match cursor {
             SyncCursor::Initial => self.initial_sync().await,
             SyncCursor::Gmail { history_id } => self.delta_sync(*history_id).await,
@@ -400,7 +397,7 @@ impl MailSyncProvider for GmailProvider {
         &self,
         provider_message_id: &str,
         provider_attachment_id: &str,
-    ) -> crate::mxr_core::provider::Result<Vec<u8>> {
+    ) -> mxr_core::provider::Result<Vec<u8>> {
         self.client
             .get_attachment(provider_message_id, provider_attachment_id)
             .await
@@ -412,7 +409,7 @@ impl MailSyncProvider for GmailProvider {
         provider_message_id: &str,
         add: &[String],
         remove: &[String],
-    ) -> crate::mxr_core::provider::Result<()> {
+    ) -> mxr_core::provider::Result<()> {
         let add_refs: Vec<&str> = add.iter().map(|s| s.as_str()).collect();
         let remove_refs: Vec<&str> = remove.iter().map(|s| s.as_str()).collect();
         self.client
@@ -425,7 +422,7 @@ impl MailSyncProvider for GmailProvider {
         &self,
         name: &str,
         color: Option<&str>,
-    ) -> crate::mxr_core::provider::Result<Label> {
+    ) -> mxr_core::provider::Result<Label> {
         let label = self
             .client
             .create_label(name, color)
@@ -438,7 +435,7 @@ impl MailSyncProvider for GmailProvider {
         &self,
         provider_label_id: &str,
         new_name: &str,
-    ) -> crate::mxr_core::provider::Result<Label> {
+    ) -> mxr_core::provider::Result<Label> {
         let label = self
             .client
             .rename_label(provider_label_id, new_name)
@@ -447,14 +444,14 @@ impl MailSyncProvider for GmailProvider {
         Ok(self.map_label(label))
     }
 
-    async fn delete_label(&self, provider_label_id: &str) -> crate::mxr_core::provider::Result<()> {
+    async fn delete_label(&self, provider_label_id: &str) -> mxr_core::provider::Result<()> {
         self.client
             .delete_label(provider_label_id)
             .await
             .map_err(MxrError::from)
     }
 
-    async fn trash(&self, provider_message_id: &str) -> crate::mxr_core::provider::Result<()> {
+    async fn trash(&self, provider_message_id: &str) -> mxr_core::provider::Result<()> {
         self.client
             .trash_message(provider_message_id)
             .await
@@ -465,7 +462,7 @@ impl MailSyncProvider for GmailProvider {
         &self,
         provider_message_id: &str,
         read: bool,
-    ) -> crate::mxr_core::provider::Result<()> {
+    ) -> mxr_core::provider::Result<()> {
         if read {
             self.client
                 .modify_message(provider_message_id, &[], &["UNREAD"])
@@ -483,7 +480,7 @@ impl MailSyncProvider for GmailProvider {
         &self,
         provider_message_id: &str,
         starred: bool,
-    ) -> crate::mxr_core::provider::Result<()> {
+    ) -> mxr_core::provider::Result<()> {
         if starred {
             self.client
                 .modify_message(provider_message_id, &["STARRED"], &[])
@@ -497,7 +494,7 @@ impl MailSyncProvider for GmailProvider {
         }
     }
 
-    async fn search_remote(&self, query: &str) -> crate::mxr_core::provider::Result<Vec<String>> {
+    async fn search_remote(&self, query: &str) -> mxr_core::provider::Result<Vec<String>> {
         let resp = self
             .client
             .list_messages(Some(query), None, 100)
@@ -521,11 +518,7 @@ impl MailSendProvider for GmailProvider {
         "gmail"
     }
 
-    async fn send(
-        &self,
-        draft: &Draft,
-        from: &Address,
-    ) -> crate::mxr_core::provider::Result<SendReceipt> {
+    async fn send(&self, draft: &Draft, from: &Address) -> mxr_core::provider::Result<SendReceipt> {
         let rfc2822 =
             send::build_rfc2822(draft, from).map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
@@ -548,7 +541,7 @@ impl MailSendProvider for GmailProvider {
         &self,
         draft: &Draft,
         from: &Address,
-    ) -> crate::mxr_core::provider::Result<Option<String>> {
+    ) -> mxr_core::provider::Result<Option<String>> {
         let rfc2822 =
             send::build_rfc2822(draft, from).map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
@@ -566,8 +559,8 @@ impl MailSendProvider for GmailProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_provider_gmail::error::GmailError;
-    use crate::mxr_provider_gmail::types::*;
+    use crate::error::GmailError;
+    use crate::types::*;
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -884,8 +877,8 @@ mod tests {
     #[tokio::test]
     async fn gmail_provider_passes_sync_and_send_conformance() {
         let provider = gmail_provider();
-        crate::mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
-        crate::mxr_provider_fake::conformance::run_send_conformance(&provider).await;
+        mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
+        mxr_provider_fake::conformance::run_send_conformance(&provider).await;
     }
 
     #[tokio::test]

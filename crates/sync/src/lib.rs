@@ -5,11 +5,11 @@ pub use engine::SyncEngine;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::*;
-    use crate::mxr_core::types::*;
-    use crate::mxr_core::{MailSyncProvider, MxrError, SyncCapabilities};
-    use crate::mxr_search::SearchIndex;
-    use crate::mxr_store::Store;
+    use mxr_core::id::*;
+    use mxr_core::types::*;
+    use mxr_core::{MailSyncProvider, MxrError, SyncCapabilities};
+    use mxr_search::SearchIndex;
+    use mxr_store::Store;
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
@@ -70,8 +70,8 @@ mod tests {
         }
     }
 
-    fn test_account(account_id: AccountId) -> crate::mxr_core::Account {
-        crate::mxr_core::Account {
+    fn test_account(account_id: AccountId) -> mxr_core::Account {
+        mxr_core::Account {
             id: account_id,
             name: "Fake Account".to_string(),
             email: "user@example.com".to_string(),
@@ -371,7 +371,7 @@ mod tests {
             message_id_header: None,
             in_reply_to: None,
             references: vec![],
-            from: crate::mxr_core::Address {
+            from: mxr_core::Address {
                 name: Some("Test".to_string()),
                 email: "test@example.com".to_string(),
             },
@@ -469,7 +469,7 @@ mod tests {
                 message_id_header: Some("<root@example.com>".into()),
                 in_reply_to: None,
                 references: vec![],
-                from: crate::mxr_core::Address {
+                from: mxr_core::Address {
                     name: Some("Alice".into()),
                     email: "alice@example.com".into(),
                 },
@@ -496,7 +496,7 @@ mod tests {
                 message_id_header: Some("<reply@example.com>".into()),
                 in_reply_to: Some("<root@example.com>".into()),
                 references: vec!["<root@example.com>".into()],
-                from: crate::mxr_core::Address {
+                from: mxr_core::Address {
                     name: Some("Bob".into()),
                     email: "bob@example.com".into(),
                 },
@@ -661,7 +661,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         let count = engine.sync_account(&provider).await.unwrap();
         assert_eq!(count, 55);
 
@@ -696,7 +696,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         // Get first message
@@ -728,7 +728,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         // Get a message to snooze
@@ -770,7 +770,7 @@ mod tests {
         let cursor_before = store.get_sync_cursor(&account_id).await.unwrap();
         assert!(cursor_before.is_none());
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         // After sync, cursor should match FakeProvider's next_cursor (Gmail { history_id: 1 })
@@ -823,7 +823,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         let labels = store.list_labels_by_account(&account_id).await.unwrap();
@@ -854,7 +854,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         let labels = store.list_labels_by_account(&account_id).await.unwrap();
@@ -908,7 +908,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         let labels = store.list_labels_by_account(&account_id).await.unwrap();
@@ -962,7 +962,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         let count = engine.sync_account(&provider).await.unwrap();
         assert_eq!(count, 55, "Sync should report 55 messages processed");
 
@@ -997,7 +997,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
 
         // Initial sync
         engine.sync_account(&provider).await.unwrap();
@@ -1055,7 +1055,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
 
         // Initial sync
         engine.sync_account(&provider).await.unwrap();
@@ -1102,7 +1102,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
 
         // Initial sync
         engine.sync_account(&provider).await.unwrap();
@@ -1142,7 +1142,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         let labels = store.list_labels_by_account(&account_id).await.unwrap();
@@ -1204,7 +1204,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         let labels = store.list_labels_by_account(&account_id).await.unwrap();
@@ -1239,7 +1239,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         let envelopes = store
@@ -1283,7 +1283,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         let envelopes = store
@@ -1336,7 +1336,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         // Count junction rows for first message
@@ -1382,7 +1382,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         let result = store
@@ -1412,7 +1412,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         let envelopes = store
@@ -1528,7 +1528,7 @@ mod tests {
             .await
             .unwrap();
 
-        let provider = crate::mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let provider = mxr_provider_fake::FakeProvider::new(account_id.clone());
         engine.sync_account(&provider).await.unwrap();
 
         let labels = store.list_labels_by_account(&account_id).await.unwrap();

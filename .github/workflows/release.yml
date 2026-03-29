@@ -158,30 +158,6 @@ jobs:
             ${{ env.DESKTOP_ARCHIVE }}
             ${{ env.DESKTOP_ARCHIVE }}.sha256
 
-  publish-crates:
-    name: Publish Crates
-    runs-on: ubuntu-latest
-    needs: [plan, build-binaries]
-    if: needs.plan.outputs.cli_changed == 'true' && needs.build-binaries.result == 'success'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Verify version matches tag
-        run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          CARGO_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="mxr") | .version')
-          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
-            echo "::error::Tag version ($TAG_VERSION) does not match Cargo.toml version ($CARGO_VERSION)"
-            exit 1
-          fi
-
-      - name: Publish crates (dependency order)
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: bash ./scripts/publish_workspace_crates.sh
-
   github-release:
     name: GitHub Release
     runs-on: ubuntu-latest

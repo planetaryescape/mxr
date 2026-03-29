@@ -1,7 +1,7 @@
 use crate::cli::{OutputFormat, SemanticAction, SemanticProfileAction};
 use crate::ipc_client::IpcClient;
-use crate::mxr_protocol::{Request, Response, ResponseData};
 use crate::output::resolve_format;
+use mxr_protocol::{Request, Response, ResponseData};
 
 pub async fn run(
     action: Option<SemanticAction>,

@@ -59,12 +59,16 @@ Provider rule: provider weirdness is handled below this layer in adapter crates.
 
 - First-party adapters are live for Gmail, IMAP, SMTP, and Fake.
 - `crates/web` is a current client/bridge, not future work.
-- The repo is one Cargo package named `mxr` that path-mounts conceptual subcrates under `crates/`.
-- Some older blueprint prose still describes a cleaner future workspace split; when docs disagree with code, code wins.
+- The product/install/package surface is the repo-root package `mxr`.
+- Internal crates under `crates/` are real workspace crates and are private by default (`publish = false`).
+- The IMAP adapter depends on the published `mxr-async-imap` fork from crates.io; vendored source is not part of the workspace boundary model.
+- Architectural seams are enforced with Cargo dependencies. `#[path]` pseudo-crates are not allowed.
 
 ## What this means in practice
 
 - CLI, TUI, and web should reuse daemon workflows instead of inventing separate mail logic.
 - Web/TUI should shape their own views from reusable daemon data.
+- Providers may use shared mail utility crates like `mail-parse` and `outbound`, but never `compose`.
+- Clients may use local utility crates like `config`, `compose`, `reader`, and `mail-parse`, but they must not depend on daemon/store/search/sync/provider crates.
 - Search/status/doctor/events are all available over IPC, but only mail workflows define the core contract.
 - Future contributors should classify new IPC first, then add it. Do not grow a junk drawer.

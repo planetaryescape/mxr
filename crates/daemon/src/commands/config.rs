@@ -3,16 +3,16 @@ use crate::cli::ConfigAction;
 pub fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
     match action.unwrap_or(ConfigAction::Edit) {
         ConfigAction::Path => {
-            println!("{}", crate::mxr_config::config_file_path().display());
+            println!("{}", mxr_config::config_file_path().display());
         }
         ConfigAction::Edit => {
-            let config_path = crate::mxr_config::config_file_path();
+            let config_path = mxr_config::config_file_path();
             if !config_path.exists() {
                 // Ensure config file exists with defaults before opening
-                let config = crate::mxr_config::load_config().unwrap_or_default();
-                crate::mxr_config::save_config(&config)?;
+                let config = mxr_config::load_config().unwrap_or_default();
+                mxr_config::save_config(&config)?;
             }
-            let editor = crate::mxr_compose::editor::resolve_editor(None);
+            let editor = mxr_compose::editor::resolve_editor(None);
             let status = std::process::Command::new(&editor)
                 .arg(&config_path)
                 .status()
@@ -22,21 +22,21 @@ pub fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
             }
         }
         ConfigAction::Get { key } => {
-            let config = crate::mxr_config::load_config()?;
+            let config = mxr_config::load_config()?;
             let value = get_config_value(&config, &key)?;
             println!("{value}");
         }
         ConfigAction::Set { key, value } => {
-            let mut config = crate::mxr_config::load_config()?;
+            let mut config = mxr_config::load_config()?;
             set_config_value(&mut config, &key, &value)?;
-            crate::mxr_config::save_config(&config)?;
+            mxr_config::save_config(&config)?;
             println!("Set {key} = {value}");
         }
     }
     Ok(())
 }
 
-fn get_config_value(config: &crate::mxr_config::MxrConfig, key: &str) -> anyhow::Result<String> {
+fn get_config_value(config: &mxr_config::MxrConfig, key: &str) -> anyhow::Result<String> {
     match key {
         // general
         "general.editor" => Ok(config
@@ -87,7 +87,7 @@ fn get_config_value(config: &crate::mxr_config::MxrConfig, key: &str) -> anyhow:
 }
 
 fn set_config_value(
-    config: &mut crate::mxr_config::MxrConfig,
+    config: &mut mxr_config::MxrConfig,
     key: &str,
     value: &str,
 ) -> anyhow::Result<()> {

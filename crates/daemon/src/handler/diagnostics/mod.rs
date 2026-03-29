@@ -8,12 +8,12 @@ use super::{
     handle_export_search, handle_export_thread, protocol_event_entry, recent_log_lines,
     HandlerResult,
 };
-use crate::mxr_core::id::{AccountId, MessageId, ThreadId};
-use crate::mxr_core::types::{ExportFormat, SearchMode, SemanticProfile, SortOrder};
-use crate::mxr_protocol::IPC_PROTOCOL_VERSION;
-use crate::mxr_protocol::{ResponseData, SearchExplain, SearchExplainResult, SearchResultItem};
-use crate::mxr_search::{SearchPage, SearchResult};
 use crate::state::AppState;
+use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::types::{ExportFormat, SearchMode, SemanticProfile, SortOrder};
+use mxr_protocol::IPC_PROTOCOL_VERSION;
+use mxr_protocol::{ResponseData, SearchExplain, SearchExplainResult, SearchResultItem};
+use mxr_search::{SearchPage, SearchResult};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -282,13 +282,13 @@ pub(crate) async fn create_saved_search(
     query: &str,
     search_mode: SearchMode,
 ) -> HandlerResult {
-    let search = crate::mxr_core::types::SavedSearch {
-        id: crate::mxr_core::SavedSearchId::new(),
+    let search = mxr_core::types::SavedSearch {
+        id: mxr_core::SavedSearchId::new(),
         account_id: None,
         name: name.to_string(),
         query: query.to_string(),
         search_mode,
-        sort: crate::mxr_core::types::SortOrder::DateDesc,
+        sort: mxr_core::types::SortOrder::DateDesc,
         icon: None,
         position: 0,
         created_at: chrono::Utc::now(),
@@ -385,8 +385,8 @@ pub(crate) async fn export_thread(
     format: &ExportFormat,
 ) -> HandlerResult {
     match handle_export_thread(state, thread_id, format).await {
-        crate::mxr_protocol::Response::Ok { data } => Ok(data),
-        crate::mxr_protocol::Response::Error { message } => Err(message),
+        mxr_protocol::Response::Ok { data } => Ok(data),
+        mxr_protocol::Response::Error { message } => Err(message),
     }
 }
 
@@ -396,8 +396,8 @@ pub(crate) async fn export_search(
     format: &ExportFormat,
 ) -> HandlerResult {
     match handle_export_search(state, query, format).await {
-        crate::mxr_protocol::Response::Ok { data } => Ok(data),
-        crate::mxr_protocol::Response::Error { message } => Err(message),
+        mxr_protocol::Response::Ok { data } => Ok(data),
+        mxr_protocol::Response::Error { message } => Err(message),
     }
 }
 
@@ -415,10 +415,10 @@ fn search_result_items(results: Vec<SearchResult>, mode: SearchMode) -> Vec<Sear
         .filter_map(|result| {
             Some(SearchResultItem {
                 message_id: parse_message_id(&result.message_id)?,
-                account_id: crate::mxr_core::AccountId::from_uuid(
+                account_id: mxr_core::AccountId::from_uuid(
                     uuid::Uuid::parse_str(&result.account_id).ok()?,
                 ),
-                thread_id: crate::mxr_core::ThreadId::from_uuid(
+                thread_id: mxr_core::ThreadId::from_uuid(
                     uuid::Uuid::parse_str(&result.thread_id).ok()?,
                 ),
                 score: result.score,

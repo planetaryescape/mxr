@@ -52,8 +52,8 @@ pub enum Action {
     CloseMessageView,
     ToggleMailListMode,
     // Label / saved search selection
-    SelectLabel(crate::mxr_core::LabelId),
-    SelectSavedSearch(String, crate::mxr_core::SearchMode),
+    SelectLabel(mxr_core::LabelId),
+    SelectSavedSearch(String, mxr_core::SearchMode),
     ClearFilter,
     RefreshRules,
     ToggleRuleEnabled,

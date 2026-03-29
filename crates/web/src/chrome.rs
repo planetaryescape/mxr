@@ -3,7 +3,7 @@ use super::envelope_list::{
     sorted_saved_searches,
 };
 use super::*;
-use crate::mxr_core::{LabelKind, MessageFlags, SavedSearch, SubscriptionSummary};
+use mxr_core::{LabelKind, MessageFlags, SavedSearch, SubscriptionSummary};
 use serde_json::json;
 
 #[derive(Debug)]
@@ -13,7 +13,7 @@ pub(crate) struct BridgeChrome {
     pub(crate) shell: serde_json::Value,
     pub(crate) sidebar: serde_json::Value,
     pub(crate) labels: Vec<Label>,
-    pub(crate) inbox_label_id: Option<crate::mxr_core::LabelId>,
+    pub(crate) inbox_label_id: Option<mxr_core::LabelId>,
     pub(crate) searches: Vec<SavedSearch>,
     pub(crate) subscriptions: Vec<SubscriptionSummary>,
 }
@@ -124,7 +124,7 @@ pub(crate) async fn build_bridge_chrome(
 
 pub(crate) async fn ack_mutation(
     socket_path: &Path,
-    mutation: crate::mxr_protocol::MutationCommand,
+    mutation: mxr_protocol::MutationCommand,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ack_request(socket_path, Request::Mutation(mutation)).await
 }

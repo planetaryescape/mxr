@@ -1,9 +1,9 @@
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
-use crate::mxr_protocol::{
+use crate::output::resolve_format;
+use mxr_protocol::{
     AccountSyncStatus, DaemonHealthClass, Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
 };
-use crate::output::resolve_format;
 
 struct StatusRender<'a> {
     uptime_secs: u64,
@@ -163,7 +163,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::AccountId;
+    use mxr_core::AccountId;
 
     #[test]
     fn render_status_json_has_expected_fields() {

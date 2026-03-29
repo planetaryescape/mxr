@@ -190,11 +190,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace
 
-  publish-check:
-    name: Publish Dry-Run
+  install-check:
+    name: Install Smoke Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo publish --dry-run
+      - run: cargo install --path . --locked --root "$RUNNER_TEMP/mxr-install"
+      - run: "$RUNNER_TEMP/mxr-install/bin/mxr" version

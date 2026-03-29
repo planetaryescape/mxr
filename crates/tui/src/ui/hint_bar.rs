@@ -1,6 +1,6 @@
-use crate::mxr_tui::action::UiContext;
-use crate::mxr_tui::keybindings::{display_bindings_for_actions, ViewContext};
-use crate::mxr_tui::theme::Theme;
+use crate::action::UiContext;
+use crate::keybindings::{display_bindings_for_actions, ViewContext};
+use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -287,7 +287,7 @@ fn hint_line_owned(hints: &[(String, String)], theme: &Theme) -> Line<'static> {
 #[cfg(test)]
 mod tests {
     use super::hints_for_context;
-    use crate::mxr_tui::action::UiContext;
+    use crate::action::UiContext;
 
     #[test]
     fn selected_mailbox_hints_include_bulk_actions_and_clear() {

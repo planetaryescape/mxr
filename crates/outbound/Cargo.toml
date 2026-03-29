@@ -1,0 +1,19 @@
+[package]
+name = "mxr-outbound"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+comrak = { workspace = true }
+dirs = { workspace = true }
+lettre = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }

@@ -1,18 +1,3 @@
-use crate::mxr_config::SemanticConfig;
-use crate::mxr_core::id::MessageId;
-#[cfg(feature = "local")]
-use crate::mxr_core::id::SemanticProfileId;
-#[cfg(feature = "local")]
-use crate::mxr_core::types::{
-    AttachmentMeta, Envelope, MessageBody, SemanticChunkRecord, SemanticChunkSourceKind,
-    SemanticEmbeddingRecord, SemanticEmbeddingStatus, SemanticProfileStatus,
-};
-use crate::mxr_core::types::{
-    SearchMode, SemanticProfile, SemanticProfileRecord, SemanticStatusSnapshot,
-};
-#[cfg(feature = "local")]
-use crate::mxr_reader::{clean, ReaderConfig};
-use crate::mxr_store::Store;
 #[cfg(feature = "local")]
 use anyhow::Context;
 use anyhow::{anyhow, Result};
@@ -22,6 +7,19 @@ use calamine::{open_workbook_auto, Reader};
 use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
 #[cfg(feature = "local")]
 use hnsw_rs::prelude::{DistCosine, Hnsw};
+use mxr_config::SemanticConfig;
+use mxr_core::id::MessageId;
+#[cfg(feature = "local")]
+use mxr_core::id::SemanticProfileId;
+#[cfg(feature = "local")]
+use mxr_core::types::{
+    AttachmentMeta, Envelope, MessageBody, SemanticChunkRecord, SemanticChunkSourceKind,
+    SemanticEmbeddingRecord, SemanticEmbeddingStatus, SemanticProfileStatus,
+};
+use mxr_core::types::{SearchMode, SemanticProfile, SemanticProfileRecord, SemanticStatusSnapshot};
+#[cfg(feature = "local")]
+use mxr_reader::{clean, ReaderConfig};
+use mxr_store::Store;
 #[cfg(feature = "local")]
 use sha2::{Digest, Sha256};
 #[cfg(feature = "local")]
@@ -468,8 +466,8 @@ fn semantic_chunk_id(
     message_id: &str,
     source_kind: &SemanticChunkSourceKind,
     ordinal: u32,
-) -> crate::mxr_core::SemanticChunkId {
-    crate::mxr_core::SemanticChunkId::from_provider_id(
+) -> mxr_core::SemanticChunkId {
+    mxr_core::SemanticChunkId::from_provider_id(
         "semantic_chunk",
         &format!("{message_id}:{source_kind:?}:{ordinal}"),
     )
@@ -893,7 +891,7 @@ fn blob_to_f32s(bytes: &[u8]) -> Vec<f32> {
 #[cfg(all(test, feature = "local"))]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::{AttachmentId, MessageId};
+    use mxr_core::id::{AttachmentId, MessageId};
     use std::fs::File;
     use std::io::Write;
     use tempfile::tempdir;
@@ -906,7 +904,7 @@ mod tests {
             message_id: MessageId::new(),
             filename: filename.to_string(),
             mime_type: mime_type.to_string(),
-            disposition: crate::mxr_core::types::AttachmentDisposition::Attachment,
+            disposition: mxr_core::types::AttachmentDisposition::Attachment,
             content_id: None,
             content_location: None,
             size_bytes: std::fs::metadata(path).unwrap().len(),

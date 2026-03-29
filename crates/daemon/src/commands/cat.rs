@@ -1,25 +1,25 @@
 use crate::cli::{BodyViewArg, OutputFormat};
 use crate::commands::expect_response;
 use crate::ipc_client::IpcClient;
-use crate::mxr_core::MessageId;
-use crate::mxr_protocol::*;
 use crate::output::resolve_format;
+use mxr_core::MessageId;
+use mxr_protocol::*;
 
 fn render_body_view(
-    body: &crate::mxr_core::types::MessageBody,
+    body: &mxr_core::types::MessageBody,
     selected_view: &BodyViewArg,
     html_command: Option<String>,
 ) -> String {
     match selected_view {
         BodyViewArg::Reader => {
-            let config = crate::mxr_reader::ReaderConfig {
+            let config = mxr_reader::ReaderConfig {
                 html_command,
                 ..Default::default()
             };
             if let Some(text) = body.text_plain.as_deref() {
-                crate::mxr_reader::clean(Some(text), None, &config).content
+                mxr_reader::clean(Some(text), None, &config).content
             } else if let Some(html) = body.text_html.as_deref() {
-                crate::mxr_reader::clean(None, Some(html), &config).content
+                mxr_reader::clean(None, Some(html), &config).content
             } else {
                 "(no body)".to_string()
             }
@@ -54,7 +54,7 @@ pub async fn run(
     let fmt = resolve_format(format);
 
     if assets {
-        let allow_remote = crate::mxr_config::load_config()
+        let allow_remote = mxr_config::load_config()
             .map(|config| config.render.html_remote_content)
             .unwrap_or(true);
         let resp = client
@@ -114,7 +114,7 @@ pub async fn run(
                     BodyViewArg::Raw
                 } else if html {
                     BodyViewArg::Html
-                } else if crate::mxr_config::load_config()
+                } else if mxr_config::load_config()
                     .map(|config| config.render.reader_mode)
                     .unwrap_or(true)
                 {
@@ -150,7 +150,7 @@ pub async fn run(
                 _ => None,
             })?;
 
-            let html_command = crate::mxr_config::load_config()
+            let html_command = mxr_config::load_config()
                 .ok()
                 .and_then(|config| config.render.html_command);
             println!("{}", render_body_view(&body, &selected_view, html_command));
@@ -162,8 +162,8 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::types::{MessageBody, MessageMetadata};
     use chrono::Utc;
+    use mxr_core::types::{MessageBody, MessageMetadata};
 
     fn body(text_plain: Option<&str>, text_html: Option<&str>) -> MessageBody {
         MessageBody {

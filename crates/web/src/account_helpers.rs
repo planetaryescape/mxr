@@ -21,7 +21,7 @@ pub(crate) async fn default_account(
 pub(crate) async fn account_summary(
     socket_path: &Path,
     account_id: &AccountId,
-) -> Result<crate::mxr_protocol::AccountSummaryData, BridgeError> {
+) -> Result<mxr_protocol::AccountSummaryData, BridgeError> {
     match ipc_request(socket_path, Request::ListAccounts).await? {
         ResponseData::Accounts { accounts } => accounts
             .into_iter()
@@ -57,7 +57,7 @@ pub(crate) fn resolved_editor_command() -> String {
 pub(crate) async fn request_account_operation(
     socket_path: &Path,
     request: Request,
-) -> Result<crate::mxr_protocol::AccountOperationResult, BridgeError> {
+) -> Result<mxr_protocol::AccountOperationResult, BridgeError> {
     match ipc_request(socket_path, request).await? {
         ResponseData::AccountOperation { result } => Ok(result),
         _ => Err(BridgeError::UnexpectedResponse),
@@ -66,12 +66,12 @@ pub(crate) async fn request_account_operation(
 
 pub(crate) async fn run_account_save_workflow(
     socket_path: &Path,
-    account: crate::mxr_protocol::AccountConfigData,
-) -> Result<crate::mxr_protocol::AccountOperationResult, BridgeError> {
+    account: mxr_protocol::AccountConfigData,
+) -> Result<mxr_protocol::AccountOperationResult, BridgeError> {
     let mut result = if account.sync.as_ref().is_some_and(|sync| {
         matches!(
             sync,
-            crate::mxr_protocol::AccountSyncConfigData::Gmail { .. }
+            mxr_protocol::AccountSyncConfigData::Gmail { .. }
         )
     }) {
         request_account_operation(
@@ -113,8 +113,8 @@ pub(crate) async fn run_account_save_workflow(
     Ok(result)
 }
 
-pub(crate) fn empty_account_operation_result() -> crate::mxr_protocol::AccountOperationResult {
-    crate::mxr_protocol::AccountOperationResult {
+pub(crate) fn empty_account_operation_result() -> mxr_protocol::AccountOperationResult {
+    mxr_protocol::AccountOperationResult {
         ok: true,
         summary: String::new(),
         save: None,
@@ -125,8 +125,8 @@ pub(crate) fn empty_account_operation_result() -> crate::mxr_protocol::AccountOp
 }
 
 pub(crate) fn merge_account_operation_result(
-    base: &mut crate::mxr_protocol::AccountOperationResult,
-    next: crate::mxr_protocol::AccountOperationResult,
+    base: &mut mxr_protocol::AccountOperationResult,
+    next: mxr_protocol::AccountOperationResult,
 ) {
     base.ok &= next.ok;
     if !next.summary.is_empty() {
@@ -149,7 +149,7 @@ pub(crate) fn merge_account_operation_result(
 pub(crate) fn build_snooze_preset(
     name: &str,
     label: &str,
-    config: &crate::mxr_config::SnoozeConfig,
+    config: &mxr_config::SnoozeConfig,
 ) -> serde_json::Value {
     let wake_at = resolve_snooze_until(name, config).unwrap_or_else(|_| Utc::now());
     json!({
@@ -161,8 +161,8 @@ pub(crate) fn build_snooze_preset(
 
 pub(crate) fn resolve_snooze_until(
     until: &str,
-    config: &crate::mxr_config::SnoozeConfig,
+    config: &mxr_config::SnoozeConfig,
 ) -> Result<DateTime<Utc>, BridgeError> {
-    crate::mxr_config::snooze::parse_snooze_until(until, config)
+    mxr_config::snooze::parse_snooze_until(until, config)
         .ok_or_else(|| BridgeError::Ipc(format!("invalid snooze time: {until}")))
 }

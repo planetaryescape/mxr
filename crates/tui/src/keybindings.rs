@@ -1,4 +1,4 @@
-use crate::mxr_tui::action::Action;
+use crate::action::Action;
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use serde::Deserialize;
 use std::collections::HashMap;

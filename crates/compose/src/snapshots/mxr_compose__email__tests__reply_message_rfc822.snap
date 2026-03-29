@@ -1,0 +1,37 @@
+---
+source: crates/compose/src/email.rs
+assertion_line: 180
+expression: redact_rfc822(&formatted)
+---
+From: Me <me@example.com>
+Subject: Hello
+Message-ID: <redacted@example.com>
+To: Alice <alice@example.com>
+Bcc: hidden@example.com
+In-Reply-To: <parent@example.com>
+References: <root@example.com> <parent@example.com>
+MIME-Version: 1.0
+Date: Fri, 20 Mar 2026 00:00:00 +0000
+Content-Type: multipart/alternative;
+ boundary="BOUNDARY_0"
+
+--BOUNDARY_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+hello
+--BOUNDARY_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html>
+<head><meta charset=3D"utf-8"></head>
+<body style=3D"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', =
+Roboto, sans-serif; font-size: 14px; line-height: 1.5; color: #333; max-wid=
+th: 600px;">
+<p>hello</p>
+
+</body>
+</html>
+--BOUNDARY_0--

@@ -1,5 +1,5 @@
-use crate::mxr_config::SnoozeConfig;
-use crate::mxr_tui::app::{snooze_presets, SnoozePanelState, SnoozePreset};
+use crate::app::{snooze_presets, SnoozePanelState, SnoozePreset};
+use mxr_config::SnoozeConfig;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -8,7 +8,7 @@ pub fn draw(
     area: Rect,
     panel: &SnoozePanelState,
     config: &SnoozeConfig,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     if !panel.visible {
         return;
@@ -67,7 +67,7 @@ pub fn draw(
 }
 
 fn format_preset(preset: SnoozePreset, config: &SnoozeConfig) -> String {
-    crate::mxr_config::snooze::format_preset(preset, config)
+    mxr_config::snooze::format_preset(preset, config)
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {

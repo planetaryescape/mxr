@@ -1,7 +1,7 @@
 # 05 — Phase 4: Community & Release
 
 > **Current Layout Note**
-> This phase plan still uses the historical multi-crate release model. Current code ships as one publishable package, `mxr`. Release and publish steps that refer to workspace-wide first-party crate publishing should now be read as single-package publishing for `mxr`.
+> This phase plan still uses the historical multi-crate release model. Current code uses real internal workspace crates, but the supported install surface is still the repo-root package `mxr`. Crates.io-specific publish steps in this plan are historical unless explicitly updated elsewhere.
 
 ## Goal
 
@@ -1377,9 +1377,7 @@ jobs:
 
             **Cargo (from source):**
             ```bash
-            cargo install mxr
-            # With AI features:
-            cargo install mxr --features ai
+            cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
             ```
 
             **Pre-built binaries:**
@@ -1668,8 +1666,7 @@ Why publish individual crates: `mxr-core` is the stable API for community adapte
    f. Update Homebrew formula (auto-PR to tap repo)
    g. Deploy docs site to Cloudflare Pages
 9. Done. Users can now:
-   - cargo install mxr
-   - cargo binstall mxr
+   - cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
    - brew install mxr
    - Download binary from GitHub Releases
 ```
@@ -1708,7 +1705,7 @@ categories = ["email", "command-line-utilities"]
 User installs with:
 
 ```bash
-cargo install mxr
+cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
 ```
 
 ### 4.2 Homebrew Tap
@@ -2229,7 +2226,7 @@ shell hooks. Export threads for LLM context.
 ## Quick Start
 
     # Install
-    cargo install mxr
+    cargo install --git https://github.com/planetaryescape/mxr --locked mxr
 
     # Add your Gmail account
     mxr accounts add gmail
@@ -2239,7 +2236,7 @@ shell hooks. Export threads for LLM context.
 
 ## Install
 
-- **cargo**: `cargo install mxr`
+- **cargo**: `cargo install --git https://github.com/planetaryescape/mxr --locked mxr`
 - **Homebrew**: `brew tap planetaryescape/tap && brew install mxr`
 - **AUR**: `yay -S mxr`
 - **Nix**: `nix run github:planetaryescape/mxr`
@@ -2415,7 +2412,7 @@ File: `docs/announcement/launch-post.md` (not published to repo, used as source 
 
 Before announcing, verify ALL of the following:
 
-- [ ] `cargo install mxr` works from a clean machine
+- [ ] `cargo install --git https://github.com/planetaryescape/mxr --locked mxr` works from a clean machine
 - [ ] Homebrew formula installs and runs
 - [ ] Binary downloads work for all 4 targets
 - [ ] Install script works on macOS and Linux
@@ -2442,12 +2439,12 @@ Before announcing, verify ALL of the following:
 Phase 4 is complete when ALL of the following are true:
 
 1. **Adapter kit**: Conformance test suite exists in `mxr-provider-fake`. FakeProvider AND IMAP adapter both pass all conformance tests (validating the suite against two genuinely different protocols). Fixture data module exports canonical test messages/threads/labels. Adapter skeleton in `examples/adapter-skeleton/` compiles and shows structure. Adapter development guide covers all topics listed in Step 1.7, referencing IMAP as a second real-world reference implementation alongside FakeProvider.
-2. **mxr-core published**: `mxr-core` is on crates.io with stable provider traits. `#[non_exhaustive]` on extensible types. Public API audited.
+2. **Internal core boundary stays private**: `mxr-core` remains an internal workspace crate with stable internal traits and no accidental upward dependencies. Public release does not require crates.io publication.
 3. **CONTRIBUTING.md**: Complete with dev setup, code style, how-to sections, non-negotiable principles, PR guidelines. Issue templates created for bug reports (integrated with `mxr bug-report`), feature requests, and adapter proposals.
 4. **Bug reporting (A009)**: `mxr bug-report` generates sanitized diagnostic bundle (system info, config, account health, sync history, errors, logs). Auto-sanitization redacts emails, tokens, passwords, API keys, subjects, bodies (D073). `--github` opens pre-filled issue. `--clipboard`/`--stdout`/`--edit` output modes work. Log retention defaults configured (D074). `mxr logs --purge` works. `mxr doctor --store-stats` reports log disk usage.
 5. **Binary releases**: GitHub Actions release workflow runs on tag push. Produces static musl binaries for Linux x86_64, Linux aarch64, and native macOS x86_64, macOS aarch64. SHA256 checksums generated. GitHub Release created with binaries, checksums, and changelog. Homebrew formula auto-updated via PR. Docs site deployed on release.
-6. **Install methods**: `cargo install mxr` works. `cargo binstall mxr` installs pre-built binary. Homebrew formula in `planetaryescape/homebrew-mxr` installs correctly with auto-update on release. AUR PKGBUILD builds and installs. Nix flake builds and runs. Install script works on macOS and Linux.
-7. **Crates.io publishing**: All workspace crates publish in dependency order via `cargo-workspaces`. Version verification ensures tag matches Cargo.toml. `CARGO_REGISTRY_TOKEN` secret configured.
+6. **Install methods**: `cargo install --git https://github.com/planetaryescape/mxr --locked mxr` works. Homebrew formula in `planetaryescape/homebrew-mxr` installs correctly with auto-update on release. AUR PKGBUILD builds and installs. Nix flake builds and runs. Install script works on macOS and Linux.
+7. **No crates.io coupling**: `mxr` stays `publish = false`, internal workspace crates stay private, and release automation does not require crates.io publication.
 8. **Changelog**: `cliff.toml` configured. `git-cliff` generates grouped changelog from conventional commits. Commit-lint enforced in CI.
 9. **Documentation site**: mdBook site builds from `docs/book/`. Deployed to GitHub Pages via CI and on release to Cloudflare Pages. Contains: installation, getting started, user guide, configuration reference (incl. `[logging]` section), keybinding reference (vim+Gmail hierarchy explained per A005), search syntax, rules syntax, complete CLI reference (all commands from A004), observability & monitoring guide (`mxr logs`/`status`/`events` per A006), adapter development guide, FAQ. Search works.
 10. **README**: Project description, differentiation table, screenshots/GIFs, quick start, install methods, feature highlights, CLI scriptability examples (from A004), links to docs, license, contributing link.

@@ -2,18 +2,15 @@ use super::{
     build_rule_from_form, dry_run_rules, parse_rule_value, persist_rule, rule_to_form_data,
     HandlerResult,
 };
-use crate::mxr_protocol::ResponseData;
-use crate::mxr_rules::Rule;
 use crate::state::AppState;
+use mxr_protocol::ResponseData;
+use mxr_rules::Rule;
 use std::sync::Arc;
 
 pub(super) async fn list_rules(state: &Arc<AppState>) -> HandlerResult {
     let rows = state.store.list_rules().await.map_err(|e| e.to_string())?;
     Ok(ResponseData::Rules {
-        rules: rows
-            .iter()
-            .map(crate::mxr_store::row_to_rule_json)
-            .collect(),
+        rules: rows.iter().map(mxr_store::row_to_rule_json).collect(),
     })
 }
 
@@ -25,7 +22,7 @@ pub(super) async fn get_rule(state: &Arc<AppState>, rule: &str) -> HandlerResult
         .map_err(|e| e.to_string())?
     {
         Some(row) => Ok(ResponseData::RuleData {
-            rule: crate::mxr_store::row_to_rule_json(&row),
+            rule: mxr_store::row_to_rule_json(&row),
         }),
         None => Err(format!("Rule not found: {rule}")),
     }
@@ -39,7 +36,7 @@ pub(super) async fn get_rule_form(state: &Arc<AppState>, rule: &str) -> HandlerR
         .map_err(|e| e.to_string())?
     {
         Some(row) => {
-            let parsed: Rule = serde_json::from_value(crate::mxr_store::row_to_rule_json(&row))
+            let parsed: Rule = serde_json::from_value(mxr_store::row_to_rule_json(&row))
                 .map_err(|e| e.to_string())?;
             let form = rule_to_form_data(&parsed)?;
             Ok(ResponseData::RuleFormData { form })
@@ -65,7 +62,7 @@ pub(super) async fn delete_rule(state: &Arc<AppState>, rule: &str) -> HandlerRes
         .map_err(|e| e.to_string())?
     {
         Some(row) => {
-            let id = crate::mxr_store::row_to_rule_json(&row)["id"]
+            let id = mxr_store::row_to_rule_json(&row)["id"]
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
@@ -117,7 +114,7 @@ pub(super) async fn list_rule_history(
             .map_err(|e| e.to_string())?
         {
             Some(row) => Some(
-                crate::mxr_store::row_to_rule_json(&row)["id"]
+                mxr_store::row_to_rule_json(&row)["id"]
                     .as_str()
                     .unwrap_or_default()
                     .to_string(),
@@ -134,10 +131,7 @@ pub(super) async fn list_rule_history(
         .await
         .map_err(|e| e.to_string())?;
     Ok(ResponseData::RuleHistory {
-        entries: rows
-            .iter()
-            .map(crate::mxr_store::row_to_rule_log_json)
-            .collect(),
+        entries: rows.iter().map(mxr_store::row_to_rule_log_json).collect(),
     })
 }
 

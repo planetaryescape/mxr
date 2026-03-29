@@ -85,7 +85,7 @@ impl App {
                 let mut seen = std::collections::HashMap::new();
                 for env in &self.all_envelopes {
                     seen.entry(env.from.email.clone()).or_insert_with(|| {
-                        crate::mxr_tui::ui::compose_picker::Contact {
+                        crate::ui::compose_picker::Contact {
                             name: env.from.name.clone().unwrap_or_default(),
                             email: env.from.email.clone(),
                         }

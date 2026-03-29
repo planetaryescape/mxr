@@ -1,12 +1,13 @@
 ---
 source: crates/tui/tests/snapshots.rs
+assertion_line: 843
 expression: snapshot
 ---
 "                                                                                "
-"                ┌ Search [lexical] ────────────────────────────┐                "
+"                                                                                "
+"                ┌ Filter Current Mailbox [lexical] ────────────┐                "
 "                │ > de                                         │                "
-"                │ Enter submit  Tab mode  Esc cancel           │                "
+"                │ Live filter  Enter keep results  Tab mode  E │                "
 "                │                                              │                "
-"                └──────────────────────────────────────────────┘                "
-"=INBOX [Msgs:6421 New:1833 Starred:96]= synced just now                         "
+"=INBOX [Msgs:6421 New:1833 Starred:96]= synced just now────────┘                "
 "                                                                                "

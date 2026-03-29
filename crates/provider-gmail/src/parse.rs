@@ -1,15 +1,15 @@
-use crate::mxr_compose::parse::{
-    body_unsubscribe_from_html, calendar_metadata_from_text,
-    parse_address_list as parse_rfc_address_list, parse_headers_from_pairs,
-};
-use crate::mxr_core::{
-    AccountId, Address, AttachmentDisposition, AttachmentId, AttachmentMeta, BodyPartSource,
-    Envelope, MessageBody, MessageFlags, MessageId, TextPlainFormat, ThreadId, UnsubscribeMethod,
-};
-use crate::mxr_provider_gmail::types::{GmailHeader, GmailMessage, GmailPayload};
+use crate::types::{GmailHeader, GmailMessage, GmailPayload};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use chrono::{TimeZone, Utc};
+use mxr_core::{
+    AccountId, Address, AttachmentDisposition, AttachmentId, AttachmentMeta, BodyPartSource,
+    Envelope, MessageBody, MessageFlags, MessageId, TextPlainFormat, ThreadId, UnsubscribeMethod,
+};
+use mxr_mail_parse::{
+    body_unsubscribe_from_html, calendar_metadata_from_text,
+    parse_address_list as parse_rfc_address_list, parse_headers_from_pairs,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -187,7 +187,7 @@ struct ExtractedBodyData {
     text_html: Option<String>,
     text_plain_format: Option<TextPlainFormat>,
     attachments: Vec<AttachmentMeta>,
-    calendar: Option<crate::mxr_core::types::CalendarMetadata>,
+    calendar: Option<mxr_core::types::CalendarMetadata>,
 }
 
 /// Extract text_plain and text_html from a GmailMessage payload.
@@ -416,11 +416,11 @@ fn normalize_content_id(content_id: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_compose::parse::extract_raw_header_block;
-    use crate::mxr_provider_gmail::types::GmailBody;
+    use crate::types::GmailBody;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use chrono::Datelike;
     use mail_parser::MessageParser;
+    use mxr_mail_parse::extract_raw_header_block;
     use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
     use serde_json::json;
 

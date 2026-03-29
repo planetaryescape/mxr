@@ -1,6 +1,6 @@
-use crate::mxr_core::error::MxrError;
-use crate::mxr_core::id::AccountId;
-use crate::mxr_core::types::*;
+use crate::error::MxrError;
+use crate::id::AccountId;
+use crate::types::*;
 use async_trait::async_trait;
 
 pub type Result<T> = std::result::Result<T, MxrError>;

@@ -1,8 +1,8 @@
 use super::chrome::{MessageGroupView, MessageRowView};
 use super::*;
-use crate::mxr_core::{MessageFlags, SavedSearch};
-use crate::mxr_protocol::SearchResultItem;
 use chrono::Datelike;
+use mxr_core::{MessageFlags, SavedSearch};
+use mxr_protocol::SearchResultItem;
 use std::collections::{HashMap, HashSet};
 
 pub(crate) async fn list_envelopes(

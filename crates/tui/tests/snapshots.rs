@@ -107,6 +107,7 @@ fn message_view_snapshot() {
         signature_expanded: false,
     };
 
+    let mut html_images = std::collections::HashMap::new();
     let snapshot = render_to_string(70, 20, |frame| {
         draw_message_view(
             frame,
@@ -115,6 +116,7 @@ fn message_view_snapshot() {
             0,
             &ActivePane::MessageView,
             &mxr_tui::theme::Theme::default(),
+            &mut html_images,
         );
     });
     assert!(snapshot.contains("Snapshot fixture"));
@@ -282,6 +284,8 @@ fn sidebar_snapshot() {
                 all_mail_active: false,
                 subscriptions_active: false,
                 subscription_count: 2,
+                accounts: Vec::new(),
+                accounts_expanded: true,
                 system_expanded: true,
                 user_expanded: true,
                 saved_searches_expanded: true,
@@ -333,6 +337,7 @@ fn search_page_snapshot() {
         signature_expanded: false,
     }];
 
+    let mut html_images = std::collections::HashMap::new();
     let snapshot = render_to_string(90, 24, |frame| {
         draw_search_page(
             frame,
@@ -343,6 +348,7 @@ fn search_page_snapshot() {
             MailListMode::Threads,
             &preview,
             0,
+            &mut html_images,
             &mxr_tui::theme::Theme::default(),
         );
     });
@@ -353,6 +359,7 @@ fn search_page_snapshot() {
 fn search_page_blank_snapshot() {
     let state = SearchPageState::default();
 
+    let mut html_images = std::collections::HashMap::new();
     let snapshot = render_to_string(90, 24, |frame| {
         draw_search_page(
             frame,
@@ -363,6 +370,7 @@ fn search_page_blank_snapshot() {
             MailListMode::Messages,
             &[],
             0,
+            &mut html_images,
             &mxr_tui::theme::Theme::default(),
         );
     });
@@ -395,6 +403,8 @@ fn accounts_page_snapshot() {
         refresh_pending: false,
         onboarding_required: false,
         onboarding_modal_open: false,
+        new_account_draft: None,
+        resume_new_account_draft_prompt_open: false,
         form: AccountFormState::default(),
     };
 
@@ -453,6 +463,7 @@ fn search_page_searching_snapshot() {
         ..SearchPageState::default()
     };
 
+    let mut html_images = std::collections::HashMap::new();
     let snapshot = render_to_string(90, 24, |frame| {
         draw_search_page(
             frame,
@@ -463,6 +474,7 @@ fn search_page_searching_snapshot() {
             MailListMode::Messages,
             &[],
             0,
+            &mut html_images,
             &mxr_tui::theme::Theme::default(),
         );
     });

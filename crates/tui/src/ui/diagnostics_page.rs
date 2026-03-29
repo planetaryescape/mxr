@@ -1,5 +1,5 @@
-use crate::mxr_protocol::{AccountSyncStatus, DoctorDataStats, EventLogEntry};
-use crate::mxr_tui::app::{DiagnosticsPageState, DiagnosticsPaneKind};
+use crate::app::{DiagnosticsPageState, DiagnosticsPaneKind};
+use mxr_protocol::{AccountSyncStatus, DoctorDataStats, EventLogEntry};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -7,7 +7,7 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     state: &DiagnosticsPageState,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     if let Some(pane) = state.fullscreen_pane {
         render_detail_layout(frame, area, state, pane, theme, true);
@@ -31,7 +31,7 @@ fn render_selector(
     frame: &mut Frame,
     area: Rect,
     state: &DiagnosticsPageState,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     let items = all_panes()
         .iter()
@@ -84,7 +84,7 @@ fn render_detail_layout(
     area: Rect,
     state: &DiagnosticsPageState,
     pane: DiagnosticsPaneKind,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
     fullscreen: bool,
 ) {
     let chunks = Layout::default()
@@ -124,7 +124,7 @@ fn render_summary(
     area: Rect,
     state: &DiagnosticsPageState,
     pane: DiagnosticsPaneKind,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
     fullscreen: bool,
 ) {
     let block = Block::default()
@@ -191,7 +191,7 @@ fn render_detail(
     area: Rect,
     state: &DiagnosticsPageState,
     pane: DiagnosticsPaneKind,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
     fullscreen: bool,
 ) {
     let title = if fullscreen {
@@ -230,7 +230,7 @@ fn render_detail(
     }
 }
 
-fn render_footer(frame: &mut Frame, area: Rect, text: &str, theme: &crate::mxr_tui::theme::Theme) {
+fn render_footer(frame: &mut Frame, area: Rect, text: &str, theme: &crate::theme::Theme) {
     frame.render_widget(
         Paragraph::new(text).block(
             Block::default()

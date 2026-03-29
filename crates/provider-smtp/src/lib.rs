@@ -1,14 +1,14 @@
 pub mod config;
 
-use crate::mxr_compose::email::build_message;
-use crate::mxr_core::error::MxrError;
-use crate::mxr_core::provider::MailSendProvider;
-use crate::mxr_core::types::{Address, Draft, SendReceipt};
 use async_trait::async_trait;
 use config::{SmtpConfig, SmtpError};
 #[cfg(not(test))]
 use lettre::AsyncTransport;
 use lettre::{transport::smtp::authentication::Credentials, AsyncSmtpTransport, Tokio1Executor};
+use mxr_core::error::MxrError;
+use mxr_core::provider::MailSendProvider;
+use mxr_core::types::{Address, Draft, SendReceipt};
+use mxr_outbound::email::build_message;
 
 pub struct SmtpSendProvider {
     config: SmtpConfig,
@@ -138,13 +138,13 @@ trait TestSender: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::DraftId;
+    use mxr_core::id::DraftId;
     use std::sync::{Arc, Mutex};
 
     fn test_draft() -> Draft {
         Draft {
             id: DraftId::new(),
-            account_id: crate::mxr_core::id::AccountId::new(),
+            account_id: mxr_core::id::AccountId::new(),
             reply_headers: None,
             to: vec![Address {
                 name: Some("Alice".into()),
@@ -160,18 +160,30 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Clone)]
+    struct RecordedMessage {
+        formatted: String,
+        envelope_from: Option<String>,
+        envelope_to: Vec<String>,
+    }
+
     #[derive(Default)]
     struct RecordedSender {
-        messages: Mutex<Vec<String>>,
+        messages: Mutex<Vec<RecordedMessage>>,
     }
 
     #[async_trait]
     impl TestSender for RecordedSender {
         async fn send(&self, message: lettre::Message) -> Result<(), String> {
+            let envelope = message.envelope();
             self.messages
                 .lock()
                 .unwrap()
-                .push(String::from_utf8(message.formatted()).unwrap());
+                .push(RecordedMessage {
+                    formatted: String::from_utf8(message.formatted()).unwrap(),
+                    envelope_from: envelope.from().map(ToString::to_string),
+                    envelope_to: envelope.to().iter().map(ToString::to_string).collect(),
+                });
             Ok(())
         }
 
@@ -188,13 +200,16 @@ mod tests {
             email: "me@example.com".into(),
         };
         let msg = build_message(&draft, &from, false).unwrap();
-        // Verify the message was built successfully by formatting it
         let bytes = msg.formatted();
         let formatted = String::from_utf8_lossy(&bytes);
-        assert!(formatted.contains("Test Subject"));
-        assert!(formatted.contains("alice@example.com"));
-        assert!(formatted.contains("text/plain"));
-        assert!(formatted.contains("text/html"));
+        assert!(formatted.contains("From: Me <me@example.com>\r\n"));
+        assert!(formatted.contains("To: Alice <alice@example.com>\r\n"));
+        assert!(formatted.contains("Subject: Test Subject\r\n"));
+        assert!(formatted.contains("Content-Type: multipart/alternative"));
+        assert!(formatted.contains("text/plain; charset=utf-8"));
+        assert!(formatted.contains("text/html; charset=utf-8"));
+        assert!(formatted.contains("Hello **world**!"));
+        assert!(formatted.contains("<strong>world</strong>"));
     }
 
     #[test]
@@ -225,9 +240,62 @@ mod tests {
             },
             sender.clone(),
         );
-        crate::mxr_provider_fake::conformance::run_send_conformance(&provider).await;
+        mxr_provider_fake::conformance::run_send_conformance(&provider).await;
         let messages = sender.messages.lock().unwrap();
         assert_eq!(messages.len(), 1);
-        assert!(messages[0].contains("Subject: Conformance test draft"));
+        assert!(messages[0].formatted.contains("Subject: Conformance test draft"));
+    }
+
+    #[tokio::test]
+    async fn smtp_send_preserves_envelope_recipients_and_strips_bcc_header() {
+        let sender = Arc::new(RecordedSender::default());
+        let provider = SmtpSendProvider::with_test_sender(
+            SmtpConfig {
+                host: "smtp.example.com".into(),
+                port: 587,
+                username: "me@example.com".into(),
+                password_ref: "mxr/test".into(),
+                auth_required: true,
+                use_tls: true,
+            },
+            sender.clone(),
+        );
+
+        let mut draft = test_draft();
+        draft.cc = vec![Address {
+            name: Some("Carol".into()),
+            email: "carol@example.com".into(),
+        }];
+        draft.bcc = vec![Address {
+            name: Some("Hidden".into()),
+            email: "hidden@example.com".into(),
+        }];
+
+        let from = Address {
+            name: Some("Me".into()),
+            email: "me@example.com".into(),
+        };
+
+        provider.send(&draft, &from).await.unwrap();
+
+        let messages = sender.messages.lock().unwrap();
+        assert_eq!(messages.len(), 1);
+        let message = &messages[0];
+
+        assert_eq!(message.envelope_from.as_deref(), Some("me@example.com"));
+        assert_eq!(
+            message.envelope_to,
+            vec![
+                "alice@example.com".to_string(),
+                "carol@example.com".to_string(),
+                "hidden@example.com".to_string(),
+            ]
+        );
+        assert!(message.formatted.contains("To: Alice <alice@example.com>\r\n"));
+        assert!(message.formatted.contains("Cc: Carol <carol@example.com>\r\n"));
+        assert!(!message.formatted.contains("\r\nBcc:"));
+        assert!(message.formatted.contains("Content-Type: multipart/alternative"));
+        assert!(message.formatted.contains("Hello **world**!"));
+        assert!(message.formatted.contains("<strong>world</strong>"));
     }
 }

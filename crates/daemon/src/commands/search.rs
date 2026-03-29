@@ -1,8 +1,8 @@
 use crate::cli::{OutputFormat, SearchModeArg, SearchSortArg};
 use crate::ipc_client::IpcClient;
-use crate::mxr_core::types::{Envelope, MessageFlags, SortOrder};
-use crate::mxr_protocol::{Request, Response, ResponseData, SearchExplain};
 use crate::output::resolve_format;
+use mxr_core::types::{Envelope, MessageFlags, SortOrder};
+use mxr_protocol::{Request, Response, ResponseData, SearchExplain};
 
 pub async fn run(
     query: Option<String>,
@@ -47,7 +47,7 @@ pub async fn run(
     if !results.is_empty() {
         for r in &results {
             let env_resp = client
-                .request(crate::mxr_protocol::Request::GetEnvelope {
+                .request(mxr_protocol::Request::GetEnvelope {
                     message_id: r.message_id.clone(),
                 })
                 .await?;

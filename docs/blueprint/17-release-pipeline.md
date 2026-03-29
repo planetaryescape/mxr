@@ -1,9 +1,9 @@
 # mxr — Release Pipeline Addendum
 
-> This document covers the full CI/CD pipeline: PR checks, release automation, crates.io publishing, cross-compiled binary builds, Homebrew, changelog generation, and docs deployment.
+> This document covers the full CI/CD pipeline: PR checks, release automation, cross-compiled binary builds, Homebrew, changelog generation, and docs deployment.
 
 > **Current state note (`v0.4.22`)**
-> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). That workflow currently builds CLI archives for macOS Apple Silicon, macOS Intel, and Linux x86_64, publishes the single crates.io package `mxr`, creates the GitHub Release, and updates the `planetaryescape/homebrew-mxr` tap. Desktop packaging is conditional on desktop-source changes, and docs deploy independently on pushes to `main`. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
+> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). That workflow currently builds CLI archives for macOS Apple Silicon, macOS Intel, and Linux x86_64, creates the GitHub Release, and updates the `planetaryescape/homebrew-mxr` tap. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. Desktop packaging is conditional on desktop-source changes, and docs deploy independently on pushes to `main`. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
 
 ---
 
@@ -126,7 +126,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The tag triggers the full release pipeline: build binaries, publish crates, create GitHub Release, update Homebrew, deploy docs.
+The tag triggers the full release pipeline: build binaries, create GitHub Release, update Homebrew, deploy docs.
 
 ### Pre-release checklist (manual, before tagging)
 
@@ -138,7 +138,9 @@ The tag triggers the full release pipeline: build binaries, publish crates, crea
 
 ---
 
-## Crates.io publishing
+## Historical crates.io publishing
+
+This section is retained as historical context from the earlier release design. It is not the current `mxr` release model.
 
 ### Workspace publish order
 
@@ -411,9 +413,7 @@ jobs:
 
             **Cargo (from source):**
             ```bash
-            cargo install mxr
-            # With AI features:
-            cargo install mxr --features ai
+            cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
             ```
 
             **Pre-built binaries:**
@@ -692,13 +692,11 @@ The docs site deploys on every push to main (for content updates), but also on r
    a. Verify tag version matches Cargo.toml version
    b. Build cross-compiled binaries (4 targets)
    c. Generate SHA256 checksums
-   d. Publish crates to crates.io (dependency order, with propagation delays)
-   e. Create GitHub Release with binaries, checksums, and changelog
-   f. Update Homebrew formula (auto-PR to tap repo)
-   g. Deploy docs site to Cloudflare Pages
+   d. Create GitHub Release with binaries, checksums, and changelog
+   e. Update Homebrew formula (auto-PR to tap repo)
+   f. Deploy docs site to Cloudflare Pages
 9. Done. Users can now:
-   - cargo install mxr
-   - cargo binstall mxr
+   - cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
    - brew install mxr
    - Download binary from GitHub Releases
 ```

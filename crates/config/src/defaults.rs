@@ -1,4 +1,4 @@
-use crate::mxr_config::types::*;
+use crate::types::*;
 
 impl Default for GeneralConfig {
     fn default() -> Self {
@@ -7,7 +7,7 @@ impl Default for GeneralConfig {
             default_account: None,
             sync_interval: 60,
             hook_timeout: 30,
-            attachment_dir: crate::mxr_config::resolve::data_dir().join("attachments"),
+            attachment_dir: crate::resolve::data_dir().join("attachments"),
         }
     }
 }
@@ -28,7 +28,7 @@ impl Default for SearchConfig {
         Self {
             default_sort: SortOrder::DateDesc,
             max_results: 200,
-            default_mode: crate::mxr_core::SearchMode::Lexical,
+            default_mode: mxr_core::SearchMode::Lexical,
             semantic: SemanticConfig::default(),
         }
     }
@@ -39,7 +39,7 @@ impl Default for SemanticConfig {
         Self {
             enabled: false,
             auto_download_models: true,
-            active_profile: crate::mxr_core::SemanticProfile::BgeSmallEnV15,
+            active_profile: mxr_core::SemanticProfile::BgeSmallEnV15,
             max_pending_jobs: 256,
             query_timeout_ms: 1500,
         }

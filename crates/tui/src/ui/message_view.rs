@@ -1,11 +1,11 @@
-use crate::mxr_core::id::MessageId;
-use crate::mxr_core::types::{Envelope, HtmlImageAssetStatus, HtmlImageSourceKind};
-use crate::mxr_tui::app::{
+use crate::app::{
     ActivePane, AttachmentSummary, BodySource, BodyViewMetadata, BodyViewMode, BodyViewState,
 };
-use crate::mxr_tui::terminal_images::{HtmlImageEntry, HtmlImageRenderState};
-use crate::mxr_tui::theme::Theme;
+use crate::terminal_images::{HtmlImageEntry, HtmlImageRenderState};
+use crate::theme::Theme;
 use html2text::render::RichAnnotation;
+use mxr_core::id::MessageId;
+use mxr_core::types::{Envelope, HtmlImageAssetStatus, HtmlImageSourceKind};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use ratatui_image::{Resize, StatefulImage};
@@ -253,10 +253,10 @@ pub fn draw(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::{AccountId, MessageId, ThreadId};
-    use crate::mxr_core::types::{Address, BodyPartSource, MessageFlags, UnsubscribeMethod};
-    use crate::mxr_tui::app::{BodySource, BodyViewMetadata, BodyViewMode};
+    use crate::app::{BodySource, BodyViewMetadata, BodyViewMode};
     use chrono::{TimeZone, Utc};
+    use mxr_core::id::{AccountId, MessageId, ThreadId};
+    use mxr_core::types::{Address, BodyPartSource, MessageFlags, UnsubscribeMethod};
     use mxr_test_support::render_to_string;
 
     fn envelope() -> Envelope {
@@ -294,7 +294,7 @@ mod tests {
                 raw: "hello".into(),
                 rendered: "hello".into(),
                 source: BodySource::Plain,
-                metadata: crate::mxr_tui::app::BodyViewMetadata::default(),
+                metadata: crate::app::BodyViewMetadata::default(),
             },
             labels: vec!["INBOX".into()],
             attachments: vec![],
@@ -439,9 +439,9 @@ fn body_metadata_lines(
     if let Some(provenance) = metadata.provenance {
         chips.push(body_chip(
             match provenance {
-                crate::mxr_core::types::BodyPartSource::Exact => "source:exact",
-                crate::mxr_core::types::BodyPartSource::DerivedFromPlain => "source:plain-derived",
-                crate::mxr_core::types::BodyPartSource::DerivedFromHtml => "source:html-derived",
+                mxr_core::types::BodyPartSource::Exact => "source:exact",
+                mxr_core::types::BodyPartSource::DerivedFromPlain => "source:plain-derived",
+                mxr_core::types::BodyPartSource::DerivedFromHtml => "source:html-derived",
             },
             theme,
             theme.text_muted,

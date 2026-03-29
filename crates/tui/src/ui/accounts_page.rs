@@ -1,14 +1,9 @@
-use crate::mxr_tui::app::{AccountFormMode, AccountsPageState};
+use crate::app::{AccountFormMode, AccountsPageState};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
 
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    state: &AccountsPageState,
-    theme: &crate::mxr_tui::theme::Theme,
-) {
+pub fn draw(frame: &mut Frame, area: Rect, state: &AccountsPageState, theme: &crate::theme::Theme) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
@@ -26,9 +21,9 @@ pub fn draw(
             let sync = account.sync_kind.as_deref().unwrap_or("none");
             let send = account.send_kind.as_deref().unwrap_or("none");
             let source = match account.source {
-                crate::mxr_protocol::AccountSourceData::Runtime => "runtime",
-                crate::mxr_protocol::AccountSourceData::Config => "config",
-                crate::mxr_protocol::AccountSourceData::Both => "both",
+                mxr_protocol::AccountSourceData::Runtime => "runtime",
+                mxr_protocol::AccountSourceData::Config => "config",
+                mxr_protocol::AccountSourceData::Both => "both",
             };
             let badges = [
                 if account.is_default {
@@ -75,13 +70,13 @@ pub fn draw(
 
     let mut detail_lines = if let Some(account) = state.accounts.get(state.selected_index) {
         let editability = match account.editable {
-            crate::mxr_protocol::AccountEditModeData::Full => "full",
-            crate::mxr_protocol::AccountEditModeData::RuntimeOnly => "runtime-only",
+            mxr_protocol::AccountEditModeData::Full => "full",
+            mxr_protocol::AccountEditModeData::RuntimeOnly => "runtime-only",
         };
         let source = match account.source {
-            crate::mxr_protocol::AccountSourceData::Runtime => "runtime",
-            crate::mxr_protocol::AccountSourceData::Config => "config",
-            crate::mxr_protocol::AccountSourceData::Both => "runtime + config",
+            mxr_protocol::AccountSourceData::Runtime => "runtime",
+            mxr_protocol::AccountSourceData::Config => "config",
+            mxr_protocol::AccountSourceData::Both => "runtime + config",
         };
         vec![
             Line::from(vec![
@@ -111,7 +106,7 @@ pub fn draw(
                 "Auth: {}",
                 if account.sync.as_ref().is_some_and(|sync| matches!(
                     sync,
-                    crate::mxr_protocol::AccountSyncConfigData::Gmail { .. }
+                    mxr_protocol::AccountSyncConfigData::Gmail { .. }
                 )) {
                     "gmail configured"
                 } else {
@@ -200,7 +195,7 @@ fn draw_form(
     frame: &mut Frame,
     area: Rect,
     state: &AccountsPageState,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     let form = &state.form;
     let titles = ["Gmail", "IMAP + SMTP", "SMTP only"]
@@ -317,7 +312,7 @@ fn draw_form(
     }
 }
 
-fn build_fields(form: &crate::mxr_tui::app::AccountFormState) -> Vec<(&'static str, String, bool)> {
+fn build_fields(form: &crate::app::AccountFormState) -> Vec<(&'static str, String, bool)> {
     let mut fields = vec![
         (
             "Mode",
@@ -338,16 +333,12 @@ fn build_fields(form: &crate::mxr_tui::app::AccountFormState) -> Vec<(&'static s
             fields.push((
                 "Credential source",
                 match form.gmail_credential_source {
-                    crate::mxr_protocol::GmailCredentialSourceData::Bundled => {
-                        "Bundled".to_string()
-                    }
-                    crate::mxr_protocol::GmailCredentialSourceData::Custom => "Custom".to_string(),
+                    mxr_protocol::GmailCredentialSourceData::Bundled => "Bundled".to_string(),
+                    mxr_protocol::GmailCredentialSourceData::Custom => "Custom".to_string(),
                 },
                 false,
             ));
-            if form.gmail_credential_source
-                == crate::mxr_protocol::GmailCredentialSourceData::Custom
-            {
+            if form.gmail_credential_source == mxr_protocol::GmailCredentialSourceData::Custom {
                 fields.push(("Client ID", form.gmail_client_id.clone(), true));
                 fields.push(("Client Secret", mask(&form.gmail_client_secret), true));
             }
@@ -409,9 +400,9 @@ fn build_fields(form: &crate::mxr_tui::app::AccountFormState) -> Vec<(&'static s
 }
 
 fn account_form_hint_lines(
-    form: &crate::mxr_tui::app::AccountFormState,
+    form: &crate::app::AccountFormState,
     fields: &[(&'static str, String, bool)],
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) -> Vec<Line<'static>> {
     let Some((label, _, _)) = fields.get(form.active_field) else {
         return Vec::new();
@@ -466,7 +457,7 @@ fn account_field_help_text(label: &str) -> &'static str {
 }
 
 fn format_account_result_lines(
-    result: Option<&crate::mxr_protocol::AccountOperationResult>,
+    result: Option<&mxr_protocol::AccountOperationResult>,
 ) -> Vec<Line<'static>> {
     let Some(result) = result else {
         return Vec::new();
@@ -494,7 +485,7 @@ fn format_account_result_lines(
 
 fn account_operation_status_line(
     state: &AccountsPageState,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) -> Line<'static> {
     let status = state
         .status
@@ -511,9 +502,9 @@ fn account_operation_status_line(
 }
 
 fn account_result_hint_lines(
-    form: &crate::mxr_tui::app::AccountFormState,
-    result: Option<&crate::mxr_protocol::AccountOperationResult>,
-    theme: &crate::mxr_tui::theme::Theme,
+    form: &crate::app::AccountFormState,
+    result: Option<&mxr_protocol::AccountOperationResult>,
+    theme: &crate::theme::Theme,
 ) -> Vec<Line<'static>> {
     let Some(result) = result else {
         return Vec::new();
@@ -565,9 +556,7 @@ fn push_unique_hint(hints: &mut Vec<String>, hint: Option<String>) {
     }
 }
 
-fn account_result_has_details(
-    result: Option<&crate::mxr_protocol::AccountOperationResult>,
-) -> bool {
+fn account_result_has_details(result: Option<&mxr_protocol::AccountOperationResult>) -> bool {
     let Some(result) = result else {
         return false;
     };
@@ -649,7 +638,7 @@ fn server_result_hint(service: &str, detail: &str, auth_required: bool) -> Optio
     })
 }
 
-fn format_step(label: &str, step: &crate::mxr_protocol::AccountOperationStep) -> String {
+fn format_step(label: &str, step: &mxr_protocol::AccountOperationStep) -> String {
     format!(
         "{label}: {} - {}",
         if step.ok { "ok" } else { "failed" },
@@ -681,11 +670,7 @@ fn mask(value: &str) -> String {
     }
 }
 
-pub fn draw_account_setup_onboarding(
-    frame: &mut Frame,
-    area: Rect,
-    theme: &crate::mxr_tui::theme::Theme,
-) {
+pub fn draw_account_setup_onboarding(frame: &mut Frame, area: Rect, theme: &crate::theme::Theme) {
     let popup = centered_rect(54, 28, area);
     frame.render_widget(Clear, popup);
 
@@ -709,11 +694,7 @@ pub fn draw_account_setup_onboarding(
     frame.render_widget(paragraph, popup);
 }
 
-fn draw_mode_switch_confirm_modal(
-    frame: &mut Frame,
-    area: Rect,
-    theme: &crate::mxr_tui::theme::Theme,
-) {
+fn draw_mode_switch_confirm_modal(frame: &mut Frame, area: Rect, theme: &crate::theme::Theme) {
     let popup = centered_rect(58, 28, area);
     frame.render_widget(Clear, popup);
 
@@ -738,11 +719,7 @@ fn draw_mode_switch_confirm_modal(
     frame.render_widget(paragraph, popup);
 }
 
-fn draw_resume_new_account_draft_modal(
-    frame: &mut Frame,
-    area: Rect,
-    theme: &crate::mxr_tui::theme::Theme,
-) {
+fn draw_resume_new_account_draft_modal(frame: &mut Frame, area: Rect, theme: &crate::theme::Theme) {
     let popup = centered_rect(62, 32, area);
     frame.render_widget(Clear, popup);
 

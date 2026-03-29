@@ -2,8 +2,8 @@ use super::*;
 use ratatui::crossterm;
 
 impl App {
-    fn help_modal_state(&self) -> crate::mxr_tui::ui::help_modal::HelpModalState<'_> {
-        crate::mxr_tui::ui::help_modal::HelpModalState {
+    fn help_modal_state(&self) -> crate::ui::help_modal::HelpModalState<'_> {
+        crate::ui::help_modal::HelpModalState {
             open: self.help_modal_open,
             ui_context: self.current_ui_context(),
             selected_count: self.selected_set.len(),
@@ -19,7 +19,7 @@ impl App {
     }
 
     fn help_search_result_count(&self) -> usize {
-        crate::mxr_tui::ui::help_modal::search_result_count(&self.help_modal_state())
+        crate::ui::help_modal::search_result_count(&self.help_modal_state())
     }
 
     fn clamp_help_selected(&mut self) {
@@ -65,7 +65,7 @@ impl App {
 
     fn contextual_input_action(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let action = self.input.handle_key(key)?;
-        crate::mxr_tui::action::action_allowed_in_context(&action, self.current_ui_context())
+        crate::action::action_allowed_in_context(&action, self.current_ui_context())
             .then_some(action)
     }
 
@@ -271,10 +271,9 @@ impl App {
                             self.pending_send_confirm = Some(pending);
                             return None;
                         }
-                        let parse_addrs =
-                            |s: &str| crate::mxr_compose::parse::parse_address_list(s);
+                        let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
                         let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
-                            crate::mxr_core::types::ReplyHeaders {
+                            mxr_core::types::ReplyHeaders {
                                 in_reply_to: in_reply_to.clone(),
                                 references: pending.fm.references.clone(),
                             }
@@ -286,8 +285,8 @@ impl App {
                             .map(|e| e.account_id.clone())
                             .unwrap_or_default();
                         let now = chrono::Utc::now();
-                        let draft = crate::mxr_core::Draft {
-                            id: crate::mxr_core::id::DraftId::new(),
+                        let draft = mxr_core::Draft {
+                            id: mxr_core::id::DraftId::new(),
                             account_id,
                             reply_headers,
                             to: parse_addrs(&pending.fm.to),
@@ -320,10 +319,9 @@ impl App {
                             self.pending_send_confirm = Some(pending);
                             return None;
                         }
-                        let parse_addrs =
-                            |s: &str| crate::mxr_compose::parse::parse_address_list(s);
+                        let parse_addrs = |s: &str| mxr_mail_parse::parse_address_list(s);
                         let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
-                            crate::mxr_core::types::ReplyHeaders {
+                            mxr_core::types::ReplyHeaders {
                                 in_reply_to: in_reply_to.clone(),
                                 references: pending.fm.references.clone(),
                             }
@@ -335,8 +333,8 @@ impl App {
                             .map(|e| e.account_id.clone())
                             .unwrap_or_default();
                         let now = chrono::Utc::now();
-                        let draft = crate::mxr_core::Draft {
-                            id: crate::mxr_core::id::DraftId::new(),
+                        let draft = mxr_core::Draft {
+                            id: mxr_core::id::DraftId::new(),
                             account_id,
                             reply_headers,
                             to: parse_addrs(&pending.fm.to),

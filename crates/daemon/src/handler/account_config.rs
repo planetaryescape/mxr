@@ -1,5 +1,5 @@
-use crate::mxr_core::provider::MailSyncProvider;
-use crate::mxr_protocol::*;
+use mxr_core::provider::MailSyncProvider;
+use mxr_protocol::*;
 use crate::state::AppState;
 use std::sync::Arc;
 
@@ -117,7 +117,7 @@ pub(super) async fn list_runtime_accounts(
 }
 
 pub(super) fn list_account_configs() -> Result<Vec<AccountConfigData>, String> {
-    let config = crate::mxr_config::load_config().map_err(|e| e.to_string())?;
+    let config = mxr_config::load_config().map_err(|e| e.to_string())?;
     let default_account = config.general.default_account.clone();
     let mut accounts = config
         .accounts
@@ -140,12 +140,12 @@ pub(super) async fn upsert_account_config(
     account: AccountConfigData,
 ) -> AccountOperationResult {
     let save_result = (|| -> Result<String, String> {
-        let mut config = crate::mxr_config::load_config().map_err(|e| e.to_string())?;
+        let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
         persist_account_passwords(&account).map_err(|e| e.to_string())?;
 
         config.accounts.insert(
             account.key.clone(),
-            crate::mxr_config::AccountConfig {
+            mxr_config::AccountConfig {
                 name: account.name.clone(),
                 email: account.email.clone(),
                 sync: account.sync.clone().map(sync_data_to_config).transpose()?,
@@ -155,7 +155,7 @@ pub(super) async fn upsert_account_config(
         if account.is_default || config.general.default_account.is_none() {
             config.general.default_account = Some(account.key.clone());
         }
-        crate::mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
         Ok(format!("Saved account '{}' to config.", account.key))
     })();
 
@@ -202,12 +202,12 @@ pub(super) async fn set_default_account(
     state: &Arc<AppState>,
     key: &str,
 ) -> Result<String, String> {
-    let mut config = crate::mxr_config::load_config().map_err(|e| e.to_string())?;
+    let mut config = mxr_config::load_config().map_err(|e| e.to_string())?;
     if !config.accounts.contains_key(key) {
         return Err(format!("Account '{key}' cannot be set as default"));
     }
     config.general.default_account = Some(key.to_string());
-    crate::mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+    mxr_config::save_config(&config).map_err(|e| e.to_string())?;
     state.reload_accounts_from_disk().await?;
     Ok(format!("Default account set to '{key}'."))
 }
@@ -252,7 +252,7 @@ pub(super) async fn authorize_account_config(
         };
 
     let mut auth =
-        crate::mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
+        mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
     let auth_result = if reauthorize {
         auth.interactive_auth().await
     } else {
@@ -321,7 +321,7 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                 let creds = resolve_gmail_credentials(credential_source, client_id, client_secret);
                 match creds {
                     Ok((client_id, client_secret)) => {
-                        let mut gmail_auth = crate::mxr_provider_gmail::auth::GmailAuth::new(
+                        let mut gmail_auth = mxr_provider_gmail::auth::GmailAuth::new(
                             client_id,
                             client_secret,
                             token_ref,
@@ -336,7 +336,7 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                             Ok(detail) => {
                                 auth = Some(account_step(true, detail));
                                 let client =
-                                    crate::mxr_provider_gmail::client::GmailClient::new(gmail_auth);
+                                    mxr_provider_gmail::client::GmailClient::new(gmail_auth);
                                 match client.list_labels().await {
                                     Ok(response) => {
                                         let count =
@@ -381,9 +381,9 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
                 use_tls,
                 ..
             } => {
-                let provider = crate::mxr_provider_imap::ImapProvider::new(
-                    crate::mxr_core::AccountId::from_provider_id("imap", &account.email),
-                    crate::mxr_provider_imap::config::ImapConfig {
+                let provider = mxr_provider_imap::ImapProvider::new(
+                    mxr_core::AccountId::from_provider_id("imap", &account.email),
+                    mxr_provider_imap::config::ImapConfig {
                         host,
                         port,
                         username,
@@ -421,8 +421,8 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
             use_tls,
             ..
         }) => {
-            let provider = crate::mxr_provider_smtp::SmtpSendProvider::new(
-                crate::mxr_provider_smtp::config::SmtpConfig {
+            let provider = mxr_provider_smtp::SmtpSendProvider::new(
+                mxr_provider_smtp::config::SmtpConfig {
                     host,
                     port,
                     username,
@@ -495,8 +495,8 @@ fn resolve_gmail_credentials(
     match credential_source {
         GmailCredentialSourceData::Bundled => {
             match (
-                crate::mxr_provider_gmail::auth::BUNDLED_CLIENT_ID,
-                crate::mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET,
+                mxr_provider_gmail::auth::BUNDLED_CLIENT_ID,
+                mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET,
             ) {
                 (Some(id), Some(secret)) => Ok((id.to_string(), secret.to_string())),
                 _ => {
@@ -523,20 +523,20 @@ fn resolve_gmail_credentials(
 }
 
 pub(super) fn sync_config_to_data(
-    sync: crate::mxr_config::SyncProviderConfig,
+    sync: mxr_config::SyncProviderConfig,
 ) -> AccountSyncConfigData {
     match sync {
-        crate::mxr_config::SyncProviderConfig::Gmail {
+        mxr_config::SyncProviderConfig::Gmail {
             credential_source,
             client_id,
             client_secret,
             token_ref,
         } => AccountSyncConfigData::Gmail {
             credential_source: match credential_source {
-                crate::mxr_config::GmailCredentialSource::Bundled => {
+                mxr_config::GmailCredentialSource::Bundled => {
                     GmailCredentialSourceData::Bundled
                 }
-                crate::mxr_config::GmailCredentialSource::Custom => {
+                mxr_config::GmailCredentialSource::Custom => {
                     GmailCredentialSourceData::Custom
                 }
             },
@@ -544,7 +544,7 @@ pub(super) fn sync_config_to_data(
             client_secret,
             token_ref,
         },
-        crate::mxr_config::SyncProviderConfig::Imap {
+        mxr_config::SyncProviderConfig::Imap {
             host,
             port,
             username,
@@ -565,33 +565,33 @@ pub(super) fn sync_config_to_data(
 
 pub(super) fn config_account_id(
     key: &str,
-    account: &crate::mxr_config::AccountConfig,
-) -> crate::mxr_core::AccountId {
+    account: &mxr_config::AccountConfig,
+) -> mxr_core::AccountId {
     let kind = account
         .sync
         .as_ref()
         .map(config_sync_kind_label)
         .or_else(|| account.send.as_ref().map(config_send_kind_label))
         .unwrap_or_else(|| key.to_string());
-    crate::mxr_core::AccountId::from_provider_id(&kind, &account.email)
+    mxr_core::AccountId::from_provider_id(&kind, &account.email)
 }
 
-pub(super) fn config_sync_kind_label(sync: &crate::mxr_config::SyncProviderConfig) -> String {
+pub(super) fn config_sync_kind_label(sync: &mxr_config::SyncProviderConfig) -> String {
     match sync {
-        crate::mxr_config::SyncProviderConfig::Gmail { .. } => "gmail".into(),
-        crate::mxr_config::SyncProviderConfig::Imap { .. } => "imap".into(),
+        mxr_config::SyncProviderConfig::Gmail { .. } => "gmail".into(),
+        mxr_config::SyncProviderConfig::Imap { .. } => "imap".into(),
     }
 }
 
-pub(super) fn config_send_kind_label(send: &crate::mxr_config::SendProviderConfig) -> String {
+pub(super) fn config_send_kind_label(send: &mxr_config::SendProviderConfig) -> String {
     match send {
-        crate::mxr_config::SendProviderConfig::Gmail => "gmail".into(),
-        crate::mxr_config::SendProviderConfig::Smtp { .. } => "smtp".into(),
+        mxr_config::SendProviderConfig::Gmail => "gmail".into(),
+        mxr_config::SendProviderConfig::Smtp { .. } => "smtp".into(),
     }
 }
 
 pub(super) fn account_primary_provider_kind(
-    account: &crate::mxr_config::AccountConfig,
+    account: &mxr_config::AccountConfig,
 ) -> String {
     account
         .sync
@@ -601,21 +601,21 @@ pub(super) fn account_primary_provider_kind(
         .unwrap_or_else(|| "unknown".into())
 }
 
-pub(super) fn provider_kind_label(kind: &crate::mxr_core::ProviderKind) -> &'static str {
+pub(super) fn provider_kind_label(kind: &mxr_core::ProviderKind) -> &'static str {
     match kind {
-        crate::mxr_core::ProviderKind::Gmail => "gmail",
-        crate::mxr_core::ProviderKind::Imap => "imap",
-        crate::mxr_core::ProviderKind::Smtp => "smtp",
-        crate::mxr_core::ProviderKind::Fake => "fake",
+        mxr_core::ProviderKind::Gmail => "gmail",
+        mxr_core::ProviderKind::Imap => "imap",
+        mxr_core::ProviderKind::Smtp => "smtp",
+        mxr_core::ProviderKind::Fake => "fake",
     }
 }
 
 pub(super) fn send_config_to_data(
-    send: crate::mxr_config::SendProviderConfig,
+    send: mxr_config::SendProviderConfig,
 ) -> AccountSendConfigData {
     match send {
-        crate::mxr_config::SendProviderConfig::Gmail => AccountSendConfigData::Gmail,
-        crate::mxr_config::SendProviderConfig::Smtp {
+        mxr_config::SendProviderConfig::Gmail => AccountSendConfigData::Gmail,
+        mxr_config::SendProviderConfig::Smtp {
             host,
             port,
             username,
@@ -636,20 +636,20 @@ pub(super) fn send_config_to_data(
 
 pub(super) fn sync_data_to_config(
     data: AccountSyncConfigData,
-) -> Result<crate::mxr_config::SyncProviderConfig, String> {
+) -> Result<mxr_config::SyncProviderConfig, String> {
     match data {
         AccountSyncConfigData::Gmail {
             credential_source,
             client_id,
             client_secret,
             token_ref,
-        } => Ok(crate::mxr_config::SyncProviderConfig::Gmail {
+        } => Ok(mxr_config::SyncProviderConfig::Gmail {
             credential_source: match credential_source {
                 GmailCredentialSourceData::Bundled => {
-                    crate::mxr_config::GmailCredentialSource::Bundled
+                    mxr_config::GmailCredentialSource::Bundled
                 }
                 GmailCredentialSourceData::Custom => {
-                    crate::mxr_config::GmailCredentialSource::Custom
+                    mxr_config::GmailCredentialSource::Custom
                 }
             },
             client_id,
@@ -664,7 +664,7 @@ pub(super) fn sync_data_to_config(
             auth_required,
             use_tls,
             ..
-        } => Ok(crate::mxr_config::SyncProviderConfig::Imap {
+        } => Ok(mxr_config::SyncProviderConfig::Imap {
             host,
             port,
             username,
@@ -677,9 +677,9 @@ pub(super) fn sync_data_to_config(
 
 pub(super) fn send_data_to_config(
     data: AccountSendConfigData,
-) -> Result<crate::mxr_config::SendProviderConfig, String> {
+) -> Result<mxr_config::SendProviderConfig, String> {
     match data {
-        AccountSendConfigData::Gmail => Ok(crate::mxr_config::SendProviderConfig::Gmail),
+        AccountSendConfigData::Gmail => Ok(mxr_config::SendProviderConfig::Gmail),
         AccountSendConfigData::Smtp {
             host,
             port,
@@ -688,7 +688,7 @@ pub(super) fn send_data_to_config(
             auth_required,
             use_tls,
             ..
-        } => Ok(crate::mxr_config::SendProviderConfig::Smtp {
+        } => Ok(mxr_config::SendProviderConfig::Smtp {
             host,
             port,
             username,

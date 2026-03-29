@@ -1,7 +1,7 @@
 # 03 — Phase 2: Compose + Mutations + IMAP + Batch Operations
 
 > **Current Layout Note**
-> This phase plan still uses the historical `mxr-*` crate names. Current code ships as one publishable package, `mxr`; those old crate names now map to modules mounted from `crates/*/src` under the root package.
+> This phase plan still uses the historical `mxr-*` crate names. Those names are real internal workspace crates again, with the repo-root package `mxr` as the install surface.
 
 ## Goal
 

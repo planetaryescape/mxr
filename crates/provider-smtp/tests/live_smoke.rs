@@ -1,7 +1,7 @@
-use mxr::mxr_core::id::{AccountId, DraftId};
-use mxr::mxr_core::provider::MailSendProvider;
-use mxr::mxr_core::types::{Address, Draft};
-use mxr::mxr_provider_smtp::{config::SmtpConfig, SmtpSendProvider};
+use mxr_core::id::{AccountId, DraftId};
+use mxr_core::provider::MailSendProvider;
+use mxr_core::types::{Address, Draft};
+use mxr_provider_smtp::{config::SmtpConfig, SmtpSendProvider};
 
 fn invalid_draft() -> Draft {
     Draft {

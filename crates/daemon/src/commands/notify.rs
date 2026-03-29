@@ -1,8 +1,8 @@
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
-use crate::mxr_core::types::Label;
-use crate::mxr_protocol::{Request, Response, ResponseData};
 use crate::output::resolve_format;
+use mxr_core::types::Label;
+use mxr_protocol::{Request, Response, ResponseData};
 
 pub fn inbox_unread_count(labels: &[Label]) -> u32 {
     labels
@@ -55,8 +55,8 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::types::{Label, LabelKind};
-    use crate::mxr_core::{AccountId, LabelId};
+    use mxr_core::types::{Label, LabelKind};
+    use mxr_core::{AccountId, LabelId};
 
     #[test]
     fn inbox_unread_uses_inbox_label() {

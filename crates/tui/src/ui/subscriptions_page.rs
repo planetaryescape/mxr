@@ -1,5 +1,5 @@
-use crate::mxr_tui::app::{ActivePane, SubscriptionEntry};
-use crate::mxr_tui::theme::Theme;
+use crate::app::{ActivePane, SubscriptionEntry};
+use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -8,11 +8,11 @@ pub struct SubscriptionsPageView<'a> {
     pub selected_index: usize,
     pub scroll_offset: usize,
     pub active_pane: &'a ActivePane,
-    pub preview_blocks: &'a [crate::mxr_tui::ui::message_view::ThreadMessageBlock],
+    pub preview_blocks: &'a [crate::ui::message_view::ThreadMessageBlock],
     pub message_scroll_offset: u16,
     pub html_images: &'a mut std::collections::HashMap<
-        crate::mxr_core::MessageId,
-        std::collections::HashMap<String, crate::mxr_tui::terminal_images::HtmlImageEntry>,
+        mxr_core::MessageId,
+        std::collections::HashMap<String, crate::terminal_images::HtmlImageEntry>,
     >,
 }
 
@@ -60,7 +60,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &mut SubscriptionsPageView<'_>,
         .with_offset(view.scroll_offset);
     frame.render_stateful_widget(list, chunks[0], &mut state);
 
-    crate::mxr_tui::ui::message_view::draw(
+    crate::ui::message_view::draw(
         frame,
         chunks[1],
         view.preview_blocks,

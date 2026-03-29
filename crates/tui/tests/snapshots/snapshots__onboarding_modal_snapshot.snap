@@ -1,0 +1,29 @@
+---
+source: crates/tui/tests/snapshots.rs
+assertion_line: 498
+expression: snapshot
+---
+"                                                                                          "
+"                                                                                          "
+"                                                                                          "
+"                                                                                          "
+"                                                                                          "
+"                                                                                          "
+"                                                                                          "
+"                 ┌ Start Here 3/5 ──────────────────────────────────────┐                 "
+"                 │Full search                                           │                 "
+"                 │                                                      │                 "
+"                 │Press / in Mailbox to jump into Search.               │                 "
+"                 │Search hits the full local index, not just what is    │                 "
+"                 │loaded on screen.                                     │                 "
+"                 │          Enter/l next  h previous  Esc close         │                 "
+"                 │                                                      │                 "
+"                 │                                                      │                 "
+"                 └──────────────────────────────────────────────────────┘                 "
+"                                                                                          "
+"                                                                                          "
+"                                                                                          "
+"                                                                                          "
+"                                                                                          "
+"                                                                                          "
+"                                                                                          "

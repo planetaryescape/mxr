@@ -1,0 +1,35 @@
+[package]
+name = "mxr-compose"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+mxr-core = { workspace = true }
+mxr-mail-parse = { workspace = true }
+mxr-outbound = { workspace = true }
+chrono = { workspace = true }
+comrak = { workspace = true }
+dirs = { workspace = true }
+lettre = { workspace = true }
+mime_guess = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+mxr-test-support = { workspace = true }
+proptest = { workspace = true }
+tempfile = { workspace = true }
+temp-env = "0.3"

@@ -1,6 +1,6 @@
-use crate::mxr_core::types::system_labels;
-use crate::mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, StringMatch};
-use crate::mxr_search::parse_query;
+use mxr_core::types::system_labels;
+use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, StringMatch};
+use mxr_search::parse_query;
 use crate::state::AppState;
 use std::sync::Arc;
 
@@ -24,7 +24,7 @@ pub(super) async fn build_rule_from_form(
             .await
             .map_err(|e| e.to_string())?
             .map(|row| {
-                serde_json::from_value::<Rule>(crate::mxr_store::row_to_rule_json(&row))
+                serde_json::from_value::<Rule>(mxr_store::row_to_rule_json(&row))
                     .map_err(|e| e.to_string())
             })
             .transpose()?
@@ -53,8 +53,8 @@ fn parse_rule_condition_string(input: &str) -> Result<Conditions, String> {
     query_ast_to_conditions(ast)
 }
 
-fn query_ast_to_conditions(node: crate::mxr_search::ast::QueryNode) -> Result<Conditions, String> {
-    use crate::mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp};
+fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Conditions, String> {
+    use mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp};
 
     Ok(match node {
         QueryNode::And(left, right) => Conditions::And {
@@ -208,13 +208,13 @@ pub(super) fn parse_rule_action_string(value: &str) -> Result<RuleAction, String
 
 pub(super) fn rule_to_form_data(
     rule: &Rule,
-) -> Result<crate::mxr_protocol::RuleFormData, String> {
+) -> Result<mxr_protocol::RuleFormData, String> {
     let action = rule
         .actions
         .first()
         .ok_or_else(|| "rule has no actions".to_string())
         .and_then(rule_action_to_string)?;
-    Ok(crate::mxr_protocol::RuleFormData {
+    Ok(mxr_protocol::RuleFormData {
         id: Some(rule.id.to_string()),
         name: rule.name.clone(),
         condition: conditions_to_query(&rule.conditions)?,

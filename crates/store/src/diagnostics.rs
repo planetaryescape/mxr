@@ -1,4 +1,4 @@
-use crate::mxr_core::types::MessageFlags;
+use mxr_core::types::MessageFlags;
 use sqlx::SqlitePool;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -90,10 +90,10 @@ async fn count_bound_rows(pool: &SqlitePool, sql: &str, value: i64) -> Result<u3
 #[cfg(test)]
 mod tests {
     use super::StoreRecordCounts;
-    use crate::mxr_core::id::{
+    use mxr_core::id::{
         AccountId, DraftId, MessageId, SavedSearchId, SemanticChunkId, SemanticProfileId, ThreadId,
     };
-    use crate::mxr_core::types::{
+    use mxr_core::types::{
         Address, BackendRef, Draft, MessageBody, MessageFlags, ProviderKind, SearchMode,
         SemanticChunkRecord, SemanticChunkSourceKind, SemanticEmbeddingRecord,
         SemanticEmbeddingStatus, SemanticProfile, SemanticProfileRecord, SemanticProfileStatus,
@@ -102,8 +102,8 @@ mod tests {
 
     #[tokio::test]
     async fn collect_record_counts_reports_core_tables() {
-        let store = crate::mxr_store::Store::in_memory().await.unwrap();
-        let account = crate::mxr_core::Account {
+        let store = crate::Store::in_memory().await.unwrap();
+        let account = mxr_core::Account {
             id: AccountId::new(),
             name: "Test".into(),
             email: "test@example.com".into(),
@@ -116,11 +116,11 @@ mod tests {
         };
         store.insert_account(&account).await.unwrap();
 
-        let label = crate::mxr_core::types::Label {
-            id: crate::mxr_core::id::LabelId::new(),
+        let label = mxr_core::types::Label {
+            id: mxr_core::id::LabelId::new(),
             account_id: account.id.clone(),
             name: "Inbox".into(),
-            kind: crate::mxr_core::types::LabelKind::System,
+            kind: mxr_core::types::LabelKind::System,
             color: None,
             provider_id: "INBOX".into(),
             unread_count: 0,
@@ -129,7 +129,7 @@ mod tests {
         store.upsert_label(&label).await.unwrap();
 
         let message_id = MessageId::new();
-        let envelope = crate::mxr_core::types::Envelope {
+        let envelope = mxr_core::types::Envelope {
             id: message_id.clone(),
             account_id: account.id.clone(),
             provider_id: "fake-1".into(),
@@ -166,12 +166,12 @@ mod tests {
             message_id: message_id.clone(),
             text_plain: Some("body".into()),
             text_html: None,
-            attachments: vec![crate::mxr_core::types::AttachmentMeta {
-                id: crate::mxr_core::id::AttachmentId::new(),
+            attachments: vec![mxr_core::types::AttachmentMeta {
+                id: mxr_core::id::AttachmentId::new(),
                 message_id: message_id.clone(),
                 filename: "notes.txt".into(),
                 mime_type: "text/plain".into(),
-                disposition: crate::mxr_core::types::AttachmentDisposition::Attachment,
+                disposition: mxr_core::types::AttachmentDisposition::Attachment,
                 content_id: None,
                 content_location: None,
                 size_bytes: 4,
@@ -183,7 +183,7 @@ mod tests {
         };
         store.insert_body(&body).await.unwrap();
 
-        let saved = crate::mxr_core::types::SavedSearch {
+        let saved = mxr_core::types::SavedSearch {
             id: SavedSearchId::new(),
             account_id: None,
             name: "Unread".into(),
@@ -221,7 +221,7 @@ mod tests {
         store.insert_snooze(&snoozed).await.unwrap();
 
         store
-            .upsert_rule(crate::mxr_store::RuleRecordInput {
+            .upsert_rule(crate::RuleRecordInput {
                 id: "rule-1",
                 name: "Archive",
                 enabled: true,
@@ -235,7 +235,7 @@ mod tests {
             .unwrap();
         let message_id_str = message_id.as_str();
         store
-            .insert_rule_log(crate::mxr_store::RuleLogInput {
+            .insert_rule_log(crate::RuleLogInput {
                 rule_id: "rule-1",
                 rule_name: "Archive",
                 message_id: &message_id_str,

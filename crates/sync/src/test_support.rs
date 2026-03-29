@@ -1,8 +1,8 @@
 #![cfg(test)]
 
-use crate::mxr_core::id::*;
-use crate::mxr_core::types::*;
-use crate::mxr_core::{MailSyncProvider, MxrError, SyncCapabilities};
+use mxr_core::id::*;
+use mxr_core::types::*;
+use mxr_core::{MailSyncProvider, MxrError, SyncCapabilities};
 
 /// A provider that always returns errors from sync_messages, for testing error handling.
 pub(crate) struct ErrorProvider {

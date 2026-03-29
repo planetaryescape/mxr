@@ -1,8 +1,8 @@
-use mxr::mxr_core::id::AccountId;
-use mxr::mxr_core::types::{LabelKind, MessageFlags};
-use mxr::mxr_provider_imap::config::ImapConfig;
-use mxr::mxr_provider_imap::folders::{format_provider_id, map_folder_to_label, parse_provider_id};
-use mxr::mxr_provider_imap::parse::flags_from_imap;
+use mxr_core::id::AccountId;
+use mxr_core::types::{LabelKind, MessageFlags};
+use mxr_provider_imap::config::ImapConfig;
+use mxr_provider_imap::folders::{format_provider_id, map_folder_to_label, parse_provider_id};
+use mxr_provider_imap::parse::flags_from_imap;
 
 #[test]
 fn provider_offline_smoke_imap_config_deserializes_defaults() {

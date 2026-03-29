@@ -1,6 +1,6 @@
-use crate::mxr_core::{Envelope, Label, MessageFlags, MessageId};
-use crate::mxr_protocol::DaemonEvent;
-use crate::mxr_tui::app::{self, App, MailboxView, SidebarSelectionKey};
+use mxr_core::{Envelope, Label, MessageFlags, MessageId};
+use mxr_protocol::DaemonEvent;
+use crate::app::{self, App, MailboxView, SidebarSelectionKey};
 
 pub(crate) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
     match event {

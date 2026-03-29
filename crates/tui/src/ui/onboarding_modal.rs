@@ -1,4 +1,4 @@
-use crate::mxr_tui::app::FeatureOnboardingState;
+use crate::app::FeatureOnboardingState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -6,7 +6,7 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     state: &FeatureOnboardingState,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     if !state.visible {
         return;

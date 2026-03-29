@@ -2,16 +2,16 @@ use super::search_filter::{
     has_negated_semantic_terms, matches_structured_filters, semantic_query_text,
 };
 use super::{build_execution, ExecutionExplainInput, SearchExecution};
-use crate::mxr_core::types::{SearchMode, SortOrder};
-use crate::mxr_search::{ast::QueryNode, parse_query, QueryBuilder, SearchPage, SearchResult};
-use crate::mxr_semantic::{should_use_semantic, SemanticHit};
 use crate::state::AppState;
+use mxr_core::types::{SearchMode, SortOrder};
+use mxr_search::{ast::QueryNode, parse_query, QueryBuilder, SearchPage, SearchResult};
+use mxr_semantic::{should_use_semantic, SemanticHit};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::{paginate_results, sort_results};
 use crate::handler::should_fallback_to_tantivy;
-use crate::mxr_protocol::SearchExplain;
+use mxr_protocol::SearchExplain;
 
 pub(super) async fn execute_search(
     state: &Arc<AppState>,

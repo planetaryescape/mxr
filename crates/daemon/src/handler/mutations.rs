@@ -2,10 +2,10 @@ use super::{
     apply_snooze, build_reply_references, persist_local_label_changes, render_message_context,
     restore_snoozed_message, HandlerResult,
 };
-use crate::mxr_core::types::{Address, Draft, Envelope, UnsubscribeMethod};
-use crate::mxr_protocol::{ForwardContext, MutationCommand, ReplyContext, ResponseData};
-use crate::mxr_store::EventLogRefs;
 use crate::state::AppState;
+use mxr_core::types::{Address, Draft, Envelope, UnsubscribeMethod};
+use mxr_protocol::{ForwardContext, MutationCommand, ReplyContext, ResponseData};
+use mxr_store::EventLogRefs;
 use std::sync::Arc;
 
 async fn log_mutation(
@@ -239,7 +239,7 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
 
 pub(super) async fn snooze(
     state: &Arc<AppState>,
-    message_id: &crate::mxr_core::MessageId,
+    message_id: &mxr_core::MessageId,
     wake_at: &chrono::DateTime<chrono::Utc>,
 ) -> HandlerResult {
     apply_snooze(state, message_id, wake_at).await?;
@@ -269,7 +269,7 @@ pub(super) async fn snooze(
 
 pub(super) async fn unsnooze(
     state: &Arc<AppState>,
-    message_id: &crate::mxr_core::MessageId,
+    message_id: &mxr_core::MessageId,
 ) -> HandlerResult {
     let snoozed = state
         .store
@@ -322,7 +322,7 @@ pub(super) async fn list_drafts(state: &Arc<AppState>) -> HandlerResult {
 
 pub(super) async fn prepare_reply(
     state: &Arc<AppState>,
-    message_id: &crate::mxr_core::MessageId,
+    message_id: &mxr_core::MessageId,
     reply_all: bool,
 ) -> HandlerResult {
     let envelope = state
@@ -372,7 +372,7 @@ pub(super) async fn prepare_reply(
 
 pub(super) async fn prepare_forward(
     state: &Arc<AppState>,
-    message_id: &crate::mxr_core::MessageId,
+    message_id: &mxr_core::MessageId,
 ) -> HandlerResult {
     let envelope = state
         .store
@@ -474,7 +474,7 @@ pub(super) async fn save_draft_to_server(state: &Arc<AppState>, draft: &Draft) -
 
 pub(super) async fn unsubscribe(
     state: &Arc<AppState>,
-    message_id: &crate::mxr_core::MessageId,
+    message_id: &mxr_core::MessageId,
 ) -> HandlerResult {
     let envelope = state
         .store
@@ -502,7 +502,7 @@ pub(super) async fn unsubscribe(
             };
             let now = chrono::Utc::now();
             let draft = Draft {
-                id: crate::mxr_core::DraftId::new(),
+                id: mxr_core::DraftId::new(),
                 account_id: envelope.account_id.clone(),
                 reply_headers: None,
                 to: vec![Address {
@@ -569,10 +569,7 @@ pub(super) async fn unsubscribe(
 /// corresponding provider_id. If no match is found the original string
 /// is passed through (handles system labels like "INBOX", "SPAM" where
 /// name == provider_id).
-fn resolve_to_provider_ids(
-    labels: &[crate::mxr_core::types::Label],
-    refs: &[String],
-) -> Vec<String> {
+fn resolve_to_provider_ids(labels: &[mxr_core::types::Label], refs: &[String]) -> Vec<String> {
     refs.iter()
         .map(|label_ref| {
             labels
@@ -586,8 +583,8 @@ fn resolve_to_provider_ids(
 
 pub(super) async fn set_flags(
     state: &Arc<AppState>,
-    message_id: &crate::mxr_core::MessageId,
-    flags: crate::mxr_core::MessageFlags,
+    message_id: &mxr_core::MessageId,
+    flags: mxr_core::MessageFlags,
 ) -> HandlerResult {
     state
         .store

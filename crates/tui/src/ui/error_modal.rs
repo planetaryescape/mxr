@@ -1,4 +1,4 @@
-use crate::mxr_tui::app::ErrorModalState;
+use crate::app::ErrorModalState;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -6,7 +6,7 @@ pub fn draw(
     frame: &mut Frame,
     area: Rect,
     error: Option<&ErrorModalState>,
-    theme: &crate::mxr_tui::theme::Theme,
+    theme: &crate::theme::Theme,
 ) {
     let Some(error) = error else {
         return;
@@ -80,7 +80,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::draw;
-    use crate::mxr_tui::app::ErrorModalState;
+    use crate::app::ErrorModalState;
 
     #[test]
     fn error_modal_state_is_constructible() {

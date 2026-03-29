@@ -1,0 +1,22 @@
+---
+source: crates/mail-parse/src/lib.rs
+expression: "json!({\n    \"from\":\n    parsed.from.as_ref().map(|addr|\n    json!({\"name\": addr.name.clone(), \"email\": addr.email.clone()})), \"to\":\n    parsed.to.iter().map(|addr|\n    json!({\"name\": addr.name.clone(), \"email\":\n        addr.email.clone()})).collect::<Vec<_>>(), \"cc\":\n    parsed.cc.iter().map(|addr|\n    json!({\"name\": addr.name.clone(), \"email\":\n        addr.email.clone()})).collect::<Vec<_>>(), \"bcc\":\n    parsed.bcc.iter().map(|addr|\n    json!({\"name\": addr.name.clone(), \"email\":\n        addr.email.clone()})).collect::<Vec<_>>(), \"subject\": parsed.subject,\n    \"message_id\": parsed.message_id_header, \"in_reply_to\": parsed.in_reply_to,\n    \"references\": parsed.references, \"unsubscribe\":\n    format!(\"{:?}\", parsed.unsubscribe), \"list_id\": metadata.list_id,\n    \"auth_results\": metadata.auth_results, \"content_language\":\n    metadata.content_language, \"text_plain_format\":\n    format!(\"{:?}\", metadata.text_plain_format), \"raw_headers_present\":\n    metadata.raw_headers.is_some(),\n})"
+---
+auth_results: []
+bcc: []
+cc: []
+content_language: []
+from:
+  email: nested@example.com
+  name: Nested
+in_reply_to: ~
+list_id: ~
+message_id: "<nested@example.com>"
+raw_headers_present: true
+references: []
+subject: Nested multipart
+text_plain_format: None
+to:
+  - email: bob@example.com
+    name: Bob
+unsubscribe: None

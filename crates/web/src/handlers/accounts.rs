@@ -16,7 +16,7 @@ pub(crate) async fn test_account(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
-    Json(account): Json<crate::mxr_protocol::AccountConfigData>,
+    Json(account): Json<mxr_protocol::AccountConfigData>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     match ipc_request(
@@ -34,7 +34,7 @@ pub(crate) async fn upsert_account(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(auth): Query<AuthQuery>,
-    Json(account): Json<crate::mxr_protocol::AccountConfigData>,
+    Json(account): Json<mxr_protocol::AccountConfigData>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let result = run_account_save_workflow(&state.config.socket_path, account).await?;

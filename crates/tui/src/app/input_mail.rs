@@ -42,9 +42,9 @@ impl App {
                         return None;
                     }
                     let parse_addrs =
-                        |s: &str| crate::mxr_compose::parse::parse_address_list(s);
+                        |s: &str| mxr_mail_parse::parse_address_list(s);
                     let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
-                        crate::mxr_core::types::ReplyHeaders {
+                        mxr_core::types::ReplyHeaders {
                             in_reply_to: in_reply_to.clone(),
                             references: pending.fm.references.clone(),
                         }
@@ -56,8 +56,8 @@ impl App {
                         .map(|e| e.account_id.clone())
                         .unwrap_or_default();
                     let now = chrono::Utc::now();
-                    let draft = crate::mxr_core::Draft {
-                        id: crate::mxr_core::id::DraftId::new(),
+                    let draft = mxr_core::Draft {
+                        id: mxr_core::id::DraftId::new(),
                         account_id,
                         reply_headers,
                         to: parse_addrs(&pending.fm.to),
@@ -91,9 +91,9 @@ impl App {
                         return None;
                     }
                     let parse_addrs =
-                        |s: &str| crate::mxr_compose::parse::parse_address_list(s);
+                        |s: &str| mxr_mail_parse::parse_address_list(s);
                     let reply_headers = pending.fm.in_reply_to.as_ref().map(|in_reply_to| {
-                        crate::mxr_core::types::ReplyHeaders {
+                        mxr_core::types::ReplyHeaders {
                             in_reply_to: in_reply_to.clone(),
                             references: pending.fm.references.clone(),
                         }
@@ -105,8 +105,8 @@ impl App {
                         .map(|e| e.account_id.clone())
                         .unwrap_or_default();
                     let now = chrono::Utc::now();
-                    let draft = crate::mxr_core::Draft {
-                        id: crate::mxr_core::id::DraftId::new(),
+                    let draft = mxr_core::Draft {
+                        id: mxr_core::id::DraftId::new(),
                         account_id,
                         reply_headers,
                         to: parse_addrs(&pending.fm.to),

@@ -1,4 +1,4 @@
-use crate::mxr_search::ast::*;
+use crate::ast::*;
 use chrono::{Duration, Local, NaiveDate};
 use thiserror::Error;
 

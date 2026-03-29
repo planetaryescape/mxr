@@ -24,7 +24,7 @@ pub mod thread;
 pub mod version;
 pub mod web;
 
-use crate::mxr_protocol::Response;
+use mxr_protocol::Response;
 
 /// Extract a typed value from a daemon `Response`, converting `Response::Error`
 /// into an `anyhow` error and rejecting unexpected variants.

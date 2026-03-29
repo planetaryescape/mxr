@@ -2,21 +2,21 @@ pub mod ast;
 mod index;
 pub mod parser;
 pub mod query_builder;
-mod saved;
 mod schema;
+#[cfg(test)]
+mod test_fixtures;
 
 pub use ast::*;
 pub use index::{SearchIndex, SearchPage, SearchResult};
 pub use parser::{parse_query, ParseError};
 pub use query_builder::QueryBuilder;
-pub use saved::SavedSearchService;
 pub use schema::MxrSchema;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mxr_core::id::*;
-    use crate::mxr_core::types::*;
+    use mxr_core::id::*;
+    use mxr_core::types::*;
 
     fn make_envelope(subject: &str, snippet: &str, from_name: &str) -> Envelope {
         make_envelope_full(

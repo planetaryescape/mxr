@@ -1,6 +1,6 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 112
+assertion_line: 124
 expression: snapshot
 ---
 "╭ Message ───────────────────────────────────────────────────────────╮"
@@ -13,13 +13,13 @@ expression: snapshot
 "│Attach:                                                             │"
 "│          report.pdf (10 B)                                         │"
 "│                                                                    │"
+"│ text  plain                                                        │"
+"│                                                                    │"
 "│Hello                                                               │"
-"││ quoted                                                            │"
-"││ lines                                                             │"
-"│-- signature (1 lines, press S to expand) --                        │"
-"│                                                                    │"
-"│                                                                    │"
-"│                                                                    │"
+"│> quoted                                                            │"
+"│> lines                                                             │"
+"│--                                                                  │"
+"│Sig                                                                 │"
 "│                                                                    │"
 "│                                                                    │"
 "╰────────────────────────────────────────────────────────────────────╯"

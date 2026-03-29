@@ -363,7 +363,7 @@ pub(super) async fn prepare_reply(
             references: build_reply_references(&envelope),
             reply_to: envelope.from.email.clone(),
             cc,
-            subject: envelope.subject.clone(),
+            subject: prefixed_subject(&envelope.subject, &["re:"]),
             from,
             thread_context,
         },
@@ -397,11 +397,31 @@ pub(super) async fn prepare_forward(
 
     Ok(ResponseData::ForwardContext {
         context: ForwardContext {
-            subject: envelope.subject.clone(),
+            subject: prefixed_subject(&envelope.subject, &["fwd:", "fw:"]),
             from,
             forwarded_content,
         },
     })
+}
+
+fn prefixed_subject(subject: &str, existing_prefixes: &[&str]) -> String {
+    let trimmed = subject.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if existing_prefixes
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+    {
+        trimmed.to_string()
+    } else {
+        let prefix = existing_prefixes.first().copied().unwrap_or_default();
+        let canonical = match prefix {
+            "re:" => "Re:",
+            "fwd:" => "Fwd:",
+            "fw:" => "FW:",
+            _ => prefix,
+        };
+        format!("{canonical} {trimmed}")
+    }
 }
 
 pub(super) async fn send_draft(state: &Arc<AppState>, draft: &Draft) -> HandlerResult {

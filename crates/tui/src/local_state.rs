@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TuiLocalState {
+    // TUI-owned view state belongs here, not in daemon IPC.
     #[serde(default)]
     pub onboarding_seen: bool,
 }

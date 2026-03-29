@@ -36,7 +36,7 @@ struct ExecutionExplainInput<'a> {
     notes: Vec<String>,
 }
 
-pub(super) async fn list_events(
+pub(crate) async fn list_events(
     state: &Arc<AppState>,
     limit: u32,
     level: Option<&str>,
@@ -52,17 +52,17 @@ pub(super) async fn list_events(
     })
 }
 
-pub(super) fn get_logs(limit: u32, level: Option<&str>) -> HandlerResult {
+pub(crate) fn get_logs(limit: u32, level: Option<&str>) -> HandlerResult {
     let lines = recent_log_lines(limit as usize, level).map_err(|e| e.to_string())?;
     Ok(ResponseData::LogLines { lines })
 }
 
-pub(super) async fn doctor_report(state: &Arc<AppState>) -> HandlerResult {
+pub(crate) async fn doctor_report(state: &Arc<AppState>) -> HandlerResult {
     let report = collect_doctor_report(state).await?;
     Ok(ResponseData::DoctorReport { report })
 }
 
-pub(super) async fn bug_report(
+pub(crate) async fn bug_report(
     verbose: bool,
     full_logs: bool,
     since: Option<String>,
@@ -85,7 +85,7 @@ pub(super) async fn bug_report(
     Ok(ResponseData::BugReport { content })
 }
 
-pub(super) async fn search(
+pub(crate) async fn search(
     state: &Arc<AppState>,
     query: &str,
     limit: u32,
@@ -111,14 +111,14 @@ pub(super) async fn search(
     })
 }
 
-pub(super) async fn count(state: &Arc<AppState>, query: &str, mode: SearchMode) -> HandlerResult {
+pub(crate) async fn count(state: &Arc<AppState>, query: &str, mode: SearchMode) -> HandlerResult {
     let results = execute_search(state, query, 10_000, 0, mode, SortOrder::DateDesc, false).await;
     Ok(ResponseData::Count {
         count: results.map_err(|e| e.to_string())?.results.len() as u32,
     })
 }
 
-pub(super) async fn get_headers(state: &Arc<AppState>, message_id: &MessageId) -> HandlerResult {
+pub(crate) async fn get_headers(state: &Arc<AppState>, message_id: &MessageId) -> HandlerResult {
     match state
         .store
         .get_envelope(message_id)
@@ -175,7 +175,7 @@ pub(super) async fn get_headers(state: &Arc<AppState>, message_id: &MessageId) -
     }
 }
 
-pub(super) async fn list_saved_searches(state: &Arc<AppState>) -> HandlerResult {
+pub(crate) async fn list_saved_searches(state: &Arc<AppState>) -> HandlerResult {
     let searches = state
         .store
         .list_saved_searches()
@@ -184,7 +184,7 @@ pub(super) async fn list_saved_searches(state: &Arc<AppState>) -> HandlerResult 
     Ok(ResponseData::SavedSearches { searches })
 }
 
-pub(super) async fn list_subscriptions(
+pub(crate) async fn list_subscriptions(
     state: &Arc<AppState>,
     account_id: Option<&AccountId>,
     limit: u32,
@@ -201,7 +201,7 @@ pub(super) async fn list_subscriptions(
     Ok(ResponseData::Subscriptions { subscriptions })
 }
 
-pub(super) async fn semantic_status(state: &Arc<AppState>) -> HandlerResult {
+pub(crate) async fn semantic_status(state: &Arc<AppState>) -> HandlerResult {
     let snapshot = state
         .semantic
         .lock()
@@ -212,7 +212,7 @@ pub(super) async fn semantic_status(state: &Arc<AppState>) -> HandlerResult {
     Ok(ResponseData::SemanticStatus { snapshot })
 }
 
-pub(super) async fn enable_semantic(state: &Arc<AppState>, enabled: bool) -> HandlerResult {
+pub(crate) async fn enable_semantic(state: &Arc<AppState>, enabled: bool) -> HandlerResult {
     if enabled {
         let profile = state.config_snapshot().search.semantic.active_profile;
         state
@@ -231,7 +231,7 @@ pub(super) async fn enable_semantic(state: &Arc<AppState>, enabled: bool) -> Han
     semantic_status(state).await
 }
 
-pub(super) async fn install_semantic_profile(
+pub(crate) async fn install_semantic_profile(
     state: &Arc<AppState>,
     profile: SemanticProfile,
 ) -> HandlerResult {
@@ -245,7 +245,7 @@ pub(super) async fn install_semantic_profile(
     semantic_status(state).await
 }
 
-pub(super) async fn use_semantic_profile(
+pub(crate) async fn use_semantic_profile(
     state: &Arc<AppState>,
     profile: SemanticProfile,
 ) -> HandlerResult {
@@ -265,7 +265,7 @@ pub(super) async fn use_semantic_profile(
     semantic_status(state).await
 }
 
-pub(super) async fn reindex_semantic(state: &Arc<AppState>) -> HandlerResult {
+pub(crate) async fn reindex_semantic(state: &Arc<AppState>) -> HandlerResult {
     state
         .semantic
         .lock()
@@ -276,7 +276,7 @@ pub(super) async fn reindex_semantic(state: &Arc<AppState>) -> HandlerResult {
     semantic_status(state).await
 }
 
-pub(super) async fn create_saved_search(
+pub(crate) async fn create_saved_search(
     state: &Arc<AppState>,
     name: &str,
     query: &str,
@@ -301,7 +301,7 @@ pub(super) async fn create_saved_search(
     Ok(ResponseData::SavedSearchData { search })
 }
 
-pub(super) async fn delete_saved_search(state: &Arc<AppState>, name: &str) -> HandlerResult {
+pub(crate) async fn delete_saved_search(state: &Arc<AppState>, name: &str) -> HandlerResult {
     match state
         .store
         .delete_saved_search_by_name(name)
@@ -313,7 +313,7 @@ pub(super) async fn delete_saved_search(state: &Arc<AppState>, name: &str) -> Ha
     }
 }
 
-pub(super) async fn run_saved_search(
+pub(crate) async fn run_saved_search(
     state: &Arc<AppState>,
     name: &str,
     limit: u32,
@@ -341,7 +341,7 @@ pub(super) async fn run_saved_search(
     })
 }
 
-pub(super) async fn get_status(state: &Arc<AppState>) -> HandlerResult {
+pub(crate) async fn get_status(state: &Arc<AppState>) -> HandlerResult {
     let (accounts, total_messages, sync_statuses) = collect_status_snapshot(state).await?;
     let repair_required = crate::server::search_requires_repair(state, total_messages).await;
     Ok(ResponseData::Status {
@@ -357,7 +357,7 @@ pub(super) async fn get_status(state: &Arc<AppState>) -> HandlerResult {
     })
 }
 
-pub(super) async fn sync_now(
+pub(crate) async fn sync_now(
     state: &Arc<AppState>,
     account_id: Option<&AccountId>,
 ) -> HandlerResult {
@@ -379,7 +379,7 @@ pub(super) async fn sync_now(
     Ok(ResponseData::Ack)
 }
 
-pub(super) async fn export_thread(
+pub(crate) async fn export_thread(
     state: &Arc<AppState>,
     thread_id: &ThreadId,
     format: &ExportFormat,
@@ -390,7 +390,7 @@ pub(super) async fn export_thread(
     }
 }
 
-pub(super) async fn export_search(
+pub(crate) async fn export_search(
     state: &Arc<AppState>,
     query: &str,
     format: &ExportFormat,
@@ -401,7 +401,7 @@ pub(super) async fn export_search(
     }
 }
 
-pub(super) async fn get_sync_status(
+pub(crate) async fn get_sync_status(
     state: &Arc<AppState>,
     account_id: &AccountId,
 ) -> HandlerResult {

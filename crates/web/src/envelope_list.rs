@@ -1,4 +1,9 @@
+use super::chrome::{MessageGroupView, MessageRowView};
 use super::*;
+use crate::mxr_core::{MessageFlags, SavedSearch};
+use crate::mxr_protocol::SearchResultItem;
+use chrono::Datelike;
+use std::collections::{HashMap, HashSet};
 
 pub(crate) async fn list_envelopes(
     socket_path: &Path,
@@ -113,6 +118,7 @@ pub(crate) async fn search_result_envelopes(
 }
 
 pub(crate) fn group_envelopes(envelopes: Vec<Envelope>) -> Vec<MessageGroupView> {
+    // Grouping is a web presentation choice, not daemon protocol.
     let mut groups = Vec::<MessageGroupView>::new();
 
     for envelope in envelopes {

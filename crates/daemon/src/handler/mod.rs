@@ -1,8 +1,12 @@
 mod accounts;
-mod diagnostics;
+mod admin;
+#[path = "diagnostics/mod.rs"]
+mod diagnostics_impl;
 mod mailbox;
 mod mutations;
+mod platform;
 mod rules;
+mod runtime;
 
 use crate::mxr_core::provider::MailSyncProvider;
 #[cfg(test)]
@@ -95,7 +99,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             new,
             account_id,
         } => mailbox::rename_label(state, old, new, account_id.as_ref()).await,
-        Request::ListRules => rules::list_rules(state).await,
+        // mxr app/platform
         Request::ListAccounts => accounts::list_accounts(state).await,
         Request::ListAccountsConfig => accounts::list_accounts_config(),
         Request::AuthorizeAccountConfig {
@@ -109,6 +113,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::TestAccountConfig { account } => {
             accounts::test_account(state, account.clone()).await
         }
+        Request::ListRules => rules::list_rules(state).await,
         Request::GetRule { rule } => rules::get_rule(state, rule).await,
         Request::GetRuleForm { rule } => rules::get_rule_form(state, rule).await,
         Request::UpsertRule { rule } => rules::upsert_rule_value(state, rule.clone()).await,
@@ -138,18 +143,47 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::DryRunRules { rule, all, after } => {
             rules::dry_run(state, rule.as_ref(), *all, after.as_ref()).await
         }
+        Request::ListSavedSearches => platform::list_saved_searches(state).await,
+        Request::ListSubscriptions { account_id, limit } => {
+            platform::list_subscriptions(state, account_id.as_ref(), *limit).await
+        }
+        Request::GetSemanticStatus => platform::semantic_status(state).await,
+        Request::EnableSemantic { enabled } => platform::enable_semantic(state, *enabled).await,
+        Request::InstallSemanticProfile { profile } => {
+            platform::install_semantic_profile(state, *profile).await
+        }
+        Request::UseSemanticProfile { profile } => {
+            platform::use_semantic_profile(state, *profile).await
+        }
+        Request::ReindexSemantic => platform::reindex_semantic(state).await,
+        Request::CreateSavedSearch {
+            name,
+            query,
+            search_mode,
+        } => platform::create_saved_search(state, name, query, *search_mode).await,
+        Request::DeleteSavedSearch { name } => platform::delete_saved_search(state, name).await,
+        Request::RunSavedSearch { name, limit } => {
+            platform::run_saved_search(state, name, *limit).await
+        }
+
+        // admin / maintenance / operational
         Request::ListEvents {
             limit,
             level,
             category,
-        } => diagnostics::list_events(state, *limit, level.as_deref(), category.as_deref()).await,
-        Request::GetLogs { limit, level } => diagnostics::get_logs(*limit, level.as_deref()),
-        Request::GetDoctorReport => diagnostics::doctor_report(state).await,
+        } => admin::list_events(state, *limit, level.as_deref(), category.as_deref()).await,
+        Request::GetLogs { limit, level } => admin::get_logs(*limit, level.as_deref()),
+        Request::GetDoctorReport => admin::doctor_report(state).await,
         Request::GenerateBugReport {
             verbose,
             full_logs,
             since,
-        } => diagnostics::bug_report(*verbose, *full_logs, since.clone()).await,
+        } => admin::bug_report(*verbose, *full_logs, since.clone()).await,
+        Request::GetStatus => admin::get_status(state).await,
+        Request::Ping => Ok(ResponseData::Pong),
+        Request::Shutdown => std::process::exit(0),
+
+        // core mail/runtime
         Request::Search {
             query,
             limit,
@@ -158,7 +192,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             sort,
             explain,
         } => {
-            diagnostics::search(
+            runtime::search(
                 state,
                 query,
                 *limit,
@@ -171,46 +205,21 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             .await
         }
         Request::Count { query, mode } => {
-            diagnostics::count(
+            runtime::count(
                 state,
                 query,
                 mode.unwrap_or(state.config_snapshot().search.default_mode),
             )
             .await
         }
-        Request::GetHeaders { message_id } => diagnostics::get_headers(state, message_id).await,
-        Request::ListSavedSearches => diagnostics::list_saved_searches(state).await,
-        Request::ListSubscriptions { account_id, limit } => {
-            diagnostics::list_subscriptions(state, account_id.as_ref(), *limit).await
-        }
-        Request::GetSemanticStatus => diagnostics::semantic_status(state).await,
-        Request::EnableSemantic { enabled } => diagnostics::enable_semantic(state, *enabled).await,
-        Request::InstallSemanticProfile { profile } => {
-            diagnostics::install_semantic_profile(state, *profile).await
-        }
-        Request::UseSemanticProfile { profile } => {
-            diagnostics::use_semantic_profile(state, *profile).await
-        }
-        Request::ReindexSemantic => diagnostics::reindex_semantic(state).await,
-        Request::CreateSavedSearch {
-            name,
-            query,
-            search_mode,
-        } => diagnostics::create_saved_search(state, name, query, *search_mode).await,
-        Request::DeleteSavedSearch { name } => diagnostics::delete_saved_search(state, name).await,
-        Request::RunSavedSearch { name, limit } => {
-            diagnostics::run_saved_search(state, name, *limit).await
-        }
-        Request::GetStatus => diagnostics::get_status(state).await,
-        Request::SyncNow { account_id } => diagnostics::sync_now(state, account_id.as_ref()).await,
+        Request::GetHeaders { message_id } => runtime::get_headers(state, message_id).await,
+        Request::SyncNow { account_id } => runtime::sync_now(state, account_id.as_ref()).await,
         Request::ExportThread { thread_id, format } => {
-            diagnostics::export_thread(state, thread_id, format).await
+            runtime::export_thread(state, thread_id, format).await
         }
         Request::ExportSearch { query, format } => {
-            diagnostics::export_search(state, query, format).await
+            runtime::export_search(state, query, format).await
         }
-        Request::Ping => Ok(ResponseData::Pong),
-        Request::Shutdown => std::process::exit(0),
         Request::Mutation(cmd) => mutations::mutation(state, cmd).await,
         Request::Snooze {
             message_id,
@@ -232,9 +241,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::SetFlags { message_id, flags } => {
             mutations::set_flags(state, message_id, *flags).await
         }
-        Request::GetSyncStatus { account_id } => {
-            diagnostics::get_sync_status(state, account_id).await
-        }
+        Request::GetSyncStatus { account_id } => runtime::get_sync_status(state, account_id).await,
     };
 
     match result {

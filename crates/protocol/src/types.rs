@@ -2,6 +2,20 @@ use crate::mxr_core::id::*;
 use crate::mxr_core::types::*;
 use serde::{Deserialize, Serialize};
 
+/// IPC items are grouped conceptually, even though the wire format stays flat.
+///
+/// The daemon serves reusable truth and workflows, not screen-specific payloads.
+/// Provider-specific adaptation happens below this layer in adapter crates.
+/// Client-specific shaping and view state belong in clients such as the TUI and web bridge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum IpcCategory {
+    CoreMail,
+    MxrPlatform,
+    AdminMaintenance,
+    ClientSpecific,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IpcMessage {
     pub id: u64,
@@ -20,6 +34,7 @@ pub enum IpcPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "cmd")]
 pub enum Request {
+    // Core mail/runtime. This is the most stable bucket.
     ListEnvelopes {
         label_id: Option<LabelId>,
         account_id: Option<AccountId>,
@@ -70,7 +85,8 @@ pub enum Request {
         new: String,
         account_id: Option<AccountId>,
     },
-    ListRules,
+
+    // mxr app/platform. Product/runtime capabilities shared by multiple clients.
     ListAccounts,
     ListAccountsConfig,
     AuthorizeAccountConfig {
@@ -86,6 +102,7 @@ pub enum Request {
     TestAccountConfig {
         account: AccountConfigData,
     },
+    ListRules,
     GetRule {
         rule: String,
     },
@@ -111,52 +128,7 @@ pub enum Request {
         all: bool,
         after: Option<String>,
     },
-    ListEvents {
-        limit: u32,
-        level: Option<String>,
-        category: Option<String>,
-    },
-    GetLogs {
-        limit: u32,
-        level: Option<String>,
-    },
-    GetDoctorReport,
-    GenerateBugReport {
-        verbose: bool,
-        full_logs: bool,
-        since: Option<String>,
-    },
-    ListRuleHistory {
-        rule: Option<String>,
-        limit: u32,
-    },
-    Search {
-        query: String,
-        limit: u32,
-        #[serde(default)]
-        offset: u32,
-        mode: Option<SearchMode>,
-        #[serde(default)]
-        sort: Option<SortOrder>,
-        explain: bool,
-    },
-    SyncNow {
-        account_id: Option<AccountId>,
-    },
-    GetSyncStatus {
-        account_id: AccountId,
-    },
-    SetFlags {
-        message_id: MessageId,
-        flags: MessageFlags,
-    },
-    Count {
-        query: String,
-        mode: Option<SearchMode>,
-    },
-    GetHeaders {
-        message_id: MessageId,
-    },
+
     ListSavedSearches,
     ListSubscriptions {
         account_id: Option<AccountId>,
@@ -185,7 +157,57 @@ pub enum Request {
         name: String,
         limit: u32,
     },
-    // Mutations (Phase 2)
+
+    // Admin / maintenance / operational. Legitimate daemon features, fenced off
+    // from the core mail contract.
+    ListEvents {
+        limit: u32,
+        level: Option<String>,
+        category: Option<String>,
+    },
+    GetLogs {
+        limit: u32,
+        level: Option<String>,
+    },
+    GetDoctorReport,
+    GenerateBugReport {
+        verbose: bool,
+        full_logs: bool,
+        since: Option<String>,
+    },
+
+    // Core mail/runtime. Reusable workflows and data, not screen payloads.
+    Search {
+        query: String,
+        limit: u32,
+        #[serde(default)]
+        offset: u32,
+        mode: Option<SearchMode>,
+        #[serde(default)]
+        sort: Option<SortOrder>,
+        explain: bool,
+    },
+    SyncNow {
+        account_id: Option<AccountId>,
+    },
+    GetSyncStatus {
+        account_id: AccountId,
+    },
+    SetFlags {
+        message_id: MessageId,
+        flags: MessageFlags,
+    },
+    Count {
+        query: String,
+        mode: Option<SearchMode>,
+    },
+    GetHeaders {
+        message_id: MessageId,
+    },
+    ListRuleHistory {
+        rule: Option<String>,
+        limit: u32,
+    },
     Mutation(MutationCommand),
     Unsubscribe {
         message_id: MessageId,
@@ -198,7 +220,6 @@ pub enum Request {
         message_id: MessageId,
     },
     ListSnoozed,
-    // Compose (Phase 2)
     PrepareReply {
         message_id: MessageId,
         reply_all: bool,
@@ -214,8 +235,6 @@ pub enum Request {
         draft: Draft,
     },
     ListDrafts,
-
-    // Export (Phase 3)
     ExportThread {
         thread_id: ThreadId,
         format: ExportFormat,
@@ -225,9 +244,79 @@ pub enum Request {
         format: ExportFormat,
     },
 
+    // Admin / maintenance / operational utilities.
     GetStatus,
     Ping,
     Shutdown,
+}
+
+impl Request {
+    pub const fn category(&self) -> IpcCategory {
+        match self {
+            Self::ListEnvelopes { .. }
+            | Self::ListEnvelopesByIds { .. }
+            | Self::GetEnvelope { .. }
+            | Self::GetBody { .. }
+            | Self::GetHtmlImageAssets { .. }
+            | Self::DownloadAttachment { .. }
+            | Self::OpenAttachment { .. }
+            | Self::ListBodies { .. }
+            | Self::GetThread { .. }
+            | Self::ListLabels { .. }
+            | Self::CreateLabel { .. }
+            | Self::DeleteLabel { .. }
+            | Self::RenameLabel { .. }
+            | Self::Search { .. }
+            | Self::SyncNow { .. }
+            | Self::GetSyncStatus { .. }
+            | Self::SetFlags { .. }
+            | Self::Count { .. }
+            | Self::GetHeaders { .. }
+            | Self::ListRuleHistory { .. }
+            | Self::Mutation(_)
+            | Self::Unsubscribe { .. }
+            | Self::Snooze { .. }
+            | Self::Unsnooze { .. }
+            | Self::ListSnoozed
+            | Self::PrepareReply { .. }
+            | Self::PrepareForward { .. }
+            | Self::SendDraft { .. }
+            | Self::SaveDraftToServer { .. }
+            | Self::ListDrafts
+            | Self::ExportThread { .. }
+            | Self::ExportSearch { .. } => IpcCategory::CoreMail,
+            Self::ListAccounts
+            | Self::ListAccountsConfig
+            | Self::AuthorizeAccountConfig { .. }
+            | Self::UpsertAccountConfig { .. }
+            | Self::SetDefaultAccount { .. }
+            | Self::TestAccountConfig { .. }
+            | Self::ListRules
+            | Self::GetRule { .. }
+            | Self::GetRuleForm { .. }
+            | Self::UpsertRule { .. }
+            | Self::UpsertRuleForm { .. }
+            | Self::DeleteRule { .. }
+            | Self::DryRunRules { .. }
+            | Self::ListSavedSearches
+            | Self::ListSubscriptions { .. }
+            | Self::GetSemanticStatus
+            | Self::EnableSemantic { .. }
+            | Self::InstallSemanticProfile { .. }
+            | Self::UseSemanticProfile { .. }
+            | Self::ReindexSemantic
+            | Self::CreateSavedSearch { .. }
+            | Self::DeleteSavedSearch { .. }
+            | Self::RunSavedSearch { .. } => IpcCategory::MxrPlatform,
+            Self::ListEvents { .. }
+            | Self::GetLogs { .. }
+            | Self::GetDoctorReport
+            | Self::GenerateBugReport { .. }
+            | Self::GetStatus
+            | Self::Ping
+            | Self::Shutdown => IpcCategory::AdminMaintenance,
+        }
+    }
 }
 
 /// Mutation commands for modifying messages.
@@ -297,6 +386,7 @@ pub enum Response {
 #[serde(tag = "kind")]
 #[allow(clippy::large_enum_variant)]
 pub enum ResponseData {
+    // Core mail/runtime responses.
     Envelopes {
         envelopes: Vec<Envelope>,
     },
@@ -326,6 +416,39 @@ pub enum ResponseData {
     Label {
         label: Label,
     },
+
+    SearchResults {
+        results: Vec<SearchResultItem>,
+        #[serde(default)]
+        has_more: bool,
+        explain: Option<SearchExplain>,
+    },
+    SyncStatus {
+        sync: AccountSyncStatus,
+    },
+    Count {
+        count: u32,
+    },
+    Headers {
+        headers: Vec<(String, String)>,
+    },
+    ReplyContext {
+        context: ReplyContext,
+    },
+    ForwardContext {
+        context: ForwardContext,
+    },
+    Drafts {
+        drafts: Vec<Draft>,
+    },
+    SnoozedMessages {
+        snoozed: Vec<Snoozed>,
+    },
+    ExportResult {
+        content: String,
+    },
+
+    // mxr app/platform responses.
     Rules {
         rules: Vec<serde_json::Value>,
     },
@@ -347,6 +470,20 @@ pub enum ResponseData {
     RuleDryRun {
         results: Vec<serde_json::Value>,
     },
+    SavedSearches {
+        searches: Vec<crate::mxr_core::types::SavedSearch>,
+    },
+    Subscriptions {
+        subscriptions: Vec<crate::mxr_core::types::SubscriptionSummary>,
+    },
+    SemanticStatus {
+        snapshot: SemanticStatusSnapshot,
+    },
+    SavedSearchData {
+        search: crate::mxr_core::types::SavedSearch,
+    },
+
+    // Admin / maintenance / operational responses.
     EventLogEntries {
         entries: Vec<EventLogEntry>,
     },
@@ -361,33 +498,6 @@ pub enum ResponseData {
     },
     RuleHistory {
         entries: Vec<serde_json::Value>,
-    },
-    SearchResults {
-        results: Vec<SearchResultItem>,
-        #[serde(default)]
-        has_more: bool,
-        explain: Option<SearchExplain>,
-    },
-    SyncStatus {
-        sync: AccountSyncStatus,
-    },
-    Count {
-        count: u32,
-    },
-    Headers {
-        headers: Vec<(String, String)>,
-    },
-    SavedSearches {
-        searches: Vec<crate::mxr_core::types::SavedSearch>,
-    },
-    Subscriptions {
-        subscriptions: Vec<crate::mxr_core::types::SubscriptionSummary>,
-    },
-    SemanticStatus {
-        snapshot: SemanticStatusSnapshot,
-    },
-    SavedSearchData {
-        search: crate::mxr_core::types::SavedSearch,
     },
     Status {
         uptime_secs: u64,
@@ -406,23 +516,52 @@ pub enum ResponseData {
         #[serde(default)]
         repair_required: bool,
     },
-    ReplyContext {
-        context: ReplyContext,
-    },
-    ForwardContext {
-        context: ForwardContext,
-    },
-    Drafts {
-        drafts: Vec<Draft>,
-    },
-    SnoozedMessages {
-        snoozed: Vec<Snoozed>,
-    },
-    ExportResult {
-        content: String,
-    },
     Pong,
     Ack,
+}
+
+impl ResponseData {
+    pub const fn category(&self) -> IpcCategory {
+        match self {
+            Self::Envelopes { .. }
+            | Self::Envelope { .. }
+            | Self::Body { .. }
+            | Self::HtmlImageAssets { .. }
+            | Self::AttachmentFile { .. }
+            | Self::Bodies { .. }
+            | Self::Thread { .. }
+            | Self::Labels { .. }
+            | Self::Label { .. }
+            | Self::SearchResults { .. }
+            | Self::SyncStatus { .. }
+            | Self::Count { .. }
+            | Self::Headers { .. }
+            | Self::ReplyContext { .. }
+            | Self::ForwardContext { .. }
+            | Self::Drafts { .. }
+            | Self::SnoozedMessages { .. }
+            | Self::ExportResult { .. } => IpcCategory::CoreMail,
+            Self::Rules { .. }
+            | Self::RuleData { .. }
+            | Self::Accounts { .. }
+            | Self::AccountsConfig { .. }
+            | Self::AccountOperation { .. }
+            | Self::RuleFormData { .. }
+            | Self::RuleDryRun { .. }
+            | Self::SavedSearches { .. }
+            | Self::Subscriptions { .. }
+            | Self::SemanticStatus { .. }
+            | Self::SavedSearchData { .. } => IpcCategory::MxrPlatform,
+            Self::EventLogEntries { .. }
+            | Self::LogLines { .. }
+            | Self::DoctorReport { .. }
+            | Self::BugReport { .. }
+            | Self::RuleHistory { .. }
+            | Self::Status { .. }
+            | Self::Pong
+            | Self::Ack => IpcCategory::AdminMaintenance,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -741,6 +880,7 @@ fn default_auth_required() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "event")]
 pub enum DaemonEvent {
+    // Core mail/runtime events.
     SyncCompleted {
         account_id: AccountId,
         messages_synced: u32,
@@ -758,6 +898,18 @@ pub enum DaemonEvent {
     LabelCountsUpdated {
         counts: Vec<LabelCount>,
     },
+}
+
+impl DaemonEvent {
+    pub const fn category(&self) -> IpcCategory {
+        match self {
+            Self::SyncCompleted { .. }
+            | Self::SyncError { .. }
+            | Self::NewMessages { .. }
+            | Self::MessageUnsnoozed { .. }
+            | Self::LabelCountsUpdated { .. } => IpcCategory::CoreMail,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

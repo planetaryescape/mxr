@@ -1,7 +1,15 @@
+use super::envelope_list::{
+    list_envelopes, list_envelopes_by_message_ids, run_saved_search, search_envelopes, slugify,
+    sorted_saved_searches,
+};
 use super::*;
+use crate::mxr_core::{LabelKind, MessageFlags, SavedSearch, SubscriptionSummary};
+use serde_json::json;
 
 #[derive(Debug)]
 pub(crate) struct BridgeChrome {
+    // Web-specific shaping stays here. The daemon returns reusable runtime data;
+    // the bridge assembles shell/sidebar JSON for this client.
     pub(crate) shell: serde_json::Value,
     pub(crate) sidebar: serde_json::Value,
     pub(crate) labels: Vec<Label>,
@@ -64,11 +72,18 @@ pub(crate) async fn build_bridge_chrome(
         _ => return Err(BridgeError::UnexpectedResponse),
     };
 
-    let subscriptions =
-        match ipc_request(socket_path, Request::ListSubscriptions { account_id: None, limit: 8 }).await? {
-            ResponseData::Subscriptions { subscriptions } => subscriptions,
-            _ => return Err(BridgeError::UnexpectedResponse),
-        };
+    let subscriptions = match ipc_request(
+        socket_path,
+        Request::ListSubscriptions {
+            account_id: None,
+            limit: 8,
+        },
+    )
+    .await?
+    {
+        ResponseData::Subscriptions { subscriptions } => subscriptions,
+        _ => return Err(BridgeError::UnexpectedResponse),
+    };
 
     let sync_label = if sync_statuses.iter().any(|status| status.sync_in_progress) {
         "Syncing"
@@ -307,12 +322,15 @@ pub(crate) async fn load_mailbox_selection(
                 .labels
                 .iter()
                 .find(|label| matches_system_label(label, "All Mail"))
-                .map_or_else(|| derived_counts(&envelopes), |label| {
-                    json!({
-                        "unread": label.unread_count,
-                        "total": label.total_count,
-                    })
-                });
+                .map_or_else(
+                    || derived_counts(&envelopes),
+                    |label| {
+                        json!({
+                            "unread": label.unread_count,
+                            "total": label.total_count,
+                        })
+                    },
+                );
             Ok(MailboxSelection {
                 lens_label: "All Mail".to_string(),
                 counts,
@@ -332,15 +350,16 @@ pub(crate) async fn load_mailbox_selection(
                 .iter()
                 .find(|candidate| candidate.id == label_id);
             Ok(MailboxSelection {
-                lens_label: label
-                    .map_or_else(|| "Label".to_string(), |label| label.name.clone()),
-                counts: label
-                    .map_or_else(|| derived_counts(&envelopes), |label| {
+                lens_label: label.map_or_else(|| "Label".to_string(), |label| label.name.clone()),
+                counts: label.map_or_else(
+                    || derived_counts(&envelopes),
+                    |label| {
                         json!({
                             "unread": label.unread_count,
                             "total": label.total_count,
                         })
-                    }),
+                    },
+                ),
                 envelopes,
             })
         }

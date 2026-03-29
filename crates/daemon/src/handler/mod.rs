@@ -4054,6 +4054,13 @@ mod tests {
     async fn dispatch_prepare_reply() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
+        let expected_subject = state
+            .store
+            .get_envelope(&id)
+            .await
+            .unwrap()
+            .unwrap()
+            .subject;
 
         // Fetch body first so it's cached
         let body_msg = IpcMessage {
@@ -4077,7 +4084,7 @@ mod tests {
                 data: ResponseData::ReplyContext { context },
             }) => {
                 assert!(context.reply_to.contains('@'));
-                assert!(context.subject.starts_with("Re:") || context.subject.starts_with("RE:"));
+                assert_eq!(context.subject, expected_subject);
             }
             other => panic!("Expected ReplyContext, got {:?}", other),
         }
@@ -4087,6 +4094,13 @@ mod tests {
     async fn dispatch_prepare_reply_all() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
+        let expected_subject = state
+            .store
+            .get_envelope(&id)
+            .await
+            .unwrap()
+            .unwrap()
+            .subject;
 
         // Fetch body first
         let body_msg = IpcMessage {
@@ -4110,7 +4124,7 @@ mod tests {
                 data: ResponseData::ReplyContext { context },
             }) => {
                 assert!(context.reply_to.contains('@'));
-                assert!(context.subject.starts_with("Re:") || context.subject.starts_with("RE:"));
+                assert_eq!(context.subject, expected_subject);
                 // cc may or may not be empty depending on the message, but the field should exist
             }
             other => panic!("Expected ReplyContext, got {:?}", other),
@@ -4158,6 +4172,13 @@ mod tests {
     async fn dispatch_prepare_forward() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
+        let expected_subject = state
+            .store
+            .get_envelope(&id)
+            .await
+            .unwrap()
+            .unwrap()
+            .subject;
 
         // Fetch body first
         let body_msg = IpcMessage {
@@ -4177,11 +4198,7 @@ mod tests {
             IpcPayload::Response(Response::Ok {
                 data: ResponseData::ForwardContext { context },
             }) => {
-                assert!(
-                    context.subject.starts_with("Fwd:")
-                        || context.subject.starts_with("FWD:")
-                        || context.subject.starts_with("FW:")
-                );
+                assert_eq!(context.subject, expected_subject);
                 assert!(
                     !context.forwarded_content.is_empty(),
                     "forwarded_content should be non-empty"

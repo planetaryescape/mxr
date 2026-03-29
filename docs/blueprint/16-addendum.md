@@ -133,23 +133,21 @@ Recipients see a normal email. They have no idea it was written in markdown. Thi
 
 **Affects**: 01-architecture.md
 
-**Context**: The question was raised whether the daemon architecture would support a future web-based client. The answer is yes, trivially.
+**Context**: The question was raised whether the daemon architecture would support a web-based client. The answer was yes, and that client now exists in `crates/web/`.
 
 **How it works**:
 
 ```
 Browser (React/Svelte/whatever)
     ↓ HTTP / WebSocket
-Thin HTTP server (axum)
+Thin HTTP/WebSocket bridge (axum)
     ↓ Unix socket (existing JSON IPC protocol)
 mxr daemon (unchanged)
 ```
 
 The HTTP server is a dumb proxy: receives REST requests, converts them to the same IPC commands the TUI uses, forwards to daemon, returns JSON response. Every endpoint maps 1:1 to an existing daemon Command. For real-time updates, a WebSocket connection subscribes to the same DaemonEvent stream the TUI listens to.
 
-Estimated work: one new crate (`crates/web/`) depending on `mxr-core`, `mxr-protocol`, and `axum`. 500-1000 lines for a full REST API.
-
-**NOT on the roadmap.** But the architecture makes it trivial when the time comes. This is explicitly why daemon-backed architecture was chosen over monolithic (see Decision D002).
+This is now implemented. The architectural point still stands: daemon-backed IPC made a web client additive rather than architectural churn.
 
 ---
 
@@ -638,7 +636,7 @@ Shipping an open-source, local-first email client where the only sync backend is
 
 ### Implementation details
 
-New crate: `crates/providers/imap/` — implements `MailSyncProvider` only. Send uses existing SMTP adapter.
+New crate: `crates/provider-imap/` — implements `MailSyncProvider` only. Send uses existing SMTP adapter.
 
 **Connection management**: `async-imap` crate. Persistent connections with reconnection logic.
 

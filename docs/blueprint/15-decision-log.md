@@ -33,7 +33,7 @@ Every significant design decision, what alternatives were considered, and why we
 
 **Why daemon**:
 - Background sync works whether or not TUI is open
-- Multiple clients (TUI, CLI, scripts, future web UI) share one engine
+- Multiple clients (TUI, CLI, scripts, web UI) share one engine
 - Headless operation on servers
 - Clean separation of concerns (TUI handles rendering, daemon handles logic)
 - Makes it a platform, not just a GUI
@@ -129,7 +129,7 @@ Every significant design decision, what alternatives were considered, and why we
 **Why split**:
 - SMTP can only send. A single trait would force it to implement sync methods it can't support.
 - Gmail can do both sync and send.
-- IMAP (future) does sync while SMTP handles send.
+- IMAP does sync while SMTP handles send.
 - The type system should reflect reality, not pretend every provider does everything.
 
 **Account model consequence**: An account has separate sync_backend and send_backend fields. A user might sync via Gmail but send via their company's SMTP relay. This is a real-world configuration.
@@ -228,9 +228,9 @@ Every significant design decision, what alternatives were considered, and why we
 
 ---
 
-## D015: Adapter strategy — Gmail + SMTP only, community builds the rest
+## D015: Adapter strategy — historical note, later overridden
 
-**Chosen**: First-party Gmail sync + SMTP send. Community adapters for everything else.
+**Chosen at the time**: First-party Gmail sync + SMTP send. Community adapters for everything else.
 
 **Why not build IMAP**: IMAP is not the maintainer's use case. Building for checkbox coverage instead of actual usage leads to poor quality. The architecture is clean enough that IMAP is a great community adapter candidate.
 
@@ -262,6 +262,10 @@ Every significant design decision, what alternatives were considered, and why we
 **Considered**: gRPC, HTTP REST, raw binary, named pipes
 
 **Why JSON over Unix socket**: Simple, debuggable (socat can talk to it), fast enough for local IPC, no external dependencies, easy for community tools to interact with.
+
+**Implemented shape**: `IpcMessage { id, payload }`, where `payload` is `Request`, `Response`, or `DaemonEvent`.
+
+**Boundary rule**: The daemon serves reusable truth/workflows. Client-specific shaping stays in clients. The protocol now tracks four conceptual buckets: `core-mail`, `mxr-platform`, `admin-maintenance`, `client-specific` (the last one should stay out of daemon IPC).
 
 **Why not gRPC**: Too heavy for local tool. Adds protobuf compilation, code generation, runtime dependency.
 

@@ -25,12 +25,15 @@
 | 16 | [Addendum](16-addendum.md) | Post-blueprint amendments (A001-A009): inline CLI compose, full CLI surface, vim+Gmail keybindings, daemon observability, TUI batch ops, IMAP first-party, bug reporting |
 | 17 | [Release Pipeline](17-release-pipeline.md) | CI/CD pipeline: PR checks, release automation, crates.io publishing, cross-compiled binaries, Homebrew, changelog, docs deployment (D066-D071) |
 | 18 | [Bug Reporting](18-bug-reporting.md) | `mxr bug-report` command, log sanitization, log retention, diagnostic capture workflow (D072-D074) |
+| — | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
 
 ## For coding agents
 
 This blueprint is designed to be consumed by a coding agent. Every feature is specified in detail. Every design decision includes context on what was considered and rejected. The decision log (15) exists specifically so that an agent doesn't re-debate settled decisions.
 
 Start with 00 (overview) and 14 (roadmap) for the big picture. Use 15 (decision log) as a reference when making implementation choices. Check 16 (addendum) for post-blueprint amendments that override or extend the main docs. Check 17 (release pipeline) for CI/CD and release automation. Consult the specific domain docs (02-13) for detailed specifications.
+
+When blueprint docs conflict with the current repo, prefer code as source of truth. The IPC audit exists specifically to document current implemented contract boundaries.
 
 ## Core stack summary
 

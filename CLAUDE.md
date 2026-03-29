@@ -20,14 +20,32 @@
 Daemon-backed. The daemon is the system. TUI and CLI are clients connected via Unix socket.
 
 ```
-TUI / CLI / Scripts  <--- Unix socket (JSON) --->  Daemon
-                                                      |
-                                         Store (SQLite) + Search (Tantivy)
-                                                      |
-                                              Providers (Gmail, SMTP, Fake)
+TUI / CLI / Web / Scripts  <--- Unix socket (JSON) --->  Daemon
+                                                           |
+                                              Store (SQLite) + Search (Tantivy)
+                                                           |
+                                       Providers (Gmail, IMAP, SMTP, Fake)
 ```
 
 Single unified binary: `mxr` with subcommands (`mxr` = TUI, `mxr daemon`, `mxr sync`, `mxr search`, etc.).
+
+## IPC Contract Boundary
+
+The transport is settled: length-delimited JSON over a Unix socket using `IpcMessage { id, payload }`.
+
+Classify IPC into four buckets:
+
+1. `core-mail`: stable mail/runtime capabilities
+2. `mxr-platform`: accounts, rules, saved searches, subscriptions, semantic runtime
+3. `admin-maintenance`: status, events, logs, doctor, bug reports, repair/inspection
+4. `client-specific`: pane/selection/view shaping; keep this out of daemon IPC
+
+Rules:
+
+- The daemon serves reusable truth/workflows, not screen payloads.
+- Product/platform capabilities are real first-class surfaces, not leftovers.
+- Admin surfaces stay in IPC but stay conceptually separate from the core mail contract.
+- Provider weirdness is handled below this layer in adapters.
 
 ## Core Principles (NON-NEGOTIABLE)
 
@@ -167,11 +185,10 @@ crates/
   search/         # Tantivy indexing and query
   semantic/       # Local embeddings, dense retrieval, attachment extraction
   protocol/       # IPC types (Request, Response, Command)
-  providers/
-    gmail/        # Gmail API adapter (first-party)
-    imap/         # IMAP adapter (first-party, Phase 2)
-    smtp/         # SMTP send adapter
-    fake/         # In-memory test provider
+  provider-gmail/ # Gmail API adapter (first-party)
+  provider-imap/  # IMAP adapter (first-party)
+  provider-smtp/  # SMTP send adapter
+  provider-fake/  # In-memory test provider
   sync/           # Sync engine (providers <-> store <-> search)
   compose/        # $EDITOR workflow, frontmatter, markdown->multipart
   reader/         # Reader mode (HTML->text, signature/quote stripping)
@@ -179,5 +196,7 @@ crates/
   export/         # Thread export (markdown, JSON, mbox, LLM context)
   daemon/         # Background process, socket server
   tui/            # Ratatui frontend
-  cli/            # CLI subcommand dispatch
+  web/            # HTTP/WebSocket bridge client
 ```
+
+Repo reality: the shipped crate is one Cargo package named `mxr` with these conceptual subcrates path-mounted from `crates/`.

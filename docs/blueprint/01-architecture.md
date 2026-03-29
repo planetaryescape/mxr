@@ -54,7 +54,18 @@ Communication between clients and the daemon is **JSON over a Unix domain socket
 - **Raw binary protocol**: Harder to debug, harder for community tooling to interact with.
 - **Named pipes**: One-directional, not suitable for request-response.
 
-JSON over Unix socket is simple, debuggable (`socat` can talk to it), and fast enough for local communication. The protocol is loosely modeled on JSON-RPC: each message has an `id`, a `command` (requests) or `result` (responses), and structured data.
+JSON over Unix socket is simple, debuggable (`socat` can talk to it), and fast enough for local communication. The implemented protocol is `IpcMessage { id, payload }`, where `payload` is `Request`, `Response`, or `DaemonEvent`.
+
+### IPC contract buckets
+
+The protocol should be read in four buckets:
+
+1. `core-mail`: stable mail/runtime capabilities
+2. `mxr-platform`: accounts, rules, saved searches, subscriptions, semantic runtime
+3. `admin-maintenance`: status, events, logs, doctor, bug reports, operational controls
+4. `client-specific`: not part of daemon IPC; belongs in TUI/web/CLI shaping layers
+
+The daemon serves reusable truth and workflows, not screen payloads.
 
 Socket location: `$XDG_RUNTIME_DIR/mxr/mxr.sock` (Linux) or `~/Library/Application Support/mxr/mxr.sock` (macOS).
 
@@ -95,15 +106,18 @@ mxr/
 │   │                             # BM25, field boosts, saved searches, query parser.
 │   │                             # Depends on: core
 │   │
-│   ├── providers/
-│   │   ├── gmail/                # Gmail API adapter (MailSyncProvider + MailSendProvider)
-│   │   │                         # OAuth2 flow, history.list delta sync, batch API.
-│   │   │                         # Depends on: core
-│   │   │
-│   │   ├── smtp/                 # SMTP send adapter (MailSendProvider only)
-│   │   │                         # Via lettre. Depends on: core
-│   │   │
-│   │   └── fake/                 # In-memory test double (both traits)
+│   ├── provider-gmail/           # Gmail API adapter (MailSyncProvider + MailSendProvider)
+│   │                             # OAuth2 flow, history.list delta sync, batch API.
+│   │                             # Depends on: core
+│   │
+│   ├── provider-imap/            # IMAP adapter (MailSyncProvider only, first-party)
+│   │                             # CONDSTORE/QRESYNC + UID fallback + IDLE.
+│   │                             # Depends on: core
+│   │
+│   ├── provider-smtp/            # SMTP send adapter (MailSendProvider only)
+│   │                             # Via lettre. Depends on: core
+│   │
+│   ├── provider-fake/            # In-memory test double (both traits)
 │   │                             # Deterministic, no network. For tests and adapter authors.
 │   │                             # Depends on: core
 │   │
@@ -140,7 +154,7 @@ mxr/
 │   │                             # command palette, keybinding dispatch.
 │   │                             # Depends on: core, protocol
 │   │
-│   └── cli/                      # CLI binary: subcommand dispatch, connects to daemon.
+│   └── web/                      # HTTP/WebSocket bridge client over daemon IPC.
 │                                 # Depends on: core, protocol
 │
 ├── migrations/                   # SQLite migrations (used by store crate)
@@ -168,6 +182,7 @@ These are strict. Violations should be caught in code review:
 5. **`sync` depends on `core`, `store`, `search`.** It orchestrates data flow between providers and local state.
 6. **`daemon` is the integration point.** It depends on most crates. This is expected and acceptable — it's the application entry point.
 7. **`tui` depends only on `core` and `protocol`.** It talks to the daemon via IPC, never directly to providers, store, or search. This enforces the client-server boundary.
+8. **`web` is also a client surface.** It should shape shell/sidebar/thread presentation from reusable daemon data, not by adding screen-specific IPC.
 
 ### Key dependencies (external crates)
 

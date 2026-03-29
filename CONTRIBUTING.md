@@ -24,10 +24,28 @@ npm run build
 - search index is rebuildable
 - daemon is the system
 - TUI and CLI are both clients
+- web is also a client of daemon IPC
 - provider-specific logic stays in adapter crates
 - compose uses `$EDITOR`
 - rules are deterministic before they are clever
 - plain-text-first rendering wins over flashy rendering
+
+## IPC boundaries
+
+Classify every IPC addition before you add it:
+
+1. `core-mail`
+2. `mxr-platform`
+3. `admin-maintenance`
+4. `client-specific`
+
+Rules:
+
+- Core mail/runtime should stay boring and stable.
+- mxr platform capabilities are first-class. Do not bury them as misc.
+- Admin surfaces stay in IPC, but separate them mentally and in code from the mail contract.
+- Client-specific shaping stays in clients.
+- The daemon serves reusable truth/workflows, not screen payloads.
 
 ## Crate boundaries
 
@@ -40,6 +58,12 @@ Keep these intact:
 5. `mxr-sync` depends on `core + store + search`.
 6. `mxr` (daemon crate) is the integration point.
 7. `mxr-tui` depends only on `core + protocol`.
+
+Repo reality:
+
+- The code is currently shipped as one Cargo package with path-mounted conceptual crates under `crates/`.
+- Provider paths are `provider-gmail`, `provider-imap`, `provider-smtp`, and `provider-fake`.
+- `crates/web` is a current client/bridge surface.
 
 ## Required checks
 
@@ -111,6 +135,7 @@ When adding or changing an adapter:
 
 - Update `README.md` for changed user-facing behavior.
 - Update `site/` docs for new commands or workflows.
+- Update architecture/blueprint docs when code changes invalidate older assumptions.
 - Keep `.github/workflows/` aligned with the actual build and release process.
 - Keep issue templates and bug-report flow current.
 

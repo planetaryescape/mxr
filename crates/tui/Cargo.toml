@@ -7,6 +7,10 @@ repository.workspace = true
 homepage.workspace = true
 publish = false
 
+[[example]]
+name = "export_desktop_manifest"
+path = "examples/export_desktop_manifest.rs"
+
 [lints]
 workspace = true
 

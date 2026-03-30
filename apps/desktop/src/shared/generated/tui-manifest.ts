@@ -18,8 +18,8 @@ export const tuiDesktopManifest = {
         ]
       },
       {
-        "action": "search",
-        "label": "Search",
+        "action": "search_all_mail",
+        "label": "Search All Mail",
         "display": "/",
         "tokens": [
           "/"
@@ -79,6 +79,14 @@ export const tuiDesktopManifest = {
         "display": "Ctrl-d",
         "tokens": [
           "Ctrl-d"
+        ]
+      },
+      {
+        "action": "mailbox_filter",
+        "label": "Filter Mailbox",
+        "display": "Ctrl-f",
+        "tokens": [
+          "Ctrl-f"
         ]
       },
       {
@@ -179,7 +187,7 @@ export const tuiDesktopManifest = {
       },
       {
         "action": "open_in_browser",
-        "label": "Browser",
+        "label": "Source",
         "display": "O",
         "tokens": [
           "O"
@@ -518,6 +526,14 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "toggle_html_view",
+        "label": "HTML View",
+        "display": "H",
+        "tokens": [
+          "H"
+        ]
+      },
+      {
         "action": "mark_read",
         "label": "Mark Read",
         "display": "I",
@@ -534,8 +550,16 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "toggle_remote_content",
+        "label": "Remote Media",
+        "display": "M",
+        "tokens": [
+          "M"
+        ]
+      },
+      {
         "action": "open_in_browser",
-        "label": "Browser",
+        "label": "Source",
         "display": "O",
         "tokens": [
           "O"
@@ -730,6 +754,14 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "toggle_html_view",
+        "label": "HTML View",
+        "display": "H",
+        "tokens": [
+          "H"
+        ]
+      },
+      {
         "action": "mark_read",
         "label": "Mark Read",
         "display": "I",
@@ -746,8 +778,16 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "toggle_remote_content",
+        "label": "Remote Media",
+        "display": "M",
+        "tokens": [
+          "M"
+        ]
+      },
+      {
         "action": "open_in_browser",
-        "label": "Browser",
+        "label": "Source",
         "display": "O",
         "tokens": [
           "O"
@@ -965,7 +1005,7 @@ export const tuiDesktopManifest = {
       "category": "Mail"
     },
     {
-      "label": "Open In Browser",
+      "label": "Open Message Source",
       "shortcut": "O",
       "action": "open_in_browser",
       "category": "Mail"
@@ -974,6 +1014,18 @@ export const tuiDesktopManifest = {
       "label": "Toggle Reader Mode",
       "shortcut": "R",
       "action": "toggle_reader_mode",
+      "category": "View"
+    },
+    {
+      "label": "Toggle HTML View",
+      "shortcut": "H",
+      "action": "toggle_html_view",
+      "category": "View"
+    },
+    {
+      "label": "Toggle Remote Content",
+      "shortcut": "M",
+      "action": "toggle_remote_content",
       "category": "View"
     },
     {
@@ -1043,9 +1095,15 @@ export const tuiDesktopManifest = {
       "category": "System"
     },
     {
-      "label": "Search",
+      "label": "Search All Mail",
       "shortcut": "/",
       "action": "search",
+      "category": "Search"
+    },
+    {
+      "label": "Filter Current Mailbox",
+      "shortcut": "Ctrl-f",
+      "action": "mailbox_filter",
       "category": "Search"
     },
     {
@@ -1191,6 +1249,12 @@ export const tuiDesktopManifest = {
       "shortcut": "?",
       "action": "help",
       "category": "Navigation"
+    },
+    {
+      "label": "Start Here",
+      "shortcut": "",
+      "action": "show_onboarding",
+      "category": "System"
     },
     {
       "label": "Quit",

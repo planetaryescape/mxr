@@ -17,7 +17,7 @@ brew tap planetaryescape/mxr
 brew install mxr
 
 # Cargo (release tag)
-cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.32 --locked mxr
+cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.33 --locked mxr
 ```
 
 Pre-built release tarballs are also available for:
@@ -116,6 +116,7 @@ When local mxr state gets messy during development or recovery, you can wipe the
 
 ```bash
 mxr reset --hard --dry-run
+mxr reset --hard --including-config --dry-run
 mxr burn --dry-run
 ```
 
@@ -125,7 +126,11 @@ Real execution is intentionally hard to trigger:
 - `mxr burn` is the memorable alias
 - both stop the daemon first, then remove local runtime state under `MXR_DATA_DIR`
 - both preserve `config.toml` and system keychain/keyring credentials by default
+- `--including-config` also deletes `config.toml`, but still preserves system keychain/keyring credentials
+- attachment dirs outside `MXR_DATA_DIR` stay preserved, even with `--including-config`
 - `--dry-run` prints the exact delete plan first
+- interactive destructive runs require typing `DELETE MY MXR DATA`
+- interactive `--including-config` runs require typing `DELETE MY MXR DATA AND CONFIG`
 - non-interactive destructive runs require `--yes-i-understand-this-destroys-local-state`
 
 ## Why this feels different

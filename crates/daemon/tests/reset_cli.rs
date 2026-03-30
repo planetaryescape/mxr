@@ -78,6 +78,67 @@ fn reset_non_interactive_refuses_without_explicit_override() {
 }
 
 #[test]
+fn reset_including_config_dry_run_lists_config_for_removal() {
+    let temp = TempDir::new().expect("temp dir");
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let socket_path = temp.path().join("runtime").join("mxr.sock");
+    let config_path = config_dir.join("config.toml");
+
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    std::fs::write(&config_path, "[general]\nsync_interval = 60\n").expect("write config");
+
+    let output = Command::cargo_bin("mxr")
+        .expect("mxr bin")
+        .env("MXR_DATA_DIR", &data_dir)
+        .env("MXR_CONFIG_DIR", &config_dir)
+        .env("MXR_SOCKET_PATH", &socket_path)
+        .args(["reset", "--hard", "--including-config", "--dry-run"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains("Destructive scope: local mxr runtime state plus config.toml."));
+    assert!(stdout.contains(&format!(
+        "config file: {} [file; present;",
+        config_path.display()
+    )));
+}
+
+#[test]
+fn burn_including_config_dry_run_lists_config_for_removal() {
+    let temp = TempDir::new().expect("temp dir");
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let socket_path = temp.path().join("runtime").join("mxr.sock");
+    let config_path = config_dir.join("config.toml");
+
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    std::fs::write(&config_path, "[general]\nsync_interval = 60\n").expect("write config");
+
+    let output = Command::cargo_bin("mxr")
+        .expect("mxr bin")
+        .env("MXR_DATA_DIR", &data_dir)
+        .env("MXR_CONFIG_DIR", &config_dir)
+        .env("MXR_SOCKET_PATH", &socket_path)
+        .args(["burn", "--including-config", "--dry-run"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains(&format!(
+        "config file: {} [file; present;",
+        config_path.display()
+    )));
+}
+
+#[test]
 fn reset_dry_run_and_destructive_override_handle_daemon_runtime_state() {
     let temp = TempDir::new().expect("temp dir");
     let data_dir = temp.path().join("data");
@@ -156,6 +217,54 @@ fn reset_dry_run_and_destructive_override_handle_daemon_runtime_state() {
         ])
         .assert()
         .success();
+}
+
+#[test]
+fn reset_including_config_destructive_override_removes_config_file() {
+    let temp = TempDir::new().expect("temp dir");
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let socket_path = temp.path().join("runtime").join("mxr.sock");
+    let config_path = config_dir.join("config.toml");
+
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    std::fs::write(&config_path, "[general]\nsync_interval = 60\n").expect("write config");
+
+    let mut daemon = TestDaemon::new(socket_path.clone());
+    let status = run_status(&data_dir, &config_dir, &socket_path);
+    let daemon_pid = parse_status(&status.0)["daemon_pid"]
+        .as_u64()
+        .expect("daemon pid");
+    daemon.set_pid(daemon_pid);
+
+    create_runtime_artifacts(&data_dir);
+
+    Command::cargo_bin("mxr")
+        .expect("mxr bin")
+        .env("MXR_DATA_DIR", &data_dir)
+        .env("MXR_CONFIG_DIR", &config_dir)
+        .env("MXR_SOCKET_PATH", &socket_path)
+        .args([
+            "reset",
+            "--hard",
+            "--including-config",
+            "--yes-i-understand-this-destroys-local-state",
+        ])
+        .assert()
+        .success();
+
+    assert!(!config_path.exists(), "config file should be removed");
+    assert!(
+        !socket_path.exists(),
+        "socket should be removed after reset"
+    );
+    wait_for_process_exit(daemon_pid);
+    assert!(
+        !process_is_alive(daemon_pid),
+        "daemon pid {daemon_pid} should have exited after reset"
+    );
+    assert!(!data_dir.exists(), "data dir should be removed when empty");
 }
 
 fn create_runtime_artifacts(data_dir: &Path) {

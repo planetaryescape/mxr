@@ -7,7 +7,8 @@ use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub const CONFIRMATION_PHRASE: &str = "DELETE MY MXR DATA";
+pub const DEFAULT_CONFIRMATION_PHRASE: &str = "DELETE MY MXR DATA";
+pub const CONFIG_CONFIRMATION_PHRASE: &str = "DELETE MY MXR DATA AND CONFIG";
 pub const NON_INTERACTIVE_OVERRIDE_FLAG: &str = "--yes-i-understand-this-destroys-local-state";
 
 const SHUTDOWN_WAIT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -16,6 +17,7 @@ pub struct ResetOptions {
     pub require_hard: bool,
     pub hard: bool,
     pub dry_run: bool,
+    pub including_config: bool,
     pub yes_i_understand_this_destroys_local_state: bool,
 }
 
@@ -33,6 +35,7 @@ struct ResetPlan {
     data_dir: PathBuf,
     socket_path: PathBuf,
     config_path: PathBuf,
+    including_config: bool,
     daemon_state: SocketState,
     shutdown_required: bool,
     config_read_error: Option<String>,
@@ -77,7 +80,7 @@ pub async fn run(options: ResetOptions) -> anyhow::Result<()> {
     }
 
     let context = discover_reset_context();
-    let plan = build_reset_plan(&context).await?;
+    let plan = build_reset_plan(&context, options.including_config).await?;
     println!("{}", render_reset_plan(&plan));
 
     let strategy = confirmation_strategy(
@@ -93,7 +96,7 @@ pub async fn run(options: ResetOptions) -> anyhow::Result<()> {
     }
 
     if matches!(strategy, ConfirmationStrategy::PromptForPhrase) {
-        prompt_for_confirmation_phrase()?;
+        prompt_for_confirmation_phrase(required_confirmation_phrase(plan.including_config))?;
     }
 
     let post_shutdown_state = if plan.shutdown_required {
@@ -142,13 +145,14 @@ fn discover_reset_context() -> ResetContext {
     }
 }
 
-async fn build_reset_plan(context: &ResetContext) -> anyhow::Result<ResetPlan> {
+async fn build_reset_plan(
+    context: &ResetContext,
+    including_config: bool,
+) -> anyhow::Result<ResetPlan> {
     let daemon_state = inspect_socket_state(&context.socket_path).await;
     let mut targets = Vec::new();
-    let mut preserved = vec![
-        format!("config file: {}", context.config_path.display()),
-        "credentials/keychain: system credential stores are preserved".to_string(),
-    ];
+    let mut preserved =
+        vec!["credentials/keychain: system credential stores are preserved".to_string()];
     let mut known_top_level_paths = BTreeSet::new();
 
     add_target(
@@ -157,6 +161,17 @@ async fn build_reset_plan(context: &ResetContext) -> anyhow::Result<ResetPlan> {
         context.socket_path.clone(),
         ResetTargetKind::Socket,
     );
+
+    if including_config {
+        add_target(
+            &mut targets,
+            "config file",
+            context.config_path.clone(),
+            ResetTargetKind::File,
+        );
+    } else {
+        preserved.push(format!("config file: {}", context.config_path.display()));
+    }
 
     let database_path = context.data_dir.join("mxr.db");
     add_runtime_target(
@@ -251,6 +266,7 @@ async fn build_reset_plan(context: &ResetContext) -> anyhow::Result<ResetPlan> {
         data_dir: context.data_dir.clone(),
         socket_path: context.socket_path.clone(),
         config_path: context.config_path.clone(),
+        including_config,
         daemon_state,
         shutdown_required: matches!(daemon_state, SocketState::Reachable),
         config_read_error: context.config_read_error.clone(),
@@ -291,8 +307,16 @@ fn add_target(
 fn render_reset_plan(plan: &ResetPlan) -> String {
     let mut lines = vec![
         "mxr local-state reset plan".to_string(),
-        "Destructive scope: local mxr runtime state only.".to_string(),
-        "Preserved by default: config.toml and system credentials/keychain.".to_string(),
+        if plan.including_config {
+            "Destructive scope: local mxr runtime state plus config.toml.".to_string()
+        } else {
+            "Destructive scope: local mxr runtime state only.".to_string()
+        },
+        if plan.including_config {
+            "Config-inclusive mode: config.toml will be deleted. System credentials/keychain stay preserved.".to_string()
+        } else {
+            "Preserved by default: config.toml and system credentials/keychain.".to_string()
+        },
         format!("Data dir: {}", plan.data_dir.display()),
         format!("Socket path: {}", plan.socket_path.display()),
         format!("Config path: {}", plan.config_path.display()),
@@ -305,7 +329,12 @@ fn render_reset_plan(plan: &ResetPlan) -> String {
 
     if let Some(error) = &plan.config_read_error {
         lines.push(format!(
-            "Config note: could not read config, preserving it untouched and using default attachment path under MXR_DATA_DIR ({error})"
+            "Config note: could not read config, {} and using default attachment path under MXR_DATA_DIR ({error})",
+            if plan.including_config {
+                "deleting config.toml if present"
+            } else {
+                "preserving it untouched"
+            }
         ));
     }
 
@@ -355,21 +384,29 @@ fn confirmation_strategy(
     )
 }
 
-fn prompt_for_confirmation_phrase() -> anyhow::Result<()> {
-    print!("\nType {} to continue: ", CONFIRMATION_PHRASE);
+fn prompt_for_confirmation_phrase(phrase: &str) -> anyhow::Result<()> {
+    print!("\nType {} to continue: ", phrase);
     std::io::stdout().flush()?;
 
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;
-    if confirmation_phrase_matches(input.trim_end_matches(['\n', '\r'])) {
+    if confirmation_phrase_matches(input.trim_end_matches(['\n', '\r']), phrase) {
         return Ok(());
     }
 
     anyhow::bail!("Aborted. Confirmation phrase did not match exactly.")
 }
 
-fn confirmation_phrase_matches(input: &str) -> bool {
-    input == CONFIRMATION_PHRASE
+fn confirmation_phrase_matches(input: &str, phrase: &str) -> bool {
+    input == phrase
+}
+
+fn required_confirmation_phrase(including_config: bool) -> &'static str {
+    if including_config {
+        CONFIG_CONFIRMATION_PHRASE
+    } else {
+        DEFAULT_CONFIRMATION_PHRASE
+    }
 }
 
 fn execute_reset_plan(plan: &ResetPlan) -> ResetExecutionSummary {
@@ -556,13 +593,16 @@ mod tests {
         std::fs::write(extra_path.join("scratch.tmp"), "scratch").unwrap();
         std::fs::write(&socket_path, "").unwrap();
 
-        let plan = build_reset_plan(&ResetContext {
-            data_dir: data_dir.clone(),
-            socket_path: socket_path.clone(),
-            config_path: config_path.clone(),
-            attachment_dir: attachments_path.clone(),
-            config_read_error: None,
-        })
+        let plan = build_reset_plan(
+            &ResetContext {
+                data_dir: data_dir.clone(),
+                socket_path: socket_path.clone(),
+                config_path: config_path.clone(),
+                attachment_dir: attachments_path.clone(),
+                config_read_error: None,
+            },
+            false,
+        )
         .await
         .unwrap();
 
@@ -597,13 +637,84 @@ mod tests {
         std::fs::create_dir_all(&data_dir).unwrap();
         std::fs::create_dir_all(&external_attachments).unwrap();
 
-        let plan = build_reset_plan(&ResetContext {
-            data_dir: data_dir.clone(),
-            socket_path,
-            config_path,
-            attachment_dir: external_attachments.clone(),
-            config_read_error: None,
-        })
+        let plan = build_reset_plan(
+            &ResetContext {
+                data_dir: data_dir.clone(),
+                socket_path,
+                config_path,
+                attachment_dir: external_attachments.clone(),
+                config_read_error: None,
+            },
+            false,
+        )
+        .await
+        .unwrap();
+
+        let targets = target_path_set(&plan);
+        assert!(!targets.contains(&external_attachments));
+        assert!(plan
+            .preserved
+            .iter()
+            .any(|entry| entry.contains(&external_attachments.display().to_string())));
+    }
+
+    #[tokio::test]
+    async fn reset_plan_including_config_adds_config_target() {
+        let temp = TempDir::new().unwrap();
+        let data_dir = temp.path().join("data");
+        let config_path = temp.path().join("config").join("config.toml");
+        let socket_path = temp.path().join("mxr.sock");
+
+        std::fs::create_dir_all(data_dir.join("attachments")).unwrap();
+        std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        std::fs::write(&config_path, "[general]\n").unwrap();
+
+        let plan = build_reset_plan(
+            &ResetContext {
+                data_dir: data_dir.clone(),
+                socket_path,
+                config_path: config_path.clone(),
+                attachment_dir: data_dir.join("attachments"),
+                config_read_error: None,
+            },
+            true,
+        )
+        .await
+        .unwrap();
+
+        let targets = target_path_set(&plan);
+        assert!(targets.contains(&config_path));
+        assert!(!plan
+            .preserved
+            .iter()
+            .any(|entry| entry.contains(&config_path.display().to_string())));
+        assert!(plan
+            .preserved
+            .iter()
+            .any(|entry| entry.contains("credentials/keychain")));
+    }
+
+    #[tokio::test]
+    async fn reset_plan_including_config_still_preserves_external_attachment_dir() {
+        let temp = TempDir::new().unwrap();
+        let data_dir = temp.path().join("data");
+        let config_path = temp.path().join("config.toml");
+        let socket_path = temp.path().join("mxr.sock");
+        let external_attachments = temp.path().join("external-attachments");
+
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&external_attachments).unwrap();
+
+        let plan = build_reset_plan(
+            &ResetContext {
+                data_dir,
+                socket_path,
+                config_path,
+                attachment_dir: external_attachments.clone(),
+                config_read_error: None,
+            },
+            true,
+        )
         .await
         .unwrap();
 
@@ -663,9 +774,26 @@ mod tests {
 
     #[test]
     fn confirmation_phrase_must_match_exactly() {
-        assert!(confirmation_phrase_matches(CONFIRMATION_PHRASE));
-        assert!(!confirmation_phrase_matches("delete my mxr data"));
-        assert!(!confirmation_phrase_matches("DELETE MY MXR DATA "));
+        assert!(confirmation_phrase_matches(
+            DEFAULT_CONFIRMATION_PHRASE,
+            DEFAULT_CONFIRMATION_PHRASE
+        ));
+        assert!(!confirmation_phrase_matches(
+            "delete my mxr data",
+            DEFAULT_CONFIRMATION_PHRASE
+        ));
+        assert!(!confirmation_phrase_matches(
+            "DELETE MY MXR DATA ",
+            DEFAULT_CONFIRMATION_PHRASE
+        ));
+        assert_eq!(
+            required_confirmation_phrase(true),
+            CONFIG_CONFIRMATION_PHRASE
+        );
+        assert!(!confirmation_phrase_matches(
+            DEFAULT_CONFIRMATION_PHRASE,
+            CONFIG_CONFIRMATION_PHRASE
+        ));
     }
 
     #[tokio::test]
@@ -682,13 +810,16 @@ mod tests {
         std::fs::write(socket_path.clone(), "").unwrap();
         std::fs::write(attachments_path.join("a.txt"), "attachment").unwrap();
 
-        let plan = build_reset_plan(&ResetContext {
-            data_dir: data_dir.clone(),
-            socket_path: socket_path.clone(),
-            config_path,
-            attachment_dir: attachments_path,
-            config_read_error: None,
-        })
+        let plan = build_reset_plan(
+            &ResetContext {
+                data_dir: data_dir.clone(),
+                socket_path: socket_path.clone(),
+                config_path,
+                attachment_dir: attachments_path,
+                config_read_error: None,
+            },
+            false,
+        )
         .await
         .unwrap();
 

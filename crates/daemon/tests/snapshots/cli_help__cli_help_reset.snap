@@ -2,7 +2,7 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Destroy local mxr runtime state after stopping the daemon. Preserves config.toml and credentials. Destructive; use --dry-run to preview
+Destroy local mxr runtime state after stopping the daemon. Preserves config.toml and credentials by default. Use --including-config to also delete config.toml. Destructive; use --dry-run to preview
 
 Usage: mxr reset [OPTIONS] --hard
 
@@ -11,6 +11,8 @@ Options:
           Required explicit scope marker for destructive execution
       --dry-run
           Show the exact reset plan without deleting anything
+      --including-config
+          Also delete config.toml. Credentials/keychain remain preserved
       --yes-i-understand-this-destroys-local-state
           Required for non-interactive destructive execution only
   -h, --help

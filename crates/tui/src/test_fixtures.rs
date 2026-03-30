@@ -81,7 +81,7 @@ impl TestEnvelopeBuilder {
         self
     }
 
-    pub(crate) fn from_address(mut self, name: &str, email: &str) -> Self {
+    pub(crate) fn with_from_address(mut self, name: &str, email: &str) -> Self {
         self.from = Address {
             name: Some(name.to_string()),
             email: email.to_string(),

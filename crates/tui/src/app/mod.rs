@@ -197,6 +197,7 @@ pub struct SubscriptionEntry {
     pub envelope: Envelope,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum SidebarItem {
     Account(mxr_protocol::AccountSummaryData),
@@ -3170,7 +3171,7 @@ impl App {
             .get_mut(&key.message_id)
             .and_then(|assets| assets.get_mut(&key.source))
         {
-            entry.render = crate::terminal_images::HtmlImageRenderState::Ready(protocol);
+            entry.render = crate::terminal_images::HtmlImageRenderState::Ready(Box::new(protocol));
         }
     }
 

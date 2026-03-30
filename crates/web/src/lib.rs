@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 mod chrome;
 mod envelope_list;
 
@@ -11,7 +13,7 @@ use axum::{
     Json, Router,
 };
 use chrome::{ack_mutation, ack_request, build_bridge_chrome, load_mailbox_selection};
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Local, TimeZone, Utc};
 use envelope_list::{
     dedupe_search_results_by_thread, group_envelopes, message_row_view, reorder_envelopes,
     thread_reader_mode,
@@ -1241,9 +1243,9 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
     };
     let mut framed = Framed::new(stream, IpcCodec::new());
 
-    loop {
-        match framed.next().await {
-            Some(Ok(message)) => match message.payload {
+    while let Some(message) = framed.next().await {
+        match message {
+            Ok(message) => match message.payload {
                 IpcPayload::Event(event) => {
                     let payload = match serde_json::to_string(&event) {
                         Ok(payload) => payload,
@@ -1259,7 +1261,7 @@ async fn bridge_events(mut socket: WebSocket, socket_path: PathBuf) {
                 }
                 _ => continue,
             },
-            Some(Err(_)) | None => break,
+            Err(_) => break,
         }
     }
 }
@@ -1665,30 +1667,18 @@ fn resolve_snooze_until(
     until: &str,
     config: &mxr_config::SnoozeConfig,
 ) -> Result<DateTime<Utc>, BridgeError> {
-    use chrono::{Datelike, Duration, NaiveTime, Weekday};
+    use chrono::{Datelike, Duration, Weekday};
 
     let now = Local::now();
     let lower = until.trim().to_ascii_lowercase();
     let wake_at = match lower.as_str() {
         "tomorrow" | "tomorrow_morning" => {
             let tomorrow = now.date_naive() + Duration::days(1);
-            let time = NaiveTime::from_hms_opt(config.morning_hour as u32, 0, 0).unwrap();
-            tomorrow
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
+            local_datetime_utc(tomorrow, u32::from(config.morning_hour), now.timezone())
         }
         "tonight" => {
             let today = now.date_naive();
-            let time = NaiveTime::from_hms_opt(config.evening_hour as u32, 0, 0).unwrap();
-            let tonight = today
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc);
+            let tonight = local_datetime_utc(today, u32::from(config.evening_hour), now.timezone());
             if tonight <= Utc::now() {
                 tonight + Duration::days(1)
             } else {
@@ -1706,13 +1696,7 @@ fn resolve_snooze_until(
                 % 7;
             let days = if days_until == 0 { 7 } else { days_until };
             let weekend = now.date_naive() + Duration::days(days);
-            let time = NaiveTime::from_hms_opt(config.weekend_hour as u32, 0, 0).unwrap();
-            weekend
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
+            local_datetime_utc(weekend, u32::from(config.weekend_hour), now.timezone())
         }
         "monday" | "next_monday" => {
             let days_until_monday = (Weekday::Mon.num_days_from_monday() as i64
@@ -1725,19 +1709,25 @@ fn resolve_snooze_until(
                 days_until_monday
             };
             let monday = now.date_naive() + chrono::Duration::days(days);
-            let time = NaiveTime::from_hms_opt(config.morning_hour as u32, 0, 0).unwrap();
-            monday
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
+            local_datetime_utc(monday, u32::from(config.morning_hour), now.timezone())
         }
         _ => DateTime::parse_from_rfc3339(until)
             .map_err(|_| BridgeError::Ipc(format!("invalid snooze time: {until}")))?
             .with_timezone(&Utc),
     };
     Ok(wake_at)
+}
+
+fn local_datetime_utc(date: chrono::NaiveDate, hour: u32, timezone: Local) -> DateTime<Utc> {
+    let time = chrono::NaiveTime::from_hms_opt(hour, 0, 0).expect("validated snooze hour");
+    let candidate = date.and_time(time);
+    timezone
+        .from_local_datetime(&candidate)
+        .single()
+        .or_else(|| timezone.from_local_datetime(&candidate).earliest())
+        .or_else(|| timezone.from_local_datetime(&candidate).latest())
+        .expect("snooze local datetime should resolve")
+        .with_timezone(&Utc)
 }
 
 // --- Feature parity routes ---

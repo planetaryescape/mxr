@@ -175,11 +175,11 @@ fn command_palette_prompt_row_stays_fixed() {
     let broad_line = broad_snapshot
         .lines()
         .position(|line| line.contains("> a"))
-        .unwrap();
+        .expect("broad snapshot should contain selected shortcut");
     let narrow_line = narrow_snapshot
         .lines()
         .position(|line| line.contains("> edit config"))
-        .unwrap();
+        .expect("narrow snapshot should contain selected command");
     assert_eq!(broad_line, narrow_line);
 }
 

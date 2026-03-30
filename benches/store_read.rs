@@ -1,9 +1,9 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use mxr::mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr::mxr_core::types::{
+use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::types::{
     Account, Address, BackendRef, Envelope, MessageFlags, ProviderKind, UnsubscribeMethod,
 };
-use mxr::mxr_store::Store;
+use mxr_store::Store;
 
 fn bench_store_read(c: &mut Criterion) {
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");

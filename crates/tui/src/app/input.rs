@@ -1121,15 +1121,14 @@ impl App {
                         account_form_field_value(&self.accounts_page.form)
                             .map(|value| value.chars().count())
                             .unwrap_or(0);
-                    None
-                } else if self.accounts_page.form.active_field == 0 {
-                    self.request_account_form_mode_change(true);
-                    None
-                } else if self.toggle_current_account_form_field(true) {
-                    None
                 } else {
-                    None
+                    if self.accounts_page.form.active_field == 0 {
+                        self.request_account_form_mode_change(true);
+                    } else {
+                        let _ = self.toggle_current_account_form_field(true);
+                    }
                 }
+                None
             }
             (KeyCode::Char('t'), _) => Some(Action::TestAccountForm),
             (KeyCode::Char('o'), _)

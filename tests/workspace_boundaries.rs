@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use std::{fs, path::PathBuf};
 
 fn repo_root() -> PathBuf {

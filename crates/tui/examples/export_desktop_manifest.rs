@@ -1,4 +1,7 @@
 fn main() {
-    let manifest = mxr::mxr_tui::desktop_manifest::desktop_manifest();
-    println!("{}", serde_json::to_string_pretty(&manifest).unwrap());
+    let manifest = mxr_tui::desktop_manifest::desktop_manifest();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&manifest).expect("desktop manifest should serialize")
+    );
 }

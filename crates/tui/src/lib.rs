@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 pub mod action;
 pub mod app;
 pub mod client;
@@ -2318,7 +2320,7 @@ mod tests {
             .map(|i| {
                 TestEnvelopeBuilder::new()
                     .provider_id(format!("fake-{}", i))
-                    .from_address(&format!("User {}", i), &format!("user{}@example.com", i))
+                    .with_from_address(&format!("User {}", i), &format!("user{}@example.com", i))
                     .to(vec![])
                     .subject(format!("Subject {}", i))
                     .message_id_header(None)
@@ -2342,7 +2344,7 @@ mod tests {
         TestEnvelopeBuilder::new()
             .account_id(account_id)
             .provider_id("unsub-fixture")
-            .from_address("Newsletter", sender_email)
+            .with_from_address("Newsletter", sender_email)
             .to(vec![])
             .subject("Newsletter")
             .message_id_header(None)
@@ -3274,7 +3276,7 @@ mod tests {
         match app.pending_bulk_confirm.as_ref() {
             Some(confirm) => match &confirm.request {
                 Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
-                    assert_eq!(*read, true);
+                    assert!(*read);
                     assert_eq!(message_ids.len(), 3);
                 }
                 other => panic!("Expected SetRead bulk request, got {other:?}"),

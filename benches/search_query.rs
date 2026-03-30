@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use mxr::mxr_core::id::{AccountId, MessageId, ThreadId};
-use mxr::mxr_core::types::{Address, Envelope, MessageFlags, SortOrder, UnsubscribeMethod};
-use mxr::mxr_search::{parse_query, MxrSchema, QueryBuilder, SearchIndex};
+use mxr_core::id::{AccountId, MessageId, ThreadId};
+use mxr_core::types::{Address, Envelope, MessageFlags, SortOrder, UnsubscribeMethod};
+use mxr_search::{parse_query, MxrSchema, QueryBuilder, SearchIndex};
 
 fn bench_search_query(c: &mut Criterion) {
     let mut index = SearchIndex::in_memory().expect("search index");

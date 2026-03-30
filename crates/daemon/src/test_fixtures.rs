@@ -1,4 +1,6 @@
 #![cfg(test)]
+#![allow(clippy::wrong_self_convention, dead_code)]
+
 use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::Account;

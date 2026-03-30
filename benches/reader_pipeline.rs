@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use mxr::mxr_reader::{clean, ReaderConfig};
+use mxr_reader::{clean, ReaderConfig};
 
 fn bench_reader_pipeline(c: &mut Criterion) {
     let html = include_str!("../crates/reader/tests/fixtures/newsletter.html");

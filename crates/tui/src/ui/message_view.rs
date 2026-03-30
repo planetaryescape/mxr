@@ -250,6 +250,7 @@ pub fn draw(
     render_blocks(frame, inner, scroll_offset, blocks, theme, html_images);
 }
 
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
     use super::*;

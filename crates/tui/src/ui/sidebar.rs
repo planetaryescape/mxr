@@ -25,6 +25,15 @@ pub struct SidebarView<'a> {
     pub active_label: Option<&'a mxr_core::LabelId>,
 }
 
+struct SidebarBuildState<'a> {
+    subscription_count: usize,
+    accounts: &'a [AccountInfo],
+    accounts_expanded: bool,
+    system_expanded: bool,
+    user_expanded: bool,
+    saved_searches_expanded: bool,
+}
+
 #[derive(Debug, Clone)]
 enum SidebarEntry<'a> {
     Separator,
@@ -41,16 +50,15 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
     let border_style = theme.border_style(is_focused);
 
     let inner_width = area.width.saturating_sub(2) as usize;
-    let entries = build_sidebar_entries(
-        view.labels,
-        view.saved_searches,
-        view.subscription_count,
-        &view.accounts,
-        view.accounts_expanded,
-        view.system_expanded,
-        view.user_expanded,
-        view.saved_searches_expanded,
-    );
+    let build_state = SidebarBuildState {
+        subscription_count: view.subscription_count,
+        accounts: &view.accounts,
+        accounts_expanded: view.accounts_expanded,
+        system_expanded: view.system_expanded,
+        user_expanded: view.user_expanded,
+        saved_searches_expanded: view.saved_searches_expanded,
+    };
+    let entries = build_sidebar_entries(view.labels, view.saved_searches, &build_state);
     let selected_visual_index = visual_index_for_selection(&entries, view.sidebar_selected);
 
     let items = entries
@@ -104,12 +112,7 @@ pub fn draw(frame: &mut Frame, area: Rect, view: &SidebarView<'_>, theme: &Theme
 fn build_sidebar_entries<'a>(
     labels: &'a [Label],
     saved_searches: &'a [SavedSearch],
-    subscription_count: usize,
-    accounts: &[AccountInfo],
-    accounts_expanded: bool,
-    system_expanded: bool,
-    user_expanded: bool,
-    saved_searches_expanded: bool,
+    state: &SidebarBuildState<'_>,
 ) -> Vec<SidebarEntry<'a>> {
     let visible_labels: Vec<&Label> = labels
         .iter()
@@ -136,13 +139,13 @@ fn build_sidebar_entries<'a>(
     let mut entries = Vec::new();
 
     // Accounts section (only shown when multiple accounts exist)
-    if accounts.len() > 1 {
+    if state.accounts.len() > 1 {
         entries.push(SidebarEntry::Header {
             title: "Accounts",
-            expanded: accounts_expanded,
+            expanded: state.accounts_expanded,
         });
-        if accounts_expanded {
-            entries.extend(accounts.iter().map(|a| SidebarEntry::Account {
+        if state.accounts_expanded {
+            entries.extend(state.accounts.iter().map(|a| SidebarEntry::Account {
                 email: a.email.clone(),
                 is_default: a.is_default,
             }));
@@ -152,14 +155,14 @@ fn build_sidebar_entries<'a>(
 
     entries.push(SidebarEntry::Header {
         title: "System",
-        expanded: system_expanded,
+        expanded: state.system_expanded,
     });
-    if system_expanded {
+    if state.system_expanded {
         entries.extend(system_labels.into_iter().map(SidebarEntry::Label));
     }
     entries.push(SidebarEntry::AllMail);
     entries.push(SidebarEntry::Subscriptions {
-        count: subscription_count,
+        count: state.subscription_count,
     });
 
     if !user_labels.is_empty() {
@@ -168,9 +171,9 @@ fn build_sidebar_entries<'a>(
         }
         entries.push(SidebarEntry::Header {
             title: "Labels",
-            expanded: user_expanded,
+            expanded: state.user_expanded,
         });
-        if user_expanded {
+        if state.user_expanded {
             entries.extend(user_labels.into_iter().map(SidebarEntry::Label));
         }
     }
@@ -181,9 +184,9 @@ fn build_sidebar_entries<'a>(
         }
         entries.push(SidebarEntry::Header {
             title: "Saved Searches",
-            expanded: saved_searches_expanded,
+            expanded: state.saved_searches_expanded,
         });
-        if saved_searches_expanded {
+        if state.saved_searches_expanded {
             entries.extend(saved_searches.iter().map(SidebarEntry::SavedSearch));
         }
     }
@@ -399,7 +402,15 @@ mod tests {
             label("INBOX", LabelKind::System),
             label("Work", LabelKind::User),
         ];
-        let entries = build_sidebar_entries(&labels, &[], 3, &[], true, true, true, true);
+        let state = SidebarBuildState {
+            subscription_count: 3,
+            accounts: &[],
+            accounts_expanded: true,
+            system_expanded: true,
+            user_expanded: true,
+            saved_searches_expanded: true,
+        };
+        let entries = build_sidebar_entries(&labels, &[], &state);
         assert!(matches!(
             entries[0],
             SidebarEntry::Header {
@@ -441,7 +452,15 @@ mod tests {
             position: 0,
             created_at: chrono::Utc::now(),
         }];
-        let entries = build_sidebar_entries(&labels, &searches, 2, &[], true, true, true, true);
+        let state = SidebarBuildState {
+            subscription_count: 2,
+            accounts: &[],
+            accounts_expanded: true,
+            system_expanded: true,
+            user_expanded: true,
+            saved_searches_expanded: true,
+        };
+        let entries = build_sidebar_entries(&labels, &searches, &state);
         assert_eq!(visual_index_for_selection(&entries, 0), Some(1));
         assert_eq!(visual_index_for_selection(&entries, 1), Some(2));
         assert_eq!(visual_index_for_selection(&entries, 2), Some(3));

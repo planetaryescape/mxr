@@ -23,7 +23,7 @@ pub struct HtmlImageEntry {
 
 pub enum HtmlImageRenderState {
     Pending,
-    Ready(ThreadProtocol),
+    Ready(Box<ThreadProtocol>),
     Failed(String),
 }
 
@@ -84,7 +84,7 @@ impl HtmlImageEntry {
 
     pub fn ready_protocol_mut(&mut self) -> Option<&mut ThreadProtocol> {
         match &mut self.render {
-            HtmlImageRenderState::Ready(protocol) => Some(protocol),
+            HtmlImageRenderState::Ready(protocol) => Some(protocol.as_mut()),
             HtmlImageRenderState::Pending | HtmlImageRenderState::Failed(_) => None,
         }
     }
@@ -95,6 +95,7 @@ impl HtmlImageEntry {
         }
         match &self.render {
             HtmlImageRenderState::Ready(protocol) => protocol
+                .as_ref()
                 .size_for(Resize::Fit(None), Rect::new(0, 0, width, max_height))
                 .map(|size| size.height.max(1))
                 .unwrap_or_else(|| self.placeholder_height()),

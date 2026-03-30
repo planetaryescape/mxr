@@ -17,7 +17,7 @@ brew tap planetaryescape/mxr
 brew install mxr
 
 # Cargo (release tag)
-cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.29 --locked mxr
+cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.30 --locked mxr
 ```
 
 Pre-built release tarballs are also available for:
@@ -110,6 +110,24 @@ mxr semantic status
 mxr doctor --semantic-status
 ```
 
+## Reset local runtime state
+
+When local mxr state gets messy during development or recovery, you can wipe the rebuildable runtime state without deleting config or credentials:
+
+```bash
+mxr reset --hard --dry-run
+mxr burn --dry-run
+```
+
+Real execution is intentionally hard to trigger:
+
+- `mxr reset --hard` is the primary command
+- `mxr burn` is the memorable alias
+- both stop the daemon first, then remove local runtime state under `MXR_DATA_DIR`
+- both preserve `config.toml` and system keychain/keyring credentials by default
+- `--dry-run` prints the exact delete plan first
+- non-interactive destructive runs require `--yes-i-understand-this-destroys-local-state`
+
 ## Why this feels different
 
 mxr connects to your provider directly, syncs mail into a local SQLite database, and indexes it with Tantivy. No hosted relay. No extra control plane in the middle. Your scripts, your terminal, and your agent all talk to the same local runtime.
@@ -189,6 +207,7 @@ mxr sync
 mxr
 mxr search "is:unread" --format json
 mxr archive --search "older:30d label:notifications" --dry-run
+mxr reset --hard --dry-run
 mxr history --category mutation
 ```
 

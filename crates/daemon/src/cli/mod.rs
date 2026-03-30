@@ -170,6 +170,27 @@ pub enum Command {
         #[arg(long)]
         purge: bool,
     },
+    /// Destroy local mxr runtime state after stopping the daemon. Preserves config.toml and credentials. Destructive; use --dry-run to preview.
+    Reset {
+        /// Required explicit scope marker for destructive execution
+        #[arg(long, required = true)]
+        hard: bool,
+        /// Show the exact reset plan without deleting anything
+        #[arg(long)]
+        dry_run: bool,
+        /// Required for non-interactive destructive execution only
+        #[arg(long = "yes-i-understand-this-destroys-local-state")]
+        yes_i_understand_this_destroys_local_state: bool,
+    },
+    /// Destroy local mxr runtime state after stopping the daemon. Alias for `mxr reset --hard`. Preserves config.toml and credentials. Destructive; use --dry-run to preview.
+    Burn {
+        /// Show the exact reset plan without deleting anything
+        #[arg(long)]
+        dry_run: bool,
+        /// Required for non-interactive destructive execution only
+        #[arg(long = "yes-i-understand-this-destroys-local-state")]
+        yes_i_understand_this_destroys_local_state: bool,
+    },
     /// Generate a sanitized diagnostic bundle
     BugReport {
         #[arg(long)]

@@ -8,6 +8,9 @@ Usage: mxr config [COMMAND]
 
 Commands:
   path  Show config file path
+  edit  Open config in $EDITOR
+  get   Get a config value
+  set   Set a config value
   help  Print this message or the help of the given subcommand(s)
 
 Options:

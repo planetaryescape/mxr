@@ -71,6 +71,31 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         }) => {
             commands::logs::run(no_follow, level, since, purge)?;
         }
+        Some(Command::Reset {
+            hard,
+            dry_run,
+            yes_i_understand_this_destroys_local_state,
+        }) => {
+            commands::reset::run(commands::reset::ResetOptions {
+                require_hard: true,
+                hard,
+                dry_run,
+                yes_i_understand_this_destroys_local_state,
+            })
+            .await?;
+        }
+        Some(Command::Burn {
+            dry_run,
+            yes_i_understand_this_destroys_local_state,
+        }) => {
+            commands::reset::run(commands::reset::ResetOptions {
+                require_hard: false,
+                hard: true,
+                dry_run,
+                yes_i_understand_this_destroys_local_state,
+            })
+            .await?;
+        }
         Some(Command::BugReport {
             edit,
             stdout,

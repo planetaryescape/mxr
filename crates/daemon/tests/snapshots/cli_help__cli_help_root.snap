@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 13
 expression: stdout
 ---
 Terminal email client
@@ -26,6 +25,8 @@ Commands:
   history        Show persisted event history
   notify         Unread summary for status bars
   logs           View daemon logs
+  reset          Destroy local mxr runtime state after stopping the daemon. Preserves config.toml and credentials. Destructive; use --dry-run to preview
+  burn           Destroy local mxr runtime state after stopping the daemon. Alias for `mxr reset --hard`. Preserves config.toml and credentials. Destructive; use --dry-run to preview
   bug-report     Generate a sanitized diagnostic bundle
   accounts       Manage accounts
   doctor         Run diagnostics

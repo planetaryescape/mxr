@@ -24,6 +24,7 @@ It does not get special screen-only payloads from the daemon. Formatting stays i
 | `mxr sync [--account NAME] [--status] [--history]` | Trigger or inspect sync |
 | `mxr status [--watch]` | Daemon health |
 | `mxr doctor` | Diagnostics and index/store checks |
+| `mxr reset --hard` / `mxr burn` | Destroy local runtime state only |
 
 ## Mail retrieval and inspection
 
@@ -223,6 +224,22 @@ mxr bug-report
 mxr bug-report --stdout
 mxr bug-report --github
 ```
+
+## Local reset
+
+```bash
+mxr reset --hard --dry-run
+mxr burn --dry-run
+mxr reset --hard --yes-i-understand-this-destroys-local-state
+```
+
+Notes:
+
+- destroys local runtime state only: database, indexes, semantic model cache, attachments under `MXR_DATA_DIR`, logs, source temp artifacts, and other rebuildable data-dir state
+- stops the daemon first, then removes the planned paths
+- preserves `config.toml` and system keychain/keyring credentials by default
+- interactive destructive runs require typing `DELETE MY MXR DATA`
+- non-interactive destructive runs require `--yes-i-understand-this-destroys-local-state`
 
 ## Config and shell integration
 

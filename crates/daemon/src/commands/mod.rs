@@ -13,6 +13,7 @@ pub mod labels;
 pub mod logs;
 pub mod mutations;
 pub mod notify;
+pub mod reset;
 pub mod rules;
 pub mod saved;
 pub mod search;

@@ -37,7 +37,7 @@ Classify IPC into four buckets:
 
 1. `core-mail`: stable mail/runtime capabilities
 2. `mxr-platform`: accounts, rules, saved searches, subscriptions, semantic runtime
-3. `admin-maintenance`: status, events, logs, doctor, bug reports, repair/inspection
+3. `admin-maintenance`: status, events, logs, doctor, bug reports, local reset, repair/inspection
 4. `client-specific`: pane/selection/view shaping; keep this out of daemon IPC
 
 Rules:
@@ -178,6 +178,7 @@ Tests that cross component boundaries catch the bugs that actually ship:
 - JSON/JSONL output must stay pipeable
 - TUI is a client of the daemon, not the system itself
 - Distraction-free rendering: plain text first, reader mode, no inline images
+- `mxr reset --hard` / `mxr burn` wipe local runtime state only; preserve config and system credentials by default
 
 ## Key Design Decisions (settled, do not re-debate)
 

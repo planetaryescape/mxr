@@ -32,7 +32,7 @@ The contract has four buckets:
    Accounts, rules, saved searches, subscriptions, semantic runtime/profile management.
    These are real mxr product/runtime features, not mail timelessness and not client-only convenience.
 3. `admin-maintenance`
-   Status, events, logs, doctor, bug-report, repair/inspection surfaces.
+   Status, events, logs, doctor, bug-report, local reset, repair/inspection surfaces.
    These stay in IPC, but are conceptually fenced off from the core mail contract.
 4. `client-specific`
    Pane state, selection state, sidebar collapse, grouped rows, right-rail payloads, widget-specific shaping.
@@ -100,4 +100,5 @@ Repair boundary:
 - Providers may use shared mail utility crates like `mail-parse` and `outbound`, but never `compose`.
 - Clients may use local utility crates like `config`, `compose`, `reader`, and `mail-parse`, but they must not depend on daemon/store/search/sync/provider crates.
 - Search/status/doctor/events are all available over IPC, but only mail workflows define the core contract.
+- `mxr reset --hard` / `mxr burn` are CLI-only maintenance commands that wipe rebuildable local runtime state while preserving config and credentials by default.
 - Future contributors should classify new IPC first, then add it. Do not grow a junk drawer.

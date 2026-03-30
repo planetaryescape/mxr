@@ -28,13 +28,18 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_sync", &["sync", "--help"]),
         ("cli_help_saved", &["saved", "--help"]),
         ("cli_help_semantic", &["semantic", "--help"]),
-        ("cli_help_semantic_profile", &["semantic", "profile", "--help"]),
+        (
+            "cli_help_semantic_profile",
+            &["semantic", "profile", "--help"],
+        ),
         ("cli_help_status", &["status", "--help"]),
         ("cli_help_web", &["web", "--help"]),
         ("cli_help_events", &["events", "--help"]),
         ("cli_help_history", &["history", "--help"]),
         ("cli_help_notify", &["notify", "--help"]),
         ("cli_help_logs", &["logs", "--help"]),
+        ("cli_help_reset", &["reset", "--help"]),
+        ("cli_help_burn", &["burn", "--help"]),
         ("cli_help_bug_report", &["bug-report", "--help"]),
         ("cli_help_accounts", &["accounts", "--help"]),
         ("cli_help_doctor", &["doctor", "--help"]),
@@ -66,7 +71,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_completions", &["completions", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 48);
+    assert_eq!(cases.len(), 50);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

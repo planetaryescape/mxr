@@ -10,6 +10,8 @@ Arguments:
   <MESSAGE_ID>  
 
 Options:
+      --view <VIEW>      [possible values: reader, raw, html, headers]
+      --assets           
       --raw              
       --html             
       --format <FORMAT>  [possible values: table, json, csv, ids]

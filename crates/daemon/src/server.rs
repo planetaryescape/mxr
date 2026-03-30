@@ -235,13 +235,13 @@ pub(crate) async fn search_requires_repair(state: &Arc<AppState>, total_messages
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SocketState {
+pub(crate) enum SocketState {
     Reachable,
     Stale,
     Missing,
 }
 
-async fn inspect_socket_state(path: &std::path::Path) -> SocketState {
+pub(crate) async fn inspect_socket_state(path: &std::path::Path) -> SocketState {
     if !path.exists() {
         return SocketState::Missing;
     }
@@ -409,8 +409,34 @@ async fn restart_daemon_process(
     spawn_daemon_process(sock_path, "").await
 }
 
+pub(crate) async fn shutdown_daemon_for_maintenance(
+    sock_path: &std::path::Path,
+    wait_timeout: Duration,
+) -> anyhow::Result<SocketState> {
+    let mut state = inspect_socket_state(sock_path).await;
+    if !matches!(state, SocketState::Reachable) {
+        return Ok(state);
+    }
+
+    let _ = request_shutdown_to(sock_path).await;
+    let deadline = std::time::Instant::now() + wait_timeout;
+    while std::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        state = inspect_socket_state(sock_path).await;
+        if !matches!(state, SocketState::Reachable) {
+            return Ok(state);
+        }
+    }
+
+    Ok(inspect_socket_state(sock_path).await)
+}
+
 async fn request_shutdown() -> anyhow::Result<()> {
-    let mut client = IpcClient::connect().await?;
+    request_shutdown_to(&AppState::socket_path()).await
+}
+
+async fn request_shutdown_to(sock_path: &std::path::Path) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect_to(sock_path).await?;
     client.notify(Request::Shutdown).await
 }
 

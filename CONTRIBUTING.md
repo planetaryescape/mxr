@@ -120,6 +120,15 @@ mxr doctor --check
 
 If you changed rules, exports, labels, notify, events, or logs, exercise the matching CLI surface too.
 
+If local dev state gets messy, prefer the built-in reset flow over manual file hunting:
+
+```bash
+mxr reset --hard --dry-run
+mxr burn --dry-run
+```
+
+That wipes rebuildable local runtime state only. It does not delete `config.toml` or system credentials by default.
+
 ## Running the daemon
 
 `mxr daemon --foreground` is the canonical manual-test entrypoint. Keep it running in one terminal, then use a second terminal for CLI smoke tests like `mxr status`, `mxr sync --status`, `mxr search`, and the mutation flow you changed.

@@ -282,6 +282,15 @@ impl AppState {
         Ok(config)
     }
 
+    #[cfg(test)]
+    pub async fn set_config_for_test(&self, config: mxr_config::MxrConfig) {
+        self.semantic
+            .lock()
+            .await
+            .apply_config(config.search.semantic.clone());
+        *self.config.write() = config;
+    }
+
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn default_provider(&self) -> Arc<dyn MailSyncProvider> {
         self.runtime

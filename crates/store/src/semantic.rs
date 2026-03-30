@@ -77,28 +77,13 @@ impl super::Store {
         Ok(())
     }
 
-    pub async fn replace_semantic_message_data(
+    pub async fn replace_semantic_chunks(
         &self,
         message_id: &MessageId,
-        profile_id: &SemanticProfileId,
         chunks: &[SemanticChunkRecord],
-        embeddings: &[SemanticEmbeddingRecord],
     ) -> Result<(), sqlx::Error> {
         let mut tx = self.writer().begin().await?;
         let message_id_str = message_id.as_str();
-        let profile_id_str = profile_id.as_str();
-
-        sqlx::query(
-            r#"DELETE FROM semantic_embeddings
-               WHERE profile_id = ?
-                 AND chunk_id IN (
-                    SELECT id FROM semantic_chunks WHERE message_id = ?
-               )"#,
-        )
-        .bind(profile_id_str)
-        .bind(&message_id_str)
-        .execute(&mut *tx)
-        .await?;
 
         sqlx::query("DELETE FROM semantic_chunks WHERE message_id = ?")
             .bind(&message_id_str)
@@ -123,6 +108,32 @@ impl super::Store {
             .await?;
         }
 
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn replace_semantic_embeddings(
+        &self,
+        message_id: &MessageId,
+        profile_id: &SemanticProfileId,
+        embeddings: &[SemanticEmbeddingRecord],
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = self.writer().begin().await?;
+        let message_id_str = message_id.as_str();
+        let profile_id_str = profile_id.as_str();
+
+        sqlx::query(
+            r#"DELETE FROM semantic_embeddings
+               WHERE profile_id = ?
+                 AND chunk_id IN (
+                    SELECT id FROM semantic_chunks WHERE message_id = ?
+               )"#,
+        )
+        .bind(profile_id_str)
+        .bind(&message_id_str)
+        .execute(&mut *tx)
+        .await?;
+
         for embedding in embeddings {
             sqlx::query(
                 r#"INSERT INTO semantic_embeddings
@@ -142,6 +153,23 @@ impl super::Store {
 
         tx.commit().await?;
         Ok(())
+    }
+
+    pub async fn list_semantic_chunks(
+        &self,
+        message_id: &MessageId,
+    ) -> Result<Vec<SemanticChunkRecord>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"SELECT id, message_id, source_kind, ordinal, normalized, content_hash, created_at, updated_at
+               FROM semantic_chunks
+               WHERE message_id = ?
+               ORDER BY ordinal ASC"#,
+        )
+        .bind(message_id.as_str())
+        .fetch_all(self.reader())
+        .await?;
+
+        rows.into_iter().map(row_to_semantic_chunk).collect()
     }
 
     pub async fn list_semantic_embeddings(
@@ -200,6 +228,19 @@ impl super::Store {
     }
 }
 
+fn row_to_semantic_chunk(row: sqlx::sqlite::SqliteRow) -> Result<SemanticChunkRecord, sqlx::Error> {
+    Ok(SemanticChunkRecord {
+        id: decode_id(&row.get::<String, _>("id"))?,
+        message_id: decode_id(&row.get::<String, _>("message_id"))?,
+        source_kind: decode_json(&row.get::<String, _>("source_kind"))?,
+        ordinal: row.get::<i64, _>("ordinal") as u32,
+        normalized: row.get::<String, _>("normalized"),
+        content_hash: row.get::<String, _>("content_hash"),
+        created_at: decode_timestamp(row.get::<i64, _>("created_at"))?,
+        updated_at: decode_timestamp(row.get::<i64, _>("updated_at"))?,
+    })
+}
+
 fn row_to_semantic_profile(
     row: sqlx::sqlite::SqliteRow,
 ) -> Result<SemanticProfileRecord, sqlx::Error> {
@@ -220,4 +261,102 @@ fn row_to_semantic_profile(
         progress_total: row.get::<i64, _>("progress_total") as u32,
         last_error: row.get::<Option<String>, _>("last_error"),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+    use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
+
+    #[tokio::test]
+    async fn replacing_chunks_cascades_existing_embeddings_for_all_profiles() {
+        let store = super::super::Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        store.upsert_envelope(&envelope).await.unwrap();
+
+        let now = chrono::Utc::now();
+        let original_chunk = SemanticChunkRecord {
+            id: SemanticChunkId::new(),
+            message_id: envelope.id.clone(),
+            source_kind: SemanticChunkSourceKind::Body,
+            ordinal: 0,
+            normalized: "old body".into(),
+            content_hash: "old-hash".into(),
+            created_at: now,
+            updated_at: now,
+        };
+        store
+            .replace_semantic_chunks(&envelope.id, std::slice::from_ref(&original_chunk))
+            .await
+            .unwrap();
+
+        for profile in [SemanticProfile::BgeSmallEnV15, SemanticProfile::BgeM3] {
+            let profile_record = SemanticProfileRecord {
+                id: SemanticProfileId::new(),
+                profile,
+                backend: "test".into(),
+                model_revision: "test".into(),
+                dimensions: 2,
+                status: SemanticProfileStatus::Ready,
+                installed_at: Some(now),
+                activated_at: Some(now),
+                last_indexed_at: Some(now),
+                progress_completed: 1,
+                progress_total: 1,
+                last_error: None,
+            };
+            store
+                .upsert_semantic_profile(&profile_record)
+                .await
+                .unwrap();
+
+            let embedding = SemanticEmbeddingRecord {
+                chunk_id: original_chunk.id.clone(),
+                profile_id: profile_record.id.clone(),
+                dimensions: 2,
+                vector: vec![1, 2, 3, 4, 5, 6, 7, 8],
+                status: SemanticEmbeddingStatus::Ready,
+                created_at: now,
+                updated_at: now,
+            };
+            store
+                .replace_semantic_embeddings(
+                    &envelope.id,
+                    &embedding.profile_id,
+                    std::slice::from_ref(&embedding),
+                )
+                .await
+                .unwrap();
+        }
+
+        let replacement_chunk = SemanticChunkRecord {
+            id: SemanticChunkId::new(),
+            message_id: envelope.id.clone(),
+            source_kind: SemanticChunkSourceKind::Body,
+            ordinal: 0,
+            normalized: "new body".into(),
+            content_hash: "new-hash".into(),
+            created_at: now,
+            updated_at: now,
+        };
+        store
+            .replace_semantic_chunks(&envelope.id, std::slice::from_ref(&replacement_chunk))
+            .await
+            .unwrap();
+
+        let counts = store.collect_record_counts().await.unwrap();
+        assert_eq!(counts.semantic_chunks, 1);
+        assert_eq!(counts.semantic_embeddings, 0);
+
+        let chunks = store.list_semantic_chunks(&envelope.id).await.unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].normalized, "new body");
+    }
 }

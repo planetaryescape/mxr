@@ -1,3 +1,13 @@
+#![cfg_attr(
+    test,
+    allow(
+        clippy::bool_assert_comparison,
+        clippy::len_zero,
+        clippy::panic,
+        clippy::unwrap_used
+    )
+)]
+
 mod accounts;
 mod admin;
 #[path = "diagnostics/mod.rs"]
@@ -3727,6 +3737,52 @@ mod tests {
                     .notes
                     .iter()
                     .any(|note| note.contains("no semantic text terms")));
+            }
+            other => panic!(
+                "Expected SearchResults with explain payload, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_fielded_semantic_query_explains_disabled_fallback() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        state
+            .sync_engine
+            .sync_account(state.default_provider().as_ref())
+            .await
+            .unwrap();
+
+        let msg = IpcMessage {
+            id: 15,
+            payload: IpcPayload::Request(Request::Search {
+                query: "body:deployment".to_string(),
+                limit: 10,
+                offset: 0,
+                mode: Some(mxr_core::SearchMode::Hybrid),
+                sort: Some(mxr_core::types::SortOrder::DateDesc),
+                explain: true,
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data:
+                    ResponseData::SearchResults {
+                        results,
+                        explain: Some(explain),
+                        ..
+                    },
+            }) => {
+                assert!(!results.is_empty());
+                assert_eq!(explain.requested_mode, mxr_core::SearchMode::Hybrid);
+                assert_eq!(explain.executed_mode, mxr_core::SearchMode::Lexical);
+                assert_eq!(explain.semantic_query.as_deref(), Some("deployment"));
+                assert!(explain
+                    .notes
+                    .iter()
+                    .any(|note| note.contains("semantic search disabled in config")));
             }
             other => panic!(
                 "Expected SearchResults with explain payload, got {:?}",

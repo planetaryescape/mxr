@@ -89,6 +89,8 @@ async fn count_bound_rows(pool: &SqlitePool, sql: &str, value: i64) -> Result<u3
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::StoreRecordCounts;
     use mxr_core::id::{
         AccountId, DraftId, MessageId, SavedSearchId, SemanticChunkId, SemanticProfileId, ThreadId,
@@ -286,12 +288,11 @@ mod tests {
             updated_at: chrono::Utc::now(),
         };
         store
-            .replace_semantic_message_data(
-                &message_id,
-                &profile.id,
-                std::slice::from_ref(&chunk),
-                std::slice::from_ref(&embedding),
-            )
+            .replace_semantic_chunks(&message_id, std::slice::from_ref(&chunk))
+            .await
+            .unwrap();
+        store
+            .replace_semantic_embeddings(&message_id, &profile.id, std::slice::from_ref(&embedding))
             .await
             .unwrap();
 

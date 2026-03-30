@@ -13,10 +13,13 @@ use mxr_core::id::MessageId;
 use mxr_core::id::SemanticProfileId;
 #[cfg(feature = "local")]
 use mxr_core::types::{
-    AttachmentMeta, Envelope, MessageBody, SemanticChunkRecord, SemanticChunkSourceKind,
-    SemanticEmbeddingRecord, SemanticEmbeddingStatus, SemanticProfileStatus,
+    AttachmentMeta, Envelope, MessageBody, SemanticChunkRecord, SemanticEmbeddingRecord,
+    SemanticEmbeddingStatus, SemanticProfileStatus,
 };
-use mxr_core::types::{SearchMode, SemanticProfile, SemanticProfileRecord, SemanticStatusSnapshot};
+use mxr_core::types::{
+    SearchMode, SemanticChunkSourceKind, SemanticProfile, SemanticProfileRecord,
+    SemanticStatusSnapshot,
+};
 #[cfg(feature = "local")]
 use mxr_reader::{clean, ReaderConfig};
 use mxr_store::Store;
@@ -27,14 +30,10 @@ use std::collections::HashMap;
 use std::path::Path;
 #[cfg(feature = "local")]
 use std::path::{Path as StdPath, PathBuf};
-#[cfg(feature = "local")]
-use std::process::Command;
 use std::sync::Arc;
 
 #[cfg(feature = "local")]
 const FASTEMBED_REVISION: &str = "fastembed-5.13.0";
-#[cfg(feature = "local")]
-const OCR_MAX_PAGES: usize = 5;
 
 #[derive(Debug, Clone)]
 pub struct SemanticHit {
@@ -45,6 +44,7 @@ pub struct SemanticHit {
 #[cfg(feature = "local")]
 struct IndexedChunk {
     message_id: MessageId,
+    source_kind: SemanticChunkSourceKind,
 }
 
 #[cfg(feature = "local")]
@@ -52,6 +52,15 @@ struct SemanticIndex {
     hnsw: Hnsw<'static, f32, DistCosine>,
     chunks_by_id: HashMap<usize, IndexedChunk>,
 }
+
+#[cfg(feature = "local")]
+struct MessageChunkBatch {
+    message_id: MessageId,
+    chunks: Vec<SemanticChunkRecord>,
+}
+
+#[cfg(feature = "local")]
+type TestEmbedder = Arc<dyn Fn(SemanticProfile, &[String]) -> Result<Vec<Vec<f32>>> + Send + Sync>;
 
 pub struct SemanticEngine {
     store: Arc<Store>,
@@ -62,6 +71,8 @@ pub struct SemanticEngine {
     models: HashMap<SemanticProfile, TextEmbedding>,
     #[cfg(feature = "local")]
     indexes: HashMap<SemanticProfile, SemanticIndex>,
+    #[cfg(feature = "local")]
+    test_embedder: Option<TestEmbedder>,
 }
 
 #[cfg(feature = "local")]
@@ -73,11 +84,17 @@ impl SemanticEngine {
             config,
             models: HashMap::new(),
             indexes: HashMap::new(),
+            test_embedder: None,
         }
     }
 
     pub fn apply_config(&mut self, config: SemanticConfig) {
         self.config = config;
+    }
+
+    #[doc(hidden)]
+    pub fn set_test_embedder(&mut self, embedder: TestEmbedder) {
+        self.test_embedder = Some(embedder);
     }
 
     pub async fn status_snapshot(&self) -> Result<SemanticStatusSnapshot> {
@@ -93,10 +110,9 @@ impl SemanticEngine {
         profile: SemanticProfile,
     ) -> Result<SemanticProfileRecord> {
         let dimensions = {
-            let model = self.ensure_model(profile, true)?;
-            let embeddings = model
-                .embed([prefixed_document(profile, "warmup document")], Some(1))
-                .context("embed warmup document")?;
+            let warmup = vec![prefixed_document(profile, "warmup document")];
+            let embeddings =
+                self.embed_texts(profile, &warmup, Some(1), true, "embed warmup document")?;
             embeddings
                 .first()
                 .map(|embedding| embedding.len() as u32)
@@ -119,8 +135,7 @@ impl SemanticEngine {
     }
 
     pub async fn use_profile(&mut self, profile: SemanticProfile) -> Result<SemanticProfileRecord> {
-        self.install_profile(profile).await?;
-        let mut record = self.reindex_all_for_profile(profile).await?;
+        let mut record = self.activate_profile(profile).await?;
         record.activated_at = Some(chrono::Utc::now());
         self.store.upsert_semantic_profile(&record).await?;
         Ok(record)
@@ -132,25 +147,20 @@ impl SemanticEngine {
     }
 
     pub async fn reindex_messages(&mut self, message_ids: &[MessageId]) -> Result<()> {
-        if !self.config.enabled || message_ids.is_empty() {
+        if message_ids.is_empty() {
+            return Ok(());
+        }
+
+        let now = chrono::Utc::now();
+        let batches = self.prepare_message_chunks(message_ids, now).await?;
+        if !self.config.enabled {
             return Ok(());
         }
 
         let profile = self.config.active_profile;
         let record = self.install_profile(profile).await?;
-        let now = chrono::Utc::now();
-
-        for message_id in message_ids {
-            let Some(envelope) = self.store.get_envelope(message_id).await? else {
-                continue;
-            };
-            let body = self.store.get_body(message_id).await?;
-            let (chunks, embeddings) =
-                self.build_message_records(&record, &envelope, body.as_ref(), now)?;
-            self.store
-                .replace_semantic_message_data(&envelope.id, &record.id, &chunks, &embeddings)
-                .await?;
-        }
+        self.reindex_batches_for_profile(&record, &batches, now)
+            .await?;
 
         let mut ready_record = record;
         ready_record.status = SemanticProfileStatus::Ready;
@@ -161,7 +171,12 @@ impl SemanticEngine {
         Ok(())
     }
 
-    pub async fn search(&mut self, query: &str, limit: usize) -> Result<Vec<SemanticHit>> {
+    pub async fn search(
+        &mut self,
+        query: &str,
+        limit: usize,
+        allowed_source_kinds: &[SemanticChunkSourceKind],
+    ) -> Result<Vec<SemanticHit>> {
         if !self.config.enabled {
             return Ok(Vec::new());
         }
@@ -173,10 +188,15 @@ impl SemanticEngine {
         }
 
         let query_text = prefixed_query(profile, query);
+        let query_texts = vec![query_text];
         let query_embedding = self
-            .ensure_model(profile, self.config.auto_download_models)?
-            .embed([query_text], Some(1))
-            .context("embed query")?
+            .embed_texts(
+                profile,
+                &query_texts,
+                Some(1),
+                self.config.auto_download_models,
+                "embed query",
+            )?
             .into_iter()
             .next()
             .ok_or_else(|| anyhow!("embedding backend returned no query vector"))?;
@@ -191,32 +211,14 @@ impl SemanticEngine {
         let candidate_limit = limit.max(1);
         let ef = candidate_limit.max(64);
         let neighbours = index.hnsw.search(&query_embedding, candidate_limit, ef);
-        let mut best_by_message: HashMap<MessageId, f32> = HashMap::new();
-
-        for neighbour in neighbours {
-            let Some(chunk) = index.chunks_by_id.get(&neighbour.d_id) else {
-                continue;
-            };
-            let similarity = 1.0 - neighbour.distance;
-            best_by_message
-                .entry(chunk.message_id.clone())
-                .and_modify(|score| {
-                    if similarity > *score {
-                        *score = similarity;
-                    }
-                })
-                .or_insert(similarity);
-        }
-
-        let mut hits = best_by_message
-            .into_iter()
-            .map(|(message_id, score)| SemanticHit { message_id, score })
-            .collect::<Vec<_>>();
-        hits.sort_by(|left, right| right.score.total_cmp(&left.score));
-        if hits.len() > limit {
-            hits.truncate(limit);
-        }
-        Ok(hits)
+        Ok(best_hits_for_neighbours(
+            index,
+            neighbours
+                .into_iter()
+                .map(|neighbour| (neighbour.d_id, 1.0 - neighbour.distance)),
+            allowed_source_kinds,
+            limit,
+        ))
     }
 
     async fn reindex_all_for_profile(
@@ -230,35 +232,60 @@ impl SemanticEngine {
         record.last_error = None;
         self.store.upsert_semantic_profile(&record).await?;
 
-        let accounts = self.store.list_accounts().await?;
-        let mut envelopes = Vec::new();
-        for account in accounts {
-            envelopes.extend(
-                self.store
-                    .list_envelopes_by_account(&account.id, 10_000, 0)
-                    .await?,
-            );
-        }
-
-        record.progress_total = envelopes.len() as u32;
+        let message_ids = self.all_message_ids().await?;
+        record.progress_total = message_ids.len() as u32;
         self.store.upsert_semantic_profile(&record).await?;
         let now = chrono::Utc::now();
-
-        for envelope in &envelopes {
-            let body = self.store.get_body(&envelope.id).await?;
-            let (chunks, embeddings) =
-                self.build_message_records(&record, envelope, body.as_ref(), now)?;
+        let batches = self.prepare_message_chunks(&message_ids, now).await?;
+        for batch in &batches {
+            let embeddings = self.build_embedding_records(&record, &batch.chunks, now)?;
             self.store
-                .replace_semantic_message_data(&envelope.id, &record.id, &chunks, &embeddings)
+                .replace_semantic_embeddings(&batch.message_id, &record.id, &embeddings)
                 .await?;
             record.progress_completed += 1;
         }
 
         record.status = SemanticProfileStatus::Ready;
         record.last_indexed_at = Some(chrono::Utc::now());
+        record.last_error = None;
         if record.activated_at.is_none() && self.config.active_profile == profile {
             record.activated_at = Some(chrono::Utc::now());
         }
+        self.store.upsert_semantic_profile(&record).await?;
+        self.rebuild_index(profile).await?;
+        Ok(record)
+    }
+
+    async fn activate_profile(
+        &mut self,
+        profile: SemanticProfile,
+    ) -> Result<SemanticProfileRecord> {
+        let mut record = self.install_profile(profile).await?;
+        record.status = SemanticProfileStatus::Indexing;
+        record.progress_completed = 0;
+        record.progress_total = 0;
+        record.last_error = None;
+        self.store.upsert_semantic_profile(&record).await?;
+
+        let message_ids = self.all_message_ids().await?;
+        record.progress_total = message_ids.len() as u32;
+        self.store.upsert_semantic_profile(&record).await?;
+
+        let now = chrono::Utc::now();
+        self.backfill_missing_chunks(&message_ids, now).await?;
+
+        for message_id in &message_ids {
+            let chunks = self.store.list_semantic_chunks(message_id).await?;
+            let embeddings = self.build_embedding_records(&record, &chunks, now)?;
+            self.store
+                .replace_semantic_embeddings(message_id, &record.id, &embeddings)
+                .await?;
+            record.progress_completed += 1;
+        }
+
+        record.status = SemanticProfileStatus::Ready;
+        record.last_indexed_at = Some(chrono::Utc::now());
+        record.last_error = None;
         self.store.upsert_semantic_profile(&record).await?;
         self.rebuild_index(profile).await?;
         Ok(record)
@@ -285,6 +312,7 @@ impl SemanticEngine {
                 point_id,
                 IndexedChunk {
                     message_id: chunk.message_id,
+                    source_kind: chunk.source_kind,
                 },
             );
         }
@@ -295,36 +323,100 @@ impl SemanticEngine {
         Ok(())
     }
 
-    fn build_message_records(
+    async fn all_message_ids(&self) -> Result<Vec<MessageId>> {
+        let accounts = self.store.list_accounts().await?;
+        let mut message_ids = Vec::new();
+        for account in accounts {
+            message_ids.extend(
+                self.store
+                    .list_envelopes_by_account(&account.id, 10_000, 0)
+                    .await?
+                    .into_iter()
+                    .map(|envelope| envelope.id),
+            );
+        }
+        Ok(message_ids)
+    }
+
+    async fn backfill_missing_chunks(
+        &mut self,
+        message_ids: &[MessageId],
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<()> {
+        for message_id in message_ids {
+            if self
+                .store
+                .list_semantic_chunks(message_id)
+                .await?
+                .is_empty()
+            {
+                let _ = self.prepare_message_chunk(message_id, now).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn prepare_message_chunks(
+        &self,
+        message_ids: &[MessageId],
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<MessageChunkBatch>> {
+        let mut batches = Vec::with_capacity(message_ids.len());
+        for message_id in message_ids {
+            if let Some(batch) = self.prepare_message_chunk(message_id, now).await? {
+                batches.push(batch);
+            }
+        }
+        Ok(batches)
+    }
+
+    async fn prepare_message_chunk(
+        &self,
+        message_id: &MessageId,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<MessageChunkBatch>> {
+        let Some(envelope) = self.store.get_envelope(message_id).await? else {
+            return Ok(None);
+        };
+        let body = self.store.get_body(message_id).await?;
+        let chunks = self.build_chunk_records(&envelope, body.as_ref(), now);
+        self.store
+            .replace_semantic_chunks(&envelope.id, &chunks)
+            .await?;
+        Ok(Some(MessageChunkBatch {
+            message_id: envelope.id,
+            chunks,
+        }))
+    }
+
+    async fn reindex_batches_for_profile(
         &mut self,
         profile: &SemanticProfileRecord,
+        batches: &[MessageChunkBatch],
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<()> {
+        for batch in batches {
+            let embeddings = self.build_embedding_records(profile, &batch.chunks, now)?;
+            self.store
+                .replace_semantic_embeddings(&batch.message_id, &profile.id, &embeddings)
+                .await?;
+        }
+        Ok(())
+    }
+
+    fn build_chunk_records(
+        &self,
         envelope: &Envelope,
         body: Option<&MessageBody>,
         now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<(Vec<SemanticChunkRecord>, Vec<SemanticEmbeddingRecord>)> {
+    ) -> Vec<SemanticChunkRecord> {
         let chunks = build_chunks(envelope, body);
-        if chunks.is_empty() {
-            return Ok((Vec::new(), Vec::new()));
-        }
-
-        let texts = chunks
-            .iter()
-            .map(|chunk| prefixed_document(profile.profile, &chunk.1))
-            .collect::<Vec<_>>();
-        let embeddings = self
-            .ensure_model(profile.profile, self.config.auto_download_models)?
-            .embed(texts, Some(32))
-            .context("embed message chunks")?;
-
         let mut chunk_records = Vec::with_capacity(chunks.len());
-        let mut embedding_records = Vec::with_capacity(chunks.len());
 
-        for (index, ((source_kind, normalized), embedding)) in
-            chunks.into_iter().zip(embeddings.into_iter()).enumerate()
-        {
+        for (index, (source_kind, normalized)) in chunks.into_iter().enumerate() {
             let chunk_id = semantic_chunk_id(&envelope.id.as_str(), &source_kind, index as u32);
             let chunk_record = SemanticChunkRecord {
-                id: chunk_id.clone(),
+                id: chunk_id,
                 message_id: envelope.id.clone(),
                 source_kind,
                 ordinal: index as u32,
@@ -333,20 +425,65 @@ impl SemanticEngine {
                 created_at: now,
                 updated_at: now,
             };
-            let embedding_record = SemanticEmbeddingRecord {
-                chunk_id,
+            chunk_records.push(chunk_record);
+        }
+
+        chunk_records
+    }
+
+    fn build_embedding_records(
+        &mut self,
+        profile: &SemanticProfileRecord,
+        chunks: &[SemanticChunkRecord],
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<SemanticEmbeddingRecord>> {
+        if chunks.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let texts = chunks
+            .iter()
+            .map(|chunk| prefixed_document(profile.profile, &chunk.normalized))
+            .collect::<Vec<_>>();
+        let embeddings = self.embed_texts(
+            profile.profile,
+            &texts,
+            Some(32),
+            self.config.auto_download_models,
+            "embed message chunks",
+        )?;
+
+        let mut embedding_records = Vec::with_capacity(chunks.len());
+        for (chunk, embedding) in chunks.iter().zip(embeddings.into_iter()) {
+            embedding_records.push(SemanticEmbeddingRecord {
+                chunk_id: chunk.id.clone(),
                 profile_id: profile.id.clone(),
                 dimensions: embedding.len() as u32,
                 vector: f32s_to_blob(&embedding),
                 status: SemanticEmbeddingStatus::Ready,
                 created_at: now,
                 updated_at: now,
-            };
-            chunk_records.push(chunk_record);
-            embedding_records.push(embedding_record);
+            });
         }
 
-        Ok((chunk_records, embedding_records))
+        Ok(embedding_records)
+    }
+
+    fn embed_texts(
+        &mut self,
+        profile: SemanticProfile,
+        texts: &[String],
+        batch_size: Option<usize>,
+        allow_download: bool,
+        context_label: &'static str,
+    ) -> Result<Vec<Vec<f32>>> {
+        if let Some(embedder) = &self.test_embedder {
+            return embedder(profile, texts);
+        }
+
+        self.ensure_model(profile, allow_download)?
+            .embed(texts, batch_size)
+            .context(context_label)
     }
 
     fn ensure_model(
@@ -418,7 +555,12 @@ impl SemanticEngine {
         Ok(())
     }
 
-    pub async fn search(&mut self, _query: &str, _limit: usize) -> Result<Vec<SemanticHit>> {
+    pub async fn search(
+        &mut self,
+        _query: &str,
+        _limit: usize,
+        _allowed_source_kinds: &[SemanticChunkSourceKind],
+    ) -> Result<Vec<SemanticHit>> {
         Ok(Vec::new())
     }
 }
@@ -534,7 +676,7 @@ fn read_attachment_text(attachment: &AttachmentMeta) -> Option<String> {
         AttachmentKind::Pdf => read_pdf_attachment(path),
         AttachmentKind::OfficeDocument => read_office_attachment(path),
         AttachmentKind::Spreadsheet => read_spreadsheet_attachment(attachment, path),
-        AttachmentKind::Image => run_tesseract(path),
+        AttachmentKind::Image => None,
         AttachmentKind::Unknown => None,
     }
 }
@@ -721,83 +863,9 @@ fn attachment_kind(attachment: &AttachmentMeta, path: &StdPath) -> AttachmentKin
 
 #[cfg(feature = "local")]
 fn read_pdf_attachment(path: &StdPath) -> Option<String> {
-    if let Some(extracted) = unpdf::to_markdown(path)
+    unpdf::to_markdown(path)
         .ok()
         .and_then(|markdown| normalized_nonempty(&markdown))
-    {
-        return Some(extracted);
-    }
-
-    ocr_pdf(path)
-}
-
-#[cfg(feature = "local")]
-fn ocr_pdf(path: &StdPath) -> Option<String> {
-    let pdftoppm = which::which("pdftoppm").ok()?;
-    let tempdir = tempfile::tempdir().ok()?;
-    let prefix = tempdir.path().join("page");
-    let status = Command::new(pdftoppm)
-        .arg("-f")
-        .arg("1")
-        .arg("-l")
-        .arg(OCR_MAX_PAGES.to_string())
-        .arg("-png")
-        .arg(path)
-        .arg(&prefix)
-        .status()
-        .ok()?;
-    if !status.success() {
-        return None;
-    }
-
-    let mut images = std::fs::read_dir(tempdir.path())
-        .ok()?
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .and_then(|ext| ext.to_str())
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
-        })
-        .collect::<Vec<_>>();
-    images.sort();
-
-    let mut output = String::new();
-    for image in images {
-        if let Some(text) = run_tesseract(&image) {
-            if !output.is_empty() {
-                output.push(' ');
-            }
-            output.push_str(&text);
-        }
-    }
-
-    let normalized = normalize_text(&output);
-    if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized)
-    }
-}
-
-#[cfg(feature = "local")]
-fn run_tesseract(path: &StdPath) -> Option<String> {
-    let tesseract = which::which("tesseract").ok()?;
-    let output = Command::new(tesseract)
-        .arg(path)
-        .arg("stdout")
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    let normalized = normalize_text(&String::from_utf8_lossy(&output.stdout));
-    if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized)
-    }
 }
 
 #[cfg(feature = "local")]
@@ -888,15 +956,129 @@ fn blob_to_f32s(bytes: &[u8]) -> Vec<f32> {
         .collect()
 }
 
+#[cfg(feature = "local")]
+fn best_hits_for_neighbours<I>(
+    index: &SemanticIndex,
+    neighbour_scores: I,
+    allowed_source_kinds: &[SemanticChunkSourceKind],
+    limit: usize,
+) -> Vec<SemanticHit>
+where
+    I: IntoIterator<Item = (usize, f32)>,
+{
+    let mut best_by_message: HashMap<MessageId, f32> = HashMap::new();
+
+    for (point_id, similarity) in neighbour_scores {
+        let Some(chunk) = index.chunks_by_id.get(&point_id) else {
+            continue;
+        };
+        if !allowed_source_kinds.contains(&chunk.source_kind) {
+            continue;
+        }
+        best_by_message
+            .entry(chunk.message_id.clone())
+            .and_modify(|score| {
+                if similarity > *score {
+                    *score = similarity;
+                }
+            })
+            .or_insert(similarity);
+    }
+
+    let mut hits = best_by_message
+        .into_iter()
+        .map(|(message_id, score)| SemanticHit { message_id, score })
+        .collect::<Vec<_>>();
+    hits.sort_by(|left, right| right.score.total_cmp(&left.score));
+    if hits.len() > limit {
+        hits.truncate(limit);
+    }
+    hits
+}
+
 #[cfg(all(test, feature = "local"))]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
-    use mxr_core::id::{AttachmentId, MessageId};
+    use mxr_core::id::{AccountId, AttachmentId, MessageId, ThreadId};
+    use mxr_core::types::{Address, BackendRef, MessageFlags, MessageMetadata, ProviderKind};
+    use mxr_core::Account;
+    use mxr_store::Store;
+    use std::collections::HashMap;
     use std::fs::File;
     use std::io::Write;
+    use std::sync::Arc;
     use tempfile::tempdir;
     use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
+
+    fn test_account() -> Account {
+        Account {
+            id: AccountId::new(),
+            name: "Test".to_string(),
+            email: "test@example.com".to_string(),
+            sync_backend: Some(BackendRef {
+                provider_kind: ProviderKind::Fake,
+                config_key: "fake".to_string(),
+            }),
+            send_backend: None,
+            enabled: true,
+        }
+    }
+
+    fn test_envelope(account_id: &AccountId) -> Envelope {
+        Envelope {
+            id: MessageId::new(),
+            account_id: account_id.clone(),
+            provider_id: "fake-1".to_string(),
+            thread_id: ThreadId::new(),
+            message_id_header: Some("<test@example.com>".to_string()),
+            in_reply_to: None,
+            references: Vec::new(),
+            from: Address {
+                name: Some("Alice".to_string()),
+                email: "alice@example.com".to_string(),
+            },
+            to: vec![Address {
+                name: Some("Bob".to_string()),
+                email: "bob@example.com".to_string(),
+            }],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: "House of cards".to_string(),
+            date: chrono::Utc::now(),
+            flags: MessageFlags::empty(),
+            snippet: "body mention".to_string(),
+            has_attachments: false,
+            size_bytes: 128,
+            unsubscribe: mxr_core::types::UnsubscribeMethod::None,
+            label_provider_ids: Vec::new(),
+        }
+    }
+
+    fn test_body(message_id: &MessageId, attachments: Vec<AttachmentMeta>) -> MessageBody {
+        test_body_with_text(
+            message_id,
+            "The body mentions house of cards for semantic chunk prep.",
+            attachments,
+        )
+    }
+
+    fn test_body_with_text(
+        message_id: &MessageId,
+        text_plain: &str,
+        attachments: Vec<AttachmentMeta>,
+    ) -> MessageBody {
+        MessageBody {
+            message_id: message_id.clone(),
+            text_plain: Some(text_plain.into()),
+            text_html: None,
+            attachments,
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
+        }
+    }
 
     fn attachment(path: &StdPath, filename: &str, mime_type: &str) -> AttachmentMeta {
         AttachmentMeta {
@@ -1118,6 +1300,22 @@ mod tests {
         );
     }
 
+    fn test_embedder(_profile: SemanticProfile, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        Ok(texts
+            .iter()
+            .map(|text| {
+                let contains = |needle: &str| text.contains(needle) as u8 as f32;
+                vec![
+                    contains("deployment"),
+                    contains("roadmap"),
+                    contains("launch"),
+                    contains("notes"),
+                    1.0,
+                ]
+            })
+            .collect())
+    }
+
     #[test]
     fn attachment_kind_uses_extension_when_mime_is_generic() {
         let dir = tempdir().unwrap();
@@ -1177,5 +1375,174 @@ mod tests {
         assert!(extracted.contains("sheet summary"));
         assert!(extracted.contains("name | value"));
         assert!(extracted.contains("alice | 42"));
+    }
+
+    #[test]
+    fn read_attachment_text_skips_images_without_ocr() {
+        let dir = tempdir().unwrap();
+        let image_path = dir.path().join("photo.png");
+        std::fs::write(&image_path, b"not-a-real-png").unwrap();
+        let attachment = attachment(&image_path, "photo.png", "image/png");
+
+        assert_eq!(read_attachment_text(&attachment), None);
+    }
+
+    #[test]
+    fn read_attachment_text_skips_non_extractable_pdfs_without_ocr() {
+        let dir = tempdir().unwrap();
+        let pdf_path = dir.path().join("scan.pdf");
+        std::fs::write(&pdf_path, b"not-a-real-pdf").unwrap();
+        let attachment = attachment(&pdf_path, "scan.pdf", "application/pdf");
+
+        assert_eq!(read_attachment_text(&attachment), None);
+    }
+
+    #[tokio::test]
+    async fn reindex_messages_persists_chunks_when_semantic_is_disabled() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let envelope = test_envelope(&account.id);
+        let body = test_body(&envelope.id, Vec::new());
+        store.upsert_envelope(&envelope).await.unwrap();
+        store.insert_body(&body).await.unwrap();
+
+        let data_dir = tempdir().unwrap();
+        let mut engine =
+            SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
+        engine
+            .reindex_messages(std::slice::from_ref(&envelope.id))
+            .await
+            .unwrap();
+
+        let counts = store.collect_record_counts().await.unwrap();
+        assert!(counts.semantic_chunks > 0);
+        assert_eq!(counts.semantic_embeddings, 0);
+        assert!(store.list_semantic_profiles().await.unwrap().is_empty());
+
+        let chunks = store.list_semantic_chunks(&envelope.id).await.unwrap();
+        assert!(!chunks.is_empty());
+        assert!(chunks
+            .iter()
+            .any(|chunk| chunk.source_kind == SemanticChunkSourceKind::Header));
+        assert!(chunks
+            .iter()
+            .any(|chunk| chunk.source_kind == SemanticChunkSourceKind::Body));
+    }
+
+    #[tokio::test]
+    async fn use_profile_reuses_stored_chunks_and_backfills_missing_messages() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let existing = test_envelope(&account.id);
+        let existing_body = test_body_with_text(&existing.id, "Deployment checklist", Vec::new());
+        store.upsert_envelope(&existing).await.unwrap();
+        store.insert_body(&existing_body).await.unwrap();
+
+        let missing = Envelope {
+            provider_id: "fake-2".into(),
+            subject: "Roadmap notes".into(),
+            snippet: "Launch plan".into(),
+            ..test_envelope(&account.id)
+        };
+        let missing_body = test_body_with_text(&missing.id, "Launch notes", Vec::new());
+        store.upsert_envelope(&missing).await.unwrap();
+        store.insert_body(&missing_body).await.unwrap();
+
+        let data_dir = tempdir().unwrap();
+        let mut engine =
+            SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
+        engine
+            .reindex_messages(std::slice::from_ref(&existing.id))
+            .await
+            .unwrap();
+
+        let before_existing = store.list_semantic_chunks(&existing.id).await.unwrap();
+        assert!(!before_existing.is_empty());
+        assert!(store
+            .list_semantic_chunks(&missing.id)
+            .await
+            .unwrap()
+            .is_empty());
+
+        let config = SemanticConfig {
+            enabled: true,
+            ..SemanticConfig::default()
+        };
+        engine.apply_config(config);
+        engine.set_test_embedder(Arc::new(test_embedder));
+
+        let profile = engine
+            .use_profile(SemanticProfile::BgeSmallEnV15)
+            .await
+            .unwrap();
+
+        assert_eq!(profile.status, SemanticProfileStatus::Ready);
+        assert!(profile.activated_at.is_some());
+
+        let after_existing = store.list_semantic_chunks(&existing.id).await.unwrap();
+        assert_eq!(after_existing.len(), before_existing.len());
+        for (before, after) in before_existing.iter().zip(after_existing.iter()) {
+            assert_eq!(before.id, after.id);
+            assert_eq!(before.content_hash, after.content_hash);
+            assert_eq!(before.created_at, after.created_at);
+            assert_eq!(before.updated_at, after.updated_at);
+        }
+
+        let missing_chunks = store.list_semantic_chunks(&missing.id).await.unwrap();
+        assert!(!missing_chunks.is_empty());
+
+        let embeddings = store.list_semantic_embeddings(&profile.id).await.unwrap();
+        assert_eq!(
+            embeddings.len(),
+            after_existing.len().saturating_add(missing_chunks.len())
+        );
+    }
+
+    #[test]
+    fn best_hits_for_neighbours_filters_source_kinds_before_collapsing() {
+        let message_a = MessageId::new();
+        let message_b = MessageId::new();
+        let index = SemanticIndex {
+            hnsw: Hnsw::<f32, DistCosine>::new(16, 1, 16, 200, DistCosine {}),
+            chunks_by_id: HashMap::from([
+                (
+                    0,
+                    IndexedChunk {
+                        message_id: message_a.clone(),
+                        source_kind: SemanticChunkSourceKind::Header,
+                    },
+                ),
+                (
+                    1,
+                    IndexedChunk {
+                        message_id: message_a.clone(),
+                        source_kind: SemanticChunkSourceKind::Body,
+                    },
+                ),
+                (
+                    2,
+                    IndexedChunk {
+                        message_id: message_b.clone(),
+                        source_kind: SemanticChunkSourceKind::Body,
+                    },
+                ),
+            ]),
+        };
+
+        let hits = best_hits_for_neighbours(
+            &index,
+            [(0, 0.95), (1, 0.40), (2, 0.90)],
+            &[SemanticChunkSourceKind::Body],
+            10,
+        );
+
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].message_id, message_b);
+        assert_eq!(hits[1].message_id, message_a);
+        assert!(hits[0].score > hits[1].score);
     }
 }

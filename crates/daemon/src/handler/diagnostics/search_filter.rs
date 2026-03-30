@@ -1,6 +1,14 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use chrono::Datelike;
-use mxr_core::types::system_labels;
+use mxr_core::types::{system_labels, SemanticChunkSourceKind};
 use mxr_search::ast::{DateBound, DateValue, FilterKind, QueryField, QueryNode, SizeOp};
+
+#[derive(Debug, Clone)]
+pub(super) struct SemanticQueryPlan {
+    pub text: String,
+    pub source_kinds: Vec<SemanticChunkSourceKind>,
+}
 
 pub(super) fn matches_structured_filters(node: &QueryNode, envelope: &mxr_core::Envelope) -> bool {
     match node {
@@ -115,21 +123,48 @@ fn matches_size(op: &SizeOp, bytes: u64, actual: u64) -> bool {
     }
 }
 
-pub(super) fn semantic_query_text(ast: &QueryNode) -> Option<String> {
+pub(super) fn semantic_query_plan(ast: &QueryNode) -> Option<SemanticQueryPlan> {
     let mut parts = Vec::new();
-    collect_semantic_terms(ast, false, &mut parts);
-    let query = parts.join(" ").trim().to_string();
-    if query.is_empty() {
+    let mut source_kinds = Vec::new();
+    let mut use_all_sources = false;
+    collect_semantic_terms(
+        ast,
+        false,
+        &mut parts,
+        &mut source_kinds,
+        &mut use_all_sources,
+    );
+    let text = parts.join(" ").trim().to_string();
+    if text.is_empty() {
         None
     } else {
-        Some(query)
+        Some(SemanticQueryPlan {
+            text,
+            source_kinds: if use_all_sources || source_kinds.is_empty() {
+                all_semantic_source_kinds()
+            } else {
+                source_kinds
+            },
+        })
     }
 }
 
-fn collect_semantic_terms(node: &QueryNode, negated: bool, parts: &mut Vec<String>) {
+fn collect_semantic_terms(
+    node: &QueryNode,
+    negated: bool,
+    parts: &mut Vec<String>,
+    source_kinds: &mut Vec<SemanticChunkSourceKind>,
+    use_all_sources: &mut bool,
+) {
     match node {
-        QueryNode::Text(text) if !negated => parts.push(text.clone()),
-        QueryNode::Phrase(text) if !negated => parts.push(text.clone()),
+        QueryNode::Text(text) if !negated => {
+            parts.push(text.clone());
+            *use_all_sources = true;
+        }
+        QueryNode::Phrase(text) if !negated => {
+            parts.push(text.clone());
+            *use_all_sources = true;
+        }
         QueryNode::Field { field, value }
             if !negated
                 && matches!(
@@ -138,12 +173,19 @@ fn collect_semantic_terms(node: &QueryNode, negated: bool, parts: &mut Vec<Strin
                 ) =>
         {
             parts.push(value.clone());
+            if !*use_all_sources {
+                for source_kind in source_kinds_for_field(field) {
+                    push_source_kind(source_kinds, *source_kind);
+                }
+            }
         }
         QueryNode::And(left, right) | QueryNode::Or(left, right) => {
-            collect_semantic_terms(left, negated, parts);
-            collect_semantic_terms(right, negated, parts);
+            collect_semantic_terms(left, negated, parts, source_kinds, use_all_sources);
+            collect_semantic_terms(right, negated, parts, source_kinds, use_all_sources);
         }
-        QueryNode::Not(inner) => collect_semantic_terms(inner, true, parts),
+        QueryNode::Not(inner) => {
+            collect_semantic_terms(inner, true, parts, source_kinds, use_all_sources)
+        }
         _ => {}
     }
 }
@@ -170,5 +212,102 @@ fn contains_semantic_term(node: &QueryNode) -> bool {
         }
         QueryNode::Not(inner) => contains_semantic_term(inner),
         _ => false,
+    }
+}
+
+fn all_semantic_source_kinds() -> Vec<SemanticChunkSourceKind> {
+    vec![
+        SemanticChunkSourceKind::Header,
+        SemanticChunkSourceKind::Body,
+        SemanticChunkSourceKind::AttachmentSummary,
+        SemanticChunkSourceKind::AttachmentText,
+    ]
+}
+
+fn source_kinds_for_field(field: &QueryField) -> &'static [SemanticChunkSourceKind] {
+    match field {
+        QueryField::Subject => &[SemanticChunkSourceKind::Header],
+        QueryField::Body => &[SemanticChunkSourceKind::Body],
+        QueryField::Filename => &[
+            SemanticChunkSourceKind::AttachmentSummary,
+            SemanticChunkSourceKind::AttachmentText,
+        ],
+        QueryField::From | QueryField::To | QueryField::Cc | QueryField::Bcc => &[],
+    }
+}
+
+fn push_source_kind(
+    source_kinds: &mut Vec<SemanticChunkSourceKind>,
+    source_kind: SemanticChunkSourceKind,
+) {
+    if !source_kinds.contains(&source_kind) {
+        source_kinds.push(source_kind);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mxr_search::parse_query;
+
+    #[test]
+    fn semantic_query_plan_uses_all_sources_for_unfielded_text() {
+        let ast = parse_query("house of cards").unwrap();
+        let plan = semantic_query_plan(&ast).unwrap();
+
+        assert_eq!(plan.text, "house of cards");
+        assert_eq!(
+            plan.source_kinds,
+            vec![
+                SemanticChunkSourceKind::Header,
+                SemanticChunkSourceKind::Body,
+                SemanticChunkSourceKind::AttachmentSummary,
+                SemanticChunkSourceKind::AttachmentText,
+            ]
+        );
+    }
+
+    #[test]
+    fn semantic_query_plan_maps_subject_body_and_filename_fields() {
+        let ast = parse_query("subject:cards body:house filename:deck").unwrap();
+        let plan = semantic_query_plan(&ast).unwrap();
+
+        assert_eq!(plan.text, "cards house deck");
+        assert_eq!(
+            plan.source_kinds,
+            vec![
+                SemanticChunkSourceKind::Header,
+                SemanticChunkSourceKind::Body,
+                SemanticChunkSourceKind::AttachmentSummary,
+                SemanticChunkSourceKind::AttachmentText,
+            ]
+        );
+    }
+
+    #[test]
+    fn semantic_query_plan_falls_back_to_all_sources_when_text_is_unfielded() {
+        let ast = parse_query("subject:cards house").unwrap();
+        let plan = semantic_query_plan(&ast).unwrap();
+
+        assert_eq!(plan.text, "cards house");
+        assert_eq!(
+            plan.source_kinds,
+            vec![
+                SemanticChunkSourceKind::Header,
+                SemanticChunkSourceKind::Body,
+                SemanticChunkSourceKind::AttachmentSummary,
+                SemanticChunkSourceKind::AttachmentText,
+            ]
+        );
+    }
+
+    #[test]
+    fn semantic_query_plan_ignores_negated_terms_and_reports_negation() {
+        let ast = parse_query("body:deployment -filename:report").unwrap();
+        let plan = semantic_query_plan(&ast).unwrap();
+
+        assert_eq!(plan.text, "deployment");
+        assert_eq!(plan.source_kinds, vec![SemanticChunkSourceKind::Body]);
+        assert!(has_negated_semantic_terms(&ast));
     }
 }

@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 pub mod attachments;
 pub mod editor;
 pub mod email;

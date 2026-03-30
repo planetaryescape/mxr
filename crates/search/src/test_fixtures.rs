@@ -1,4 +1,5 @@
 #![cfg(test)]
+#![allow(clippy::wrong_self_convention)]
 
 use mxr_core::id::*;
 use mxr_core::types::*;

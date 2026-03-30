@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use async_trait::async_trait;
 use futures::TryStreamExt;
 
@@ -799,6 +801,8 @@ pub mod mock {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::mock::*;
     use super::*;
     use crate::types::*;

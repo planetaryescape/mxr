@@ -8,6 +8,8 @@ pub const IPC_PROTOCOL_VERSION: u32 = 1;
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
     use super::*;
     use bytes::BytesMut;
     use mxr_core::id::*;

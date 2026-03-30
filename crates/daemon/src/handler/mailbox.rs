@@ -365,7 +365,7 @@ fn normalize_location_tail(value: &str) -> Option<String> {
     if let Ok(url) = url::Url::parse(trimmed) {
         return url
             .path_segments()
-            .and_then(|segments| segments.last())
+            .and_then(|mut segments| segments.next_back())
             .map(|segment| segment.to_string());
     }
     Path::new(trimmed)

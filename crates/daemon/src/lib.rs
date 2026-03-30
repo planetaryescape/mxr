@@ -431,8 +431,11 @@ pub fn init_tracing(foreground: bool) -> anyhow::Result<()> {
     use tracing_subscriber::prelude::*;
     use tracing_subscriber::{fmt, EnvFilter};
 
-    let env_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| "mxr=info".parse().unwrap());
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        "mxr=info"
+            .parse()
+            .expect("static mxr tracing filter should parse")
+    });
 
     let log_dir = state::AppState::data_dir().join("logs");
     std::fs::create_dir_all(&log_dir)?;

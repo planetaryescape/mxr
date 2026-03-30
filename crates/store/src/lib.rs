@@ -78,6 +78,8 @@ pub(crate) fn trace_lookup(operation: &'static str, started_at: Instant, found: 
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
     use crate::test_fixtures::*;
     use chrono::TimeZone;

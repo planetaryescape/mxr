@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use mxr_core::MxrError;
 use mxr_search::SearchIndex;
 use mxr_store::Store;
@@ -59,7 +61,7 @@ pub async fn reindex(
             }
 
             indexed += 1;
-            if indexed.is_multiple_of(100) {
+            if indexed % 100 == 0 {
                 progress(ReindexProgress::Indexing { indexed, total });
             }
         }

@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::Path;
 use std::time::{Duration, SystemTime};

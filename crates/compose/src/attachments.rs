@@ -1,3 +1,8 @@
+#![cfg_attr(
+    test,
+    allow(clippy::infallible_destructuring_match, clippy::unwrap_used)
+)]
+
 pub use mxr_outbound::attachments::*;
 
 #[cfg(test)]

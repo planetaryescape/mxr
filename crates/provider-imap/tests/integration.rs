@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 //! End-to-end IMAP sync flow integration tests.
 //!
 //! Tests the full cycle: initial sync → delta sync → fetch body → mutate.

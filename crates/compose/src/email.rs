@@ -1,5 +1,6 @@
 pub use mxr_outbound::email::*;
 
+#[cfg_attr(test, allow(clippy::unwrap_used))]
 #[cfg(test)]
 mod tests {
     use super::*;

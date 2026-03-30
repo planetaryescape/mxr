@@ -63,7 +63,10 @@ pub fn thread_messages(messages: &[MessageForThreading]) -> Vec<ThreadTree> {
                 .or_insert_with(Container::empty);
             if let Some(parent_id) = prev_id {
                 // Set parent_id as parent of ref_id (if not already parented and no cycle)
-                let ref_container = id_table.get(ref_id).unwrap();
+                let Some(ref_container) = id_table.get(ref_id) else {
+                    prev_id = Some(ref_id);
+                    continue;
+                };
                 if ref_container.parent.is_none()
                     && !would_create_cycle(&id_table, parent_id, ref_id)
                 {

@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use crate::ipc_client::IpcClient;
 use mxr_protocol::*;
 use std::path::PathBuf;
@@ -297,10 +299,6 @@ pub async fn send_draft(_draft_id: String) -> anyhow::Result<()> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::items_after_test_module,
-    reason = "Command tests live near the helper they cover; moving them is out of scope here"
-)]
 mod tests {
     use super::resolve_compose_from_address;
     use crate::commands::mutations::helpers::{

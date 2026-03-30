@@ -2,10 +2,13 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 static SENT_FROM: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)^sent from (my )?(iphone|ipad|android|galaxy|samsung|outlook|mail)").unwrap()
+    Regex::new(r"(?i)^sent from (my )?(iphone|ipad|android|galaxy|samsung|outlook|mail)")
+        .expect("signature regex literal should compile")
 });
 
-static PHONE_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"[\+]?\d[\d\s\-\(\)]{7,}").unwrap());
+static PHONE_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[\+]?\d[\d\s\-\(\)]{7,}").expect("phone regex literal should compile")
+});
 
 /// Strip the signature from plain text.
 /// Returns (cleaned_text, extracted_signature).
@@ -71,7 +74,10 @@ mod tests {
         let text = "Hello world\n\nThanks!\n-- \nJohn Doe\nAcme Corp";
         let (body, sig) = strip(text);
         assert_eq!(body, "Hello world\n\nThanks!");
-        assert_eq!(sig.unwrap(), "John Doe\nAcme Corp");
+        assert_eq!(
+            sig.expect("signature delimiter should produce a signature"),
+            "John Doe\nAcme Corp"
+        );
     }
 
     #[test]
@@ -79,7 +85,9 @@ mod tests {
         let text = "Quick reply.\n\nSent from my iPhone";
         let (body, sig) = strip(text);
         assert_eq!(body.trim(), "Quick reply.");
-        assert!(sig.unwrap().contains("Sent from"));
+        assert!(sig
+            .expect("sent-from footer should be extracted")
+            .contains("Sent from"));
     }
 
     #[test]
@@ -95,6 +103,9 @@ mod tests {
         let text = "Body here.\n--\nSig line";
         let (body, sig) = strip(text);
         assert_eq!(body, "Body here.");
-        assert_eq!(sig.unwrap(), "Sig line");
+        assert_eq!(
+            sig.expect("double-dash delimiter should produce a signature"),
+            "Sig line"
+        );
     }
 }

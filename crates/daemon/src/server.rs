@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use crate::handler::handle_request;
 use crate::ipc_client::IpcClient;
 use crate::loops;
@@ -447,7 +449,7 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
             tracing::info!(total, "Lexical reindex started");
         }
         ReindexProgress::Indexing { indexed, total }
-            if indexed == total || indexed.is_multiple_of(10_000) =>
+            if indexed == total || indexed % 10_000 == 0 =>
         {
             tracing::info!(indexed, total, "Lexical reindex progress");
         }

@@ -48,6 +48,8 @@ pub fn export_mbox(thread: &ExportThread) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
     use crate::tests::{empty_body_thread, sample_thread};
     use crate::{ExportMessage, ExportThread};

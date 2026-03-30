@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use mxr_core::types::UnsubscribeMethod;
 use reqwest::Client;
 

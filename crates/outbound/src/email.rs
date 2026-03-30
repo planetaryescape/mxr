@@ -62,12 +62,18 @@ pub fn build_message(
     let alternative = MultiPart::alternative()
         .singlepart(
             SinglePart::builder()
-                .header(ContentType::parse("text/plain; charset=utf-8").unwrap())
+                .header(
+                    ContentType::parse("text/plain; charset=utf-8")
+                        .expect("static text/plain content type should parse"),
+                )
                 .body(rendered.plain),
         )
         .singlepart(
             SinglePart::builder()
-                .header(ContentType::parse("text/html; charset=utf-8").unwrap())
+                .header(
+                    ContentType::parse("text/html; charset=utf-8")
+                        .expect("static text/html content type should parse"),
+                )
                 .body(rendered.html),
         );
 
@@ -76,8 +82,10 @@ pub fn build_message(
     } else {
         let mut mixed = MultiPart::mixed().multipart(alternative);
         for attachment in resolve_attachment_paths(&draft.attachments)? {
-            let content_type = ContentType::parse(&attachment.mime_type)
-                .unwrap_or(ContentType::parse("application/octet-stream").unwrap());
+            let content_type = ContentType::parse(&attachment.mime_type).unwrap_or(
+                ContentType::parse("application/octet-stream")
+                    .expect("static octet-stream content type should parse"),
+            );
             let bytes = fs::read(&attachment.path)?;
             mixed =
                 mixed.singlepart(Attachment::new(attachment.filename).body(bytes, content_type));

@@ -1,3 +1,8 @@
+#![cfg_attr(
+    test,
+    allow(clippy::bool_assert_comparison, clippy::panic, clippy::unwrap_used)
+)]
+
 mod mutation_args;
 mod search_args;
 

@@ -174,7 +174,8 @@ mod tests {
 
     #[test]
     fn command_not_found_error_has_suggestion() {
-        let err = run_external_command("nonexistent_cmd_xyz", "test").unwrap_err();
+        let err = run_external_command("nonexistent_cmd_xyz", "test")
+            .expect_err("unknown commands should fail");
         let msg = err.to_string();
         assert!(msg.contains("not found"));
         assert!(msg.contains("Install it"));
@@ -182,7 +183,7 @@ mod tests {
 
     #[test]
     fn empty_command_error() {
-        let err = run_external_command("", "test").unwrap_err();
+        let err = run_external_command("", "test").expect_err("empty commands should fail");
         assert!(matches!(err, HtmlRenderError::EmptyCommand));
     }
 }

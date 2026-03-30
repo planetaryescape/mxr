@@ -46,23 +46,11 @@ pub fn resolve_snooze_time(option: SnoozeOption, config: &SnoozeConfig) -> DateT
     match option {
         SnoozeOption::TomorrowMorning => {
             let tomorrow = now.date_naive() + Duration::days(1);
-            let time = NaiveTime::from_hms_opt(u32::from(config.morning_hour), 0, 0).unwrap();
-            tomorrow
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
+            local_datetime_utc(tomorrow, u32::from(config.morning_hour), now.timezone())
         }
         SnoozeOption::Tonight => {
             let today = now.date_naive();
-            let time = NaiveTime::from_hms_opt(u32::from(config.evening_hour), 0, 0).unwrap();
-            let tonight = today
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc);
+            let tonight = local_datetime_utc(today, u32::from(config.evening_hour), now.timezone());
             if tonight <= Utc::now() {
                 tonight + Duration::days(1)
             } else {
@@ -80,13 +68,7 @@ pub fn resolve_snooze_time(option: SnoozeOption, config: &SnoozeConfig) -> DateT
                 % 7;
             let days = if days_until == 0 { 7 } else { days_until };
             let weekend = now.date_naive() + Duration::days(days);
-            let time = NaiveTime::from_hms_opt(u32::from(config.weekend_hour), 0, 0).unwrap();
-            weekend
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
+            local_datetime_utc(weekend, u32::from(config.weekend_hour), now.timezone())
         }
         SnoozeOption::NextMonday => {
             let days_until_monday = (i64::from(Weekday::Mon.num_days_from_monday())
@@ -99,13 +81,7 @@ pub fn resolve_snooze_time(option: SnoozeOption, config: &SnoozeConfig) -> DateT
                 days_until_monday
             };
             let monday = now.date_naive() + Duration::days(days);
-            let time = NaiveTime::from_hms_opt(u32::from(config.morning_hour), 0, 0).unwrap();
-            monday
-                .and_time(time)
-                .and_local_timezone(now.timezone())
-                .single()
-                .unwrap()
-                .with_timezone(&Utc)
+            local_datetime_utc(monday, u32::from(config.morning_hour), now.timezone())
         }
         SnoozeOption::Custom => Utc::now(), // caller should use Custom datetime directly
     }
@@ -122,8 +98,20 @@ pub fn next_weekday_at(from: DateTime<Utc>, target: Weekday, hour: u32) -> DateT
         target_day - current
     };
     let date = (from + Duration::days(i64::from(days_ahead))).date_naive();
-    let time = NaiveTime::from_hms_opt(hour, 0, 0).unwrap();
+    let time = NaiveTime::from_hms_opt(hour, 0, 0).expect("validated weekday snooze hour");
     Utc.from_utc_datetime(&date.and_time(time))
+}
+
+fn local_datetime_utc(date: chrono::NaiveDate, hour: u32, timezone: Local) -> DateTime<Utc> {
+    let time = NaiveTime::from_hms_opt(hour, 0, 0).expect("validated snooze hour");
+    let candidate = date.and_time(time);
+    timezone
+        .from_local_datetime(&candidate)
+        .single()
+        .or_else(|| timezone.from_local_datetime(&candidate).earliest())
+        .or_else(|| timezone.from_local_datetime(&candidate).latest())
+        .expect("snooze local datetime should resolve")
+        .with_timezone(&Utc)
 }
 
 /// Parse a snooze "until" string (from CLI or API) into a concrete wake time.

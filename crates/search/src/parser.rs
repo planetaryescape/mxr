@@ -423,6 +423,8 @@ pub fn parse_query(input: &str) -> Result<QueryNode, ParseError> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
     use chrono::NaiveDate;
 

@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use crate::types::{GmailHeader, GmailMessage, GmailPayload};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;

@@ -14,6 +14,8 @@ pub use schema::MxrSchema;
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
     use mxr_core::id::*;
     use mxr_core::types::*;

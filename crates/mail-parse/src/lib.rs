@@ -80,7 +80,7 @@ pub fn body_unsubscribe_from_html(html: &str) -> Option<UnsubscribeMethod> {
     static HREF_RE: OnceLock<Regex> = OnceLock::new();
     let re = HREF_RE.get_or_init(|| {
         Regex::new(r#"(?is)href\s*=\s*["']([^"']*(unsubscribe|opt-out|preferences)[^"']*)["']"#)
-            .unwrap()
+            .expect("body unsubscribe regex should compile")
     });
     re.captures(html).and_then(|caps| {
         caps.get(1).map(|url| UnsubscribeMethod::BodyLink {
@@ -387,6 +387,8 @@ fn html_unescape(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
     use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
     use serde_json::json;

@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use crate::cli::{LabelsAction, OutputFormat};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;

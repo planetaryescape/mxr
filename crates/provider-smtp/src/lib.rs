@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 pub mod config;
 
 use async_trait::async_trait;

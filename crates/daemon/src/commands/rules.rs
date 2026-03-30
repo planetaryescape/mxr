@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use crate::cli::{OutputFormat, RulesAction};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
@@ -108,7 +110,8 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
             let date = match date {
                 mxr_search::ast::DateValue::Specific(date) => {
                     chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                        date.and_hms_opt(0, 0, 0).unwrap(),
+                        date.and_hms_opt(0, 0, 0)
+                            .expect("midnight should always be a valid time"),
                         chrono::Utc,
                     )
                 }

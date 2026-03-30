@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use async_trait::async_trait;
 use mxr_core::{
     AccountId, Address, Draft, Label, LabelChange, LabelId, LabelKind, MailSendProvider,

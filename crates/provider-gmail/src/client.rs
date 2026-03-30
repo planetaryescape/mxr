@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use crate::auth::GmailAuth;
 use crate::error::GmailError;
 use crate::types::*;

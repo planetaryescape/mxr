@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 mod engine;
 pub mod threading;
 pub use engine::SyncEngine;
@@ -678,7 +680,7 @@ mod tests {
             .await
             .search("deployment", 10, 0, SortOrder::DateDesc)
             .unwrap();
-        assert_eq!(results.has_more, false);
+        assert!(!results.has_more);
         assert!(!results.results.is_empty());
         assert!(results.results.len() <= 10);
         assert!(results.results.iter().all(|r| r.score >= 0.0));
@@ -1500,15 +1502,17 @@ mod tests {
         let outcome = engine.sync_account_with_outcome(&provider).await.unwrap();
 
         assert_eq!(outcome.synced_count, 1);
-        let calls = provider.calls.lock().unwrap();
-        assert_eq!(calls.len(), 2);
-        assert!(matches!(
-            calls[0],
-            SyncCursor::Gmail {
-                history_id: 27_697_494
-            }
-        ));
-        assert!(matches!(calls[1], SyncCursor::Initial));
+        {
+            let calls = provider.calls.lock().unwrap();
+            assert_eq!(calls.len(), 2);
+            assert!(matches!(
+                calls[0],
+                SyncCursor::Gmail {
+                    history_id: 27_697_494
+                }
+            ));
+            assert!(matches!(calls[1], SyncCursor::Initial));
+        }
         let stored_cursor = store.get_sync_cursor(&account_id).await.unwrap();
         assert!(matches!(
             stored_cursor,

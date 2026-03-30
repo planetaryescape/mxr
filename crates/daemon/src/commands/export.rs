@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use crate::ipc_client::IpcClient;
 use mxr_core::{ExportFormat, ThreadId};
 use mxr_protocol::*;

@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use mxr_core::id::{AccountId, LabelId};
 use mxr_core::types::{Label, LabelKind};
 

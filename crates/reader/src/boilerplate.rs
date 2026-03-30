@@ -1,17 +1,22 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+fn compile_regex(pattern: &str) -> Regex {
+    Regex::new(pattern).expect("boilerplate regex literals should compile")
+}
+
 static BOILERPLATE_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
-        Regex::new(r"(?i)this (email|message|communication) is confidential").unwrap(),
-        Regex::new(r"(?i)if you (have )?received this (email|message) in error").unwrap(),
-        Regex::new(r"(?i)^DISCLAIMER").unwrap(),
-        Regex::new(r"(?i)this (email|message) (and any attachments )?(is|are) intended (only |solely )?for")
-            .unwrap(),
-        Regex::new(r"(?i)please consider the environment before printing").unwrap(),
-        Regex::new(r"(?i)any (views|opinions) expressed .* are (solely |those of )").unwrap(),
-        Regex::new(r"(?i)privileged and confidential").unwrap(),
-        Regex::new(r"(?i)if you are not the intended recipient").unwrap(),
+        compile_regex(r"(?i)this (email|message|communication) is confidential"),
+        compile_regex(r"(?i)if you (have )?received this (email|message) in error"),
+        compile_regex(r"(?i)^DISCLAIMER"),
+        compile_regex(
+            r"(?i)this (email|message) (and any attachments )?(is|are) intended (only |solely )?for",
+        ),
+        compile_regex(r"(?i)please consider the environment before printing"),
+        compile_regex(r"(?i)any (views|opinions) expressed .* are (solely |those of )"),
+        compile_regex(r"(?i)privileged and confidential"),
+        compile_regex(r"(?i)if you are not the intended recipient"),
     ]
 });
 

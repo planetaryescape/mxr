@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use mxr_core::types::{Address, Draft};
 use mxr_outbound::email::{build_message, format_message_for_gmail};

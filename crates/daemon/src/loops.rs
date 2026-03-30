@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_core::types::SyncCursor;

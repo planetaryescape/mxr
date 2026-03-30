@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use mail_parser::MessageParser;
 use mxr_reader::{clean, ReaderConfig};
 use mxr_test_support::{fixture_stem, standards_fixture_bytes, standards_fixture_names};
@@ -11,7 +13,7 @@ fn standards_fixture_reader_snapshot() {
     let html = message.body_html(0);
     let output = clean(text.as_deref(), html.as_deref(), &ReaderConfig::default());
     assert!(output.cleaned_lines <= output.original_lines);
-    assert!(output.content.trim().len() > 0);
+    assert!(!output.content.trim().is_empty());
     assert_eq!(output.quoted_messages.len(), 0);
 
     insta::assert_yaml_snapshot!(
@@ -38,7 +40,7 @@ fn standards_fixture_reader_matrix_snapshots() {
             output.cleaned_lines <= output.original_lines,
             "fixture={fixture}"
         );
-        assert!(output.content.trim().len() > 0, "fixture={fixture}");
+        assert!(!output.content.trim().is_empty(), "fixture={fixture}");
 
         insta::assert_yaml_snapshot!(
             format!("reader_fixture__{}", fixture_stem(fixture)),

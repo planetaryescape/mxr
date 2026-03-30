@@ -1,17 +1,21 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+fn compile_regex(pattern: &str) -> Regex {
+    Regex::new(pattern).expect("tracking regex literals should compile")
+}
+
 static TRACKING_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     vec![
-        Regex::new(r"(?i)view (this )?(email |message )?in (your )?browser").unwrap(),
-        Regex::new(r"(?i)update your preferences").unwrap(),
-        Regex::new(r"(?i)manage (your )?(email )?preferences").unwrap(),
-        Regex::new(r"(?i)you (are )?receiving this (because|email)").unwrap(),
-        Regex::new(r"(?i)to stop receiving these").unwrap(),
-        Regex::new(r"(?i)click here to unsubscribe").unwrap(),
-        Regex::new(r"(?i)no longer wish to receive").unwrap(),
-        Regex::new(r"(?i)©\s*\d{4}").unwrap(),
-        Regex::new(r"(?i)all rights reserved").unwrap(),
+        compile_regex(r"(?i)view (this )?(email |message )?in (your )?browser"),
+        compile_regex(r"(?i)update your preferences"),
+        compile_regex(r"(?i)manage (your )?(email )?preferences"),
+        compile_regex(r"(?i)you (are )?receiving this (because|email)"),
+        compile_regex(r"(?i)to stop receiving these"),
+        compile_regex(r"(?i)click here to unsubscribe"),
+        compile_regex(r"(?i)no longer wish to receive"),
+        compile_regex(r"(?i)©\s*\d{4}"),
+        compile_regex(r"(?i)all rights reserved"),
     ]
 });
 

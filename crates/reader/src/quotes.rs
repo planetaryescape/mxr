@@ -8,9 +8,12 @@ pub struct QuotedBlock {
     pub content: String,
 }
 
-static ON_WROTE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^On .+wrote:\s*$").unwrap());
+static ON_WROTE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^On .+wrote:\s*$").expect("quoted-reply regex literal should compile")
+});
 
-static QUOTE_PREFIX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^>+\s?").unwrap());
+static QUOTE_PREFIX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^>+\s?").expect("quote-prefix regex literal should compile"));
 
 /// Collapse quoted replies into summary blocks.
 /// Returns (cleaned_text, extracted_quotes).

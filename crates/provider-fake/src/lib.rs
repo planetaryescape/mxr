@@ -45,6 +45,24 @@ pub enum Mutation {
 }
 
 impl FakeProvider {
+    fn labels_guard(&self) -> std::sync::MutexGuard<'_, Vec<Label>> {
+        self.labels
+            .lock()
+            .expect("fake provider labels mutex should not be poisoned")
+    }
+
+    fn sent_guard(&self) -> std::sync::MutexGuard<'_, Vec<Draft>> {
+        self.sent
+            .lock()
+            .expect("fake provider sent mutex should not be poisoned")
+    }
+
+    fn mutations_guard(&self) -> std::sync::MutexGuard<'_, Vec<Mutation>> {
+        self.mutations
+            .lock()
+            .expect("fake provider mutations mutex should not be poisoned")
+    }
+
     pub fn new(account_id: AccountId) -> Self {
         let (messages, bodies, labels) = crate::fixtures::generate_fixtures(&account_id);
         Self {
@@ -58,11 +76,11 @@ impl FakeProvider {
     }
 
     pub fn sent_drafts(&self) -> Vec<Draft> {
-        self.sent.lock().unwrap().clone()
+        self.sent_guard().clone()
     }
 
     pub fn mutations(&self) -> Vec<Mutation> {
-        self.mutations.lock().unwrap().clone()
+        self.mutations_guard().clone()
     }
 }
 
@@ -96,7 +114,7 @@ impl MailSyncProvider for FakeProvider {
     }
 
     async fn sync_labels(&self) -> Result<Vec<Label>, MxrError> {
-        Ok(self.labels.lock().unwrap().clone())
+        Ok(self.labels_guard().clone())
     }
 
     async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch, MxrError> {
@@ -154,14 +172,11 @@ impl MailSyncProvider for FakeProvider {
         add: &[String],
         remove: &[String],
     ) -> Result<(), MxrError> {
-        self.mutations
-            .lock()
-            .unwrap()
-            .push(Mutation::LabelsModified {
-                provider_id: provider_message_id.to_string(),
-                added: add.to_vec(),
-                removed: remove.to_vec(),
-            });
+        self.mutations_guard().push(Mutation::LabelsModified {
+            provider_id: provider_message_id.to_string(),
+            added: add.to_vec(),
+            removed: remove.to_vec(),
+        });
         Ok(())
     }
 
@@ -176,7 +191,7 @@ impl MailSyncProvider for FakeProvider {
             unread_count: 0,
             total_count: 0,
         };
-        self.labels.lock().unwrap().push(label.clone());
+        self.labels_guard().push(label.clone());
         Ok(label)
     }
 
@@ -185,7 +200,7 @@ impl MailSyncProvider for FakeProvider {
         provider_label_id: &str,
         new_name: &str,
     ) -> Result<Label, MxrError> {
-        let mut labels = self.labels.lock().unwrap();
+        let mut labels = self.labels_guard();
         let label = labels
             .iter_mut()
             .find(|label| label.provider_id == provider_label_id)
@@ -197,7 +212,7 @@ impl MailSyncProvider for FakeProvider {
     }
 
     async fn delete_label(&self, provider_label_id: &str) -> Result<(), MxrError> {
-        let mut labels = self.labels.lock().unwrap();
+        let mut labels = self.labels_guard();
         let before = labels.len();
         labels.retain(|label| label.provider_id != provider_label_id);
         if labels.len() == before {
@@ -207,14 +222,14 @@ impl MailSyncProvider for FakeProvider {
     }
 
     async fn trash(&self, provider_message_id: &str) -> Result<(), MxrError> {
-        self.mutations.lock().unwrap().push(Mutation::Trashed {
+        self.mutations_guard().push(Mutation::Trashed {
             provider_id: provider_message_id.to_string(),
         });
         Ok(())
     }
 
     async fn set_read(&self, provider_message_id: &str, read: bool) -> Result<(), MxrError> {
-        self.mutations.lock().unwrap().push(Mutation::ReadSet {
+        self.mutations_guard().push(Mutation::ReadSet {
             provider_id: provider_message_id.to_string(),
             read,
         });
@@ -222,7 +237,7 @@ impl MailSyncProvider for FakeProvider {
     }
 
     async fn set_starred(&self, provider_message_id: &str, starred: bool) -> Result<(), MxrError> {
-        self.mutations.lock().unwrap().push(Mutation::StarredSet {
+        self.mutations_guard().push(Mutation::StarredSet {
             provider_id: provider_message_id.to_string(),
             starred,
         });
@@ -237,7 +252,7 @@ impl MailSendProvider for FakeProvider {
     }
 
     async fn send(&self, draft: &Draft, _from: &Address) -> Result<SendReceipt, MxrError> {
-        self.sent.lock().unwrap().push(draft.clone());
+        self.sent_guard().push(draft.clone());
         Ok(SendReceipt {
             provider_message_id: Some(format!("fake-sent-{}", uuid::Uuid::now_v7())),
             sent_at: chrono::Utc::now(),
@@ -255,6 +270,8 @@ impl MailSendProvider for FakeProvider {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
     use std::collections::HashSet;
 

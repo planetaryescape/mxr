@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 pub mod config;
 pub mod error;
 pub mod folders;
@@ -979,6 +981,8 @@ fn label_to_flag(label: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::panic)]
+
     use super::*;
     use crate::session::mock::MockImapSessionFactory;
     use crate::types::*;

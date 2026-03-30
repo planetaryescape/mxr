@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
+
 use crate::ipc_client::IpcClient;
 use mxr_protocol::{Request, Response, ResponseData};
 use regex::Regex;
@@ -406,7 +408,8 @@ fn render_event_line(entry: &mxr_store::EventLogEntry) -> String {
 fn sanitize(input: &str) -> String {
     let mut output = input.to_string();
 
-    let email_re = Regex::new(r"(?i)\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b").unwrap();
+    let email_re = Regex::new(r"(?i)\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b")
+        .expect("email redaction regex should compile");
     output = email_re
         .replace_all(&output, "[REDACTED_EMAIL]")
         .into_owned();
@@ -414,22 +417,25 @@ fn sanitize(input: &str) -> String {
     let token_re = Regex::new(
         r#"(?im)^(\s*[- ]*(client_secret|token_ref|password_ref|access_token|refresh_token|api[_-]?key|authorization)\s*[:=]\s*).*$"#,
     )
-    .unwrap();
+    .expect("secret redaction regex should compile");
     output = token_re
         .replace_all(&output, "$1[REDACTED_SECRET]")
         .into_owned();
 
-    let subject_re = Regex::new(r#"(?im)^(\s*[- ]*subject\s*[:=]\s*).*$"#).unwrap();
+    let subject_re = Regex::new(r#"(?im)^(\s*[- ]*subject\s*[:=]\s*).*$"#)
+        .expect("subject redaction regex should compile");
     output = subject_re
         .replace_all(&output, "$1[REDACTED_SUBJECT]")
         .into_owned();
 
-    let body_re = Regex::new(r#"(?im)^(\s*[- ]*body(_text)?\s*[:=]\s*).*$"#).unwrap();
+    let body_re = Regex::new(r#"(?im)^(\s*[- ]*body(_text)?\s*[:=]\s*).*$"#)
+        .expect("body redaction regex should compile");
     output = body_re
         .replace_all(&output, "$1[REDACTED_BODY]")
         .into_owned();
 
-    let ip_re = Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}\b").unwrap();
+    let ip_re =
+        Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}\b").expect("IP redaction regex should compile");
     output = ip_re.replace_all(&output, "[REDACTED_IP]").into_owned();
 
     if let Some(home) = dirs::home_dir() {

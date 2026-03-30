@@ -113,6 +113,8 @@ pub enum ShellHookError {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::panic)]
+
     use super::*;
 
     fn sample_payload() -> ShellHookPayload {

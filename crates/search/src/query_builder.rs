@@ -127,7 +127,10 @@ impl QueryBuilder {
 
         if terms.len() == 1 {
             let tq = TermQuery::new(
-                terms.into_iter().next().unwrap(),
+                terms
+                    .into_iter()
+                    .next()
+                    .expect("single-term phrase queries should have one term"),
                 IndexRecordOption::WithFreqs,
             );
             return Box::new(BoostQuery::new(Box::new(tq), 3.0));
@@ -314,7 +317,9 @@ impl QueryBuilder {
     }
 
     fn date_to_tantivy(&self, date: NaiveDate) -> tantivy::DateTime {
-        let dt = date.and_hms_opt(0, 0, 0).unwrap();
+        let dt = date
+            .and_hms_opt(0, 0, 0)
+            .expect("midnight should always be a valid time");
         let ts = dt.and_utc().timestamp();
         tantivy::DateTime::from_timestamp_secs(ts)
     }
@@ -346,6 +351,8 @@ fn tokenize_text_value(value: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
     use crate::index::SearchIndex;
     use crate::parser::parse_query;

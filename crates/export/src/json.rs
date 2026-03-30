@@ -78,6 +78,8 @@ pub fn export_json(thread: &ExportThread) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
     use crate::tests::{empty_body_thread, sample_thread, single_message_thread};
 

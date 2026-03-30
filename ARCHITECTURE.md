@@ -42,6 +42,20 @@ Daemon rule: serve reusable truth and workflows, not screen payloads.
 
 Provider rule: provider weirdness is handled below this layer in adapter crates, but capability differences stay visible where behavior actually differs.
 
+## Semantic retrieval
+
+Semantic search is an `mxr-platform` feature, not a core mail requirement.
+
+- mail still fundamentally works without semantic retrieval
+- embeddings stay local
+- sync may prepare semantic chunks even while semantic retrieval is disabled
+- embedding generation happens only when semantic is enabled
+- hybrid search keeps lexical BM25 and fuses in dense recall with RRF
+- fielded dense queries intentionally respect chunk source kinds
+- OCR is not part of active semantic indexing
+
+That boundary matters. Do not blur exact lexical behavior and semantic recall into one fuzzy system.
+
 ## Principles
 
 1. Local-first

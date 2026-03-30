@@ -136,7 +136,7 @@ Today, agents use mxr through the CLI and the skill guide. A first-party MCP ser
 </div>
 </div>
 
-mxr syncs your email to a local SQLite database and indexes it with Tantivy — the same engine behind [Quickwit](https://quickwit.io). Opening a message is a local read, not a network call. Search uses BM25 ranking with field-level boosts. Works offline. Your data lives on your machine. No spinners. No loading states.
+mxr syncs your email to a local SQLite database and indexes it with Tantivy — the same engine behind [Quickwit](https://quickwit.io). Opening a message is a local read, not a network call. Search uses BM25 ranking with field-level boosts, plus optional local semantic retrieval when you enable it. Works offline. Your data lives on your machine. No spinners. No loading states.
 
 </div>
 
@@ -149,7 +149,7 @@ mxr syncs your email to a local SQLite database and indexes it with Tantivy — 
     `$EDITOR` opens with markdown and YAML frontmatter. Your keybindings, your plugins, your muscle memory. mxr handles parsing, markdown-to-multipart conversion, and sending.
   </Card>
   <Card title="Real search engine" icon="magnifier">
-    Tantivy gives you BM25-ranked, sub-second full-text search across your entire mailbox. Saved searches live in the sidebar as programmable lenses. Search is navigation, not a bolt-on filter.
+    Tantivy gives you BM25-ranked, sub-second full-text search across your entire mailbox. You can keep it lexical or opt into local hybrid/semantic retrieval. Saved searches live in the sidebar as programmable lenses. Search is navigation, not a bolt-on filter.
   </Card>
   <Card title="Daemon-backed" icon="setting">
     The daemon is the system. The TUI is just a thin client. Sync, indexing, rules, and snooze run in the background. Close the TUI — nothing stops.

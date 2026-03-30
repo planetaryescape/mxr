@@ -47,6 +47,21 @@ Rules:
 - Admin surfaces stay in IPC but stay conceptually separate from the core mail contract.
 - Provider weirdness is handled below this layer in adapters.
 
+## Semantic Search Boundary
+
+- Semantic search is an `mxr-platform` feature layered on top of the core mail runtime.
+- Mail sync/read/send must still fundamentally work without it.
+- Embeddings stay local.
+- Sync may persist semantic chunks even when semantic retrieval is disabled.
+- Embeddings are generated only when semantic is enabled or explicitly reindexed.
+- Active semantic indexing uses real text extraction only. No OCR for image attachments or scanned/image-only PDFs.
+- Hybrid search keeps lexical BM25 as the exact path and adds dense recall with RRF.
+- Fielded dense queries should respect chunk source kinds:
+  - `subject:` -> header chunks
+  - `body:` -> body chunks
+  - `filename:` -> attachment-origin chunks
+- Do not casually reintroduce OCR or blur lexical exactness and semantic recall into one fuzzy layer.
+
 ## Release Shorthand
 
 - User phrase `ship it` means full release flow, not just a local commit.

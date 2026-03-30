@@ -4,18 +4,18 @@
 
 Following XDG:
 
-- Config: `$XDG_CONFIG_HOME/mxr/config.toml`
-- Data: `$XDG_DATA_HOME/mxr/`
-- Runtime: `$XDG_RUNTIME_DIR/mxr/mxr.sock`
-
-Data directory contents:
-
-- `mxr.db` — SQLite
-- `search_index/` — Tantivy index
-- `models/` — local semantic model cache
-- `attachments/` — downloaded attachments
+- config: `$XDG_CONFIG_HOME/mxr/config.toml`
+- data: `$XDG_DATA_HOME/mxr/`
+- runtime: `$XDG_RUNTIME_DIR/mxr/mxr.sock`
 
 macOS equivalents live under `~/Library/Application Support/mxr/`.
+
+Data dir highlights:
+
+- `mxr.db` — SQLite
+- `search_index/` — Tantivy
+- `models/` — local semantic model cache
+- `attachments/` — downloaded attachments
 
 ## Example config
 
@@ -41,108 +41,168 @@ auto_download_models = true
 active_profile = "bge-small-en-v1.5"
 max_pending_jobs = 256
 query_timeout_ms = 1500
-
-[snooze]
-morning_hour = 9
-evening_hour = 18
-weekend_day = "saturday"
-weekend_hour = 10
-
-[appearance]
-theme = "default"
-sidebar = true
-date_format = "%b %d"
-date_format_full = "%Y-%m-%d %H:%M"
-subject_max_width = 60
 ```
 
-## Search config
-
-### `[search]`
+## `[search]`
 
 - `default_sort`
 - `max_results`
 - `default_mode`
 
-`default_mode` controls what the daemon uses when a request does not specify a mode explicitly.
+`default_mode` controls the search mode used when a request does not specify one explicitly.
 
-### `[search.semantic]`
+## `[search.semantic]`
 
-- `enabled`: turn semantic indexing and retrieval on/off
-- `auto_download_models`: allow first-use profile download
-- `active_profile`: one of:
-  - `bge-small-en-v1.5`
-  - `multilingual-e5-small`
-  - `bge-m3`
-- `max_pending_jobs`: bound semantic indexing backlog
-- `query_timeout_ms`: dense search budget
+### `enabled`
 
-## Profile strategy
+Semantic retrieval toggle.
 
-Default profile:
+Current behavior:
+
+- `false`
+  - sync still prepares semantic chunks for changed messages
+  - embeddings are not generated
+  - dense retrieval is off
+  - lexical search keeps working normally
+- `true`
+  - mxr installs the active local profile if needed
+  - generates embeddings from stored chunks
+  - rebuilds/uses the dense ANN index
+
+This is deliberate. `enabled = false` does **not** mean “no semantic-ready data exists.” It means “do not generate/use embeddings right now.”
+
+### `auto_download_models`
+
+- `true`: first enable/profile use may download the selected local model automatically
+- `false`: semantic commands/search will fail until the active local model is already installed
+
+### `active_profile`
+
+Current supported values:
 
 - `bge-small-en-v1.5`
-
-Reason:
-
-- smaller download
-- faster local inference
-- good default for a majority-English mailbox
-
-Opt-in multilingual profile:
-
 - `multilingual-e5-small`
-
-Optional advanced profile:
-
 - `bge-m3`
 
-Rules:
+This is the local embedding profile mxr will use when semantic search is enabled.
 
-- only the active configured profile is downloaded automatically
-- switching to multilingual does not auto-download `bge-m3`
-- switching profiles triggers semantic rebuild for the new profile
-- existing lexical search keeps working while semantic is unavailable or rebuilding
+### `max_pending_jobs`
 
-## Profile cache and lifecycle
+Currently parsed and persisted in config, but not yet enforced by a separate semantic job queue. Keep it as configuration shape, not as an active runtime guarantee today.
 
-Models are cached under:
+### `query_timeout_ms`
 
-- Linux: `$XDG_DATA_HOME/mxr/models/`
-- macOS: `~/Library/Application Support/mxr/models/`
+Currently parsed and persisted in config, but the dense search path does not yet enforce a separate timeout budget from this value. Document it as reserved/currently inactive rather than pretending it is wired.
 
-Operational behavior:
+## What happens when semantic is enabled later
 
-1. User enables semantic search.
-2. mxr installs the active profile if missing.
-3. Semantic chunks and embeddings are built locally.
-4. If the active profile changes later, mxr installs the new profile if needed and rebuilds semantic embeddings.
+If you sync mail for a while with `enabled = false`, mxr still stores semantic chunks for changed messages.
 
-Embedding rows store the profile identity, so model switches do not corrupt existing semantic data.
+When you later enable semantic search:
 
-## Privacy
+1. mxr installs the active local profile if needed
+2. mxr backfills missing chunks for messages that do not already have them
+3. mxr generates embeddings from stored chunks
+4. mxr rebuilds the active ANN index
 
-The default semantic path is local:
+This is cheaper than rebuilding chunk text for every message from scratch.
+
+## Profile install, switching, and reindex
+
+### Install / inspect
+
+```bash
+mxr semantic status
+mxr semantic profile list
+mxr semantic profile install bge-small-en-v1.5
+```
+
+### Switch profile
+
+```bash
+mxr semantic profile use multilingual-e5-small
+```
+
+Current behavior:
+
+- installs the selected local model if needed
+- backfills missing chunks if needed
+- rebuilds embeddings for the selected profile from stored chunks
+- enables semantic search in config
+
+### Full reindex
+
+```bash
+mxr semantic reindex
+mxr doctor --reindex-semantic
+```
+
+Use reindex when:
+
+- chunk extraction rules changed
+- attachment extraction behavior changed
+- you want a full correctness rebuild for the active profile
+
+Reindex rebuilds chunks from message content, then regenerates embeddings.
+
+## Local model cache and privacy
+
+The intended semantic path is local:
 
 - message content stays on the machine
-- embeddings are stored in local SQLite
 - model weights are cached locally
+- embeddings are stored in local SQLite
 
-If cloud embedding backends are added later, they must be explicit configuration, not the default path.
+No cloud embedding backend is the default path. This task does not change that.
 
-## Keybindings
+## Enablement example
 
-Keybindings still live in a separate `keys.toml`. See [08-tui.md](08-tui.md).
+```toml
+[search]
+default_mode = "hybrid"
 
-## Credentials
+[search.semantic]
+enabled = true
+auto_download_models = true
+active_profile = "bge-small-en-v1.5"
+```
 
-Credentials are never stored in `config.toml`.
+Expected first-enable behavior:
+
+- local model install/download if missing
+- embedding build from stored chunks
+- ANN rebuild
+
+Expected ongoing behavior:
+
+- sync keeps preparing chunks
+- active profile embeddings are updated only when semantic is enabled
+
+## Fielded hybrid examples
+
+```bash
+mxr search "body:house of cards" --mode hybrid --explain
+mxr search "subject:house of cards" --mode hybrid --explain
+mxr search "filename:house of cards" --mode hybrid --explain
+```
+
+Dense side intent:
+
+- `body:` -> body chunks
+- `subject:` -> header chunks
+- `filename:` -> attachment chunks
+
+Lexical side remains literal and field-aware through Tantivy.
+
+## Keybindings and secrets
+
+Keybindings still live in `keys.toml`.
+
+Credentials are never stored raw in `config.toml`.
 
 - Linux: Secret Service / GNOME Keyring / KDE Wallet
 - macOS: Keychain
 - fallback: encrypted file in data dir
-
-The config stores references only, not raw secrets.
 
 ## Resolution order
 

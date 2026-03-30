@@ -41,10 +41,32 @@ Useful flags:
 
 - `mxr search --format table|json|csv|ids`
 - `mxr search --limit N`
+- `mxr search --mode lexical|hybrid|semantic`
+- `mxr search --explain`
 - `mxr cat --raw`
 - `mxr cat --html`
 - `mxr thread --format json`
 - `mxr export --output PATH`
+
+Search modes:
+
+- `lexical`: Tantivy BM25 only
+- `hybrid`: lexical + dense retrieval + RRF
+- `semantic`: dense retrieval only
+
+Fielded hybrid examples:
+
+```bash
+mxr search "body:house of cards" --mode hybrid --explain
+mxr search "subject:quarterly report" --mode hybrid --explain
+mxr search "filename:roadmap" --mode hybrid --explain
+```
+
+Dense side intent:
+
+- `subject:` -> header chunks
+- `body:` -> body chunks
+- `filename:` -> attachment-origin chunks
 
 ## Saved searches
 
@@ -166,6 +188,26 @@ mxr accounts add smtp
 mxr accounts show ACCOUNT
 mxr accounts test ACCOUNT
 ```
+
+## Semantic
+
+```bash
+mxr semantic status
+mxr semantic enable
+mxr semantic disable
+mxr semantic reindex
+
+mxr semantic profile list
+mxr semantic profile install bge-small-en-v1.5
+mxr semantic profile use multilingual-e5-small
+```
+
+Notes:
+
+- semantic search is an optional local platform feature
+- embeddings stay local
+- sync may prepare semantic chunks even while semantic retrieval is disabled
+- OCR is not used for semantic indexing
 
 ## Observability
 

@@ -29,6 +29,10 @@ npm run build
 - compose uses `$EDITOR`
 - rules are deterministic before they are clever
 - plain-text-first rendering wins over flashy rendering
+- semantic search is an `mxr-platform` feature, not a core mail primitive
+- semantic embeddings stay local
+- semantic indexing uses real text extraction only; do not casually reintroduce OCR
+- lexical exactness and semantic recall are different layers; do not blur them
 
 ## IPC boundaries
 
@@ -59,6 +63,14 @@ Keep these intact:
 6. `mxr` (daemon crate) is the integration point.
 7. `mxr-tui` and `mxr-web` are client crates. They may use local utility crates (`config`, `compose`, `reader`, `mail-parse`), but never daemon/store/search/sync/provider crates.
 8. Do not use `#[path]` includes to simulate crate boundaries.
+
+Semantic boundary:
+
+- `mxr-semantic` is the local dense-retrieval/runtime layer
+- sync may persist semantic chunk data even when semantic retrieval is disabled
+- embeddings are generated only when semantic is enabled or explicitly reindexed
+- field-aware hybrid search semantics are intentional
+- OCR is out of scope for active semantic indexing
 
 Repo reality:
 
@@ -122,6 +134,7 @@ CI must pass before review or merge.
 - Add tests for new behavior.
 - Prefer integration coverage over mock-heavy unit tests.
 - Do not wire a daemon feature for only one client surface when both TUI and CLI need it.
+- If you touch semantic search, update both code and docs. The behavior is subtle enough that stale docs become bugs.
 
 ## Adapter work
 

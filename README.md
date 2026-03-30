@@ -52,6 +52,40 @@ Current release shape:
 - lexical + hybrid + semantic search
 - CLI, TUI, daemon socket, agent skill
 
+## Search modes
+
+mxr supports three local search modes:
+
+- `lexical`: exact BM25/Tantivy retrieval
+- `hybrid`: lexical + dense retrieval + RRF
+- `semantic`: dense retrieval only
+
+Semantic search is an optional `mxr-platform` feature layered on top of the mail runtime, not a core mail requirement. Sync/read/send still work without it.
+
+Embeddings stay local. First enable may download the selected local model and build embeddings for the active profile. Sync now prepares semantic chunks for changed messages even while semantic retrieval is off, so later enablement is cheaper.
+
+High-level enablement:
+
+```toml
+[search]
+default_mode = "hybrid"
+
+[search.semantic]
+enabled = true
+active_profile = "bge-small-en-v1.5"
+auto_download_models = true
+```
+
+Useful commands:
+
+```bash
+mxr semantic status
+mxr semantic profile use multilingual-e5-small
+mxr semantic reindex
+```
+
+OCR is not used for semantic indexing. Image attachments and scanned/image-only PDFs are skipped unless real text extraction succeeds.
+
 ## Why this feels different
 
 mxr connects to your provider directly, syncs mail into a local SQLite database, and indexes it with Tantivy. No hosted relay. No extra control plane in the middle. Your scripts, your terminal, and your agent all talk to the same local runtime.

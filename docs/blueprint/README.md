@@ -27,6 +27,7 @@
 | 18 | [Bug Reporting](18-bug-reporting.md) | `mxr bug-report` command, log sanitization, log retention, diagnostic capture workflow (D072-D074) |
 | — | [Internal Model Audit](internal-model-audit.md) | Keep/document/tighten/adjust judgment on the current provider-agnostic mail model |
 | — | [IPC Audit](ipc-audit.md) | Current protocol inventory classified into `core-mail`, `mxr-platform`, `admin-maintenance`, and `client-specific` |
+| — | [Semantic Search Audit](semantic-search-audit.md) | Code-truth audit of semantic ingestion, profiles, OCR removal, and hybrid query semantics |
 
 ## For coding agents
 

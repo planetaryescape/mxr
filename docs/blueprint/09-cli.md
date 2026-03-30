@@ -2,9 +2,9 @@
 
 ## CLI design
 
-The CLI and TUI are both daemon clients. CLI commands talk to the daemon over the Unix socket, so scripts hit the same system the TUI uses.
+The CLI and TUI are both daemon clients. The CLI is the canonical user and automation surface.
 
-The CLI is the canonical surface. New capabilities land in the CLI first or at the same time as the TUI. The TUI is a faster interactive layer over the same daemon requests, not a separate product surface.
+New capabilities should land in the CLI first or at the same time as the TUI. The TUI is not a separate mail/search system.
 
 ## Search-oriented commands
 
@@ -17,39 +17,65 @@ mxr search "query" --explain
 
 mxr count "query"
 mxr count "query" --mode lexical|hybrid|semantic
-
-mxr saved add "Unread invoices" "subject:invoice is:unread" --mode lexical
-mxr saved list
-mxr saved run "Unread invoices"
-mxr saved delete "Unread invoices"
 ```
 
-`lexical` remains the default until semantic search is enabled and the user or saved search opts into another mode.
+Saved search examples:
+
+```text
+mxr saved add "Unread invoices" "subject:invoice is:unread" --mode lexical
+mxr saved add "Loose body recall" "body:house of cards" --mode hybrid
+mxr saved list
+mxr saved run "Loose body recall"
+```
+
+## Search modes
+
+- `lexical`: exact/local Tantivy BM25
+- `hybrid`: BM25 + dense retrieval + RRF
+- `semantic`: dense retrieval only, with the same structured filters applied afterward
+
+`lexical` stays the default until semantic search is enabled and the caller or saved search opts into another mode.
+
+## `--explain`
 
 `mxr search --explain` returns:
 
 - requested mode
 - executed mode after fallback
-- lexical/dense candidate windows and counts
 - semantic query text when used
+- lexical/dense candidate windows and counts
 - fallback/debug notes
 - per-result lexical/dense contribution details
 
-## Mutation discipline
-
-Mutations should be safe to script:
-
-- destructive and batch commands must support `--dry-run`
-- preview paths should reuse the same selection logic as the real mutation
-- `--yes` or explicit confirmation gates commit for broad mutations
+Fallback notes must stay honest.
 
 Examples:
 
-```text
-mxr archive --search "older:30d label:notifications" --dry-run
-mxr trash --search "from:spam@example.com" --dry-run
-mxr move --search "label:triage" --to work/todo --dry-run
+- semantic unavailable in this binary
+- semantic search disabled in config
+- query has no semantic text terms
+- query contains negated semantic terms
+- dense retrieval returned no candidates
+
+## Fielded semantic examples
+
+```bash
+mxr search "body:house of cards" --mode hybrid --explain
+mxr search "subject:house of cards" --mode hybrid --explain
+mxr search "filename:house of cards" --mode hybrid --explain
 ```
+
+Expected behavior:
+
+- lexical side stays literal and field-aware
+- dense side respects chunk source kinds
+- hybrid fuses both with RRF
+
+Dense source-kind mapping:
+
+- `subject:` -> header chunks
+- `body:` -> body chunks
+- `filename:` -> attachment-origin chunks
 
 ## Semantic commands
 
@@ -68,10 +94,16 @@ mxr semantic profile use multilingual-e5-small
 
 These commands manage:
 
-- model installation
+- local model installation
 - active profile selection
 - semantic index lifecycle
-- operator-visible status and errors
+- operator-visible status
+
+Important behavior:
+
+- enabling semantic installs/uses the active local profile
+- profile switching rebuilds embeddings for the new profile from stored chunks
+- reindex is the full chunk + embedding rebuild path
 
 ## Diagnostics
 
@@ -84,24 +116,29 @@ mxr doctor --semantic-status
 mxr doctor --format table|json|csv|ids
 ```
 
-`mxr restart` restarts the daemon with the current binary. Clients should use this when the running daemon build/protocol no longer matches the invoking binary.
+`--reindex` rebuilds Tantivy.
 
-`mxr status` and `mxr doctor` expose daemon lifecycle state with explicit health classes:
+`--reindex-semantic` rebuilds the active semantic profile from message content via:
 
-- `healthy`
-- `degraded`
-- `restart_required`
-- `repair_required`
+1. chunk rebuild
+2. embedding rebuild
+3. ANN rebuild
 
-`--reindex` rebuilds Tantivy. `--reindex-semantic` rebuilds the active semantic profile from SQLite.
+## Mutation discipline
 
-Daemon lifecycle policy:
+Mutations should be safe to script:
 
-- stale socket cleanup is automatic
-- daemon build/protocol mismatch should trigger restart, not silent failure
-- search index corruption/emptiness should trigger targeted repair or rebuild
-- provider sync errors degrade health but should not cause daemon self-restarts
-- daemon update checks, if added later, should be opt-in notices only; never self-apply from inside the daemon
+- destructive and batch commands must support `--dry-run`
+- preview paths should reuse the same selection logic as the real mutation
+- `--yes` or explicit confirmation gates commit for broad mutations
+
+Examples:
+
+```text
+mxr archive --search "older:30d label:notifications" --dry-run
+mxr trash --search "from:spam@example.com" --dry-run
+mxr move --search "label:triage" --to work/todo --dry-run
+```
 
 ## Broader CLI surface
 
@@ -133,13 +170,13 @@ Data commands support:
 - `csv`
 - `ids`
 
-Machine-readable output is a first-class feature. JSON is for pipes, scripts, and agents, not only diagnostics.
+Machine-readable output is a product feature.
 
 Examples:
 
 ```bash
-mxr search "subject:invoice is:unread" --mode hybrid --format json | jq -r '.results[].subject'
-mxr count "label:work after:2026-01-01" --mode lexical
+mxr search "subject:invoice is:unread" --mode hybrid --format json | jq .
+mxr search "body:house of cards" --mode hybrid --explain
 mxr semantic status --format json | jq .
 mxr doctor --semantic-status --format json | jq .
 ```

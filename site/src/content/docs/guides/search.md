@@ -15,7 +15,18 @@ mxr search "label:work has:attachment"
 mxr search "subject:\"quarterly review\" after:2026-01-01"
 mxr search "unsubscribe"
 mxr search "label:inbox" --format ids
+mxr search "body:house of cards" --mode hybrid --explain
 ```
+
+## Search modes
+
+- `lexical`: exact BM25/Tantivy retrieval
+- `hybrid`: lexical + dense retrieval + RRF
+- `semantic`: dense retrieval only
+
+Semantic search is optional. It is an `mxr-platform` feature layered on top of the mail runtime, not a requirement for normal mail sync/read/send.
+
+Embeddings stay local. OCR is not used for semantic indexing.
 
 ## Dedicated search page
 
@@ -38,6 +49,27 @@ The Search page gives you:
 - Save high-value searches in the TUI sidebar for recurring workflows.
 - Use `mxr count QUERY` for quick status-bar or script integration.
 - Use `mxr export --search QUERY --format mbox` to archive slices of mail.
+- Use `--explain` when debugging hybrid/semantic fallback or dense contribution.
+
+## Fielded hybrid behavior
+
+Examples:
+
+```bash
+mxr search "body:house of cards" --mode hybrid --explain
+mxr search "subject:house of cards" --mode hybrid --explain
+mxr search "filename:house of cards" --mode hybrid --explain
+```
+
+Current intent:
+
+- lexical side stays literal and field-aware
+- dense side respects chunk source kinds
+- `body:` searches body chunks
+- `subject:` searches header chunks
+- `filename:` searches attachment-origin chunks
+
+Literal lexical matches should usually remain stronger than merely related semantic matches.
 
 ## TUI flow
 

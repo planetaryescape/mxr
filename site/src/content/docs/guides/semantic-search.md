@@ -66,6 +66,24 @@ On first enable, mxr may:
 
 This can take longer than a normal search. After that, sync keeps semantic chunk prep warm for changed messages.
 
+## When semantic search is ready
+
+Lexical search freshness and semantic readiness are different things:
+
+- sync writes mail to SQLite immediately
+- lexical search is fresh after the sync batch commit
+- semantic chunks are also persisted after sync
+- semantic search becomes ready when the active profile has embeddings + ANN state
+
+Use:
+
+```bash
+mxr semantic status
+mxr doctor --semantic-status
+```
+
+to see whether the active profile is actually ready.
+
 ## What `enabled = false` means
 
 `enabled = false` does **not** mean semantic-ready data is absent.
@@ -78,6 +96,16 @@ Current behavior:
 - lexical search still works normally
 
 That makes later enablement cheaper.
+
+## Turn semantic on later
+
+Typical flow:
+
+1. run with `enabled = false` for normal sync/read/search
+2. later enable or `mxr semantic profile use ...`
+3. mxr reuses stored chunks, backfills only missing ones, then builds embeddings
+
+Use `mxr semantic reindex` only when chunk extraction behavior changed or you want a full correctness rebuild.
 
 ## Status, profiles, and reindex
 

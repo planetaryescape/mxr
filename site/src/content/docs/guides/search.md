@@ -71,6 +71,19 @@ Current intent:
 
 Literal lexical matches should usually remain stronger than merely related semantic matches.
 
+## When search is fresh
+
+- lexical search is fresh right after the sync batch commits
+- hybrid search can use lexical results immediately, even if semantic retrieval is disabled
+- semantic-only readiness depends on the active profile being built
+
+Check semantic readiness with:
+
+```bash
+mxr semantic status
+mxr doctor --semantic-status
+```
+
 ## TUI flow
 
 1. Press `/` in Mailbox to jump into Search.

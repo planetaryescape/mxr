@@ -41,6 +41,23 @@ mxr labels
 mxr thread THREAD_ID
 ```
 
+## What happens after sync finishes
+
+Current runtime behavior:
+
+1. envelopes + bodies are already in SQLite
+2. lexical search is already fresh for that sync batch
+3. semantic chunks are persisted for the changed messages
+4. embeddings are generated only if semantic search is enabled
+
+Useful checks:
+
+```bash
+mxr search "deployment" --mode lexical
+mxr semantic status
+mxr doctor --semantic-status
+```
+
 ## What to expect in the TUI
 
 - Left sidebar: system labels, user labels, saved searches

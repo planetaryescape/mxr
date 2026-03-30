@@ -249,6 +249,21 @@ When semantic is turned on later:
 
 This makes enablement cheaper than rebuilding chunk text from scratch for every message.
 
+### Practical lifecycle checks
+
+Inspect current runtime state with:
+
+```bash
+mxr semantic status
+mxr doctor --semantic-status
+```
+
+Practical rules:
+
+- want to know if new mail is searchable now -> lexical is fresh after sync batch commit
+- want to know if dense retrieval is ready -> check semantic status/profile readiness
+- changed chunk extraction logic -> run semantic reindex
+
 ### Reindex
 
 `mxr semantic reindex` and `mxr doctor --reindex-semantic` remain the full correctness path:
@@ -311,4 +326,5 @@ Mode is part of the saved search behavior, not a global toggle.
 - OCR is intentionally out of scope for active semantic indexing.
 - Hybrid search is pragmatic, not magical.
 - When docs conflict with code, prefer code, then update docs.
-- See [semantic-search-audit.md](semantic-search-audit.md) for the code-truth cleanup audit behind this document.
+- See [sync-index-lifecycle-audit.md](sync-index-lifecycle-audit.md) for the end-to-end lifecycle audit.
+- See [semantic-search-audit.md](semantic-search-audit.md) for the semantic-only cleanup audit behind this document.

@@ -56,6 +56,21 @@ Semantic search is an `mxr-platform` feature, not a core mail requirement.
 
 That boundary matters. Do not blur exact lexical behavior and semantic recall into one fuzzy system.
 
+## Lifecycle guarantees
+
+Current runtime story:
+
+1. sync writes envelopes + bodies to SQLite immediately
+2. sync updates Tantivy immediately and commits lexical freshness per batch
+3. sync maintains labels, counts, threading, and cursor state
+4. daemon post-sync work persists semantic chunks for the newly upserted messages
+5. embedding generation + ANN refresh happen only when semantic is enabled or explicitly reindexed/profile-switched
+
+Repair boundary:
+
+- lexical search is repairable from SQLite at daemon startup
+- semantic readiness is optional platform state layered on top
+
 ## Principles
 
 1. Local-first

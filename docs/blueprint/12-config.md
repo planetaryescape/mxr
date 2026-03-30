@@ -107,6 +107,12 @@ When you later enable semantic search:
 
 This is cheaper than rebuilding chunk text for every message from scratch.
 
+Operationally, that means:
+
+- `enabled = false` still keeps semantic-ready chunk text warm
+- later enablement is mostly an embedding/profile build step
+- lexical search freshness is unaffected by semantic enablement
+
 ## Profile install, switching, and reindex
 
 ### Install / inspect
@@ -177,6 +183,7 @@ Expected ongoing behavior:
 
 - sync keeps preparing chunks
 - active profile embeddings are updated only when semantic is enabled
+- `mxr semantic status` shows whether the active profile is actually ready
 
 ## Fielded hybrid examples
 

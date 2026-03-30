@@ -86,6 +86,30 @@ mxr semantic reindex
 
 OCR is not used for semantic indexing. Image attachments and scanned/image-only PDFs are skipped unless real text extraction succeeds.
 
+## What happens after new mail syncs in?
+
+Current lifecycle:
+
+1. envelope + body are written to SQLite during sync
+2. Tantivy is updated during that same batch
+3. the lexical batch is committed before sync completes, so lexical search is fresh immediately after sync
+4. the daemon then persists semantic chunks for the upserted messages
+5. embeddings are generated only if semantic retrieval is enabled
+
+So:
+
+- `mxr search ... --mode lexical` is the immediate freshness path
+- `mxr search ... --mode hybrid` and `--mode semantic` depend on semantic profile readiness
+- turning semantic on later can reuse stored chunks instead of rebuilding all semantic prep from scratch
+
+Useful checks:
+
+```bash
+mxr status
+mxr semantic status
+mxr doctor --semantic-status
+```
+
 ## Why this feels different
 
 mxr connects to your provider directly, syncs mail into a local SQLite database, and indexes it with Tantivy. No hosted relay. No extra control plane in the middle. Your scripts, your terminal, and your agent all talk to the same local runtime.

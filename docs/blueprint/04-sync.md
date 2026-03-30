@@ -2,7 +2,15 @@
 
 ## Overview
 
-The sync engine orchestrates data flow between providers and local state (SQLite + Tantivy). It runs inside the daemon as a continuous background process.
+The sync engine orchestrates data flow between providers and local core-mail state. It runs inside the daemon as a continuous background process.
+
+Immediate sync guarantee:
+
+- envelope + body are written to SQLite during sync
+- Tantivy is updated during the same batch and committed before sync completes
+- label associations, label counts, threading, and cursor maintenance happen in the same flow
+
+Semantic chunk prep is intentionally **not** part of `mxr-sync` itself. The daemon performs that as a post-sync platform step using the message ids that sync upserted.
 
 ## Sync lifecycle
 
@@ -13,14 +21,20 @@ The sync engine orchestrates data flow between providers and local state (SQLite
 3. Fetch messages in batches (newest first, paginated)
    - Gmail: `messages.list` with `maxResults=100`, paging through all messages
    - Store each batch of envelopes + bodies in SQLite
-   - Index each batch in Tantivy
+   - Populate label associations
+   - Index each batch in Tantivy with body text
+   - Commit the lexical batch
    - Parse `List-Unsubscribe` header and store on envelope
-4. Store the initial sync cursor (Gmail: latest `historyId`)
-5. Log sync completion in `sync_log`
+4. Recalculate label counts
+5. Rethread accounts that do not have stable native thread ids
+6. Store the initial sync cursor (Gmail: latest `historyId`)
+7. Log sync completion in `sync_log`
+
+After the daemon receives the sync outcome, it ingests semantic chunks for the newly upserted messages. If semantic retrieval is disabled, that ingest stops after chunk persistence.
 
 Initial sync for a large mailbox (10k+ messages) may take several minutes. The daemon should:
 - Sync in batches, committing each batch to SQLite (no single giant transaction)
-- Make messages available in the TUI as they arrive (progressive loading)
+- Make lexical search and reads available as batches arrive
 - Show sync progress via the IPC protocol (TUI displays a progress indicator)
 
 ### Delta sync (subsequent syncs)
@@ -31,14 +45,30 @@ Initial sync for a large mailbox (10k+ messages) may take several minutes. The d
    - This is what makes Gmail sync fast: typically a handful of API calls even for active inboxes
 3. Apply `SyncBatch` to local store:
    - Upsert new/modified envelopes
+   - Upsert eagerly fetched bodies
+   - Update label associations
    - Delete messages marked as deleted
    - Apply label changes
    - Parse `List-Unsubscribe` on new messages
-4. Update Tantivy index (add new docs, remove deleted)
-5. Update sync cursor in `accounts` table
+4. Update Tantivy index (add new docs, reindex changed docs, remove deleted)
+5. Commit the lexical batch
 6. Update label counts (unread_count, total_count)
-7. Notify connected TUI clients of changes via IPC
-8. Log sync in `sync_log`
+7. Rethread when provider capabilities require it
+8. Update sync cursor in `accounts` table
+9. Daemon ingests semantic chunks for upserted messages
+10. Notify connected clients of changes via IPC
+11. Log sync in `sync_log`
+
+Current lifecycle split:
+
+- `mxr-sync`
+  - SQLite persistence
+  - lexical index updates
+  - counts/threading/cursor maintenance
+- daemon post-sync platform work
+  - semantic chunk persistence for changed messages
+  - optional embedding generation when semantic is enabled
+  - rules execution on newly upserted messages
 
 ### Sync loop timing
 
@@ -79,11 +109,26 @@ This is simpler than full CRDT-style conflict resolution and correct for the com
 
 ### Cursor invalidation
 
-If the sync cursor becomes invalid (Gmail: historyId too old, which happens if you don't sync for a long time), the provider returns an error. The sync engine should:
-1. Log the invalidation
-2. Fall back to a full re-sync
-3. Inform the user that a full re-sync is happening (it will be slower)
-4. This should be rare in practice if the sync interval is reasonable
+If a Gmail cursor becomes invalid/not-found (for example, historyId too old), the current sync path:
+
+1. logs the invalidation
+2. resets the stored cursor to `Initial`
+3. retries once as a full sync
+
+This keeps recovery boring and explicit instead of leaving the account stuck on a bad provider cursor.
+
+### Repair behavior
+
+Current repair paths:
+
+- bad Gmail cursor -> reset to `Initial` and retry once
+- label-capable account with messages but empty `message_labels` -> reset cursor and rebuild associations through full sync
+- lexical index drift on daemon startup -> rebuild Tantivy from SQLite
+
+Note the boundary:
+
+- lexical repair is mandatory core-mail repair
+- semantic readiness is optional platform work layered on top
 
 ## Eager body fetch
 
@@ -96,9 +141,23 @@ When the user opens a message, the TUI sends `GetBody { message_id }` to the dae
 
 This approach means:
 - Opening any message is instant (pure SQLite read)
-- Full-text search works immediately after sync (body text indexed at sync time)
+- Full-text lexical search works immediately after sync (body text indexed at sync time)
 - Offline access works for all synced messages
 - Storage grows proportionally to mailbox size (all bodies stored)
+
+## What happens after new mail syncs in?
+
+In normal operation:
+
+1. the message is in SQLite immediately
+2. lexical search is fresh after the sync batch commit
+3. semantic chunks are persisted for the changed message
+4. embeddings are generated only if semantic retrieval is enabled
+
+So:
+
+- `mxr search ... --mode lexical` is fresh as soon as sync completes
+- `mxr search ... --mode hybrid` or `--mode semantic` depends on semantic enablement/profile readiness
 
 ## Snooze wake loop
 

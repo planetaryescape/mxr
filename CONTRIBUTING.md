@@ -72,6 +72,13 @@ Semantic boundary:
 - field-aware hybrid search semantics are intentional
 - OCR is out of scope for active semantic indexing
 
+Lifecycle guardrails:
+
+- sync itself guarantees SQLite persistence + lexical freshness
+- daemon post-sync work ingests semantic chunks for changed messages
+- lexical startup repair is mandatory and rebuilds from SQLite
+- semantic readiness is optional derived state; do not make core mail depend on it
+
 Repo reality:
 
 - The product/install/package surface is the repo-root package `mxr`.

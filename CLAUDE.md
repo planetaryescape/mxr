@@ -62,6 +62,14 @@ Rules:
   - `filename:` -> attachment-origin chunks
 - Do not casually reintroduce OCR or blur lexical exactness and semantic recall into one fuzzy layer.
 
+### Operational lifecycle
+
+- Sync's immediate guarantee is SQLite + lexical search freshness.
+- Envelopes/bodies are stored during sync, and Tantivy is committed before the sync batch finishes.
+- The daemon then ingests semantic chunks for newly upserted messages, even when semantic retrieval is disabled.
+- Embeddings and ANN refresh happen only when semantic is enabled or explicitly reindexed/profile-switched.
+- Lexical startup repair rebuilds Tantivy from SQLite; semantic readiness stays an optional layer above that.
+
 ## Core Principles (NON-NEGOTIABLE)
 
 1. **Local-first**: SQLite is the canonical state store. Search index is rebuildable from SQLite. Works offline.

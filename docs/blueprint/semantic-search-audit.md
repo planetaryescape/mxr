@@ -2,6 +2,8 @@
 
 This document is the code-truth audit for mxr semantic search as of this cleanup pass.
 
+For the full sync -> SQLite -> lexical -> semantic lifecycle story, see [sync-index-lifecycle-audit.md](sync-index-lifecycle-audit.md).
+
 Primary code paths audited:
 
 - `crates/semantic/src/lib.rs`

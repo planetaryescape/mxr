@@ -138,7 +138,7 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
                         .semantic
                         .lock()
                         .await
-                        .reindex_messages(&outcome.upserted_message_ids)
+                        .ingest_messages(&outcome.upserted_message_ids)
                         .await
                     {
                         tracing::error!(account = %account_id, "Semantic indexing failed: {error}");

@@ -439,6 +439,9 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // Startup maintenance only repairs the lexical Tantivy index from SQLite.
+    // Semantic chunks/embeddings remain an optional platform layer and are not
+    // part of this mandatory mail-readiness repair path.
     tracing::info!(
         indexed_messages,
         total_messages,

@@ -372,7 +372,7 @@ pub(crate) async fn sync_now(
             .semantic
             .lock()
             .await
-            .reindex_messages(&outcome.upserted_message_ids)
+            .ingest_messages(&outcome.upserted_message_ids)
             .await
             .map_err(|e| e.to_string())?;
     }
@@ -599,5 +599,47 @@ fn sane_search_sort_timestamp(timestamp: i64) -> i64 {
         0
     } else {
         timestamp
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::AppState;
+    use mxr_core::types::SortOrder;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn sync_now_persists_semantic_chunks_without_embeddings_when_semantic_is_disabled() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+
+        let response = sync_now(&state, None).await.unwrap();
+        assert!(matches!(response, ResponseData::Ack));
+
+        let lexical_hits = state
+            .search
+            .lock()
+            .await
+            .search("rollback trigger", 10, 0, SortOrder::Relevance)
+            .unwrap();
+        assert!(!lexical_hits.results.is_empty());
+
+        let message_id = parse_message_id(&lexical_hits.results[0].message_id).unwrap();
+        let body = state.store.get_body(&message_id).await.unwrap().unwrap();
+        assert!(body
+            .text_plain
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Rollback trigger"));
+
+        let counts = state.store.collect_record_counts().await.unwrap();
+        assert!(counts.semantic_chunks > 0);
+        assert_eq!(counts.semantic_embeddings, 0);
+        assert!(state
+            .store
+            .list_semantic_profiles()
+            .await
+            .unwrap()
+            .is_empty());
     }
 }

@@ -146,7 +146,12 @@ impl SemanticEngine {
             .await
     }
 
-    pub async fn reindex_messages(&mut self, message_ids: &[MessageId]) -> Result<()> {
+    /// Sync-time semantic ingest path.
+    ///
+    /// This always prepares and persists chunks for the changed messages so later
+    /// semantic enablement can reuse stored normalized text. Embedding generation
+    /// and ANN refresh stay feature-gated behind `config.enabled`.
+    pub async fn ingest_messages(&mut self, message_ids: &[MessageId]) -> Result<()> {
         if message_ids.is_empty() {
             return Ok(());
         }
@@ -169,6 +174,10 @@ impl SemanticEngine {
         self.store.upsert_semantic_profile(&ready_record).await?;
         self.rebuild_index(profile).await?;
         Ok(())
+    }
+
+    pub async fn reindex_messages(&mut self, message_ids: &[MessageId]) -> Result<()> {
+        self.ingest_messages(message_ids).await
     }
 
     pub async fn search(
@@ -551,8 +560,12 @@ impl SemanticEngine {
         Err(semantic_unavailable_error())
     }
 
-    pub async fn reindex_messages(&mut self, _message_ids: &[MessageId]) -> Result<()> {
+    pub async fn ingest_messages(&mut self, _message_ids: &[MessageId]) -> Result<()> {
         Ok(())
+    }
+
+    pub async fn reindex_messages(&mut self, message_ids: &[MessageId]) -> Result<()> {
+        self.ingest_messages(message_ids).await
     }
 
     pub async fn search(
@@ -676,6 +689,8 @@ fn read_attachment_text(attachment: &AttachmentMeta) -> Option<String> {
         AttachmentKind::Pdf => read_pdf_attachment(path),
         AttachmentKind::OfficeDocument => read_office_attachment(path),
         AttachmentKind::Spreadsheet => read_spreadsheet_attachment(attachment, path),
+        // Active semantic indexing is real-text only. We keep filename/mime
+        // summaries for recall, but never OCR image attachments.
         AttachmentKind::Image => None,
         AttachmentKind::Unknown => None,
     }
@@ -863,6 +878,8 @@ fn attachment_kind(attachment: &AttachmentMeta, path: &StdPath) -> AttachmentKin
 
 #[cfg(feature = "local")]
 fn read_pdf_attachment(path: &StdPath) -> Option<String> {
+    // No OCR fallback here. PDFs contribute semantic text only when a real text
+    // extraction path succeeds.
     unpdf::to_markdown(path)
         .ok()
         .and_then(|markdown| normalized_nonempty(&markdown))
@@ -1398,7 +1415,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reindex_messages_persists_chunks_when_semantic_is_disabled() {
+    async fn ingest_messages_persists_chunks_when_semantic_is_disabled() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let account = test_account();
         store.insert_account(&account).await.unwrap();
@@ -1412,7 +1429,7 @@ mod tests {
         let mut engine =
             SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
         engine
-            .reindex_messages(std::slice::from_ref(&envelope.id))
+            .ingest_messages(std::slice::from_ref(&envelope.id))
             .await
             .unwrap();
 
@@ -1456,7 +1473,7 @@ mod tests {
         let mut engine =
             SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
         engine
-            .reindex_messages(std::slice::from_ref(&existing.id))
+            .ingest_messages(std::slice::from_ref(&existing.id))
             .await
             .unwrap();
 
@@ -1500,6 +1517,93 @@ mod tests {
             embeddings.len(),
             after_existing.len().saturating_add(missing_chunks.len())
         );
+    }
+
+    #[tokio::test]
+    async fn ingest_messages_generates_embeddings_and_refreshes_search_when_semantic_is_enabled() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let envelope = test_envelope(&account.id);
+        let body = test_body(&envelope.id, Vec::new());
+        store.upsert_envelope(&envelope).await.unwrap();
+        store.insert_body(&body).await.unwrap();
+
+        let data_dir = tempdir().unwrap();
+        let mut engine = SemanticEngine::new(
+            store.clone(),
+            data_dir.path(),
+            SemanticConfig {
+                enabled: true,
+                ..SemanticConfig::default()
+            },
+        );
+        engine.set_test_embedder(Arc::new(test_embedder));
+        engine
+            .ingest_messages(std::slice::from_ref(&envelope.id))
+            .await
+            .unwrap();
+
+        let profile = store
+            .get_semantic_profile(SemanticProfile::BgeSmallEnV15)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(profile.status, SemanticProfileStatus::Ready);
+        assert!(profile.last_indexed_at.is_some());
+
+        let chunks = store.list_semantic_chunks(&envelope.id).await.unwrap();
+        assert!(!chunks.is_empty());
+        let embeddings = store.list_semantic_embeddings(&profile.id).await.unwrap();
+        assert_eq!(embeddings.len(), chunks.len());
+
+        let hits = engine
+            .search(
+                "house of cards",
+                10,
+                &[
+                    SemanticChunkSourceKind::Header,
+                    SemanticChunkSourceKind::Body,
+                    SemanticChunkSourceKind::AttachmentSummary,
+                    SemanticChunkSourceKind::AttachmentText,
+                ],
+            )
+            .await
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].message_id, envelope.id);
+    }
+
+    #[test]
+    fn build_chunks_keeps_attachment_summary_but_skips_attachment_text_for_non_ocr_inputs() {
+        let dir = tempdir().unwrap();
+        let image_path = dir.path().join("photo.png");
+        let pdf_path = dir.path().join("scan.pdf");
+        std::fs::write(&image_path, b"not-a-real-png").unwrap();
+        std::fs::write(&pdf_path, b"not-a-real-pdf").unwrap();
+
+        let account = test_account();
+        let envelope = test_envelope(&account.id);
+        let body = test_body(
+            &envelope.id,
+            vec![
+                attachment(&image_path, "photo.png", "image/png"),
+                attachment(&pdf_path, "scan.pdf", "application/pdf"),
+            ],
+        );
+
+        let chunks = build_chunks(&envelope, Some(&body));
+
+        assert!(chunks.iter().any(|(kind, text)| *kind
+            == SemanticChunkSourceKind::AttachmentSummary
+            && text.contains("photo.png")));
+        assert!(chunks.iter().any(|(kind, text)| *kind
+            == SemanticChunkSourceKind::AttachmentSummary
+            && text.contains("scan.pdf")));
+        assert!(!chunks.iter().any(|(kind, text)| *kind
+            == SemanticChunkSourceKind::AttachmentText
+            && (text.contains("photo") || text.contains("scan"))));
     }
 
     #[test]

@@ -223,6 +223,8 @@ async fn execute_search_ast(
     let dense_window = requested_window.saturating_mul(8).max(200);
     let semantic_hits = {
         let mut semantic = state.semantic.lock().await;
+        // Lexical search remains the exact/literal path. Dense retrieval only
+        // broadens recall inside the source kinds implied by the parsed query.
         semantic
             .search(&semantic_query, dense_window, &semantic_plan.source_kinds)
             .await
@@ -485,7 +487,7 @@ mod tests {
         {
             let mut semantic = state.semantic.lock().await;
             semantic
-                .reindex_messages(&[
+                .ingest_messages(&[
                     subject_message.id.clone(),
                     body_message.id.clone(),
                     attachment_message.id.clone(),
@@ -591,5 +593,53 @@ mod tests {
             .notes
             .iter()
             .any(|note| note.contains("negated semantic terms")));
+    }
+
+    #[tokio::test]
+    async fn execute_search_hybrid_falls_back_to_lexical_when_semantic_is_disabled() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_account_id();
+        let message = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("lexical-body")
+            .subject("Weekly update")
+            .snippet("body match")
+            .build();
+
+        state.store.upsert_envelope(&message).await.unwrap();
+        let body = text_body(
+            &message.id,
+            "Deployment checklist lives in the message body",
+            Vec::new(),
+        );
+        state.store.insert_body(&body).await.unwrap();
+        {
+            let mut search = state.search.lock().await;
+            search.index_body(&message, &body).unwrap();
+            search.commit().unwrap();
+        }
+
+        let execution = execute_search(
+            &state,
+            "body:deployment",
+            10,
+            0,
+            SearchMode::Hybrid,
+            SortOrder::Relevance,
+            true,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(execution.executed_mode, SearchMode::Lexical);
+        assert_eq!(execution.results.len(), 1);
+        assert_eq!(execution.results[0].message_id, message.id.as_str());
+        assert!(execution
+            .explain
+            .as_ref()
+            .unwrap()
+            .notes
+            .iter()
+            .any(|note| note.contains("semantic search disabled in config")));
     }
 }

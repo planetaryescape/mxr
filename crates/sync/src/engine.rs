@@ -97,6 +97,11 @@ impl SyncEngine {
                 .map(|synced| synced.envelope.id.clone())
                 .collect::<Vec<_>>();
 
+            // Core sync guarantee: after this loop, SQLite has the envelope/body
+            // pair and Tantivy has the same message's lexical corpus.
+            // Semantic chunk prep is intentionally deferred to the daemon's
+            // post-sync platform step so mail sync/read/search correctness does
+            // not depend on semantic enablement.
             // Apply upserts — store envelope + body, index with body text
             for synced in &batch.upserted {
                 // Store envelope
@@ -129,7 +134,8 @@ impl SyncEngine {
                     }
                 }
 
-                // Search index — index with body text for immediate full-text search
+                // Lexical freshness is immediate per sync batch. Body text enters
+                // Tantivy here, then the batch commit below makes it searchable.
                 {
                     let mut search = self.search.lock().await;
                     search.index_body(&synced.envelope, &synced.body)?;
@@ -184,7 +190,9 @@ impl SyncEngine {
                 }
             }
 
-            // Commit search index
+            // Commit lexical search for this batch before counts/threading/cursor
+            // maintenance. Startup repair can rebuild this index from SQLite if
+            // it ever drifts.
             {
                 let mut search = self.search.lock().await;
                 search.commit()?;

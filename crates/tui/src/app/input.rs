@@ -727,20 +727,20 @@ impl App {
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
                     if self.search_page.selected_index + 1 < self.search_row_count() {
                         self.search_page.selected_index += 1;
-                        self.ensure_search_visible();
                     }
-                    self.maybe_load_more_search_results();
+                    self.sync_search_cursor_after_move();
                     None
                 }
                 (KeyCode::Char('k') | KeyCode::Up, _) => {
                     if self.search_page.selected_index > 0 {
                         self.search_page.selected_index -= 1;
-                        self.ensure_search_visible();
                     }
+                    self.sync_search_cursor_after_move();
                     None
                 }
-                (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE)
+                (KeyCode::Right, KeyModifiers::NONE)
                 | (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::OpenSelected),
+                _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
                 _ => self.contextual_input_action(key),
             },

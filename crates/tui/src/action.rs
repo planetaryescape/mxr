@@ -215,89 +215,25 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | Help
                 | QuitView
         ),
-        SearchResults => matches!(
+        SearchResults | SearchPreview => !matches!(
             action,
-            MoveDown
-                | MoveUp
-                | PageDown
-                | PageUp
-                | JumpTop
-                | JumpBottom
-                | OpenGlobalSearch
-                | SubmitSearch
-                | CloseSearch
-                | CycleSearchMode
-                | SwitchPane
-                | OpenCommandPalette
-                | CloseCommandPalette
-                | OpenMailboxScreen
-                | OpenSearchScreen
-                | OpenRulesScreen
-                | OpenDiagnosticsScreen
-                | OpenAccountsScreen
-                | OpenTab1
-                | OpenTab2
-                | OpenTab3
-                | OpenTab4
-                | OpenTab5
-                | SyncNow
-                | EditConfig
-                | OpenLogs
-                | ShowOnboarding
-                | ToggleSelect
-                | ClearSelection
-                | Help
-                | QuitView
-        ),
-        SearchPreview => matches!(
-            action,
-            OpenGlobalSearch
-                | SubmitSearch
-                | CloseSearch
-                | CycleSearchMode
-                | SwitchPane
-                | OpenCommandPalette
-                | CloseCommandPalette
-                | OpenMailboxScreen
-                | OpenSearchScreen
-                | OpenRulesScreen
-                | OpenDiagnosticsScreen
-                | OpenAccountsScreen
-                | OpenTab1
-                | OpenTab2
-                | OpenTab3
-                | OpenTab4
-                | OpenTab5
-                | SyncNow
-                | EditConfig
-                | OpenLogs
-                | ShowOnboarding
-                | Reply
-                | ReplyAll
-                | Forward
-                | Archive
-                | MarkReadAndArchive
-                | Trash
-                | Spam
-                | Star
-                | MarkRead
-                | MarkUnread
-                | ApplyLabel
-                | MoveToLabel
-                | Unsubscribe
-                | Snooze
-                | OpenInBrowser
-                | ToggleReaderMode
-                | ToggleHtmlView
-                | ToggleRemoteContent
-                | ToggleSignature
-                | ToggleSelect
-                | ClearSelection
-                | AttachmentList
-                | OpenLinks
-                | ExportThread
-                | Help
-                | QuitView
+            RefreshRules
+                | ToggleRuleEnabled
+                | DeleteRule
+                | ShowRuleHistory
+                | ShowRuleDryRun
+                | OpenRuleFormNew
+                | OpenRuleFormEdit
+                | SaveRuleForm
+                | RefreshDiagnostics
+                | GenerateBugReport
+                | OpenDiagnosticsPaneDetails
+                | RefreshAccounts
+                | OpenAccountFormNew
+                | SaveAccountForm
+                | TestAccountForm
+                | ReauthorizeAccountForm
+                | SetDefaultAccount
         ),
         RulesList | RulesForm => matches!(
             action,

@@ -275,8 +275,8 @@ fn preview_blank_state(state: &SearchPageState) -> Vec<Line<'static>> {
         vec![
             Line::from("No message selected."),
             Line::from(""),
-            Line::from("Use Enter or l on a result to open the preview here."),
-            Line::from("j / k move the result cursor without changing the preview."),
+            Line::from("Use Enter, o, or Right on a result to open the message here."),
+            Line::from("When a message is open, j / k keep it synced to the result cursor."),
         ]
     }
 }

@@ -224,9 +224,8 @@ impl App {
                 if self.screen == Screen::Search {
                     if self.search_page.selected_index + 1 < self.search_row_count() {
                         self.search_page.selected_index += 1;
-                        self.ensure_search_visible();
                     }
-                    self.maybe_load_more_search_results();
+                    self.sync_search_cursor_after_move();
                     return;
                 }
                 if self.selected_index + 1 < self.mail_row_count() {
@@ -240,8 +239,8 @@ impl App {
                 if self.screen == Screen::Search {
                     if self.search_page.selected_index > 0 {
                         self.search_page.selected_index -= 1;
-                        self.ensure_search_visible();
                     }
+                    self.sync_search_cursor_after_move();
                     return;
                 }
                 if self.selected_index > 0 {
@@ -254,7 +253,7 @@ impl App {
             Action::JumpTop => {
                 if self.screen == Screen::Search {
                     self.search_page.selected_index = 0;
-                    self.search_page.scroll_offset = 0;
+                    self.sync_search_cursor_after_move();
                     return;
                 }
                 self.selected_index = 0;
@@ -268,7 +267,7 @@ impl App {
                         self.load_more_search_results();
                     } else if self.search_row_count() > 0 {
                         self.search_page.selected_index = self.search_row_count() - 1;
-                        self.ensure_search_visible();
+                        self.sync_search_cursor_after_move();
                     }
                     return;
                 }
@@ -283,8 +282,7 @@ impl App {
                     let page = self.visible_height.max(1);
                     self.search_page.selected_index = (self.search_page.selected_index + page)
                         .min(self.search_row_count().saturating_sub(1));
-                    self.ensure_search_visible();
-                    self.maybe_load_more_search_results();
+                    self.sync_search_cursor_after_move();
                     return;
                 }
                 let page = self.visible_height.max(1);
@@ -298,7 +296,7 @@ impl App {
                     let page = self.visible_height.max(1);
                     self.search_page.selected_index =
                         self.search_page.selected_index.saturating_sub(page);
-                    self.ensure_search_visible();
+                    self.sync_search_cursor_after_move();
                     return;
                 }
                 let page = self.visible_height.max(1);
@@ -581,13 +579,29 @@ impl App {
                 if self.mailbox_view == MailboxView::Subscriptions {
                     return;
                 }
+                let search_row_message_id = (self.screen == Screen::Search)
+                    .then(|| self.selected_search_envelope().map(|env| env.id.clone()))
+                    .flatten();
                 self.mail_list_mode = match self.mail_list_mode {
                     MailListMode::Threads => MailListMode::Messages,
                     MailListMode::Messages => MailListMode::Threads,
                 };
-                self.selected_index = self
-                    .selected_index
-                    .min(self.mail_row_count().saturating_sub(1));
+                if self.screen == Screen::Search {
+                    self.search_page.selected_index = search_row_message_id
+                        .as_ref()
+                        .and_then(|message_id| self.search_row_index_for_message(message_id))
+                        .unwrap_or(0)
+                        .min(self.search_row_count().saturating_sub(1));
+                    if self.search_page.result_selected {
+                        self.sync_search_cursor_after_move();
+                    } else if self.search_row_count() > 0 {
+                        self.ensure_search_visible();
+                    }
+                } else {
+                    self.selected_index = self
+                        .selected_index
+                        .min(self.mail_row_count().saturating_sub(1));
+                }
             }
             Action::RefreshRules => {
                 self.rules_page.refresh_pending = true;
@@ -1145,9 +1159,8 @@ impl App {
                     if should_advance && self.screen == Screen::Search {
                         if self.search_page.selected_index + 1 < self.search_row_count() {
                             self.search_page.selected_index += 1;
-                            self.ensure_search_visible();
-                            self.maybe_load_more_search_results();
                         }
+                        self.sync_search_cursor_after_move();
                     } else if should_advance && self.selected_index + 1 < self.mail_row_count() {
                         self.selected_index += 1;
                         self.ensure_visible();

@@ -1104,6 +1104,93 @@ impl App {
         }
     }
 
+    pub(crate) fn search_row_index_for_message(
+        &self,
+        message_id: &MessageId,
+    ) -> Option<usize> {
+        match self.search_list_mode() {
+            MailListMode::Messages => self
+                .search_page
+                .results
+                .iter()
+                .position(|env| &env.id == message_id),
+            MailListMode::Threads => self
+                .search_page
+                .results
+                .iter()
+                .find(|env| &env.id == message_id)
+                .and_then(|env| {
+                    self.search_mail_list_rows()
+                        .iter()
+                        .position(|row| row.thread_id == env.thread_id)
+                }),
+        }
+    }
+
+    pub(crate) fn apply_search_page_results(
+        &mut self,
+        append: bool,
+        results: crate::SearchResultData,
+    ) {
+        let crate::SearchResultData {
+            envelopes,
+            scores,
+            has_more,
+        } = results;
+        let selected_row_message_id = (!append && self.search_page.result_selected)
+            .then(|| self.selected_search_envelope().map(|env| env.id.clone()))
+            .flatten();
+
+        if append {
+            self.search_page.results.extend(envelopes);
+            self.search_page.scores.extend(scores);
+        } else {
+            self.search_page.results = envelopes;
+            self.search_page.scores = scores;
+            self.search_page.selected_index = 0;
+            self.search_page.scroll_offset = 0;
+
+            if let Some(message_id) = selected_row_message_id {
+                if let Some(index) = self.search_row_index_for_message(&message_id) {
+                    self.search_page.selected_index = index;
+                } else {
+                    self.reset_search_preview_selection();
+                }
+            }
+        }
+
+        self.search_page.has_more = has_more;
+        self.search_page.loading_more = false;
+        self.search_page.ui_status = SearchUiStatus::Loaded;
+        self.search_page.session_active =
+            !self.search_page.query.is_empty() || !self.search_page.results.is_empty();
+
+        if self.search_page.load_to_end {
+            if self.search_page.has_more {
+                self.load_more_search_results();
+            } else {
+                self.search_page.load_to_end = false;
+                if self.search_row_count() > 0 {
+                    self.search_page.selected_index = self.search_row_count() - 1;
+                    self.sync_search_cursor_after_move();
+                } else {
+                    self.clear_message_view_state();
+                }
+            }
+            return;
+        }
+
+        if self.screen == Screen::Search {
+            if self.search_page.result_selected {
+                self.sync_search_cursor_after_move();
+            } else if self.search_row_count() > 0 {
+                self.ensure_search_visible();
+            } else {
+                self.clear_message_view_state();
+            }
+        }
+    }
+
     pub fn selected_rule(&self) -> Option<&serde_json::Value> {
         self.rules_page.rules.get(self.rules_page.selected_index)
     }
@@ -1727,7 +1814,7 @@ impl App {
     }
 
     fn search_list_mode(&self) -> MailListMode {
-        MailListMode::Messages
+        self.mail_list_mode
     }
 
     fn build_mail_list_rows(envelopes: &[Envelope], mode: MailListMode) -> Vec<MailListRow> {
@@ -2596,6 +2683,28 @@ impl App {
         } else if self.screen == Screen::Search {
             self.search_page.result_selected = false;
             self.clear_message_view_state();
+        }
+    }
+
+    pub(crate) fn sync_search_cursor_after_move(&mut self) {
+        let row_count = self.search_row_count();
+        if row_count == 0 {
+            self.search_page.selected_index = 0;
+            self.search_page.scroll_offset = 0;
+            self.search_page.result_selected = false;
+            self.clear_message_view_state();
+            return;
+        }
+
+        self.search_page.selected_index = self
+            .search_page
+            .selected_index
+            .min(row_count.saturating_sub(1));
+        self.ensure_search_visible();
+        self.update_visual_selection();
+        self.maybe_load_more_search_results();
+        if self.search_page.result_selected {
+            self.auto_preview_search();
         }
     }
 

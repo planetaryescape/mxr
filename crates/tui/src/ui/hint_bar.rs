@@ -152,7 +152,7 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
         UiContext::SearchResults => vec![
             ("j".to_string(), "Next Result".to_string()),
             ("k".to_string(), "Prev Result".to_string()),
-            ("Enter".to_string(), "Preview".to_string()),
+            ("Enter/o".to_string(), "Open".to_string()),
             ("/".to_string(), "Edit Query".to_string()),
             ("Tab".to_string(), "Switch Pane".to_string()),
             ("Esc".to_string(), "Mailbox".to_string()),

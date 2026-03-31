@@ -1199,50 +1199,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 if session_id != app.search_page.session_id {
                                     continue;
                                 }
-
-                                if append {
-                                    app.search_page.results.extend(results.envelopes);
-                                    app.search_page.scores.extend(results.scores);
-                                } else {
-                                    app.search_page.results = results.envelopes;
-                                    app.search_page.scores = results.scores;
-                                    app.search_page.selected_index = 0;
-                                    app.search_page.scroll_offset = 0;
-                                }
-
-                                app.search_page.has_more = results.has_more;
-                                app.search_page.loading_more = false;
-                                app.search_page.ui_status = app::SearchUiStatus::Loaded;
-                                app.search_page.session_active =
-                                    !app.search_page.query.is_empty()
-                                        || !app.search_page.results.is_empty();
-
-                                if app.search_page.load_to_end {
-                                    if app.search_page.has_more {
-                                        app.load_more_search_results();
-                                    } else {
-                                        app.search_page.load_to_end = false;
-                                        if app.search_row_count() > 0 {
-                                            app.search_page.selected_index =
-                                                app.search_row_count() - 1;
-                                            app.ensure_search_visible();
-                                            app.auto_preview_search();
-                                        }
-                                    }
-                                } else {
-                                    app.search_page.selected_index = app
-                                        .search_page
-                                        .selected_index
-                                        .min(app.search_row_count().saturating_sub(1));
-                                    if app.screen == app::Screen::Search {
-                                        app.ensure_search_visible();
-                                        if app.search_page.result_selected {
-                                            app.auto_preview_search();
-                                        } else {
-                                            app.clear_message_view_state();
-                                        }
-                                    }
-                                }
+                                app.apply_search_page_results(append, results);
                             }
                             app::SearchTarget::Mailbox => {
                                 if session_id != app.mailbox_search_session_id {
@@ -2304,7 +2261,7 @@ mod tests {
     use super::ui::status_bar;
     use super::{
         app::MailListMode, apply_all_envelopes_refresh, handle_daemon_event,
-        pending_send_from_edited_draft, ComposeReadyData, PendingSend,
+        pending_send_from_edited_draft, ComposeReadyData, PendingSend, SearchResultData,
     };
     use crate::test_fixtures::TestEnvelopeBuilder;
     use mxr_config::RenderConfig;
@@ -4373,25 +4330,172 @@ mod tests {
     }
 
     #[test]
-    fn search_results_do_not_collapse_to_threads() {
+    fn search_open_message_follows_cursor_after_returning_to_results() {
         let mut app = App::new();
-        let mut results = make_test_envelopes(3);
-        let thread_id = ThreadId::new();
-        for envelope in &mut results {
-            envelope.thread_id = thread_id.clone();
-        }
-        app.mail_list_mode = MailListMode::Threads;
+        let results = make_test_envelopes(3);
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = results.clone();
+        app.search_page.session_active = true;
+        app.all_envelopes = results.clone();
+
+        app.apply(Action::OpenSelected);
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(results[0].id.clone())
+        );
+
+        assert!(app
+            .handle_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE))
+            .is_none());
+        assert_eq!(app.search_page.active_pane, SearchPane::Results);
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(results[0].id.clone())
+        );
+
+        assert!(app
+            .handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE))
+            .is_none());
+        assert_eq!(app.search_page.selected_index, 1);
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(results[1].id.clone())
+        );
+    }
+
+    #[test]
+    fn search_results_allow_mail_actions_without_preview_focus() {
+        let mut app = App::new();
+        let results = make_test_envelopes(2);
         app.screen = Screen::Search;
         app.search_page.query = "deploy".into();
         app.search_page.results = results.clone();
         app.search_page.session_active = true;
         app.search_page.selected_index = 1;
+        app.search_page.active_pane = SearchPane::Results;
 
-        assert_eq!(app.search_row_count(), 3);
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::Star));
+
+        app.apply(action.expect("star action should be available from search results"));
+
+        assert!(app.search_page.results[1].flags.contains(MessageFlags::STARRED));
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        match &app.pending_mutation_queue[0].0 {
+            Request::Mutation(MutationCommand::Star {
+                message_ids,
+                starred,
+            }) => {
+                assert_eq!(message_ids, &vec![results[1].id.clone()]);
+                assert!(*starred);
+            }
+            other => panic!("expected star mutation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn search_results_follow_mail_list_mode_and_open_thread_rows() {
+        let mut app = App::new();
+        let thread_id = ThreadId::new();
+        let now = chrono::Utc::now();
+        let older = TestEnvelopeBuilder::new()
+            .provider_id("thread-old")
+            .thread_id(thread_id.clone())
+            .subject("Older hit")
+            .date(now - chrono::Duration::minutes(5))
+            .build();
+        let newer = TestEnvelopeBuilder::new()
+            .provider_id("thread-new")
+            .thread_id(thread_id)
+            .subject("Newer hit")
+            .date(now)
+            .build();
+        let other = TestEnvelopeBuilder::new()
+            .provider_id("other-thread")
+            .subject("Other thread")
+            .date(now - chrono::Duration::minutes(1))
+            .build();
+        let results = vec![older, newer.clone(), other];
+        app.mail_list_mode = MailListMode::Messages;
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = results.clone();
+        app.search_page.session_active = true;
+        app.all_envelopes = results;
+
+        app.apply(Action::ToggleMailListMode);
+
+        assert_eq!(app.search_row_count(), 2);
         assert_eq!(
             app.selected_search_envelope().map(|env| env.id.clone()),
+            Some(newer.id.clone())
+        );
+
+        app.apply(Action::OpenSelected);
+
+        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(newer.id.clone())
+        );
+    }
+
+    #[test]
+    fn search_results_refresh_preserves_open_row_when_it_still_exists() {
+        let mut app = App::new();
+        let results = make_test_envelopes(3);
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = results.clone();
+        app.search_page.session_active = true;
+        app.search_page.selected_index = 1;
+        app.all_envelopes = results.clone();
+
+        app.apply(Action::OpenSelected);
+        app.apply_search_page_results(
+            false,
+            SearchResultData {
+                envelopes: vec![results[0].clone(), results[1].clone()],
+                scores: std::collections::HashMap::new(),
+                has_more: false,
+            },
+        );
+
+        assert_eq!(app.search_page.selected_index, 1);
+        assert!(app.search_page.result_selected);
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
             Some(results[1].id.clone())
         );
+    }
+
+    #[test]
+    fn search_results_refresh_clears_open_message_when_selected_row_disappears() {
+        let mut app = App::new();
+        let results = make_test_envelopes(3);
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = results.clone();
+        app.search_page.session_active = true;
+        app.search_page.selected_index = 1;
+        app.all_envelopes = results.clone();
+
+        app.apply(Action::OpenSelected);
+        app.apply_search_page_results(
+            false,
+            SearchResultData {
+                envelopes: vec![results[0].clone()],
+                scores: std::collections::HashMap::new(),
+                has_more: false,
+            },
+        );
+
+        assert_eq!(app.search_page.selected_index, 0);
+        assert!(!app.search_page.result_selected);
+        assert_eq!(app.search_page.active_pane, SearchPane::Results);
+        assert!(app.viewing_envelope.is_none());
+        assert!(app.viewed_thread_messages.is_empty());
     }
 
     #[test]

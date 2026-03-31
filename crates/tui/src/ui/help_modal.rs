@@ -175,16 +175,25 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
             title: "Mailbox Message".into(),
             entries: all_bindings_for_context(ViewContext::ThreadView),
         }],
-        UiContext::SearchEditor | UiContext::SearchResults => {
+        UiContext::SearchEditor => {
+            vec![HelpSection {
+                title: "Search Page".into(),
+                entries: vec![
+                    ("Enter".into(), "Run search now".into()),
+                    ("Tab".into(), "Cycle lexical / hybrid / semantic mode".into()),
+                    ("Esc".into(), "Stop editing".into()),
+                ],
+            }]
+        }
+        UiContext::SearchResults => {
             vec![HelpSection {
                 title: "Search Page".into(),
                 entries: vec![
                     ("/".into(), "Edit query".into()),
-                    ("Enter".into(), "Run search now".into()),
-                    ("l".into(), "Open selected preview".into()),
+                    ("o / Enter / →".into(), "Open selected message".into()),
                     ("x".into(), "Select result".into()),
                     ("Tab".into(), "Switch results and preview".into()),
-                    ("j / k".into(), "Move result cursor".into()),
+                    ("j / k".into(), "Move result cursor / update open message".into()),
                     ("Esc".into(), "Return to mailbox".into()),
                 ],
             }]
@@ -193,7 +202,7 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
             title: "Search Preview".into(),
             entries: vec![
                 ("j / k".into(), "Move through messages in the thread".into()),
-                ("h / Esc".into(), "Return to results".into()),
+                ("h / Esc".into(), "Return focus to results".into()),
                 ("/".into(), "Edit query".into()),
                 ("x".into(), "Select current message".into()),
                 ("Tab".into(), "Switch results and preview".into()),

@@ -7,6 +7,9 @@ updates:
     groups:
       all-deps:
         patterns: ["*"]
+    ignore:
+      - dependency-name: "axios"
+        versions: ["1.14.1", "0.30.4"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

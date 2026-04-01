@@ -1,14 +1,105 @@
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use mail_builder::MessageBuilder;
 use mxr_core::types::{Address, Draft};
+use mxr_outbound::attachments::resolve_attachment_paths;
 use mxr_outbound::email::{build_message, format_message_for_gmail};
+use mxr_outbound::render::render_markdown;
 
 /// Build an RFC 5322 message from a Draft and return the raw bytes.
 pub fn build_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
     let message =
         build_message(draft, from, true).map_err(|err| GmailSendError::Build(err.to_string()))?;
     Ok(format_message_for_gmail(&message))
+}
+
+/// Build an RFC 5322 draft for Gmail save_draft.
+///
+/// Gmail server-side drafts can exist without recipients, so this avoids the
+/// transport-envelope requirement imposed by lettre's builder path.
+pub fn build_draft_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
+    let rendered = render_markdown(&draft.body_markdown);
+    let mut builder = address_with_name(MessageBuilder::new(), HeaderAddressKind::From, from)
+        .subject(draft.subject.clone())
+        .text_body(rendered.plain)
+        .html_body(rendered.html);
+
+    for address in &draft.to {
+        builder = address_with_name(builder, HeaderAddressKind::To, address);
+    }
+    for address in &draft.cc {
+        builder = address_with_name(builder, HeaderAddressKind::Cc, address);
+    }
+    for address in &draft.bcc {
+        builder = address_with_name(builder, HeaderAddressKind::Bcc, address);
+    }
+
+    if let Some(reply_headers) = &draft.reply_headers {
+        builder = builder.in_reply_to(normalize_message_id(&reply_headers.in_reply_to));
+
+        let mut references: Vec<String> = reply_headers
+            .references
+            .iter()
+            .map(|reference| normalize_message_id(reference))
+            .collect();
+        let in_reply_to = normalize_message_id(&reply_headers.in_reply_to);
+        if !references.iter().any(|reference| reference == &in_reply_to) {
+            references.push(in_reply_to);
+        }
+        if !references.is_empty() {
+            builder = builder.references(references);
+        }
+    }
+
+    for attachment in resolve_attachment_paths(&draft.attachments)
+        .map_err(|err| GmailSendError::Build(err.to_string()))?
+    {
+        let bytes = std::fs::read(&attachment.path)
+            .map_err(|err| GmailSendError::Build(err.to_string()))?;
+        builder = builder.attachment(attachment.mime_type, attachment.filename, bytes);
+    }
+
+    builder
+        .write_to_vec()
+        .map_err(|err| GmailSendError::Build(err.to_string()))
+}
+
+#[derive(Debug, Clone, Copy)]
+enum HeaderAddressKind {
+    From,
+    To,
+    Cc,
+    Bcc,
+}
+
+fn address_with_name<'x>(
+    builder: MessageBuilder<'x>,
+    kind: HeaderAddressKind,
+    address: &'x Address,
+) -> MessageBuilder<'x> {
+    match address.name.as_deref().filter(|name| !name.is_empty()) {
+        Some(name) => match kind {
+            HeaderAddressKind::From => builder.from((name, address.email.as_str())),
+            HeaderAddressKind::To => builder.to((name, address.email.as_str())),
+            HeaderAddressKind::Cc => builder.cc((name, address.email.as_str())),
+            HeaderAddressKind::Bcc => builder.bcc((name, address.email.as_str())),
+        },
+        None => match kind {
+            HeaderAddressKind::From => builder.from(address.email.as_str()),
+            HeaderAddressKind::To => builder.to(address.email.as_str()),
+            HeaderAddressKind::Cc => builder.cc(address.email.as_str()),
+            HeaderAddressKind::Bcc => builder.bcc(address.email.as_str()),
+        },
+    }
+}
+
+fn normalize_message_id(value: &str) -> String {
+    value
+        .trim()
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .to_string()
 }
 
 /// Encode an RFC 5322 message as base64url for Gmail API.
@@ -27,6 +118,7 @@ pub enum GmailSendError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mail_parser::MessageParser;
     use mxr_core::id::{AccountId, DraftId};
     use mxr_core::types::ReplyHeaders;
 
@@ -101,6 +193,55 @@ mod tests {
         }];
         let msg = String::from_utf8(build_rfc2822(&draft, &from()).unwrap()).unwrap();
         assert!(msg.contains("Bcc: hidden@example.com\r\n"));
+    }
+
+    #[test]
+    fn draft_rfc2822_allows_missing_recipients_and_subject() {
+        let mut draft = test_draft();
+        draft.to.clear();
+        draft.subject.clear();
+
+        let raw = build_draft_rfc2822(&draft, &from()).unwrap();
+        let msg = String::from_utf8(raw.clone()).unwrap();
+        let parsed = MessageParser::default().parse(&raw).unwrap();
+        let from = parsed.from().unwrap().first().unwrap();
+
+        assert_eq!(from.name.as_deref(), Some("Me"));
+        assert_eq!(from.address.as_deref(), Some("me@example.com"));
+        assert!(!msg.contains("\nTo:"));
+        assert!(msg.contains("Subject: \r\n"));
+        assert!(msg.contains("Content-Type: multipart/alternative"));
+        assert!(parsed.subject().is_none());
+        assert!(parsed.to().is_none());
+        let body_text = parsed.body_text(0).unwrap();
+        assert!(body_text.contains("Hello"));
+        assert!(body_text.contains("world"));
+        assert!(parsed.body_html(0).is_some());
+    }
+
+    #[test]
+    fn draft_rfc2822_keeps_reply_headers_bcc_and_attachments() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("note.txt");
+        std::fs::write(&path, "hello attachment").unwrap();
+
+        let mut draft = test_draft();
+        draft.to.clear();
+        draft.reply_headers = Some(ReplyHeaders {
+            in_reply_to: "<parent@example.com>".into(),
+            references: vec!["<root@example.com>".into()],
+        });
+        draft.bcc = vec![Address {
+            name: None,
+            email: "hidden@example.com".into(),
+        }];
+        draft.attachments = vec![path];
+
+        let msg = String::from_utf8(build_draft_rfc2822(&draft, &from()).unwrap()).unwrap();
+        assert!(msg.contains("In-Reply-To: <parent@example.com>\r\n"));
+        assert!(msg.contains("References: <root@example.com> <parent@example.com>\r\n"));
+        assert!(msg.contains("Bcc: <hidden@example.com>\r\n"));
+        assert!(msg.contains("note.txt"));
     }
 
     #[test]

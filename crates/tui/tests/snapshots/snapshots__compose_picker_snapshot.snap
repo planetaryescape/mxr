@@ -1,6 +1,6 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 523
+assertion_line: 771
 expression: snapshot
 ---
 "                                                                                                    "
@@ -8,10 +8,10 @@ expression: snapshot
 "                                                                                                    "
 "                                                                                                    "
 "                                                                                                    "
-"                                                                                                    "
-"                    ╭ Compose — To: (Tab to add, Enter to compose) ────────────╮                    "
+"                    ╭ Compose — To: (Tab to add, Enter to continue) ───────────╮                    "
 "                    │                                                          │                    "
 "                    │> a                                                       │                    "
+"                    │Leave blank to add a recipient later.                     │                    "
 "                    │  Alice Example <alice@example.com>                       │                    "
 "                    │  Bob Example <bob@example.com>                           │                    "
 "                    │                                                          │                    "

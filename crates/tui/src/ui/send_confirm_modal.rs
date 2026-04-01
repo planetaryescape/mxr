@@ -1,4 +1,4 @@
-use crate::app::PendingSend;
+use crate::app::{PendingSend, PendingSendMode};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -12,7 +12,7 @@ pub fn draw(
         return;
     };
 
-    let popup = centered_rect(58, 24, area);
+    let popup = centered_rect(86, 30, area);
     frame.render_widget(Clear, popup);
 
     let block = Block::bordered()
@@ -31,18 +31,24 @@ pub fn draw(
 }
 
 fn modal_lines(pending: &PendingSend) -> Vec<String> {
-    let mut lines = vec![if pending.allow_send {
-        "Send this draft?".to_string()
-    } else {
-        "Draft unchanged. Discard or keep editing?".to_string()
+    let mut lines = vec![match pending.mode {
+        PendingSendMode::SendOrSave => "Send this draft?".to_string(),
+        PendingSendMode::DraftOnlyNoRecipients => "No recipients yet. Save as draft?".to_string(),
+        PendingSendMode::Unchanged => "Draft unchanged. Discard or keep editing?".to_string(),
     }];
 
     lines.push(format!("Subject: {}", pending.fm.subject));
     lines.push(String::new());
-    if pending.allow_send {
-        lines.push("[s] send   [d] save draft   [e] edit again   [Esc] discard".to_string());
-    } else {
-        lines.push("[e] edit again   [Esc] discard".to_string());
+    match pending.mode {
+        PendingSendMode::SendOrSave => {
+            lines.push("[s] send   [d] save draft   [e] edit again   [Esc] discard".to_string());
+        }
+        PendingSendMode::DraftOnlyNoRecipients => {
+            lines.push("[d] save draft   [e] edit again   [Esc] discard".to_string());
+        }
+        PendingSendMode::Unchanged => {
+            lines.push("[e] edit again   [Esc] discard".to_string());
+        }
     }
     lines
 }
@@ -69,10 +75,12 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::modal_lines;
-    use crate::app::PendingSend;
+    use super::draw;
+    use crate::app::{PendingSend, PendingSendMode};
+    use mxr_test_support::render_to_string;
+    use ratatui::layout::Rect;
 
-    fn pending(allow_send: bool) -> PendingSend {
+    fn pending(mode: PendingSendMode) -> PendingSend {
         PendingSend {
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: "a@example.com".into(),
@@ -86,23 +94,56 @@ mod tests {
             },
             body: "hi".into(),
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
-            allow_send,
+            mode,
         }
     }
 
     #[test]
-    fn unchanged_modal_hides_send_actions() {
-        let text = modal_lines(&pending(false)).join("\n");
-        assert!(text.contains("Draft unchanged"));
-        assert!(!text.contains("[s] send"));
-        assert!(!text.contains("[d] save draft"));
+    fn send_or_save_modal_renders_full_action_row() {
+        let rendered = render_to_string(90, 20, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 90, 20),
+                Some(&pending(PendingSendMode::SendOrSave)),
+                &crate::theme::Theme::default(),
+            );
+        });
+
+        assert!(rendered.contains("Send this draft?"));
+        assert!(rendered.contains("Subject: Hello"));
+        assert!(rendered.contains("[s] send   [d] save draft   [e] edit again   [Esc] discard"));
     }
 
     #[test]
-    fn changed_modal_shows_send_actions() {
-        let text = modal_lines(&pending(true)).join("\n");
-        assert!(text.contains("Send this draft?"));
-        assert!(text.contains("[s] send"));
-        assert!(text.contains("[d] save draft"));
+    fn missing_recipient_modal_renders_draft_only_actions() {
+        let rendered = render_to_string(90, 20, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 90, 20),
+                Some(&pending(PendingSendMode::DraftOnlyNoRecipients)),
+                &crate::theme::Theme::default(),
+            );
+        });
+
+        assert!(rendered.contains("No recipients yet. Save as draft?"));
+        assert!(rendered.contains("[d] save draft   [e] edit again   [Esc] discard"));
+        assert!(!rendered.contains("[s] send"));
+    }
+
+    #[test]
+    fn unchanged_modal_renders_without_send_or_save_actions() {
+        let rendered = render_to_string(90, 20, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 90, 20),
+                Some(&pending(PendingSendMode::Unchanged)),
+                &crate::theme::Theme::default(),
+            );
+        });
+
+        assert!(rendered.contains("Draft unchanged. Discard or keep editing?"));
+        assert!(rendered.contains("[e] edit again   [Esc] discard"));
+        assert!(!rendered.contains("[s] send"));
+        assert!(!rendered.contains("[d] save draft"));
     }
 }

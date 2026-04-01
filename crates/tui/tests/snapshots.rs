@@ -12,8 +12,8 @@ use mxr_tui::action::UiContext;
 use mxr_tui::app::{
     AccountFormState, AccountsPageState, ActivePane, AttachmentPanelState, BodySource,
     BodyViewState, DiagnosticsPageState, DiagnosticsPaneKind, FeatureOnboardingState, MailListMode,
-    MailListRow, MutationEffect, PendingBulkConfirm, PendingSend, RulesPageState, SearchPageState,
-    SearchUiStatus,
+    MailListRow, MutationEffect, PendingBulkConfirm, PendingSend, PendingSendMode, RulesPageState,
+    SearchPageState, SearchUiStatus,
 };
 use mxr_tui::ui::attachment_modal::draw as draw_attachment_modal;
 use mxr_tui::ui::bulk_confirm_modal::draw as draw_bulk_confirm_modal;
@@ -239,7 +239,7 @@ fn send_confirm_snapshot() {
         },
         body: "Hello".into(),
         draft_path: "/tmp/draft.md".into(),
-        allow_send: true,
+        mode: PendingSendMode::SendOrSave,
     };
 
     let snapshot = render_to_string(70, 20, |frame| {
@@ -250,6 +250,9 @@ fn send_confirm_snapshot() {
             &mxr_tui::theme::Theme::default(),
         );
     });
+    assert!(snapshot.contains("Send this draft?"));
+    assert!(snapshot.contains("Subject: Snapshot draft"));
+    assert!(snapshot.contains("[s] send   [d] save draft   [e] edit again   [Esc] discard"));
     insta::assert_snapshot!("send_confirm_snapshot", snapshot);
 }
 
@@ -741,7 +744,7 @@ fn attachment_modal_snapshot() {
 #[test]
 fn compose_picker_snapshot() {
     let mut picker = ComposePicker::default();
-    picker.open(vec![
+    picker.open_to(vec![
         Contact {
             name: "Alice Example".into(),
             email: "alice@example.com".into(),
@@ -761,6 +764,10 @@ fn compose_picker_snapshot() {
             &mxr_tui::theme::Theme::default(),
         );
     });
+    assert!(snapshot.contains("Compose"));
+    assert!(snapshot.contains("To: (Tab to add, Enter to continue)"));
+    assert!(snapshot.contains("Leave blank to add a recipient later."));
+    assert!(snapshot.contains("Alice Example <alice@example.com>"));
     insta::assert_snapshot!("compose_picker_snapshot", snapshot);
 }
 

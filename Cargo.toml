@@ -79,7 +79,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.4.34"
+version = "0.4.35"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.88"
@@ -193,6 +193,7 @@ url = "2"
 scraper = "0.24"
 data-url = "0.3"
 mime_guess = "2"
+mail-builder = "0.4.4"
 
 # TUI extras
 nucleo = "0.5"

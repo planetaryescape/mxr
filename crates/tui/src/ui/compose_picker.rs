@@ -1,6 +1,12 @@
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComposePickerMode {
+    To,
+    Subject,
+}
+
 /// A contact entry for autocomplete.
 #[derive(Debug, Clone)]
 pub struct Contact {
@@ -21,57 +27,84 @@ impl Contact {
 #[derive(Default)]
 pub struct ComposePicker {
     pub visible: bool,
+    pub mode: ComposePickerMode,
     pub input: String,
     pub contacts: Vec<Contact>,
     pub filtered: Vec<usize>,
     pub selected: usize,
     /// Already-chosen recipients.
     pub recipients: Vec<String>,
+    pub pending_to: String,
+}
+
+impl Default for ComposePickerMode {
+    fn default() -> Self {
+        Self::To
+    }
 }
 
 impl ComposePicker {
-    pub fn open(&mut self, contacts: Vec<Contact>) {
+    pub fn open_to(&mut self, contacts: Vec<Contact>) {
         self.visible = true;
+        self.mode = ComposePickerMode::To;
         self.input.clear();
         self.selected = 0;
         self.recipients.clear();
+        self.pending_to.clear();
         self.contacts = contacts;
         self.update_filtered();
     }
 
-    pub fn close(&mut self) {
-        self.visible = false;
+    pub fn open_subject(&mut self) {
+        self.pending_to = self.confirm_to();
+        self.visible = true;
+        self.mode = ComposePickerMode::Subject;
         self.input.clear();
+        self.selected = 0;
         self.contacts.clear();
         self.filtered.clear();
         self.recipients.clear();
     }
 
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.mode = ComposePickerMode::To;
+        self.input.clear();
+        self.contacts.clear();
+        self.filtered.clear();
+        self.recipients.clear();
+        self.pending_to.clear();
+    }
+
     pub fn on_char(&mut self, c: char) {
         self.input.push(c);
         self.selected = 0;
-        self.update_filtered();
+        if self.mode == ComposePickerMode::To {
+            self.update_filtered();
+        }
     }
 
     pub fn on_backspace(&mut self) {
-        if self.input.is_empty() {
+        if self.mode == ComposePickerMode::To && self.input.is_empty() {
             // Remove last recipient on backspace with empty input
             self.recipients.pop();
         } else {
             self.input.pop();
             self.selected = 0;
-            self.update_filtered();
+            if self.mode == ComposePickerMode::To {
+                self.update_filtered();
+            }
         }
     }
 
     pub fn select_next(&mut self) {
-        if !self.filtered.is_empty() {
+        if self.mode == ComposePickerMode::To && !self.filtered.is_empty() {
             self.selected = (self.selected + 1) % self.filtered.len();
         }
     }
 
     pub fn select_prev(&mut self) {
-        if !self.filtered.is_empty() {
+        if self.mode == ComposePickerMode::To && !self.filtered.is_empty() {
             self.selected = self
                 .selected
                 .checked_sub(1)
@@ -82,6 +115,9 @@ impl ComposePicker {
     /// Add the selected contact (or raw input) to recipients.
     /// Returns true if added, false if nothing to add.
     pub fn add_recipient(&mut self) -> bool {
+        if self.mode != ComposePickerMode::To {
+            return false;
+        }
         let email = if let Some(&idx) = self.filtered.get(self.selected) {
             self.contacts[idx].email.clone()
         } else if !self.input.is_empty() {
@@ -102,17 +138,25 @@ impl ComposePicker {
 
     /// Confirm all recipients. Returns the comma-separated recipient string.
     /// Returns empty string if no recipients (user will fill in editor).
-    pub fn confirm(&mut self) -> String {
+    pub fn confirm_to(&mut self) -> String {
         // Add any remaining input as a recipient
         if !self.input.is_empty() {
             self.add_recipient();
         }
-        let result = self.recipients.join(", ");
+        self.recipients.join(", ")
+    }
+
+    pub fn confirm_subject(&mut self) -> (String, String) {
+        let result = (self.pending_to.clone(), self.input.clone());
         self.close();
         result
     }
 
     fn update_filtered(&mut self) {
+        if self.mode != ComposePickerMode::To {
+            self.filtered.clear();
+            return;
+        }
         let query = self.input.to_lowercase();
         self.filtered = self
             .contacts
@@ -133,15 +177,32 @@ impl ComposePicker {
     }
 }
 
+fn title(mode: ComposePickerMode) -> &'static str {
+    match mode {
+        ComposePickerMode::To => " Compose — To: (Tab to add, Enter to continue) ",
+        ComposePickerMode::Subject => " Compose — Subject: (Enter to compose) ",
+    }
+}
+
+fn helper_text(mode: ComposePickerMode) -> &'static str {
+    match mode {
+        ComposePickerMode::To => "Leave blank to add a recipient later.",
+        ComposePickerMode::Subject => "Leave blank to add a subject later.",
+    }
+}
+
 pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate::theme::Theme) {
     if !picker.visible {
         return;
     }
 
     let width = (area.width as u32 * 60 / 100).min(70) as u16;
-    let height = (picker.filtered.len() as u16 + 6)
-        .min(area.height * 60 / 100)
-        .max(8);
+    let height = match picker.mode {
+        ComposePickerMode::To => (picker.filtered.len() as u16 + 7)
+            .min(area.height * 60 / 100)
+            .max(9),
+        ComposePickerMode::Subject => 7.min(area.height * 60 / 100).max(6),
+    };
     let x = area.x + (area.width.saturating_sub(width)) / 2;
     let y = area.y + (area.height.saturating_sub(height)) / 2;
     let popup_area = Rect::new(x, y, width, height);
@@ -149,7 +210,7 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate
     frame.render_widget(Clear, popup_area);
 
     let block = Block::bordered()
-        .title(" Compose — To: (Tab to add, Enter to compose) ")
+        .title(title(picker.mode))
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.accent));
 
@@ -160,44 +221,55 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate
         return;
     }
 
-    // Recipients line
-    let recipients_area = Rect::new(inner.x, inner.y, inner.width, 1);
-    if picker.recipients.is_empty() {
-        frame.render_widget(
-            Paragraph::new("").style(Style::default().fg(theme.text_muted)),
-            recipients_area,
-        );
-    } else {
-        let chips: Vec<Span> = picker
-            .recipients
-            .iter()
-            .flat_map(|r| {
-                vec![
-                    Span::styled(
-                        format!(" {} ", r),
-                        Style::default()
-                            .bg(theme.selection_bg)
-                            .fg(theme.text_primary),
-                    ),
-                    Span::raw(" "),
-                ]
-            })
-            .collect();
-        frame.render_widget(Paragraph::new(Line::from(chips)), recipients_area);
+    let mut row = inner.y;
+    if picker.mode == ComposePickerMode::To {
+        let recipients_area = Rect::new(inner.x, row, inner.width, 1);
+        if picker.recipients.is_empty() {
+            frame.render_widget(
+                Paragraph::new("").style(Style::default().fg(theme.text_muted)),
+                recipients_area,
+            );
+        } else {
+            let chips: Vec<Span> = picker
+                .recipients
+                .iter()
+                .flat_map(|r| {
+                    vec![
+                        Span::styled(
+                            format!(" {} ", r),
+                            Style::default()
+                                .bg(theme.selection_bg)
+                                .fg(theme.text_primary),
+                        ),
+                        Span::raw(" "),
+                    ]
+                })
+                .collect();
+            frame.render_widget(Paragraph::new(Line::from(chips)), recipients_area);
+        }
+        row += 1;
     }
 
-    // Input line
-    let input_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
+    let input_area = Rect::new(inner.x, row, inner.width, 1);
     let input_line = Paragraph::new(format!("> {}", picker.input))
         .style(Style::default().fg(theme.text_primary));
     frame.render_widget(input_line, input_area);
 
-    // Contact suggestions
+    let helper_area = Rect::new(inner.x, row + 1, inner.width, 1);
+    frame.render_widget(
+        Paragraph::new(helper_text(picker.mode)).style(Style::default().fg(theme.text_muted)),
+        helper_area,
+    );
+
+    if picker.mode != ComposePickerMode::To {
+        return;
+    }
+
     let list_area = Rect::new(
         inner.x,
-        inner.y + 2,
+        row + 2,
         inner.width,
-        inner.height.saturating_sub(2),
+        inner.height.saturating_sub(3),
     );
 
     let items: Vec<ListItem> = picker
@@ -218,4 +290,70 @@ pub fn draw(frame: &mut Frame, area: Rect, picker: &ComposePicker, theme: &crate
         .collect();
 
     frame.render_widget(List::new(items), list_area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{draw, ComposePicker, Contact};
+    use mxr_test_support::render_to_string;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn recipient_modal_render_shows_hint_and_suggestions() {
+        let mut picker = ComposePicker::default();
+        picker.open_to(vec![
+            Contact {
+                name: "Alice Example".into(),
+                email: "alice@example.com".into(),
+            },
+            Contact {
+                name: "Bob Example".into(),
+                email: "bob@example.com".into(),
+            },
+        ]);
+        picker.on_char('a');
+
+        let rendered = render_to_string(100, 20, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 20),
+                &picker,
+                &crate::theme::Theme::default(),
+            );
+        });
+
+        assert!(rendered.contains("Compose"));
+        assert!(rendered.contains("To: (Tab to add, Enter to continue)"));
+        assert!(rendered.contains("Leave blank to add a recipient later."));
+        assert!(rendered.contains("Alice Example <alice@example.com>"));
+        assert!(rendered.contains("Bob Example <bob@example.com>"));
+    }
+
+    #[test]
+    fn subject_modal_render_shows_hint_without_contact_list() {
+        let mut picker = ComposePicker::default();
+        picker.open_to(vec![Contact {
+            name: "Alice Example".into(),
+            email: "alice@example.com".into(),
+        }]);
+        picker.on_char('a');
+        picker.add_recipient();
+        picker.open_subject();
+        picker.on_char('H');
+
+        let rendered = render_to_string(100, 20, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 20),
+                &picker,
+                &crate::theme::Theme::default(),
+            );
+        });
+
+        assert!(rendered.contains("Compose"));
+        assert!(rendered.contains("Subject: (Enter to compose)"));
+        assert!(rendered.contains("Leave blank to add a subject later."));
+        assert!(rendered.contains("> H"));
+        assert!(!rendered.contains("Alice Example <alice@example.com>"));
+    }
 }

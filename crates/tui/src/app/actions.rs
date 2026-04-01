@@ -740,7 +740,7 @@ impl App {
                 }
                 let mut contacts: Vec<_> = seen.into_values().collect();
                 contacts.sort_by(|a, b| a.email.to_lowercase().cmp(&b.email.to_lowercase()));
-                self.compose_picker.open(contacts);
+                self.compose_picker.open_to(contacts);
             }
             Action::Reply => {
                 if let Some(env) = self.context_envelope() {

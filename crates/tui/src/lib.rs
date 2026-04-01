@@ -13,7 +13,7 @@ mod test_fixtures;
 pub mod theme;
 pub mod ui;
 
-use app::{App, AttachmentOperation, ComposeAction, PendingSend};
+use app::{App, AttachmentOperation, ComposeAction, PendingSend, PendingSendMode};
 use client::Client;
 use crossterm::event::EventStream;
 use futures::StreamExt;
@@ -1821,8 +1821,7 @@ async fn handle_compose_action(
                     .map_err(|e| MxrError::Ipc(e.to_string()))?,
             });
         }
-        ComposeAction::New => mxr_compose::ComposeKind::New,
-        ComposeAction::NewWithTo(to) => mxr_compose::ComposeKind::NewWithTo { to },
+        ComposeAction::New { to, subject } => mxr_compose::ComposeKind::New { to, subject },
         ComposeAction::Reply { message_id } => {
             let resp = ipc_call(
                 bg,
@@ -1925,18 +1924,32 @@ fn pending_send_from_edited_draft(data: &ComposeReadyData) -> Result<Option<Pend
 
     let (fm, body) = mxr_compose::frontmatter::parse_compose_file(&content)
         .map_err(|e| format!("Parse error: {e}"))?;
-    let issues = mxr_compose::validate_draft(&fm, &body);
-    let has_errors = issues.iter().any(|issue| issue.is_error());
-    if has_errors {
-        let msgs: Vec<String> = issues.iter().map(|issue| issue.to_string()).collect();
+    let save_issues = mxr_compose::validate_draft_for_save(&fm, &body);
+    if save_issues.iter().any(|issue| issue.is_error()) {
+        let msgs: Vec<String> = save_issues.iter().map(|issue| issue.to_string()).collect();
         return Err(format!("Draft errors: {}", msgs.join("; ")));
     }
+
+    let send_issues = mxr_compose::validate_draft(&fm, &body);
+    let mode = if unchanged {
+        PendingSendMode::Unchanged
+    } else if send_issues.iter().all(|issue| !issue.is_error()) {
+        PendingSendMode::SendOrSave
+    } else if send_issues
+        .iter()
+        .all(|issue| !issue.is_error() || issue.is_missing_recipients())
+    {
+        PendingSendMode::DraftOnlyNoRecipients
+    } else {
+        let msgs: Vec<String> = send_issues.iter().map(|issue| issue.to_string()).collect();
+        return Err(format!("Draft errors: {}", msgs.join("; ")));
+    };
 
     Ok(Some(PendingSend {
         fm,
         body,
         draft_path: data.draft_path.clone(),
-        allow_send: !unchanged,
+        mode,
     }))
 }
 
@@ -2252,7 +2265,8 @@ mod tests {
     use super::action::Action;
     use super::app::{
         ActivePane, App, BodySource, BodyViewMetadata, BodyViewState, LayoutMode, MutationEffect,
-        PendingSearchRequest, Screen, SearchPane, SearchTarget, SidebarItem, SEARCH_PAGE_SIZE,
+        PendingSearchRequest, PendingSendMode, Screen, SearchPane, SearchTarget, SidebarItem,
+        SEARCH_PAGE_SIZE,
     };
     use super::input::InputHandler;
     use super::ui::command_palette::default_commands;
@@ -4380,7 +4394,9 @@ mod tests {
 
         app.apply(action.expect("star action should be available from search results"));
 
-        assert!(app.search_page.results[1].flags.contains(MessageFlags::STARRED));
+        assert!(app.search_page.results[1]
+            .flags
+            .contains(MessageFlags::STARRED));
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].0 {
             Request::Mutation(MutationCommand::Star {
@@ -5024,7 +5040,7 @@ mod tests {
         .unwrap()
         .expect("pending send should exist");
 
-        assert!(!pending.allow_send);
+        assert_eq!(pending.mode, PendingSendMode::Unchanged);
 
         let _ = std::fs::remove_file(temp);
     }
@@ -5045,7 +5061,7 @@ mod tests {
             },
             body: "Body".into(),
             draft_path: std::path::PathBuf::from("/tmp/draft.md"),
-            allow_send: false,
+            mode: PendingSendMode::Unchanged,
         });
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
@@ -5053,10 +5069,229 @@ mod tests {
         assert_eq!(
             app.pending_send_confirm
                 .as_ref()
-                .map(|pending| pending.allow_send),
-            Some(false)
+                .map(|pending| pending.mode),
+            Some(PendingSendMode::Unchanged)
         );
         assert!(app.pending_mutation_queue.is_empty());
+    }
+
+    #[test]
+    fn compose_blank_recipient_advances_to_subject_modal() {
+        let mut app = App::new();
+        app.all_envelopes = make_test_envelopes(1);
+        app.apply(Action::Compose);
+
+        assert!(app.compose_picker.visible);
+        assert_eq!(
+            app.compose_picker.mode,
+            crate::ui::compose_picker::ComposePickerMode::To
+        );
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(app.compose_picker.visible);
+        assert_eq!(
+            app.compose_picker.mode,
+            crate::ui::compose_picker::ComposePickerMode::Subject
+        );
+    }
+
+    #[test]
+    fn compose_blank_subject_starts_new_compose_with_empty_fields() {
+        let mut app = App::new();
+        app.all_envelopes = make_test_envelopes(1);
+        app.apply(Action::Compose);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(
+            app.pending_compose,
+            Some(super::app::ComposeAction::New {
+                to: String::new(),
+                subject: String::new(),
+            })
+        );
+        assert!(!app.compose_picker.visible);
+    }
+
+    #[test]
+    fn escape_closes_recipient_modal_without_starting_compose() {
+        let mut app = App::new();
+        app.all_envelopes = make_test_envelopes(1);
+        app.apply(Action::Compose);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert!(!app.compose_picker.visible);
+        assert!(app.pending_compose.is_none());
+        assert!(app.compose_picker.pending_to.is_empty());
+    }
+
+    #[test]
+    fn escape_closes_subject_modal_without_starting_compose() {
+        let mut app = App::new();
+        app.all_envelopes = make_test_envelopes(1);
+        app.apply(Action::Compose);
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert!(!app.compose_picker.visible);
+        assert!(app.pending_compose.is_none());
+        assert!(app.compose_picker.pending_to.is_empty());
+    }
+
+    #[test]
+    fn blank_recipient_draft_opens_draft_only_confirmation() {
+        let temp = std::env::temp_dir().join(format!(
+            "mxr-compose-test-missing-to-{}-{}.md",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let content = "---\nto: \"\"\ncc: \"\"\nbcc: \"\"\nsubject: Hello\nfrom: me@example.com\nattach: []\n---\n\nBody\n";
+        std::fs::write(&temp, content).unwrap();
+
+        let pending = pending_send_from_edited_draft(&ComposeReadyData {
+            draft_path: temp.clone(),
+            cursor_line: 1,
+            initial_content: String::new(),
+        })
+        .unwrap()
+        .expect("pending send should exist");
+
+        assert_eq!(pending.mode, PendingSendMode::DraftOnlyNoRecipients);
+
+        let _ = std::fs::remove_file(temp);
+    }
+
+    #[test]
+    fn send_key_is_ignored_for_missing_recipient_draft_confirmation() {
+        let mut app = App::new();
+        app.pending_send_confirm = Some(PendingSend {
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: String::new(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "Hello".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                references: vec![],
+                attach: vec![],
+            },
+            body: "Body".into(),
+            draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            mode: PendingSendMode::DraftOnlyNoRecipients,
+        });
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+
+        assert_eq!(
+            app.pending_send_confirm
+                .as_ref()
+                .map(|pending| pending.mode),
+            Some(PendingSendMode::DraftOnlyNoRecipients)
+        );
+        assert!(app.pending_mutation_queue.is_empty());
+    }
+
+    #[test]
+    fn save_key_saves_missing_recipient_draft_to_server() {
+        let mut app = App::new();
+        app.all_envelopes = make_test_envelopes(1);
+        app.pending_send_confirm = Some(PendingSend {
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: String::new(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "Hello".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                references: vec![],
+                attach: vec![],
+            },
+            body: "Body".into(),
+            draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            mode: PendingSendMode::DraftOnlyNoRecipients,
+        });
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+
+        assert!(app.pending_send_confirm.is_none());
+        assert!(matches!(
+            app.pending_mutation_queue.first(),
+            Some((Request::SaveDraftToServer { .. }, _))
+        ));
+    }
+
+    #[test]
+    fn edit_key_reopens_missing_recipient_draft() {
+        let temp = std::env::temp_dir().join(format!(
+            "mxr-compose-edit-draft-{}-{}.md",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::write(&temp, "draft").unwrap();
+
+        let mut app = App::new();
+        app.pending_send_confirm = Some(PendingSend {
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: String::new(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "Hello".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                references: vec![],
+                attach: vec![],
+            },
+            body: "Body".into(),
+            draft_path: temp.clone(),
+            mode: PendingSendMode::DraftOnlyNoRecipients,
+        });
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+
+        assert!(app.pending_send_confirm.is_none());
+        assert_eq!(
+            app.pending_compose,
+            Some(super::app::ComposeAction::EditDraft(temp.clone()))
+        );
+
+        let _ = std::fs::remove_file(temp);
+    }
+
+    #[test]
+    fn escape_discards_missing_recipient_draft_confirmation() {
+        let temp = std::env::temp_dir().join(format!(
+            "mxr-compose-discard-draft-{}-{}.md",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::write(&temp, "draft").unwrap();
+
+        let mut app = App::new();
+        app.pending_send_confirm = Some(PendingSend {
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: String::new(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "Hello".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                references: vec![],
+                attach: vec![],
+            },
+            body: "Body".into(),
+            draft_path: temp.clone(),
+            mode: PendingSendMode::DraftOnlyNoRecipients,
+        });
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert!(app.pending_send_confirm.is_none());
+        assert!(!temp.exists());
+        assert_eq!(app.status_message.as_deref(), Some("Discarded"));
     }
 
     #[test]

@@ -1310,10 +1310,10 @@ async fn create_compose_session(
     let (account_id, from) = default_account(socket_path).await?;
     let (kind, account_id, cursor_line) = match request.kind {
         ComposeSessionKindRequest::New => (
-            request
-                .to
-                .map(|to| ComposeKind::NewWithTo { to })
-                .unwrap_or(ComposeKind::New),
+            ComposeKind::New {
+                to: request.to.unwrap_or_default(),
+                subject: String::new(),
+            },
             account_id,
             None::<usize>,
         ),
@@ -1427,6 +1427,10 @@ fn load_compose_session(path: &Path) -> Result<serde_json::Value, BridgeError> {
 
 fn compose_issue_view(issue: ComposeValidation) -> ComposeIssueView {
     match issue {
+        ComposeValidation::MissingRecipients => ComposeIssueView {
+            severity: "error",
+            message: "No recipients (to: field is empty)".into(),
+        },
         ComposeValidation::Error(message) => ComposeIssueView {
             severity: "error",
             message,

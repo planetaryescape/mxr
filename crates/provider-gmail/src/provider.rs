@@ -544,8 +544,8 @@ impl MailSendProvider for GmailProvider {
         draft: &Draft,
         from: &Address,
     ) -> mxr_core::provider::Result<Option<String>> {
-        let rfc2822 =
-            send::build_rfc2822(draft, from).map_err(|e| MxrError::Provider(e.to_string()))?;
+        let rfc2822 = send::build_draft_rfc2822(draft, from)
+            .map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
 
         let draft_id = self

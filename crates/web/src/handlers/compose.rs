@@ -99,9 +99,10 @@ pub(crate) async fn create_compose_session(
     let (account_id, from) = default_account(socket_path).await?;
     let (kind, account_id, cursor_line) = match request.kind {
         ComposeSessionKindRequest::New => (
-            request
-                .to
-                .map_or(ComposeKind::New, |to| ComposeKind::NewWithTo { to }),
+            ComposeKind::New {
+                to: request.to.unwrap_or_default(),
+                subject: String::new(),
+            },
             account_id,
             None::<usize>,
         ),
@@ -170,9 +171,8 @@ pub(crate) async fn create_compose_session(
     } else {
         from
     };
-    let (draft_path, resolved_cursor_line) =
-        mxr_compose::create_draft_file(kind, &compose_from)
-            .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let (draft_path, resolved_cursor_line) = mxr_compose::create_draft_file(kind, &compose_from)
+        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let mut session = load_compose_session(&draft_path)?;
     if let Some(cursor_line) = cursor_line {
         session["cursorLine"] = json!(cursor_line);
@@ -216,6 +216,10 @@ pub(crate) fn load_compose_session(path: &Path) -> Result<serde_json::Value, Bri
 
 pub(crate) fn compose_issue_view(issue: ComposeValidation) -> ComposeIssueView {
     match issue {
+        ComposeValidation::MissingRecipients => ComposeIssueView {
+            severity: "error",
+            message: "No recipients (to: field is empty)".into(),
+        },
         ComposeValidation::Error(message) => ComposeIssueView {
             severity: "error",
             message,

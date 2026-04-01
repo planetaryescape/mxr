@@ -1,6 +1,6 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 194
+assertion_line: 256
 expression: snapshot
 ---
 "                                                                      "
@@ -10,12 +10,12 @@ expression: snapshot
 "                                                                      "
 "                                                                      "
 "                                                                      "
-"                                                                      "
-"               ╭ Draft Ready ─────────────────────────╮               "
-"               │Send this draft?                      │               "
-"               │Subject: Snapshot draft               │               "
-"               ╰──────────────────────────────────────╯               "
-"                                                                      "
+"     ╭ Draft Ready ─────────────────────────────────────────────╮     "
+"     │Send this draft?                                          │     "
+"     │Subject: Snapshot draft                                   │     "
+"     │                                                          │     "
+"     │[s] send   [d] save draft   [e] edit again   [Esc] discard│     "
+"     ╰──────────────────────────────────────────────────────────╯     "
 "                                                                      "
 "                                                                      "
 "                                                                      "

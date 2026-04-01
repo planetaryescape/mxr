@@ -44,8 +44,13 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let (path, cursor_line) =
-        mxr_compose::create_draft_file(mxr_compose::ComposeKind::New, &from_addr)?;
+    let (path, cursor_line) = mxr_compose::create_draft_file(
+        mxr_compose::ComposeKind::New {
+            to: options.to.clone().unwrap_or_default(),
+            subject: options.subject.clone().unwrap_or_default(),
+        },
+        &from_addr,
+    )?;
 
     // If inline body provided, append it to the draft file
     if let Some(b) = &options.body {
@@ -60,25 +65,14 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     }
 
     // Pre-fill frontmatter fields if provided via CLI args
-    if options.to.is_some()
-        || options.cc.is_some()
-        || options.bcc.is_some()
-        || options.subject.is_some()
-        || !options.attach.is_empty()
-    {
+    if options.cc.is_some() || options.bcc.is_some() || !options.attach.is_empty() {
         let content = std::fs::read_to_string(&path)?;
         let mut updated = content;
-        if let Some(to_val) = &options.to {
-            updated = updated.replacen("to: \"\"", &format!("to: \"{to_val}\""), 1);
-        }
         if let Some(cc_val) = &options.cc {
             updated = updated.replacen("cc: \"\"", &format!("cc: \"{cc_val}\""), 1);
         }
         if let Some(bcc_val) = &options.bcc {
             updated = updated.replacen("bcc: \"\"", &format!("bcc: \"{bcc_val}\""), 1);
-        }
-        if let Some(subj) = &options.subject {
-            updated = updated.replacen("subject: \"\"", &format!("subject: \"{subj}\""), 1);
         }
         std::fs::write(&path, updated)?;
     }

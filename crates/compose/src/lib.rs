@@ -13,9 +13,9 @@ use uuid::Uuid;
 
 /// The kind of compose action.
 pub enum ComposeKind {
-    New,
-    NewWithTo {
+    New {
         to: String,
+        subject: String,
     },
     Reply {
         in_reply_to: String,
@@ -39,25 +39,12 @@ pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usiz
     let path = std::env::temp_dir().join(format!("mxr-draft-{draft_id}.md"));
 
     let (fm, body, context) = match kind {
-        ComposeKind::New => {
-            let fm = ComposeFrontmatter {
-                to: String::new(),
-                cc: String::new(),
-                bcc: String::new(),
-                subject: String::new(),
-                from: from.to_string(),
-                in_reply_to: None,
-                references: Vec::new(),
-                attach: Vec::new(),
-            };
-            (fm, String::new(), None)
-        }
-        ComposeKind::NewWithTo { to } => {
+        ComposeKind::New { to, subject } => {
             let fm = ComposeFrontmatter {
                 to,
                 cc: String::new(),
                 bcc: String::new(),
-                subject: String::new(),
+                subject,
                 from: from.to_string(),
                 in_reply_to: None,
                 references: Vec::new(),
@@ -127,12 +114,25 @@ pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usiz
 
 /// Validate a parsed draft before sending.
 pub fn validate_draft(frontmatter: &ComposeFrontmatter, body: &str) -> Vec<ComposeValidation> {
+    validate_draft_with_mode(frontmatter, body, ComposeValidationMode::Send)
+}
+
+pub fn validate_draft_for_save(
+    frontmatter: &ComposeFrontmatter,
+    body: &str,
+) -> Vec<ComposeValidation> {
+    validate_draft_with_mode(frontmatter, body, ComposeValidationMode::SaveDraft)
+}
+
+fn validate_draft_with_mode(
+    frontmatter: &ComposeFrontmatter,
+    body: &str,
+    mode: ComposeValidationMode,
+) -> Vec<ComposeValidation> {
     let mut issues = Vec::new();
 
-    if frontmatter.to.trim().is_empty() {
-        issues.push(ComposeValidation::Error(
-            "No recipients (to: field is empty)".into(),
-        ));
+    if matches!(mode, ComposeValidationMode::Send) && frontmatter.to.trim().is_empty() {
+        issues.push(ComposeValidation::MissingRecipients);
     }
 
     if frontmatter.subject.trim().is_empty() {
@@ -163,23 +163,40 @@ pub fn validate_draft(frontmatter: &ComposeFrontmatter, body: &str) -> Vec<Compo
 
 #[derive(Debug)]
 pub enum ComposeValidation {
+    MissingRecipients,
     Error(String),
     Warning(String),
 }
 
 impl ComposeValidation {
     pub fn is_error(&self) -> bool {
-        matches!(self, ComposeValidation::Error(_))
+        matches!(
+            self,
+            ComposeValidation::MissingRecipients | ComposeValidation::Error(_)
+        )
+    }
+
+    pub fn is_missing_recipients(&self) -> bool {
+        matches!(self, ComposeValidation::MissingRecipients)
     }
 }
 
 impl std::fmt::Display for ComposeValidation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ComposeValidation::MissingRecipients => {
+                write!(f, "Error: No recipients (to: field is empty)")
+            }
             ComposeValidation::Error(msg) => write!(f, "Error: {msg}"),
             ComposeValidation::Warning(msg) => write!(f, "Warning: {msg}"),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ComposeValidationMode {
+    Send,
+    SaveDraft,
 }
 
 #[cfg(test)]
@@ -187,9 +204,20 @@ mod tests {
     use super::*;
     use frontmatter::parse_compose_file;
 
+    fn issue_messages(issues: &[ComposeValidation]) -> Vec<String> {
+        issues.iter().map(ToString::to_string).collect()
+    }
+
     #[test]
     fn roundtrip_new_message() {
-        let (path, _cursor) = create_draft_file(ComposeKind::New, "me@example.com").unwrap();
+        let (path, _cursor) = create_draft_file(
+            ComposeKind::New {
+                to: String::new(),
+                subject: String::new(),
+            },
+            "me@example.com",
+        )
+        .unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
         let (fm, body) = parse_compose_file(&content).unwrap();
         assert_eq!(fm.from, "me@example.com");
@@ -253,7 +281,26 @@ mod tests {
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "body");
-        assert!(issues.iter().any(|i| i.is_error()));
+        assert_eq!(
+            issue_messages(&issues),
+            vec!["Error: No recipients (to: field is empty)"]
+        );
+    }
+
+    #[test]
+    fn save_draft_allows_missing_recipient() {
+        let fm = ComposeFrontmatter {
+            to: String::new(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: "Test".into(),
+            from: "me@example.com".into(),
+            in_reply_to: None,
+            references: Vec::new(),
+            attach: Vec::new(),
+        };
+        let issues = validate_draft_for_save(&fm, "body");
+        assert!(issues.is_empty());
     }
 
     #[test]
@@ -269,7 +316,10 @@ mod tests {
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "body");
-        assert!(issues.iter().any(|i| i.is_error()));
+        assert_eq!(
+            issue_messages(&issues),
+            vec!["Error: Invalid email address: not-an-email"]
+        );
     }
 
     #[test]
@@ -285,15 +335,15 @@ mod tests {
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "body");
-        assert!(!issues.iter().any(|i| i.is_error()));
-        assert!(issues.iter().any(|i| !i.is_error()));
+        assert_eq!(issue_messages(&issues), vec!["Warning: Subject is empty"]);
     }
 
     #[test]
     fn roundtrip_new_with_to() {
         let (path, _cursor) = create_draft_file(
-            ComposeKind::NewWithTo {
+            ComposeKind::New {
                 to: "alice@example.com".into(),
+                subject: String::new(),
             },
             "me@example.com",
         )
@@ -320,6 +370,44 @@ mod tests {
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "Hello there!");
-        assert!(!issues.iter().any(|i| i.is_error()));
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn save_draft_keeps_empty_subject_as_warning_only() {
+        let fm = ComposeFrontmatter {
+            to: String::new(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: String::new(),
+            from: "me@example.com".into(),
+            in_reply_to: None,
+            references: Vec::new(),
+            attach: Vec::new(),
+        };
+        let issues = validate_draft_for_save(&fm, "Hello there!");
+        assert_eq!(issue_messages(&issues), vec!["Warning: Subject is empty"]);
+    }
+
+    #[test]
+    fn save_draft_still_rejects_invalid_email() {
+        let fm = ComposeFrontmatter {
+            to: "not-an-email".into(),
+            cc: String::new(),
+            bcc: String::new(),
+            subject: String::new(),
+            from: "me@example.com".into(),
+            in_reply_to: None,
+            references: Vec::new(),
+            attach: Vec::new(),
+        };
+        let issues = validate_draft_for_save(&fm, "Hello there!");
+        assert_eq!(
+            issue_messages(&issues),
+            vec![
+                "Warning: Subject is empty",
+                "Error: Invalid email address: not-an-email",
+            ]
+        );
     }
 }

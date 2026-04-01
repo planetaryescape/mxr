@@ -21,6 +21,7 @@ chrono = { workspace = true }
 dirs = { workspace = true }
 futures = { workspace = true }
 keyring = { workspace = true }
+mail-builder = { workspace = true }
 mail-parser = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
@@ -35,5 +36,6 @@ yup-oauth2 = { workspace = true }
 insta = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-test-support = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true }
 wiremock = { workspace = true }

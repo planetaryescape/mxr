@@ -267,7 +267,7 @@ impl App {
                 (KeyCode::Char('s'), KeyModifiers::NONE) => {
                     // Send
                     if let Some(pending) = self.pending_send_confirm.take() {
-                        if !pending.allow_send {
+                        if pending.mode != PendingSendMode::SendOrSave {
                             self.pending_send_confirm = Some(pending);
                             return None;
                         }
@@ -315,7 +315,7 @@ impl App {
                 (KeyCode::Char('d'), KeyModifiers::NONE) => {
                     // Save as draft to mail server
                     if let Some(pending) = self.pending_send_confirm.take() {
-                        if !pending.allow_send {
+                        if pending.mode == PendingSendMode::Unchanged {
                             self.pending_send_confirm = Some(pending);
                             return None;
                         }
@@ -529,12 +529,12 @@ impl App {
         if self.compose_picker.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => {
-                    // Confirm all recipients and trigger compose
-                    let to = self.compose_picker.confirm();
-                    if to.is_empty() {
-                        self.pending_compose = Some(ComposeAction::New);
+                    if self.compose_picker.mode == crate::ui::compose_picker::ComposePickerMode::To
+                    {
+                        self.compose_picker.open_subject();
                     } else {
-                        self.pending_compose = Some(ComposeAction::NewWithTo(to));
+                        let (to, subject) = self.compose_picker.confirm_subject();
+                        self.pending_compose = Some(ComposeAction::New { to, subject });
                     }
                     return None;
                 }
@@ -738,8 +738,9 @@ impl App {
                     self.sync_search_cursor_after_move();
                     None
                 }
-                (KeyCode::Right, KeyModifiers::NONE)
-                | (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::OpenSelected),
+                (KeyCode::Right, KeyModifiers::NONE) | (KeyCode::Enter | KeyCode::Char('o'), _) => {
+                    Some(Action::OpenSelected)
+                }
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
                 _ => self.contextual_input_action(key),

@@ -64,13 +64,19 @@ pub struct PendingSend {
     pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
     pub body: String,
     pub draft_path: std::path::PathBuf,
-    pub allow_send: bool,
+    pub mode: PendingSendMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PendingSendMode {
+    SendOrSave,
+    DraftOnlyNoRecipients,
+    Unchanged,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ComposeAction {
-    New,
-    NewWithTo(String),
+    New { to: String, subject: String },
     EditDraft(std::path::PathBuf),
     Reply { message_id: MessageId },
     ReplyAll { message_id: MessageId },
@@ -1104,10 +1110,7 @@ impl App {
         }
     }
 
-    pub(crate) fn search_row_index_for_message(
-        &self,
-        message_id: &MessageId,
-    ) -> Option<usize> {
+    pub(crate) fn search_row_index_for_message(&self, message_id: &MessageId) -> Option<usize> {
         match self.search_list_mode() {
             MailListMode::Messages => self
                 .search_page

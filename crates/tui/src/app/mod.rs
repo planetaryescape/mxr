@@ -2998,11 +2998,19 @@ impl App {
     }
 
     fn body_inline_images(body: &MessageBody) -> bool {
-        body.attachments.iter().any(|attachment| {
-            attachment.disposition == AttachmentDisposition::Inline
-                || attachment.content_id.is_some()
-                || attachment.content_location.is_some()
-        })
+        body.attachments.iter().any(Self::attachment_is_inlineish)
+    }
+
+    fn attachment_is_inlineish(attachment: &AttachmentMeta) -> bool {
+        attachment.disposition == AttachmentDisposition::Inline
+            || attachment.content_id.is_some()
+            || attachment.content_location.is_some()
+    }
+
+    fn sorted_attachment_panel_attachments(body: &MessageBody) -> Vec<AttachmentMeta> {
+        let mut attachments = body.attachments.clone();
+        attachments.sort_by_key(Self::attachment_is_inlineish);
+        attachments
     }
 
     fn html_has_remote_content(html: &str) -> bool {
@@ -3331,7 +3339,7 @@ impl App {
         };
         let Some(attachments) = self
             .current_viewing_body()
-            .map(|body| body.attachments.clone())
+            .map(Self::sorted_attachment_panel_attachments)
         else {
             self.status_message = Some("No message body loaded".into());
             return;

@@ -325,6 +325,43 @@ fn open_diagnostics_pane_details(
     open_temp_text_buffer(name, &content)
 }
 
+fn run_with_terminal_suspended_with<Terminal, Events, RestoreTerminal, InitTerminal, InitEvents, Action, R>(
+    terminal: &mut Terminal,
+    events: &mut Option<Events>,
+    restore_terminal: RestoreTerminal,
+    init_terminal: InitTerminal,
+    init_events: InitEvents,
+    action: Action,
+) -> R
+where
+    RestoreTerminal: FnOnce(),
+    InitTerminal: FnOnce() -> Terminal,
+    InitEvents: FnOnce() -> Events,
+    Action: FnOnce() -> R,
+{
+    drop(events.take());
+    restore_terminal();
+    let result = action();
+    *terminal = init_terminal();
+    *events = Some(init_events());
+    result
+}
+
+fn run_with_terminal_suspended<R>(
+    terminal: &mut ratatui::DefaultTerminal,
+    events: &mut Option<EventStream>,
+    action: impl FnOnce() -> R,
+) -> R {
+    run_with_terminal_suspended_with(
+        terminal,
+        events,
+        ratatui::restore,
+        ratatui::init,
+        EventStream::new,
+        action,
+    )
+}
+
 pub async fn run() -> anyhow::Result<()> {
     let socket_path = daemon_socket_path();
     let mut client = Client::connect(&socket_path).await?;
@@ -344,7 +381,7 @@ pub async fn run() -> anyhow::Result<()> {
 
     let mut terminal = ratatui::init();
     app.set_terminal_image_support(crate::terminal_images::TerminalImageSupport::detect());
-    let mut events = EventStream::new();
+    let mut events = Some(EventStream::new());
 
     // Channels for async results
     let (result_tx, mut result_rx) = mpsc::unbounded_channel::<AsyncResult>();
@@ -365,9 +402,8 @@ pub async fn run() -> anyhow::Result<()> {
 
         if app.pending_config_edit {
             app.pending_config_edit = false;
-            ratatui::restore();
-            let result = edit_tui_config(&mut app);
-            terminal = ratatui::init();
+            let result =
+                run_with_terminal_suspended(&mut terminal, &mut events, || edit_tui_config(&mut app));
             match result {
                 Ok(message) => {
                     app.status_message = Some(message);
@@ -385,9 +421,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
         if app.pending_log_open {
             app.pending_log_open = false;
-            ratatui::restore();
-            let result = open_tui_log_file();
-            terminal = ratatui::init();
+            let result = run_with_terminal_suspended(&mut terminal, &mut events, open_tui_log_file);
             match result {
                 Ok(message) => {
                     app.status_message = Some(message);
@@ -404,9 +438,9 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
         if let Some(pane) = app.pending_diagnostics_details.take() {
-            ratatui::restore();
-            let result = open_diagnostics_pane_details(&app.diagnostics_page, pane);
-            terminal = ratatui::init();
+            let result = run_with_terminal_suspended(&mut terminal, &mut events, || {
+                open_diagnostics_pane_details(&app.diagnostics_page, pane)
+            });
             match result {
                 Ok(message) => {
                     app.status_message = Some(message);
@@ -1179,7 +1213,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         tokio::select! {
-            event = events.next() => {
+            event = events.as_mut().expect("event stream").next() => {
                 if let Some(Ok(Event::Key(key))) = event {
                     if let Some(action) = app.handle_key(key) {
                         app.apply(action);
@@ -1646,36 +1680,14 @@ pub async fn run() -> anyhow::Result<()> {
                             app.show_mutation_failure(&e);
                         }
                         AsyncResult::ComposeReady(Ok(data)) => {
-                            // Restore terminal, spawn editor, then re-init terminal
-                            ratatui::restore();
-                            let editor = mxr_compose::editor::resolve_editor(None);
-                            let status = std::process::Command::new(&editor)
-                                .arg(format!("+{}", data.cursor_line))
-                                .arg(&data.draft_path)
-                                .status();
-                            terminal = ratatui::init();
-                            match status {
-                                Ok(s) if s.success() => {
-                                    match pending_send_from_edited_draft(&data) {
-                                        Ok(Some(pending)) => {
-                                            app.pending_send_confirm = Some(pending);
-                                        }
-                                        Ok(None) => {}
-                                        Err(message) => {
-                                            app.status_message = Some(message);
-                                        }
-                                    }
-                                }
-                                Ok(_) => {
-                                    // Editor exited abnormally — user probably :q! to discard
-                                    app.status_message = Some("Draft discarded".into());
-                                    let _ = std::fs::remove_file(&data.draft_path);
-                                }
-                                Err(e) => {
-                                    app.status_message =
-                                        Some(format!("Failed to launch editor: {e}"));
-                                }
-                            }
+                            let status = run_with_terminal_suspended(&mut terminal, &mut events, || {
+                                let editor = mxr_compose::editor::resolve_editor(None);
+                                std::process::Command::new(&editor)
+                                    .arg(format!("+{}", data.cursor_line))
+                                    .arg(&data.draft_path)
+                                    .status()
+                            });
+                            handle_compose_editor_status(&mut app, &data, status);
                         }
                         AsyncResult::ComposeReady(Err(e)) => {
                             app.status_message = Some(format!("Compose error: {e}"));
@@ -1951,6 +1963,31 @@ fn pending_send_from_edited_draft(data: &ComposeReadyData) -> Result<Option<Pend
         draft_path: data.draft_path.clone(),
         mode,
     }))
+}
+
+fn handle_compose_editor_status(
+    app: &mut App,
+    data: &ComposeReadyData,
+    status: std::io::Result<std::process::ExitStatus>,
+) {
+    match status {
+        Ok(s) if s.success() => match pending_send_from_edited_draft(data) {
+            Ok(Some(pending)) => {
+                app.pending_send_confirm = Some(pending);
+            }
+            Ok(None) => {}
+            Err(message) => {
+                app.status_message = Some(message);
+            }
+        },
+        Ok(_) => {
+            app.status_message = Some("Draft discarded".into());
+            let _ = std::fs::remove_file(&data.draft_path);
+        }
+        Err(e) => {
+            app.status_message = Some(format!("Failed to launch editor: {e}"));
+        }
+    }
 }
 
 fn daemon_socket_path() -> std::path::PathBuf {
@@ -2274,8 +2311,10 @@ mod tests {
     use super::ui::search_bar::SearchBar;
     use super::ui::status_bar;
     use super::{
-        app::MailListMode, apply_all_envelopes_refresh, handle_daemon_event,
-        pending_send_from_edited_draft, ComposeReadyData, PendingSend, SearchResultData,
+        app::MailListMode, apply_all_envelopes_refresh, handle_compose_editor_status,
+        handle_daemon_event,
+        pending_send_from_edited_draft, run_with_terminal_suspended_with, ComposeReadyData,
+        PendingSend, SearchResultData,
     };
     use crate::test_fixtures::TestEnvelopeBuilder;
     use mxr_config::RenderConfig;
@@ -2285,6 +2324,9 @@ mod tests {
     use mxr_protocol::{DaemonEvent, LabelCount, MutationCommand, Request};
     use mxr_test_support::render_to_string;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::os::unix::process::ExitStatusExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
         (0..count)
@@ -2325,6 +2367,21 @@ mod tests {
             .build()
     }
 
+    struct TestEventSource {
+        id: usize,
+        dropped: Arc<AtomicBool>,
+    }
+
+    impl Drop for TestEventSource {
+        fn drop(&mut self) {
+            self.dropped.store(true, Ordering::SeqCst);
+        }
+    }
+
+    fn exit_status(code: i32) -> std::process::ExitStatus {
+        std::process::ExitStatus::from_raw(code)
+    }
+
     #[test]
     fn input_j_moves_down() {
         let mut h = InputHandler::new();
@@ -2341,6 +2398,147 @@ mod tests {
             h.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE)),
             Some(Action::MoveUp)
         );
+    }
+
+    #[test]
+    fn suspended_handoff_drops_old_event_source_before_running_action() {
+        let old_dropped = Arc::new(AtomicBool::new(false));
+        let new_created = Arc::new(AtomicBool::new(false));
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let mut terminal = 1usize;
+        let mut events = Some(TestEventSource {
+            id: 1,
+            dropped: old_dropped.clone(),
+        });
+
+        let result = run_with_terminal_suspended_with(
+            &mut terminal,
+            &mut events,
+            {
+                let order = order.clone();
+                move || order.lock().unwrap().push("restore")
+            },
+            {
+                let order = order.clone();
+                move || {
+                    order.lock().unwrap().push("init");
+                    2usize
+                }
+            },
+            {
+                let order = order.clone();
+                let new_created = new_created.clone();
+                move || {
+                    order.lock().unwrap().push("events");
+                    new_created.store(true, Ordering::SeqCst);
+                    TestEventSource {
+                        id: 2,
+                        dropped: Arc::new(AtomicBool::new(false)),
+                    }
+                }
+            },
+            {
+                let order = order.clone();
+                let old_dropped = old_dropped.clone();
+                let new_created = new_created.clone();
+                move || {
+                    assert!(old_dropped.load(Ordering::SeqCst));
+                    assert!(!new_created.load(Ordering::SeqCst));
+                    order.lock().unwrap().push("run");
+                    "done"
+                }
+            },
+        );
+
+        assert_eq!(result, "done");
+        assert_eq!(terminal, 2);
+        assert_eq!(events.as_ref().map(|event| event.id), Some(2));
+        assert_eq!(
+            order.lock().unwrap().as_slice(),
+            ["restore", "run", "init", "events"]
+        );
+    }
+
+    #[test]
+    fn compose_editor_success_opens_send_confirmation() {
+        let temp = std::env::temp_dir().join(format!(
+            "mxr-compose-editor-success-{}-{}.md",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let content = "---\nto: a@example.com\ncc: \"\"\nbcc: \"\"\nsubject: Hello\nfrom: me@example.com\nattach: []\n---\n\nBody\n";
+        std::fs::write(&temp, content).unwrap();
+
+        let data = ComposeReadyData {
+            draft_path: temp.clone(),
+            cursor_line: 1,
+            initial_content: String::new(),
+        };
+        let mut app = App::new();
+
+        handle_compose_editor_status(&mut app, &data, Ok(exit_status(0)));
+
+        assert_eq!(
+            app.pending_send_confirm
+                .as_ref()
+                .map(|pending| pending.mode),
+            Some(PendingSendMode::SendOrSave)
+        );
+        assert!(app.status_message.is_none());
+
+        let _ = std::fs::remove_file(temp);
+    }
+
+    #[test]
+    fn compose_editor_cancel_discards_draft() {
+        let temp = std::env::temp_dir().join(format!(
+            "mxr-compose-editor-cancel-{}-{}.md",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        std::fs::write(&temp, "---\n").unwrap();
+
+        let data = ComposeReadyData {
+            draft_path: temp.clone(),
+            cursor_line: 1,
+            initial_content: String::new(),
+        };
+        let mut app = App::new();
+
+        handle_compose_editor_status(&mut app, &data, Ok(exit_status(1)));
+
+        assert_eq!(app.status_message.as_deref(), Some("Draft discarded"));
+        assert!(app.pending_send_confirm.is_none());
+        assert!(!temp.exists());
+    }
+
+    #[test]
+    fn suspended_handoff_preserves_non_compose_results() {
+        let old_dropped = Arc::new(AtomicBool::new(false));
+        let mut terminal = 1usize;
+        let mut events = Some(TestEventSource {
+            id: 1,
+            dropped: old_dropped.clone(),
+        });
+
+        let result: Result<String, MxrError> = run_with_terminal_suspended_with(
+            &mut terminal,
+            &mut events,
+            || {},
+            || 2usize,
+            || TestEventSource {
+                id: 2,
+                dropped: Arc::new(AtomicBool::new(false)),
+            },
+            || {
+                assert!(old_dropped.load(Ordering::SeqCst));
+                Ok("Log open cancelled".into())
+            },
+        );
+
+        assert_eq!(result.unwrap(), "Log open cancelled");
+        assert_eq!(terminal, 2);
+        assert_eq!(events.as_ref().map(|event| event.id), Some(2));
     }
 
     #[test]
@@ -4948,6 +5146,173 @@ mod tests {
         assert!(app.attachment_panel.visible);
         assert_eq!(app.attachment_panel.attachments.len(), 1);
         assert_eq!(app.attachment_panel.attachments[0].filename, "report.pdf");
+    }
+
+    #[test]
+    fn attachment_list_sorts_file_attachments_before_inline_images() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        let env = app.envelopes[0].clone();
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some("hello".into()),
+                text_html: Some("<img src=\"cid:inline-1\">".into()),
+                attachments: vec![
+                    AttachmentMeta {
+                        id: AttachmentId::new(),
+                        message_id: env.id.clone(),
+                        filename: "inline-1.png".into(),
+                        mime_type: "image/png".into(),
+                        disposition: mxr_core::types::AttachmentDisposition::Inline,
+                        content_id: Some("inline-1".into()),
+                        content_location: None,
+                        size_bytes: 10,
+                        local_path: None,
+                        provider_id: "att-inline-1".into(),
+                    },
+                    AttachmentMeta {
+                        id: AttachmentId::new(),
+                        message_id: env.id.clone(),
+                        filename: "budget.xlsx".into(),
+                        mime_type:
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                .into(),
+                        disposition: mxr_core::types::AttachmentDisposition::Attachment,
+                        content_id: None,
+                        content_location: None,
+                        size_bytes: 20,
+                        local_path: None,
+                        provider_id: "att-xlsx".into(),
+                    },
+                    AttachmentMeta {
+                        id: AttachmentId::new(),
+                        message_id: env.id.clone(),
+                        filename: "inline-2.png".into(),
+                        mime_type: "image/png".into(),
+                        disposition: mxr_core::types::AttachmentDisposition::Inline,
+                        content_id: Some("inline-2".into()),
+                        content_location: None,
+                        size_bytes: 30,
+                        local_path: None,
+                        provider_id: "att-inline-2".into(),
+                    },
+                    AttachmentMeta {
+                        id: AttachmentId::new(),
+                        message_id: env.id.clone(),
+                        filename: "report.pdf".into(),
+                        mime_type: "application/pdf".into(),
+                        disposition: mxr_core::types::AttachmentDisposition::Attachment,
+                        content_id: None,
+                        content_location: None,
+                        size_bytes: 40,
+                        local_path: None,
+                        provider_id: "att-pdf".into(),
+                    },
+                ],
+                fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
+            },
+        );
+
+        app.apply(Action::OpenSelected);
+        app.apply(Action::AttachmentList);
+
+        assert!(app.attachment_panel.visible);
+        assert_eq!(
+            app.attachment_panel
+                .attachments
+                .iter()
+                .map(|attachment| attachment.filename.as_str())
+                .collect::<Vec<_>>(),
+            vec!["budget.xlsx", "report.pdf", "inline-1.png", "inline-2.png"]
+        );
+        assert_eq!(app.attachment_panel.selected_index, 0);
+        assert_eq!(
+            app.selected_attachment().map(|attachment| attachment.filename.as_str()),
+            Some("budget.xlsx")
+        );
+    }
+
+    #[test]
+    fn attachment_list_navigation_follows_sorted_attachment_order() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+        let env = app.envelopes[0].clone();
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some("hello".into()),
+                text_html: Some("<img src=\"cid:inline-1\">".into()),
+                attachments: vec![
+                    AttachmentMeta {
+                        id: AttachmentId::new(),
+                        message_id: env.id.clone(),
+                        filename: "inline-1.png".into(),
+                        mime_type: "image/png".into(),
+                        disposition: mxr_core::types::AttachmentDisposition::Inline,
+                        content_id: Some("inline-1".into()),
+                        content_location: None,
+                        size_bytes: 10,
+                        local_path: None,
+                        provider_id: "att-inline-1".into(),
+                    },
+                    AttachmentMeta {
+                        id: AttachmentId::new(),
+                        message_id: env.id.clone(),
+                        filename: "budget.xlsx".into(),
+                        mime_type:
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                .into(),
+                        disposition: mxr_core::types::AttachmentDisposition::Attachment,
+                        content_id: None,
+                        content_location: None,
+                        size_bytes: 20,
+                        local_path: None,
+                        provider_id: "att-xlsx".into(),
+                    },
+                    AttachmentMeta {
+                        id: AttachmentId::new(),
+                        message_id: env.id.clone(),
+                        filename: "report.pdf".into(),
+                        mime_type: "application/pdf".into(),
+                        disposition: mxr_core::types::AttachmentDisposition::Attachment,
+                        content_id: None,
+                        content_location: None,
+                        size_bytes: 40,
+                        local_path: None,
+                        provider_id: "att-pdf".into(),
+                    },
+                ],
+                fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
+            },
+        );
+
+        app.apply(Action::OpenSelected);
+        app.apply(Action::AttachmentList);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+        assert_eq!(
+            app.selected_attachment().map(|attachment| attachment.filename.as_str()),
+            Some("report.pdf")
+        );
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
+        assert_eq!(
+            app.selected_attachment().map(|attachment| attachment.filename.as_str()),
+            Some("inline-1.png")
+        );
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
+        assert_eq!(
+            app.selected_attachment().map(|attachment| attachment.filename.as_str()),
+            Some("report.pdf")
+        );
     }
 
     #[test]

@@ -38,11 +38,6 @@ pub fn draw(
             } else {
                 "remote"
             };
-            let style = if index == panel.selected_index {
-                theme.highlight_style()
-            } else {
-                Style::default()
-            };
             ListItem::new(format!(
                 " {}  {}  {}  ({})",
                 index + 1,
@@ -50,11 +45,12 @@ pub fn draw(
                 attachment.mime_type,
                 marker
             ))
-            .style(style)
         })
         .collect();
     let list_height = chunks[0].height as usize;
-    frame.render_widget(List::new(items), chunks[0]);
+    let list = List::new(items).highlight_style(theme.highlight_style());
+    let mut list_state = ListState::default().with_selected(Some(panel.selected_index));
+    frame.render_stateful_widget(list, chunks[0], &mut list_state);
 
     if panel.attachments.len() > list_height {
         let mut scrollbar_state =
@@ -97,4 +93,101 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(vertical[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::draw;
+    use crate::app::AttachmentPanelState;
+    use mxr_core::id::{AttachmentId, MessageId};
+    use mxr_core::types::{AttachmentDisposition, AttachmentMeta};
+    use mxr_test_support::render_to_string;
+    use ratatui::layout::Rect;
+
+    fn attachment(
+        message_id: &MessageId,
+        filename: &str,
+        mime_type: &str,
+        disposition: AttachmentDisposition,
+        provider_id: &str,
+    ) -> AttachmentMeta {
+        AttachmentMeta {
+            id: AttachmentId::new(),
+            message_id: message_id.clone(),
+            filename: filename.into(),
+            mime_type: mime_type.into(),
+            disposition,
+            content_id: None,
+            content_location: None,
+            size_bytes: 1024,
+            local_path: None,
+            provider_id: provider_id.into(),
+        }
+    }
+
+    #[test]
+    fn selected_attachment_remains_visible_when_modal_list_scrolls() {
+        let message_id = MessageId::new();
+        let panel = AttachmentPanelState {
+            visible: true,
+            message_id: Some(message_id.clone()),
+            attachments: vec![
+                attachment(
+                    &message_id,
+                    "inline-1.png",
+                    "image/png",
+                    AttachmentDisposition::Inline,
+                    "att-1",
+                ),
+                attachment(
+                    &message_id,
+                    "inline-2.png",
+                    "image/png",
+                    AttachmentDisposition::Inline,
+                    "att-2",
+                ),
+                attachment(
+                    &message_id,
+                    "inline-3.png",
+                    "image/png",
+                    AttachmentDisposition::Inline,
+                    "att-3",
+                ),
+                attachment(
+                    &message_id,
+                    "inline-4.png",
+                    "image/png",
+                    AttachmentDisposition::Inline,
+                    "att-4",
+                ),
+                attachment(
+                    &message_id,
+                    "inline-5.png",
+                    "image/png",
+                    AttachmentDisposition::Inline,
+                    "att-5",
+                ),
+                attachment(
+                    &message_id,
+                    "budget.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    AttachmentDisposition::Attachment,
+                    "att-6",
+                ),
+            ],
+            selected_index: 5,
+            status: None,
+        };
+
+        let snapshot = render_to_string(80, 12, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 80, 12),
+                &panel,
+                &crate::theme::Theme::default(),
+            );
+        });
+
+        assert!(snapshot.contains("budget.xlsx"));
+    }
 }

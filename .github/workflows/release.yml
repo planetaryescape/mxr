@@ -142,7 +142,7 @@ jobs:
         if: needs.plan.outputs.desktop_source_changed == 'true'
         run: shasum -a 256 "${{ env.DESKTOP_ARCHIVE }}" > "${{ env.DESKTOP_ARCHIVE }}.sha256"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: needs.plan.outputs.cli_changed == 'true'
         with:
           name: ${{ matrix.target }}-cli
@@ -150,7 +150,7 @@ jobs:
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: needs.plan.outputs.desktop_source_changed == 'true'
         with:
           name: ${{ matrix.target }}-desktop

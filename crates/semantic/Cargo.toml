@@ -31,7 +31,7 @@ calamine = { version = "0.34", optional = true }
 chrono = { workspace = true }
 fastembed = { version = "5.13", optional = true }
 hnsw_rs = { version = "0.3.4", optional = true }
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.11", optional = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 undoc = { version = "0.1", optional = true }
@@ -39,4 +39,4 @@ unpdf = { version = "0.2", optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-zip = "2.4"
+zip = "7.2"

@@ -432,6 +432,7 @@ fn body_metadata_lines(
         match source {
             BodySource::Plain => "plain",
             BodySource::Html => "html-part",
+            BodySource::Fallback => "fallback",
             BodySource::Snippet => "snippet",
         },
         theme,

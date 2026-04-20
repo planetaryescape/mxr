@@ -39,6 +39,11 @@ pub trait GmailApi: Send + Sync {
         page_token: Option<&str>,
         max_results: u32,
     ) -> Result<GmailListResponse, GmailError>;
+    async fn get_message(
+        &self,
+        message_id: &str,
+        format: MessageFormat,
+    ) -> Result<GmailMessage, GmailError>;
     async fn batch_get_messages(
         &self,
         message_ids: &[String],
@@ -495,6 +500,14 @@ impl GmailApi for GmailClient {
         max_results: u32,
     ) -> Result<GmailListResponse, GmailError> {
         GmailClient::list_messages(self, query, page_token, max_results).await
+    }
+
+    async fn get_message(
+        &self,
+        message_id: &str,
+        format: MessageFormat,
+    ) -> Result<GmailMessage, GmailError> {
+        GmailClient::get_message(self, message_id, format).await
     }
 
     async fn batch_get_messages(

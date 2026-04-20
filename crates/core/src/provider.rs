@@ -17,6 +17,10 @@ pub trait MailSyncProvider: Send + Sync {
     async fn sync_labels(&self) -> Result<Vec<Label>>;
     async fn sync_messages(&self, cursor: &SyncCursor) -> Result<SyncBatch>;
 
+    async fn fetch_message(&self, _provider_message_id: &str) -> Result<Option<SyncedMessage>> {
+        Ok(None)
+    }
+
     async fn fetch_attachment(
         &self,
         provider_message_id: &str,

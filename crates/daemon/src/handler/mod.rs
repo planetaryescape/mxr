@@ -3282,6 +3282,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_get_body_rehydrates_missing_store_row_from_provider() {
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let id = sync_and_get_first_id(&state).await;
+
+        sqlx::query("DELETE FROM bodies WHERE message_id = ?")
+            .bind(id.to_string())
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+
+        let msg = IpcMessage {
+            id: 14,
+            payload: IpcPayload::Request(Request::GetBody {
+                message_id: id.clone(),
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Body { body },
+            }) => {
+                assert!(
+                    body.text_plain.is_some() || body.text_html.is_some(),
+                    "provider hydration should restore a readable body"
+                );
+            }
+            other => panic!("Expected Body, got {:?}", other),
+        }
+
+        let stored = state.store.get_body(&id).await.unwrap().unwrap();
+        assert!(
+            stored.text_plain.is_some() || stored.text_html.is_some(),
+            "hydrated body should be persisted back into the store"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_list_bodies_rehydrates_missing_store_row_from_provider() {
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let id = sync_and_get_first_id(&state).await;
+
+        sqlx::query("DELETE FROM bodies WHERE message_id = ?")
+            .bind(id.to_string())
+            .execute(state.store.writer())
+            .await
+            .unwrap();
+
+        let msg = IpcMessage {
+            id: 15,
+            payload: IpcPayload::Request(Request::ListBodies {
+                message_ids: vec![id.clone()],
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Bodies { bodies },
+            }) => {
+                assert_eq!(bodies.len(), 1);
+                assert!(
+                    bodies[0].text_plain.is_some() || bodies[0].text_html.is_some(),
+                    "list bodies should rehydrate readable content on cache miss"
+                );
+            }
+            other => panic!("Expected Bodies, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn dispatch_list_bodies_preserves_attachments() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
         let id = sync_and_get_first_id(&state).await;
@@ -3292,7 +3365,7 @@ mod tests {
             .insert_body(&mxr_core::types::MessageBody {
                 message_id: id.clone(),
                 text_plain: Some("hello".into()),
-                text_html: None,
+                text_html: Some("<p>hello</p>".into()),
                 attachments: vec![mxr_core::types::AttachmentMeta {
                     id: attachment_id.clone(),
                     message_id: id.clone(),
@@ -3312,7 +3385,7 @@ mod tests {
             .unwrap();
 
         let msg = IpcMessage {
-            id: 14,
+            id: 16,
             payload: IpcPayload::Request(Request::ListBodies {
                 message_ids: vec![id.clone()],
             }),
@@ -3324,12 +3397,75 @@ mod tests {
                 data: ResponseData::Bodies { bodies },
             }) => {
                 assert_eq!(bodies.len(), 1);
+                assert_eq!(bodies[0].text_plain.as_deref(), Some("hello"));
+                assert_eq!(bodies[0].text_html.as_deref(), Some("<p>hello</p>"));
                 assert_eq!(bodies[0].attachments.len(), 1);
                 assert_eq!(bodies[0].attachments[0].id, attachment_id);
                 assert_eq!(bodies[0].attachments[0].filename, "report.pdf");
             }
             other => panic!("Expected Bodies, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn dispatch_get_body_synthesizes_readable_summary_for_calendar_only_messages() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let id = sync_and_get_first_id(&state).await;
+
+        let stored = mxr_core::types::MessageBody {
+            message_id: id.clone(),
+            text_plain: None,
+            text_html: None,
+            attachments: vec![mxr_core::types::AttachmentMeta {
+                id: mxr_core::AttachmentId::new(),
+                message_id: id.clone(),
+                filename: "invite.ics".into(),
+                mime_type: "text/calendar".into(),
+                disposition: mxr_core::types::AttachmentDisposition::Attachment,
+                content_id: None,
+                content_location: None,
+                size_bytes: 2048,
+                local_path: None,
+                provider_id: "att-calendar".into(),
+            }],
+            fetched_at: chrono::Utc::now(),
+            metadata: mxr_core::types::MessageMetadata {
+                calendar: Some(mxr_core::types::CalendarMetadata {
+                    method: Some("REQUEST".into()),
+                    summary: Some("Demo call".into()),
+                }),
+                ..Default::default()
+            },
+        };
+        state.store.insert_body(&stored).await.unwrap();
+
+        let msg = IpcMessage {
+            id: 17,
+            payload: IpcPayload::Request(Request::GetBody {
+                message_id: id.clone(),
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Body { body },
+            }) => {
+                let text = body
+                    .text_plain
+                    .expect("calendar-only body should be synthesized");
+                assert!(text.contains("Calendar invite"));
+                assert!(text.contains("Summary: Demo call"));
+                assert!(text.contains("invite.ics"));
+            }
+            other => panic!("Expected Body, got {:?}", other),
+        }
+
+        let repaired = state.store.get_body(&id).await.unwrap().unwrap();
+        assert!(repaired
+            .text_plain
+            .as_deref()
+            .is_some_and(|text| text.contains("Calendar invite")));
     }
 
     #[tokio::test]
@@ -3366,7 +3502,7 @@ mod tests {
         state.store.insert_body(&stored).await.unwrap();
 
         let msg = IpcMessage {
-            id: 15,
+            id: 18,
             payload: IpcPayload::Request(Request::GetBody {
                 message_id: id.clone(),
             }),

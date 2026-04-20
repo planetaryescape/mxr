@@ -23,6 +23,76 @@ impl SyncEngine {
         Self { store, search }
     }
 
+    pub async fn persist_synced_message(&self, synced: &SyncedMessage) -> Result<(), MxrError> {
+        let mut body = synced.body.clone();
+        body.ensure_best_effort_readable();
+
+        self.store
+            .upsert_envelope(&synced.envelope)
+            .await
+            .map_err(|e| MxrError::Store(e.to_string()))?;
+
+        self.store
+            .insert_body(&body)
+            .await
+            .map_err(|e| MxrError::Store(e.to_string()))?;
+
+        if !synced.envelope.label_provider_ids.is_empty() {
+            let label_ids = self
+                .store
+                .find_labels_by_provider_ids(
+                    &synced.envelope.account_id,
+                    &synced.envelope.label_provider_ids,
+                )
+                .await
+                .map_err(|e| MxrError::Store(e.to_string()))?;
+            if !label_ids.is_empty() {
+                self.store
+                    .set_message_labels(&synced.envelope.id, &label_ids)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?;
+            }
+        }
+
+        self.search
+            .apply_batch(SearchUpdateBatch {
+                entries: vec![SearchIndexEntry {
+                    envelope: synced.envelope.clone(),
+                    body: Some(body),
+                }],
+                removed_message_ids: Vec::new(),
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn repair_body(
+        &self,
+        envelope: &Envelope,
+        body: &MessageBody,
+    ) -> Result<MessageBody, MxrError> {
+        let mut normalized = body.clone();
+        normalized.ensure_best_effort_readable();
+
+        self.store
+            .insert_body(&normalized)
+            .await
+            .map_err(|e| MxrError::Store(e.to_string()))?;
+
+        self.search
+            .apply_batch(SearchUpdateBatch {
+                entries: vec![SearchIndexEntry {
+                    envelope: envelope.clone(),
+                    body: Some(normalized.clone()),
+                }],
+                removed_message_ids: Vec::new(),
+            })
+            .await?;
+
+        Ok(normalized)
+    }
+
     pub async fn sync_account(&self, provider: &dyn MailSyncProvider) -> Result<u32, MxrError> {
         Ok(self.sync_account_with_outcome(provider).await?.synced_count)
     }
@@ -104,19 +174,17 @@ impl SyncEngine {
             // not depend on semantic enablement.
             // Apply upserts — store envelope + body, index with body text
             for synced in &batch.upserted {
-                // Store envelope
+                let mut normalized_body = synced.body.clone();
+                normalized_body.ensure_best_effort_readable();
+
                 self.store
                     .upsert_envelope(&synced.envelope)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
-
-                // Store body (eagerly fetched during sync)
                 self.store
-                    .insert_body(&synced.body)
+                    .insert_body(&normalized_body)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
-
-                // Populate message_labels junction table
                 if !synced.envelope.label_provider_ids.is_empty() {
                     let label_ids = self
                         .store
@@ -133,10 +201,9 @@ impl SyncEngine {
                             .map_err(|e| MxrError::Store(e.to_string()))?;
                     }
                 }
-
                 lexical_batch.entries.push(SearchIndexEntry {
                     envelope: synced.envelope.clone(),
-                    body: Some(synced.body.clone()),
+                    body: Some(normalized_body),
                 });
             }
 

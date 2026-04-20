@@ -1,25 +1,25 @@
 use super::*;
 
 impl App {
-    fn browser_document(body: &MessageBody) -> Option<String> {
-        body.text_html.clone().or_else(|| {
-            body.text_plain
-                .as_deref()
-                .map(render_plain_text_browser_document)
-        })
+    pub(super) fn browser_document(body: &MessageBody) -> Option<String> {
+        body.text_html
+            .clone()
+            .or_else(|| {
+                body.text_plain
+                    .as_deref()
+                    .map(render_plain_text_browser_document)
+            })
+            .or_else(|| {
+                body.best_effort_readable_summary()
+                    .map(|text| render_plain_text_browser_document(&text))
+            })
     }
 
-    fn queue_current_message_browser_open(&mut self) {
-        let Some(message_id) = self.viewing_envelope.as_ref().map(|env| env.id.clone()) else {
-            self.status_message = Some("No message selected".into());
-            return;
-        };
-
-        let Some(body) = self.current_viewing_body() else {
-            self.status_message = Some("No message body loaded".into());
-            return;
-        };
-
+    pub(super) fn queue_browser_open_for_body(
+        &mut self,
+        message_id: MessageId,
+        body: &MessageBody,
+    ) {
         let Some(document) = Self::browser_document(body) else {
             self.status_message = Some("No readable body available".into());
             return;
@@ -30,6 +30,23 @@ impl App {
             document,
         });
         self.status_message = Some("Opening in browser...".into());
+    }
+
+    fn queue_current_message_browser_open(&mut self) {
+        let Some(message_id) = self.viewing_envelope.as_ref().map(|env| env.id.clone()) else {
+            self.status_message = Some("No message selected".into());
+            return;
+        };
+
+        let Some(body) = self.current_viewing_body() else {
+            self.queue_body_fetch(message_id.clone());
+            self.pending_browser_open_after_load = Some(message_id);
+            self.status_message = Some("Loading message body...".into());
+            return;
+        };
+
+        let body = body.clone();
+        self.queue_browser_open_for_body(message_id, &body);
     }
 
     pub fn tick(&mut self) {

@@ -743,6 +743,41 @@ impl MailSyncProvider for ImapProvider {
         }
     }
 
+    async fn fetch_message(
+        &self,
+        provider_message_id: &str,
+    ) -> mxr_core::provider::Result<Option<SyncedMessage>> {
+        let (mailbox, uid) = folders::parse_provider_id(provider_message_id)
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        let mut session = self
+            .session_factory
+            .create_session()
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        session
+            .select(&mailbox)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        let fetched = session
+            .uid_fetch(&uid.to_string(), "(FLAGS BODY.PEEK[] RFC822.SIZE)")
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
+
+        let _ = session.logout().await;
+
+        let Some(message) = fetched.first() else {
+            return Ok(None);
+        };
+
+        match parse::imap_fetch_to_synced_message(message, &mailbox, &self.account_id) {
+            Ok(synced) => Ok(Some(synced)),
+            Err(error) => Err(mxr_core::error::MxrError::Provider(error.to_string())),
+        }
+    }
+
     async fn fetch_attachment(
         &self,
         provider_message_id: &str,

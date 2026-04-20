@@ -153,6 +153,7 @@ pub enum LayoutMode {
 pub enum BodySource {
     Plain,
     Html,
+    Fallback,
     Snippet,
 }
 
@@ -721,6 +722,7 @@ pub struct App {
     pub pending_rule_form_save: bool,
     pub pending_bug_report: bool,
     pub pending_browser_open: Option<PendingBrowserOpen>,
+    pub pending_browser_open_after_load: Option<MessageId>,
     pub pending_config_edit: bool,
     pub pending_log_open: bool,
     pub pending_diagnostics_details: Option<DiagnosticsPaneKind>,
@@ -885,6 +887,7 @@ impl App {
             pending_rule_form_save: false,
             pending_bug_report: false,
             pending_browser_open: None,
+            pending_browser_open_after_load: None,
             pending_config_edit: false,
             pending_log_open: false,
             pending_diagnostics_details: None,
@@ -2491,6 +2494,7 @@ impl App {
             match source {
                 BodySource::Plain => "plain",
                 BodySource::Html => "html-part",
+                BodySource::Fallback => "fallback",
                 BodySource::Snippet => "snippet",
             }
             .to_string(),
@@ -3017,6 +3021,7 @@ impl App {
         let output = match source {
             BodySource::Plain => mxr_reader::clean(Some(raw), None, &self.reader_config()),
             BodySource::Html => mxr_reader::clean(None, Some(raw), &self.reader_config()),
+            BodySource::Fallback => mxr_reader::clean(Some(raw), None, &self.reader_config()),
             BodySource::Snippet => unreachable!("snippet bodies bypass reader mode"),
         };
 
@@ -3065,7 +3070,7 @@ impl App {
             provenance: match source {
                 BodySource::Plain => body.metadata.text_plain_source,
                 BodySource::Html => body.metadata.text_html_source,
-                BodySource::Snippet => None,
+                BodySource::Fallback | BodySource::Snippet => None,
             },
             reader_applied,
             flowed: matches!(
@@ -3155,6 +3160,23 @@ impl App {
                 };
             }
 
+            if let Some(raw) = body.best_effort_readable_summary() {
+                let (rendered, stats) = self.render_body(&raw, BodySource::Fallback);
+                let metadata = self.body_view_metadata(
+                    body,
+                    BodySource::Fallback,
+                    BodyViewMode::Text,
+                    self.reader_mode,
+                    stats,
+                );
+                return BodyViewState::Ready {
+                    raw,
+                    rendered,
+                    source: BodySource::Fallback,
+                    metadata,
+                };
+            }
+
             return BodyViewState::Empty { preview };
         }
 
@@ -3171,6 +3193,13 @@ impl App {
         self.body_cache.insert(message_id.clone(), body);
         self.queue_html_assets_for_message(&message_id);
 
+        if self.pending_browser_open_after_load.as_ref() == Some(&message_id) {
+            self.pending_browser_open_after_load = None;
+            if let Some(body) = self.body_cache.get(&message_id).cloned() {
+                self.queue_browser_open_for_body(message_id.clone(), &body);
+            }
+        }
+
         if self.viewing_envelope.as_ref().map(|env| env.id.clone()) == Some(message_id) {
             self.ensure_current_body_state();
         }
@@ -3178,6 +3207,9 @@ impl App {
 
     pub fn resolve_body_fetch_error(&mut self, message_id: &MessageId, message: String) {
         self.in_flight_body_requests.remove(message_id);
+        if self.pending_browser_open_after_load.as_ref() == Some(message_id) {
+            self.pending_browser_open_after_load = None;
+        }
 
         if let Some(env) = self
             .viewing_envelope

@@ -220,6 +220,70 @@ pub struct MessageBody {
     pub metadata: MessageMetadata,
 }
 
+impl MessageBody {
+    pub fn ensure_best_effort_readable(&mut self) -> bool {
+        if self.text_plain.is_some() || self.text_html.is_some() {
+            return false;
+        }
+
+        let Some(summary) = self.best_effort_readable_summary() else {
+            return false;
+        };
+
+        self.text_plain = Some(summary);
+        true
+    }
+
+    pub fn best_effort_readable_summary(&self) -> Option<String> {
+        if self.text_plain.is_some() || self.text_html.is_some() {
+            return None;
+        }
+
+        let mut sections = Vec::new();
+
+        if let Some(calendar) = &self.metadata.calendar {
+            sections.push("Calendar invite".to_string());
+            if let Some(summary) = calendar
+                .summary
+                .as_deref()
+                .filter(|value| !value.is_empty())
+            {
+                sections.push(format!("Summary: {summary}"));
+            }
+            if let Some(method) = calendar.method.as_deref().filter(|value| !value.is_empty()) {
+                sections.push(format!("Method: {method}"));
+            }
+        }
+
+        let has_encrypted = self.attachments.iter().any(AttachmentMeta::looks_encrypted);
+        let has_signature = self.attachments.iter().any(AttachmentMeta::looks_signed);
+
+        if has_encrypted {
+            sections.push("Encrypted message body. mxr cannot decrypt this message yet.".into());
+        } else if has_signature {
+            sections.push("Signed message without a readable text body.".into());
+        } else if !self.attachments.is_empty() {
+            sections.push(
+                "Attachment-only message. No text/plain or text/html body was provided.".into(),
+            );
+        } else if sections.is_empty() {
+            sections.push("No readable body content was available for this message.".into());
+        }
+
+        if !self.attachments.is_empty() {
+            let attachment_lines = self
+                .attachments
+                .iter()
+                .map(AttachmentMeta::summary_line)
+                .collect::<Vec<_>>()
+                .join("\n");
+            sections.push(format!("Attachments:\n{attachment_lines}"));
+        }
+
+        Some(sections.join("\n\n"))
+    }
+}
+
 // -- AttachmentMeta -----------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -235,6 +299,43 @@ pub struct AttachmentMeta {
     pub size_bytes: u64,
     pub local_path: Option<PathBuf>,
     pub provider_id: String,
+}
+
+impl AttachmentMeta {
+    fn summary_line(&self) -> String {
+        let filename = if self.filename.is_empty() {
+            "(unnamed attachment)"
+        } else {
+            self.filename.as_str()
+        };
+        format!(
+            "- {} ({}, {} bytes)",
+            filename, self.mime_type, self.size_bytes
+        )
+    }
+
+    fn looks_encrypted(&self) -> bool {
+        let mime = self.mime_type.to_ascii_lowercase();
+        let filename = self.filename.to_ascii_lowercase();
+        matches!(
+            mime.as_str(),
+            "application/pkcs7-mime" | "application/x-pkcs7-mime" | "application/pgp-encrypted"
+        ) || filename.ends_with(".p7m")
+            || filename.ends_with(".pgp")
+            || filename.ends_with(".gpg")
+    }
+
+    fn looks_signed(&self) -> bool {
+        let mime = self.mime_type.to_ascii_lowercase();
+        let filename = self.filename.to_ascii_lowercase();
+        matches!(
+            mime.as_str(),
+            "application/pkcs7-signature"
+                | "application/x-pkcs7-signature"
+                | "application/pgp-signature"
+        ) || filename.ends_with(".p7s")
+            || filename.ends_with(".asc")
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]

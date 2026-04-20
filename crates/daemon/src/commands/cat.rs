@@ -20,6 +20,8 @@ fn render_body_view(
                 mxr_reader::clean(Some(text), None, &config).content
             } else if let Some(html) = body.text_html.as_deref() {
                 mxr_reader::clean(None, Some(html), &config).content
+            } else if let Some(summary) = body.best_effort_readable_summary() {
+                mxr_reader::clean(Some(&summary), None, &config).content
             } else {
                 "(no body)".to_string()
             }
@@ -29,6 +31,8 @@ fn render_body_view(
                 text.to_string()
             } else if let Some(html) = body.text_html.as_deref() {
                 html.to_string()
+            } else if let Some(summary) = body.best_effort_readable_summary() {
+                summary
             } else {
                 "(no body)".to_string()
             }

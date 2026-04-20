@@ -637,11 +637,17 @@ fn open_browser_path(path: &std::path::Path) -> anyhow::Result<()> {
 }
 
 fn browser_document(body: &mxr_core::MessageBody) -> Option<String> {
-    body.text_html.clone().or_else(|| {
-        body.text_plain
-            .as_deref()
-            .map(render_plain_text_browser_document)
-    })
+    body.text_html
+        .clone()
+        .or_else(|| {
+            body.text_plain
+                .as_deref()
+                .map(render_plain_text_browser_document)
+        })
+        .or_else(|| {
+            body.best_effort_readable_summary()
+                .map(|text| render_plain_text_browser_document(&text))
+        })
 }
 
 fn render_plain_text_browser_document(text: &str) -> String {
@@ -683,6 +689,40 @@ mod tests {
 
         let document = browser_document(&body).expect("plain text fallback");
         assert!(document.contains("<pre>hello &lt;world&gt;\nline 2</pre>"));
+        assert!(document.contains("<!doctype html>"));
+    }
+
+    #[test]
+    fn browser_document_wraps_best_effort_fallback_for_browser_rendering() {
+        let body = mxr_core::MessageBody {
+            message_id: mxr_core::MessageId::new(),
+            text_plain: None,
+            text_html: None,
+            attachments: vec![mxr_core::AttachmentMeta {
+                id: mxr_core::AttachmentId::new(),
+                message_id: mxr_core::MessageId::new(),
+                filename: "invite.ics".into(),
+                mime_type: "text/calendar".into(),
+                disposition: mxr_core::AttachmentDisposition::Attachment,
+                content_id: None,
+                content_location: None,
+                size_bytes: 2048,
+                local_path: None,
+                provider_id: "att-1".into(),
+            }],
+            fetched_at: chrono::Utc::now(),
+            metadata: mxr_core::MessageMetadata {
+                calendar: Some(mxr_core::CalendarMetadata {
+                    method: Some("REQUEST".into()),
+                    summary: Some("Demo call".into()),
+                }),
+                ..Default::default()
+            },
+        };
+
+        let document = browser_document(&body).expect("best-effort fallback");
+        assert!(document.contains("Calendar invite"));
+        assert!(document.contains("Summary: Demo call"));
         assert!(document.contains("<!doctype html>"));
     }
 

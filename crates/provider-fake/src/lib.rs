@@ -158,6 +158,35 @@ impl MailSyncProvider for FakeProvider {
         }
     }
 
+    async fn fetch_message(
+        &self,
+        provider_message_id: &str,
+    ) -> Result<Option<SyncedMessage>, MxrError> {
+        let Some(envelope) = self
+            .messages
+            .iter()
+            .find(|message| message.provider_id == provider_message_id)
+            .cloned()
+        else {
+            return Ok(None);
+        };
+
+        let body = self
+            .bodies
+            .get(provider_message_id)
+            .cloned()
+            .unwrap_or_else(|| MessageBody {
+                message_id: envelope.id.clone(),
+                text_plain: None,
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
+            });
+
+        Ok(Some(SyncedMessage { envelope, body }))
+    }
+
     async fn fetch_attachment(
         &self,
         _provider_message_id: &str,

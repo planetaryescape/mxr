@@ -108,11 +108,7 @@ pub(super) async fn get_envelope(state: &Arc<AppState>, message_id: &MessageId) 
 }
 
 pub(super) async fn get_body(state: &Arc<AppState>, message_id: &MessageId) -> HandlerResult {
-    let body = state
-        .sync_engine
-        .get_body(message_id)
-        .await
-        .map_err(|e| e.to_string())?;
+    let body = load_body_for_message(state, message_id).await?;
     Ok(ResponseData::Body { body })
 }
 
@@ -121,11 +117,7 @@ pub(super) async fn get_html_image_assets(
     message_id: &MessageId,
     allow_remote: bool,
 ) -> HandlerResult {
-    let body = state
-        .sync_engine
-        .get_body(message_id)
-        .await
-        .map_err(|e| e.to_string())?;
+    let body = load_body_for_message(state, message_id).await?;
     let Some(html) = body.text_html.as_deref() else {
         return Ok(ResponseData::HtmlImageAssets {
             message_id: message_id.clone(),
@@ -185,6 +177,91 @@ fn collect_html_image_sources(html: &str) -> Vec<String> {
         sources.push(src.to_string());
     }
     sources
+}
+
+async fn load_body_for_message(
+    state: &Arc<AppState>,
+    message_id: &MessageId,
+) -> Result<MessageBody, String> {
+    if let Some(body) = state
+        .store
+        .get_body(message_id)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        return normalize_body_if_needed(state, message_id, body).await;
+    }
+
+    hydrate_body_from_provider(state, message_id).await
+}
+
+async fn normalize_body_if_needed(
+    state: &Arc<AppState>,
+    message_id: &MessageId,
+    body: MessageBody,
+) -> Result<MessageBody, String> {
+    if body.text_plain.is_some() || body.text_html.is_some() {
+        return Ok(body);
+    }
+
+    let Some(envelope) = state
+        .store
+        .get_envelope(message_id)
+        .await
+        .map_err(|error| error.to_string())?
+    else {
+        let mut normalized = body;
+        normalized.ensure_best_effort_readable();
+        return Ok(normalized);
+    };
+
+    state
+        .sync_engine
+        .repair_body(&envelope, &body)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+async fn hydrate_body_from_provider(
+    state: &Arc<AppState>,
+    message_id: &MessageId,
+) -> Result<MessageBody, String> {
+    let envelope = state
+        .store
+        .get_envelope(message_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Envelope not found: {message_id}"))?;
+    let provider = state
+        .sync_provider_for_account(&envelope.account_id)
+        .ok_or_else(|| {
+            format!(
+                "Sync provider not found for account {}",
+                envelope.account_id
+            )
+        })?;
+    let synced = provider
+        .fetch_message(&envelope.provider_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Body not available for {message_id}"))?;
+
+    if synced.envelope.id != envelope.id {
+        return Err(format!(
+            "Provider body hydrate returned mismatched message id for {}",
+            message_id
+        ));
+    }
+
+    state
+        .sync_engine
+        .persist_synced_message(&synced)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let mut body = synced.body;
+    body.ensure_best_effort_readable();
+    Ok(body)
 }
 
 async fn resolve_html_image_asset(
@@ -478,20 +555,11 @@ pub(super) async fn list_bodies(state: &Arc<AppState>, message_ids: &[MessageId]
     tracing::debug!(count = message_ids.len(), "ListBodies: fetching bodies");
     let mut bodies = Vec::with_capacity(message_ids.len());
     for id in message_ids {
-        if let Ok(Some(full)) = state.store.get_body(id).await {
-            let (plain, html) = if full.text_plain.is_some() {
-                (full.text_plain, None)
-            } else {
-                (None, full.text_html)
-            };
-            bodies.push(mxr_core::types::MessageBody {
-                message_id: full.message_id,
-                text_plain: plain,
-                text_html: html,
-                attachments: full.attachments,
-                fetched_at: full.fetched_at,
-                metadata: full.metadata,
-            });
+        match load_body_for_message(state, id).await {
+            Ok(body) => bodies.push(body),
+            Err(error) => {
+                tracing::debug!(message_id = %id, error = %error, "ListBodies: body unavailable");
+            }
         }
     }
     Ok(ResponseData::Bodies { bodies })

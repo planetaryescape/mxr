@@ -551,6 +551,23 @@ impl MailSyncProvider for GmailProvider {
         }
     }
 
+    async fn fetch_message(
+        &self,
+        provider_message_id: &str,
+    ) -> mxr_core::provider::Result<Option<SyncedMessage>> {
+        let message = self
+            .client
+            .get_message(provider_message_id, MessageFormat::Full)
+            .await
+            .map_err(MxrError::from)?;
+        Ok(parse_synced_message(
+            self.account_id.clone(),
+            message,
+            #[cfg(test)]
+            self.parse_observer.clone(),
+        ))
+    }
+
     async fn fetch_attachment(
         &self,
         provider_message_id: &str,
@@ -764,6 +781,17 @@ mod tests {
                     result_size_estimate: Some(3),
                 },
             })
+        }
+
+        async fn get_message(
+            &self,
+            message_id: &str,
+            _format: MessageFormat,
+        ) -> Result<GmailMessage, GmailError> {
+            self.messages
+                .get(message_id)
+                .cloned()
+                .ok_or_else(|| GmailError::NotFound(message_id.to_string()))
         }
 
         async fn batch_get_messages(
@@ -1060,6 +1088,18 @@ mod tests {
                 next_page_token: None,
                 result_size_estimate: Some(self.messages.len() as u64),
             })
+        }
+
+        async fn get_message(
+            &self,
+            message_id: &str,
+            _format: MessageFormat,
+        ) -> Result<GmailMessage, GmailError> {
+            self.messages
+                .iter()
+                .find(|message| message.id == message_id)
+                .cloned()
+                .ok_or_else(|| GmailError::NotFound(message_id.to_string()))
         }
 
         async fn batch_get_messages(

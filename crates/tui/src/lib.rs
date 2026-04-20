@@ -2022,7 +2022,7 @@ mod tests {
     }
 
     #[test]
-    fn open_in_browser_action_rejects_messages_without_readable_body() {
+    fn open_in_browser_action_wraps_best_effort_fallback_body() {
         let mut app = App::new();
         let env = make_test_envelopes(1).remove(0);
         app.viewing_envelope = Some(env.clone());
@@ -2032,19 +2032,73 @@ mod tests {
                 message_id: env.id.clone(),
                 text_plain: None,
                 text_html: None,
-                attachments: vec![],
+                attachments: vec![AttachmentMeta {
+                    id: AttachmentId::new(),
+                    message_id: env.id.clone(),
+                    filename: "invite.ics".into(),
+                    mime_type: "text/calendar".into(),
+                    disposition: AttachmentDisposition::Attachment,
+                    content_id: None,
+                    content_location: None,
+                    size_bytes: 2048,
+                    local_path: None,
+                    provider_id: "att-1".into(),
+                }],
                 fetched_at: chrono::Utc::now(),
-                metadata: Default::default(),
+                metadata: MessageMetadata {
+                    calendar: Some(CalendarMetadata {
+                        method: Some("REQUEST".into()),
+                        summary: Some("Demo call".into()),
+                    }),
+                    ..Default::default()
+                },
             },
         );
 
         app.apply(Action::OpenInBrowser);
 
-        assert!(app.pending_browser_open.is_none());
+        let pending = app
+            .pending_browser_open
+            .as_ref()
+            .expect("best-effort fallback should open in browser");
+        assert_eq!(pending.message_id, env.id);
+        assert!(pending.document.contains("Calendar invite"));
+        assert!(pending.document.contains("Summary: Demo call"));
+        assert_eq!(app.status_message.as_deref(), Some("Opening in browser..."));
+    }
+
+    #[test]
+    fn open_in_browser_action_missing_body_queues_fetch_and_opens_on_success() {
+        let mut app = App::new();
+        let env = make_test_envelopes(1).remove(0);
+        app.viewing_envelope = Some(env.clone());
+
+        app.apply(Action::OpenInBrowser);
+
+        assert_eq!(app.queued_body_fetches, vec![env.id.clone()]);
+        assert!(app.in_flight_body_requests.contains(&env.id));
+        assert_eq!(app.pending_browser_open_after_load, Some(env.id.clone()));
         assert_eq!(
             app.status_message.as_deref(),
-            Some("No readable body available")
+            Some("Loading message body...")
         );
+
+        app.resolve_body_success(MessageBody {
+            message_id: env.id.clone(),
+            text_plain: Some("Loaded later".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        });
+
+        let pending = app
+            .pending_browser_open
+            .as_ref()
+            .expect("browser open should resume after body load");
+        assert_eq!(pending.message_id, env.id);
+        assert!(pending.document.contains("<pre>Loaded later</pre>"));
+        assert!(app.pending_browser_open_after_load.is_none());
     }
 
     #[test]
@@ -5370,7 +5424,7 @@ mod tests {
     }
 
     #[test]
-    fn cached_empty_body_resolves_empty_not_loading() {
+    fn cached_attachment_only_body_resolves_fallback_ready_state() {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(1);
         app.all_envelopes = app.envelopes.clone();
@@ -5382,7 +5436,18 @@ mod tests {
                 message_id: env.id.clone(),
                 text_plain: None,
                 text_html: None,
-                attachments: vec![],
+                attachments: vec![AttachmentMeta {
+                    id: AttachmentId::new(),
+                    message_id: env.id.clone(),
+                    filename: "report.pdf".into(),
+                    mime_type: "application/pdf".into(),
+                    disposition: AttachmentDisposition::Attachment,
+                    content_id: None,
+                    content_location: None,
+                    size_bytes: 1024,
+                    local_path: None,
+                    provider_id: "att-1".into(),
+                }],
                 fetched_at: chrono::Utc::now(),
                 metadata: Default::default(),
             },
@@ -5392,8 +5457,13 @@ mod tests {
 
         assert!(matches!(
             app.body_view_state,
-            BodyViewState::Empty { ref preview }
-                if preview.as_deref() == Some("Snippet 0")
+            BodyViewState::Ready {
+                ref raw,
+                ref rendered,
+                source: BodySource::Fallback,
+                ..
+            } if raw.contains("Attachment-only message")
+                && rendered.contains("report.pdf")
         ));
     }
 

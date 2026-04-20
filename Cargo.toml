@@ -79,7 +79,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.4.39"
+version = "0.4.40"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.88"
@@ -201,6 +201,7 @@ unicode-width = "0.2"
 
 # Reader
 html2text = "0.14"
+htmlescape = "0.3"
 regex = "1"
 once_cell = "1"
 
@@ -257,6 +258,7 @@ dirs = { workspace = true }
 futures = { workspace = true }
 glob-match = { workspace = true }
 html2text = { workspace = true }
+htmlescape = { workspace = true }
 keyring = { workspace = true }
 lettre = { workspace = true }
 mail-parser = { workspace = true }

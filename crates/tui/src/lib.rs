@@ -1988,20 +1988,49 @@ mod tests {
             .as_ref()
             .expect("browser open should be queued");
         assert_eq!(pending.message_id, env.id);
-        assert_eq!(pending.html, "<p>Hello html</p>");
+        assert_eq!(pending.document, "<p>Hello html</p>");
         assert_eq!(app.status_message.as_deref(), Some("Opening in browser..."));
     }
 
     #[test]
-    fn open_in_browser_action_rejects_messages_without_html_body() {
+    fn open_in_browser_action_wraps_plain_text_when_html_is_missing() {
         let mut app = App::new();
         let env = make_test_envelopes(1).remove(0);
         app.viewing_envelope = Some(env.clone());
         app.body_cache.insert(
             env.id.clone(),
             MessageBody {
-                message_id: env.id,
+                message_id: env.id.clone(),
                 text_plain: Some("Plain body".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
+            },
+        );
+
+        app.apply(Action::OpenInBrowser);
+
+        let pending = app
+            .pending_browser_open
+            .as_ref()
+            .expect("plain text should still open in browser");
+        assert_eq!(pending.message_id, env.id);
+        assert!(pending.document.contains("<pre>Plain body</pre>"));
+        assert!(pending.document.contains("<!doctype html>"));
+        assert_eq!(app.status_message.as_deref(), Some("Opening in browser..."));
+    }
+
+    #[test]
+    fn open_in_browser_action_rejects_messages_without_readable_body() {
+        let mut app = App::new();
+        let env = make_test_envelopes(1).remove(0);
+        app.viewing_envelope = Some(env.clone());
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: None,
                 text_html: None,
                 attachments: vec![],
                 fetched_at: chrono::Utc::now(),
@@ -2014,7 +2043,7 @@ mod tests {
         assert!(app.pending_browser_open.is_none());
         assert_eq!(
             app.status_message.as_deref(),
-            Some("No HTML body available")
+            Some("No readable body available")
         );
     }
 

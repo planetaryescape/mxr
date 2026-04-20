@@ -12,6 +12,8 @@ use helpers::{
 };
 use mxr_protocol::*;
 
+const BROWSER_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
+
 // ---------------------------------------------------------------------------
 // Simple mutations
 // ---------------------------------------------------------------------------
@@ -488,6 +490,15 @@ pub async fn unsubscribe(
 
 pub async fn open_in_browser(message_id: String) -> anyhow::Result<()> {
     let id = parse_message_id(&message_id)?;
+    let dir = browser_cache_dir();
+    let path = browser_cache_path(&dir, &id);
+    if path.exists() {
+        open_browser_path(&path)?;
+        maybe_cleanup_browser_cache(&dir, &path);
+        println!("Opened in browser: {}", path.display());
+        return Ok(());
+    }
+
     let mut client = IpcClient::connect().await?;
     let resp = client
         .request(Request::GetBody {
@@ -498,21 +509,115 @@ pub async fn open_in_browser(message_id: String) -> anyhow::Result<()> {
         Response::Ok {
             data: ResponseData::Body { body },
         } => {
-            let Some(html) = body.text_html.as_deref() else {
-                anyhow::bail!("No HTML body available for {}", id.as_str());
+            let Some(document) = browser_document(&body) else {
+                anyhow::bail!("No readable body available for {}", id.as_str());
             };
-
-            let dir = mxr_config::data_dir().join("browser");
-            std::fs::create_dir_all(&dir)?;
-            let path = dir.join(format!("{}.html", id.as_str()));
-            std::fs::write(&path, html)?;
+            ensure_browser_cache_file(&dir, &id, &document)?;
             open_browser_path(&path)?;
+            maybe_cleanup_browser_cache(&dir, &path);
             println!("Opened in browser: {}", path.display());
         }
         Response::Error { message } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
+}
+
+fn browser_cache_dir() -> std::path::PathBuf {
+    mxr_config::data_dir().join("browser")
+}
+
+fn browser_cache_path(
+    dir: &std::path::Path,
+    message_id: &mxr_core::MessageId,
+) -> std::path::PathBuf {
+    dir.join(format!("{}.html", message_id.as_str()))
+}
+
+fn ensure_browser_cache_file(
+    dir: &std::path::Path,
+    message_id: &mxr_core::MessageId,
+    document: &str,
+) -> anyhow::Result<std::path::PathBuf> {
+    std::fs::create_dir_all(dir)?;
+    let path = browser_cache_path(dir, message_id);
+    if path.exists() {
+        return Ok(path);
+    }
+
+    std::fs::write(&path, document)?;
+    Ok(path)
+}
+
+fn maybe_cleanup_browser_cache(dir: &std::path::Path, keep_path: &std::path::Path) {
+    match cleanup_browser_cache_dir(dir, keep_path, std::time::SystemTime::now()) {
+        Ok(removed) if removed > 0 => {
+            tracing::debug!(removed, keep = %keep_path.display(), "browser cache cleanup removed stale files");
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::debug!(
+                dir = %dir.display(),
+                keep = %keep_path.display(),
+                error = %error,
+                "browser cache cleanup failed"
+            );
+        }
+    }
+}
+
+fn cleanup_browser_cache_dir(
+    dir: &std::path::Path,
+    keep_path: &std::path::Path,
+    now: std::time::SystemTime,
+) -> std::io::Result<usize> {
+    let mut removed = 0;
+    for entry in std::fs::read_dir(dir)? {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                tracing::debug!(dir = %dir.display(), error = %error, "browser cache cleanup skipped unreadable entry");
+                continue;
+            }
+        };
+
+        let path = entry.path();
+        if path == keep_path {
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("html") {
+            continue;
+        }
+
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                tracing::debug!(path = %path.display(), error = %error, "browser cache cleanup skipped entry without metadata");
+                continue;
+            }
+        };
+        if !is_browser_cache_stale(&metadata, now) {
+            continue;
+        }
+
+        match std::fs::remove_file(&path) {
+            Ok(()) => removed += 1,
+            Err(error) => {
+                tracing::debug!(path = %path.display(), error = %error, "browser cache cleanup failed to remove stale file");
+            }
+        }
+    }
+    Ok(removed)
+}
+
+fn is_browser_cache_stale(metadata: &std::fs::Metadata, now: std::time::SystemTime) -> bool {
+    let Ok(modified) = metadata.modified() else {
+        return false;
+    };
+    let Ok(age) = now.duration_since(modified) else {
+        return false;
+    };
+    age > BROWSER_CACHE_TTL
 }
 
 fn open_browser_path(path: &std::path::Path) -> anyhow::Result<()> {
@@ -528,5 +633,137 @@ fn open_browser_path(path: &std::path::Path) -> anyhow::Result<()> {
         Ok(())
     } else {
         anyhow::bail!("{program} exited with status {status}")
+    }
+}
+
+fn browser_document(body: &mxr_core::MessageBody) -> Option<String> {
+    body.text_html.clone().or_else(|| {
+        body.text_plain
+            .as_deref()
+            .map(render_plain_text_browser_document)
+    })
+}
+
+fn render_plain_text_browser_document(text: &str) -> String {
+    let escaped = htmlescape::encode_minimal(text);
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>mxr message</title><style>body{{margin:2rem;font:16px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#fafafa;color:#111;}}pre{{white-space:pre-wrap;word-break:break-word;}}</style></head><body><pre>{escaped}</pre></body></html>"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration as StdDuration, SystemTime};
+
+    #[test]
+    fn browser_document_prefers_html_when_available() {
+        let body = mxr_core::MessageBody {
+            message_id: mxr_core::MessageId::new(),
+            text_plain: Some("plain".into()),
+            text_html: Some("<p>html</p>".into()),
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        };
+
+        assert_eq!(browser_document(&body).as_deref(), Some("<p>html</p>"));
+    }
+
+    #[test]
+    fn browser_document_wraps_plain_text_for_browser_rendering() {
+        let body = mxr_core::MessageBody {
+            message_id: mxr_core::MessageId::new(),
+            text_plain: Some("hello <world>\nline 2".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        };
+
+        let document = browser_document(&body).expect("plain text fallback");
+        assert!(document.contains("<pre>hello &lt;world&gt;\nline 2</pre>"));
+        assert!(document.contains("<!doctype html>"));
+    }
+
+    #[test]
+    fn ensure_browser_cache_file_reuses_existing_file_without_overwriting() {
+        let dir = unique_browser_test_dir("reuse");
+        std::fs::create_dir_all(&dir).expect("create browser cache dir");
+        let message_id = mxr_core::MessageId::new();
+        let path = browser_cache_path(&dir, &message_id);
+        std::fs::write(&path, "cached").expect("write cached browser file");
+
+        let reused = ensure_browser_cache_file(&dir, &message_id, "new content")
+            .expect("reuse cached browser file");
+
+        assert_eq!(reused, path);
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read cached browser file"),
+            "cached"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cleanup_browser_cache_dir_removes_stale_html_only() {
+        let dir = unique_browser_test_dir("cleanup");
+        std::fs::create_dir_all(&dir).expect("create browser cache dir");
+
+        let keep_path = dir.join("keep.html");
+        let stale_html = dir.join("stale.html");
+        let fresh_html = dir.join("fresh.html");
+        let stale_text = dir.join("stale.txt");
+        for path in [&keep_path, &stale_html, &fresh_html, &stale_text] {
+            std::fs::write(path, path.display().to_string()).expect("write browser cache fixture");
+        }
+
+        let now = SystemTime::now();
+        set_modified_time(
+            &keep_path,
+            now - BROWSER_CACHE_TTL - StdDuration::from_secs(60),
+        );
+        set_modified_time(
+            &stale_html,
+            now - BROWSER_CACHE_TTL - StdDuration::from_secs(60),
+        );
+        set_modified_time(&fresh_html, now - StdDuration::from_secs(60));
+        set_modified_time(
+            &stale_text,
+            now - BROWSER_CACHE_TTL - StdDuration::from_secs(60),
+        );
+
+        let removed =
+            cleanup_browser_cache_dir(&dir, &keep_path, now).expect("cleanup browser cache dir");
+
+        assert_eq!(removed, 1, "only one stale html file should be removed");
+        assert!(
+            keep_path.exists(),
+            "currently opened file must be preserved"
+        );
+        assert!(!stale_html.exists(), "stale html should be removed");
+        assert!(fresh_html.exists(), "fresh html should be kept");
+        assert!(stale_text.exists(), "non-html files should be ignored");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn unique_browser_test_dir(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "mxr-daemon-browser-cache-{label}-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ))
+    }
+
+    fn set_modified_time(path: &std::path::Path, modified: SystemTime) {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .expect("open browser cache fixture");
+        let times = std::fs::FileTimes::new().set_modified(modified);
+        file.set_times(times)
+            .expect("set browser cache fixture mtime");
     }
 }

@@ -1,6 +1,14 @@
 use super::*;
 
 impl App {
+    fn browser_document(body: &MessageBody) -> Option<String> {
+        body.text_html.clone().or_else(|| {
+            body.text_plain
+                .as_deref()
+                .map(render_plain_text_browser_document)
+        })
+    }
+
     fn queue_current_message_browser_open(&mut self) {
         let Some(message_id) = self.viewing_envelope.as_ref().map(|env| env.id.clone()) else {
             self.status_message = Some("No message selected".into());
@@ -12,12 +20,15 @@ impl App {
             return;
         };
 
-        let Some(html) = body.text_html.clone() else {
-            self.status_message = Some("No HTML body available".into());
+        let Some(document) = Self::browser_document(body) else {
+            self.status_message = Some("No readable body available".into());
             return;
         };
 
-        self.pending_browser_open = Some(PendingBrowserOpen { message_id, html });
+        self.pending_browser_open = Some(PendingBrowserOpen {
+            message_id,
+            document,
+        });
         self.status_message = Some("Opening in browser...".into());
     }
 
@@ -1243,4 +1254,11 @@ impl App {
             Action::Noop => {}
         }
     }
+}
+
+fn render_plain_text_browser_document(text: &str) -> String {
+    let escaped = htmlescape::encode_minimal(text);
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>mxr message</title><style>body{{margin:2rem;font:16px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#fafafa;color:#111;}}pre{{white-space:pre-wrap;word-break:break-word;}}</style></head><body><pre>{escaped}</pre></body></html>"
+    )
 }

@@ -71,7 +71,7 @@ pub struct PendingSend {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingBrowserOpen {
     pub message_id: MessageId,
-    pub html: String,
+    pub document: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -15,7 +15,7 @@ mod tests {
     use mxr_core::id::*;
     use mxr_core::{
         Address, Draft, ExportFormat, SavedSearch, SearchMode, SemanticProfile,
-        SemanticStatusSnapshot, SortOrder,
+        SemanticRuntimeMetrics, SemanticStatusSnapshot, SortOrder,
     };
     use proptest::prelude::*;
     use tokio_util::codec::{Decoder, Encoder};
@@ -557,6 +557,7 @@ mod tests {
                     daemon_version: None,
                     daemon_build_id: None,
                     repair_required: false,
+                    semantic_runtime: None,
                 },
                 IpcCategory::AdminMaintenance,
             ),
@@ -566,6 +567,7 @@ mod tests {
                         enabled: true,
                         active_profile: SemanticProfile::BgeSmallEnV15,
                         profiles: Vec::new(),
+                        runtime: SemanticRuntimeMetrics::default(),
                     },
                 },
                 IpcCategory::MxrPlatform,

@@ -86,17 +86,18 @@ pub(super) async fn handle_export_search(
     query: &str,
     format: &ExportFormat,
 ) -> Response {
-    let search = state.search.lock().await;
-    let search_results =
-        match search.search(query, 100, 0, mxr_core::types::SortOrder::DateDesc) {
-            Ok(results) => results,
-            Err(e) => {
-                return Response::Error {
-                    message: e.to_string(),
-                }
+    let search_results = match state
+        .search
+        .search(query, 100, 0, mxr_core::types::SortOrder::DateDesc)
+        .await
+    {
+        Ok(results) => results,
+        Err(e) => {
+            return Response::Error {
+                message: e.to_string(),
             }
-        };
-    drop(search);
+        }
+    };
 
     // Collect unique thread IDs from search results
     let thread_ids: Vec<mxr_core::ThreadId> = {

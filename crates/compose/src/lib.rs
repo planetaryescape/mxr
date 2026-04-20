@@ -8,7 +8,7 @@ pub mod parse;
 pub mod render;
 
 use crate::frontmatter::{ComposeError, ComposeFrontmatter};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 /// The kind of compose action.
@@ -35,6 +35,56 @@ pub enum ComposeKind {
 
 /// Create a draft file on disk and return its path + the cursor line.
 pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usize), ComposeError> {
+    let (path, cursor_line, content) = build_draft_file(kind, from)?;
+    std::fs::write(&path, &content)?;
+    Ok((path, cursor_line))
+}
+
+pub async fn create_draft_file_async(
+    kind: ComposeKind,
+    from: &str,
+) -> Result<(PathBuf, usize), ComposeError> {
+    let (path, cursor_line, content) = build_draft_file(kind, from)?;
+    tokio::fs::write(&path, &content).await?;
+    Ok((path, cursor_line))
+}
+
+pub fn read_draft_file(path: &Path) -> Result<String, ComposeError> {
+    Ok(std::fs::read_to_string(path)?)
+}
+
+pub async fn read_draft_file_async(path: &Path) -> Result<String, ComposeError> {
+    Ok(tokio::fs::read_to_string(path).await?)
+}
+
+pub fn write_draft_file(path: &Path, content: &str) -> Result<(), ComposeError> {
+    Ok(std::fs::write(path, content)?)
+}
+
+pub async fn write_draft_file_async(path: &Path, content: &str) -> Result<(), ComposeError> {
+    Ok(tokio::fs::write(path, content).await?)
+}
+
+pub fn delete_draft_file(path: &Path) -> Result<(), ComposeError> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+pub async fn delete_draft_file_async(path: &Path) -> Result<(), ComposeError> {
+    match tokio::fs::remove_file(path).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn build_draft_file(
+    kind: ComposeKind,
+    from: &str,
+) -> Result<(PathBuf, usize, String), ComposeError> {
     let draft_id = Uuid::now_v7();
     let path = std::env::temp_dir().join(format!("mxr-draft-{draft_id}.md"));
 
@@ -107,9 +157,7 @@ pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usiz
         })
         .unwrap_or(1);
 
-    std::fs::write(&path, &content)?;
-
-    Ok((path, cursor_line))
+    Ok((path, cursor_line, content))
 }
 
 /// Validate a parsed draft before sending.
@@ -409,5 +457,30 @@ mod tests {
                 "Error: Invalid email address: not-an-email",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn async_draft_helpers_round_trip_content_and_cleanup() {
+        let (path, _cursor) = create_draft_file_async(
+            ComposeKind::New {
+                to: "alice@example.com".into(),
+                subject: "Hello".into(),
+            },
+            "me@example.com",
+        )
+        .await
+        .unwrap();
+
+        let original = read_draft_file_async(&path).await.unwrap();
+        assert!(original.contains("to: alice@example.com"));
+        assert!(original.contains("subject: Hello"));
+
+        let updated = original.replace("Hello", "Updated subject");
+        write_draft_file_async(&path, &updated).await.unwrap();
+        let reread = read_draft_file_async(&path).await.unwrap();
+        assert!(reread.contains("subject: Updated subject"));
+
+        delete_draft_file_async(&path).await.unwrap();
+        assert!(!path.exists());
     }
 }

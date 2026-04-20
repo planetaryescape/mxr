@@ -1,13 +1,15 @@
 pub mod cli;
 pub mod commands;
-pub(crate) mod handler;
+#[doc(hidden)]
+pub mod handler;
 pub mod ipc_client;
 pub(crate) mod loops;
 pub mod output;
 pub mod reindex;
 pub mod server;
 pub mod snooze;
-pub(crate) mod state;
+#[doc(hidden)]
+pub mod state;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
 pub mod unsubscribe;

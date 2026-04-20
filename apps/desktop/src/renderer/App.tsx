@@ -49,11 +49,12 @@ import { fetchJson } from "./state/bridgeHttp";
 import { useDesktopAppState } from "./state/useDesktopAppState";
 import { useComposeActions } from "./state/useComposeActions";
 import { useDesktopKeyboardShortcuts } from "./state/useDesktopKeyboardShortcuts";
+import { useDesktopRequestCoordinator } from "./state/requestCoordinator";
 import { useMailboxDialogActions } from "./state/useMailboxDialogActions";
 import { useRulesAccountsActions } from "./state/useRulesAccountsActions";
+import { useEventStream, type ConnectionStatus } from "./state/useEventStream";
 import { useWorkbenchShellActions } from "./state/useWorkbenchShellActions";
 import { useWorkbenchCoreState } from "./state/useWorkbenchCoreState";
-import type { ConnectionStatus } from "./state/useEventStream";
 import { useContextMenu, ContextMenuOverlay, type ContextMenuItem } from "./lib/context-menu";
 import { DesktopDialogs } from "./surfaces/DesktopDialogs";
 import {
@@ -66,11 +67,7 @@ import {
 } from "./surfaces/Overlays";
 import type { FlattenedEntry } from "./surfaces/types";
 import { WorkbenchContent } from "./surfaces/WorkbenchContent";
-import {
-  NavigationSidebar,
-  WorkbenchHeader,
-  WorkbenchStatusBar,
-} from "./surfaces/WorkbenchChrome";
+import { NavigationSidebar, WorkbenchHeader, WorkbenchStatusBar } from "./surfaces/WorkbenchChrome";
 
 const UPDATE_STEPS = [
   "Homebrew: brew upgrade mxr",
@@ -291,8 +288,11 @@ export default function App() {
   } = useDesktopAppState();
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const requestCoordinator = useDesktopRequestCoordinator();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const commandInputRef = useRef<HTMLInputElement | null>(null);
+  const [bridgeGeneration, setBridgeGeneration] = useState(0);
+  const lastReadyBridgeKeyRef = useRef<string | null>(null);
   const isMacPlatform = useMemo(() => {
     if (typeof navigator === "undefined") {
       return false;
@@ -383,6 +383,21 @@ export default function App() {
   const [mailboxFilterQuery, setMailboxFilterQuery] = useState("");
   const contextMenu = useContextMenu();
 
+  useEffect(() => {
+    if (bridge.kind !== "ready") {
+      lastReadyBridgeKeyRef.current = null;
+      return;
+    }
+
+    const nextKey = `${bridge.baseUrl}\u0000${bridge.authToken}\u0000${bridge.binaryPath}`;
+    if (lastReadyBridgeKeyRef.current === nextKey) {
+      return;
+    }
+
+    lastReadyBridgeKeyRef.current = nextKey;
+    setBridgeGeneration((current) => current + 1);
+  }, [bridge]);
+
   useActionNoticeTimeout(actionNotice, setActionNotice);
   usePruneSelectedMessages(mailbox.groups, searchState.groups, setSelectedMessageIds);
 
@@ -400,14 +415,29 @@ export default function App() {
         ...item,
         shortcut: displayShortcut(item.action, item.shortcut, isMacPlatform),
       })),
-      { action: "filter_mailbox", category: "Navigation", label: "Filter mailbox", shortcut: "Ctrl-F" },
+      {
+        action: "filter_mailbox",
+        category: "Navigation",
+        label: "Filter mailbox",
+        shortcut: "Ctrl-F",
+      },
       { action: "select_all", category: "Selection", label: "Select all", shortcut: "" },
       { action: "select_none", category: "Selection", label: "Select none", shortcut: "" },
       { action: "select_read", category: "Selection", label: "Select read", shortcut: "" },
       { action: "select_unread", category: "Selection", label: "Select unread", shortcut: "" },
       { action: "select_starred", category: "Selection", label: "Select starred", shortcut: "" },
-      { action: "create_saved_search", category: "Search", label: "Save current search", shortcut: "" },
-      { action: "toggle_remote_content", category: "View", label: "Toggle remote content", shortcut: "M" },
+      {
+        action: "create_saved_search",
+        category: "Search",
+        label: "Save current search",
+        shortcut: "",
+      },
+      {
+        action: "toggle_remote_content",
+        category: "View",
+        label: "Toggle remote content",
+        shortcut: "M",
+      },
       ...accountsState.accounts.map((a) => ({
         action: `switch_account:${a.key ?? a.account_id}`,
         category: "Account",
@@ -433,6 +463,7 @@ export default function App() {
     applySidebarLensById,
     switchScreen,
   } = useWorkbenchShellActions({
+    requestCoordinator,
     bridge,
     deferredSearchQuery,
     searchScope,
@@ -442,6 +473,7 @@ export default function App() {
     sidebar,
     selectedRow,
     screen,
+    layoutMode,
     setBridge,
     setShell,
     setSidebar,
@@ -475,6 +507,7 @@ export default function App() {
     mutateSelected,
     archiveSelected,
   } = useMailboxMutationActions({
+    requestCoordinator,
     screen,
     currentThreadId,
     layoutMode,
@@ -506,6 +539,7 @@ export default function App() {
     launchComposeEditor,
     setComposeBody,
   } = useComposeActions({
+    requestCoordinator,
     bridge,
     composeSession,
     composeDraft,
@@ -556,6 +590,7 @@ export default function App() {
     saveAccountDraft,
     makeSelectedAccountDefault,
   } = useRulesAccountsActions({
+    requestCoordinator,
     bridge,
     selectedRuleId,
     selectedRule,
@@ -584,7 +619,9 @@ export default function App() {
   });
 
   useWorkbenchLifecycle({
+    requestCoordinator,
     bridge,
+    bridgeGeneration,
     screen,
     searchRefreshKey,
     layoutMode,
@@ -631,6 +668,7 @@ export default function App() {
     exportSelectedThread,
     generateBugReport,
   } = useMailboxDialogActions({
+    requestCoordinator,
     bridge,
     screen,
     layoutMode,
@@ -671,17 +709,23 @@ export default function App() {
   });
 
   const ensureDiagnosticsReport = useEffectEvent(async () => {
-    if (diagnosticsState) {
-      return diagnosticsState.report;
+    const existingDiagnostics = diagnosticsState;
+    if (existingDiagnostics) {
+      return existingDiagnostics.report;
     }
     if (bridge.kind !== "ready") {
       return null;
     }
-    const payload = await fetchJson<DiagnosticsResponse>(
-      bridge.baseUrl,
-      bridge.authToken,
-      "/diagnostics",
+    const result = await requestCoordinator.runReplaceable("diagnostics:report", ({ signal }) =>
+      fetchJson<DiagnosticsResponse>(bridge.baseUrl, bridge.authToken, "/diagnostics", {
+        signal,
+        requestLabel: "diagnostics",
+      }),
     );
+    if (result.status !== "committed") {
+      return null;
+    }
+    const payload = result.value;
     setDiagnosticsState(payload);
     return payload.report;
   });
@@ -733,7 +777,7 @@ export default function App() {
         item.label.toLowerCase().includes(query) ||
         item.shortcut.toLowerCase().includes(query) ||
         item.category.toLowerCase().includes(query) ||
-      item.action.toLowerCase().includes(query),
+        item.action.toLowerCase().includes(query),
     );
   }, [commandActions, commandQuery]);
 
@@ -846,14 +890,22 @@ export default function App() {
     formatPendingMutationLabel,
     triggerSync: async () => {
       if (bridge.kind !== "ready") return;
-      await fetchJson(bridge.baseUrl, bridge.authToken, "/sync", { method: "POST" });
+      await requestCoordinator.enqueueMutation(() =>
+        fetchJson(bridge.baseUrl, bridge.authToken, "/sync", {
+          method: "POST",
+          requestLabel: "sync",
+        }),
+      );
     },
     switchAccount: async (key: string) => {
       if (bridge.kind !== "ready") return;
-      await fetchJson(bridge.baseUrl, bridge.authToken, "/accounts/default", {
-        method: "POST",
-        body: JSON.stringify({ key }),
-      });
+      await requestCoordinator.enqueueMutation(() =>
+        fetchJson(bridge.baseUrl, bridge.authToken, "/accounts/default", {
+          method: "POST",
+          body: JSON.stringify({ key }),
+          requestLabel: "accounts:default",
+        }),
+      );
       await refreshCurrentView({ preserveReader: false });
     },
     composeOpen,
@@ -887,9 +939,31 @@ export default function App() {
     dispatchAction,
   });
 
-  // Event stream status is managed by EventStreamBridge in main.tsx (Electron context only).
-  // In test environments, this stays "disconnected".
-  const eventStreamStatus: ConnectionStatus = "disconnected";
+  const handleSyncCompletedEvent = useEffectEvent(
+    (_event: { account_id: string; messages_synced: number }) => {
+      void refreshCurrentView({ preserveReader: true });
+    },
+  );
+
+  const handleSyncErrorEvent = useEffectEvent((event: { account_id: string; error: string }) => {
+    showNotice(event.error);
+  });
+
+  const handleMailboxChangedEvent = useEffectEvent(() => {
+    void refreshCurrentView({ preserveReader: true });
+  });
+
+  const eventStreamStatus = useEventStream(
+    bridge.kind === "ready" ? bridge.baseUrl : null,
+    bridge.kind === "ready" ? bridge.authToken : null,
+    {
+      onSyncCompleted: handleSyncCompletedEvent,
+      onSyncError: handleSyncErrorEvent,
+      onNewMessages: handleMailboxChangedEvent,
+      onMessageUnsnoozed: handleMailboxChangedEvent,
+      onLabelCountsUpdated: handleMailboxChangedEvent,
+    },
+  );
 
   const bridgeGate = renderBridgeGate({
     bridge,
@@ -904,6 +978,7 @@ export default function App() {
   }
   const readyBridge = bridge as Extract<BridgeState, { kind: "ready" }>;
   return renderDesktopWorkbench({
+    requestCoordinator,
     screen,
     shell: platformShell,
     sidebar,
@@ -1042,14 +1117,17 @@ export default function App() {
     setSavedSearchName,
     submitSavedSearch: async () => {
       if (bridge.kind !== "ready" || !savedSearchName.trim()) return;
-      await fetchJson(bridge.baseUrl, bridge.authToken, "/saved-searches/create", {
-        method: "POST",
-        body: JSON.stringify({
-          name: savedSearchName.trim(),
-          query: searchQuery,
-          search_mode: searchMode,
+      await requestCoordinator.enqueueMutation(() =>
+        fetchJson(bridge.baseUrl, bridge.authToken, "/saved-searches/create", {
+          method: "POST",
+          body: JSON.stringify({
+            name: savedSearchName.trim(),
+            query: searchQuery,
+            search_mode: searchMode,
+          }),
+          requestLabel: "saved-searches:create",
         }),
-      });
+      );
       setSavedSearchDialogOpen(false);
       setSavedSearchName("");
       setFocusContext("sidebar");
@@ -1116,6 +1194,7 @@ function displayShortcut(action: string, display: string, isMacPlatform: boolean
 type StateSetter<T> = (updater: SetStateAction<T>) => void;
 
 function renderDesktopWorkbench(props: {
+  requestCoordinator: ReturnType<typeof useDesktopRequestCoordinator>;
   screen: WorkbenchScreen;
   shell: WorkbenchShellPayload;
   sidebar: SidebarPayload;
@@ -1338,12 +1417,24 @@ function renderDesktopWorkbench(props: {
               unreadCount={props.mailbox.counts.unread}
               sidebar={props.sidebar}
               accountLabel={props.shell.accountLabel}
-              accounts={props.accountsState.accounts.map((a) => ({ key: a.key ?? a.account_id, name: a.name, is_default: a.is_default }))}
+              accounts={props.accountsState.accounts.map((a) => ({
+                key: a.key ?? a.account_id,
+                name: a.name,
+                is_default: a.is_default,
+              }))}
               onSwitchAccount={async (key) => {
-                await fetchJson(props.readyBridge.baseUrl, props.readyBridge.authToken, "/accounts/default", {
-                  method: "POST",
-                  body: JSON.stringify({ key }),
-                });
+                await props.requestCoordinator.enqueueMutation(() =>
+                  fetchJson(
+                    props.readyBridge.baseUrl,
+                    props.readyBridge.authToken,
+                    "/accounts/default",
+                    {
+                      method: "POST",
+                      body: JSON.stringify({ key }),
+                      requestLabel: "accounts:default",
+                    },
+                  ),
+                );
                 await props.refreshCurrentView({ preserveReader: false });
               }}
               onApplySidebarLens={(item) => void props.applySidebarLens(item)}
@@ -1382,19 +1473,69 @@ function renderDesktopWorkbench(props: {
               onRowContextMenu={(e, threadId) => {
                 props.setSelectedMailboxThreadId(threadId);
                 props.contextMenu.show(e, [
-                  { label: "Archive", shortcut: "E", onClick: () => props.dispatchAction("archive") },
+                  {
+                    label: "Archive",
+                    shortcut: "E",
+                    onClick: () => props.dispatchAction("archive"),
+                  },
                   { label: "Star", shortcut: "S", onClick: () => props.dispatchAction("star") },
-                  { label: "Mark read", shortcut: "I", onClick: () => props.dispatchAction("mark_read"), separator: true },
-                  { label: "Apply label", shortcut: "L", onClick: () => props.dispatchAction("apply_label") },
-                  { label: "Move to", shortcut: "V", onClick: () => props.dispatchAction("move_label") },
-                  { label: "Snooze", shortcut: "Z", onClick: () => props.dispatchAction("snooze"), separator: true },
+                  {
+                    label: "Mark read",
+                    shortcut: "I",
+                    onClick: () => props.dispatchAction("mark_read"),
+                    separator: true,
+                  },
+                  {
+                    label: "Apply label",
+                    shortcut: "L",
+                    onClick: () => props.dispatchAction("apply_label"),
+                  },
+                  {
+                    label: "Move to",
+                    shortcut: "V",
+                    onClick: () => props.dispatchAction("move_label"),
+                  },
+                  {
+                    label: "Snooze",
+                    shortcut: "Z",
+                    onClick: () => props.dispatchAction("snooze"),
+                    separator: true,
+                  },
                   { label: "Reply", shortcut: "R", onClick: () => props.dispatchAction("reply") },
-                  { label: "Reply all", shortcut: "A", onClick: () => props.dispatchAction("reply_all") },
-                  { label: "Forward", shortcut: "F", onClick: () => props.dispatchAction("forward"), separator: true },
-                  { label: "Open in browser", shortcut: "O", onClick: () => props.dispatchAction("open_in_browser") },
-                  { label: "Export", shortcut: "E", onClick: () => props.dispatchAction("export_thread"), separator: true },
-                  { label: "Spam", shortcut: "!", danger: true, onClick: () => props.dispatchAction("spam") },
-                  { label: "Trash", shortcut: "#", danger: true, onClick: () => props.dispatchAction("trash") },
+                  {
+                    label: "Reply all",
+                    shortcut: "A",
+                    onClick: () => props.dispatchAction("reply_all"),
+                  },
+                  {
+                    label: "Forward",
+                    shortcut: "F",
+                    onClick: () => props.dispatchAction("forward"),
+                    separator: true,
+                  },
+                  {
+                    label: "Open in browser",
+                    shortcut: "O",
+                    onClick: () => props.dispatchAction("open_in_browser"),
+                  },
+                  {
+                    label: "Export",
+                    shortcut: "E",
+                    onClick: () => props.dispatchAction("export_thread"),
+                    separator: true,
+                  },
+                  {
+                    label: "Spam",
+                    shortcut: "!",
+                    danger: true,
+                    onClick: () => props.dispatchAction("spam"),
+                  },
+                  {
+                    label: "Trash",
+                    shortcut: "#",
+                    danger: true,
+                    onClick: () => props.dispatchAction("trash"),
+                  },
                 ]);
               }}
               searchInputRef={props.searchInputRef}
@@ -1503,15 +1644,30 @@ function renderDesktopWorkbench(props: {
         onSendCompose={() => void props.submitComposeAction("/compose/session/send", "Sent")}
         onSaveCompose={() => void props.submitComposeAction("/compose/session/save", "Draft saved")}
         onDiscardCompose={() => void props.discardComposeSession()}
-        onPersistComposeDraft={async () => { await props.persistComposeDraft(); }}
+        onPersistComposeDraft={async () => {
+          await props.persistComposeDraft();
+        }}
         onComposeBodyChange={props.setComposeBody}
         fetchContactSuggestions={async (query) => {
           try {
-            const data = await fetchJson<SearchResponse>(
-              props.readyBridge.baseUrl,
-              props.readyBridge.authToken,
-              `/search?q=from:${encodeURIComponent(query)}&scope=messages&mode=lexical&sort=recent&limit=10`,
+            const path = `/search?q=from:${encodeURIComponent(query)}&scope=messages&mode=lexical&sort=recent&limit=10`;
+            const result = await props.requestCoordinator.runReplaceable(
+              `compose:contact-suggestions:${query.trim().toLowerCase()}`,
+              ({ signal }) =>
+                fetchJson<SearchResponse>(
+                  props.readyBridge.baseUrl,
+                  props.readyBridge.authToken,
+                  path,
+                  {
+                    signal,
+                    requestLabel: "compose:contact-suggestions",
+                  },
+                ),
             );
+            if (result.status !== "committed") {
+              return [];
+            }
+            const data = result.value;
             const seen = new Set<string>();
             const results: Array<{ label: string; value: string }> = [];
             for (const group of data.groups) {
@@ -1641,6 +1797,7 @@ function renderDesktopWorkbench(props: {
 }
 
 function useMailboxMutationActions(props: {
+  requestCoordinator: ReturnType<typeof useDesktopRequestCoordinator>;
   screen: WorkbenchScreen;
   currentThreadId: string | null;
   layoutMode: LayoutMode;
@@ -1739,10 +1896,13 @@ function useMailboxMutationActions(props: {
           options?.pendingLabel ??
             formatPendingMutationLabel("Updating", props.effectiveSelection.length),
           async () => {
-            await fetchJson(baseUrl, authToken, path, {
-              method: "POST",
-              body: JSON.stringify(body),
-            });
+            await props.requestCoordinator.enqueueMutation(() =>
+              fetchJson(baseUrl, authToken, path, {
+                method: "POST",
+                body: JSON.stringify(body),
+                requestLabel: `mutation:${path}`,
+              }),
+            );
             await refreshCurrentView({ preserveReader: options?.preserveReader });
           },
         );
@@ -1789,7 +1949,9 @@ function useDesktopActionDispatcher(context: Parameters<typeof runDesktopAction>
 }
 
 function useWorkbenchLifecycle(props: {
+  requestCoordinator: ReturnType<typeof useDesktopRequestCoordinator>;
   bridge: BridgeState;
+  bridgeGeneration: number;
   screen: WorkbenchScreen;
   searchRefreshKey: string;
   layoutMode: LayoutMode;
@@ -1823,6 +1985,7 @@ function useWorkbenchLifecycle(props: {
 }) {
   const {
     bridge,
+    bridgeGeneration,
     screen,
     searchRefreshKey,
     layoutMode,
@@ -1908,18 +2071,17 @@ function useWorkbenchLifecycle(props: {
   }, []);
 
   useEffect(() => {
-    if (bridge.kind === "ready") {
+    if (bridge.kind === "ready" && bridgeGeneration > 0) {
       void refreshMailbox();
       void loadAccounts();
     }
-  }, [bridge.kind]);
-
+  }, [bridge.kind, bridgeGeneration]);
 
   useEffect(() => {
     if (bridge.kind === "ready" && screen === "search") {
       void refreshSearch();
     }
-  }, [bridge.kind, screen, searchRefreshKey]);
+  }, [bridge.kind, bridgeGeneration, screen, searchRefreshKey]);
 
   const cancelPendingPreviewRead = useEffectEvent(() => {
     const pending = pendingPreviewReadRef.current;
@@ -1952,13 +2114,16 @@ function useWorkbenchLifecycle(props: {
         [messageId],
         formatPendingMutationLabel("Marking", 1, "read"),
         async () => {
-          await fetchJson<ActionAckResponse>(baseUrl, authToken, "/mutations/read", {
-            method: "POST",
-            body: JSON.stringify({
-              message_ids: [messageId],
-              read: true,
+          await props.requestCoordinator.enqueueMutation(() =>
+            fetchJson<ActionAckResponse>(baseUrl, authToken, "/mutations/read", {
+              method: "POST",
+              body: JSON.stringify({
+                message_ids: [messageId],
+                read: true,
+              }),
+              requestLabel: "mutations:read",
             }),
-          });
+          );
           await refreshCurrentView({ preserveReader: true });
         },
       );
@@ -2014,15 +2179,15 @@ function useWorkbenchLifecycle(props: {
 
   useEffect(() => {
     void refreshThread();
-  }, [bridge.kind, currentThreadId, layoutMode, screen]);
+  }, [bridge.kind, bridgeGeneration, currentThreadId, layoutMode, screen]);
 
   useEffect(() => {
     void refreshSupportScreen();
-  }, [bridge.kind, screen]);
+  }, [bridge.kind, bridgeGeneration, screen]);
 
   useEffect(() => {
     void refreshSelectedRuleDetail();
-  }, [bridge.kind, screen, selectedRuleId]);
+  }, [bridge.kind, bridgeGeneration, screen, selectedRuleId]);
 
   useEffect(() => {
     if (!commandPaletteOpen) {

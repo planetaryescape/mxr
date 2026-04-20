@@ -14,11 +14,14 @@ use std::any::Any;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
-use tokio::net::UnixListener;
-use tokio::sync::mpsc;
+use tokio::net::{UnixListener, UnixStream};
+use tokio::sync::{broadcast, watch, Semaphore};
+use tokio::task::JoinSet;
 use tokio_util::codec::Framed;
 
 const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const REQUEST_CONCURRENCY_LIMIT: usize = 64;
+const CONNECTION_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub async fn run_daemon() -> anyhow::Result<()> {
     let sock_path = AppState::socket_path();
@@ -50,6 +53,7 @@ pub async fn run_daemon() -> anyhow::Result<()> {
 
     let listener = UnixListener::bind(&sock_path)?;
     tracing::info!("Daemon listening on {}", sock_path.display());
+    let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
 
     // All syncing happens in the background sync loops — no blocking initial sync.
     // The daemon starts accepting clients immediately. The sync loops detect
@@ -57,65 +61,197 @@ pub async fn run_daemon() -> anyhow::Result<()> {
 
     // Spawn background loops
     loops::spawn_sync_loops(state.clone());
-    spawn_startup_maintenance(state.clone());
+    let startup_handle = spawn_startup_maintenance(state.clone());
+    state.register_startup_maintenance(startup_handle);
 
     let snooze_state = state.clone();
-    tokio::spawn(async move {
-        loops::snooze_loop(snooze_state).await;
+    let snooze_handle = tokio::spawn(async move {
+        let shutdown_rx = snooze_state.shutdown_receiver();
+        loops::snooze_loop(snooze_state, shutdown_rx).await;
     });
+    state.register_snooze_loop(snooze_handle);
+
+    let mut shutdown_rx = state.shutdown_receiver();
+    let mut connections = JoinSet::new();
 
     // Accept connections
     loop {
-        let (stream, _addr) = listener.accept().await?;
-        let state = state.clone();
-        let mut event_rx = state.event_tx.subscribe();
+        tokio::select! {
+            joined = connections.join_next(), if !connections.is_empty() => {
+                match joined {
+                    Some(Ok(())) => {}
+                    Some(Err(error)) => {
+                        tracing::warn!("client connection task failed: {error}");
+                    }
+                    None => {}
+                }
+            }
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                    tracing::info!("Daemon shutdown requested; stopping IPC accept loop");
+                    break;
+                }
+            }
+            accepted = listener.accept() => {
+                let (stream, _addr) = accepted?;
+                let state = state.clone();
+                let request_semaphore = request_semaphore.clone();
+                let event_rx = state.event_tx.subscribe();
+                let connection_shutdown_rx = state.shutdown_receiver();
 
-        tokio::spawn(async move {
-            let (mut sink, mut stream) = Framed::new(stream, IpcCodec::new()).split();
-            let (resp_tx, mut resp_rx) = mpsc::unbounded_channel::<IpcMessage>();
+                connections.spawn(async move {
+                    serve_client_connection(
+                        stream,
+                        state,
+                        request_semaphore,
+                        event_rx,
+                        connection_shutdown_rx,
+                    )
+                    .await;
+                });
+            }
+        }
+    }
 
-            loop {
-                tokio::select! {
-                    msg = stream.next() => {
-                        match msg {
-                            Some(Ok(ipc_msg)) => {
-                                // Spawn handler as a task — requests run concurrently
-                                let state = state.clone();
-                                let resp_tx = resp_tx.clone();
-                                tokio::spawn(async move {
-                                    let response = guard_ipc_response(ipc_msg.id, async {
-                                        handle_request(&state, &ipc_msg).await
-                                    })
-                                    .await;
-                                    let _ = resp_tx.send(response);
-                                });
-                            }
-                            Some(Err(e)) => {
-                                tracing::error!("IPC decode error: {}", e);
-                                break;
-                            }
-                            None => break,
+    drop(listener);
+    drain_connection_tasks(&mut connections, CONNECTION_DRAIN_TIMEOUT).await;
+    state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
+    let _ = std::fs::remove_file(&sock_path);
+    Ok(())
+}
+
+async fn serve_client_connection(
+    stream: UnixStream,
+    state: Arc<AppState>,
+    request_semaphore: Arc<Semaphore>,
+    mut event_rx: broadcast::Receiver<IpcMessage>,
+    mut shutdown_rx: watch::Receiver<bool>,
+) {
+    let (mut sink, mut stream) = Framed::new(stream, IpcCodec::new()).split();
+    let mut request_tasks = JoinSet::new();
+    let mut accept_requests = true;
+    let mut can_send = true;
+    let mut shutdown_requested = false;
+
+    loop {
+        tokio::select! {
+            biased;
+
+            joined = request_tasks.join_next(), if !request_tasks.is_empty() => {
+                match joined {
+                    Some(Ok(response)) => {
+                        if can_send && sink.send(response).await.is_err() {
+                            can_send = false;
+                            accept_requests = false;
                         }
                     }
-                    resp = resp_rx.recv() => {
-                        if let Some(resp_msg) = resp {
-                            if sink.send(resp_msg).await.is_err() {
-                                break;
-                            }
-                        }
+                    Some(Err(error)) => {
+                        tracing::warn!("ipc request task failed: {error}");
                     }
-                    event = event_rx.recv() => {
-                        if let Ok(event_msg) = event {
-                            if sink.send(event_msg).await.is_err() {
-                                break;
-                            }
-                        }
+                    None => {}
+                }
+            }
+            changed = shutdown_rx.changed(), if !shutdown_requested => {
+                match changed {
+                    Ok(()) if *shutdown_rx.borrow_and_update() => {
+                        shutdown_requested = true;
+                        accept_requests = false;
+                    }
+                    Ok(()) => {}
+                    Err(_) => {
+                        shutdown_requested = true;
+                        accept_requests = false;
                     }
                 }
             }
+            msg = stream.next(), if accept_requests => {
+                match msg {
+                    Some(Ok(ipc_msg)) => {
+                        let permit_wait_started = std::time::Instant::now();
+                        let permit = match request_semaphore.clone().acquire_owned().await {
+                            Ok(permit) => permit,
+                            Err(_) => {
+                                accept_requests = false;
+                                continue;
+                            }
+                        };
+                        let state = state.clone();
+                        request_tasks.spawn(async move {
+                            let _permit = permit;
+                            tracing::trace!(
+                                wait_ms = permit_wait_started.elapsed().as_secs_f64() * 1000.0,
+                                "ipc request permit acquired"
+                            );
+                            guard_ipc_response(ipc_msg.id, async {
+                                handle_request(&state, &ipc_msg).await
+                            })
+                            .await
+                        });
+                    }
+                    Some(Err(error)) => {
+                        tracing::error!("IPC decode error: {}", error);
+                        accept_requests = false;
+                    }
+                    None => {
+                        accept_requests = false;
+                    }
+                }
+            }
+            event = event_rx.recv(), if accept_requests && can_send && !shutdown_requested => {
+                match event {
+                    Ok(event_msg) => {
+                        if sink.send(event_msg).await.is_err() {
+                            can_send = false;
+                            accept_requests = false;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        tracing::debug!(skipped, "client event stream lagged");
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        accept_requests = false;
+                    }
+                }
+            }
+        }
 
-            tracing::debug!("Client disconnected");
-        });
+        if !accept_requests && request_tasks.is_empty() {
+            break;
+        }
+    }
+
+    tracing::debug!("Client disconnected");
+}
+
+async fn drain_connection_tasks(connections: &mut JoinSet<()>, timeout: Duration) {
+    let deadline = tokio::time::Instant::now() + timeout;
+    while !connections.is_empty() {
+        let Some(remaining) = deadline.checked_duration_since(tokio::time::Instant::now()) else {
+            tracing::warn!("client connection drain timed out");
+            connections.abort_all();
+            while let Some(joined) = connections.join_next().await {
+                if let Err(error) = joined {
+                    tracing::trace!("aborted client connection task: {error}");
+                }
+            }
+            return;
+        };
+
+        match tokio::time::timeout(remaining, connections.join_next()).await {
+            Ok(Some(Ok(()))) => {}
+            Ok(Some(Err(error))) => tracing::warn!("client connection task failed: {error}"),
+            Ok(None) => break,
+            Err(_) => {
+                tracing::warn!("client connection drain timed out");
+                connections.abort_all();
+                while let Some(joined) = connections.join_next().await {
+                    if let Err(error) = joined {
+                        tracing::trace!("aborted client connection task: {error}");
+                    }
+                }
+                return;
+            }
+        }
     }
 }
 
@@ -224,13 +360,17 @@ pub(crate) async fn search_requires_repair(state: &Arc<AppState>, total_messages
         return false;
     }
 
-    let Ok(search) = state.search.try_lock() else {
-        return false;
-    };
-
-    match search.search("*", 1, 0, mxr_core::types::SortOrder::DateDesc) {
-        Ok(results) => results.results.is_empty(),
-        Err(_) => true,
+    match tokio::time::timeout(
+        Duration::from_millis(50),
+        state
+            .search
+            .search("*", 1, 0, mxr_core::types::SortOrder::DateDesc),
+    )
+    .await
+    {
+        Ok(Ok(results)) => results.results.is_empty(),
+        Ok(Err(_)) => true,
+        Err(_) => false,
     }
 }
 
@@ -437,7 +577,12 @@ async fn request_shutdown() -> anyhow::Result<()> {
 
 async fn request_shutdown_to(sock_path: &std::path::Path) -> anyhow::Result<()> {
     let mut client = IpcClient::connect_to(sock_path).await?;
-    client.notify(Request::Shutdown).await
+    match client.request(Request::Shutdown).await? {
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => Ok(()),
+        other => anyhow::bail!("unexpected shutdown response: {other:?}"),
+    }
 }
 
 async fn daemon_responds_to_status(sock_path: &std::path::Path, timeout: Duration) -> bool {
@@ -446,8 +591,12 @@ async fn daemon_responds_to_status(sock_path: &std::path::Path, timeout: Duratio
         .is_ok()
 }
 
-fn spawn_startup_maintenance(state: Arc<AppState>) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    tokio::spawn(async move { run_startup_maintenance(state).await })
+fn spawn_startup_maintenance(state: Arc<AppState>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        if let Err(error) = run_startup_maintenance(state).await {
+            tracing::warn!("startup maintenance failed: {error}");
+        }
+    })
 }
 
 async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
@@ -456,10 +605,7 @@ async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let indexed_messages = {
-        let search = state.search.lock().await;
-        search.num_docs()
-    };
+    let indexed_messages = state.search.num_docs().await.unwrap_or_default();
 
     if indexed_messages == total_messages as u64 {
         return Ok(());
@@ -534,7 +680,8 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
 mod tests {
     use super::{
         classify_health, current_build_id, daemon_requires_restart, daemon_responds_to_status,
-        guard_ipc_response, is_index_lock_error, spawn_startup_maintenance,
+        guard_ipc_response, is_index_lock_error, request_shutdown_to, serve_client_connection,
+        spawn_startup_maintenance, REQUEST_CONCURRENCY_LIMIT,
     };
     use crate::{handler::handle_request, state::AppState};
     use chrono::Utc;
@@ -549,7 +696,8 @@ mod tests {
     };
     use std::sync::Arc;
     use std::time::Duration;
-    use tokio::net::UnixListener;
+    use tokio::net::{UnixListener, UnixStream};
+    use tokio::sync::Semaphore;
     use tokio_util::codec::Framed;
 
     #[test]
@@ -681,33 +829,34 @@ mod tests {
             .await
             .expect("insert envelope");
 
-        {
-            let mut search = state.search.lock().await;
-            search
-                .index_envelope(&indexed_envelope)
-                .expect("index partial envelope");
-            search.commit().expect("commit partial index");
-        }
+        state
+            .search
+            .apply_batch(mxr_search::SearchUpdateBatch {
+                entries: vec![mxr_search::SearchIndexEntry {
+                    envelope: indexed_envelope.clone(),
+                    body: None,
+                }],
+                removed_message_ids: Vec::new(),
+            })
+            .await
+            .expect("index partial envelope");
 
         assert!(state
             .search
-            .lock()
-            .await
             .search("missing", 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .await
             .expect("pre-maintenance search")
             .results
             .is_empty());
 
         spawn_startup_maintenance(state.clone())
             .await
-            .expect("join maintenance task")
-            .expect("maintenance result");
+            .expect("join maintenance task");
 
         let results = state
             .search
-            .lock()
-            .await
             .search("missing", 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .await
             .expect("search after reindex");
         assert_eq!(results.results.len(), 1);
     }
@@ -750,9 +899,8 @@ mod tests {
             .expect("insert envelope");
         assert!(state
             .search
-            .lock()
-            .await
             .search("startup", 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .await
             .expect("empty search")
             .results
             .is_empty());
@@ -772,16 +920,12 @@ mod tests {
             other => panic!("expected ping response, got {other:?}"),
         }
 
-        maintenance
-            .await
-            .expect("join maintenance task")
-            .expect("maintenance result");
+        maintenance.await.expect("join maintenance task");
 
         let results = state
             .search
-            .lock()
-            .await
             .search("startup", 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .await
             .expect("search after reindex");
         assert_eq!(results.results.len(), 1);
     }
@@ -848,6 +992,7 @@ mod tests {
                                 daemon_version: Some(env!("CARGO_PKG_VERSION").to_string()),
                                 daemon_build_id: Some("test-build".to_string()),
                                 repair_required: false,
+                                semantic_runtime: None,
                             },
                         }),
                     })
@@ -859,5 +1004,99 @@ mod tests {
         assert!(daemon_responds_to_status(&ready_socket_path, Duration::from_secs(1)).await);
         server.await.expect("join status server");
         let _ = std::fs::remove_file(&ready_socket_path);
+    }
+
+    #[tokio::test]
+    async fn shutdown_request_waits_for_acknowledgement() {
+        let socket_path = std::path::PathBuf::from(format!(
+            "/tmp/mxr-shutdown-ack-{}.sock",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::remove_file(&socket_path);
+        let listener = UnixListener::bind(&socket_path).expect("bind shutdown socket");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut framed = Framed::new(stream, IpcCodec::new());
+            match framed.next().await {
+                Some(Ok(message)) => {
+                    assert!(matches!(
+                        message.payload,
+                        IpcPayload::Request(Request::Shutdown)
+                    ));
+                    framed
+                        .send(IpcMessage {
+                            id: message.id,
+                            payload: IpcPayload::Response(Response::Ok {
+                                data: ResponseData::Ack,
+                            }),
+                        })
+                        .await
+                        .expect("send shutdown ack");
+                }
+                other => panic!("expected shutdown request, got {other:?}"),
+            }
+        });
+
+        request_shutdown_to(&socket_path)
+            .await
+            .expect("shutdown request");
+
+        server.await.expect("join shutdown ack server");
+        let _ = std::fs::remove_file(&socket_path);
+    }
+
+    #[tokio::test]
+    async fn client_connection_acknowledges_shutdown_before_exiting() {
+        let state = Arc::new(AppState::in_memory().await.expect("in-memory state"));
+        let state_for_cleanup = state.clone();
+        let (server_stream, client_stream) = UnixStream::pair().expect("unix stream pair");
+        let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
+        let event_rx = state.event_tx.subscribe();
+        let shutdown_rx = state.shutdown_receiver();
+
+        let server = tokio::spawn(async move {
+            serve_client_connection(
+                server_stream,
+                state,
+                request_semaphore,
+                event_rx,
+                shutdown_rx,
+            )
+            .await;
+        });
+
+        let mut client = Framed::new(client_stream, IpcCodec::new());
+        client
+            .send(IpcMessage {
+                id: 44,
+                payload: IpcPayload::Request(Request::Shutdown),
+            })
+            .await
+            .expect("send shutdown request");
+
+        let response = tokio::time::timeout(Duration::from_secs(1), client.next())
+            .await
+            .expect("response should arrive")
+            .expect("response frame")
+            .expect("response should decode");
+
+        match response.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("expected shutdown ack, got {other:?}"),
+        }
+
+        drop(client);
+
+        tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .expect("connection task should exit")
+            .expect("connection task join");
+
+        state_for_cleanup
+            .shutdown_runtime_tasks(Duration::from_secs(1))
+            .await;
     }
 }

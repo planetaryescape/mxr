@@ -2,6 +2,7 @@ use crate::{decode_id, decode_json, decode_timestamp, encode_json, trace_lookup,
 use mxr_core::id::*;
 use mxr_core::types::*;
 use sqlx::Row;
+use std::collections::HashMap;
 
 pub(crate) fn future_date_cutoff_timestamp() -> i64 {
     (chrono::Utc::now() + chrono::Duration::days(1)).timestamp()
@@ -571,6 +572,28 @@ impl super::Store {
         .await?;
 
         Ok(row.cnt as u32)
+    }
+
+    pub async fn count_messages_grouped_by_account(
+        &self,
+    ) -> Result<HashMap<AccountId, u32>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"
+            SELECT account_id, COUNT(*) as cnt
+            FROM messages
+            GROUP BY account_id
+            "#,
+        )
+        .fetch_all(self.reader())
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let account_id: String = row.get("account_id");
+                let count: i64 = row.get("cnt");
+                Ok((decode_id(&account_id)?, count as u32))
+            })
+            .collect()
     }
 
     /// List all envelopes across all accounts, paginated. Used for reindexing.

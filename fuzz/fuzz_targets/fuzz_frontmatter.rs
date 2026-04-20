@@ -4,6 +4,6 @@ use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     if let Ok(input) = std::str::from_utf8(data) {
-        let _ = mxr::mxr_compose::frontmatter::parse_compose_file(input);
+        let _ = mxr_compose::frontmatter::parse_compose_file(input);
     }
 });

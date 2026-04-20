@@ -1,11 +1,10 @@
 use mxr_core::id::*;
 use mxr_core::types::*;
 use mxr_core::{MailSyncProvider, MxrError};
-use mxr_search::SearchIndex;
+use mxr_search::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
 use mxr_store::Store;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use crate::threading::{thread_messages, MessageForThreading};
 
@@ -16,11 +15,11 @@ pub struct SyncOutcome {
 
 pub struct SyncEngine {
     store: Arc<Store>,
-    search: Arc<Mutex<SearchIndex>>,
+    search: SearchServiceHandle,
 }
 
 impl SyncEngine {
-    pub fn new(store: Arc<Store>, search: Arc<Mutex<SearchIndex>>) -> Self {
+    pub fn new(store: Arc<Store>, search: SearchServiceHandle) -> Self {
         Self { store, search }
     }
 
@@ -96,6 +95,7 @@ impl SyncEngine {
                 .iter()
                 .map(|synced| synced.envelope.id.clone())
                 .collect::<Vec<_>>();
+            let mut lexical_batch = SearchUpdateBatch::default();
 
             // Core sync guarantee: after this loop, SQLite has the envelope/body
             // pair and Tantivy has the same message's lexical corpus.
@@ -134,15 +134,23 @@ impl SyncEngine {
                     }
                 }
 
-                // Lexical freshness is immediate per sync batch. Body text enters
-                // Tantivy here, then the batch commit below makes it searchable.
+                lexical_batch.entries.push(SearchIndexEntry {
+                    envelope: synced.envelope.clone(),
+                    body: Some(synced.body.clone()),
+                });
+            }
+
+            for provider_message_id in &batch.deleted_provider_ids {
+                if let Some(message_id) = self
+                    .store
+                    .get_message_id_by_provider_id(account_id, provider_message_id)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?
                 {
-                    let mut search = self.search.lock().await;
-                    search.index_body(&synced.envelope, &synced.body)?;
+                    lexical_batch.removed_message_ids.push(message_id);
                 }
             }
 
-            // Deletions (store-only, no search lock)
             if !batch.deleted_provider_ids.is_empty() {
                 self.store
                     .delete_messages_by_provider_ids(account_id, &batch.deleted_provider_ids)
@@ -180,12 +188,15 @@ impl SyncEngine {
                         }
                     }
 
-                    if let (Ok(Some(envelope)), Ok(Some(body))) = (
-                        self.store.get_envelope(&message_id).await,
-                        self.store.get_body(&message_id).await,
-                    ) {
-                        let mut search = self.search.lock().await;
-                        search.index_body(&envelope, &body)?;
+                    if let Ok(Some(envelope)) = self.store.get_envelope(&message_id).await {
+                        let body = self
+                            .store
+                            .get_body(&message_id)
+                            .await
+                            .map_err(|e| MxrError::Store(e.to_string()))?;
+                        lexical_batch
+                            .entries
+                            .push(SearchIndexEntry { envelope, body });
                     }
                 }
             }
@@ -193,9 +204,14 @@ impl SyncEngine {
             // Commit lexical search for this batch before counts/threading/cursor
             // maintenance. Startup repair can rebuild this index from SQLite if
             // it ever drifts.
-            {
-                let mut search = self.search.lock().await;
-                search.commit()?;
+            if !lexical_batch.entries.is_empty() || !lexical_batch.removed_message_ids.is_empty() {
+                let lexical_queue_started = std::time::Instant::now();
+                self.search.apply_batch(lexical_batch).await?;
+                tracing::trace!(
+                    account = %account_id,
+                    elapsed_ms = lexical_queue_started.elapsed().as_secs_f64() * 1000.0,
+                    "lexical batch applied"
+                );
             }
 
             // Recalculate label counts every batch (including during backfill)

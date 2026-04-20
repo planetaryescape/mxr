@@ -1,12 +1,13 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
-import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BridgeManager } from "./bridge-manager.js";
 import { openDraftInEditor } from "./open-editor.js";
+import { runBinary } from "./run-binary.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const bridgeManager = new BridgeManager();
+const CONFIG_PATH_TIMEOUT_MS = 8_000;
 
 async function createWindow(): Promise<void> {
   const window = new BrowserWindow({
@@ -101,36 +102,12 @@ app.on("before-quit", async () => {
 });
 
 async function readMxrConfigPath(binaryPath: string): Promise<string> {
-  const { stdout, stderr } = await runBinary(binaryPath, ["config", "path"]);
+  const { stdout, stderr } = await runBinary(binaryPath, ["config", "path"], {
+    timeoutMs: CONFIG_PATH_TIMEOUT_MS,
+  });
   const configPath = stdout.trim();
   if (!configPath) {
     throw new Error(stderr || "mxr config path returned no output");
   }
   return configPath;
-}
-
-async function runBinary(
-  binaryPath: string,
-  args: string[],
-): Promise<{ stdout: string; stderr: string }> {
-  return await new Promise((resolve, reject) => {
-    const child = spawn(binaryPath, args, { stdio: ["ignore", "pipe", "pipe"] });
-    const stdout: string[] = [];
-    const stderr: string[] = [];
-
-    child.stdout.on("data", (chunk) => stdout.push(chunk.toString()));
-    child.stderr.on("data", (chunk) => stderr.push(chunk.toString()));
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code === 0) {
-        resolve({ stdout: stdout.join(""), stderr: stderr.join("") });
-        return;
-      }
-      reject(
-        new Error(
-          `mxr command failed with code ${code ?? "unknown"}: ${stderr.join("") || stdout.join("")}`,
-        ),
-      );
-    });
-  });
 }

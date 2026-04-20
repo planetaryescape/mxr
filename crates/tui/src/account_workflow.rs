@@ -1,10 +1,10 @@
+use crate::ipc::{ipc_call, IpcRequest};
 use mxr_config::socket_path as config_socket_path;
 use mxr_core::MxrError;
 use mxr_protocol::{
     AccountConfigData, AccountOperationResult, AccountSyncConfigData, Request, Response,
     ResponseData,
 };
-use crate::ipc::{ipc_call, IpcRequest};
 use tokio::sync::mpsc;
 
 pub(crate) fn daemon_socket_path() -> std::path::PathBuf {
@@ -30,10 +30,7 @@ pub(crate) async fn run_account_save_workflow(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     account: AccountConfigData,
 ) -> Result<AccountOperationResult, MxrError> {
-    let mut result = if matches!(
-        account.sync,
-        Some(AccountSyncConfigData::Gmail { .. })
-    ) {
+    let mut result = if matches!(account.sync, Some(AccountSyncConfigData::Gmail { .. })) {
         request_account_operation(
             bg,
             Request::AuthorizeAccountConfig {

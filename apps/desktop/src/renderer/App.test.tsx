@@ -29,6 +29,34 @@ const mismatchBridge = {
   detail: "mxr Desktop needs a compatible version of mxr before it can connect.",
 };
 
+class MockWebSocket {
+  static instances: MockWebSocket[] = [];
+
+  readonly url: string;
+  closed = false;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  constructor(url: string) {
+    this.url = url;
+    MockWebSocket.instances.push(this);
+  }
+
+  close() {
+    this.closed = true;
+  }
+
+  simulateOpen() {
+    this.onopen?.();
+  }
+
+  simulateMessage(payload: unknown) {
+    this.onmessage?.({ data: JSON.stringify(payload) });
+  }
+}
+
 function installDesktopApi(bridgeState: BridgeState = readyBridge) {
   const api = {
     getBridgeState: vi.fn().mockResolvedValue(bridgeState),
@@ -108,6 +136,8 @@ describe("App", () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     setNavigatorPlatform("Linux");
+    MockWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", MockWebSocket);
     configureDesktopMockServer();
   });
 
@@ -165,6 +195,33 @@ describe("App", () => {
       await flushAsyncWork();
     });
     expect(screen.queryAllByRole("button", { name: "Archive" })).toHaveLength(0);
+  });
+
+  it("wires the live event stream and refreshes the mailbox on sync completion", async () => {
+    installDesktopApi();
+
+    render(<App />);
+
+    await findActiveLens("Inbox");
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(
+      getRecordedDesktopRequests().filter((request) => request.path === "/mailbox"),
+    ).toHaveLength(1);
+
+    act(() => {
+      MockWebSocket.instances[0].simulateOpen();
+      MockWebSocket.instances[0].simulateMessage({
+        event: "SyncCompleted",
+        account_id: "personal",
+        messages_synced: 3,
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        getRecordedDesktopRequests().filter((request) => request.path === "/mailbox"),
+      ).toHaveLength(2);
+    });
   });
 
   it("switches mailbox lenses from the sidebar", async () => {

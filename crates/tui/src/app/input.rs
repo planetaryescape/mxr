@@ -308,7 +308,7 @@ impl App {
                             MutationEffect::StatusOnly("Sent!".into()),
                             "Sending...".into(),
                         );
-                        let _ = std::fs::remove_file(&pending.draft_path);
+                        self.schedule_draft_cleanup(pending.draft_path);
                     }
                     return None;
                 }
@@ -356,7 +356,7 @@ impl App {
                             MutationEffect::StatusOnly("Draft saved to server".into()),
                             "Saving draft...".into(),
                         );
-                        let _ = std::fs::remove_file(&pending.draft_path);
+                        self.schedule_draft_cleanup(pending.draft_path);
                     }
                     return None;
                 }
@@ -370,7 +370,7 @@ impl App {
                 (KeyCode::Esc, _) => {
                     // Discard
                     if let Some(pending) = self.pending_send_confirm.take() {
-                        let _ = std::fs::remove_file(&pending.draft_path);
+                        self.schedule_draft_cleanup(pending.draft_path);
                         self.status_message = Some("Discarded".into());
                     }
                     return None;

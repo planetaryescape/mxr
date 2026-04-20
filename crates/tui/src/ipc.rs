@@ -1,7 +1,7 @@
-use mxr_core::MxrError;
-use mxr_protocol::{DaemonEvent, Request, Response};
 use crate::async_result::AsyncResult;
 use crate::client::Client;
+use mxr_core::MxrError;
+use mxr_protocol::{DaemonEvent, Request, Response};
 use std::path::Path;
 use std::process::Stdio;
 use tokio::sync::{mpsc, oneshot};

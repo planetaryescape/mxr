@@ -221,6 +221,7 @@ mxr history --category mutation
 - Site: [mxr-mail.vercel.app](https://mxr-mail.vercel.app)
 - Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
 - Blueprint: [docs/blueprint/README.md](docs/blueprint/README.md)
+- Tokio runtime guide: [docs/reference/tokio-runtime-guide.md](docs/reference/tokio-runtime-guide.md)
 - Test standard: [docs/idiomatic-rust-tests.md](docs/idiomatic-rust-tests.md)
 
 ## Open source

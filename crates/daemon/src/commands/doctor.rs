@@ -1,4 +1,5 @@
 use crate::cli::OutputFormat;
+use crate::handler::{dir_size_sync, doctor_data_stats, file_size_sync, recent_log_lines_sync};
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{
@@ -7,7 +8,6 @@ use mxr_protocol::{
 };
 use mxr_search::SearchIndex;
 use mxr_store::Store;
-use std::io::BufRead;
 use tokio::net::UnixStream;
 
 pub struct DoctorRunOptions {
@@ -237,7 +237,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
     }
 
     let (index_lock_held, index_lock_error) = probe_index_lock(&index_path, socket_reachable);
-    let recent_error_logs = recent_log_lines(10, Some("error")).unwrap_or_default();
+    let recent_error_logs = recent_log_lines_sync(10, Some("error")).unwrap_or_default();
     let lexical_index_freshness =
         lexical_index_freshness(index_exists, repair_required, restart_required);
     let last_successful_sync_at = latest_successful_sync_at(&sync_statuses);
@@ -306,11 +306,11 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         restart_required,
         repair_required,
         database_path: db_path.display().to_string(),
-        database_size_bytes: file_size(&db_path),
+        database_size_bytes: file_size_sync(&db_path),
         index_path: index_path.display().to_string(),
-        index_size_bytes: dir_size(&index_path),
+        index_size_bytes: dir_size_sync(&index_path),
         log_path: log_path.display().to_string(),
-        log_size_bytes: file_size(&log_path),
+        log_size_bytes: file_size_sync(&log_path),
         sync_statuses,
         recent_sync_events,
         recent_error_logs,
@@ -750,75 +750,6 @@ fn semantic_freshness_from_store(
             .and_then(|profile| profile.last_indexed_at)
             .map(|value| value.to_rfc3339()),
     )
-}
-
-fn doctor_data_stats(counts: mxr_store::StoreRecordCounts) -> DoctorDataStats {
-    DoctorDataStats {
-        accounts: counts.accounts,
-        labels: counts.labels,
-        messages: counts.messages,
-        unread_messages: counts.unread_messages,
-        starred_messages: counts.starred_messages,
-        messages_with_attachments: counts.messages_with_attachments,
-        message_labels: counts.message_labels,
-        bodies: counts.bodies,
-        attachments: counts.attachments,
-        drafts: counts.drafts,
-        snoozed: counts.snoozed,
-        saved_searches: counts.saved_searches,
-        rules: counts.rules,
-        rule_logs: counts.rule_logs,
-        sync_log: counts.sync_log,
-        sync_runtime_statuses: counts.sync_runtime_statuses,
-        event_log: counts.event_log,
-        semantic_profiles: counts.semantic_profiles,
-        semantic_chunks: counts.semantic_chunks,
-        semantic_embeddings: counts.semantic_embeddings,
-    }
-}
-
-fn recent_log_lines(limit: usize, level: Option<&str>) -> Result<Vec<String>, std::io::Error> {
-    let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
-    if !log_path.exists() {
-        return Ok(Vec::new());
-    }
-
-    let file = std::fs::File::open(log_path)?;
-    let mut lines = std::io::BufReader::new(file)
-        .lines()
-        .collect::<Result<Vec<_>, _>>()?;
-    if let Some(level) = level {
-        let level = level.to_ascii_lowercase();
-        lines.retain(|line| line.to_ascii_lowercase().contains(&level));
-    }
-    let start = lines.len().saturating_sub(limit.max(1));
-    Ok(lines.split_off(start))
-}
-
-fn file_size(path: &std::path::Path) -> u64 {
-    std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
-}
-
-fn dir_size(path: &std::path::Path) -> u64 {
-    if !path.exists() {
-        return 0;
-    }
-
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return 0;
-    };
-
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| {
-            let path = entry.path();
-            if path.is_dir() {
-                dir_size(&path)
-            } else {
-                entry.metadata().map(|meta| meta.len()).unwrap_or(0)
-            }
-        })
-        .sum()
 }
 
 #[cfg(test)]

@@ -16,6 +16,7 @@ local = [
     "dep:calamine",
     "dep:fastembed",
     "dep:hnsw_rs",
+    "dep:rayon",
     "dep:sha2",
     "dep:undoc",
     "dep:unpdf",
@@ -31,6 +32,7 @@ calamine = { version = "0.34", optional = true }
 chrono = { workspace = true }
 fastembed = { version = "5.13", optional = true }
 hnsw_rs = { version = "0.3.4", optional = true }
+rayon = { version = "1.10", optional = true }
 sha2 = { version = "0.10", optional = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

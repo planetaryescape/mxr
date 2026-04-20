@@ -3,6 +3,7 @@
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
+use mxr_core::types::SemanticRuntimeMetrics;
 use mxr_protocol::{
     AccountSyncStatus, DaemonHealthClass, Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
 };
@@ -17,6 +18,7 @@ struct StatusRender<'a> {
     daemon_build_id: Option<&'a str>,
     protocol_version: u32,
     repair_required: bool,
+    semantic_runtime: Option<&'a SemanticRuntimeMetrics>,
     restart_required: bool,
     health_class: DaemonHealthClass,
 }
@@ -33,6 +35,7 @@ fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result
             "daemon_build_id": view.daemon_build_id,
             "protocol_version": view.protocol_version,
             "repair_required": view.repair_required,
+            "semantic_runtime": view.semantic_runtime,
             "restart_required": view.restart_required,
             "health_class": view.health_class,
         }))?,
@@ -113,6 +116,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                         daemon_version,
                         daemon_build_id,
                         repair_required,
+                        semantic_runtime,
                     },
             } => {
                 let restart_required = crate::server::daemon_requires_restart(
@@ -138,6 +142,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                             daemon_build_id: daemon_build_id.as_deref(),
                             protocol_version,
                             repair_required,
+                            semantic_runtime: semantic_runtime.as_ref(),
                             restart_required,
                             health_class,
                         },
@@ -193,6 +198,14 @@ mod tests {
                 daemon_build_id: Some("0.4.6:/tmp/mxr:1:1"),
                 protocol_version: IPC_PROTOCOL_VERSION,
                 repair_required: false,
+                semantic_runtime: Some(&SemanticRuntimeMetrics {
+                    queue_depth: 3,
+                    in_flight: 1,
+                    last_queue_wait_ms: Some(12),
+                    last_extract_ms: Some(34),
+                    last_embedding_prep_ms: Some(56),
+                    last_ingest_ms: Some(78),
+                }),
                 restart_required: false,
                 health_class: DaemonHealthClass::Healthy,
             },
@@ -202,6 +215,7 @@ mod tests {
         assert!(rendered.contains("\"uptime_secs\": 42"));
         assert!(rendered.contains("\"daemon_pid\": 999"));
         assert!(rendered.contains("\"total_messages\": 10"));
+        assert!(rendered.contains("\"semantic_runtime\""));
     }
 
     #[test]
@@ -217,6 +231,7 @@ mod tests {
                 daemon_build_id: Some("0.4.6:/tmp/mxr:1:1"),
                 protocol_version: IPC_PROTOCOL_VERSION,
                 repair_required: true,
+                semantic_runtime: None,
                 restart_required: false,
                 health_class: DaemonHealthClass::RepairRequired,
             },

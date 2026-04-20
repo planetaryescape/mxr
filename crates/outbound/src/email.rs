@@ -1,13 +1,22 @@
-use crate::attachments::{resolve_attachment_paths, AttachmentError};
+use crate::attachments::{load_attachment_paths_sync, AttachmentLoadError, LoadedAttachment};
 use crate::render::render_markdown;
 use lettre::message::{header::ContentType, Attachment, Mailbox, Message, MultiPart, SinglePart};
 use mxr_core::types::{Address, Draft};
-use std::fs;
 
 pub fn build_message(
     draft: &Draft,
     from: &Address,
     keep_bcc: bool,
+) -> Result<Message, EmailBuildError> {
+    let attachments = load_attachment_paths_sync(&draft.attachments)?;
+    build_message_with_attachments(draft, from, keep_bcc, &attachments)
+}
+
+pub fn build_message_with_attachments(
+    draft: &Draft,
+    from: &Address,
+    keep_bcc: bool,
+    attachments: &[LoadedAttachment],
 ) -> Result<Message, EmailBuildError> {
     let from_mailbox = to_mailbox(from)?;
     let message_id_domain = from
@@ -77,18 +86,19 @@ pub fn build_message(
                 .body(rendered.html),
         );
 
-    let body = if draft.attachments.is_empty() {
+    let body = if attachments.is_empty() {
         alternative
     } else {
         let mut mixed = MultiPart::mixed().multipart(alternative);
-        for attachment in resolve_attachment_paths(&draft.attachments)? {
+        for attachment in attachments {
             let content_type = ContentType::parse(&attachment.mime_type).unwrap_or(
                 ContentType::parse("application/octet-stream")
                     .expect("static octet-stream content type should parse"),
             );
-            let bytes = fs::read(&attachment.path)?;
-            mixed =
-                mixed.singlepart(Attachment::new(attachment.filename).body(bytes, content_type));
+            mixed = mixed.singlepart(
+                Attachment::new(attachment.filename.clone())
+                    .body(attachment.bytes.clone(), content_type),
+            );
         }
         mixed
     };
@@ -117,9 +127,7 @@ pub enum EmailBuildError {
     #[error("invalid address: {0}")]
     InvalidAddress(String),
     #[error("attachment error: {0}")]
-    Attachment(#[from] AttachmentError),
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
+    Attachment(#[from] AttachmentLoadError),
     #[error("failed to build message: {0}")]
     Message(String),
 }

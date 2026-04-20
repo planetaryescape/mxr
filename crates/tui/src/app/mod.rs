@@ -2,6 +2,7 @@ mod actions;
 mod draw;
 mod input;
 use crate::action::{Action, PatternKind, ScreenContext, UiContext};
+use crate::async_result::SearchResultData;
 use crate::client::Client;
 use crate::input::InputHandler;
 use crate::terminal_images::{HtmlImageEntry, HtmlImageKey, TerminalImageSupport};
@@ -696,22 +697,27 @@ pub struct App {
     pub in_flight_html_image_asset_requests: HashSet<MessageId>,
     pub pending_thread_fetch: Option<mxr_core::ThreadId>,
     pub in_flight_thread_fetch: Option<mxr_core::ThreadId>,
+    pub thread_request_id: u64,
     pub pending_search: Option<PendingSearchRequest>,
     pub pending_search_count: Option<PendingSearchCountRequest>,
     pub pending_search_debounce: Option<PendingSearchDebounce>,
     pub mailbox_search_session_id: u64,
     pub search_active: bool,
     pub pending_rule_detail: Option<String>,
+    pub rule_detail_request_id: u64,
     pub pending_rule_history: Option<String>,
+    pub rule_history_request_id: u64,
     pub pending_rule_dry_run: Option<String>,
     pub pending_rule_delete: Option<String>,
     pub pending_rule_upsert: Option<serde_json::Value>,
     pub pending_rule_form_load: Option<String>,
+    pub rule_form_request_id: u64,
     pub pending_rule_form_save: bool,
     pub pending_bug_report: bool,
     pub pending_config_edit: bool,
     pub pending_log_open: bool,
     pub pending_diagnostics_details: Option<DiagnosticsPaneKind>,
+    pub pending_draft_cleanup: Vec<std::path::PathBuf>,
     pub pending_account_save: Option<mxr_protocol::AccountConfigData>,
     pub pending_account_test: Option<mxr_protocol::AccountConfigData>,
     pub pending_account_authorize: Option<(mxr_protocol::AccountConfigData, bool)>,
@@ -739,6 +745,8 @@ pub struct App {
     pub pending_all_envelopes_refresh: bool,
     pub pending_subscriptions_refresh: bool,
     pub pending_status_refresh: bool,
+    pub status_request_id: u64,
+    pub diagnostics_request_id: u64,
     pub desired_system_mailbox: Option<String>,
     pub status_message: Option<String>,
     pending_preview_read: Option<PendingPreviewRead>,
@@ -852,22 +860,27 @@ impl App {
             in_flight_html_image_asset_requests: HashSet::new(),
             pending_thread_fetch: None,
             in_flight_thread_fetch: None,
+            thread_request_id: 0,
             pending_search: None,
             pending_search_count: None,
             pending_search_debounce: None,
             mailbox_search_session_id: 0,
             search_active: false,
             pending_rule_detail: None,
+            rule_detail_request_id: 0,
             pending_rule_history: None,
+            rule_history_request_id: 0,
             pending_rule_dry_run: None,
             pending_rule_delete: None,
             pending_rule_upsert: None,
             pending_rule_form_load: None,
+            rule_form_request_id: 0,
             pending_rule_form_save: false,
             pending_bug_report: false,
             pending_config_edit: false,
             pending_log_open: false,
             pending_diagnostics_details: None,
+            pending_draft_cleanup: Vec::new(),
             pending_account_save: None,
             pending_account_test: None,
             pending_account_authorize: None,
@@ -893,6 +906,8 @@ impl App {
             pending_all_envelopes_refresh: false,
             pending_subscriptions_refresh: false,
             pending_status_refresh: false,
+            status_request_id: 0,
+            diagnostics_request_id: 0,
             desired_system_mailbox: None,
             status_message: None,
             pending_preview_read: None,
@@ -950,6 +965,16 @@ impl App {
                     .find(|env| env.id == row.representative.id)
             }),
         }
+    }
+
+    pub(crate) fn schedule_draft_cleanup(&mut self, path: std::path::PathBuf) {
+        if !self.pending_draft_cleanup.contains(&path) {
+            self.pending_draft_cleanup.push(path);
+        }
+    }
+
+    pub(crate) fn take_pending_draft_cleanup(&mut self) -> Vec<std::path::PathBuf> {
+        std::mem::take(&mut self.pending_draft_cleanup)
     }
 
     pub fn mail_list_rows(&self) -> Vec<MailListRow> {
@@ -1130,12 +1155,8 @@ impl App {
         }
     }
 
-    pub(crate) fn apply_search_page_results(
-        &mut self,
-        append: bool,
-        results: crate::SearchResultData,
-    ) {
-        let crate::SearchResultData {
+    pub(crate) fn apply_search_page_results(&mut self, append: bool, results: SearchResultData) {
+        let SearchResultData {
             envelopes,
             scores,
             has_more,

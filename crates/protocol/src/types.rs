@@ -515,6 +515,8 @@ pub enum ResponseData {
         daemon_build_id: Option<String>,
         #[serde(default)]
         repair_required: bool,
+        #[serde(default)]
+        semantic_runtime: Option<SemanticRuntimeMetrics>,
     },
     Pong,
     Ack,

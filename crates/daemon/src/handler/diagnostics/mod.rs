@@ -3,10 +3,12 @@ mod search_filter;
 
 use search_execute::execute_search;
 
-use super::{
+use super::helpers::recent_log_lines;
+use super::status_helpers::{
     build_account_sync_status, collect_doctor_report, collect_status_snapshot,
-    handle_export_search, handle_export_thread, protocol_event_entry, recent_log_lines,
-    HandlerResult,
+};
+use super::{
+    handle_export_search, handle_export_thread, helpers::protocol_event_entry, HandlerResult,
 };
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
@@ -52,8 +54,12 @@ pub(crate) async fn list_events(
     })
 }
 
-pub(crate) fn get_logs(limit: u32, level: Option<&str>) -> HandlerResult {
-    let lines = recent_log_lines(limit as usize, level).map_err(|e| e.to_string())?;
+pub(crate) async fn get_logs(
+    state: &Arc<AppState>,
+    limit: u32,
+    level: Option<&str>,
+) -> HandlerResult {
+    let lines = recent_log_lines(state, limit as usize, level).await?;
     Ok(ResponseData::LogLines { lines })
 }
 
@@ -204,8 +210,6 @@ pub(crate) async fn list_subscriptions(
 pub(crate) async fn semantic_status(state: &Arc<AppState>) -> HandlerResult {
     let snapshot = state
         .semantic
-        .lock()
-        .await
         .status_snapshot()
         .await
         .map_err(|e| e.to_string())?;
@@ -217,8 +221,6 @@ pub(crate) async fn enable_semantic(state: &Arc<AppState>, enabled: bool) -> Han
         let profile = state.config_snapshot().search.semantic.active_profile;
         state
             .semantic
-            .lock()
-            .await
             .use_profile(profile)
             .await
             .map_err(|e| e.to_string())?;
@@ -237,8 +239,6 @@ pub(crate) async fn install_semantic_profile(
 ) -> HandlerResult {
     state
         .semantic
-        .lock()
-        .await
         .install_profile(profile)
         .await
         .map_err(|e| e.to_string())?;
@@ -251,8 +251,6 @@ pub(crate) async fn use_semantic_profile(
 ) -> HandlerResult {
     state
         .semantic
-        .lock()
-        .await
         .use_profile(profile)
         .await
         .map_err(|e| e.to_string())?;
@@ -268,8 +266,6 @@ pub(crate) async fn use_semantic_profile(
 pub(crate) async fn reindex_semantic(state: &Arc<AppState>) -> HandlerResult {
     state
         .semantic
-        .lock()
-        .await
         .reindex_active()
         .await
         .map_err(|e| e.to_string())?;
@@ -344,6 +340,12 @@ pub(crate) async fn run_saved_search(
 pub(crate) async fn get_status(state: &Arc<AppState>) -> HandlerResult {
     let (accounts, total_messages, sync_statuses) = collect_status_snapshot(state).await?;
     let repair_required = crate::server::search_requires_repair(state, total_messages).await;
+    let semantic_runtime = state
+        .semantic
+        .status_snapshot()
+        .await
+        .ok()
+        .map(|snapshot| snapshot.runtime);
     Ok(ResponseData::Status {
         uptime_secs: state.uptime_secs(),
         accounts,
@@ -354,6 +356,7 @@ pub(crate) async fn get_status(state: &Arc<AppState>) -> HandlerResult {
         daemon_version: Some(crate::server::current_daemon_version().to_string()),
         daemon_build_id: Some(crate::server::current_build_id()),
         repair_required,
+        semantic_runtime,
     })
 }
 
@@ -370,9 +373,7 @@ pub(crate) async fn sync_now(
     if !outcome.upserted_message_ids.is_empty() {
         state
             .semantic
-            .lock()
-            .await
-            .ingest_messages(&outcome.upserted_message_ids)
+            .enqueue_ingest_messages(&outcome.upserted_message_ids)
             .await
             .map_err(|e| e.to_string())?;
     }
@@ -618,9 +619,8 @@ mod tests {
 
         let lexical_hits = state
             .search
-            .lock()
-            .await
             .search("rollback trigger", 10, 0, SortOrder::Relevance)
+            .await
             .unwrap();
         assert!(!lexical_hits.results.is_empty());
 
@@ -632,7 +632,17 @@ mod tests {
             .unwrap_or_default()
             .contains("Rollback trigger"));
 
-        let counts = state.store.collect_record_counts().await.unwrap();
+        let counts = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let counts = state.store.collect_record_counts().await.unwrap();
+                if counts.semantic_chunks > 0 {
+                    break counts;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("semantic chunks should be persisted in the background");
         assert!(counts.semantic_chunks > 0);
         assert_eq!(counts.semantic_embeddings, 0);
         assert!(state

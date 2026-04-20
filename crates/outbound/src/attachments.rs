@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+pub const DEFAULT_ATTACHMENT_LOAD_CONCURRENCY: usize = 4;
+
 pub fn resolve_attachments(paths: &[String]) -> Result<Vec<ResolvedAttachment>, AttachmentError> {
     paths.iter().map(|path| resolve_one_str(path)).collect()
 }
@@ -14,17 +16,66 @@ pub fn resolve_attachment_paths(
         .collect()
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ResolvedAttachment {
     pub path: PathBuf,
     pub filename: String,
     pub mime_type: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct LoadedAttachment {
+    pub filename: String,
+    pub mime_type: String,
+    pub bytes: Vec<u8>,
+}
+
+pub fn load_attachment_paths_sync(
+    paths: &[PathBuf],
+) -> Result<Vec<LoadedAttachment>, AttachmentLoadError> {
+    resolve_attachment_paths(paths)?
+        .into_iter()
+        .map(load_resolved_attachment_sync)
+        .collect()
+}
+
+pub async fn load_attachment_paths_async(
+    paths: &[PathBuf],
+) -> Result<Vec<LoadedAttachment>, AttachmentLoadError> {
+    load_attachment_paths_async_with_limit(paths, DEFAULT_ATTACHMENT_LOAD_CONCURRENCY).await
+}
+
+pub async fn load_attachment_paths_async_with_limit(
+    paths: &[PathBuf],
+    concurrency: usize,
+) -> Result<Vec<LoadedAttachment>, AttachmentLoadError> {
+    use futures::{stream, StreamExt};
+
+    let concurrency = concurrency.max(1);
+    stream::iter(
+        resolve_attachment_paths(paths)?
+            .into_iter()
+            .map(|attachment| async move { load_resolved_attachment_async(attachment).await }),
+    )
+    .buffered(concurrency)
+    .collect::<Vec<_>>()
+    .await
+    .into_iter()
+    .collect()
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AttachmentError {
     #[error("attachment not found: {0}")]
     NotFound(String),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum AttachmentLoadError {
+    #[error(transparent)]
+    Resolve(#[from] AttachmentError),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
 
 fn resolve_one_str(path_str: &str) -> Result<ResolvedAttachment, AttachmentError> {
@@ -68,6 +119,28 @@ fn resolve_one_path(path: &Path) -> Result<ResolvedAttachment, AttachmentError> 
         path,
         filename,
         mime_type,
+    })
+}
+
+fn load_resolved_attachment_sync(
+    attachment: ResolvedAttachment,
+) -> Result<LoadedAttachment, AttachmentLoadError> {
+    let bytes = std::fs::read(&attachment.path)?;
+    Ok(LoadedAttachment {
+        filename: attachment.filename,
+        mime_type: attachment.mime_type,
+        bytes,
+    })
+}
+
+async fn load_resolved_attachment_async(
+    attachment: ResolvedAttachment,
+) -> Result<LoadedAttachment, AttachmentLoadError> {
+    let bytes = tokio::fs::read(&attachment.path).await?;
+    Ok(LoadedAttachment {
+        filename: attachment.filename,
+        mime_type: attachment.mime_type,
+        bytes,
     })
 }
 

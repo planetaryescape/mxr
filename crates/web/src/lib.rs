@@ -206,6 +206,7 @@ async fn status(
             daemon_version,
             daemon_build_id,
             repair_required,
+            semantic_runtime,
         } => Ok(Json(serde_json::json!({
             "uptime_secs": uptime_secs,
             "accounts": accounts,
@@ -216,6 +217,7 @@ async fn status(
             "daemon_version": daemon_version,
             "daemon_build_id": daemon_build_id,
             "repair_required": repair_required,
+            "semantic_runtime": semantic_runtime,
         }))),
         _ => Err(BridgeError::UnexpectedResponse),
     }
@@ -640,7 +642,7 @@ async fn refresh_compose_session(
     Json(request): Json<ComposeSessionPathRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    let session = load_compose_session(Path::new(&request.draft_path))?;
+    let session = load_compose_session(Path::new(&request.draft_path)).await?;
     Ok(Json(json!({ "session": session })))
 }
 
@@ -652,8 +654,7 @@ async fn update_compose_session(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let path = Path::new(&request.draft_path);
-    let content =
-        std::fs::read_to_string(path).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let content = read_compose_file(path).await?;
     let (_existing_frontmatter, file_body) =
         parse_compose_file(&content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let body = request.body.unwrap_or(file_body);
@@ -670,8 +671,8 @@ async fn update_compose_session(
     };
     let rendered = render_compose_file(&updated, &body, context.as_deref())
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
-    std::fs::write(path, rendered).map_err(|error| BridgeError::Ipc(error.to_string()))?;
-    let session = load_compose_session(path)?;
+    write_compose_file(path, rendered).await?;
+    let session = load_compose_session(path).await?;
     Ok(Json(json!({ "session": session })))
 }
 
@@ -682,9 +683,9 @@ async fn send_compose_session(
     Json(request): Json<ComposeSessionSendRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id)?;
+    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
     let _ = ack_request(&state.config.socket_path, Request::SendDraft { draft }).await?;
-    let _ = std::fs::remove_file(&request.draft_path);
+    remove_compose_file(Path::new(&request.draft_path)).await?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -695,7 +696,7 @@ async fn save_compose_session(
     Json(request): Json<ComposeSessionSendRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    let draft = compose_draft_from_file(&request.draft_path, &request.account_id)?;
+    let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
     let _ = ack_request(
         &state.config.socket_path,
         Request::SaveDraftToServer { draft },
@@ -711,7 +712,7 @@ async fn discard_compose_session(
     Json(request): Json<ComposeSessionPathRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    let _ = std::fs::remove_file(&request.draft_path);
+    remove_compose_file(Path::new(&request.draft_path)).await?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -1382,9 +1383,11 @@ async fn create_compose_session(
     } else {
         from
     };
-    let (draft_path, resolved_cursor_line) = mxr_compose::create_draft_file(kind, &compose_from)
-        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
-    let mut session = load_compose_session(&draft_path)?;
+    let (draft_path, resolved_cursor_line) =
+        mxr_compose::create_draft_file_async(kind, &compose_from)
+            .await
+            .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    let mut session = load_compose_session(&draft_path).await?;
     if let Some(cursor_line) = cursor_line {
         session["cursorLine"] = json!(cursor_line);
     } else {
@@ -1405,9 +1408,8 @@ fn compose_kind_name(kind: &ComposeSessionKindRequest) -> &'static str {
     }
 }
 
-fn load_compose_session(path: &Path) -> Result<serde_json::Value, BridgeError> {
-    let raw_content =
-        std::fs::read_to_string(path).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+async fn load_compose_session(path: &Path) -> Result<serde_json::Value, BridgeError> {
+    let raw_content = read_compose_file(path).await?;
     let (frontmatter, body) =
         parse_compose_file(&raw_content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let rendered = render_markdown(&body);
@@ -1474,9 +1476,8 @@ fn extract_references(content: &str) -> Result<Vec<String>, BridgeError> {
     Ok(frontmatter.references)
 }
 
-fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<Draft, BridgeError> {
-    let raw_content =
-        std::fs::read_to_string(draft_path).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<Draft, BridgeError> {
+    let raw_content = read_compose_file(Path::new(draft_path)).await?;
     let (frontmatter, body) =
         parse_compose_file(&raw_content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let issues = validate_draft(&frontmatter, &body);
@@ -1509,6 +1510,24 @@ fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<Draft, 
         created_at: now,
         updated_at: now,
     })
+}
+
+async fn read_compose_file(path: &Path) -> Result<String, BridgeError> {
+    mxr_compose::read_draft_file_async(path)
+        .await
+        .map_err(|error| BridgeError::Ipc(error.to_string()))
+}
+
+async fn write_compose_file(path: &Path, content: String) -> Result<(), BridgeError> {
+    mxr_compose::write_draft_file_async(path, &content)
+        .await
+        .map_err(|error| BridgeError::Ipc(error.to_string()))
+}
+
+async fn remove_compose_file(path: &Path) -> Result<(), BridgeError> {
+    mxr_compose::delete_draft_file_async(path)
+        .await
+        .map_err(|error| BridgeError::Ipc(error.to_string()))
 }
 
 async fn default_account(socket_path: &Path) -> Result<(AccountId, String), BridgeError> {
@@ -2054,6 +2073,7 @@ mod tests {
                         daemon_version: Some("0.4.3".into()),
                         daemon_build_id: Some("build-123".into()),
                         repair_required: false,
+                        semantic_runtime: None,
                     },
                 }),
                 _ => None,
@@ -2303,6 +2323,7 @@ mod tests {
                         daemon_version: Some("0.4.4".into()),
                         daemon_build_id: Some("build-123".into()),
                         repair_required: false,
+                        semantic_runtime: None,
                     },
                 }),
                 Request::ListLabels { account_id: None } => Some(Response::Ok {
@@ -2396,6 +2417,7 @@ mod tests {
                         daemon_version: Some("0.4.4".into()),
                         daemon_build_id: Some("build-123".into()),
                         repair_required: false,
+                        semantic_runtime: None,
                     },
                 }),
                 Request::ListLabels { account_id: None } => Some(Response::Ok {
@@ -2974,6 +2996,113 @@ mod tests {
         assert_eq!(json["session"]["frontmatter"]["to"], "sender@example.com");
         assert_eq!(json["session"]["frontmatter"]["subject"], "Re: Mailroom");
         assert_eq!(json["session"]["issues"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn compose_session_update_refresh_and_discard_round_trip_draft() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let account = sample_account(&AccountId::new());
+        let account_email = account.email.clone();
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |request| match request {
+                Request::ListAccounts => Some(Response::Ok {
+                    data: ResponseData::Accounts {
+                        accounts: vec![account.clone()],
+                    },
+                }),
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+        let client = reqwest::Client::new();
+
+        let started: serde_json::Value = client
+            .post(format!("http://{addr}/compose/session"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "kind": "new",
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        let draft_path = started["session"]["draftPath"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let updated: serde_json::Value = client
+            .post(format!("http://{addr}/compose/session/update"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "draft_path": draft_path,
+                "to": "alice@example.com",
+                "cc": "",
+                "bcc": "",
+                "subject": "Updated subject",
+                "from": account_email,
+                "attach": [],
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(updated["session"]["frontmatter"]["to"], "alice@example.com");
+        assert_eq!(
+            updated["session"]["frontmatter"]["subject"],
+            "Updated subject"
+        );
+
+        let refreshed: serde_json::Value = client
+            .post(format!("http://{addr}/compose/session/refresh"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "draft_path": draft_path,
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(
+            refreshed["session"]["frontmatter"]["to"],
+            "alice@example.com"
+        );
+        assert_eq!(
+            refreshed["session"]["frontmatter"]["subject"],
+            "Updated subject"
+        );
+
+        let discard_response = client
+            .post(format!("http://{addr}/compose/session/discard"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "draft_path": draft_path,
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(discard_response.status(), reqwest::StatusCode::OK);
+        assert!(
+            !std::path::Path::new(refreshed["session"]["draftPath"].as_str().unwrap()).exists()
+        );
     }
 
     #[tokio::test]

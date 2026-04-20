@@ -140,6 +140,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn count_messages_grouped_by_account_batches_totals() {
+        let store = Store::in_memory().await.unwrap();
+        let first = test_account();
+        let mut second = test_account();
+        second.id = AccountId::new();
+        second.name = "Second".into();
+        second.email = "second@example.com".into();
+        store.insert_account(&first).await.unwrap();
+        store.insert_account(&second).await.unwrap();
+
+        let first_message = test_envelope(&first.id);
+        let mut second_message = test_envelope(&second.id);
+        second_message.id = MessageId::new();
+        second_message.provider_id = "second-provider".into();
+        let mut third_message = test_envelope(&second.id);
+        third_message.id = MessageId::new();
+        third_message.provider_id = "third-provider".into();
+        store.upsert_envelope(&first_message).await.unwrap();
+        store.upsert_envelope(&second_message).await.unwrap();
+        store.upsert_envelope(&third_message).await.unwrap();
+
+        let counts = store.count_messages_grouped_by_account().await.unwrap();
+
+        assert_eq!(counts.get(&first.id), Some(&1));
+        assert_eq!(counts.get(&second.id), Some(&2));
+    }
+
+    #[tokio::test]
+    async fn list_sync_cursors_returns_all_persisted_cursors() {
+        let store = Store::in_memory().await.unwrap();
+        let first = test_account();
+        let mut second = test_account();
+        second.id = AccountId::new();
+        second.name = "Second".into();
+        second.email = "second@example.com".into();
+        store.insert_account(&first).await.unwrap();
+        store.insert_account(&second).await.unwrap();
+
+        let first_cursor = SyncCursor::Gmail { history_id: 42 };
+        let second_cursor = SyncCursor::GmailBackfill {
+            history_id: 77,
+            page_token: "page-2".into(),
+        };
+        store
+            .set_sync_cursor(&first.id, &first_cursor)
+            .await
+            .unwrap();
+        store
+            .set_sync_cursor(&second.id, &second_cursor)
+            .await
+            .unwrap();
+
+        let cursors = store.list_sync_cursors().await.unwrap();
+
+        assert!(matches!(
+            cursors.get(&first.id),
+            Some(SyncCursor::Gmail { history_id: 42 })
+        ));
+        assert!(matches!(
+            cursors.get(&second.id),
+            Some(SyncCursor::GmailBackfill {
+                history_id: 77,
+                page_token
+            }) if page_token == "page-2"
+        ));
+    }
+
+    #[tokio::test]
     async fn list_envelopes_by_ids_roundtrip() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();

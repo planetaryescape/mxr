@@ -1,14 +1,22 @@
+use crate::ipc::{ipc_call, IpcRequest};
 use crate::AsyncResult;
 use image::DynamicImage;
 use mxr_core::id::MessageId;
 use mxr_core::types::HtmlImageAsset;
 use mxr_core::MxrError;
+use mxr_protocol::{Request, Response, ResponseData};
 use ratatui::layout::Rect;
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::thread::{ResizeRequest, ThreadProtocol};
 use ratatui_image::Resize;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
+
+const HTML_IMAGE_ASSET_CONCURRENCY: usize = 4;
+const HTML_IMAGE_DECODE_CONCURRENCY: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HtmlImageKey {
@@ -19,6 +27,16 @@ pub struct HtmlImageKey {
 pub struct HtmlImageEntry {
     pub asset: HtmlImageAsset,
     pub render: HtmlImageRenderState,
+}
+
+pub(crate) struct HtmlImageAssetRequest {
+    pub(crate) message_id: MessageId,
+    pub(crate) allow_remote: bool,
+}
+
+pub(crate) struct HtmlImageDecodeRequest {
+    pub(crate) key: HtmlImageKey,
+    pub(crate) path: PathBuf,
 }
 
 pub enum HtmlImageRenderState {
@@ -110,18 +128,112 @@ impl HtmlImageEntry {
     }
 }
 
-pub(crate) fn spawn_image_decode(
-    key: HtmlImageKey,
-    path: PathBuf,
+pub(crate) fn spawn_html_image_asset_worker(
+    bg: mpsc::UnboundedSender<IpcRequest>,
     result_tx: mpsc::UnboundedSender<AsyncResult>,
-) {
+) -> mpsc::UnboundedSender<HtmlImageAssetRequest> {
+    let (tx, mut rx) = mpsc::unbounded_channel::<HtmlImageAssetRequest>();
     tokio::spawn(async move {
-        let result = tokio::task::spawn_blocking(move || decode_image(&path))
-            .await
-            .map_err(|error| MxrError::Ipc(error.to_string()))
-            .and_then(|result| result);
-        let _ = result_tx.send(AsyncResult::HtmlImageDecoded { key, result });
+        let semaphore = Arc::new(Semaphore::new(HTML_IMAGE_ASSET_CONCURRENCY));
+        let mut join_set = JoinSet::new();
+        let mut input_closed = false;
+
+        loop {
+            if input_closed && join_set.is_empty() {
+                break;
+            }
+
+            tokio::select! {
+                maybe_request = rx.recv(), if !input_closed => {
+                    match maybe_request {
+                        Some(request) => {
+                            let Ok(permit) = semaphore.clone().acquire_owned().await else {
+                                break;
+                            };
+                            let bg = bg.clone();
+                            join_set.spawn(async move {
+                                let _permit = permit;
+                                let resp = ipc_call(
+                                    &bg,
+                                    Request::GetHtmlImageAssets {
+                                        message_id: request.message_id.clone(),
+                                        allow_remote: request.allow_remote,
+                                    },
+                                )
+                                .await;
+                                let result = match resp {
+                                    Ok(Response::Ok {
+                                        data: ResponseData::HtmlImageAssets { assets, .. },
+                                    }) => Ok(assets),
+                                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                                    Err(error) => Err(error),
+                                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                                };
+                                AsyncResult::HtmlImageAssets {
+                                    message_id: request.message_id,
+                                    allow_remote: request.allow_remote,
+                                    result,
+                                }
+                            });
+                        }
+                        None => input_closed = true,
+                    }
+                }
+                joined = join_set.join_next(), if !join_set.is_empty() => {
+                    if let Some(Ok(result)) = joined {
+                        let _ = result_tx.send(result);
+                    }
+                }
+            }
+        }
     });
+    tx
+}
+
+pub(crate) fn spawn_html_image_decode_worker(
+    result_tx: mpsc::UnboundedSender<AsyncResult>,
+) -> mpsc::UnboundedSender<HtmlImageDecodeRequest> {
+    let (tx, mut rx) = mpsc::unbounded_channel::<HtmlImageDecodeRequest>();
+    tokio::spawn(async move {
+        let semaphore = Arc::new(Semaphore::new(HTML_IMAGE_DECODE_CONCURRENCY));
+        let mut join_set = JoinSet::new();
+        let mut input_closed = false;
+
+        loop {
+            if input_closed && join_set.is_empty() {
+                break;
+            }
+
+            tokio::select! {
+                maybe_request = rx.recv(), if !input_closed => {
+                    match maybe_request {
+                        Some(request) => {
+                            let Ok(permit) = semaphore.clone().acquire_owned().await else {
+                                break;
+                            };
+                            join_set.spawn(async move {
+                                let _permit = permit;
+                                let key = request.key;
+                                let path = request.path;
+                                let result = tokio::task::spawn_blocking(move || decode_image(&path))
+                                    .await
+                                    .map_err(|error| MxrError::Ipc(error.to_string()))
+                                    .and_then(|result| result);
+                                AsyncResult::HtmlImageDecoded { key, result }
+                            });
+                        }
+                        None => input_closed = true,
+                    }
+                }
+                joined = join_set.join_next(), if !join_set.is_empty() => {
+                    if let Some(Ok(result)) = joined {
+                        let _ = result_tx.send(result);
+                    }
+                }
+            }
+        }
+    });
+    tx
 }
 
 fn decode_image(path: &PathBuf) -> Result<DynamicImage, MxrError> {

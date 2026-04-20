@@ -67,8 +67,10 @@ export function useEventStream(
   callbacksRef.current = callbacks;
 
   const connect = useCallback(() => {
-    if (!baseUrl || !authToken) return;
-    if (typeof WebSocket === "undefined") return;
+    if (!baseUrl || !authToken || typeof WebSocket === "undefined") {
+      setStatus("disconnected");
+      return;
+    }
 
     // Convert http:// to ws://
     const wsUrl = baseUrl.replace(/^http/, "ws") + `/events?token=${authToken}`;

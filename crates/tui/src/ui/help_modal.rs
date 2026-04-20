@@ -180,7 +180,10 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 title: "Search Page".into(),
                 entries: vec![
                     ("Enter".into(), "Run search now".into()),
-                    ("Tab".into(), "Cycle lexical / hybrid / semantic mode".into()),
+                    (
+                        "Tab".into(),
+                        "Cycle lexical / hybrid / semantic mode".into(),
+                    ),
                     ("Esc".into(), "Stop editing".into()),
                 ],
             }]
@@ -193,7 +196,10 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                     ("o / Enter / →".into(), "Open selected message".into()),
                     ("x".into(), "Select result".into()),
                     ("Tab".into(), "Switch results and preview".into()),
-                    ("j / k".into(), "Move result cursor / update open message".into()),
+                    (
+                        "j / k".into(),
+                        "Move result cursor / update open message".into(),
+                    ),
                     ("Esc".into(), "Return to mailbox".into()),
                 ],
             }]

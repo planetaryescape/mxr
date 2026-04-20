@@ -1,15 +1,16 @@
 use mxr_core::id::AccountId;
 use mxr_core::*;
 use mxr_protocol::IpcMessage;
-use mxr_search::SearchIndex;
-use mxr_semantic::SemanticEngine;
+use mxr_search::{SearchIndex, SearchServiceHandle};
+use mxr_semantic::{SemanticEngine, SemanticServiceHandle};
 use mxr_store::Store;
 use mxr_sync::SyncEngine;
 use parking_lot::{Mutex as ParkingMutex, RwLock};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Instant;
-use tokio::sync::{broadcast, Mutex};
+use std::time::{Duration, Instant};
+use tokio::sync::{broadcast, watch, OwnedSemaphorePermit, Semaphore};
+use tokio::task::JoinHandle;
 
 pub(crate) struct ProviderSetup {
     pub providers: HashMap<AccountId, Arc<dyn MailSyncProvider>>,
@@ -25,16 +26,97 @@ pub(crate) struct ProviderRuntime {
     pub default_send_provider: Option<Arc<dyn MailSendProvider>>,
 }
 
+struct NamedTaskHandle {
+    name: String,
+    handle: JoinHandle<()>,
+}
+
+#[derive(Default)]
+struct RuntimeTasks {
+    search_worker: ParkingMutex<Option<JoinHandle<()>>>,
+    semantic_worker: ParkingMutex<Option<JoinHandle<()>>>,
+    sync_loops: ParkingMutex<HashMap<AccountId, JoinHandle<()>>>,
+    snooze_loop: ParkingMutex<Option<JoinHandle<()>>>,
+    startup_maintenance: ParkingMutex<Option<JoinHandle<()>>>,
+}
+
+impl RuntimeTasks {
+    fn set_search_worker(&self, handle: JoinHandle<()>) {
+        *self.search_worker.lock() = Some(handle);
+    }
+
+    fn set_semantic_worker(&self, handle: JoinHandle<()>) {
+        *self.semantic_worker.lock() = Some(handle);
+    }
+
+    fn register_sync_loop(&self, account_id: AccountId, handle: JoinHandle<()>) {
+        self.sync_loops.lock().insert(account_id, handle);
+    }
+
+    fn finish_sync_loop(&self, account_id: &AccountId) {
+        self.sync_loops.lock().remove(account_id);
+    }
+
+    fn set_snooze_loop(&self, handle: JoinHandle<()>) {
+        *self.snooze_loop.lock() = Some(handle);
+    }
+
+    fn set_startup_maintenance(&self, handle: JoinHandle<()>) {
+        *self.startup_maintenance.lock() = Some(handle);
+    }
+
+    fn take_all(&self) -> Vec<NamedTaskHandle> {
+        let mut handles = Vec::new();
+
+        if let Some(handle) = self.search_worker.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "search_worker".to_string(),
+                handle,
+            });
+        }
+        if let Some(handle) = self.semantic_worker.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "semantic_worker".to_string(),
+                handle,
+            });
+        }
+        if let Some(handle) = self.snooze_loop.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "snooze_loop".to_string(),
+                handle,
+            });
+        }
+        if let Some(handle) = self.startup_maintenance.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "startup_maintenance".to_string(),
+                handle,
+            });
+        }
+
+        for (account_id, handle) in self.sync_loops.lock().drain() {
+            handles.push(NamedTaskHandle {
+                name: format!("sync_loop:{account_id}"),
+                handle,
+            });
+        }
+
+        handles
+    }
+}
+
 pub struct AppState {
     pub store: Arc<Store>,
-    pub search: Arc<Mutex<SearchIndex>>,
-    pub semantic: Arc<Mutex<SemanticEngine>>,
+    pub search: SearchServiceHandle,
+    pub semantic: SemanticServiceHandle,
     pub sync_engine: Arc<SyncEngine>,
     runtime: RwLock<ProviderRuntime>,
     sync_loop_accounts: ParkingMutex<HashSet<AccountId>>,
     pub event_tx: broadcast::Sender<IpcMessage>,
     pub start_time: Instant,
     config: RwLock<mxr_config::MxrConfig>,
+    shutdown_tx: watch::Sender<bool>,
+    runtime_tasks: RuntimeTasks,
+    admin_blocking: Arc<Semaphore>,
 }
 
 impl AppState {
@@ -48,17 +130,23 @@ impl AppState {
         std::fs::create_dir_all(&index_path)?;
 
         let store = Arc::new(Store::new(&db_path).await?);
-        let search = Arc::new(Mutex::new(open_search_index(&index_path, &store).await?));
-        let semantic = Arc::new(Mutex::new(SemanticEngine::new(
+        let runtime_tasks = RuntimeTasks::default();
+        let (search, search_worker) =
+            SearchServiceHandle::start(open_search_index(&index_path, &store).await?);
+        runtime_tasks.set_search_worker(search_worker);
+        let (semantic, semantic_worker) = SemanticServiceHandle::start(SemanticEngine::new(
             store.clone(),
             &data_dir,
             config.search.semantic.clone(),
-        )));
+        ));
+        runtime_tasks.set_semantic_worker(semantic_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
         let provider_setup = Self::create_providers_from_config(&config, &store).await?;
 
         let (event_tx, _) = broadcast::channel(256);
+        let (shutdown_tx, _) = watch::channel(false);
+        let admin_blocking = Arc::new(Semaphore::new(2));
 
         Ok(Self {
             store,
@@ -75,6 +163,9 @@ impl AppState {
             event_tx,
             start_time: Instant::now(),
             config: RwLock::new(config),
+            shutdown_tx,
+            runtime_tasks,
+            admin_blocking,
         })
     }
 
@@ -264,6 +355,78 @@ impl AppState {
         self.config_snapshot().general.sync_interval
     }
 
+    pub fn shutdown_receiver(&self) -> watch::Receiver<bool> {
+        self.shutdown_tx.subscribe()
+    }
+
+    pub fn shutdown_requested(&self) -> bool {
+        *self.shutdown_tx.borrow()
+    }
+
+    pub fn request_shutdown(&self) {
+        self.shutdown_tx.send_replace(true);
+    }
+
+    pub fn register_sync_loop_handle(&self, account_id: AccountId, handle: JoinHandle<()>) {
+        self.runtime_tasks.register_sync_loop(account_id, handle);
+    }
+
+    pub fn finish_sync_loop(&self, account_id: &AccountId) {
+        self.sync_loop_accounts.lock().remove(account_id);
+        self.runtime_tasks.finish_sync_loop(account_id);
+    }
+
+    pub fn register_snooze_loop(&self, handle: JoinHandle<()>) {
+        self.runtime_tasks.set_snooze_loop(handle);
+    }
+
+    pub fn register_startup_maintenance(&self, handle: JoinHandle<()>) {
+        self.runtime_tasks.set_startup_maintenance(handle);
+    }
+
+    pub async fn shutdown_runtime_tasks(&self, timeout: Duration) {
+        let drain_started = Instant::now();
+        self.request_shutdown();
+
+        if let Err(error) = self.search.request_shutdown().await {
+            tracing::warn!("search worker shutdown signal failed: {error}");
+        }
+        if let Err(error) = self.semantic.request_shutdown().await {
+            tracing::warn!("semantic worker shutdown signal failed: {error}");
+        }
+
+        let deadline = Instant::now() + timeout;
+        for task in self.runtime_tasks.take_all() {
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                tracing::warn!(task = %task.name, "runtime task drain timed out");
+                continue;
+            };
+
+            match tokio::time::timeout(remaining, task.handle).await {
+                Ok(Ok(())) => tracing::trace!(task = %task.name, "runtime task stopped"),
+                Ok(Err(error)) => {
+                    tracing::warn!(task = %task.name, "runtime task join failed: {error}")
+                }
+                Err(_) => tracing::warn!(task = %task.name, "runtime task drain timed out"),
+            }
+        }
+
+        tracing::info!(
+            elapsed_ms = drain_started.elapsed().as_secs_f64() * 1000.0,
+            "daemon shutdown drain completed"
+        );
+    }
+
+    pub async fn acquire_admin_blocking_permit(
+        &self,
+    ) -> std::result::Result<OwnedSemaphorePermit, String> {
+        self.admin_blocking
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| "admin blocking executor unavailable".to_string())
+    }
+
     pub async fn mutate_config<F>(
         &self,
         mutator: F,
@@ -275,9 +438,9 @@ impl AppState {
         mutator(&mut config);
         mxr_config::save_config(&config).map_err(|e| e.to_string())?;
         self.semantic
-            .lock()
+            .apply_config(config.search.semantic.clone())
             .await
-            .apply_config(config.search.semantic.clone());
+            .map_err(|e| e.to_string())?;
         *self.config.write() = config.clone();
         Ok(config)
     }
@@ -285,9 +448,9 @@ impl AppState {
     #[cfg(test)]
     pub async fn set_config_for_test(&self, config: mxr_config::MxrConfig) {
         self.semantic
-            .lock()
+            .apply_config(config.search.semantic.clone())
             .await
-            .apply_config(config.search.semantic.clone());
+            .expect("apply semantic config");
         *self.config.write() = config;
     }
 
@@ -384,9 +547,9 @@ impl AppState {
             };
         }
         self.semantic
-            .lock()
+            .apply_config(config.search.semantic.clone())
             .await
-            .apply_config(config.search.semantic.clone());
+            .map_err(|e| e.to_string())?;
         *self.config.write() = config;
         crate::loops::spawn_sync_loops(self.clone());
         Ok(())
@@ -410,12 +573,15 @@ impl AppState {
         let mut config = mxr_config::MxrConfig::default();
         config.general.attachment_dir = test_attachment_dir();
         let store = Arc::new(Store::in_memory().await?);
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
-        let semantic = Arc::new(Mutex::new(SemanticEngine::new(
+        let runtime_tasks = RuntimeTasks::default();
+        let (search, search_worker) = SearchServiceHandle::start(SearchIndex::in_memory()?);
+        runtime_tasks.set_search_worker(search_worker);
+        let (semantic, semantic_worker) = SemanticServiceHandle::start(SemanticEngine::new(
             store.clone(),
             &std::env::temp_dir(),
             config.search.semantic.clone(),
-        )));
+        ));
+        runtime_tasks.set_semantic_worker(semantic_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
         store.insert_account(&account).await?;
@@ -430,6 +596,8 @@ impl AppState {
         }
 
         let (event_tx, _) = broadcast::channel(256);
+        let (shutdown_tx, _) = watch::channel(false);
+        let admin_blocking = Arc::new(Semaphore::new(2));
 
         Ok(Self {
             store,
@@ -446,6 +614,9 @@ impl AppState {
             event_tx,
             start_time: Instant::now(),
             config: RwLock::new(config),
+            shutdown_tx,
+            runtime_tasks,
+            admin_blocking,
         })
     }
 
@@ -454,14 +625,19 @@ impl AppState {
         let mut config = mxr_config::MxrConfig::default();
         config.general.attachment_dir = test_attachment_dir();
         let store = Arc::new(Store::in_memory().await?);
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
-        let semantic = Arc::new(Mutex::new(SemanticEngine::new(
+        let runtime_tasks = RuntimeTasks::default();
+        let (search, search_worker) = SearchServiceHandle::start(SearchIndex::in_memory()?);
+        runtime_tasks.set_search_worker(search_worker);
+        let (semantic, semantic_worker) = SemanticServiceHandle::start(SemanticEngine::new(
             store.clone(),
             &std::env::temp_dir(),
             config.search.semantic.clone(),
-        )));
+        ));
+        runtime_tasks.set_semantic_worker(semantic_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
         let (event_tx, _) = broadcast::channel(256);
+        let (shutdown_tx, _) = watch::channel(false);
+        let admin_blocking = Arc::new(Semaphore::new(2));
 
         Ok(Self {
             store,
@@ -478,6 +654,9 @@ impl AppState {
             event_tx,
             start_time: Instant::now(),
             config: RwLock::new(config),
+            shutdown_tx,
+            runtime_tasks,
+            admin_blocking,
         })
     }
 
@@ -487,12 +666,15 @@ impl AppState {
         let mut config = mxr_config::MxrConfig::default();
         config.general.attachment_dir = test_attachment_dir();
         let store = Arc::new(Store::in_memory().await?);
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory()?));
-        let semantic = Arc::new(Mutex::new(SemanticEngine::new(
+        let runtime_tasks = RuntimeTasks::default();
+        let (search, search_worker) = SearchServiceHandle::start(SearchIndex::in_memory()?);
+        runtime_tasks.set_search_worker(search_worker);
+        let (semantic, semantic_worker) = SemanticServiceHandle::start(SemanticEngine::new(
             store.clone(),
             &std::env::temp_dir(),
             config.search.semantic.clone(),
-        )));
+        ));
+        runtime_tasks.set_semantic_worker(semantic_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
         let account_id = AccountId::new();
@@ -519,6 +701,8 @@ impl AppState {
         send_providers.insert(account_id, fake.clone() as Arc<dyn MailSendProvider>);
 
         let (event_tx, _) = broadcast::channel(256);
+        let (shutdown_tx, _) = watch::channel(false);
+        let admin_blocking = Arc::new(Semaphore::new(2));
 
         Ok((
             Self {
@@ -536,6 +720,9 @@ impl AppState {
                 event_tx,
                 start_time: Instant::now(),
                 config: RwLock::new(config),
+                shutdown_tx,
+                runtime_tasks,
+                admin_blocking,
             },
             fake,
         ))

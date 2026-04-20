@@ -1,6 +1,6 @@
+use crate::app::{self, App};
 use mxr_config::load_config;
 use mxr_core::MxrError;
-use crate::app::{self, App};
 
 pub(crate) fn edit_tui_config(app: &mut App) -> Result<String, MxrError> {
     let config_path = mxr_config::config_file_path();
@@ -11,8 +11,7 @@ pub(crate) fn edit_tui_config(app: &mut App) -> Result<String, MxrError> {
             .map_err(|error| MxrError::Ipc(error.to_string()))?;
     }
 
-    let editor =
-        mxr_compose::editor::resolve_editor(current_config.general.editor.as_deref());
+    let editor = mxr_compose::editor::resolve_editor(current_config.general.editor.as_deref());
     let status = std::process::Command::new(&editor)
         .arg(&config_path)
         .status()
@@ -42,7 +41,10 @@ pub(crate) fn open_tui_log_file() -> Result<String, MxrError> {
     let editor = load_config()
         .ok()
         .and_then(|config| config.general.editor)
-        .map_or_else(|| mxr_compose::editor::resolve_editor(None), |editor| mxr_compose::editor::resolve_editor(Some(editor.as_str())));
+        .map_or_else(
+            || mxr_compose::editor::resolve_editor(None),
+            |editor| mxr_compose::editor::resolve_editor(Some(editor.as_str())),
+        );
     let status = std::process::Command::new(&editor)
         .arg(&log_path)
         .status()
@@ -67,7 +69,10 @@ pub(crate) fn open_temp_text_buffer(name: &str, content: &str) -> Result<String,
     let editor = load_config()
         .ok()
         .and_then(|config| config.general.editor)
-        .map_or_else(|| mxr_compose::editor::resolve_editor(None), |editor| mxr_compose::editor::resolve_editor(Some(editor.as_str())));
+        .map_or_else(
+            || mxr_compose::editor::resolve_editor(None),
+            |editor| mxr_compose::editor::resolve_editor(Some(editor.as_str())),
+        );
     let status = std::process::Command::new(&editor)
         .arg(&path)
         .status()

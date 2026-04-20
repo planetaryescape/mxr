@@ -10,10 +10,13 @@ mod tests {
     use mxr_core::id::*;
     use mxr_core::types::*;
     use mxr_core::{MailSyncProvider, MxrError, SyncCapabilities};
-    use mxr_search::SearchIndex;
+    use mxr_search::{SearchIndex, SearchServiceHandle};
     use mxr_store::Store;
     use std::sync::Arc;
-    use tokio::sync::Mutex;
+
+    fn in_memory_search() -> SearchServiceHandle {
+        SearchServiceHandle::start(SearchIndex::in_memory().unwrap()).0
+    }
 
     /// A provider that always returns errors from sync_messages, for testing error handling.
     struct ErrorProvider {
@@ -394,7 +397,7 @@ mod tests {
     #[tokio::test]
     async fn delta_sync_applies_label_additions() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -451,7 +454,7 @@ mod tests {
     #[tokio::test]
     async fn sync_rethreads_messages_when_provider_lacks_native_thread_ids() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search);
 
         let account_id = AccountId::new();
@@ -539,7 +542,7 @@ mod tests {
     #[tokio::test]
     async fn delta_sync_applies_label_removals() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -598,7 +601,7 @@ mod tests {
     #[tokio::test]
     async fn delta_sync_handles_unknown_provider_message() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -654,7 +657,7 @@ mod tests {
     #[tokio::test]
     async fn sync_populates_store_and_search() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -676,9 +679,8 @@ mod tests {
 
         // Verify search
         let results = search
-            .lock()
-            .await
             .search("deployment", 10, 0, SortOrder::DateDesc)
+            .await
             .unwrap();
         assert!(!results.has_more);
         assert!(!results.results.is_empty());
@@ -689,7 +691,7 @@ mod tests {
     #[tokio::test]
     async fn bodies_stored_eagerly_during_sync() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -721,7 +723,7 @@ mod tests {
     #[tokio::test]
     async fn snooze_wake() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -759,7 +761,7 @@ mod tests {
     #[tokio::test]
     async fn cursor_persistence() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -786,7 +788,7 @@ mod tests {
     #[tokio::test]
     async fn sync_error_does_not_crash() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -816,7 +818,7 @@ mod tests {
     #[tokio::test]
     async fn label_counts_after_sync() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -847,7 +849,7 @@ mod tests {
     #[tokio::test]
     async fn list_envelopes_by_label_returns_results() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -901,7 +903,7 @@ mod tests {
     #[tokio::test]
     async fn list_envelopes_by_sent_label_may_be_empty() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -955,7 +957,7 @@ mod tests {
     #[tokio::test]
     async fn progressive_loading_chunks() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -977,9 +979,8 @@ mod tests {
 
         // Verify search index has results for known fixture terms
         let results = search
-            .lock()
-            .await
             .search("deployment", 10, 0, SortOrder::DateDesc)
+            .await
             .unwrap();
         assert!(
             !results.results.is_empty(),
@@ -990,7 +991,7 @@ mod tests {
     #[tokio::test]
     async fn delta_sync_no_duplicate_labels() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1048,7 +1049,7 @@ mod tests {
     #[tokio::test]
     async fn delta_sync_preserves_junction_table() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1095,7 +1096,7 @@ mod tests {
     #[tokio::test]
     async fn backfill_triggers_when_junction_empty() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1135,7 +1136,7 @@ mod tests {
     #[tokio::test]
     async fn sync_label_resolution_matches_gmail_ids() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1197,7 +1198,7 @@ mod tests {
     #[tokio::test]
     async fn list_envelopes_by_each_label_returns_correct_count() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1232,7 +1233,7 @@ mod tests {
     #[tokio::test]
     async fn search_index_consistent_with_store() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1249,7 +1250,6 @@ mod tests {
             .await
             .unwrap();
 
-        let search_guard = search.lock().await;
         for env in &envelopes {
             // Extract a distinctive keyword from the subject
             let keyword = env
@@ -1257,8 +1257,9 @@ mod tests {
                 .split_whitespace()
                 .find(|w| w.len() > 3 && w.chars().all(|c| c.is_alphanumeric()))
                 .unwrap_or(&env.subject);
-            let results = search_guard
+            let results = search
                 .search(keyword, 100, 0, SortOrder::DateDesc)
+                .await
                 .unwrap();
             assert!(
                 results
@@ -1276,7 +1277,7 @@ mod tests {
     #[tokio::test]
     async fn mutation_flags_persist_through_store() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1329,7 +1330,7 @@ mod tests {
     #[tokio::test]
     async fn junction_table_survives_message_update() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1375,7 +1376,7 @@ mod tests {
     #[tokio::test]
     async fn find_labels_by_provider_ids_with_unknown_ids() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1405,7 +1406,7 @@ mod tests {
     #[tokio::test]
     async fn body_available_after_sync() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1448,7 +1449,7 @@ mod tests {
     #[tokio::test]
     async fn gmail_not_found_cursor_resets_to_initial_and_recovers() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();
@@ -1523,7 +1524,7 @@ mod tests {
     #[tokio::test]
     async fn recalculate_label_counts_matches_junction() {
         let store = Arc::new(Store::in_memory().await.unwrap());
-        let search = Arc::new(Mutex::new(SearchIndex::in_memory().unwrap()));
+        let search = in_memory_search();
         let engine = SyncEngine::new(store.clone(), search.clone());
 
         let account_id = AccountId::new();

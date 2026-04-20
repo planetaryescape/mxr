@@ -1,13 +1,36 @@
-use mxr_protocol::AccountSyncStatus;
+use super::helpers::{dir_size, file_size, protocol_event_entry, recent_log_lines};
 use crate::state::AppState;
+use mxr_core::{Account, AccountId};
+use mxr_protocol::AccountSyncStatus;
+use mxr_store::SyncRuntimeStatus;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(super) async fn collect_status_snapshot(
     state: &Arc<AppState>,
 ) -> Result<(Vec<String>, u32, Vec<AccountSyncStatus>), String> {
+    let started_at = std::time::Instant::now();
     let accounts = state
         .store
         .list_accounts()
+        .await
+        .map_err(|e| e.to_string())?;
+    let message_counts = state
+        .store
+        .count_messages_grouped_by_account()
+        .await
+        .map_err(|e| e.to_string())?;
+    let runtime_statuses = state
+        .store
+        .list_sync_runtime_statuses()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|runtime| (runtime.account_id.clone(), runtime))
+        .collect::<HashMap<_, _>>();
+    let cursors = state
+        .store
+        .list_sync_cursors()
         .await
         .map_err(|e| e.to_string())?;
     let mut names = Vec::new();
@@ -16,24 +39,31 @@ pub(super) async fn collect_status_snapshot(
 
     for account in accounts {
         names.push(account.name.clone());
-        total_messages += state
-            .store
-            .count_messages_by_account(&account.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        sync_statuses.push(build_account_sync_status(state, &account.id).await?);
+        total_messages += message_counts.get(&account.id).copied().unwrap_or(0);
+        sync_statuses.push(account_sync_status(
+            account.clone(),
+            runtime_statuses.get(&account.id).cloned(),
+            cursors.get(&account.id).cloned(),
+        ));
     }
 
     if names.is_empty() {
         names.push("unknown".to_string());
     }
 
+    tracing::trace!(
+        account_count = sync_statuses.len(),
+        total_messages,
+        elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+        "status snapshot collected"
+    );
+
     Ok((names, total_messages, sync_statuses))
 }
 
 pub(super) async fn build_account_sync_status(
     state: &Arc<AppState>,
-    account_id: &mxr_core::AccountId,
+    account_id: &AccountId,
 ) -> Result<AccountSyncStatus, String> {
     let account = state
         .store
@@ -52,56 +82,10 @@ pub(super) async fn build_account_sync_status(
         .await
         .map_err(|e| e.to_string())?;
 
-    let last_attempt_at = runtime
-        .as_ref()
-        .and_then(|row| row.last_attempt_at)
-        .map(|dt| dt.to_rfc3339());
-    let last_success_at = runtime
-        .as_ref()
-        .and_then(|row| row.last_success_at)
-        .map(|dt| dt.to_rfc3339());
-    let last_error = runtime.as_ref().and_then(|row| row.last_error.clone());
-    let backoff_until = runtime
-        .as_ref()
-        .and_then(|row| row.backoff_until)
-        .map(|dt| dt.to_rfc3339());
-    let sync_in_progress = runtime
-        .as_ref()
-        .is_some_and(|row| row.sync_in_progress);
-    let consecutive_failures = runtime
-        .as_ref()
-        .map_or(0, |row| row.consecutive_failures);
-    let healthy = !sync_in_progress
-        && last_error.is_none()
-        && backoff_until.is_none()
-        && last_success_at.is_some();
-
-    Ok(AccountSyncStatus {
-        account_id: account.id,
-        account_name: account.name,
-        last_attempt_at,
-        last_success_at,
-        last_error,
-        failure_class: runtime.as_ref().and_then(|row| row.failure_class.clone()),
-        consecutive_failures,
-        backoff_until,
-        sync_in_progress,
-        current_cursor_summary: Some(
-            runtime
-                .as_ref()
-                .and_then(|row| row.current_cursor_summary.clone())
-                .unwrap_or_else(|| describe_cursor_for_status(cursor.as_ref())),
-        ),
-        last_synced_count: runtime
-            .as_ref()
-            .map_or(0, |row| row.last_synced_count),
-        healthy,
-    })
+    Ok(account_sync_status(account, runtime, cursor))
 }
 
-pub(super) fn describe_cursor_for_status(
-    cursor: Option<&mxr_core::types::SyncCursor>,
-) -> String {
+pub(super) fn describe_cursor_for_status(cursor: Option<&mxr_core::types::SyncCursor>) -> String {
     match cursor {
         Some(mxr_core::types::SyncCursor::Initial) | None => "initial".to_string(),
         Some(mxr_core::types::SyncCursor::Gmail { history_id }) => {
@@ -133,8 +117,7 @@ pub(super) fn describe_cursor_for_status(
 pub(super) async fn collect_doctor_report(
     state: &Arc<AppState>,
 ) -> Result<mxr_protocol::DoctorReport, String> {
-    use super::{protocol_event_entry, recent_log_lines};
-
+    let started_at = std::time::Instant::now();
     let data_dir = mxr_config::data_dir();
     let db_path = data_dir.join("mxr.db");
     let index_path = data_dir.join("search_index");
@@ -165,7 +148,7 @@ pub(super) async fn collect_doctor_report(
         .map_err(|e| e.to_string())?
         .map(|value| value.to_rfc3339());
     let semantic_config = state.config_snapshot().search.semantic.clone();
-    let semantic_snapshot = state.semantic.lock().await.status_snapshot().await.ok();
+    let semantic_snapshot = state.semantic.status_snapshot().await.ok();
     let (
         semantic_enabled,
         semantic_active_profile,
@@ -186,11 +169,11 @@ pub(super) async fn collect_doctor_report(
         .into_iter()
         .map(protocol_event_entry)
         .collect();
-    let recent_error_logs = recent_log_lines(10, Some("error")).unwrap_or_default();
-    let recommended_next_steps = if matches!(
-        health_class,
-        mxr_protocol::DaemonHealthClass::Healthy
-    ) {
+    let recent_error_logs = recent_log_lines(state, 10, Some("error"))
+        .await
+        .unwrap_or_default();
+    let recommended_next_steps = if matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy)
+    {
         vec!["mxr status".to_string()]
     } else {
         vec![
@@ -204,12 +187,9 @@ pub(super) async fn collect_doctor_report(
         && database_exists
         && index_exists
         && socket_exists
-        && matches!(
-            health_class,
-            mxr_protocol::DaemonHealthClass::Healthy
-        );
+        && matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy);
 
-    Ok(mxr_protocol::DoctorReport {
+    let report = mxr_protocol::DoctorReport {
         healthy,
         health_class,
         lexical_index_freshness,
@@ -236,19 +216,26 @@ pub(super) async fn collect_doctor_report(
         restart_required,
         repair_required,
         database_path: db_path.display().to_string(),
-        database_size_bytes: file_size(&db_path),
+        database_size_bytes: file_size(state, db_path.clone()).await,
         index_path: index_path.display().to_string(),
-        index_size_bytes: dir_size(&index_path),
+        index_size_bytes: dir_size(state, index_path.clone()).await,
         log_path: log_path.display().to_string(),
-        log_size_bytes: file_size(&log_path),
+        log_size_bytes: file_size(state, log_path.clone()).await,
         sync_statuses,
         recent_sync_events,
         recent_error_logs,
         recommended_next_steps,
-    })
+    };
+
+    tracing::trace!(
+        elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+        "doctor report collected"
+    );
+
+    Ok(report)
 }
 
-pub(super) fn doctor_data_stats(
+pub(crate) fn doctor_data_stats(
     counts: mxr_store::StoreRecordCounts,
 ) -> mxr_protocol::DoctorDataStats {
     mxr_protocol::DoctorDataStats {
@@ -275,30 +262,50 @@ pub(super) fn doctor_data_stats(
     }
 }
 
-pub(super) fn dir_size(path: &std::path::Path) -> u64 {
-    if !path.exists() {
-        return 0;
+fn account_sync_status(
+    account: Account,
+    runtime: Option<SyncRuntimeStatus>,
+    cursor: Option<mxr_core::types::SyncCursor>,
+) -> AccountSyncStatus {
+    let last_attempt_at = runtime
+        .as_ref()
+        .and_then(|row| row.last_attempt_at)
+        .map(|dt| dt.to_rfc3339());
+    let last_success_at = runtime
+        .as_ref()
+        .and_then(|row| row.last_success_at)
+        .map(|dt| dt.to_rfc3339());
+    let last_error = runtime.as_ref().and_then(|row| row.last_error.clone());
+    let backoff_until = runtime
+        .as_ref()
+        .and_then(|row| row.backoff_until)
+        .map(|dt| dt.to_rfc3339());
+    let sync_in_progress = runtime.as_ref().is_some_and(|row| row.sync_in_progress);
+    let consecutive_failures = runtime.as_ref().map_or(0, |row| row.consecutive_failures);
+    let healthy = !sync_in_progress
+        && last_error.is_none()
+        && backoff_until.is_none()
+        && last_success_at.is_some();
+
+    AccountSyncStatus {
+        account_id: account.id,
+        account_name: account.name,
+        last_attempt_at,
+        last_success_at,
+        last_error,
+        failure_class: runtime.as_ref().and_then(|row| row.failure_class.clone()),
+        consecutive_failures,
+        backoff_until,
+        sync_in_progress,
+        current_cursor_summary: Some(
+            runtime
+                .as_ref()
+                .and_then(|row| row.current_cursor_summary.clone())
+                .unwrap_or_else(|| describe_cursor_for_status(cursor.as_ref())),
+        ),
+        last_synced_count: runtime.as_ref().map_or(0, |row| row.last_synced_count),
+        healthy,
     }
-
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return 0;
-    };
-
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| {
-            let path = entry.path();
-            if path.is_dir() {
-                dir_size(&path)
-            } else {
-                entry.metadata().map(|meta| meta.len()).unwrap_or(0)
-            }
-        })
-        .sum()
-}
-
-pub(super) fn file_size(path: &std::path::Path) -> u64 {
-    std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
 }
 
 pub(crate) fn latest_successful_sync_at(
@@ -345,22 +352,12 @@ pub(super) fn semantic_freshness_from_snapshot(
                 None,
             )
         } else {
-            (
-                false,
-                None,
-                mxr_protocol::IndexFreshness::Disabled,
-                None,
-            )
+            (false, None, mxr_protocol::IndexFreshness::Disabled, None)
         };
     };
 
     if !snapshot.enabled {
-        return (
-            false,
-            None,
-            mxr_protocol::IndexFreshness::Disabled,
-            None,
-        );
+        return (false, None, mxr_protocol::IndexFreshness::Disabled, None);
     }
 
     let active_profile = snapshot.active_profile.as_str().to_string();
@@ -376,9 +373,7 @@ pub(super) fn semantic_freshness_from_snapshot(
         | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
             mxr_protocol::IndexFreshness::Indexing
         }
-        Some(mxr_core::types::SemanticProfileStatus::Error) => {
-            mxr_protocol::IndexFreshness::Error
-        }
+        Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
         None => mxr_protocol::IndexFreshness::Stale,
     };
 

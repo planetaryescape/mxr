@@ -1,5 +1,7 @@
 use crate::{decode_json, encode_json};
 use mxr_core::{AccountId, SyncCursor};
+use sqlx::Row;
+use std::collections::HashMap;
 
 impl super::Store {
     pub async fn get_sync_cursor(
@@ -32,5 +34,29 @@ impl super::Store {
         .execute(self.writer())
         .await?;
         Ok(())
+    }
+
+    pub async fn list_sync_cursors(&self) -> Result<HashMap<AccountId, SyncCursor>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"
+            SELECT id, sync_cursor
+            FROM accounts
+            WHERE sync_cursor IS NOT NULL
+            "#,
+        )
+        .fetch_all(self.reader())
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let account_id: String = row.get("id");
+                let cursor_json: Option<String> = row.get("sync_cursor");
+                let cursor = cursor_json
+                    .as_deref()
+                    .ok_or_else(|| sqlx::Error::Protocol("missing sync cursor".into()))
+                    .and_then(decode_json)?;
+                Ok((account_id.parse().map_err(sqlx::Error::decode)?, cursor))
+            })
+            .collect()
     }
 }

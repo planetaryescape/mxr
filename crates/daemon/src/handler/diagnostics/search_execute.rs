@@ -4,7 +4,7 @@ use super::search_filter::{
 use super::{build_execution, ExecutionExplainInput, SearchExecution};
 use crate::state::AppState;
 use mxr_core::types::{SearchMode, SortOrder};
-use mxr_search::{ast::QueryNode, parse_query, QueryBuilder, SearchPage, SearchResult};
+use mxr_search::{ast::QueryNode, parse_query, MxrSchema, QueryBuilder, SearchPage, SearchResult};
 use mxr_semantic::{should_use_semantic, SemanticHit};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -41,10 +41,11 @@ pub(super) async fn execute_search(
     match parse_query(query) {
         Ok(ast) => execute_search_ast(state, query, &ast, &options).await,
         Err(error) => {
-            let search = state.search.lock().await;
             if should_fallback_to_tantivy(query, &error) {
-                let page = search
+                let page = state
+                    .search
                     .search(query, options.limit, options.offset, options.sort)
+                    .await
                     .map_err(|e| e.to_string())?;
                 let explain = options.explain.then(|| SearchExplain {
                     requested_mode: options.mode,
@@ -221,15 +222,13 @@ async fn execute_search_ast(
     }
 
     let dense_window = requested_window.saturating_mul(8).max(200);
-    let semantic_hits = {
-        let mut semantic = state.semantic.lock().await;
+    let semantic_hits = state
+        .semantic
         // Lexical search remains the exact/literal path. Dense retrieval only
         // broadens recall inside the source kinds implied by the parsed query.
-        semantic
-            .search(&semantic_query, dense_window, &semantic_plan.source_kinds)
-            .await
-            .map_err(|e| e.to_string())?
-    };
+        .search(&semantic_query, dense_window, &semantic_plan.source_kinds)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let dense_results = filter_dense_hits(state, ast, semantic_hits).await?;
     if options.mode == SearchMode::Semantic {
@@ -310,11 +309,13 @@ pub(super) async fn lexical_search(
     offset: usize,
     sort: SortOrder,
 ) -> Result<SearchPage, String> {
-    let search = state.search.lock().await;
-    let builder = QueryBuilder::new(search.schema());
+    let schema = MxrSchema::build();
+    let builder = QueryBuilder::new(&schema);
     let tantivy_query = builder.build(ast);
-    search
+    state
+        .search
         .search_ast(tantivy_query, limit, offset, sort)
+        .await
         .map_err(|e| e.to_string())
 }
 
@@ -405,9 +406,13 @@ mod tests {
         let mut config = state.config_snapshot();
         config.search.semantic.enabled = true;
         state.set_config_for_test(config).await;
-        let mut semantic = state.semantic.lock().await;
-        semantic.set_test_embedder(Arc::new(keyword_embedder));
-        semantic
+        state
+            .semantic
+            .set_test_embedder(keyword_embedder)
+            .await
+            .unwrap();
+        state
+            .semantic
             .use_profile(mxr_core::SemanticProfile::BgeSmallEnV15)
             .await
             .unwrap();
@@ -484,17 +489,15 @@ mod tests {
             .await
             .unwrap();
 
-        {
-            let mut semantic = state.semantic.lock().await;
-            semantic
-                .ingest_messages(&[
-                    subject_message.id.clone(),
-                    body_message.id.clone(),
-                    attachment_message.id.clone(),
-                ])
-                .await
-                .unwrap();
-        }
+        state
+            .semantic
+            .ingest_messages(&[
+                subject_message.id.clone(),
+                body_message.id.clone(),
+                attachment_message.id.clone(),
+            ])
+            .await
+            .unwrap();
         enable_semantic_for_test(&state).await;
 
         let subject_execution = execute_search(
@@ -613,11 +616,17 @@ mod tests {
             Vec::new(),
         );
         state.store.insert_body(&body).await.unwrap();
-        {
-            let mut search = state.search.lock().await;
-            search.index_body(&message, &body).unwrap();
-            search.commit().unwrap();
-        }
+        state
+            .search
+            .apply_batch(mxr_search::SearchUpdateBatch {
+                entries: vec![mxr_search::SearchIndexEntry {
+                    envelope: message.clone(),
+                    body: Some(body.clone()),
+                }],
+                removed_message_ids: Vec::new(),
+            })
+            .await
+            .unwrap();
 
         let execution = execute_search(
             &state,

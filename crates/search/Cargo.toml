@@ -16,6 +16,7 @@ chrono = { workspace = true }
 serde = { workspace = true }
 tantivy = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

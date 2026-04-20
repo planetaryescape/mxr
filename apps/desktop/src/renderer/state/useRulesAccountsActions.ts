@@ -15,10 +15,12 @@ import type {
   RulesResponse,
 } from "../../shared/types";
 import { fetchJson } from "./bridgeHttp";
+import type { DesktopRequestCoordinator } from "./requestCoordinator";
 
 type StateSetter<T> = (updater: SetStateAction<T>) => void;
 
 export function useRulesAccountsActions(props: {
+  requestCoordinator: DesktopRequestCoordinator;
   bridge: BridgeState;
   selectedRuleId: string | null;
   selectedRule: RulesResponse["rules"][number] | null;
@@ -46,7 +48,8 @@ export function useRulesAccountsActions(props: {
   showNotice: (message: string) => void;
 }) {
   const loadSelectedRuleDetail = useEffectEvent(async (ruleId?: string | null) => {
-    if (props.bridge.kind !== "ready") {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
       return;
     }
     const target = ruleId ?? props.selectedRuleId;
@@ -55,39 +58,65 @@ export function useRulesAccountsActions(props: {
       return;
     }
     const params = new URLSearchParams({ rule: target });
-    const payload = await fetchJson<RuleDetailResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      `/rules/detail?${params.toString()}`,
+    const path = `/rules/detail?${params.toString()}`;
+    const result = await props.requestCoordinator.runReplaceable(
+      `rules:detail:${target}`,
+      ({ signal }) =>
+        fetchJson<RuleDetailResponse>(bridge.baseUrl, bridge.authToken, path, {
+          signal,
+          requestLabel: "rules:detail",
+        }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     props.setRuleDetail(payload.rule);
     props.setRulePanelMode("details");
   });
 
   const openRuleHistory = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready" || !props.selectedRuleId) {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready" || !props.selectedRuleId) {
       return;
     }
     const params = new URLSearchParams({ rule: props.selectedRuleId });
-    const payload = await fetchJson<RuleHistoryResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      `/rules/history?${params.toString()}`,
+    const path = `/rules/history?${params.toString()}`;
+    const result = await props.requestCoordinator.runReplaceable(
+      `rules:history:${props.selectedRuleId}`,
+      ({ signal }) =>
+        fetchJson<RuleHistoryResponse>(bridge.baseUrl, bridge.authToken, path, {
+          signal,
+          requestLabel: "rules:history",
+        }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     props.setRuleHistoryState(payload.entries);
     props.setRulePanelMode("history");
   });
 
   const openRuleDryRun = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready" || !props.selectedRuleId) {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready" || !props.selectedRuleId) {
       return;
     }
     const params = new URLSearchParams({ rule: props.selectedRuleId });
-    const payload = await fetchJson<RuleDryRunResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      `/rules/dry-run?${params.toString()}`,
+    const path = `/rules/dry-run?${params.toString()}`;
+    const result = await props.requestCoordinator.runReplaceable(
+      `rules:dry-run:${props.selectedRuleId}`,
+      ({ signal }) =>
+        fetchJson<RuleDryRunResponse>(bridge.baseUrl, bridge.authToken, path, {
+          signal,
+          requestLabel: "rules:dry-run",
+        }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     props.setRuleDryRunState(payload.results);
     props.setRulePanelMode("dryRun");
   });
@@ -106,31 +135,38 @@ export function useRulesAccountsActions(props: {
       props.setFocusContext("dialog");
       return;
     }
-    if (props.bridge.kind !== "ready" || !props.selectedRuleId) {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready" || !props.selectedRuleId) {
       return;
     }
     const params = new URLSearchParams({ rule: props.selectedRuleId });
-    const payload = await fetchJson<RuleFormResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      `/rules/form?${params.toString()}`,
+    const path = `/rules/form?${params.toString()}`;
+    const result = await props.requestCoordinator.runReplaceable(
+      `rules:form:${props.selectedRuleId}`,
+      ({ signal }) =>
+        fetchJson<RuleFormResponse>(bridge.baseUrl, bridge.authToken, path, {
+          signal,
+          requestLabel: "rules:form",
+        }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     props.setRuleFormState(payload.form);
     props.setRuleFormOpen(true);
     props.setFocusContext("dialog");
   });
 
   const saveRuleForm = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready") {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
       return;
     }
     props.setRuleFormBusy("Saving");
     try {
-      const payload = await fetchJson<RuleDetailResponse>(
-        props.bridge.baseUrl,
-        props.bridge.authToken,
-        "/rules/upsert-form",
-        {
+      const payload = await props.requestCoordinator.enqueueMutation(() =>
+        fetchJson<RuleDetailResponse>(bridge.baseUrl, bridge.authToken, "/rules/upsert-form", {
           method: "POST",
           body: JSON.stringify({
             existing_rule: props.ruleFormState.id,
@@ -140,7 +176,8 @@ export function useRulesAccountsActions(props: {
             priority: props.ruleFormState.priority,
             enabled: props.ruleFormState.enabled,
           }),
-        },
+          requestLabel: "rules:upsert-form",
+        }),
       );
       props.setRuleDetail(payload.rule);
       props.setSelectedRuleId(String(payload.rule.id ?? payload.rule.name ?? ""));
@@ -154,15 +191,13 @@ export function useRulesAccountsActions(props: {
   });
 
   const toggleSelectedRuleEnabled = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready" || !props.selectedRule) {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready" || !props.selectedRule) {
       return;
     }
     const enabled = Boolean(props.selectedRule.enabled);
-    const payload = await fetchJson<RuleDetailResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      "/rules/upsert",
-      {
+    const payload = await props.requestCoordinator.enqueueMutation(() =>
+      fetchJson<RuleDetailResponse>(bridge.baseUrl, bridge.authToken, "/rules/upsert", {
         method: "POST",
         body: JSON.stringify({
           rule: {
@@ -170,7 +205,8 @@ export function useRulesAccountsActions(props: {
             enabled: !enabled,
           },
         }),
-      },
+        requestLabel: "rules:toggle",
+      }),
     );
     props.setRuleDetail(payload.rule);
     props.setRuleStatus(enabled ? "Rule disabled" : "Rule enabled");
@@ -178,17 +214,16 @@ export function useRulesAccountsActions(props: {
   });
 
   const deleteSelectedRule = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready" || !props.selectedRuleId) {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready" || !props.selectedRuleId) {
       return;
     }
-    await fetchJson<ActionAckResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      "/rules/delete",
-      {
+    await props.requestCoordinator.enqueueMutation(() =>
+      fetchJson<ActionAckResponse>(bridge.baseUrl, bridge.authToken, "/rules/delete", {
         method: "POST",
         body: JSON.stringify({ rule: props.selectedRuleId }),
-      },
+        requestLabel: "rules:delete",
+      }),
     );
     props.setRuleDetail(null);
     props.setRuleHistoryState([]);
@@ -204,7 +239,8 @@ export function useRulesAccountsActions(props: {
   });
 
   const testCurrentAccount = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready") {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
       return;
     }
     let account: AccountConfig | null;
@@ -222,14 +258,12 @@ export function useRulesAccountsActions(props: {
     }
     props.setAccountFormBusy("Testing");
     try {
-      const payload = await fetchJson<AccountOperationResponse>(
-        props.bridge.baseUrl,
-        props.bridge.authToken,
-        "/accounts/test",
-        {
+      const payload = await props.requestCoordinator.enqueueMutation(() =>
+        fetchJson<AccountOperationResponse>(bridge.baseUrl, bridge.authToken, "/accounts/test", {
           method: "POST",
           body: JSON.stringify(account),
-        },
+          requestLabel: "accounts:test",
+        }),
       );
       props.setAccountResult(payload.result);
       props.setAccountStatus(payload.result.summary);
@@ -239,7 +273,8 @@ export function useRulesAccountsActions(props: {
   });
 
   const saveAccountDraft = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready") {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
       return;
     }
     let account: AccountConfig;
@@ -251,14 +286,12 @@ export function useRulesAccountsActions(props: {
     }
     props.setAccountFormBusy("Saving");
     try {
-      const payload = await fetchJson<AccountOperationResponse>(
-        props.bridge.baseUrl,
-        props.bridge.authToken,
-        "/accounts/upsert",
-        {
+      const payload = await props.requestCoordinator.enqueueMutation(() =>
+        fetchJson<AccountOperationResponse>(bridge.baseUrl, bridge.authToken, "/accounts/upsert", {
           method: "POST",
           body: JSON.stringify(account),
-        },
+          requestLabel: "accounts:upsert",
+        }),
       );
       props.setAccountResult(payload.result);
       props.setAccountStatus(payload.result.summary);
@@ -270,18 +303,18 @@ export function useRulesAccountsActions(props: {
   });
 
   const makeSelectedAccountDefault = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready" || !props.selectedAccount?.key) {
+    const bridge = props.bridge;
+    const selectedAccount = props.selectedAccount;
+    if (bridge.kind !== "ready" || !selectedAccount?.key) {
       props.showNotice("Selected account cannot be set default");
       return;
     }
-    const payload = await fetchJson<AccountOperationResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      "/accounts/default",
-      {
+    const payload = await props.requestCoordinator.enqueueMutation(() =>
+      fetchJson<AccountOperationResponse>(bridge.baseUrl, bridge.authToken, "/accounts/default", {
         method: "POST",
-        body: JSON.stringify({ key: props.selectedAccount.key }),
-      },
+        body: JSON.stringify({ key: selectedAccount.key }),
+        requestLabel: "accounts:default",
+      }),
     );
     props.setAccountResult(payload.result);
     props.setAccountStatus(payload.result.summary);

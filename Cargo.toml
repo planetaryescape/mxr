@@ -79,7 +79,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.4.36"
+version = "0.4.37"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.88"
@@ -318,6 +318,18 @@ harness = false
 
 [[bench]]
 name = "reader_pipeline"
+harness = false
+
+[[bench]]
+name = "sync_overlap"
+harness = false
+
+[[bench]]
+name = "semantic_ingest"
+harness = false
+
+[[bench]]
+name = "daemon_burst"
 harness = false
 
 [lints]

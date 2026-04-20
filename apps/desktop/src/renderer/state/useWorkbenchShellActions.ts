@@ -21,10 +21,12 @@ import type {
   WorkbenchShellPayload,
 } from "../../shared/types";
 import { fetchJson } from "./bridgeHttp";
+import type { DesktopRequestCoordinator } from "./requestCoordinator";
 
 type StateSetter<T> = (updater: SetStateAction<T>) => void;
 
 export function useWorkbenchShellActions(props: {
+  requestCoordinator: DesktopRequestCoordinator;
   bridge: BridgeState;
   deferredSearchQuery: string;
   searchScope: SearchScope;
@@ -34,6 +36,7 @@ export function useWorkbenchShellActions(props: {
   sidebar: SidebarPayload;
   selectedRow: { thread_id: string } | null;
   screen: WorkbenchScreen;
+  layoutMode: LayoutMode;
   setBridge: StateSetter<BridgeState>;
   setShell: StateSetter<WorkbenchShellPayload>;
   setSidebar: StateSetter<SidebarPayload>;
@@ -61,15 +64,24 @@ export function useWorkbenchShellActions(props: {
 }) {
   const loadMailbox = useEffectEvent(
     async (lens?: SidebarLens, options?: { preserveReader?: boolean }) => {
-      if (props.bridge.kind !== "ready") {
+      const bridge = props.bridge;
+      if (bridge.kind !== "ready") {
         return;
       }
 
-      const payload = await fetchJson<MailboxResponse>(
-        props.bridge.baseUrl,
-        props.bridge.authToken,
-        mailboxPath(lens),
+      const path = mailboxPath(lens);
+      const result = await props.requestCoordinator.runReplaceable(
+        `mailbox:${path}`,
+        ({ signal }) =>
+          fetchJson<MailboxResponse>(bridge.baseUrl, bridge.authToken, path, {
+            signal,
+            requestLabel: "mailbox",
+          }),
       );
+      if (result.status !== "committed") {
+        return;
+      }
+      const payload = result.value;
       startTransition(() => {
         props.setShell(payload.shell);
         props.setSidebar(payload.sidebar);
@@ -91,7 +103,8 @@ export function useWorkbenchShellActions(props: {
   );
 
   const loadSearch = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready") {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
       return;
     }
 
@@ -105,11 +118,19 @@ export function useWorkbenchShellActions(props: {
     if (props.searchExplain) {
       params.set("explain", "true");
     }
-    const payload = await fetchJson<SearchResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      `/search?${params.toString()}`,
+    const path = `/search?${params.toString()}`;
+    const result = await props.requestCoordinator.runReplaceable(
+      `search:${params.toString()}`,
+      ({ signal }) =>
+        fetchJson<SearchResponse>(bridge.baseUrl, bridge.authToken, path, {
+          signal,
+          requestLabel: "search",
+        }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     startTransition(() => {
       props.setSearchState(payload);
       props.setSelectedSearchThreadId(
@@ -119,7 +140,8 @@ export function useWorkbenchShellActions(props: {
   });
 
   const loadMoreSearch = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready") {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
       return;
     }
 
@@ -135,26 +157,43 @@ export function useWorkbenchShellActions(props: {
     if (props.searchExplain) {
       params.set("explain", "true");
     }
-    const payload = await fetchJson<SearchResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      `/search?${params.toString()}`,
+    const path = `/search?${params.toString()}`;
+    const result = await props.requestCoordinator.runReplaceable(
+      `search:more:${params.toString()}`,
+      ({ signal }) =>
+        fetchJson<SearchResponse>(bridge.baseUrl, bridge.authToken, path, {
+          signal,
+          requestLabel: "search:more",
+        }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     startTransition(() => {
       props.setSearchState(payload);
     });
   });
 
   const loadThread = useEffectEvent(async (threadId: string) => {
-    if (props.bridge.kind !== "ready") {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
       return;
     }
 
-    const payload = await fetchJson<ThreadResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      `/thread/${threadId}`,
+    const path = `/thread/${threadId}`;
+    const result = await props.requestCoordinator.runReplaceable(
+      `thread:${threadId}:${props.screen}:${props.layoutMode}`,
+      ({ signal }) =>
+        fetchJson<ThreadResponse>(bridge.baseUrl, bridge.authToken, path, {
+          signal,
+          requestLabel: "thread",
+        }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     startTransition(() => {
       props.setThread(payload);
       props.setReaderMode("auto");
@@ -163,14 +202,20 @@ export function useWorkbenchShellActions(props: {
   });
 
   const loadRules = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready") {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
       return;
     }
-    const payload = await fetchJson<RulesResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      "/rules",
+    const result = await props.requestCoordinator.runReplaceable("rules:list", ({ signal }) =>
+      fetchJson<RulesResponse>(bridge.baseUrl, bridge.authToken, "/rules", {
+        signal,
+        requestLabel: "rules",
+      }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     startTransition(() => {
       props.setRulesState(payload);
       props.setSelectedRuleId((current) => {
@@ -186,14 +231,20 @@ export function useWorkbenchShellActions(props: {
   });
 
   const loadAccounts = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready") {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
       return;
     }
-    const payload = await fetchJson<AccountsResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      "/accounts",
+    const result = await props.requestCoordinator.runReplaceable("accounts:list", ({ signal }) =>
+      fetchJson<AccountsResponse>(bridge.baseUrl, bridge.authToken, "/accounts", {
+        signal,
+        requestLabel: "accounts",
+      }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     startTransition(() => {
       props.setAccountsState(payload);
       props.setSelectedAccountId((current) => {
@@ -207,14 +258,22 @@ export function useWorkbenchShellActions(props: {
   });
 
   const loadDiagnostics = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready") {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
       return;
     }
-    const payload = await fetchJson<DiagnosticsResponse>(
-      props.bridge.baseUrl,
-      props.bridge.authToken,
-      "/diagnostics",
+    const result = await props.requestCoordinator.runReplaceable(
+      "diagnostics:report",
+      ({ signal }) =>
+        fetchJson<DiagnosticsResponse>(bridge.baseUrl, bridge.authToken, "/diagnostics", {
+          signal,
+          requestLabel: "diagnostics",
+        }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     startTransition(() => props.setDiagnosticsState(payload));
   });
 
@@ -241,13 +300,15 @@ export function useWorkbenchShellActions(props: {
     props.setBridge(next);
   });
 
-  const applySidebarLens = useEffectEvent(async (item: SidebarItem, options?: { preserveFocus?: boolean }) => {
-    props.setSidebar((current) => setActiveSidebarItem(current, item.id));
-    if (!options?.preserveFocus) {
-      props.setFocusContext("mailList");
-    }
-    await loadMailbox(item.lens);
-  });
+  const applySidebarLens = useEffectEvent(
+    async (item: SidebarItem, options?: { preserveFocus?: boolean }) => {
+      props.setSidebar((current) => setActiveSidebarItem(current, item.id));
+      if (!options?.preserveFocus) {
+        props.setFocusContext("mailList");
+      }
+      await loadMailbox(item.lens);
+    },
+  );
 
   const applySidebarLensById = useEffectEvent(async (itemId: string) => {
     const item = findSidebarItem(props.sidebar, itemId);

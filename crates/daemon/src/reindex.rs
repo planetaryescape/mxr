@@ -1,10 +1,9 @@
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
 use mxr_core::MxrError;
-use mxr_search::SearchIndex;
+use mxr_search::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
 use mxr_store::Store;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 /// Progress callback data for reindexing.
 #[derive(Debug, Clone)]
@@ -16,7 +15,7 @@ pub enum ReindexProgress {
 
 /// Drop and rebuild the Tantivy index from all messages in SQLite.
 pub async fn reindex(
-    search: &Arc<Mutex<SearchIndex>>,
+    search: &SearchServiceHandle,
     store: &Arc<Store>,
     mut progress: impl FnMut(ReindexProgress),
 ) -> Result<u32, MxrError> {
@@ -27,10 +26,7 @@ pub async fn reindex(
     progress(ReindexProgress::Starting { total });
 
     // Clear existing index
-    {
-        let mut idx = search.lock().await;
-        idx.clear()?;
-    }
+    search.clear().await?;
 
     let batch_size: u32 = 500;
     let mut indexed: u32 = 0;
@@ -46,7 +42,7 @@ pub async fn reindex(
             break;
         }
 
-        let mut idx = search.lock().await;
+        let mut batch = SearchUpdateBatch::default();
         for env in &envelopes {
             // Fetch body for full-text indexing
             let body = store
@@ -54,42 +50,31 @@ pub async fn reindex(
                 .await
                 .map_err(|e| MxrError::Store(e.to_string()))?;
 
-            if let Some(body) = body {
-                idx.index_body(env, &body)?;
-            } else {
-                idx.index_envelope(env)?;
-            }
+            batch.entries.push(SearchIndexEntry {
+                envelope: env.clone(),
+                body,
+            });
 
             indexed += 1;
             if indexed % 100 == 0 {
                 progress(ReindexProgress::Indexing { indexed, total });
             }
         }
-        idx.commit()?;
-        drop(idx);
+        search.apply_batch(batch).await?;
 
         offset += batch_size;
-    }
-
-    // Final commit
-    {
-        let mut idx = search.lock().await;
-        idx.commit()?;
     }
 
     progress(ReindexProgress::Complete { indexed });
 
     // Verify
-    {
-        let idx = search.lock().await;
-        let doc_count = idx.num_docs();
-        if doc_count != indexed as u64 {
-            tracing::warn!(
-                expected = indexed,
-                actual = doc_count,
-                "Index document count mismatch after reindex"
-            );
-        }
+    let doc_count = search.num_docs().await?;
+    if doc_count != indexed as u64 {
+        tracing::warn!(
+            expected = indexed,
+            actual = doc_count,
+            "Index document count mismatch after reindex"
+        );
     }
 
     store
@@ -140,12 +125,8 @@ mod tests {
         let total = state.store.count_all_messages().await.unwrap();
         assert!(total > 0, "Store should have messages after sync");
 
-        // Clear the search index manually
-        {
-            let mut idx = state.search.lock().await;
-            idx.clear().unwrap();
-            assert_eq!(idx.num_docs(), 0);
-        }
+        state.search.clear().await.unwrap();
+        assert_eq!(state.search.num_docs().await.unwrap(), 0);
 
         // Reindex
         let indexed = reindex(&state.search, &state.store, |_| {}).await.unwrap();
@@ -153,11 +134,13 @@ mod tests {
         assert_eq!(indexed, total);
 
         // Verify search works after reindex
-        let idx = state.search.lock().await;
-        assert_eq!(idx.num_docs(), total as u64);
+        assert_eq!(state.search.num_docs().await.unwrap(), total as u64);
 
         // Should be able to find messages
-        let results = idx.search("deployment", 10, 0, mxr_core::types::SortOrder::DateDesc);
+        let results = state
+            .search
+            .search("deployment", 10, 0, mxr_core::types::SortOrder::DateDesc)
+            .await;
         // FakeProvider messages may or may not contain "deployment",
         // but search itself should not error
         drop(results);
@@ -174,18 +157,12 @@ mod tests {
             .await
             .unwrap();
 
-        let before = {
-            let idx = state.search.lock().await;
-            idx.num_docs()
-        };
+        let before = state.search.num_docs().await.unwrap();
 
         // Reindex should produce same count
         let indexed = reindex(&state.search, &state.store, |_| {}).await.unwrap();
 
-        let after = {
-            let idx = state.search.lock().await;
-            idx.num_docs()
-        };
+        let after = state.search.num_docs().await.unwrap();
 
         assert_eq!(indexed as u64, after);
         assert_eq!(before, after);

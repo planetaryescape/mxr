@@ -37,6 +37,7 @@ throbber-widgets-tui = "0.11.0"
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 toml = { workspace = true }
+tracing = { workspace = true }
 tui-textarea = { package = "tui-textarea-2", version = "0.10.2" }
 unicode-width = { workspace = true }
 

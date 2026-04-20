@@ -1,9 +1,9 @@
+use crate::ipc::{ipc_call, IpcRequest};
 use mxr_core::{AccountId, MxrError};
 use mxr_protocol::{
     AccountConfigData, AccountEditModeData, AccountSendConfigData, AccountSourceData,
     AccountSummaryData, AccountSyncConfigData, Request, Response, ResponseData,
 };
-use crate::ipc::{ipc_call, IpcRequest};
 use tokio::sync::mpsc;
 
 pub(crate) async fn load_accounts_page_accounts(
@@ -38,9 +38,7 @@ async fn load_config_account_summaries(
     }
 }
 
-fn account_config_to_summary(
-    account: AccountConfigData,
-) -> AccountSummaryData {
+fn account_config_to_summary(account: AccountConfigData) -> AccountSummaryData {
     let provider_kind = account
         .sync
         .as_ref()

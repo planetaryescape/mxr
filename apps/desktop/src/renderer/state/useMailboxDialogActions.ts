@@ -12,10 +12,12 @@ import type {
   SnoozePreset,
 } from "../../shared/types";
 import { fetchJson } from "./bridgeHttp";
+import type { DesktopRequestCoordinator } from "./requestCoordinator";
 
 type StateSetter<T> = (updater: SetStateAction<T>) => void;
 
 export function useMailboxDialogActions(props: {
+  requestCoordinator: DesktopRequestCoordinator;
   bridge: BridgeState;
   screen: "mailbox" | "search" | "rules" | "accounts" | "diagnostics";
   layoutMode: "twoPane" | "threePane" | "fullScreen";
@@ -92,14 +94,17 @@ export function useMailboxDialogActions(props: {
         props.effectiveSelection,
         props.formatPendingMutationLabel("Applying labels to", props.effectiveSelection.length),
         async () => {
-          await fetchJson<ActionAckResponse>(baseUrl, authToken, "/mutations/labels", {
-            method: "POST",
-            body: JSON.stringify({
-              message_ids: props.effectiveSelection,
-              add,
-              remove: [],
+          await props.requestCoordinator.enqueueMutation(() =>
+            fetchJson<ActionAckResponse>(baseUrl, authToken, "/mutations/labels", {
+              method: "POST",
+              body: JSON.stringify({
+                message_ids: props.effectiveSelection,
+                add,
+                remove: [],
+              }),
+              requestLabel: "mutations:labels",
             }),
-          });
+          );
           props.setLabelDialogOpen(false);
           props.setFocusContext(props.screen === "search" ? "search" : "mailList");
           props.showNotice(`Applied ${add.length} label${add.length === 1 ? "" : "s"}`);
@@ -127,13 +132,16 @@ export function useMailboxDialogActions(props: {
         props.effectiveSelection,
         props.formatPendingMutationLabel("Moving", props.effectiveSelection.length),
         async () => {
-          await fetchJson<ActionAckResponse>(baseUrl, authToken, "/mutations/move", {
-            method: "POST",
-            body: JSON.stringify({
-              message_ids: props.effectiveSelection,
-              target_label: props.moveTargetLabel,
+          await props.requestCoordinator.enqueueMutation(() =>
+            fetchJson<ActionAckResponse>(baseUrl, authToken, "/mutations/move", {
+              method: "POST",
+              body: JSON.stringify({
+                message_ids: props.effectiveSelection,
+                target_label: props.moveTargetLabel,
+              }),
+              requestLabel: "mutations:move",
             }),
-          });
+          );
           props.setMoveDialogOpen(false);
           props.setFocusContext(props.screen === "search" ? "search" : "mailList");
           props.showNotice(`Moved to ${props.moveTargetLabel}`);
@@ -150,11 +158,18 @@ export function useMailboxDialogActions(props: {
       return;
     }
     const { baseUrl, authToken } = props.bridge;
-    const payload = await fetchJson<{ presets: SnoozePreset[] }>(
-      baseUrl,
-      authToken,
-      "/actions/snooze/presets",
+    const result = await props.requestCoordinator.runReplaceable(
+      "actions:snooze-presets",
+      ({ signal }) =>
+        fetchJson<{ presets: SnoozePreset[] }>(baseUrl, authToken, "/actions/snooze/presets", {
+          signal,
+          requestLabel: "actions:snooze-presets",
+        }),
     );
+    if (result.status !== "committed") {
+      return;
+    }
+    const payload = result.value;
     props.setSnoozePresets(payload.presets);
     props.setSelectedSnooze(payload.presets[0]?.id ?? "");
     props.setSnoozeDialogOpen(true);
@@ -171,13 +186,16 @@ export function useMailboxDialogActions(props: {
         [props.selectedRow.id],
         props.formatPendingMutationLabel("Snoozing", 1),
         async () => {
-          await fetchJson<ActionAckResponse>(baseUrl, authToken, "/actions/snooze", {
-            method: "POST",
-            body: JSON.stringify({
-              message_id: props.selectedRow?.id,
-              until: props.selectedSnooze,
+          await props.requestCoordinator.enqueueMutation(() =>
+            fetchJson<ActionAckResponse>(baseUrl, authToken, "/actions/snooze", {
+              method: "POST",
+              body: JSON.stringify({
+                message_id: props.selectedRow?.id,
+                until: props.selectedSnooze,
+              }),
+              requestLabel: "actions:snooze",
             }),
-          });
+          );
           props.setSnoozeDialogOpen(false);
           props.setFocusContext(props.screen === "search" ? "search" : "mailList");
           props.showNotice("Message snoozed");
@@ -202,12 +220,15 @@ export function useMailboxDialogActions(props: {
         [props.selectedRow.id],
         props.formatPendingMutationLabel("Unsubscribing", 1),
         async () => {
-          await fetchJson<ActionAckResponse>(baseUrl, authToken, "/actions/unsubscribe", {
-            method: "POST",
-            body: JSON.stringify({
-              message_id: props.selectedRow?.id,
+          await props.requestCoordinator.enqueueMutation(() =>
+            fetchJson<ActionAckResponse>(baseUrl, authToken, "/actions/unsubscribe", {
+              method: "POST",
+              body: JSON.stringify({
+                message_id: props.selectedRow?.id,
+              }),
+              requestLabel: "actions:unsubscribe",
             }),
-          });
+          );
           props.setUnsubscribeDialogOpen(false);
           props.setFocusContext(props.screen === "search" ? "search" : "mailList");
           props.showNotice(`Unsubscribed from ${props.selectedRow?.sender}`);
@@ -267,13 +288,16 @@ export function useMailboxDialogActions(props: {
         return;
       }
       const { baseUrl, authToken } = props.bridge;
-      const payload = await fetchJson<AttachmentFileResponse>(baseUrl, authToken, path, {
-        method: "POST",
-        body: JSON.stringify({
-          message_id: messageId,
-          attachment_id: attachmentId,
+      const payload = await props.requestCoordinator.enqueueMutation(() =>
+        fetchJson<AttachmentFileResponse>(baseUrl, authToken, path, {
+          method: "POST",
+          body: JSON.stringify({
+            message_id: messageId,
+            attachment_id: attachmentId,
+          }),
+          requestLabel: path.endsWith("open") ? "attachments:open" : "attachments:download",
         }),
-      });
+      );
       props.showNotice(
         `${path.endsWith("open") ? "Opened" : "Downloaded"} ${payload.file.filename}`,
       );
@@ -296,14 +320,18 @@ export function useMailboxDialogActions(props: {
   });
 
   const exportSelectedThread = useEffectEvent(async () => {
-    if (props.bridge.kind !== "ready" || !props.selectedRow) {
+    const selectedRow = props.selectedRow;
+    if (props.bridge.kind !== "ready" || !selectedRow) {
       return;
     }
     const { baseUrl, authToken } = props.bridge;
-    const payload = await fetchJson<ExportThreadResponse>(
-      baseUrl,
-      authToken,
-      `/thread/${props.selectedRow.thread_id}/export`,
+    const payload = await props.requestCoordinator.enqueueMutation(() =>
+      fetchJson<ExportThreadResponse>(
+        baseUrl,
+        authToken,
+        `/thread/${selectedRow.thread_id}/export`,
+        { requestLabel: "thread:export" },
+      ),
     );
     openReport("Thread export", payload.content);
   });
@@ -313,10 +341,10 @@ export function useMailboxDialogActions(props: {
       return;
     }
     const { baseUrl, authToken } = props.bridge;
-    const payload = await fetchJson<BugReportResponse>(
-      baseUrl,
-      authToken,
-      "/diagnostics/bug-report",
+    const payload = await props.requestCoordinator.enqueueMutation(() =>
+      fetchJson<BugReportResponse>(baseUrl, authToken, "/diagnostics/bug-report", {
+        requestLabel: "diagnostics:bug-report",
+      }),
     );
     openReport("Bug report", payload.content);
   });

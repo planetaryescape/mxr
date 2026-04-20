@@ -3,9 +3,15 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use mail_builder::MessageBuilder;
 use mxr_core::types::{Address, Draft};
-use mxr_outbound::attachments::resolve_attachment_paths;
-use mxr_outbound::email::{build_message, format_message_for_gmail};
+use mxr_outbound::attachments::{
+    load_attachment_paths_async, load_attachment_paths_sync, LoadedAttachment,
+};
+use mxr_outbound::email::{
+    build_message, build_message_with_attachments, format_message_for_gmail,
+};
 use mxr_outbound::render::render_markdown;
+use std::path::PathBuf;
+use std::time::Instant;
 
 /// Build an RFC 5322 message from a Draft and return the raw bytes.
 pub fn build_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
@@ -14,11 +20,42 @@ pub fn build_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSend
     Ok(format_message_for_gmail(&message))
 }
 
+pub async fn build_rfc2822_async(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
+    let attachments = load_attachments_async(&draft.attachments).await?;
+    let started_at = Instant::now();
+    let message = build_message_with_attachments(draft, from, true, &attachments)
+        .map_err(|err| GmailSendError::Build(err.to_string()))?;
+    tracing::trace!(
+        attachment_count = attachments.len(),
+        elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+        "gmail message build completed"
+    );
+    Ok(format_message_for_gmail(&message))
+}
+
 /// Build an RFC 5322 draft for Gmail save_draft.
 ///
 /// Gmail server-side drafts can exist without recipients, so this avoids the
 /// transport-envelope requirement imposed by lettre's builder path.
 pub fn build_draft_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, GmailSendError> {
+    let attachments = load_attachments_sync(&draft.attachments)?;
+    build_draft_rfc2822_with_attachments(draft, from, &attachments)
+}
+
+pub async fn build_draft_rfc2822_async(
+    draft: &Draft,
+    from: &Address,
+) -> Result<Vec<u8>, GmailSendError> {
+    let attachments = load_attachments_async(&draft.attachments).await?;
+    build_draft_rfc2822_with_attachments(draft, from, &attachments)
+}
+
+fn build_draft_rfc2822_with_attachments(
+    draft: &Draft,
+    from: &Address,
+    attachments: &[LoadedAttachment],
+) -> Result<Vec<u8>, GmailSendError> {
+    let started_at = Instant::now();
     let rendered = render_markdown(&draft.body_markdown);
     let mut builder = address_with_name(MessageBuilder::new(), HeaderAddressKind::From, from)
         .subject(draft.subject.clone())
@@ -52,17 +89,24 @@ pub fn build_draft_rfc2822(draft: &Draft, from: &Address) -> Result<Vec<u8>, Gma
         }
     }
 
-    for attachment in resolve_attachment_paths(&draft.attachments)
-        .map_err(|err| GmailSendError::Build(err.to_string()))?
-    {
-        let bytes = std::fs::read(&attachment.path)
-            .map_err(|err| GmailSendError::Build(err.to_string()))?;
-        builder = builder.attachment(attachment.mime_type, attachment.filename, bytes);
+    for attachment in attachments {
+        builder = builder.attachment(
+            attachment.mime_type.clone(),
+            attachment.filename.clone(),
+            attachment.bytes.clone(),
+        );
     }
 
     builder
         .write_to_vec()
         .map_err(|err| GmailSendError::Build(err.to_string()))
+        .inspect(|_| {
+            tracing::trace!(
+                attachment_count = attachments.len(),
+                elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+                "gmail draft build completed"
+            );
+        })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -113,6 +157,27 @@ pub enum GmailSendError {
     Build(String),
     #[error("Gmail API error: {0}")]
     Api(String),
+}
+
+fn load_attachments_sync(paths: &[PathBuf]) -> Result<Vec<LoadedAttachment>, GmailSendError> {
+    load_attachment_paths_sync(paths).map_err(|err| GmailSendError::Build(err.to_string()))
+}
+
+async fn load_attachments_async(
+    paths: &[PathBuf],
+) -> Result<Vec<LoadedAttachment>, GmailSendError> {
+    let started_at = Instant::now();
+    let attachments = load_attachment_paths_async(paths)
+        .await
+        .map_err(|err| GmailSendError::Build(err.to_string()))?;
+
+    tracing::trace!(
+        attachment_count = attachments.len(),
+        elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+        "gmail attachment load completed"
+    );
+
+    Ok(attachments)
 }
 
 #[cfg(test)]
@@ -241,6 +306,51 @@ mod tests {
         assert!(msg.contains("In-Reply-To: <parent@example.com>\r\n"));
         assert!(msg.contains("References: <root@example.com> <parent@example.com>\r\n"));
         assert!(msg.contains("Bcc: <hidden@example.com>\r\n"));
+        assert!(msg.contains("note.txt"));
+    }
+
+    #[tokio::test]
+    async fn draft_rfc2822_async_keeps_reply_headers_bcc_and_attachments() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("note.txt");
+        std::fs::write(&path, "hello attachment").unwrap();
+
+        let mut draft = test_draft();
+        draft.to.clear();
+        draft.reply_headers = Some(ReplyHeaders {
+            in_reply_to: "<parent@example.com>".into(),
+            references: vec!["<root@example.com>".into()],
+        });
+        draft.bcc = vec![Address {
+            name: None,
+            email: "hidden@example.com".into(),
+        }];
+        draft.attachments = vec![path];
+
+        let msg =
+            String::from_utf8(build_draft_rfc2822_async(&draft, &from()).await.unwrap()).unwrap();
+        assert!(msg.contains("In-Reply-To: <parent@example.com>\r\n"));
+        assert!(msg.contains("References: <root@example.com> <parent@example.com>\r\n"));
+        assert!(msg.contains("Bcc: <hidden@example.com>\r\n"));
+        assert!(msg.contains("note.txt"));
+    }
+
+    #[tokio::test]
+    async fn rfc2822_async_keeps_bcc_and_attachments_for_send() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("note.txt");
+        std::fs::write(&path, "hello attachment").unwrap();
+
+        let mut draft = test_draft();
+        draft.bcc = vec![Address {
+            name: None,
+            email: "hidden@example.com".into(),
+        }];
+        draft.attachments = vec![path];
+
+        let msg = String::from_utf8(build_rfc2822_async(&draft, &from()).await.unwrap()).unwrap();
+        assert!(msg.contains("To: Alice <alice@example.com>\r\n"));
+        assert!(msg.contains("Bcc: hidden@example.com\r\n"));
         assert!(msg.contains("note.txt"));
     }
 

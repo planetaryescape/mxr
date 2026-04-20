@@ -1,331 +1,60 @@
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
+mod account_workflow;
+mod accounts_helpers;
 pub mod action;
 pub mod app;
+mod async_result;
 pub mod client;
+mod compose_flow;
 pub mod desktop_manifest;
+mod editor;
 pub mod input;
+mod ipc;
 pub mod keybindings;
+mod local_io;
 pub mod local_state;
+mod runtime;
 pub mod terminal_images;
 #[cfg(test)]
 mod test_fixtures;
 pub mod theme;
 pub mod ui;
 
-use app::{App, AttachmentOperation, ComposeAction, PendingSend, PendingSendMode};
+use app::{App, AttachmentOperation};
 use client::Client;
 use crossterm::event::EventStream;
 use futures::StreamExt;
-use mxr_config::{load_config, socket_path as config_socket_path};
+use mxr_config::load_config;
 use mxr_core::MxrError;
 use mxr_protocol::{DaemonEvent, Request, Response, ResponseData};
 use ratatui::crossterm::event::Event;
-use std::path::Path;
-use std::process::Stdio;
-use tokio::sync::{mpsc, oneshot};
-use tokio::time::{sleep, Duration, Instant};
+use tokio::sync::mpsc;
+use tokio::time::Instant;
 
-/// A request sent from the main loop to the background IPC worker.
-struct IpcRequest {
-    request: Request,
-    reply: oneshot::Sender<Result<Response, MxrError>>,
-}
+use crate::account_workflow::{
+    daemon_socket_path, request_account_operation, run_account_save_workflow,
+};
+use crate::accounts_helpers::load_accounts_page_accounts;
+use crate::async_result::{AsyncResult, UnsubscribeResultData};
+use crate::compose_flow::{handle_compose_action, handle_compose_editor_status};
+use crate::editor::{edit_tui_config, open_diagnostics_pane_details, open_tui_log_file};
+use crate::ipc::{ipc_call, spawn_ipc_worker};
+use crate::local_io::{handle_result as handle_local_io_result, submit_bug_report_write};
+use crate::runtime::{
+    spawn_replaceable_request_worker, spawn_task_worker, submit_task, ReplaceableRequest,
+    ReplaceableRequestKey,
+};
 
-/// Runs a single persistent daemon connection in a background task.
-/// The main loop sends requests via channel — no new connections per operation.
-/// Daemon events (SyncCompleted, LabelCountsUpdated, etc.) are forwarded to result_tx.
-fn spawn_ipc_worker(
-    socket_path: std::path::PathBuf,
-    result_tx: mpsc::UnboundedSender<AsyncResult>,
-) -> mpsc::UnboundedSender<IpcRequest> {
-    let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
-    tokio::spawn(async move {
-        // Create event channel — Client forwards daemon events here
-        let (event_tx, mut event_rx) = mpsc::unbounded_channel::<DaemonEvent>();
-        let mut client = match connect_ipc_client(&socket_path, event_tx.clone()).await {
-            Ok(client) => client,
-            Err(_) => return,
-        };
-
-        loop {
-            tokio::select! {
-                req = rx.recv() => {
-                    match req {
-                        Some(req) => {
-                            let mut result = client.raw_request(req.request.clone()).await;
-                            if should_reconnect_ipc(&result)
-                                && request_supports_retry(&req.request)
-                            {
-                                match connect_ipc_client(&socket_path, event_tx.clone()).await {
-                                    Ok(mut reconnected) => {
-                                        let retry = reconnected.raw_request(req.request.clone()).await;
-                                        if retry.is_ok() {
-                                            client = reconnected;
-                                        }
-                                        result = retry;
-                                    }
-                                    Err(error) => {
-                                        result = Err(error);
-                                    }
-                                }
-                            }
-                            let _ = req.reply.send(result);
-                        }
-                        None => break,
-                    }
-                }
-                event = event_rx.recv() => {
-                    if let Some(event) = event {
-                        let _ = result_tx.send(AsyncResult::DaemonEvent(event));
-                    }
-                }
-            }
-        }
-    });
-    tx
-}
-
-async fn connect_ipc_client(
-    socket_path: &std::path::Path,
-    event_tx: mpsc::UnboundedSender<DaemonEvent>,
-) -> Result<Client, MxrError> {
-    match Client::connect(socket_path).await {
-        Ok(client) => Ok(client.with_event_channel(event_tx)),
-        Err(error) if should_autostart_daemon(&error) => {
-            start_daemon_process(socket_path).await?;
-            wait_for_daemon_client(socket_path, START_DAEMON_TIMEOUT)
-                .await
-                .map(|client| client.with_event_channel(event_tx))
-        }
-        Err(error) => Err(MxrError::Ipc(error.to_string())),
-    }
-}
-
-fn should_reconnect_ipc(result: &Result<Response, MxrError>) -> bool {
-    match result {
-        Err(MxrError::Ipc(message)) => {
-            let lower = message.to_lowercase();
-            lower.contains("broken pipe")
-                || lower.contains("connection closed")
-                || lower.contains("connection refused")
-                || lower.contains("connection reset")
-        }
-        _ => false,
-    }
-}
-
-const START_DAEMON_TIMEOUT: Duration = Duration::from_secs(5);
-const START_DAEMON_POLL_INTERVAL: Duration = Duration::from_millis(100);
-
-fn should_autostart_daemon(error: &std::io::Error) -> bool {
-    matches!(
-        error.kind(),
-        std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound
-    )
-}
-
-async fn start_daemon_process(socket_path: &Path) -> Result<(), MxrError> {
-    let exe = std::env::current_exe()
-        .map_err(|error| MxrError::Ipc(format!("failed to locate mxr binary: {error}")))?;
-    std::process::Command::new(exe)
-        .arg("daemon")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|error| {
-            MxrError::Ipc(format!(
-                "failed to start daemon for {}: {error}",
-                socket_path.display()
-            ))
-        })?;
-    Ok(())
-}
-
-async fn wait_for_daemon_client(socket_path: &Path, timeout: Duration) -> Result<Client, MxrError> {
-    let deadline = Instant::now() + timeout;
-    let mut last_error: Option<MxrError> = None;
-
-    loop {
-        if Instant::now() >= deadline {
-            let detail =
-                last_error.unwrap_or_else(|| MxrError::Ipc("daemon did not become ready".into()));
-            return Err(MxrError::Ipc(format!(
-                "daemon restart did not become ready for {}: {}",
-                socket_path.display(),
-                detail
-            )));
-        }
-
-        match Client::connect(socket_path).await {
-            Ok(mut client) => match client.raw_request(Request::GetStatus).await {
-                Ok(_) => return Ok(client),
-                Err(error) => last_error = Some(error),
-            },
-            Err(error) => last_error = Some(MxrError::Ipc(error.to_string())),
-        }
-
-        sleep(START_DAEMON_POLL_INTERVAL).await;
-    }
-}
-
-fn request_supports_retry(request: &Request) -> bool {
-    matches!(
-        request,
-        Request::ListEnvelopes { .. }
-            | Request::ListEnvelopesByIds { .. }
-            | Request::GetEnvelope { .. }
-            | Request::GetBody { .. }
-            | Request::GetHtmlImageAssets { .. }
-            | Request::ListBodies { .. }
-            | Request::GetThread { .. }
-            | Request::ListLabels { .. }
-            | Request::ListRules
-            | Request::ListAccounts
-            | Request::ListAccountsConfig
-            | Request::GetRule { .. }
-            | Request::GetRuleForm { .. }
-            | Request::DryRunRules { .. }
-            | Request::ListEvents { .. }
-            | Request::GetLogs { .. }
-            | Request::GetDoctorReport
-            | Request::GenerateBugReport { .. }
-            | Request::ListRuleHistory { .. }
-            | Request::Search { .. }
-            | Request::GetSyncStatus { .. }
-            | Request::Count { .. }
-            | Request::GetHeaders { .. }
-            | Request::ListSavedSearches
-            | Request::ListSubscriptions { .. }
-            | Request::RunSavedSearch { .. }
-            | Request::ListSnoozed
-            | Request::PrepareReply { .. }
-            | Request::PrepareForward { .. }
-            | Request::ListDrafts
-            | Request::GetStatus
-            | Request::Ping
-    )
-}
-
-/// Send a request to the IPC worker and get the response.
-async fn ipc_call(
-    tx: &mpsc::UnboundedSender<IpcRequest>,
-    request: Request,
-) -> Result<Response, MxrError> {
-    let (reply_tx, reply_rx) = oneshot::channel();
-    tx.send(IpcRequest {
-        request,
-        reply: reply_tx,
-    })
-    .map_err(|_| MxrError::Ipc("IPC worker closed".into()))?;
-    reply_rx
-        .await
-        .map_err(|_| MxrError::Ipc("IPC worker dropped".into()))?
-}
-
-fn edit_tui_config(app: &mut App) -> Result<String, MxrError> {
-    let config_path = mxr_config::config_file_path();
-    let current_config = load_config().map_err(|error| MxrError::Ipc(error.to_string()))?;
-
-    if !config_path.exists() {
-        mxr_config::save_config(&current_config)
-            .map_err(|error| MxrError::Ipc(error.to_string()))?;
-    }
-
-    let editor = mxr_compose::editor::resolve_editor(current_config.general.editor.as_deref());
-    let status = std::process::Command::new(&editor)
-        .arg(&config_path)
-        .status()
-        .map_err(|error| MxrError::Ipc(format!("failed to launch editor: {error}")))?;
-
-    if !status.success() {
-        return Ok("Config edit cancelled".into());
-    }
-
-    let reloaded = load_config().map_err(|error| MxrError::Ipc(error.to_string()))?;
-    app.apply_runtime_config(&reloaded);
-    app.accounts_page.refresh_pending = true;
-    app.pending_status_refresh = true;
-
-    Ok("Config reloaded. Restart daemon for account/provider changes.".into())
-}
-
-fn open_tui_log_file() -> Result<String, MxrError> {
-    let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
-    if !log_path.exists() {
-        return Err(MxrError::Ipc(format!(
-            "log file not found at {}",
-            log_path.display()
-        )));
-    }
-
-    let editor = load_config()
-        .ok()
-        .and_then(|config| config.general.editor)
-        .map(|editor| mxr_compose::editor::resolve_editor(Some(editor.as_str())))
-        .unwrap_or_else(|| mxr_compose::editor::resolve_editor(None));
-    let status = std::process::Command::new(&editor)
-        .arg(&log_path)
-        .status()
-        .map_err(|error| MxrError::Ipc(format!("failed to launch editor: {error}")))?;
-
-    if !status.success() {
-        return Ok("Log open cancelled".into());
-    }
-
-    Ok(format!("Opened logs at {}", log_path.display()))
-}
-
-fn open_temp_text_buffer(name: &str, content: &str) -> Result<String, MxrError> {
-    let path = std::env::temp_dir().join(format!(
-        "mxr-{}-{}.txt",
-        name,
-        chrono::Utc::now().format("%Y%m%d-%H%M%S")
-    ));
-    std::fs::write(&path, content)
-        .map_err(|error| MxrError::Ipc(format!("failed to write temp file: {error}")))?;
-
-    let editor = load_config()
-        .ok()
-        .and_then(|config| config.general.editor)
-        .map(|editor| mxr_compose::editor::resolve_editor(Some(editor.as_str())))
-        .unwrap_or_else(|| mxr_compose::editor::resolve_editor(None));
-    let status = std::process::Command::new(&editor)
-        .arg(&path)
-        .status()
-        .map_err(|error| MxrError::Ipc(format!("failed to launch editor: {error}")))?;
-
-    if !status.success() {
-        return Ok(format!(
-            "Diagnostics detail open cancelled ({})",
-            path.display()
-        ));
-    }
-
-    Ok(format!("Opened diagnostics details at {}", path.display()))
-}
-
-fn open_diagnostics_pane_details(
-    state: &app::DiagnosticsPageState,
-    pane: app::DiagnosticsPaneKind,
-) -> Result<String, MxrError> {
-    if pane == app::DiagnosticsPaneKind::Logs {
-        return open_tui_log_file();
-    }
-
-    let name = match pane {
-        app::DiagnosticsPaneKind::Status => "doctor",
-        app::DiagnosticsPaneKind::Data => "storage",
-        app::DiagnosticsPaneKind::Sync => "sync-health",
-        app::DiagnosticsPaneKind::Events => "events",
-        app::DiagnosticsPaneKind::Logs => "logs",
-    };
-    let content = crate::ui::diagnostics_page::pane_details_text(state, pane);
-    open_temp_text_buffer(name, &content)
-}
-
-fn run_with_terminal_suspended_with<Terminal, Events, RestoreTerminal, InitTerminal, InitEvents, Action, R>(
+fn run_with_terminal_suspended_with<
+    Terminal,
+    Events,
+    RestoreTerminal,
+    InitTerminal,
+    InitEvents,
+    Action,
+    R,
+>(
     terminal: &mut Terminal,
     events: &mut Option<Events>,
     restore_terminal: RestoreTerminal,
@@ -388,22 +117,21 @@ pub async fn run() -> anyhow::Result<()> {
 
     // Background IPC worker — also forwards daemon events to result_tx
     let bg = spawn_ipc_worker(socket_path, result_tx.clone());
+    let html_assets =
+        crate::terminal_images::spawn_html_image_asset_worker(bg.clone(), result_tx.clone());
+    let html_decodes = crate::terminal_images::spawn_html_image_decode_worker(result_tx.clone());
+    let replaceable = spawn_replaceable_request_worker(bg.clone(), result_tx.clone());
+    let queued = spawn_task_worker(result_tx.clone());
+    let local_io = spawn_task_worker(result_tx.clone());
 
     loop {
-        if app.pending_local_state_save {
-            app.pending_local_state_save = false;
-            let state = local_state::TuiLocalState {
-                onboarding_seen: app.onboarding.seen,
-            };
-            if let Err(error) = local_state::save(&state) {
-                app.status_message = Some(format!("Could not save TUI state: {error}"));
-            }
-        }
+        crate::local_io::submit_pending_work(&mut app, &local_io);
 
         if app.pending_config_edit {
             app.pending_config_edit = false;
-            let result =
-                run_with_terminal_suspended(&mut terminal, &mut events, || edit_tui_config(&mut app));
+            let result = run_with_terminal_suspended(&mut terminal, &mut events, || {
+                edit_tui_config(&mut app)
+            });
             match result {
                 Ok(message) => {
                     app.status_message = Some(message);
@@ -462,8 +190,7 @@ pub async fn run() -> anyhow::Result<()> {
         if !app.queued_body_fetches.is_empty() {
             let ids = std::mem::take(&mut app.queued_body_fetches);
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let requested = ids;
                 let resp = ipc_call(
                     &bg,
@@ -480,7 +207,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::Bodies { requested, result });
+                AsyncResult::Bodies { requested, result }
             });
         }
 
@@ -489,31 +216,10 @@ pub async fn run() -> anyhow::Result<()> {
             for message_id in ids {
                 app.in_flight_html_image_asset_requests
                     .insert(message_id.clone());
-                let bg = bg.clone();
-                let tx = result_tx.clone();
                 let allow_remote = app.remote_content_enabled;
-                tokio::spawn(async move {
-                    let resp = ipc_call(
-                        &bg,
-                        Request::GetHtmlImageAssets {
-                            message_id: message_id.clone(),
-                            allow_remote,
-                        },
-                    )
-                    .await;
-                    let result = match resp {
-                        Ok(Response::Ok {
-                            data: ResponseData::HtmlImageAssets { assets, .. },
-                        }) => Ok(assets),
-                        Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                        Err(error) => Err(error),
-                        _ => Err(MxrError::Ipc("unexpected response".into())),
-                    };
-                    let _ = tx.send(AsyncResult::HtmlImageAssets {
-                        message_id,
-                        allow_remote,
-                        result,
-                    });
+                let _ = html_assets.send(crate::terminal_images::HtmlImageAssetRequest {
+                    message_id,
+                    allow_remote,
                 });
             }
         }
@@ -527,32 +233,19 @@ pub async fn run() -> anyhow::Result<()> {
                     .and_then(|assets| assets.get(&key.source))
                     .and_then(|entry| entry.asset.path.clone());
                 if let Some(path) = path {
-                    crate::terminal_images::spawn_image_decode(key, path, result_tx.clone());
+                    let _ = html_decodes
+                        .send(crate::terminal_images::HtmlImageDecodeRequest { key, path });
                 }
             }
         }
 
         if let Some(thread_id) = app.pending_thread_fetch.take() {
             app.in_flight_thread_fetch = Some(thread_id.clone());
-            let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
-                let resp = ipc_call(
-                    &bg,
-                    Request::GetThread {
-                        thread_id: thread_id.clone(),
-                    },
-                )
-                .await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::Thread { thread, messages },
-                    }) => Ok((thread, messages)),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
-                let _ = tx.send(AsyncResult::Thread { thread_id, result });
+            app.thread_request_id = app.thread_request_id.wrapping_add(1);
+            let _ = replaceable.send(ReplaceableRequest::Thread {
+                thread_id,
+                request_id: app.thread_request_id,
+                enqueued_at: Instant::now(),
             });
         }
 
@@ -567,103 +260,16 @@ pub async fn run() -> anyhow::Result<()> {
 
         // Spawn non-blocking search
         if let Some(pending) = app.pending_search.take() {
-            let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
-                let query = pending.query.clone();
-                let target = pending.target;
-                let append = pending.append;
-                let session_id = pending.session_id;
-                let results = match ipc_call(
-                    &bg,
-                    Request::Search {
-                        query,
-                        limit: pending.limit,
-                        offset: pending.offset,
-                        mode: Some(pending.mode),
-                        sort: Some(pending.sort),
-                        explain: false,
-                    },
-                )
-                .await
-                {
-                    Ok(Response::Ok {
-                        data:
-                            ResponseData::SearchResults {
-                                results, has_more, ..
-                            },
-                    }) => {
-                        let mut scores = std::collections::HashMap::new();
-                        let message_ids = results
-                            .into_iter()
-                            .map(|result| {
-                                scores.insert(result.message_id.clone(), result.score);
-                                result.message_id
-                            })
-                            .collect::<Vec<_>>();
-                        if message_ids.is_empty() {
-                            Ok(SearchResultData {
-                                envelopes: Vec::new(),
-                                scores,
-                                has_more,
-                            })
-                        } else {
-                            match ipc_call(&bg, Request::ListEnvelopesByIds { message_ids }).await {
-                                Ok(Response::Ok {
-                                    data: ResponseData::Envelopes { envelopes },
-                                }) => Ok(SearchResultData {
-                                    envelopes,
-                                    scores,
-                                    has_more,
-                                }),
-                                Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                                Err(e) => Err(e),
-                                _ => Err(MxrError::Ipc("unexpected response".into())),
-                            }
-                        }
-                    }
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
-                let _ = tx.send(AsyncResult::Search {
-                    target,
-                    append,
-                    session_id,
-                    result: results,
-                });
-            });
+            let _ = replaceable.send(ReplaceableRequest::Search(pending));
         }
 
         if let Some(pending) = app.pending_search_count.take() {
-            let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
-                let session_id = pending.session_id;
-                let result = match ipc_call(
-                    &bg,
-                    Request::Count {
-                        query: pending.query,
-                        mode: Some(pending.mode),
-                    },
-                )
-                .await
-                {
-                    Ok(Response::Ok {
-                        data: ResponseData::Count { count },
-                    }) => Ok(count),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(error) => Err(error),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
-                let _ = tx.send(AsyncResult::SearchCount { session_id, result });
-            });
+            let _ = replaceable.send(ReplaceableRequest::SearchCount(pending));
         }
 
         if let Some(pending) = app.pending_unsubscribe_action.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let unsubscribe_resp = ipc_call(
                     &bg,
                     Request::Unsubscribe {
@@ -711,15 +317,14 @@ pub async fn run() -> anyhow::Result<()> {
                     }
                     Err(error) => Err(error),
                 };
-                let _ = tx.send(AsyncResult::Unsubscribe(result));
+                AsyncResult::Unsubscribe(result)
             });
         }
 
         if app.rules_page.refresh_pending {
             app.rules_page.refresh_pending = false;
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, Request::ListRules).await;
                 let result = match resp {
                     Ok(Response::Ok {
@@ -729,55 +334,31 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::Rules(result));
+                AsyncResult::Rules(result)
             });
         }
 
         if let Some(rule) = app.pending_rule_detail.take() {
-            let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::GetRule { rule }).await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::RuleData { rule },
-                    }) => Ok(rule),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
-                let _ = tx.send(AsyncResult::RuleDetail(result));
+            app.rule_detail_request_id = app.rule_detail_request_id.wrapping_add(1);
+            let _ = replaceable.send(ReplaceableRequest::RuleDetail {
+                rule,
+                request_id: app.rule_detail_request_id,
+                enqueued_at: Instant::now(),
             });
         }
 
         if let Some(rule) = app.pending_rule_history.take() {
-            let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
-                let resp = ipc_call(
-                    &bg,
-                    Request::ListRuleHistory {
-                        rule: Some(rule),
-                        limit: 20,
-                    },
-                )
-                .await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::RuleHistory { entries },
-                    }) => Ok(entries),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
-                let _ = tx.send(AsyncResult::RuleHistory(result));
+            app.rule_history_request_id = app.rule_history_request_id.wrapping_add(1);
+            let _ = replaceable.send(ReplaceableRequest::RuleHistory {
+                rule,
+                request_id: app.rule_history_request_id,
+                enqueued_at: Instant::now(),
             });
         }
 
         if let Some(rule) = app.pending_rule_dry_run.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
                     &bg,
                     Request::DryRunRules {
@@ -795,45 +376,35 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::RuleDryRun(result));
+                AsyncResult::RuleDryRun(result)
             });
         }
 
         if let Some(rule) = app.pending_rule_form_load.take() {
-            let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::GetRuleForm { rule }).await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::RuleFormData { form },
-                    }) => Ok(form),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
-                let _ = tx.send(AsyncResult::RuleForm(result));
+            app.rule_form_request_id = app.rule_form_request_id.wrapping_add(1);
+            let _ = replaceable.send(ReplaceableRequest::RuleForm {
+                rule,
+                request_id: app.rule_form_request_id,
+                enqueued_at: Instant::now(),
             });
         }
 
         if let Some(rule) = app.pending_rule_delete.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, Request::DeleteRule { rule }).await;
                 let result = match resp {
                     Ok(Response::Ok { .. }) => Ok(()),
                     Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                 };
-                let _ = tx.send(AsyncResult::RuleDeleted(result));
+                AsyncResult::RuleDeleted(result)
             });
         }
 
         if let Some(rule) = app.pending_rule_upsert.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, Request::UpsertRule { rule }).await;
                 let result = match resp {
                     Ok(Response::Ok {
@@ -843,21 +414,20 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::RuleUpsert(result));
+                AsyncResult::RuleUpsert(result)
             });
         }
 
         if app.pending_rule_form_save {
             app.pending_rule_form_save = false;
             let bg = bg.clone();
-            let tx = result_tx.clone();
             let existing_rule = app.rules_page.form.existing_rule.clone();
             let name = app.rules_page.form.name.clone();
             let condition = app.rules_page.form.condition.clone();
             let action = app.rules_page.form.action.clone();
             let priority = app.rules_page.form.priority.parse::<i32>().unwrap_or(100);
             let enabled = app.rules_page.form.enabled;
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
                     &bg,
                     Request::UpsertRuleForm {
@@ -878,7 +448,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::RuleUpsert(result));
+                AsyncResult::RuleUpsert(result)
             });
         }
 
@@ -886,75 +456,61 @@ pub async fn run() -> anyhow::Result<()> {
             app.diagnostics_page.refresh_pending = false;
             app.pending_status_refresh = false;
             app.diagnostics_page.pending_requests = 4;
-            for request in [
-                Request::GetStatus,
-                Request::GetDoctorReport,
-                Request::ListEvents {
-                    limit: 20,
-                    level: None,
-                    category: None,
-                },
-                Request::GetLogs {
-                    limit: 50,
-                    level: None,
-                },
+            app.diagnostics_request_id = app.diagnostics_request_id.wrapping_add(1);
+            let request_id = app.diagnostics_request_id;
+            for (kind, request) in [
+                (ReplaceableRequestKey::DiagnosticsStatus, Request::GetStatus),
+                (
+                    ReplaceableRequestKey::DiagnosticsDoctor,
+                    Request::GetDoctorReport,
+                ),
+                (
+                    ReplaceableRequestKey::DiagnosticsEvents,
+                    Request::ListEvents {
+                        limit: 20,
+                        level: None,
+                        category: None,
+                    },
+                ),
+                (
+                    ReplaceableRequestKey::DiagnosticsLogs,
+                    Request::GetLogs {
+                        limit: 50,
+                        level: None,
+                    },
+                ),
             ] {
-                let bg = bg.clone();
-                let tx = result_tx.clone();
-                tokio::spawn(async move {
-                    let resp = ipc_call(&bg, request).await;
-                    let _ = tx.send(AsyncResult::Diagnostics(Box::new(resp)));
+                let _ = replaceable.send(ReplaceableRequest::Diagnostics {
+                    kind,
+                    request,
+                    request_id,
+                    enqueued_at: Instant::now(),
                 });
             }
         }
 
         if app.pending_status_refresh {
             app.pending_status_refresh = false;
-            let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
-                let resp = ipc_call(&bg, Request::GetStatus).await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data:
-                            ResponseData::Status {
-                                uptime_secs,
-                                daemon_pid,
-                                accounts,
-                                total_messages,
-                                sync_statuses,
-                                ..
-                            },
-                    }) => Ok(StatusSnapshot {
-                        uptime_secs,
-                        daemon_pid,
-                        accounts,
-                        total_messages,
-                        sync_statuses,
-                    }),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                    _ => Err(MxrError::Ipc("unexpected response".into())),
-                };
-                let _ = tx.send(AsyncResult::Status(result));
+            app.status_request_id = app.status_request_id.wrapping_add(1);
+            let _ = replaceable.send(ReplaceableRequest::Status {
+                request_id: app.status_request_id,
+                enqueued_at: Instant::now(),
             });
         }
 
         if app.accounts_page.refresh_pending {
             app.accounts_page.refresh_pending = false;
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let result = load_accounts_page_accounts(&bg).await;
-                let _ = tx.send(AsyncResult::Accounts(result));
+                AsyncResult::Accounts(result)
             });
         }
 
         if app.pending_labels_refresh {
             app.pending_labels_refresh = false;
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, Request::ListLabels { account_id: None }).await;
                 let result = match resp {
                     Ok(Response::Ok {
@@ -964,15 +520,14 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::Labels(result));
+                AsyncResult::Labels(result)
             });
         }
 
         if app.pending_all_envelopes_refresh {
             app.pending_all_envelopes_refresh = false;
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
                     &bg,
                     Request::ListEnvelopes {
@@ -991,15 +546,14 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::AllEnvelopes(result));
+                AsyncResult::AllEnvelopes(result)
             });
         }
 
         if app.pending_subscriptions_refresh {
             app.pending_subscriptions_refresh = false;
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
                     &bg,
                     Request::ListSubscriptions {
@@ -1016,33 +570,30 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::Subscriptions(result));
+                AsyncResult::Subscriptions(result)
             });
         }
 
         if let Some(account) = app.pending_account_save.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let result = run_account_save_workflow(&bg, account).await;
-                let _ = tx.send(AsyncResult::AccountOperation(result));
+                AsyncResult::AccountOperation(result)
             });
         }
 
         if let Some(account) = app.pending_account_test.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let result =
                     request_account_operation(&bg, Request::TestAccountConfig { account }).await;
-                let _ = tx.send(AsyncResult::AccountOperation(result));
+                AsyncResult::AccountOperation(result)
             });
         }
 
         if let Some((account, reauthorize)) = app.pending_account_authorize.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let result = request_account_operation(
                     &bg,
                     Request::AuthorizeAccountConfig {
@@ -1051,25 +602,23 @@ pub async fn run() -> anyhow::Result<()> {
                     },
                 )
                 .await;
-                let _ = tx.send(AsyncResult::AccountOperation(result));
+                AsyncResult::AccountOperation(result)
             });
         }
 
         if let Some(key) = app.pending_account_set_default.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let result =
                     request_account_operation(&bg, Request::SetDefaultAccount { key }).await;
-                let _ = tx.send(AsyncResult::AccountOperation(result));
+                AsyncResult::AccountOperation(result)
             });
         }
 
         if app.pending_bug_report {
             app.pending_bug_report = false;
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
                     &bg,
                     Request::GenerateBugReport {
@@ -1087,14 +636,13 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::BugReport(result));
+                AsyncResult::BugReport(result)
             });
         }
 
         if let Some(pending) = app.pending_attachment_action.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let request = match pending.operation {
                     AttachmentOperation::Open => Request::OpenAttachment {
                         message_id: pending.message_id,
@@ -1114,18 +662,17 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::AttachmentFile {
+                AsyncResult::AttachmentFile {
                     operation: pending.operation,
                     result,
-                });
+                }
             });
         }
 
         // Spawn non-blocking label envelope fetch
         if let Some(label_id) = app.pending_label_fetch.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
                     &bg,
                     Request::ListEnvelopes {
@@ -1144,15 +691,14 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::LabelEnvelopes(envelopes));
+                AsyncResult::LabelEnvelopes(envelopes)
             });
         }
 
         // Drain pending mutations
         for (req, effect) in app.pending_mutation_queue.drain(..) {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, req).await;
                 let result = match resp {
                     Ok(Response::Ok {
@@ -1162,15 +708,14 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::MutationResult(result));
+                AsyncResult::MutationResult(result)
             });
         }
 
         // Handle thread export (uses daemon ExportThread which runs mxr-export)
         if let Some(thread_id) = app.pending_export_thread.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&local_io, async move {
                 let resp = ipc_call(
                     &bg,
                     Request::ExportThread {
@@ -1189,7 +734,7 @@ pub async fn run() -> anyhow::Result<()> {
                             chrono::Utc::now().format("%Y%m%d-%H%M%S")
                         );
                         let path = std::env::temp_dir().join(&filename);
-                        match std::fs::write(&path, &content) {
+                        match tokio::fs::write(&path, &content).await {
                             Ok(()) => Ok(format!("Exported to {}", path.display())),
                             Err(e) => Err(MxrError::Ipc(format!("Write failed: {e}"))),
                         }
@@ -1198,17 +743,16 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                let _ = tx.send(AsyncResult::ExportResult(result));
+                AsyncResult::ExportResult(result)
             });
         }
 
         // Handle compose actions
         if let Some(compose_action) = app.pending_compose.take() {
             let bg = bg.clone();
-            let tx = result_tx.clone();
-            tokio::spawn(async move {
+            let _ = submit_task(&queued, async move {
                 let result = handle_compose_action(&bg, compose_action).await;
-                let _ = tx.send(AsyncResult::ComposeReady(result));
+                AsyncResult::ComposeReady(result)
             });
         }
 
@@ -1309,17 +853,45 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Rules(Err(e)) => {
                             app.rules_page.status = Some(format!("Rules error: {e}"));
                         }
-                        AsyncResult::RuleDetail(Ok(rule)) => {
+                        AsyncResult::RuleDetail {
+                            request_id,
+                            result: Ok(rule),
+                        } => {
+                            if request_id != app.rule_detail_request_id {
+                                tracing::trace!(request_id, current_id = app.rule_detail_request_id, "tui stale rule detail dropped");
+                                continue;
+                            }
                             app.rules_page.detail = Some(rule);
                             app.rules_page.panel = app::RulesPanel::Details;
                         }
-                        AsyncResult::RuleDetail(Err(e)) => {
+                        AsyncResult::RuleDetail {
+                            request_id,
+                            result: Err(e),
+                        } => {
+                            if request_id != app.rule_detail_request_id {
+                                tracing::trace!(request_id, current_id = app.rule_detail_request_id, "tui stale rule detail dropped");
+                                continue;
+                            }
                             app.rules_page.status = Some(format!("Rule error: {e}"));
                         }
-                        AsyncResult::RuleHistory(Ok(entries)) => {
+                        AsyncResult::RuleHistory {
+                            request_id,
+                            result: Ok(entries),
+                        } => {
+                            if request_id != app.rule_history_request_id {
+                                tracing::trace!(request_id, current_id = app.rule_history_request_id, "tui stale rule history dropped");
+                                continue;
+                            }
                             app.rules_page.history = entries;
                         }
-                        AsyncResult::RuleHistory(Err(e)) => {
+                        AsyncResult::RuleHistory {
+                            request_id,
+                            result: Err(e),
+                        } => {
+                            if request_id != app.rule_history_request_id {
+                                tracing::trace!(request_id, current_id = app.rule_history_request_id, "tui stale rule history dropped");
+                                continue;
+                            }
                             app.rules_page.status = Some(format!("History error: {e}"));
                         }
                         AsyncResult::RuleDryRun(Ok(results)) => {
@@ -1328,7 +900,14 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::RuleDryRun(Err(e)) => {
                             app.rules_page.status = Some(format!("Dry-run error: {e}"));
                         }
-                        AsyncResult::RuleForm(Ok(form)) => {
+                        AsyncResult::RuleForm {
+                            request_id,
+                            result: Ok(form),
+                        } => {
+                            if request_id != app.rule_form_request_id {
+                                tracing::trace!(request_id, current_id = app.rule_form_request_id, "tui stale rule form dropped");
+                                continue;
+                            }
                             app.rules_page.form.visible = true;
                             app.rules_page.form.existing_rule = form.id;
                             app.rules_page.form.name = form.name;
@@ -1340,7 +919,14 @@ pub async fn run() -> anyhow::Result<()> {
                             app.sync_rule_form_editors();
                             app.rules_page.panel = app::RulesPanel::Form;
                         }
-                        AsyncResult::RuleForm(Err(e)) => {
+                        AsyncResult::RuleForm {
+                            request_id,
+                            result: Err(e),
+                        } => {
+                            if request_id != app.rule_form_request_id {
+                                tracing::trace!(request_id, current_id = app.rule_form_request_id, "tui stale rule form dropped");
+                                continue;
+                            }
                             app.rules_page.status = Some(format!("Form error: {e}"));
                         }
                         AsyncResult::RuleDeleted(Ok(())) => {
@@ -1360,7 +946,11 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::RuleUpsert(Err(e)) => {
                             app.rules_page.status = Some(format!("Save error: {e}"));
                         }
-                        AsyncResult::Diagnostics(result) => {
+                        AsyncResult::Diagnostics { request_id, result } => {
+                            if request_id != app.diagnostics_request_id {
+                                tracing::trace!(request_id, current_id = app.diagnostics_request_id, "tui stale diagnostics dropped");
+                                continue;
+                            }
                             app.diagnostics_page.pending_requests =
                                 app.diagnostics_page.pending_requests.saturating_sub(1);
                             match *result {
@@ -1410,7 +1000,14 @@ pub async fn run() -> anyhow::Result<()> {
                                 }
                             }
                         }
-                        AsyncResult::Status(Ok(snapshot)) => {
+                        AsyncResult::Status {
+                            request_id,
+                            result: Ok(snapshot),
+                        } => {
+                            if request_id != app.status_request_id {
+                                tracing::trace!(request_id, current_id = app.status_request_id, "tui stale status dropped");
+                                continue;
+                            }
                             app.apply_status_snapshot(
                                 snapshot.uptime_secs,
                                 snapshot.daemon_pid,
@@ -1419,7 +1016,14 @@ pub async fn run() -> anyhow::Result<()> {
                                 snapshot.sync_statuses,
                             );
                         }
-                        AsyncResult::Status(Err(e)) => {
+                        AsyncResult::Status {
+                            request_id,
+                            result: Err(e),
+                        } => {
+                            if request_id != app.status_request_id {
+                                tracing::trace!(request_id, current_id = app.status_request_id, "tui stale status dropped");
+                                continue;
+                            }
                             app.status_message = Some(format!("Status refresh failed: {e}"));
                         }
                         AsyncResult::Accounts(Ok(accounts)) => {
@@ -1487,21 +1091,7 @@ pub async fn run() -> anyhow::Result<()> {
                             ));
                         }
                         AsyncResult::BugReport(Ok(content)) => {
-                            let filename = format!(
-                                "mxr-bug-report-{}.md",
-                                chrono::Utc::now().format("%Y%m%d-%H%M%S")
-                            );
-                            let path = std::env::temp_dir().join(filename);
-                            match std::fs::write(&path, &content) {
-                                Ok(()) => {
-                                    app.diagnostics_page.status =
-                                        Some(format!("Bug report saved to {}", path.display()));
-                                }
-                                Err(e) => {
-                                    app.diagnostics_page.status =
-                                        Some(format!("Bug report write failed: {e}"));
-                                }
-                            }
+                            submit_bug_report_write(&local_io, content);
                         }
                         AsyncResult::BugReport(Err(e)) => {
                             app.diagnostics_page.status = Some(format!("Bug report error: {e}"));
@@ -1606,15 +1196,25 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::Thread {
                             thread_id,
+                            request_id,
                             result: Ok((thread, messages)),
                         } => {
+                            if request_id != app.thread_request_id {
+                                tracing::trace!(request_id, current_id = app.thread_request_id, "tui stale thread dropped");
+                                continue;
+                            }
                             app.resolve_thread_success(thread, messages);
                             let _ = thread_id;
                         }
                         AsyncResult::Thread {
                             thread_id,
+                            request_id,
                             result: Err(_),
                         } => {
+                            if request_id != app.thread_request_id {
+                                tracing::trace!(request_id, current_id = app.thread_request_id, "tui stale thread dropped");
+                                continue;
+                            }
                             app.resolve_thread_fetch_error(&thread_id);
                         }
                         AsyncResult::MutationResult(Ok(effect)) => {
@@ -1687,7 +1287,7 @@ pub async fn run() -> anyhow::Result<()> {
                                     .arg(&data.draft_path)
                                     .status()
                             });
-                            handle_compose_editor_status(&mut app, &data, status);
+                            handle_compose_editor_status(&mut app, &data, status).await;
                         }
                         AsyncResult::ComposeReady(Err(e)) => {
                             app.status_message = Some(format!("Compose error: {e}"));
@@ -1714,7 +1314,17 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Subscriptions(Err(e)) => {
                             app.status_message = Some(format!("Subscriptions error: {e}"));
                         }
-                        AsyncResult::DaemonEvent(event) => handle_daemon_event(&mut app, event),
+                        other => {
+                            let Some(other) = handle_local_io_result(&mut app, other) else {
+                                continue;
+                            };
+                            match other {
+                                AsyncResult::DaemonEvent(event) => {
+                                    handle_daemon_event(&mut app, event)
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                 }
             }
@@ -1730,363 +1340,6 @@ pub async fn run() -> anyhow::Result<()> {
 
     ratatui::restore();
     Ok(())
-}
-
-pub(crate) enum AsyncResult {
-    Search {
-        target: app::SearchTarget,
-        append: bool,
-        session_id: u64,
-        result: Result<SearchResultData, MxrError>,
-    },
-    SearchCount {
-        session_id: u64,
-        result: Result<u32, MxrError>,
-    },
-    Rules(Result<Vec<serde_json::Value>, MxrError>),
-    RuleDetail(Result<serde_json::Value, MxrError>),
-    RuleHistory(Result<Vec<serde_json::Value>, MxrError>),
-    RuleDryRun(Result<Vec<serde_json::Value>, MxrError>),
-    RuleForm(Result<mxr_protocol::RuleFormData, MxrError>),
-    RuleDeleted(Result<(), MxrError>),
-    RuleUpsert(Result<serde_json::Value, MxrError>),
-    Diagnostics(Box<Result<Response, MxrError>>),
-    Status(Result<StatusSnapshot, MxrError>),
-    Accounts(Result<Vec<mxr_protocol::AccountSummaryData>, MxrError>),
-    Labels(Result<Vec<mxr_core::Label>, MxrError>),
-    AllEnvelopes(Result<Vec<mxr_core::Envelope>, MxrError>),
-    Subscriptions(Result<Vec<mxr_core::types::SubscriptionSummary>, MxrError>),
-    AccountOperation(Result<mxr_protocol::AccountOperationResult, MxrError>),
-    BugReport(Result<String, MxrError>),
-    AttachmentFile {
-        operation: AttachmentOperation,
-        result: Result<mxr_protocol::AttachmentFile, MxrError>,
-    },
-    LabelEnvelopes(Result<Vec<mxr_core::Envelope>, MxrError>),
-    Bodies {
-        requested: Vec<mxr_core::MessageId>,
-        result: Result<Vec<mxr_core::MessageBody>, MxrError>,
-    },
-    HtmlImageAssets {
-        message_id: mxr_core::MessageId,
-        allow_remote: bool,
-        result: Result<Vec<mxr_core::types::HtmlImageAsset>, MxrError>,
-    },
-    HtmlImageDecoded {
-        key: crate::terminal_images::HtmlImageKey,
-        result: Result<image::DynamicImage, MxrError>,
-    },
-    HtmlImageResized {
-        key: crate::terminal_images::HtmlImageKey,
-        result: Result<ratatui_image::thread::ResizeResponse, MxrError>,
-    },
-    Thread {
-        thread_id: mxr_core::ThreadId,
-        result: Result<(mxr_core::Thread, Vec<mxr_core::Envelope>), MxrError>,
-    },
-    MutationResult(Result<app::MutationEffect, MxrError>),
-    ComposeReady(Result<ComposeReadyData, MxrError>),
-    ExportResult(Result<String, MxrError>),
-    Unsubscribe(Result<UnsubscribeResultData, MxrError>),
-    DaemonEvent(DaemonEvent),
-}
-
-pub(crate) struct ComposeReadyData {
-    draft_path: std::path::PathBuf,
-    cursor_line: usize,
-    initial_content: String,
-}
-
-pub(crate) struct SearchResultData {
-    envelopes: Vec<mxr_core::types::Envelope>,
-    scores: std::collections::HashMap<mxr_core::MessageId, f32>,
-    has_more: bool,
-}
-
-pub(crate) struct StatusSnapshot {
-    uptime_secs: u64,
-    daemon_pid: Option<u32>,
-    accounts: Vec<String>,
-    total_messages: u32,
-    sync_statuses: Vec<mxr_protocol::AccountSyncStatus>,
-}
-
-pub(crate) struct UnsubscribeResultData {
-    archived_ids: Vec<mxr_core::MessageId>,
-    message: String,
-}
-
-async fn handle_compose_action(
-    bg: &mpsc::UnboundedSender<IpcRequest>,
-    action: ComposeAction,
-) -> Result<ComposeReadyData, MxrError> {
-    let from = get_account_email(bg).await?;
-
-    let kind = match action {
-        ComposeAction::EditDraft(path) => {
-            // Re-edit existing draft — skip creating a new file
-            let cursor_line = 1;
-            return Ok(ComposeReadyData {
-                draft_path: path.clone(),
-                cursor_line,
-                initial_content: std::fs::read_to_string(&path)
-                    .map_err(|e| MxrError::Ipc(e.to_string()))?,
-            });
-        }
-        ComposeAction::New { to, subject } => mxr_compose::ComposeKind::New { to, subject },
-        ComposeAction::Reply { message_id } => {
-            let resp = ipc_call(
-                bg,
-                Request::PrepareReply {
-                    message_id,
-                    reply_all: false,
-                },
-            )
-            .await?;
-            match resp {
-                Response::Ok {
-                    data: ResponseData::ReplyContext { context },
-                } => mxr_compose::ComposeKind::Reply {
-                    in_reply_to: context.in_reply_to,
-                    references: context.references,
-                    to: context.reply_to,
-                    cc: context.cc,
-                    subject: context.subject,
-                    thread_context: context.thread_context,
-                },
-                Response::Error { message } => return Err(MxrError::Ipc(message)),
-                _ => return Err(MxrError::Ipc("unexpected response".into())),
-            }
-        }
-        ComposeAction::ReplyAll { message_id } => {
-            let resp = ipc_call(
-                bg,
-                Request::PrepareReply {
-                    message_id,
-                    reply_all: true,
-                },
-            )
-            .await?;
-            match resp {
-                Response::Ok {
-                    data: ResponseData::ReplyContext { context },
-                } => mxr_compose::ComposeKind::Reply {
-                    in_reply_to: context.in_reply_to,
-                    references: context.references,
-                    to: context.reply_to,
-                    cc: context.cc,
-                    subject: context.subject,
-                    thread_context: context.thread_context,
-                },
-                Response::Error { message } => return Err(MxrError::Ipc(message)),
-                _ => return Err(MxrError::Ipc("unexpected response".into())),
-            }
-        }
-        ComposeAction::Forward { message_id } => {
-            let resp = ipc_call(bg, Request::PrepareForward { message_id }).await?;
-            match resp {
-                Response::Ok {
-                    data: ResponseData::ForwardContext { context },
-                } => mxr_compose::ComposeKind::Forward {
-                    subject: context.subject,
-                    original_context: context.forwarded_content,
-                },
-                Response::Error { message } => return Err(MxrError::Ipc(message)),
-                _ => return Err(MxrError::Ipc("unexpected response".into())),
-            }
-        }
-    };
-
-    let (path, cursor_line) =
-        mxr_compose::create_draft_file(kind, &from).map_err(|e| MxrError::Ipc(e.to_string()))?;
-
-    Ok(ComposeReadyData {
-        draft_path: path.clone(),
-        cursor_line,
-        initial_content: std::fs::read_to_string(&path)
-            .map_err(|e| MxrError::Ipc(e.to_string()))?,
-    })
-}
-
-async fn get_account_email(bg: &mpsc::UnboundedSender<IpcRequest>) -> Result<String, MxrError> {
-    let resp = ipc_call(bg, Request::ListAccounts).await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Accounts { mut accounts },
-        } => {
-            if let Some(index) = accounts.iter().position(|account| account.is_default) {
-                Ok(accounts.remove(index).email)
-            } else {
-                accounts
-                    .into_iter()
-                    .next()
-                    .map(|account| account.email)
-                    .ok_or_else(|| MxrError::Ipc("No runtime account configured".into()))
-            }
-        }
-        Response::Error { message } => Err(MxrError::Ipc(message)),
-        _ => Err(MxrError::Ipc("Unexpected account response".into())),
-    }
-}
-
-fn pending_send_from_edited_draft(data: &ComposeReadyData) -> Result<Option<PendingSend>, String> {
-    let content = std::fs::read_to_string(&data.draft_path)
-        .map_err(|e| format!("Failed to read draft: {e}"))?;
-    let unchanged = content == data.initial_content;
-
-    let (fm, body) = mxr_compose::frontmatter::parse_compose_file(&content)
-        .map_err(|e| format!("Parse error: {e}"))?;
-    let save_issues = mxr_compose::validate_draft_for_save(&fm, &body);
-    if save_issues.iter().any(|issue| issue.is_error()) {
-        let msgs: Vec<String> = save_issues.iter().map(|issue| issue.to_string()).collect();
-        return Err(format!("Draft errors: {}", msgs.join("; ")));
-    }
-
-    let send_issues = mxr_compose::validate_draft(&fm, &body);
-    let mode = if unchanged {
-        PendingSendMode::Unchanged
-    } else if send_issues.iter().all(|issue| !issue.is_error()) {
-        PendingSendMode::SendOrSave
-    } else if send_issues
-        .iter()
-        .all(|issue| !issue.is_error() || issue.is_missing_recipients())
-    {
-        PendingSendMode::DraftOnlyNoRecipients
-    } else {
-        let msgs: Vec<String> = send_issues.iter().map(|issue| issue.to_string()).collect();
-        return Err(format!("Draft errors: {}", msgs.join("; ")));
-    };
-
-    Ok(Some(PendingSend {
-        fm,
-        body,
-        draft_path: data.draft_path.clone(),
-        mode,
-    }))
-}
-
-fn handle_compose_editor_status(
-    app: &mut App,
-    data: &ComposeReadyData,
-    status: std::io::Result<std::process::ExitStatus>,
-) {
-    match status {
-        Ok(s) if s.success() => match pending_send_from_edited_draft(data) {
-            Ok(Some(pending)) => {
-                app.pending_send_confirm = Some(pending);
-            }
-            Ok(None) => {}
-            Err(message) => {
-                app.status_message = Some(message);
-            }
-        },
-        Ok(_) => {
-            app.status_message = Some("Draft discarded".into());
-            let _ = std::fs::remove_file(&data.draft_path);
-        }
-        Err(e) => {
-            app.status_message = Some(format!("Failed to launch editor: {e}"));
-        }
-    }
-}
-
-fn daemon_socket_path() -> std::path::PathBuf {
-    config_socket_path()
-}
-
-async fn request_account_operation(
-    bg: &mpsc::UnboundedSender<IpcRequest>,
-    request: Request,
-) -> Result<mxr_protocol::AccountOperationResult, MxrError> {
-    let resp = ipc_call(bg, request).await;
-    match resp {
-        Ok(Response::Ok {
-            data: ResponseData::AccountOperation { result },
-        }) => Ok(result),
-        Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-        Err(e) => Err(e),
-        _ => Err(MxrError::Ipc("unexpected response".into())),
-    }
-}
-
-async fn run_account_save_workflow(
-    bg: &mpsc::UnboundedSender<IpcRequest>,
-    account: mxr_protocol::AccountConfigData,
-) -> Result<mxr_protocol::AccountOperationResult, MxrError> {
-    let mut result = if matches!(
-        account.sync,
-        Some(mxr_protocol::AccountSyncConfigData::Gmail { .. })
-    ) {
-        request_account_operation(
-            bg,
-            Request::AuthorizeAccountConfig {
-                account: account.clone(),
-                reauthorize: false,
-            },
-        )
-        .await?
-    } else {
-        empty_account_operation_result()
-    };
-
-    if result.auth.as_ref().is_some_and(|step| !step.ok) {
-        return Ok(result);
-    }
-
-    let save_result = request_account_operation(
-        bg,
-        Request::UpsertAccountConfig {
-            account: account.clone(),
-        },
-    )
-    .await?;
-    merge_account_operation_result(&mut result, save_result);
-
-    if result.save.as_ref().is_some_and(|step| !step.ok) {
-        return Ok(result);
-    }
-
-    let test_result = request_account_operation(bg, Request::TestAccountConfig { account }).await?;
-    merge_account_operation_result(&mut result, test_result);
-
-    Ok(result)
-}
-
-fn empty_account_operation_result() -> mxr_protocol::AccountOperationResult {
-    mxr_protocol::AccountOperationResult {
-        ok: true,
-        summary: String::new(),
-        save: None,
-        auth: None,
-        sync: None,
-        send: None,
-    }
-}
-
-fn merge_account_operation_result(
-    base: &mut mxr_protocol::AccountOperationResult,
-    next: mxr_protocol::AccountOperationResult,
-) {
-    base.ok &= next.ok;
-    if !next.summary.is_empty() {
-        if base.summary.is_empty() {
-            base.summary = next.summary;
-        } else {
-            base.summary = format!("{} | {}", base.summary, next.summary);
-        }
-    }
-    if next.save.is_some() {
-        base.save = next.save;
-    }
-    if next.auth.is_some() {
-        base.auth = next.auth;
-    }
-    if next.sync.is_some() {
-        base.sync = next.sync;
-    }
-    if next.send.is_some() {
-        base.send = next.send;
-    }
 }
 
 fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
@@ -2223,80 +1476,6 @@ fn restore_mail_list_selection(app: &mut App, selected_id: Option<mxr_core::Mess
     }
 }
 
-async fn load_accounts_page_accounts(
-    bg: &mpsc::UnboundedSender<IpcRequest>,
-) -> Result<Vec<mxr_protocol::AccountSummaryData>, MxrError> {
-    match ipc_call(bg, Request::ListAccounts).await {
-        Ok(Response::Ok {
-            data: ResponseData::Accounts { accounts },
-        }) if !accounts.is_empty() => Ok(accounts),
-        Ok(Response::Ok {
-            data: ResponseData::Accounts { .. },
-        })
-        | Ok(Response::Error { .. })
-        | Err(_) => load_config_account_summaries(bg).await,
-        Ok(_) => Err(MxrError::Ipc("unexpected response".into())),
-    }
-}
-
-async fn load_config_account_summaries(
-    bg: &mpsc::UnboundedSender<IpcRequest>,
-) -> Result<Vec<mxr_protocol::AccountSummaryData>, MxrError> {
-    let resp = ipc_call(bg, Request::ListAccountsConfig).await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::AccountsConfig { accounts },
-        } => Ok(accounts
-            .into_iter()
-            .map(account_config_to_summary)
-            .collect()),
-        Response::Error { message } => Err(MxrError::Ipc(message)),
-        _ => Err(MxrError::Ipc("unexpected response".into())),
-    }
-}
-
-fn account_config_to_summary(
-    account: mxr_protocol::AccountConfigData,
-) -> mxr_protocol::AccountSummaryData {
-    let provider_kind = account
-        .sync
-        .as_ref()
-        .map(account_sync_kind_label)
-        .or_else(|| account.send.as_ref().map(account_send_kind_label))
-        .unwrap_or_else(|| "unknown".to_string());
-    let account_id = mxr_core::AccountId::from_provider_id(&provider_kind, &account.email);
-
-    mxr_protocol::AccountSummaryData {
-        account_id,
-        key: Some(account.key),
-        name: account.name,
-        email: account.email,
-        provider_kind,
-        sync_kind: account.sync.as_ref().map(account_sync_kind_label),
-        send_kind: account.send.as_ref().map(account_send_kind_label),
-        enabled: true,
-        is_default: account.is_default,
-        source: mxr_protocol::AccountSourceData::Config,
-        editable: mxr_protocol::AccountEditModeData::Full,
-        sync: account.sync,
-        send: account.send,
-    }
-}
-
-fn account_sync_kind_label(sync: &mxr_protocol::AccountSyncConfigData) -> String {
-    match sync {
-        mxr_protocol::AccountSyncConfigData::Gmail { .. } => "gmail".to_string(),
-        mxr_protocol::AccountSyncConfigData::Imap { .. } => "imap".to_string(),
-    }
-}
-
-fn account_send_kind_label(send: &mxr_protocol::AccountSendConfigData) -> String {
-    match send {
-        mxr_protocol::AccountSendConfigData::Gmail => "gmail".to_string(),
-        mxr_protocol::AccountSendConfigData::Smtp { .. } => "smtp".to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::action::Action;
@@ -2311,11 +1490,13 @@ mod tests {
     use super::ui::search_bar::SearchBar;
     use super::ui::status_bar;
     use super::{
-        app::MailListMode, apply_all_envelopes_refresh, handle_compose_editor_status,
-        handle_daemon_event,
-        pending_send_from_edited_draft, run_with_terminal_suspended_with, ComposeReadyData,
-        PendingSend, SearchResultData,
+        app::MailListMode, apply_all_envelopes_refresh, handle_daemon_event,
+        run_with_terminal_suspended_with,
     };
+    use crate::app::PendingSend;
+    use crate::async_result::{ComposeReadyData, SearchResultData};
+    use crate::compose_flow::{handle_compose_editor_status, pending_send_from_edited_draft};
+    use crate::runtime::{enqueue_replaceable_request, ReplaceableRequest};
     use crate::test_fixtures::TestEnvelopeBuilder;
     use mxr_config::RenderConfig;
     use mxr_core::id::*;
@@ -2324,9 +1505,11 @@ mod tests {
     use mxr_protocol::{DaemonEvent, LabelCount, MutationCommand, Request};
     use mxr_test_support::render_to_string;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::collections::VecDeque;
     use std::os::unix::process::ExitStatusExt;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
+    use tokio::time::Instant;
 
     fn make_test_envelopes(count: usize) -> Vec<Envelope> {
         (0..count)
@@ -2459,8 +1642,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn compose_editor_success_opens_send_confirmation() {
+    #[tokio::test]
+    async fn compose_editor_success_opens_send_confirmation() {
         let temp = std::env::temp_dir().join(format!(
             "mxr-compose-editor-success-{}-{}.md",
             std::process::id(),
@@ -2476,7 +1659,7 @@ mod tests {
         };
         let mut app = App::new();
 
-        handle_compose_editor_status(&mut app, &data, Ok(exit_status(0)));
+        handle_compose_editor_status(&mut app, &data, Ok(exit_status(0))).await;
 
         assert_eq!(
             app.pending_send_confirm
@@ -2489,8 +1672,8 @@ mod tests {
         let _ = std::fs::remove_file(temp);
     }
 
-    #[test]
-    fn compose_editor_cancel_discards_draft() {
+    #[tokio::test]
+    async fn compose_editor_cancel_discards_draft() {
         let temp = std::env::temp_dir().join(format!(
             "mxr-compose-editor-cancel-{}-{}.md",
             std::process::id(),
@@ -2505,7 +1688,7 @@ mod tests {
         };
         let mut app = App::new();
 
-        handle_compose_editor_status(&mut app, &data, Ok(exit_status(1)));
+        handle_compose_editor_status(&mut app, &data, Ok(exit_status(1))).await;
 
         assert_eq!(app.status_message.as_deref(), Some("Draft discarded"));
         assert!(app.pending_send_confirm.is_none());
@@ -2539,6 +1722,31 @@ mod tests {
         assert_eq!(result.unwrap(), "Log open cancelled");
         assert_eq!(terminal, 2);
         assert_eq!(events.as_ref().map(|event| event.id), Some(2));
+    }
+
+    #[test]
+    fn replaceable_request_queue_supersedes_older_status_refresh() {
+        let mut pending = VecDeque::new();
+        enqueue_replaceable_request(
+            &mut pending,
+            ReplaceableRequest::Status {
+                request_id: 1,
+                enqueued_at: Instant::now(),
+            },
+        );
+        enqueue_replaceable_request(
+            &mut pending,
+            ReplaceableRequest::Status {
+                request_id: 2,
+                enqueued_at: Instant::now(),
+            },
+        );
+
+        assert_eq!(pending.len(), 1);
+        match pending.pop_front() {
+            Some(ReplaceableRequest::Status { request_id, .. }) => assert_eq!(request_id, 2),
+            other => panic!("expected status request, got {other:?}"),
+        }
     }
 
     #[test]
@@ -5231,7 +4439,8 @@ mod tests {
         );
         assert_eq!(app.attachment_panel.selected_index, 0);
         assert_eq!(
-            app.selected_attachment().map(|attachment| attachment.filename.as_str()),
+            app.selected_attachment()
+                .map(|attachment| attachment.filename.as_str()),
             Some("budget.xlsx")
         );
     }
@@ -5298,19 +4507,22 @@ mod tests {
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         assert_eq!(
-            app.selected_attachment().map(|attachment| attachment.filename.as_str()),
+            app.selected_attachment()
+                .map(|attachment| attachment.filename.as_str()),
             Some("report.pdf")
         );
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         assert_eq!(
-            app.selected_attachment().map(|attachment| attachment.filename.as_str()),
+            app.selected_attachment()
+                .map(|attachment| attachment.filename.as_str()),
             Some("inline-1.png")
         );
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
         assert_eq!(
-            app.selected_attachment().map(|attachment| attachment.filename.as_str()),
+            app.selected_attachment()
+                .map(|attachment| attachment.filename.as_str()),
             Some("report.pdf")
         );
     }
@@ -5387,8 +4599,8 @@ mod tests {
         assert!(app.selected_set.contains(&env.id));
     }
 
-    #[test]
-    fn unchanged_editor_result_disables_send_actions() {
+    #[tokio::test]
+    async fn unchanged_editor_result_disables_send_actions() {
         let temp = std::env::temp_dir().join(format!(
             "mxr-compose-test-{}-{}.md",
             std::process::id(),
@@ -5402,6 +4614,7 @@ mod tests {
             cursor_line: 1,
             initial_content: content.to_string(),
         })
+        .await
         .unwrap()
         .expect("pending send should exist");
 
@@ -5507,8 +4720,8 @@ mod tests {
         assert!(app.compose_picker.pending_to.is_empty());
     }
 
-    #[test]
-    fn blank_recipient_draft_opens_draft_only_confirmation() {
+    #[tokio::test]
+    async fn blank_recipient_draft_opens_draft_only_confirmation() {
         let temp = std::env::temp_dir().join(format!(
             "mxr-compose-test-missing-to-{}-{}.md",
             std::process::id(),
@@ -5522,6 +4735,7 @@ mod tests {
             cursor_line: 1,
             initial_content: String::new(),
         })
+        .await
         .unwrap()
         .expect("pending send should exist");
 
@@ -5627,7 +4841,7 @@ mod tests {
     }
 
     #[test]
-    fn escape_discards_missing_recipient_draft_confirmation() {
+    fn escape_discards_missing_recipient_draft_confirmation_and_queues_cleanup() {
         let temp = std::env::temp_dir().join(format!(
             "mxr-compose-discard-draft-{}-{}.md",
             std::process::id(),
@@ -5655,8 +4869,11 @@ mod tests {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
         assert!(app.pending_send_confirm.is_none());
-        assert!(!temp.exists());
+        assert!(temp.exists());
+        assert_eq!(app.pending_draft_cleanup, vec![temp.clone()]);
         assert_eq!(app.status_message.as_deref(), Some("Discarded"));
+
+        let _ = std::fs::remove_file(temp);
     }
 
     #[test]
@@ -5712,7 +4929,7 @@ mod tests {
             "IPC error: Connection refused (os error 61)".into(),
         ));
 
-        assert!(crate::should_reconnect_ipc(&result));
+        assert!(crate::ipc::should_reconnect_ipc(&result));
     }
 
     #[test]
@@ -5721,9 +4938,9 @@ mod tests {
         let missing = std::io::Error::from(std::io::ErrorKind::NotFound);
         let other = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
 
-        assert!(crate::should_autostart_daemon(&refused));
-        assert!(crate::should_autostart_daemon(&missing));
-        assert!(!crate::should_autostart_daemon(&other));
+        assert!(crate::ipc::should_autostart_daemon(&refused));
+        assert!(crate::ipc::should_autostart_daemon(&missing));
+        assert!(!crate::ipc::should_autostart_daemon(&other));
     }
 
     #[test]

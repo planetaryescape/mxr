@@ -17,7 +17,19 @@ pub fn load() -> TuiLocalState {
 }
 
 pub fn save(state: &TuiLocalState) -> std::io::Result<()> {
+    save_to_path(&file_path(), state)
+}
+
+pub async fn save_async(state: TuiLocalState) -> std::io::Result<()> {
     let path = file_path();
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let content = serde_json::to_string_pretty(&state).unwrap_or_else(|_| "{}".into());
+    tokio::fs::write(path, content).await
+}
+
+fn save_to_path(path: &std::path::Path, state: &TuiLocalState) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

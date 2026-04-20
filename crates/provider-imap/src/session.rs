@@ -542,6 +542,7 @@ impl ImapSession for RealImapSession {
 #[cfg(test)]
 pub mod mock {
     use super::*;
+    use std::collections::{HashMap, VecDeque};
     use std::sync::{Arc, Mutex};
 
     #[derive(Debug, Clone, Default)]
@@ -549,36 +550,40 @@ pub mod mock {
         pub commands: Vec<String>,
     }
 
+    pub(crate) struct MockSessionState {
+        pub(crate) fetch_queues_by_mailbox: HashMap<String, VecDeque<Vec<FetchedMessage>>>,
+    }
+
     pub struct MockImapSession {
         pub mailbox_info: MailboxInfo,
         pub capabilities: ImapCapabilities,
         pub namespace: Option<NamespaceInfo>,
         pub qresync_response: Option<QresyncInfo>,
-        pub fetch_responses: Vec<Vec<FetchedMessage>>,
         pub folders: Vec<FolderInfo>,
         pub log: Arc<Mutex<CommandLog>>,
-        fetch_call_count: usize,
+        state: Arc<Mutex<MockSessionState>>,
+        selected_mailbox: Option<String>,
     }
 
     impl MockImapSession {
-        pub fn new(
+        pub(crate) fn new(
             mailbox_info: MailboxInfo,
             capabilities: ImapCapabilities,
             namespace: Option<NamespaceInfo>,
             qresync_response: Option<QresyncInfo>,
-            fetch_responses: Vec<Vec<FetchedMessage>>,
             folders: Vec<FolderInfo>,
             log: Arc<Mutex<CommandLog>>,
+            state: Arc<Mutex<MockSessionState>>,
         ) -> Self {
             Self {
                 mailbox_info,
                 capabilities,
                 namespace,
                 qresync_response,
-                fetch_responses,
                 folders,
                 log,
-                fetch_call_count: 0,
+                state,
+                selected_mailbox: None,
             }
         }
     }
@@ -615,6 +620,7 @@ pub mod mock {
         }
 
         async fn select(&mut self, mailbox: &str) -> Result<MailboxInfo> {
+            self.selected_mailbox = Some(mailbox.to_string());
             self.log
                 .lock()
                 .unwrap()
@@ -630,6 +636,7 @@ pub mod mock {
             _highest_modseq: u64,
             _known_uids: &str,
         ) -> Result<QresyncInfo> {
+            self.selected_mailbox = Some(mailbox.to_string());
             self.log
                 .lock()
                 .unwrap()
@@ -648,9 +655,16 @@ pub mod mock {
                 .unwrap()
                 .commands
                 .push(format!("UID FETCH {uid_set} {query}"));
-            let idx = self.fetch_call_count;
-            self.fetch_call_count += 1;
-            Ok(self.fetch_responses.get(idx).cloned().unwrap_or_default())
+            let mailbox = self
+                .selected_mailbox
+                .clone()
+                .unwrap_or_else(|| "INBOX".to_string());
+            let mut state = self.state.lock().unwrap();
+            Ok(state
+                .fetch_queues_by_mailbox
+                .get_mut(&mailbox)
+                .and_then(VecDeque::pop_front)
+                .unwrap_or_default())
         }
 
         async fn uid_store(&mut self, uid_set: &str, flags: &str) -> Result<()> {
@@ -741,9 +755,9 @@ pub mod mock {
         pub capabilities: ImapCapabilities,
         pub namespace: Option<NamespaceInfo>,
         pub qresync_response: Option<QresyncInfo>,
-        pub fetch_responses: Vec<Vec<FetchedMessage>>,
         pub folders: Vec<FolderInfo>,
         pub log: Arc<Mutex<CommandLog>>,
+        state: Arc<Mutex<MockSessionState>>,
     }
 
     impl MockImapSessionFactory {
@@ -752,14 +766,17 @@ pub mod mock {
             fetch_responses: Vec<Vec<FetchedMessage>>,
             folders: Vec<FolderInfo>,
         ) -> Self {
+            let fetch_queues_by_mailbox = build_fetch_queues(&fetch_responses, &folders);
             Self {
                 mailbox_info,
                 capabilities: ImapCapabilities::default(),
                 namespace: None,
                 qresync_response: None,
-                fetch_responses,
                 folders,
                 log: Arc::new(Mutex::new(CommandLog::default())),
+                state: Arc::new(Mutex::new(MockSessionState {
+                    fetch_queues_by_mailbox,
+                })),
             }
         }
 
@@ -791,11 +808,54 @@ pub mod mock {
                 self.capabilities.clone(),
                 self.namespace.clone(),
                 self.qresync_response.clone(),
-                self.fetch_responses.clone(),
                 self.folders.clone(),
                 self.log.clone(),
+                self.state.clone(),
             )))
         }
+    }
+
+    pub(crate) fn build_fetch_queues(
+        fetch_responses: &[Vec<FetchedMessage>],
+        folders: &[FolderInfo],
+    ) -> HashMap<String, VecDeque<Vec<FetchedMessage>>> {
+        let sync_mailboxes = folders
+            .iter()
+            .filter(|folder| folder.special_use.as_deref() != Some("\\All"))
+            .map(|folder| folder.name.clone())
+            .collect::<Vec<_>>();
+
+        let mailbox_names = if sync_mailboxes.is_empty() {
+            vec!["INBOX".to_string()]
+        } else {
+            sync_mailboxes
+        };
+
+        let mut queues = HashMap::new();
+        if mailbox_names.len() == 1 {
+            queues.insert(
+                mailbox_names[0].clone(),
+                fetch_responses.iter().cloned().collect(),
+            );
+            return queues;
+        }
+
+        if fetch_responses.len() == mailbox_names.len() {
+            for (mailbox, response) in mailbox_names
+                .into_iter()
+                .zip(fetch_responses.iter().cloned())
+            {
+                queues.insert(mailbox, VecDeque::from(vec![response]));
+            }
+            return queues;
+        }
+
+        let mut fallback = VecDeque::new();
+        for response in fetch_responses.iter().cloned() {
+            fallback.push_back(response);
+        }
+        queues.insert("INBOX".to_string(), fallback);
+        queues
     }
 }
 
@@ -807,6 +867,15 @@ mod tests {
     use super::*;
     use crate::types::*;
     use std::sync::{Arc, Mutex};
+
+    fn mock_state(
+        fetch_responses: Vec<Vec<FetchedMessage>>,
+        folders: Vec<FolderInfo>,
+    ) -> Arc<Mutex<MockSessionState>> {
+        Arc::new(Mutex::new(MockSessionState {
+            fetch_queues_by_mailbox: build_fetch_queues(&fetch_responses, &folders),
+        }))
+    }
 
     #[tokio::test]
     async fn mock_session_returns_canned_select_data() {
@@ -822,8 +891,8 @@ mod tests {
             None,
             None,
             vec![],
-            vec![],
             log.clone(),
+            mock_state(vec![], vec![]),
         );
 
         let info = session.select("INBOX").await.unwrap();
@@ -855,9 +924,9 @@ mod tests {
             ImapCapabilities::default(),
             None,
             None,
-            vec![messages],
             vec![],
-            log,
+            log.clone(),
+            mock_state(vec![messages], vec![]),
         );
 
         let result = session.uid_fetch("1:*", "(FLAGS ENVELOPE)").await.unwrap();

@@ -3,6 +3,7 @@ mod index;
 pub mod parser;
 pub mod query_builder;
 mod schema;
+mod service;
 #[cfg(test)]
 mod test_fixtures;
 
@@ -11,6 +12,7 @@ pub use index::{SearchIndex, SearchPage, SearchResult};
 pub use parser::{parse_query, ParseError};
 pub use query_builder::QueryBuilder;
 pub use schema::MxrSchema;
+pub use service::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
 
 #[cfg(test)]
 mod tests {

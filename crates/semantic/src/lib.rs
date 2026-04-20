@@ -1,8 +1,15 @@
+mod cpu;
+mod service;
+
 #[cfg(feature = "local")]
 use anyhow::Context;
 use anyhow::{anyhow, Result};
 #[cfg(feature = "local")]
 use calamine::{open_workbook_auto, Reader};
+#[cfg(feature = "local")]
+use cpu::CpuExecutor;
+#[cfg(all(test, feature = "local"))]
+use cpu::CpuObserver;
 #[cfg(feature = "local")]
 use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
 #[cfg(feature = "local")]
@@ -18,7 +25,7 @@ use mxr_core::types::{
 };
 use mxr_core::types::{
     SearchMode, SemanticChunkSourceKind, SemanticProfile, SemanticProfileRecord,
-    SemanticStatusSnapshot,
+    SemanticRuntimeMetrics, SemanticStatusSnapshot,
 };
 #[cfg(feature = "local")]
 use mxr_reader::{clean, ReaderConfig};
@@ -31,6 +38,8 @@ use std::path::Path;
 #[cfg(feature = "local")]
 use std::path::{Path as StdPath, PathBuf};
 use std::sync::Arc;
+
+pub use service::SemanticServiceHandle;
 
 #[cfg(feature = "local")]
 const FASTEMBED_REVISION: &str = "fastembed-5.13.0";
@@ -57,6 +66,13 @@ struct SemanticIndex {
 struct MessageChunkBatch {
     message_id: MessageId,
     chunks: Vec<SemanticChunkRecord>,
+    extract_elapsed: std::time::Duration,
+}
+
+#[cfg(feature = "local")]
+struct ChunkPreparationInput {
+    envelope: Envelope,
+    body: Option<MessageBody>,
 }
 
 #[cfg(feature = "local")]
@@ -67,6 +83,9 @@ pub struct SemanticEngine {
     #[cfg(feature = "local")]
     cache_dir: PathBuf,
     config: SemanticConfig,
+    runtime_metrics: SemanticRuntimeMetrics,
+    #[cfg(feature = "local")]
+    cpu_executor: CpuExecutor,
     #[cfg(feature = "local")]
     models: HashMap<SemanticProfile, TextEmbedding>,
     #[cfg(feature = "local")]
@@ -82,6 +101,8 @@ impl SemanticEngine {
             store,
             cache_dir: data_dir.join("models"),
             config,
+            runtime_metrics: SemanticRuntimeMetrics::default(),
+            cpu_executor: CpuExecutor::new(),
             models: HashMap::new(),
             indexes: HashMap::new(),
             test_embedder: None,
@@ -97,11 +118,18 @@ impl SemanticEngine {
         self.test_embedder = Some(embedder);
     }
 
+    #[cfg(all(test, feature = "local"))]
+    #[doc(hidden)]
+    fn set_test_cpu_observer(&mut self, observer: CpuObserver) {
+        self.cpu_executor.set_observer(observer);
+    }
+
     pub async fn status_snapshot(&self) -> Result<SemanticStatusSnapshot> {
         Ok(SemanticStatusSnapshot {
             enabled: self.config.enabled,
             active_profile: self.config.active_profile,
             profiles: self.store.list_semantic_profiles().await?,
+            runtime: self.runtime_metrics.clone(),
         })
     }
 
@@ -152,13 +180,16 @@ impl SemanticEngine {
     /// semantic enablement can reuse stored normalized text. Embedding generation
     /// and ANN refresh stay feature-gated behind `config.enabled`.
     pub async fn ingest_messages(&mut self, message_ids: &[MessageId]) -> Result<()> {
+        let ingest_started = std::time::Instant::now();
         if message_ids.is_empty() {
+            self.runtime_metrics.last_ingest_ms = Some(ingest_started.elapsed().as_millis() as u64);
             return Ok(());
         }
 
         let now = chrono::Utc::now();
         let batches = self.prepare_message_chunks(message_ids, now).await?;
         if !self.config.enabled {
+            self.runtime_metrics.last_ingest_ms = Some(ingest_started.elapsed().as_millis() as u64);
             return Ok(());
         }
 
@@ -173,6 +204,7 @@ impl SemanticEngine {
         ready_record.last_error = None;
         self.store.upsert_semantic_profile(&ready_record).await?;
         self.rebuild_index(profile).await?;
+        self.runtime_metrics.last_ingest_ms = Some(ingest_started.elapsed().as_millis() as u64);
         Ok(())
     }
 
@@ -247,7 +279,9 @@ impl SemanticEngine {
         let now = chrono::Utc::now();
         let batches = self.prepare_message_chunks(&message_ids, now).await?;
         for batch in &batches {
-            let embeddings = self.build_embedding_records(&record, &batch.chunks, now)?;
+            let embeddings = self
+                .build_embedding_records(&record, &batch.chunks, now)
+                .await?;
             self.store
                 .replace_semantic_embeddings(&batch.message_id, &record.id, &embeddings)
                 .await?;
@@ -285,7 +319,7 @@ impl SemanticEngine {
 
         for message_id in &message_ids {
             let chunks = self.store.list_semantic_chunks(message_id).await?;
-            let embeddings = self.build_embedding_records(&record, &chunks, now)?;
+            let embeddings = self.build_embedding_records(&record, &chunks, now).await?;
             self.store
                 .replace_semantic_embeddings(message_id, &record.id, &embeddings)
                 .await?;
@@ -366,36 +400,66 @@ impl SemanticEngine {
     }
 
     async fn prepare_message_chunks(
-        &self,
+        &mut self,
         message_ids: &[MessageId],
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<Vec<MessageChunkBatch>> {
-        let mut batches = Vec::with_capacity(message_ids.len());
+        let extract_started = std::time::Instant::now();
+        let mut inputs = Vec::with_capacity(message_ids.len());
         for message_id in message_ids {
-            if let Some(batch) = self.prepare_message_chunk(message_id, now).await? {
-                batches.push(batch);
+            if let Some(input) = self.load_chunk_preparation_input(message_id).await? {
+                inputs.push(input);
             }
         }
+
+        let batches = self
+            .cpu_executor
+            .map(inputs, move |input| {
+                Ok(build_message_chunk_batch(input, now))
+            })
+            .await?;
+        for batch in &batches {
+            tracing::trace!(
+                message_id = %batch.message_id,
+                elapsed_ms = batch.extract_elapsed.as_secs_f64() * 1000.0,
+                "semantic chunk extraction complete"
+            );
+            self.store
+                .replace_semantic_chunks(&batch.message_id, &batch.chunks)
+                .await?;
+        }
+        self.runtime_metrics.last_extract_ms = Some(extract_started.elapsed().as_millis() as u64);
         Ok(batches)
     }
 
     async fn prepare_message_chunk(
-        &self,
+        &mut self,
         message_id: &MessageId,
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<Option<MessageChunkBatch>> {
-        let Some(envelope) = self.store.get_envelope(message_id).await? else {
+        let extract_started = std::time::Instant::now();
+        let Some(input) = self.load_chunk_preparation_input(message_id).await? else {
             return Ok(None);
         };
-        let body = self.store.get_body(message_id).await?;
-        let chunks = self.build_chunk_records(&envelope, body.as_ref(), now);
-        self.store
-            .replace_semantic_chunks(&envelope.id, &chunks)
+        let mut batches = self
+            .cpu_executor
+            .map(vec![input], move |input| {
+                Ok(build_message_chunk_batch(input, now))
+            })
             .await?;
-        Ok(Some(MessageChunkBatch {
-            message_id: envelope.id,
-            chunks,
-        }))
+        let Some(batch) = batches.pop() else {
+            return Ok(None);
+        };
+        tracing::trace!(
+            message_id = %batch.message_id,
+            elapsed_ms = batch.extract_elapsed.as_secs_f64() * 1000.0,
+            "semantic chunk extraction complete"
+        );
+        self.store
+            .replace_semantic_chunks(&batch.message_id, &batch.chunks)
+            .await?;
+        self.runtime_metrics.last_extract_ms = Some(extract_started.elapsed().as_millis() as u64);
+        Ok(Some(batch))
     }
 
     async fn reindex_batches_for_profile(
@@ -405,7 +469,9 @@ impl SemanticEngine {
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         for batch in batches {
-            let embeddings = self.build_embedding_records(profile, &batch.chunks, now)?;
+            let embeddings = self
+                .build_embedding_records(profile, &batch.chunks, now)
+                .await?;
             self.store
                 .replace_semantic_embeddings(&batch.message_id, &profile.id, &embeddings)
                 .await?;
@@ -413,34 +479,7 @@ impl SemanticEngine {
         Ok(())
     }
 
-    fn build_chunk_records(
-        &self,
-        envelope: &Envelope,
-        body: Option<&MessageBody>,
-        now: chrono::DateTime<chrono::Utc>,
-    ) -> Vec<SemanticChunkRecord> {
-        let chunks = build_chunks(envelope, body);
-        let mut chunk_records = Vec::with_capacity(chunks.len());
-
-        for (index, (source_kind, normalized)) in chunks.into_iter().enumerate() {
-            let chunk_id = semantic_chunk_id(&envelope.id.as_str(), &source_kind, index as u32);
-            let chunk_record = SemanticChunkRecord {
-                id: chunk_id,
-                message_id: envelope.id.clone(),
-                source_kind,
-                ordinal: index as u32,
-                normalized: normalized.clone(),
-                content_hash: content_hash(&normalized),
-                created_at: now,
-                updated_at: now,
-            };
-            chunk_records.push(chunk_record);
-        }
-
-        chunk_records
-    }
-
-    fn build_embedding_records(
+    async fn build_embedding_records(
         &mut self,
         profile: &SemanticProfileRecord,
         chunks: &[SemanticChunkRecord],
@@ -461,21 +500,41 @@ impl SemanticEngine {
             self.config.auto_download_models,
             "embed message chunks",
         )?;
-
-        let mut embedding_records = Vec::with_capacity(chunks.len());
-        for (chunk, embedding) in chunks.iter().zip(embeddings.into_iter()) {
-            embedding_records.push(SemanticEmbeddingRecord {
-                chunk_id: chunk.id.clone(),
-                profile_id: profile.id.clone(),
-                dimensions: embedding.len() as u32,
-                vector: f32s_to_blob(&embedding),
-                status: SemanticEmbeddingStatus::Ready,
-                created_at: now,
-                updated_at: now,
-            });
-        }
-
+        let profile_id = profile.id.clone();
+        let chunk_embeddings = chunks
+            .iter()
+            .cloned()
+            .zip(embeddings.into_iter())
+            .collect::<Vec<_>>();
+        let embed_prep_started = std::time::Instant::now();
+        let embedding_records = self
+            .cpu_executor
+            .map(chunk_embeddings, move |(chunk, embedding)| {
+                Ok(SemanticEmbeddingRecord {
+                    chunk_id: chunk.id,
+                    profile_id: profile_id.clone(),
+                    dimensions: embedding.len() as u32,
+                    vector: f32s_to_blob(&embedding),
+                    status: SemanticEmbeddingStatus::Ready,
+                    created_at: now,
+                    updated_at: now,
+                })
+            })
+            .await?;
+        self.runtime_metrics.last_embedding_prep_ms =
+            Some(embed_prep_started.elapsed().as_millis() as u64);
         Ok(embedding_records)
+    }
+
+    async fn load_chunk_preparation_input(
+        &self,
+        message_id: &MessageId,
+    ) -> Result<Option<ChunkPreparationInput>> {
+        let Some(envelope) = self.store.get_envelope(message_id).await? else {
+            return Ok(None);
+        };
+        let body = self.store.get_body(message_id).await?;
+        Ok(Some(ChunkPreparationInput { envelope, body }))
     }
 
     fn embed_texts(
@@ -527,7 +586,11 @@ impl SemanticEngine {
 impl SemanticEngine {
     pub fn new(store: Arc<Store>, data_dir: &Path, config: SemanticConfig) -> Self {
         let _ = data_dir;
-        Self { store, config }
+        Self {
+            store,
+            config,
+            runtime_metrics: SemanticRuntimeMetrics::default(),
+        }
     }
 
     pub fn apply_config(&mut self, config: SemanticConfig) {
@@ -539,6 +602,7 @@ impl SemanticEngine {
             enabled: false,
             active_profile: self.config.active_profile,
             profiles: self.store.list_semantic_profiles().await?,
+            runtime: self.runtime_metrics.clone(),
         })
     }
 
@@ -626,6 +690,48 @@ fn semantic_chunk_id(
         "semantic_chunk",
         &format!("{message_id}:{source_kind:?}:{ordinal}"),
     )
+}
+
+#[cfg(feature = "local")]
+fn build_chunk_records(
+    envelope: &Envelope,
+    body: Option<&MessageBody>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Vec<SemanticChunkRecord> {
+    let chunks = build_chunks(envelope, body);
+    let mut chunk_records = Vec::with_capacity(chunks.len());
+
+    for (index, (source_kind, normalized)) in chunks.into_iter().enumerate() {
+        let chunk_id = semantic_chunk_id(&envelope.id.as_str(), &source_kind, index as u32);
+        let chunk_record = SemanticChunkRecord {
+            id: chunk_id,
+            message_id: envelope.id.clone(),
+            source_kind,
+            ordinal: index as u32,
+            normalized: normalized.clone(),
+            content_hash: content_hash(&normalized),
+            created_at: now,
+            updated_at: now,
+        };
+        chunk_records.push(chunk_record);
+    }
+
+    chunk_records
+}
+
+#[cfg(feature = "local")]
+fn build_message_chunk_batch(
+    input: ChunkPreparationInput,
+    now: chrono::DateTime<chrono::Utc>,
+) -> MessageChunkBatch {
+    let started_at = std::time::Instant::now();
+    let message_id = input.envelope.id.clone();
+    let chunks = build_chunk_records(&input.envelope, input.body.as_ref(), now);
+    MessageChunkBatch {
+        message_id,
+        chunks,
+        extract_elapsed: started_at.elapsed(),
+    }
 }
 
 #[cfg(feature = "local")]
@@ -1446,6 +1552,74 @@ mod tests {
         assert!(chunks
             .iter()
             .any(|chunk| chunk.source_kind == SemanticChunkSourceKind::Body));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn ingest_messages_uses_cpu_executor_for_multiple_messages() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let message_ids = (0..4)
+            .map(|index| {
+                let envelope = Envelope {
+                    provider_id: format!("fake-{index}"),
+                    subject: format!("Message {index}"),
+                    snippet: format!("Snippet {index}"),
+                    ..test_envelope(&account.id)
+                };
+                let body =
+                    test_body_with_text(&envelope.id, &format!("Body text {index}"), Vec::new());
+                (envelope, body)
+            })
+            .collect::<Vec<_>>();
+
+        for (envelope, body) in &message_ids {
+            store.upsert_envelope(envelope).await.unwrap();
+            store.insert_body(body).await.unwrap();
+        }
+
+        let data_dir = tempdir().unwrap();
+        let mut engine =
+            SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
+        let observer = CpuObserver::new(std::time::Duration::from_millis(20));
+        engine.set_test_cpu_observer(observer.clone());
+
+        let ids = message_ids
+            .iter()
+            .map(|(envelope, _)| envelope.id.clone())
+            .collect::<Vec<_>>();
+        engine.ingest_messages(&ids).await.unwrap();
+
+        assert!(
+            observer.max_concurrency() > 1,
+            "expected semantic cpu executor overlap, observed {}",
+            observer.max_concurrency()
+        );
+    }
+
+    #[tokio::test]
+    async fn status_snapshot_reports_runtime_metrics_after_ingest() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let envelope = test_envelope(&account.id);
+        let body = test_body(&envelope.id, Vec::new());
+        store.upsert_envelope(&envelope).await.unwrap();
+        store.insert_body(&body).await.unwrap();
+
+        let data_dir = tempdir().unwrap();
+        let mut engine =
+            SemanticEngine::new(store.clone(), data_dir.path(), SemanticConfig::default());
+        engine
+            .ingest_messages(std::slice::from_ref(&envelope.id))
+            .await
+            .unwrap();
+
+        let snapshot = engine.status_snapshot().await.unwrap();
+        assert!(snapshot.runtime.last_extract_ms.is_some());
+        assert!(snapshot.runtime.last_ingest_ms.is_some());
     }
 
     #[tokio::test]

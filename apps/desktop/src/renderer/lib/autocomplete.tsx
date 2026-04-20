@@ -18,22 +18,40 @@ export function ContactInput(props: {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const blurRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = props.inputRef ?? internalRef;
 
   const fetchDebounced = useCallback(
     (query: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (blurRef.current) clearTimeout(blurRef.current);
       if (!query || query.length < 2) {
+        requestIdRef.current += 1;
         setSuggestions([]);
         setShowSuggestions(false);
         return;
       }
+
+      const requestId = ++requestIdRef.current;
       debounceRef.current = setTimeout(async () => {
-        const results = await props.fetchSuggestions(query);
-        setSuggestions(results);
-        setShowSuggestions(results.length > 0);
-        setSelectedIndex(0);
+        try {
+          const results = await props.fetchSuggestions(query);
+          if (!mountedRef.current || requestIdRef.current !== requestId) {
+            return;
+          }
+          setSuggestions(results);
+          setShowSuggestions(results.length > 0);
+          setSelectedIndex(0);
+        } catch {
+          if (!mountedRef.current || requestIdRef.current !== requestId) {
+            return;
+          }
+          setSuggestions([]);
+          setShowSuggestions(false);
+        }
       }, 200);
     },
     [props.fetchSuggestions],
@@ -80,7 +98,9 @@ export function ContactInput(props: {
 
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (blurRef.current) clearTimeout(blurRef.current);
     };
   }, []);
 
@@ -99,7 +119,18 @@ export function ContactInput(props: {
         placeholder={props.placeholder}
         onChange={(e) => handleChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+        onFocus={() => {
+          if (blurRef.current) clearTimeout(blurRef.current);
+        }}
+        onBlur={() => {
+          if (blurRef.current) clearTimeout(blurRef.current);
+          blurRef.current = setTimeout(() => {
+            if (!mountedRef.current) {
+              return;
+            }
+            setShowSuggestions(false);
+          }, 150);
+        }}
       />
       {showSuggestions ? (
         <div

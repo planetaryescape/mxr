@@ -8,6 +8,7 @@ use mxr_protocol::*;
 use mxr_rules::{Rule, RuleAction, RuleEngine, RuleExecutionLog};
 use mxr_store::{SyncRuntimeStatusUpdate, SyncStatus as StoreSyncStatus};
 use std::sync::Arc;
+use tokio::sync::watch;
 use tokio::time::{interval, Duration};
 
 /// Spawn sync loops for all configured accounts.
@@ -16,18 +17,31 @@ pub fn spawn_sync_loops(state: Arc<AppState>) {
         if !state.mark_sync_loop_spawned(&account_id) {
             continue;
         }
-        let state = state.clone();
-        tokio::spawn(async move {
-            sync_loop_for_account(state, account_id).await;
+        let loop_state = state.clone();
+        let task_state = state.clone();
+        let task_account_id = account_id.clone();
+        let handle = tokio::spawn(async move {
+            let shutdown_rx = loop_state.shutdown_receiver();
+            sync_loop_for_account(loop_state, task_account_id.clone(), shutdown_rx).await;
+            task_state.finish_sync_loop(&task_account_id);
         });
+        state.register_sync_loop_handle(account_id, handle);
     }
 }
 
-async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
+async fn sync_loop_for_account(
+    state: Arc<AppState>,
+    account_id: AccountId,
+    mut shutdown_rx: watch::Receiver<bool>,
+) {
     let mut backoff_secs: u64 = 0;
     let mut skip_sleep = true;
 
     loop {
+        if *shutdown_rx.borrow() {
+            tracing::info!(account = %account_id, "Sync loop exiting: daemon shutdown requested");
+            break;
+        }
         let Some(provider) = state.sync_provider_for_account(&account_id) else {
             tracing::info!(account = %account_id, "Sync loop exiting: account removed from runtime");
             break;
@@ -43,7 +57,15 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
             } else {
                 base_interval
             };
-            tokio::time::sleep(Duration::from_secs(wait)).await;
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(wait)) => {}
+                changed = shutdown_rx.changed() => {
+                    if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                        tracing::info!(account = %account_id, "Sync loop exiting during backoff: daemon shutdown requested");
+                        break;
+                    }
+                }
+            }
         }
 
         let started_at = chrono::Utc::now();
@@ -136,9 +158,7 @@ async fn sync_loop_for_account(state: Arc<AppState>, account_id: AccountId) {
                 if count > 0 {
                     if let Err(error) = state
                         .semantic
-                        .lock()
-                        .await
-                        .ingest_messages(&outcome.upserted_message_ids)
+                        .enqueue_ingest_messages(&outcome.upserted_message_ids)
                         .await
                     {
                         tracing::error!(account = %account_id, "Semantic indexing failed: {error}");
@@ -664,10 +684,19 @@ impl mxr_rules::MessageView for RuleMessage {
     }
 }
 
-pub async fn snooze_loop(state: Arc<AppState>) {
+pub async fn snooze_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
     let mut ticker = interval(Duration::from_secs(60));
     loop {
-        ticker.tick().await;
+        tokio::select! {
+            _ = ticker.tick() => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                    tracing::info!("Snooze loop exiting: daemon shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
         match state.store.get_due_snoozes(chrono::Utc::now()).await {
             Ok(snoozed) => {
                 for item in snoozed {

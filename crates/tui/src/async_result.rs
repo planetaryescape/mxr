@@ -1,14 +1,17 @@
-use mxr_core::{Envelope, Label, MessageBody, MessageId, Thread, ThreadId, MxrError};
+use crate::app::{self, AttachmentOperation};
+use crate::terminal_images::HtmlImageKey;
+use image::DynamicImage;
 use mxr_core::types::SubscriptionSummary;
+use mxr_core::{Envelope, Label, MessageBody, MessageId, MxrError, Thread, ThreadId};
 use mxr_protocol::{
     AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, DaemonEvent,
     Response, RuleFormData,
 };
-use crate::app::{AttachmentOperation, MutationEffect, SearchTarget};
+use ratatui_image::thread::ResizeResponse;
 
 pub(crate) enum AsyncResult {
     Search {
-        target: SearchTarget,
+        target: app::SearchTarget,
         append: bool,
         session_id: u64,
         result: Result<SearchResultData, MxrError>,
@@ -18,20 +21,36 @@ pub(crate) enum AsyncResult {
         result: Result<u32, MxrError>,
     },
     Rules(Result<Vec<serde_json::Value>, MxrError>),
-    RuleDetail(Result<serde_json::Value, MxrError>),
-    RuleHistory(Result<Vec<serde_json::Value>, MxrError>),
+    RuleDetail {
+        request_id: u64,
+        result: Result<serde_json::Value, MxrError>,
+    },
+    RuleHistory {
+        request_id: u64,
+        result: Result<Vec<serde_json::Value>, MxrError>,
+    },
     RuleDryRun(Result<Vec<serde_json::Value>, MxrError>),
-    RuleForm(Result<RuleFormData, MxrError>),
+    RuleForm {
+        request_id: u64,
+        result: Result<RuleFormData, MxrError>,
+    },
     RuleDeleted(Result<(), MxrError>),
     RuleUpsert(Result<serde_json::Value, MxrError>),
-    Diagnostics(Box<Result<Response, MxrError>>),
-    Status(Result<StatusSnapshot, MxrError>),
+    Diagnostics {
+        request_id: u64,
+        result: Box<Result<Response, MxrError>>,
+    },
+    Status {
+        request_id: u64,
+        result: Result<StatusSnapshot, MxrError>,
+    },
     Accounts(Result<Vec<AccountSummaryData>, MxrError>),
     Labels(Result<Vec<Label>, MxrError>),
     AllEnvelopes(Result<Vec<Envelope>, MxrError>),
     Subscriptions(Result<Vec<SubscriptionSummary>, MxrError>),
     AccountOperation(Result<AccountOperationResult, MxrError>),
     BugReport(Result<String, MxrError>),
+    BugReportSaved(Result<std::path::PathBuf, String>),
     AttachmentFile {
         operation: AttachmentOperation,
         result: Result<AttachmentFile, MxrError>,
@@ -41,14 +60,33 @@ pub(crate) enum AsyncResult {
         requested: Vec<MessageId>,
         result: Result<Vec<MessageBody>, MxrError>,
     },
+    HtmlImageAssets {
+        message_id: MessageId,
+        allow_remote: bool,
+        result: Result<Vec<mxr_core::types::HtmlImageAsset>, MxrError>,
+    },
+    HtmlImageDecoded {
+        key: HtmlImageKey,
+        result: Result<DynamicImage, MxrError>,
+    },
+    HtmlImageResized {
+        key: HtmlImageKey,
+        result: Result<ResizeResponse, MxrError>,
+    },
     Thread {
         thread_id: ThreadId,
+        request_id: u64,
         result: Result<(Thread, Vec<Envelope>), MxrError>,
     },
-    MutationResult(Result<MutationEffect, MxrError>),
+    MutationResult(Result<app::MutationEffect, MxrError>),
     ComposeReady(Result<ComposeReadyData, MxrError>),
     ExportResult(Result<String, MxrError>),
     Unsubscribe(Result<UnsubscribeResultData, MxrError>),
+    DraftCleanup {
+        path: std::path::PathBuf,
+        result: Result<(), String>,
+    },
+    LocalStateSaved(Result<(), String>),
     DaemonEvent(DaemonEvent),
 }
 

@@ -12,11 +12,13 @@ mod accounts;
 mod admin;
 #[path = "diagnostics/mod.rs"]
 mod diagnostics_impl;
+mod helpers;
 mod mailbox;
 mod mutations;
 mod platform;
 mod rules;
 mod runtime;
+mod status_helpers;
 
 use crate::state::AppState;
 use mxr_core::provider::MailSyncProvider;
@@ -26,12 +28,14 @@ use mxr_core::types::{ExportFormat, Snoozed};
 use mxr_export::{ExportAttachment, ExportMessage, ExportThread};
 use mxr_protocol::*;
 use mxr_reader::ReaderConfig;
-use mxr_rules::{
-    Conditions, DryRunResult, FieldCondition, Rule, RuleAction, RuleEngine, StringMatch,
-};
+use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, StringMatch};
 use mxr_search::parse_query;
-use std::io::{BufRead, BufReader};
 use std::sync::Arc;
+
+pub(crate) use helpers::{
+    dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
+};
+pub(crate) use status_helpers::{doctor_data_stats, latest_successful_sync_at};
 
 type HandlerResult = Result<ResponseData, String>;
 
@@ -182,7 +186,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             level,
             category,
         } => admin::list_events(state, *limit, level.as_deref(), category.as_deref()).await,
-        Request::GetLogs { limit, level } => admin::get_logs(*limit, level.as_deref()),
+        Request::GetLogs { limit, level } => admin::get_logs(state, *limit, level.as_deref()).await,
         Request::GetDoctorReport => admin::doctor_report(state).await,
         Request::GenerateBugReport {
             verbose,
@@ -191,7 +195,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         } => admin::bug_report(*verbose, *full_logs, since.clone()).await,
         Request::GetStatus => admin::get_status(state).await,
         Request::Ping => Ok(ResponseData::Pong),
-        Request::Shutdown => std::process::exit(0),
+        Request::Shutdown => admin::shutdown(state).await,
 
         // core mail/runtime
         Request::Search {
@@ -1007,457 +1011,6 @@ fn string_match_to_query(field: &str, pattern: &StringMatch) -> Result<String, S
     }
 }
 
-fn protocol_event_entry(entry: mxr_store::EventLogEntry) -> mxr_protocol::EventLogEntry {
-    mxr_protocol::EventLogEntry {
-        timestamp: entry.timestamp,
-        level: entry.level,
-        category: entry.category,
-        account_id: entry.account_id,
-        message_id: entry.message_id,
-        rule_id: entry.rule_id,
-        summary: entry.summary,
-        details: entry.details,
-    }
-}
-
-fn recent_log_lines(limit: usize, level: Option<&str>) -> Result<Vec<String>, std::io::Error> {
-    let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
-    if !log_path.exists() {
-        return Ok(vec!["(no recent logs)".to_string()]);
-    }
-
-    let file = std::fs::File::open(log_path)?;
-    let mut lines = BufReader::new(file)
-        .lines()
-        .collect::<Result<Vec<_>, _>>()?;
-    if let Some(level) = level {
-        let level = level.to_ascii_lowercase();
-        lines.retain(|line| line.to_ascii_lowercase().contains(&level));
-    }
-    if lines.is_empty() {
-        return Ok(vec!["(no recent logs)".to_string()]);
-    }
-    let start = lines.len().saturating_sub(limit.max(1));
-    Ok(lines.split_off(start))
-}
-
-fn should_fallback_to_tantivy(query: &str, error: &mxr_search::ParseError) -> bool {
-    if looks_structured_query(query) {
-        return false;
-    }
-
-    matches!(
-        error,
-        mxr_search::ParseError::UnexpectedToken(_)
-            | mxr_search::ParseError::UnexpectedEnd
-            | mxr_search::ParseError::UnmatchedParen
-    )
-}
-
-fn looks_structured_query(query: &str) -> bool {
-    let trimmed = query.trim();
-    trimmed.contains(':')
-        || trimmed.contains('(')
-        || trimmed.contains(')')
-        || trimmed.starts_with('-')
-        || trimmed.contains(" AND ")
-        || trimmed.contains(" OR ")
-        || trimmed.contains(" NOT ")
-}
-
-async fn collect_status_snapshot(
-    state: &Arc<AppState>,
-) -> Result<(Vec<String>, u32, Vec<AccountSyncStatus>), String> {
-    let accounts = state
-        .store
-        .list_accounts()
-        .await
-        .map_err(|e| e.to_string())?;
-    let mut names = Vec::new();
-    let mut total_messages = 0;
-    let mut sync_statuses = Vec::new();
-
-    for account in accounts {
-        names.push(account.name.clone());
-        total_messages += state
-            .store
-            .count_messages_by_account(&account.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        sync_statuses.push(build_account_sync_status(state, &account.id).await?);
-    }
-
-    if names.is_empty() {
-        names.push("unknown".to_string());
-    }
-
-    Ok((names, total_messages, sync_statuses))
-}
-
-async fn build_account_sync_status(
-    state: &Arc<AppState>,
-    account_id: &mxr_core::AccountId,
-) -> Result<AccountSyncStatus, String> {
-    let account = state
-        .store
-        .get_account(account_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Account not found: {account_id}"))?;
-    let runtime = state
-        .store
-        .get_sync_runtime_status(account_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let cursor = state
-        .store
-        .get_sync_cursor(account_id)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let last_attempt_at = runtime
-        .as_ref()
-        .and_then(|row| row.last_attempt_at)
-        .map(|dt| dt.to_rfc3339());
-    let last_success_at = runtime
-        .as_ref()
-        .and_then(|row| row.last_success_at)
-        .map(|dt| dt.to_rfc3339());
-    let last_error = runtime.as_ref().and_then(|row| row.last_error.clone());
-    let backoff_until = runtime
-        .as_ref()
-        .and_then(|row| row.backoff_until)
-        .map(|dt| dt.to_rfc3339());
-    let sync_in_progress = runtime
-        .as_ref()
-        .map(|row| row.sync_in_progress)
-        .unwrap_or(false);
-    let consecutive_failures = runtime
-        .as_ref()
-        .map(|row| row.consecutive_failures)
-        .unwrap_or(0);
-    let healthy = !sync_in_progress
-        && last_error.is_none()
-        && backoff_until.is_none()
-        && last_success_at.is_some();
-
-    Ok(AccountSyncStatus {
-        account_id: account.id,
-        account_name: account.name,
-        last_attempt_at,
-        last_success_at,
-        last_error,
-        failure_class: runtime.as_ref().and_then(|row| row.failure_class.clone()),
-        consecutive_failures,
-        backoff_until,
-        sync_in_progress,
-        current_cursor_summary: Some(
-            runtime
-                .as_ref()
-                .and_then(|row| row.current_cursor_summary.clone())
-                .unwrap_or_else(|| describe_cursor_for_status(cursor.as_ref())),
-        ),
-        last_synced_count: runtime
-            .as_ref()
-            .map(|row| row.last_synced_count)
-            .unwrap_or(0),
-        healthy,
-    })
-}
-
-fn describe_cursor_for_status(cursor: Option<&mxr_core::types::SyncCursor>) -> String {
-    match cursor {
-        Some(mxr_core::types::SyncCursor::Initial) | None => "initial".to_string(),
-        Some(mxr_core::types::SyncCursor::Gmail { history_id }) => {
-            format!("gmail history_id={history_id}")
-        }
-        Some(mxr_core::types::SyncCursor::GmailBackfill {
-            history_id,
-            page_token,
-        }) => {
-            let short: String = page_token.chars().take(24).collect();
-            if page_token.chars().count() > 24 {
-                format!("gmail_backfill history_id={history_id} page_token={short}...")
-            } else {
-                format!("gmail_backfill history_id={history_id} page_token={short}")
-            }
-        }
-        Some(mxr_core::types::SyncCursor::Imap {
-            uid_validity,
-            uid_next,
-            mailboxes,
-            ..
-        }) => format!(
-            "imap uid_validity={uid_validity} uid_next={uid_next} mailboxes={}",
-            mailboxes.len()
-        ),
-    }
-}
-
-async fn collect_doctor_report(
-    state: &Arc<AppState>,
-) -> Result<mxr_protocol::DoctorReport, String> {
-    let data_dir = mxr_config::data_dir();
-    let db_path = data_dir.join("mxr.db");
-    let index_path = data_dir.join("search_index");
-    let log_path = data_dir.join("logs").join("mxr.log");
-    let socket_path = crate::state::AppState::socket_path();
-
-    let data_dir_exists = data_dir.exists();
-    let database_exists = db_path.exists();
-    let index_exists = index_path.exists();
-    let socket_exists = socket_path.exists();
-    let (_, total_messages, sync_statuses) = collect_status_snapshot(state).await?;
-    let data_stats = doctor_data_stats(
-        state
-            .store
-            .collect_record_counts()
-            .await
-            .map_err(|e| e.to_string())?,
-    );
-    let repair_required = crate::server::search_requires_repair(state, total_messages).await;
-    let restart_required = false;
-    let lexical_index_freshness =
-        lexical_index_freshness(index_exists, repair_required, restart_required);
-    let last_successful_sync_at = latest_successful_sync_at(&sync_statuses);
-    let lexical_last_rebuilt_at = state
-        .store
-        .latest_event_timestamp("search", Some("Lexical index rebuilt"))
-        .await
-        .map_err(|e| e.to_string())?
-        .map(|value| value.to_rfc3339());
-    let semantic_config = state.config_snapshot().search.semantic.clone();
-    let semantic_snapshot = state.semantic.lock().await.status_snapshot().await.ok();
-    let (
-        semantic_enabled,
-        semantic_active_profile,
-        semantic_index_freshness,
-        semantic_last_indexed_at,
-    ) = semantic_freshness_from_snapshot(
-        semantic_snapshot.as_ref(),
-        semantic_config.enabled,
-        semantic_config.active_profile.as_str(),
-    );
-    let health_class =
-        crate::server::classify_health(&sync_statuses, repair_required, restart_required);
-    let recent_sync_events = state
-        .store
-        .list_events(10, None, Some("sync"))
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(protocol_event_entry)
-        .collect();
-    let recent_error_logs = recent_log_lines(10, Some("error")).unwrap_or_default();
-    let recommended_next_steps = if matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy)
-    {
-        vec!["mxr status".to_string()]
-    } else {
-        vec![
-            "mxr status".to_string(),
-            "mxr sync --status".to_string(),
-            "mxr logs --level error".to_string(),
-            "mxr daemon --foreground".to_string(),
-        ]
-    };
-    let healthy = data_dir_exists
-        && database_exists
-        && index_exists
-        && socket_exists
-        && matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy);
-
-    Ok(mxr_protocol::DoctorReport {
-        healthy,
-        health_class,
-        lexical_index_freshness,
-        last_successful_sync_at,
-        lexical_last_rebuilt_at,
-        semantic_enabled,
-        semantic_active_profile,
-        semantic_index_freshness,
-        semantic_last_indexed_at,
-        data_stats,
-        data_dir_exists,
-        database_exists,
-        index_exists,
-        socket_exists,
-        socket_reachable: true,
-        stale_socket: false,
-        daemon_running: true,
-        daemon_pid: Some(std::process::id()),
-        daemon_protocol_version: mxr_protocol::IPC_PROTOCOL_VERSION,
-        daemon_version: Some(crate::server::current_daemon_version().to_string()),
-        daemon_build_id: Some(crate::server::current_build_id()),
-        index_lock_held: false,
-        index_lock_error: None,
-        restart_required,
-        repair_required,
-        database_path: db_path.display().to_string(),
-        database_size_bytes: file_size(&db_path),
-        index_path: index_path.display().to_string(),
-        index_size_bytes: dir_size(&index_path),
-        log_path: log_path.display().to_string(),
-        log_size_bytes: file_size(&log_path),
-        sync_statuses,
-        recent_sync_events,
-        recent_error_logs,
-        recommended_next_steps,
-    })
-}
-
-fn file_size(path: &std::path::Path) -> u64 {
-    std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
-}
-
-pub(crate) fn latest_successful_sync_at(
-    sync_statuses: &[mxr_protocol::AccountSyncStatus],
-) -> Option<String> {
-    sync_statuses
-        .iter()
-        .filter_map(|status| status.last_success_at.as_deref())
-        .filter_map(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-        .max()
-        .map(|value| value.to_rfc3339())
-}
-
-fn lexical_index_freshness(
-    index_exists: bool,
-    repair_required: bool,
-    restart_required: bool,
-) -> mxr_protocol::IndexFreshness {
-    if repair_required || !index_exists {
-        mxr_protocol::IndexFreshness::RepairRequired
-    } else if restart_required {
-        mxr_protocol::IndexFreshness::Stale
-    } else {
-        mxr_protocol::IndexFreshness::Current
-    }
-}
-
-fn semantic_freshness_from_snapshot(
-    snapshot: Option<&mxr_core::types::SemanticStatusSnapshot>,
-    enabled_fallback: bool,
-    active_profile_fallback: &str,
-) -> (
-    bool,
-    Option<String>,
-    mxr_protocol::IndexFreshness,
-    Option<String>,
-) {
-    let Some(snapshot) = snapshot else {
-        return if enabled_fallback {
-            (
-                true,
-                Some(active_profile_fallback.to_string()),
-                mxr_protocol::IndexFreshness::Unknown,
-                None,
-            )
-        } else {
-            (false, None, mxr_protocol::IndexFreshness::Disabled, None)
-        };
-    };
-
-    if !snapshot.enabled {
-        return (false, None, mxr_protocol::IndexFreshness::Disabled, None);
-    }
-
-    let active_profile = snapshot.active_profile.as_str().to_string();
-    let active_record = snapshot
-        .profiles
-        .iter()
-        .find(|profile| profile.profile == snapshot.active_profile);
-    let freshness = match active_record.map(|profile| profile.status) {
-        Some(mxr_core::types::SemanticProfileStatus::Ready) => {
-            mxr_protocol::IndexFreshness::Current
-        }
-        Some(mxr_core::types::SemanticProfileStatus::Indexing)
-        | Some(mxr_core::types::SemanticProfileStatus::Pending) => {
-            mxr_protocol::IndexFreshness::Indexing
-        }
-        Some(mxr_core::types::SemanticProfileStatus::Error) => mxr_protocol::IndexFreshness::Error,
-        None => mxr_protocol::IndexFreshness::Stale,
-    };
-
-    (
-        true,
-        Some(active_profile),
-        freshness,
-        active_record
-            .and_then(|profile| profile.last_indexed_at)
-            .map(|value| value.to_rfc3339()),
-    )
-}
-
-fn doctor_data_stats(counts: mxr_store::StoreRecordCounts) -> mxr_protocol::DoctorDataStats {
-    mxr_protocol::DoctorDataStats {
-        accounts: counts.accounts,
-        labels: counts.labels,
-        messages: counts.messages,
-        unread_messages: counts.unread_messages,
-        starred_messages: counts.starred_messages,
-        messages_with_attachments: counts.messages_with_attachments,
-        message_labels: counts.message_labels,
-        bodies: counts.bodies,
-        attachments: counts.attachments,
-        drafts: counts.drafts,
-        snoozed: counts.snoozed,
-        saved_searches: counts.saved_searches,
-        rules: counts.rules,
-        rule_logs: counts.rule_logs,
-        sync_log: counts.sync_log,
-        sync_runtime_statuses: counts.sync_runtime_statuses,
-        event_log: counts.event_log,
-        semantic_profiles: counts.semantic_profiles,
-        semantic_chunks: counts.semantic_chunks,
-        semantic_embeddings: counts.semantic_embeddings,
-    }
-}
-
-fn dir_size(path: &std::path::Path) -> u64 {
-    if !path.exists() {
-        return 0;
-    }
-
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return 0;
-    };
-
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| {
-            let path = entry.path();
-            if path.is_dir() {
-                dir_size(&path)
-            } else {
-                entry.metadata().map(|meta| meta.len()).unwrap_or(0)
-            }
-        })
-        .sum()
-}
-
-async fn persist_rule(state: &Arc<AppState>, rule: &Rule) -> Result<(), String> {
-    let conditions_json = serde_json::to_string(&rule.conditions).map_err(|e| e.to_string())?;
-    let actions_json = serde_json::to_string(&rule.actions).map_err(|e| e.to_string())?;
-    state
-        .store
-        .upsert_rule(mxr_store::RuleRecordInput {
-            id: &rule.id.0,
-            name: &rule.name,
-            enabled: rule.enabled,
-            priority: rule.priority,
-            conditions_json: &conditions_json,
-            actions_json: &actions_json,
-            created_at: rule.created_at,
-            updated_at: rule.updated_at,
-        })
-        .await
-        .map_err(|e| e.to_string())
-}
-
-fn row_to_rule(row: &sqlx::sqlite::SqliteRow) -> Result<Rule, String> {
-    serde_json::from_value(mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string())
-}
-
 async fn list_runtime_accounts(state: &Arc<AppState>) -> Result<Vec<AccountSummaryData>, String> {
     use std::collections::BTreeMap;
 
@@ -2176,195 +1729,6 @@ fn persist_account_password(
     Ok(())
 }
 
-async fn dry_run_rules(
-    state: &Arc<AppState>,
-    rule_key: Option<String>,
-    all: bool,
-    after: Option<String>,
-) -> Result<Vec<DryRunResult>, String> {
-    let rows = if all {
-        state.store.list_rules().await.map_err(|e| e.to_string())?
-    } else if let Some(rule_key) = rule_key {
-        match state
-            .store
-            .get_rule_by_id_or_name(&rule_key)
-            .await
-            .map_err(|e| e.to_string())?
-        {
-            Some(row) => vec![row],
-            None => return Err(format!("Rule not found: {rule_key}")),
-        }
-    } else {
-        return Err("Provide a rule or use --all".to_string());
-    };
-
-    let rules: Vec<Rule> = rows.iter().map(row_to_rule).collect::<Result<_, _>>()?;
-    let engine = RuleEngine::new(rules.clone());
-    let after = after
-        .map(|value| {
-            chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d")
-                .map(|date| date.and_time(chrono::NaiveTime::MIN))
-                .map(|dt| {
-                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc)
-                })
-                .map_err(|e| e.to_string())
-        })
-        .transpose()?;
-
-    let mut owned_messages = Vec::new();
-    for account in state
-        .store
-        .list_accounts()
-        .await
-        .map_err(|e| e.to_string())?
-    {
-        let labels = state
-            .store
-            .list_labels_by_account(&account.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let envelopes = state
-            .store
-            .list_envelopes_by_account(&account.id, 10_000, 0)
-            .await
-            .map_err(|e| e.to_string())?;
-        for envelope in envelopes {
-            if after.is_some_and(|cutoff| envelope.date < cutoff) {
-                continue;
-            }
-            let body = state
-                .store
-                .get_body(&envelope.id)
-                .await
-                .map_err(|e| e.to_string())?;
-            let label_ids = state
-                .store
-                .get_message_label_ids(&envelope.id)
-                .await
-                .map_err(|e| e.to_string())?;
-            let visible_labels = labels
-                .iter()
-                .filter(|label| label_ids.iter().any(|id| id == &label.id))
-                .map(|label| label.provider_id.clone())
-                .collect();
-            owned_messages.push(DryRunMessage::from_parts(envelope, body, visible_labels));
-        }
-    }
-
-    let dry_run_input: Vec<_> = owned_messages
-        .iter()
-        .map(|message| {
-            (
-                message as &dyn mxr_rules::MessageView,
-                message.id.as_str(),
-                message.from.as_str(),
-                message.subject.as_str(),
-            )
-        })
-        .collect();
-
-    if all {
-        Ok(rules
-            .iter()
-            .filter(|rule| rule.enabled)
-            .filter_map(|rule| engine.dry_run(&rule.id, &dry_run_input))
-            .collect())
-    } else {
-        Ok(rules
-            .first()
-            .and_then(|rule| engine.dry_run(&rule.id, &dry_run_input))
-            .into_iter()
-            .collect())
-    }
-}
-
-struct DryRunMessage {
-    id: String,
-    from: String,
-    to: Vec<String>,
-    subject: String,
-    labels: Vec<String>,
-    has_attachment: bool,
-    size_bytes: u64,
-    date: chrono::DateTime<chrono::Utc>,
-    is_unread: bool,
-    is_starred: bool,
-    has_unsubscribe: bool,
-    body_text: Option<String>,
-}
-
-impl DryRunMessage {
-    fn from_parts(
-        envelope: mxr_core::Envelope,
-        body: Option<mxr_core::MessageBody>,
-        labels: Vec<String>,
-    ) -> Self {
-        Self {
-            id: envelope.id.to_string(),
-            from: envelope.from.email,
-            to: envelope.to.into_iter().map(|addr| addr.email).collect(),
-            subject: envelope.subject,
-            labels,
-            has_attachment: envelope.has_attachments,
-            size_bytes: envelope.size_bytes,
-            date: envelope.date,
-            is_unread: !envelope.flags.contains(mxr_core::MessageFlags::READ),
-            is_starred: envelope.flags.contains(mxr_core::MessageFlags::STARRED),
-            has_unsubscribe: !matches!(
-                envelope.unsubscribe,
-                mxr_core::types::UnsubscribeMethod::None
-            ),
-            body_text: body.and_then(|body| body.text_plain.or(body.text_html)),
-        }
-    }
-}
-
-impl mxr_rules::MessageView for DryRunMessage {
-    fn sender_email(&self) -> &str {
-        &self.from
-    }
-
-    fn to_emails(&self) -> &[String] {
-        &self.to
-    }
-
-    fn subject(&self) -> &str {
-        &self.subject
-    }
-
-    fn labels(&self) -> &[String] {
-        &self.labels
-    }
-
-    fn has_attachment(&self) -> bool {
-        self.has_attachment
-    }
-
-    fn size_bytes(&self) -> u64 {
-        self.size_bytes
-    }
-
-    fn date(&self) -> chrono::DateTime<chrono::Utc> {
-        self.date
-    }
-
-    fn is_unread(&self) -> bool {
-        self.is_unread
-    }
-
-    fn is_starred(&self) -> bool {
-        self.is_starred
-    }
-
-    fn has_unsubscribe(&self) -> bool {
-        self.has_unsubscribe
-    }
-
-    fn body_text(&self) -> Option<&str> {
-        self.body_text.as_deref()
-    }
-}
-
 async fn handle_export_thread(
     state: &Arc<AppState>,
     thread_id: &mxr_core::ThreadId,
@@ -2387,8 +1751,11 @@ async fn handle_export_search(
     query: &str,
     format: &ExportFormat,
 ) -> Response {
-    let search = state.search.lock().await;
-    let search_results = match search.search(query, 100, 0, mxr_core::types::SortOrder::DateDesc) {
+    let search_results = match state
+        .search
+        .search(query, 100, 0, mxr_core::types::SortOrder::DateDesc)
+        .await
+    {
         Ok(results) => results,
         Err(e) => {
             return Response::Error {
@@ -2396,7 +1763,6 @@ async fn handle_export_search(
             }
         }
     };
-    drop(search);
 
     // Collect unique thread IDs from search results
     let thread_ids: Vec<mxr_core::ThreadId> = {
@@ -3495,6 +2861,7 @@ mod tests {
                         daemon_version,
                         daemon_build_id,
                         repair_required,
+                        ..
                     },
             }) => {
                 assert_eq!(accounts.len(), 1);
@@ -3515,7 +2882,6 @@ mod tests {
     #[tokio::test]
     async fn dispatch_status_does_not_block_when_search_is_busy() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
-        let _search_guard = state.search.lock().await;
 
         let msg = IpcMessage {
             id: 8,
@@ -3535,6 +2901,25 @@ mod tests {
             }) => {}
             other => panic!("Expected Status, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn dispatch_shutdown_acknowledges_without_exiting() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+
+        let msg = IpcMessage {
+            id: 9,
+            payload: IpcPayload::Request(Request::Shutdown),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("Expected Ack, got {:?}", other),
+        }
+        assert!(state.shutdown_requested());
     }
 
     #[tokio::test]

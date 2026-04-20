@@ -10,7 +10,12 @@ use lettre::{transport::smtp::authentication::Credentials, AsyncSmtpTransport, T
 use mxr_core::error::MxrError;
 use mxr_core::provider::MailSendProvider;
 use mxr_core::types::{Address, Draft, SendReceipt};
+use mxr_outbound::attachments::{load_attachment_paths_async, LoadedAttachment};
+#[cfg(test)]
 use mxr_outbound::email::build_message;
+use mxr_outbound::email::build_message_with_attachments;
+use std::path::PathBuf;
+use std::time::Instant;
 
 pub struct SmtpSendProvider {
     config: SmtpConfig,
@@ -99,8 +104,15 @@ impl MailSendProvider for SmtpSendProvider {
     }
 
     async fn send(&self, draft: &Draft, from: &Address) -> Result<SendReceipt, MxrError> {
-        let message = build_message(draft, from, false)
+        let attachments = load_attachments(&draft.attachments).await?;
+        let started_at = Instant::now();
+        let message = build_message_with_attachments(draft, from, false, &attachments)
             .map_err(|e| MxrError::Provider(format!("Failed to build message: {e}")))?;
+        tracing::trace!(
+            attachment_count = attachments.len(),
+            elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+            "smtp message build completed"
+        );
 
         #[cfg(test)]
         if let Some(sender) = &self.test_sender {
@@ -128,6 +140,21 @@ impl MailSendProvider for SmtpSendProvider {
             sent_at: chrono::Utc::now(),
         })
     }
+}
+
+async fn load_attachments(paths: &[PathBuf]) -> Result<Vec<LoadedAttachment>, MxrError> {
+    let started_at = Instant::now();
+    let attachments = load_attachment_paths_async(paths)
+        .await
+        .map_err(|error| MxrError::Provider(format!("Failed to load attachments: {error}")))?;
+
+    tracing::trace!(
+        attachment_count = attachments.len(),
+        elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+        "smtp attachment load completed"
+    );
+
+    Ok(attachments)
 }
 
 #[cfg(test)]
@@ -304,5 +331,40 @@ mod tests {
             .contains("Content-Type: multipart/alternative"));
         assert!(message.formatted.contains("Hello **world**!"));
         assert!(message.formatted.contains("<strong>world</strong>"));
+    }
+
+    #[tokio::test]
+    async fn smtp_send_loads_attachments_on_async_path() {
+        let sender = Arc::new(RecordedSender::default());
+        let provider = SmtpSendProvider::with_test_sender(
+            SmtpConfig {
+                host: "smtp.example.com".into(),
+                port: 587,
+                username: "me@example.com".into(),
+                password_ref: "mxr/test".into(),
+                auth_required: true,
+                use_tls: true,
+            },
+            sender.clone(),
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("note.txt");
+        std::fs::write(&path, "hello attachment").unwrap();
+
+        let mut draft = test_draft();
+        draft.attachments = vec![path];
+
+        let from = Address {
+            name: Some("Me".into()),
+            email: "me@example.com".into(),
+        };
+
+        provider.send(&draft, &from).await.unwrap();
+
+        let messages = sender.messages.lock().unwrap();
+        let message = &messages[0].formatted;
+        assert!(message.contains("multipart/mixed"));
+        assert!(message.contains("note.txt"));
     }
 }

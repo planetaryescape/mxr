@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use async_trait::async_trait;
+use futures::stream::{self, StreamExt};
 use mxr_core::{
     AccountId, Address, Draft, Label, LabelChange, LabelId, LabelKind, MailSendProvider,
     MailSyncProvider, MxrError, SendReceipt, SyncBatch, SyncCapabilities, SyncCursor,
@@ -13,9 +14,85 @@ use crate::parse::{extract_message_body, gmail_message_to_envelope};
 use crate::send;
 use mxr_core::types::SyncedMessage;
 
+#[cfg(test)]
+#[derive(Clone)]
+struct ParseObserver {
+    current: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    max: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    delay: std::time::Duration,
+}
+
+#[cfg(test)]
+impl ParseObserver {
+    fn new(delay: std::time::Duration) -> Self {
+        Self {
+            current: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            max: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            delay,
+        }
+    }
+
+    fn max_concurrency(&self) -> usize {
+        self.max.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn enter(&self) -> ParseObserverGuard {
+        let current = self
+            .current
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+
+        loop {
+            let max = self.max.load(std::sync::atomic::Ordering::SeqCst);
+            if current <= max {
+                break;
+            }
+            if self
+                .max
+                .compare_exchange(
+                    max,
+                    current,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+                .is_ok()
+            {
+                break;
+            }
+        }
+
+        if !self.delay.is_zero() {
+            std::thread::sleep(self.delay);
+        }
+
+        ParseObserverGuard {
+            observer: self.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+struct ParseObserverGuard {
+    observer: ParseObserver,
+}
+
+#[cfg(test)]
+impl Drop for ParseObserverGuard {
+    fn drop(&mut self) {
+        self.observer
+            .current
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+const GMAIL_PARSE_FANOUT_THRESHOLD: usize = 64;
+const GMAIL_PARSE_FANOUT_MAX_CONCURRENCY: usize = 8;
+
 pub struct GmailProvider {
     account_id: AccountId,
     client: Box<dyn GmailApi>,
+    #[cfg(test)]
+    parse_observer: Option<ParseObserver>,
 }
 
 impl GmailProvider {
@@ -23,12 +100,31 @@ impl GmailProvider {
         Self {
             account_id,
             client: Box::new(client),
+            #[cfg(test)]
+            parse_observer: None,
         }
     }
 
     #[cfg(test)]
     fn with_api(account_id: AccountId, client: Box<dyn GmailApi>) -> Self {
-        Self { account_id, client }
+        Self {
+            account_id,
+            client,
+            parse_observer: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_api_and_parse_observer(
+        account_id: AccountId,
+        client: Box<dyn GmailApi>,
+        parse_observer: ParseObserver,
+    ) -> Self {
+        Self {
+            account_id,
+            client,
+            parse_observer: Some(parse_observer),
+        }
     }
 
     fn map_label(&self, gl: crate::types::GmailLabel) -> Label {
@@ -49,6 +145,63 @@ impl GmailProvider {
             unread_count: gl.messages_unread.unwrap_or(0),
             total_count: gl.messages_total.unwrap_or(0),
         }
+    }
+
+    async fn parse_synced_messages(
+        &self,
+        messages: Vec<crate::types::GmailMessage>,
+    ) -> Result<Vec<SyncedMessage>, MxrError> {
+        if messages.len() < GMAIL_PARSE_FANOUT_THRESHOLD {
+            return Ok(messages
+                .into_iter()
+                .filter_map(|message| {
+                    parse_synced_message(
+                        self.account_id.clone(),
+                        message,
+                        #[cfg(test)]
+                        self.parse_observer.clone(),
+                    )
+                })
+                .collect());
+        }
+
+        let concurrency = gmail_parse_concurrency_limit(messages.len());
+        let account_id = self.account_id.clone();
+        #[cfg(test)]
+        let parse_observer = self.parse_observer.clone();
+
+        let results = stream::iter(messages.into_iter().enumerate().map(|(index, message)| {
+            let account_id = account_id.clone();
+            #[cfg(test)]
+            let parse_observer = parse_observer.clone();
+
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    parse_synced_message(
+                        account_id,
+                        message,
+                        #[cfg(test)]
+                        parse_observer,
+                    )
+                    .map(|synced| IndexedSyncedMessage { index, synced })
+                })
+                .await
+                .map_err(|error| MxrError::Provider(format!("gmail parse task failed: {error}")))
+            }
+        }))
+        .buffer_unordered(concurrency)
+        .collect::<Vec<_>>()
+        .await;
+
+        let mut parsed = Vec::new();
+        for result in results {
+            if let Some(message) = result? {
+                parsed.push(message);
+            }
+        }
+        parsed.sort_by_key(|message| message.index);
+
+        Ok(parsed.into_iter().map(|message| message.synced).collect())
     }
 
     async fn initial_sync(&self) -> Result<SyncBatch, MxrError> {
@@ -98,17 +251,8 @@ impl GmailProvider {
                             Some(latest_history_id.map_or(h, |cur: u64| cur.max(h)));
                     }
                 }
-                match gmail_message_to_envelope(msg, &self.account_id) {
-                    Ok(env) => {
-                        let body = extract_message_body(msg);
-                        all_messages.push(SyncedMessage {
-                            envelope: env,
-                            body,
-                        });
-                    }
-                    Err(e) => warn!(msg_id = %msg.id, error = %e, "Failed to parse message"),
-                }
             }
+            all_messages.extend(self.parse_synced_messages(messages).await?);
 
             match resp.next_page_token {
                 Some(token) => page_token = Some(token),
@@ -184,21 +328,7 @@ impl GmailProvider {
             .await
             .map_err(MxrError::from)?;
 
-        let mut synced = Vec::new();
-        for msg in &messages {
-            match gmail_message_to_envelope(msg, &self.account_id) {
-                Ok(env) => {
-                    let body = extract_message_body(msg);
-                    synced.push(SyncedMessage {
-                        envelope: env,
-                        body,
-                    });
-                }
-                Err(e) => {
-                    warn!(msg_id = %msg.id, error = %e, "Failed to parse message in backfill")
-                }
-            }
-        }
+        let synced = self.parse_synced_messages(messages).await?;
 
         let has_more = resp.next_page_token.is_some();
         let next_cursor = match resp.next_page_token {
@@ -312,18 +442,7 @@ impl GmailProvider {
                 .await
                 .map_err(MxrError::from)?;
 
-            for msg in &messages {
-                match gmail_message_to_envelope(msg, &self.account_id) {
-                    Ok(env) => {
-                        let body = extract_message_body(msg);
-                        synced.push(SyncedMessage {
-                            envelope: env,
-                            body,
-                        });
-                    }
-                    Err(e) => warn!(msg_id = %msg.id, error = %e, "Failed to parse message"),
-                }
-            }
+            synced = self.parse_synced_messages(messages).await?;
         }
 
         Ok(SyncBatch {
@@ -334,6 +453,43 @@ impl GmailProvider {
                 history_id: latest_history_id,
             },
         })
+    }
+}
+
+struct IndexedSyncedMessage {
+    index: usize,
+    synced: SyncedMessage,
+}
+
+fn gmail_parse_concurrency_limit(message_count: usize) -> usize {
+    std::thread::available_parallelism()
+        .map(|parallelism| parallelism.get())
+        .unwrap_or(4)
+        .min(GMAIL_PARSE_FANOUT_MAX_CONCURRENCY)
+        .min(message_count.max(1))
+}
+
+fn parse_synced_message(
+    account_id: AccountId,
+    message: crate::types::GmailMessage,
+    #[cfg(test)] parse_observer: Option<ParseObserver>,
+) -> Option<SyncedMessage> {
+    #[cfg(test)]
+    let _parse_guard = parse_observer.as_ref().map(ParseObserver::enter);
+
+    match gmail_message_to_envelope(&message, &account_id) {
+        Ok(envelope) => {
+            let body = extract_message_body(&message);
+            Some(SyncedMessage { envelope, body })
+        }
+        Err(error) => {
+            warn!(
+                msg_id = %message.id,
+                error = %error,
+                "Failed to parse message"
+            );
+            None
+        }
     }
 }
 
@@ -521,8 +677,9 @@ impl MailSendProvider for GmailProvider {
     }
 
     async fn send(&self, draft: &Draft, from: &Address) -> mxr_core::provider::Result<SendReceipt> {
-        let rfc2822 =
-            send::build_rfc2822(draft, from).map_err(|e| MxrError::Provider(e.to_string()))?;
+        let rfc2822 = send::build_rfc2822_async(draft, from)
+            .await
+            .map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
 
         let result = self
@@ -544,7 +701,8 @@ impl MailSendProvider for GmailProvider {
         draft: &Draft,
         from: &Address,
     ) -> mxr_core::provider::Result<Option<String>> {
-        let rfc2822 = send::build_draft_rfc2822(draft, from)
+        let rfc2822 = send::build_draft_rfc2822_async(draft, from)
+            .await
             .map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
 
@@ -566,6 +724,7 @@ mod tests {
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::Mutex;
+    use std::time::Duration;
     struct MockGmailApi {
         messages: HashMap<String, GmailMessage>,
         labels: Vec<GmailLabel>,
@@ -876,6 +1035,130 @@ mod tests {
         })
     }
 
+    struct BulkSyncGmailApi {
+        messages: Vec<GmailMessage>,
+    }
+
+    #[async_trait]
+    impl GmailApi for BulkSyncGmailApi {
+        async fn list_messages(
+            &self,
+            _query: Option<&str>,
+            _page_token: Option<&str>,
+            _max_results: u32,
+        ) -> Result<GmailListResponse, GmailError> {
+            Ok(GmailListResponse {
+                messages: Some(
+                    self.messages
+                        .iter()
+                        .map(|message| GmailMessageRef {
+                            id: message.id.clone(),
+                            thread_id: message.thread_id.clone(),
+                        })
+                        .collect(),
+                ),
+                next_page_token: None,
+                result_size_estimate: Some(self.messages.len() as u64),
+            })
+        }
+
+        async fn batch_get_messages(
+            &self,
+            message_ids: &[String],
+            _format: MessageFormat,
+        ) -> Result<Vec<GmailMessage>, GmailError> {
+            Ok(self
+                .messages
+                .iter()
+                .filter(|message| message_ids.iter().any(|id| id == &message.id))
+                .cloned()
+                .collect())
+        }
+
+        async fn list_history(
+            &self,
+            _start_history_id: u64,
+            _page_token: Option<&str>,
+        ) -> Result<GmailHistoryResponse, GmailError> {
+            unreachable!("history is not used in initial sync fan-out test")
+        }
+
+        async fn modify_message(
+            &self,
+            _message_id: &str,
+            _add_labels: &[&str],
+            _remove_labels: &[&str],
+        ) -> Result<(), GmailError> {
+            unreachable!("modify is not used in initial sync fan-out test")
+        }
+
+        async fn trash_message(&self, _message_id: &str) -> Result<(), GmailError> {
+            unreachable!("trash is not used in initial sync fan-out test")
+        }
+
+        async fn send_message(
+            &self,
+            _raw_base64url: &str,
+        ) -> Result<serde_json::Value, GmailError> {
+            unreachable!("send is not used in initial sync fan-out test")
+        }
+
+        async fn get_attachment(
+            &self,
+            _message_id: &str,
+            _attachment_id: &str,
+        ) -> Result<Vec<u8>, GmailError> {
+            unreachable!("attachments are not used in initial sync fan-out test")
+        }
+
+        async fn create_draft(&self, _raw_base64url: &str) -> Result<String, GmailError> {
+            unreachable!("drafts are not used in initial sync fan-out test")
+        }
+
+        async fn list_labels(&self) -> Result<GmailLabelsResponse, GmailError> {
+            unreachable!("labels are not used in initial sync fan-out test")
+        }
+
+        async fn create_label(
+            &self,
+            _name: &str,
+            _color: Option<&str>,
+        ) -> Result<GmailLabel, GmailError> {
+            unreachable!("labels are not used in initial sync fan-out test")
+        }
+
+        async fn rename_label(
+            &self,
+            _label_id: &str,
+            _new_name: &str,
+        ) -> Result<GmailLabel, GmailError> {
+            unreachable!("labels are not used in initial sync fan-out test")
+        }
+
+        async fn delete_label(&self, _label_id: &str) -> Result<(), GmailError> {
+            unreachable!("labels are not used in initial sync fan-out test")
+        }
+    }
+
+    fn bulk_gmail_provider(message_count: usize, parse_observer: ParseObserver) -> GmailProvider {
+        let messages = (0..message_count)
+            .map(|index| {
+                serde_json::from_value::<GmailMessage>(gmail_message(
+                    &format!("bulk-msg-{index}"),
+                    &format!("bulk-thread-{index}"),
+                    &format!("Bulk subject {index}"),
+                ))
+                .unwrap()
+            })
+            .collect();
+
+        GmailProvider::with_api_and_parse_observer(
+            AccountId::new(),
+            Box::new(BulkSyncGmailApi { messages }),
+            parse_observer,
+        )
+    }
+
     #[tokio::test]
     async fn gmail_provider_passes_sync_and_send_conformance() {
         let provider = gmail_provider();
@@ -918,5 +1201,31 @@ mod tests {
             batch.next_cursor,
             SyncCursor::Gmail { history_id: 22 }
         ));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn gmail_initial_sync_fans_out_parsing_for_large_batches() {
+        let parse_observer = ParseObserver::new(Duration::from_millis(10));
+        let provider = bulk_gmail_provider(64, parse_observer.clone());
+
+        let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+
+        assert_eq!(batch.upserted.len(), 64);
+        assert!(
+            parse_observer.max_concurrency() > 1,
+            "expected parsing overlap for large batches, observed {}",
+            parse_observer.max_concurrency()
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn gmail_initial_sync_keeps_small_batches_inline() {
+        let parse_observer = ParseObserver::new(Duration::from_millis(10));
+        let provider = bulk_gmail_provider(63, parse_observer.clone());
+
+        let batch = provider.sync_messages(&SyncCursor::Initial).await.unwrap();
+
+        assert_eq!(batch.upserted.len(), 63);
+        assert_eq!(parse_observer.max_concurrency(), 1);
     }
 }

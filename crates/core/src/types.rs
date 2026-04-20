@@ -426,6 +426,24 @@ pub struct SemanticStatusSnapshot {
     pub enabled: bool,
     pub active_profile: SemanticProfile,
     pub profiles: Vec<SemanticProfileRecord>,
+    #[serde(default)]
+    pub runtime: SemanticRuntimeMetrics,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SemanticRuntimeMetrics {
+    #[serde(default)]
+    pub queue_depth: u32,
+    #[serde(default)]
+    pub in_flight: u32,
+    #[serde(default)]
+    pub last_queue_wait_ms: Option<u64>,
+    #[serde(default)]
+    pub last_extract_ms: Option<u64>,
+    #[serde(default)]
+    pub last_embedding_prep_ms: Option<u64>,
+    #[serde(default)]
+    pub last_ingest_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -6,8 +6,10 @@ description = "Example mxr provider adapter"
 publish = false
 license = "MIT OR Apache-2.0"
 
+[workspace]
+
 [dependencies]
-async-trait = { workspace = true }
-chrono = { workspace = true }
-mxr-core = { workspace = true }
-mxr-provider-fake = { workspace = true }
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+mxr-core = { path = "../../crates/core" }
+mxr-provider-fake = { path = "../../crates/provider-fake" }

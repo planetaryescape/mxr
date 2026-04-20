@@ -1,11 +1,10 @@
-use mxr_rules::{DryRunResult, Rule, RuleEngine};
 use crate::state::AppState;
+use mxr_rules::{DryRunResult, Rule, RuleEngine};
 use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub(super) fn protocol_event_entry(
-    entry: mxr_store::EventLogEntry,
-) -> mxr_protocol::EventLogEntry {
+pub(super) fn protocol_event_entry(entry: mxr_store::EventLogEntry) -> mxr_protocol::EventLogEntry {
     mxr_protocol::EventLogEntry {
         timestamp: entry.timestamp,
         level: entry.level,
@@ -18,13 +17,13 @@ pub(super) fn protocol_event_entry(
     }
 }
 
-pub(super) fn recent_log_lines(
+pub(crate) fn recent_log_lines_sync(
     limit: usize,
     level: Option<&str>,
 ) -> Result<Vec<String>, std::io::Error> {
     let log_path = mxr_config::data_dir().join("logs").join("mxr.log");
     if !log_path.exists() {
-        return Ok(vec!["(no recent logs)".to_string()]);
+        return Ok(Vec::new());
     }
 
     let file = std::fs::File::open(log_path)?;
@@ -35,17 +34,87 @@ pub(super) fn recent_log_lines(
         let level = level.to_ascii_lowercase();
         lines.retain(|line| line.to_ascii_lowercase().contains(&level));
     }
-    if lines.is_empty() {
-        return Ok(vec!["(no recent logs)".to_string()]);
-    }
     let start = lines.len().saturating_sub(limit.max(1));
     Ok(lines.split_off(start))
 }
 
-pub(super) fn should_fallback_to_tantivy(
-    query: &str,
-    error: &mxr_search::ParseError,
-) -> bool {
+pub(super) async fn recent_log_lines(
+    state: &Arc<AppState>,
+    limit: usize,
+    level: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let level = level.map(str::to_string);
+    let mut lines = run_admin_blocking(state, "recent_log_lines", move || {
+        recent_log_lines_sync(limit, level.as_deref()).map_err(|error| error.to_string())
+    })
+    .await?;
+    if lines.is_empty() {
+        lines.push("(no recent logs)".to_string());
+    }
+    Ok(lines)
+}
+
+pub(super) async fn file_size(state: &Arc<AppState>, path: PathBuf) -> u64 {
+    run_admin_blocking(state, "file_size", move || Ok(file_size_sync(&path)))
+        .await
+        .unwrap_or(0)
+}
+
+pub(super) async fn dir_size(state: &Arc<AppState>, path: PathBuf) -> u64 {
+    run_admin_blocking(state, "dir_size", move || Ok(dir_size_sync(&path)))
+        .await
+        .unwrap_or(0)
+}
+
+async fn run_admin_blocking<T, F>(
+    state: &Arc<AppState>,
+    operation: &'static str,
+    task: F,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    let _permit = state.acquire_admin_blocking_permit().await?;
+    tokio::task::spawn_blocking(move || {
+        let started_at = std::time::Instant::now();
+        let result = task();
+        tracing::trace!(
+            operation,
+            elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
+            "daemon admin blocking task completed"
+        );
+        result
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+pub(crate) fn dir_size_sync(path: &Path) -> u64 {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => metadata.len(),
+        Ok(metadata) if metadata.is_dir() => std::fs::read_dir(path)
+            .ok()
+            .into_iter()
+            .flat_map(|entries| entries.filter_map(Result::ok))
+            .map(|entry| entry.path())
+            .map(|path| {
+                if path.is_dir() {
+                    dir_size_sync(&path)
+                } else {
+                    file_size_sync(&path)
+                }
+            })
+            .sum(),
+        _ => 0,
+    }
+}
+
+pub(crate) fn file_size_sync(path: &Path) -> u64 {
+    std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
+}
+
+pub(crate) fn should_fallback_to_tantivy(query: &str, error: &mxr_search::ParseError) -> bool {
     if looks_structured_query(query) {
         return false;
     }
@@ -58,7 +127,7 @@ pub(super) fn should_fallback_to_tantivy(
     )
 }
 
-pub(super) fn looks_structured_query(query: &str) -> bool {
+fn looks_structured_query(query: &str) -> bool {
     let trimmed = query.trim();
     trimmed.contains(':')
         || trimmed.contains('(')
@@ -88,7 +157,7 @@ pub(super) async fn persist_rule(state: &Arc<AppState>, rule: &Rule) -> Result<(
         .map_err(|e| e.to_string())
 }
 
-pub(super) fn row_to_rule(row: &sqlx::sqlite::SqliteRow) -> Result<Rule, String> {
+fn row_to_rule(row: &sqlx::sqlite::SqliteRow) -> Result<Rule, String> {
     serde_json::from_value(mxr_store::row_to_rule_json(row)).map_err(|e| e.to_string())
 }
 
@@ -194,7 +263,7 @@ pub(super) async fn dry_run_rules(
     }
 }
 
-pub(super) struct DryRunMessage {
+struct DryRunMessage {
     id: String,
     from: String,
     to: Vec<String>,
@@ -225,9 +294,7 @@ impl DryRunMessage {
             size_bytes: envelope.size_bytes,
             date: envelope.date,
             is_unread: !envelope.flags.contains(mxr_core::MessageFlags::READ),
-            is_starred: envelope
-                .flags
-                .contains(mxr_core::MessageFlags::STARRED),
+            is_starred: envelope.flags.contains(mxr_core::MessageFlags::STARRED),
             has_unsubscribe: !matches!(
                 envelope.unsubscribe,
                 mxr_core::types::UnsubscribeMethod::None

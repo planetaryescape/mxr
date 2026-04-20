@@ -270,7 +270,7 @@ fn action_display_name(action: &str) -> String {
         "toggle_remote_content" => "Remote Media".into(),
         "toggle_signature" => "Signature".into(),
         "export_thread" => "Export".into(),
-        "open_in_browser" => "Source".into(),
+        "open_in_browser" => "Browser".into(),
         "open_tab_1" => "Mailbox".into(),
         "open_tab_2" => "Search Page".into(),
         "open_tab_3" => "Rules Page".into(),

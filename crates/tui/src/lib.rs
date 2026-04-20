@@ -1965,6 +1965,60 @@ mod tests {
     }
 
     #[test]
+    fn open_in_browser_action_queues_html_body_open() {
+        let mut app = App::new();
+        let env = make_test_envelopes(1).remove(0);
+        app.viewing_envelope = Some(env.clone());
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some("Plain body".into()),
+                text_html: Some("<p>Hello html</p>".into()),
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
+            },
+        );
+
+        app.apply(Action::OpenInBrowser);
+
+        let pending = app
+            .pending_browser_open
+            .as_ref()
+            .expect("browser open should be queued");
+        assert_eq!(pending.message_id, env.id);
+        assert_eq!(pending.html, "<p>Hello html</p>");
+        assert_eq!(app.status_message.as_deref(), Some("Opening in browser..."));
+    }
+
+    #[test]
+    fn open_in_browser_action_rejects_messages_without_html_body() {
+        let mut app = App::new();
+        let env = make_test_envelopes(1).remove(0);
+        app.viewing_envelope = Some(env.clone());
+        app.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id,
+                text_plain: Some("Plain body".into()),
+                text_html: None,
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: Default::default(),
+            },
+        );
+
+        app.apply(Action::OpenInBrowser);
+
+        assert!(app.pending_browser_open.is_none());
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("No HTML body available")
+        );
+    }
+
+    #[test]
     fn app_move_down_bounds() {
         let mut app = App::new();
         app.envelopes = make_test_envelopes(3);

@@ -498,28 +498,35 @@ pub async fn open_in_browser(message_id: String) -> anyhow::Result<()> {
         Response::Ok {
             data: ResponseData::Body { body },
         } => {
-            let dir = mxr_config::data_dir().join("source");
+            let Some(html) = body.text_html.as_deref() else {
+                anyhow::bail!("No HTML body available for {}", id.as_str());
+            };
+
+            let dir = mxr_config::data_dir().join("browser");
             std::fs::create_dir_all(&dir)?;
-            let path = dir.join(format!("{}.txt", id.as_str()));
-
-            let mut source = String::new();
-            if let Some(headers) = body.metadata.raw_headers.as_deref() {
-                source.push_str(headers.trim_end());
-                source.push_str("\n\n");
-            }
-            if let Some(html) = body.text_html.as_deref() {
-                source.push_str(html);
-            } else if let Some(text) = body.text_plain.as_deref() {
-                source.push_str(text);
-            }
-
-            std::fs::write(&path, source)?;
-            let editor = mxr_compose::editor::resolve_editor(None);
-            std::process::Command::new(&editor).arg(&path).spawn()?;
-            println!("Opened local source: {}", path.display());
+            let path = dir.join(format!("{}.html", id.as_str()));
+            std::fs::write(&path, html)?;
+            open_browser_path(&path)?;
+            println!("Opened in browser: {}", path.display());
         }
         Response::Error { message } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
+}
+
+fn open_browser_path(path: &std::path::Path) -> anyhow::Result<()> {
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(target_os = "linux")]
+    let program = "xdg-open";
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    let program = "open";
+
+    let status = std::process::Command::new(program).arg(path).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        anyhow::bail!("{program} exited with status {status}")
+    }
 }

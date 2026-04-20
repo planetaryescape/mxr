@@ -239,7 +239,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Mail".into(),
         },
         PaletteCommand {
-            label: "Open Message Source".into(),
+            label: "Open In Browser".into(),
             shortcut: "O".into(),
             action: Action::OpenInBrowser,
             category: "Mail".into(),

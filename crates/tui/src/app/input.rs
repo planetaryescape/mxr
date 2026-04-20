@@ -94,7 +94,9 @@ impl App {
                 Some(Action::Unsubscribe)
             }
             (KeyCode::Char('Z'), modifiers) if plain_or_shift(modifiers) => Some(Action::Snooze),
-            (KeyCode::Char('O'), modifiers) if plain_or_shift(modifiers) => Some(Action::OpenInBrowser),
+            (KeyCode::Char('O'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::OpenInBrowser)
+            }
             (KeyCode::Char('R'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ToggleReaderMode)
             }
@@ -1001,7 +1003,9 @@ impl App {
             (KeyCode::Char('t'), _) => Some(Action::TestAccountForm),
             (KeyCode::Char('O'), modifiers)
                 if plain_or_shift(modifiers)
-                    && super::account_result_has_details(self.accounts_page.last_result.as_ref()) =>
+                    && super::account_result_has_details(
+                        self.accounts_page.last_result.as_ref(),
+                    ) =>
             {
                 self.open_last_account_result_details_modal();
                 None

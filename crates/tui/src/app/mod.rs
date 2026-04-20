@@ -68,6 +68,12 @@ pub struct PendingSend {
     pub mode: PendingSendMode,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingBrowserOpen {
+    pub message_id: MessageId,
+    pub html: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PendingSendMode {
     SendOrSave,
@@ -714,6 +720,7 @@ pub struct App {
     pub rule_form_request_id: u64,
     pub pending_rule_form_save: bool,
     pub pending_bug_report: bool,
+    pub pending_browser_open: Option<PendingBrowserOpen>,
     pub pending_config_edit: bool,
     pub pending_log_open: bool,
     pub pending_diagnostics_details: Option<DiagnosticsPaneKind>,
@@ -877,6 +884,7 @@ impl App {
             rule_form_request_id: 0,
             pending_rule_form_save: false,
             pending_bug_report: false,
+            pending_browser_open: None,
             pending_config_edit: false,
             pending_log_open: false,
             pending_diagnostics_details: None,

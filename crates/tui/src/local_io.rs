@@ -4,10 +4,59 @@ use crate::local_state;
 use crate::runtime::{submit_task, AsyncResultTask};
 use tokio::sync::mpsc;
 
+async fn open_browser_file(
+    message_id: mxr_core::MessageId,
+    html: String,
+) -> Result<std::path::PathBuf, String> {
+    let dir = mxr_config::data_dir().join("browser");
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|error| format!("failed to prepare browser dir: {error}"))?;
+
+    let path = dir.join(format!("{}.html", message_id.as_str()));
+    tokio::fs::write(&path, html)
+        .await
+        .map_err(|error| format!("failed to write browser file: {error}"))?;
+
+    let browser_path = path.clone();
+    tokio::task::spawn_blocking(move || open_path_in_browser(&browser_path))
+        .await
+        .map_err(|error| format!("browser opener task failed: {error}"))?
+        .map_err(|error| format!("failed to open browser: {error}"))?;
+
+    Ok(path)
+}
+
+fn open_path_in_browser(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    let programs = ["open"];
+    #[cfg(target_os = "linux")]
+    let programs = ["xdg-open"];
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    let programs = ["open"];
+
+    for program in programs {
+        let status = std::process::Command::new(program).arg(path).status();
+        match status {
+            Ok(status) if status.success() => return Ok(()),
+            Ok(_) => continue,
+            Err(error) => return Err(error),
+        }
+    }
+
+    Err(std::io::Error::other("no supported browser opener found"))
+}
+
 pub(crate) fn submit_pending_work(
     app: &mut App,
     local_io: &mpsc::UnboundedSender<AsyncResultTask>,
 ) {
+    if let Some(pending) = app.pending_browser_open.take() {
+        let _ = submit_task(local_io, async move {
+            AsyncResult::BrowserOpened(open_browser_file(pending.message_id, pending.html).await)
+        });
+    }
+
     if app.pending_local_state_save {
         app.pending_local_state_save = false;
         let state = local_state::TuiLocalState {
@@ -74,6 +123,14 @@ pub(crate) fn handle_result(app: &mut App, result: AsyncResult) -> Option<AsyncR
         }
         AsyncResult::BugReportSaved(Err(error)) => {
             app.diagnostics_page.status = Some(format!("Bug report write failed: {error}"));
+            None
+        }
+        AsyncResult::BrowserOpened(Ok(path)) => {
+            app.status_message = Some(format!("Opened in browser: {}", path.display()));
+            None
+        }
+        AsyncResult::BrowserOpened(Err(error)) => {
+            app.status_message = Some(format!("Open in browser failed: {error}"));
             None
         }
         other => Some(other),
@@ -166,5 +223,17 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(saved_path);
+    }
+
+    #[test]
+    fn browser_open_result_updates_status_message() {
+        let path = std::env::temp_dir().join("mxr-browser-open-test.html");
+        let mut app = App::new();
+
+        assert!(handle_result(&mut app, AsyncResult::BrowserOpened(Ok(path.clone()))).is_none());
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some(format!("Opened in browser: {}", path.display()).as_str())
+        );
     }
 }

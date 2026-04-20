@@ -121,11 +121,9 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::EditConfig)
             }
-            (
-                KeyState::WaitingForSecond { first: 'g', .. },
-                KeyCode::Char('L'),
-                modifiers,
-            ) if plain_or_shift(modifiers) => {
+            (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char('L'), modifiers)
+                if plain_or_shift(modifiers) =>
+            {
                 self.state = KeyState::Normal;
                 Some(Action::OpenLogs)
             }

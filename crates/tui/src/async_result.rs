@@ -51,6 +51,7 @@ pub(crate) enum AsyncResult {
     AccountOperation(Result<AccountOperationResult, MxrError>),
     BugReport(Result<String, MxrError>),
     BugReportSaved(Result<std::path::PathBuf, String>),
+    BrowserOpened(Result<std::path::PathBuf, String>),
     AttachmentFile {
         operation: AttachmentOperation,
         result: Result<AttachmentFile, MxrError>,

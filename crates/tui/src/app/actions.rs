@@ -1,57 +1,24 @@
 use super::*;
 
 impl App {
-    fn current_message_source_text(&self) -> Option<String> {
-        let body = self.current_viewing_body()?;
-        let BodyViewState::Ready { raw, .. } = &self.body_view_state else {
-            return None;
-        };
-
-        let mut source = String::new();
-        if let Some(headers) = body.metadata.raw_headers.as_deref() {
-            source.push_str(headers.trim_end());
-            source.push_str("\n\n");
-        }
-        source.push_str(raw);
-        Some(source)
-    }
-
-    fn open_current_message_source(&mut self) {
-        let Some(source) = self.current_message_source_text() else {
-            self.status_message = Some("No exact message source available".into());
-            return;
-        };
-
-        let Some(message_id) = self
-            .viewing_envelope
-            .as_ref()
-            .map(|env| env.id.as_str().to_string())
-        else {
+    fn queue_current_message_browser_open(&mut self) {
+        let Some(message_id) = self.viewing_envelope.as_ref().map(|env| env.id.clone()) else {
             self.status_message = Some("No message selected".into());
             return;
         };
 
-        let dir = mxr_config::data_dir().join("source");
-        if let Err(error) = std::fs::create_dir_all(&dir) {
-            self.status_message = Some(format!("Failed to prepare source dir: {error}"));
+        let Some(body) = self.current_viewing_body() else {
+            self.status_message = Some("No message body loaded".into());
             return;
-        }
+        };
 
-        let path = dir.join(format!("{message_id}.txt"));
-        if let Err(error) = std::fs::write(&path, source) {
-            self.status_message = Some(format!("Failed to write source file: {error}"));
+        let Some(html) = body.text_html.clone() else {
+            self.status_message = Some("No HTML body available".into());
             return;
-        }
+        };
 
-        let editor = mxr_compose::editor::resolve_editor(None);
-        match std::process::Command::new(&editor).arg(&path).spawn() {
-            Ok(_) => {
-                self.status_message = Some(format!("Opened source: {}", path.display()));
-            }
-            Err(error) => {
-                self.status_message = Some(format!("Failed to launch editor '{editor}': {error}"));
-            }
-        }
+        self.pending_browser_open = Some(PendingBrowserOpen { message_id, html });
+        self.status_message = Some("Opening in browser...".into());
     }
 
     pub fn tick(&mut self) {
@@ -1098,7 +1065,7 @@ impl App {
                 }
             }
             Action::OpenInBrowser => {
-                self.open_current_message_source();
+                self.queue_current_message_browser_open();
             }
 
             // Phase 2: Reader mode

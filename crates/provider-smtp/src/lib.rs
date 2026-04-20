@@ -256,14 +256,14 @@ mod tests {
     async fn smtp_provider_passes_send_conformance() {
         let sender = Arc::new(RecordedSender::default());
         let provider = SmtpSendProvider::with_test_sender(
-            SmtpConfig {
-                host: "smtp.example.com".into(),
-                port: 587,
-                username: "me@example.com".into(),
-                password_ref: "mxr/test".into(),
-                auth_required: true,
-                use_tls: true,
-            },
+            SmtpConfig::new(
+                "smtp.example.com".into(),
+                587,
+                "me@example.com".into(),
+                "mxr/test".into(),
+                true,
+                true,
+            ),
             sender.clone(),
         );
         mxr_provider_fake::conformance::run_send_conformance(&provider).await;
@@ -278,14 +278,14 @@ mod tests {
     async fn smtp_send_preserves_envelope_recipients_and_strips_bcc_header() {
         let sender = Arc::new(RecordedSender::default());
         let provider = SmtpSendProvider::with_test_sender(
-            SmtpConfig {
-                host: "smtp.example.com".into(),
-                port: 587,
-                username: "me@example.com".into(),
-                password_ref: "mxr/test".into(),
-                auth_required: true,
-                use_tls: true,
-            },
+            SmtpConfig::new(
+                "smtp.example.com".into(),
+                587,
+                "me@example.com".into(),
+                "mxr/test".into(),
+                true,
+                true,
+            ),
             sender.clone(),
         );
 
@@ -337,14 +337,14 @@ mod tests {
     async fn smtp_send_loads_attachments_on_async_path() {
         let sender = Arc::new(RecordedSender::default());
         let provider = SmtpSendProvider::with_test_sender(
-            SmtpConfig {
-                host: "smtp.example.com".into(),
-                port: 587,
-                username: "me@example.com".into(),
-                password_ref: "mxr/test".into(),
-                auth_required: true,
-                use_tls: true,
-            },
+            SmtpConfig::new(
+                "smtp.example.com".into(),
+                587,
+                "me@example.com".into(),
+                "mxr/test".into(),
+                true,
+                true,
+            ),
             sender.clone(),
         );
 

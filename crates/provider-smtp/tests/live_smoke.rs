@@ -23,14 +23,14 @@ fn invalid_draft() -> Draft {
 }
 
 fn provider() -> SmtpSendProvider {
-    SmtpSendProvider::new(SmtpConfig {
-        host: "smtp.example.com".into(),
-        port: 587,
-        username: "me@example.com".into(),
-        password_ref: "mxr/test-smtp".into(),
-        auth_required: true,
-        use_tls: true,
-    })
+    SmtpSendProvider::new(SmtpConfig::new(
+        "smtp.example.com".into(),
+        587,
+        "me@example.com".into(),
+        "mxr/test-smtp".into(),
+        true,
+        true,
+    ))
 }
 
 #[tokio::test]

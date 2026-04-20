@@ -4,6 +4,10 @@ use std::time::{Duration, Instant};
 
 const MULTI_KEY_TIMEOUT: Duration = Duration::from_millis(500);
 
+fn plain_or_shift(modifiers: KeyModifiers) -> bool {
+    modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
+}
+
 #[derive(Debug)]
 pub enum KeyState {
     Normal,
@@ -120,8 +124,8 @@ impl InputHandler {
             (
                 KeyState::WaitingForSecond { first: 'g', .. },
                 KeyCode::Char('L'),
-                KeyModifiers::SHIFT,
-            ) => {
+                modifiers,
+            ) if plain_or_shift(modifiers) => {
                 self.state = KeyState::Normal;
                 Some(Action::OpenLogs)
             }
@@ -151,16 +155,18 @@ impl InputHandler {
             // Single keys
             (KeyState::Normal, KeyCode::Char('j') | KeyCode::Down, _) => Some(Action::MoveDown),
             (KeyState::Normal, KeyCode::Char('k') | KeyCode::Up, _) => Some(Action::MoveUp),
-            (KeyState::Normal, KeyCode::Char('G'), KeyModifiers::SHIFT) => Some(Action::JumpBottom),
+            (KeyState::Normal, KeyCode::Char('G'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::JumpBottom)
+            }
             (KeyState::Normal, KeyCode::Char('d'), KeyModifiers::CONTROL) => Some(Action::PageDown),
             (KeyState::Normal, KeyCode::Char('u'), KeyModifiers::CONTROL) => Some(Action::PageUp),
-            (KeyState::Normal, KeyCode::Char('H'), KeyModifiers::SHIFT) => {
+            (KeyState::Normal, KeyCode::Char('H'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ViewportTop)
             }
-            (KeyState::Normal, KeyCode::Char('M'), KeyModifiers::SHIFT) => {
+            (KeyState::Normal, KeyCode::Char('M'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ViewportMiddle)
             }
-            (KeyState::Normal, KeyCode::Char('L'), KeyModifiers::SHIFT) => {
+            (KeyState::Normal, KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ViewportBottom)
             }
             (KeyState::Normal, KeyCode::Tab, _) => Some(Action::SwitchPane),
@@ -180,7 +186,7 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('n'), KeyModifiers::NONE) => {
                 Some(Action::NextSearchResult)
             }
-            (KeyState::Normal, KeyCode::Char('N'), KeyModifiers::SHIFT) => {
+            (KeyState::Normal, KeyCode::Char('N'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::PrevSearchResult)
             }
 
@@ -193,16 +199,16 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('x'), KeyModifiers::NONE) => {
                 Some(Action::ToggleSelect)
             }
-            (KeyState::Normal, KeyCode::Char('A'), KeyModifiers::SHIFT) => {
+            (KeyState::Normal, KeyCode::Char('A'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::AttachmentList)
             }
-            (KeyState::Normal, KeyCode::Char('V'), KeyModifiers::SHIFT) => {
+            (KeyState::Normal, KeyCode::Char('V'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::VisualLineMode)
             }
-            (KeyState::Normal, KeyCode::Char('E'), KeyModifiers::SHIFT) => {
+            (KeyState::Normal, KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ExportThread)
             }
-            (KeyState::Normal, KeyCode::Char('F'), KeyModifiers::SHIFT) => {
+            (KeyState::Normal, KeyCode::Char('F'), modifiers) if plain_or_shift(modifiers) => {
                 Some(Action::ToggleFullscreen)
             }
             (KeyState::Normal, KeyCode::Char('?'), _) => Some(Action::Help),

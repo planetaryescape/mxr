@@ -2,8 +2,11 @@
 
 use crate::error::ImapProviderError;
 use serde::Deserialize;
+use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Clone, Deserialize)]
+type PasswordReader = Arc<dyn Fn(&str, &str) -> Result<String, ImapProviderError> + Send + Sync>;
+
+#[derive(Clone, Deserialize)]
 pub struct ImapConfig {
     pub host: String,
     pub port: u16,
@@ -14,26 +17,92 @@ pub struct ImapConfig {
     pub auth_required: bool,
     #[serde(default = "default_true")]
     pub use_tls: bool,
+    #[serde(skip, default = "default_password_cache")]
+    password_cache: Arc<Mutex<Option<String>>>,
+    #[serde(skip, default = "default_password_reader")]
+    password_reader: PasswordReader,
 }
 
 fn default_true() -> bool {
     true
 }
 
-impl ImapConfig {
-    /// Retrieve the IMAP password from the system keyring.
-    pub fn resolve_password(&self) -> Result<String, ImapProviderError> {
-        let entry = keyring::Entry::new(&self.password_ref, &self.username)
+fn default_password_cache() -> Arc<Mutex<Option<String>>> {
+    Arc::new(Mutex::new(None))
+}
+
+fn default_password_reader() -> PasswordReader {
+    Arc::new(|password_ref, username| {
+        let entry = keyring::Entry::new(password_ref, username)
             .map_err(|e| ImapProviderError::Keyring(e.to_string()))?;
         entry
             .get_password()
             .map_err(|e| ImapProviderError::Keyring(format!("Failed to retrieve password: {e}")))
+    })
+}
+
+impl ImapConfig {
+    pub fn new(
+        host: String,
+        port: u16,
+        username: String,
+        password_ref: String,
+        auth_required: bool,
+        use_tls: bool,
+    ) -> Self {
+        Self {
+            host,
+            port,
+            username,
+            password_ref,
+            auth_required,
+            use_tls,
+            password_cache: default_password_cache(),
+            password_reader: default_password_reader(),
+        }
+    }
+
+    /// Retrieve the IMAP password from the system keyring.
+    pub fn resolve_password(&self) -> Result<String, ImapProviderError> {
+        let mut cached = self.password_cache.lock().map_err(|_| {
+            ImapProviderError::Keyring("Failed to lock IMAP password cache".to_string())
+        })?;
+
+        if let Some(password) = cached.as_ref() {
+            return Ok(password.clone());
+        }
+
+        let password = (self.password_reader)(&self.password_ref, &self.username)?;
+        *cached = Some(password.clone());
+        Ok(password)
+    }
+
+    #[cfg(test)]
+    fn with_password_reader_for_tests(mut self, password_reader: PasswordReader) -> Self {
+        self.password_reader = password_reader;
+        self
+    }
+}
+
+impl std::fmt::Debug for ImapConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImapConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password_ref", &self.password_ref)
+            .field("auth_required", &self.auth_required)
+            .field("use_tls", &self.use_tls)
+            .finish_non_exhaustive()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Barrier;
+    use std::time::Duration;
 
     #[test]
     fn imap_config_parses() {
@@ -48,5 +117,112 @@ mod tests {
         assert_eq!(config.port, 993);
         assert!(config.auth_required);
         assert!(config.use_tls);
+    }
+
+    #[test]
+    fn resolve_password_caches_first_lookup() {
+        let lookup_count = Arc::new(AtomicUsize::new(0));
+        let reader_count = lookup_count.clone();
+        let config = ImapConfig::new(
+            "imap.fastmail.com".into(),
+            993,
+            "user@fastmail.com".into(),
+            "mxr/fastmail-imap".into(),
+            true,
+            true,
+        )
+        .with_password_reader_for_tests(Arc::new(move |_, _| {
+            reader_count.fetch_add(1, Ordering::SeqCst);
+            Ok("app-password".to_string())
+        }));
+
+        assert_eq!(config.resolve_password().unwrap(), "app-password");
+        assert_eq!(config.resolve_password().unwrap(), "app-password");
+        assert_eq!(lookup_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn cloned_configs_share_cached_password() {
+        let lookup_count = Arc::new(AtomicUsize::new(0));
+        let reader_count = lookup_count.clone();
+        let config = ImapConfig::new(
+            "imap.fastmail.com".into(),
+            993,
+            "user@fastmail.com".into(),
+            "mxr/fastmail-imap".into(),
+            true,
+            true,
+        )
+        .with_password_reader_for_tests(Arc::new(move |_, _| {
+            reader_count.fetch_add(1, Ordering::SeqCst);
+            Ok("app-password".to_string())
+        }));
+        let clone = config.clone();
+
+        assert_eq!(config.resolve_password().unwrap(), "app-password");
+        assert_eq!(clone.resolve_password().unwrap(), "app-password");
+        assert_eq!(lookup_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn failed_lookup_does_not_poison_cache() {
+        let lookup_count = Arc::new(AtomicUsize::new(0));
+        let reader_count = lookup_count.clone();
+        let config = ImapConfig::new(
+            "imap.fastmail.com".into(),
+            993,
+            "user@fastmail.com".into(),
+            "mxr/fastmail-imap".into(),
+            true,
+            true,
+        )
+        .with_password_reader_for_tests(Arc::new(move |_, _| {
+            let attempt = reader_count.fetch_add(1, Ordering::SeqCst);
+            if attempt == 0 {
+                Err(ImapProviderError::Keyring("denied".to_string()))
+            } else {
+                Ok("app-password".to_string())
+            }
+        }));
+
+        assert!(config.resolve_password().is_err());
+        assert_eq!(config.resolve_password().unwrap(), "app-password");
+        assert_eq!(config.resolve_password().unwrap(), "app-password");
+        assert_eq!(lookup_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn parallel_lookups_share_one_reader_call() {
+        let lookup_count = Arc::new(AtomicUsize::new(0));
+        let reader_count = lookup_count.clone();
+        let barrier = Arc::new(Barrier::new(8));
+        let config = Arc::new(
+            ImapConfig::new(
+                "imap.fastmail.com".into(),
+                993,
+                "user@fastmail.com".into(),
+                "mxr/fastmail-imap".into(),
+                true,
+                true,
+            )
+            .with_password_reader_for_tests(Arc::new(move |_, _| {
+                reader_count.fetch_add(1, Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(25));
+                Ok("app-password".to_string())
+            })),
+        );
+
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                let config = config.clone();
+                let barrier = barrier.clone();
+                scope.spawn(move || {
+                    barrier.wait();
+                    assert_eq!(config.resolve_password().unwrap(), "app-password");
+                });
+            }
+        });
+
+        assert_eq!(lookup_count.load(Ordering::SeqCst), 1);
     }
 }

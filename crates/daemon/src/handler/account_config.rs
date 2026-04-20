@@ -1,6 +1,6 @@
+use crate::state::AppState;
 use mxr_core::provider::MailSyncProvider;
 use mxr_protocol::*;
-use crate::state::AppState;
 use std::sync::Arc;
 
 pub(super) async fn list_runtime_accounts(
@@ -251,8 +251,7 @@ pub(super) async fn authorize_account_config(
             }
         };
 
-    let mut auth =
-        mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
+    let mut auth = mxr_provider_gmail::auth::GmailAuth::new(client_id, client_secret, token_ref);
     let auth_result = if reauthorize {
         auth.interactive_auth().await
     } else {
@@ -383,14 +382,14 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
             } => {
                 let provider = mxr_provider_imap::ImapProvider::new(
                     mxr_core::AccountId::from_provider_id("imap", &account.email),
-                    mxr_provider_imap::config::ImapConfig {
+                    mxr_provider_imap::config::ImapConfig::new(
                         host,
                         port,
                         username,
                         password_ref,
                         auth_required,
                         use_tls,
-                    },
+                    ),
                 );
                 match provider.sync_labels().await {
                     Ok(folders) => {
@@ -422,14 +421,14 @@ pub(super) async fn test_account_config(account: AccountConfigData) -> AccountOp
             ..
         }) => {
             let provider = mxr_provider_smtp::SmtpSendProvider::new(
-                mxr_provider_smtp::config::SmtpConfig {
+                mxr_provider_smtp::config::SmtpConfig::new(
                     host,
                     port,
                     username,
                     password_ref,
                     auth_required,
                     use_tls,
-                },
+                ),
             );
             match provider.test_connection().await {
                 Ok(()) => {
@@ -522,9 +521,7 @@ fn resolve_gmail_credentials(
     }
 }
 
-pub(super) fn sync_config_to_data(
-    sync: mxr_config::SyncProviderConfig,
-) -> AccountSyncConfigData {
+pub(super) fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfigData {
     match sync {
         mxr_config::SyncProviderConfig::Gmail {
             credential_source,
@@ -533,12 +530,8 @@ pub(super) fn sync_config_to_data(
             token_ref,
         } => AccountSyncConfigData::Gmail {
             credential_source: match credential_source {
-                mxr_config::GmailCredentialSource::Bundled => {
-                    GmailCredentialSourceData::Bundled
-                }
-                mxr_config::GmailCredentialSource::Custom => {
-                    GmailCredentialSourceData::Custom
-                }
+                mxr_config::GmailCredentialSource::Bundled => GmailCredentialSourceData::Bundled,
+                mxr_config::GmailCredentialSource::Custom => GmailCredentialSourceData::Custom,
             },
             client_id,
             client_secret,
@@ -590,9 +583,7 @@ pub(super) fn config_send_kind_label(send: &mxr_config::SendProviderConfig) -> S
     }
 }
 
-pub(super) fn account_primary_provider_kind(
-    account: &mxr_config::AccountConfig,
-) -> String {
+pub(super) fn account_primary_provider_kind(account: &mxr_config::AccountConfig) -> String {
     account
         .sync
         .as_ref()
@@ -610,9 +601,7 @@ pub(super) fn provider_kind_label(kind: &mxr_core::ProviderKind) -> &'static str
     }
 }
 
-pub(super) fn send_config_to_data(
-    send: mxr_config::SendProviderConfig,
-) -> AccountSendConfigData {
+pub(super) fn send_config_to_data(send: mxr_config::SendProviderConfig) -> AccountSendConfigData {
     match send {
         mxr_config::SendProviderConfig::Gmail => AccountSendConfigData::Gmail,
         mxr_config::SendProviderConfig::Smtp {
@@ -645,12 +634,8 @@ pub(super) fn sync_data_to_config(
             token_ref,
         } => Ok(mxr_config::SyncProviderConfig::Gmail {
             credential_source: match credential_source {
-                GmailCredentialSourceData::Bundled => {
-                    mxr_config::GmailCredentialSource::Bundled
-                }
-                GmailCredentialSourceData::Custom => {
-                    mxr_config::GmailCredentialSource::Custom
-                }
+                GmailCredentialSourceData::Bundled => mxr_config::GmailCredentialSource::Bundled,
+                GmailCredentialSourceData::Custom => mxr_config::GmailCredentialSource::Custom,
             },
             client_id,
             client_secret,

@@ -1091,14 +1091,14 @@ mod tests {
     use std::sync::Arc;
 
     fn test_config() -> ImapConfig {
-        ImapConfig {
-            host: "imap.test.com".to_string(),
-            port: 993,
-            username: "test@test.com".to_string(),
-            password_ref: "test/imap".to_string(),
-            auth_required: true,
-            use_tls: true,
-        }
+        ImapConfig::new(
+            "imap.test.com".to_string(),
+            993,
+            "test@test.com".to_string(),
+            "test/imap".to_string(),
+            true,
+            true,
+        )
     }
 
     fn make_fetched_message(uid: u32, subject: &str, from_email: &str) -> FetchedMessage {

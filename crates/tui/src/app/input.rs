@@ -1,6 +1,10 @@
 use super::*;
 use ratatui::crossterm;
 
+fn plain_or_shift(modifiers: KeyModifiers) -> bool {
+    modifiers.is_empty() || modifiers == KeyModifiers::SHIFT
+}
+
 impl App {
     fn help_modal_state(&self) -> crate::ui::help_modal::HelpModalState<'_> {
         crate::ui::help_modal::HelpModalState {
@@ -80,18 +84,30 @@ impl App {
             (KeyCode::Char('#'), _) => Some(Action::Trash),
             (KeyCode::Char('!'), _) => Some(Action::Spam),
             (KeyCode::Char('s'), KeyModifiers::NONE) => Some(Action::Star),
-            (KeyCode::Char('I'), KeyModifiers::SHIFT) => Some(Action::MarkRead),
-            (KeyCode::Char('U'), KeyModifiers::SHIFT) => Some(Action::MarkUnread),
+            (KeyCode::Char('I'), modifiers) if plain_or_shift(modifiers) => Some(Action::MarkRead),
+            (KeyCode::Char('U'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::MarkUnread)
+            }
             (KeyCode::Char('l'), KeyModifiers::NONE) => Some(Action::ApplyLabel),
             (KeyCode::Char('v'), KeyModifiers::NONE) => Some(Action::MoveToLabel),
-            (KeyCode::Char('D'), KeyModifiers::SHIFT) => Some(Action::Unsubscribe),
-            (KeyCode::Char('Z'), KeyModifiers::SHIFT) => Some(Action::Snooze),
-            (KeyCode::Char('O'), KeyModifiers::SHIFT) => Some(Action::OpenInBrowser),
-            (KeyCode::Char('R'), KeyModifiers::SHIFT) => Some(Action::ToggleReaderMode),
-            (KeyCode::Char('S'), KeyModifiers::SHIFT) => Some(Action::ToggleSignature),
-            (KeyCode::Char('A'), KeyModifiers::SHIFT) => Some(Action::AttachmentList),
-            (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLinks),
-            (KeyCode::Char('E'), KeyModifiers::SHIFT) => Some(Action::ExportThread),
+            (KeyCode::Char('D'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::Unsubscribe)
+            }
+            (KeyCode::Char('Z'), modifiers) if plain_or_shift(modifiers) => Some(Action::Snooze),
+            (KeyCode::Char('O'), modifiers) if plain_or_shift(modifiers) => Some(Action::OpenInBrowser),
+            (KeyCode::Char('R'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::ToggleReaderMode)
+            }
+            (KeyCode::Char('S'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::ToggleSignature)
+            }
+            (KeyCode::Char('A'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::AttachmentList)
+            }
+            (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => Some(Action::OpenLinks),
+            (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::ExportThread)
+            }
             _ => None,
         }
     }
@@ -381,9 +397,11 @@ impl App {
 
         if self.pending_bulk_confirm.is_some() {
             return match (key.code, key.modifiers) {
-                (KeyCode::Enter, _)
-                | (KeyCode::Char('y'), KeyModifiers::NONE)
-                | (KeyCode::Char('Y'), KeyModifiers::SHIFT) => Some(Action::OpenSelected),
+                (KeyCode::Enter, _) => Some(Action::OpenSelected),
+                (KeyCode::Char('y'), KeyModifiers::NONE) => Some(Action::OpenSelected),
+                (KeyCode::Char('Y'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::OpenSelected)
+                }
                 (KeyCode::Esc, _) | (KeyCode::Char('n'), KeyModifiers::NONE) => {
                     self.pending_bulk_confirm = None;
                     self.status_message = Some("Bulk action cancelled".into());
@@ -395,11 +413,15 @@ impl App {
 
         if self.pending_unsubscribe_confirm.is_some() {
             return match (key.code, key.modifiers) {
-                (KeyCode::Enter, _)
-                | (KeyCode::Char('u'), KeyModifiers::NONE)
-                | (KeyCode::Char('U'), KeyModifiers::SHIFT) => Some(Action::ConfirmUnsubscribeOnly),
-                (KeyCode::Char('a'), KeyModifiers::NONE)
-                | (KeyCode::Char('A'), KeyModifiers::SHIFT) => {
+                (KeyCode::Enter, _) => Some(Action::ConfirmUnsubscribeOnly),
+                (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::ConfirmUnsubscribeOnly),
+                (KeyCode::Char('U'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::ConfirmUnsubscribeOnly)
+                }
+                (KeyCode::Char('a'), KeyModifiers::NONE) => {
+                    Some(Action::ConfirmUnsubscribeAndArchiveSender)
+                }
+                (KeyCode::Char('A'), modifiers) if plain_or_shift(modifiers) => {
                     Some(Action::ConfirmUnsubscribeAndArchiveSender)
                 }
                 (KeyCode::Esc, _) => Some(Action::CancelUnsubscribe),
@@ -630,9 +652,15 @@ impl App {
                     self.message_scroll_offset = self.message_scroll_offset.saturating_sub(20);
                     None
                 }
-                (KeyCode::Char('G'), KeyModifiers::SHIFT) => {
+                (KeyCode::Char('G'), modifiers) if plain_or_shift(modifiers) => {
                     self.message_scroll_offset = u16::MAX;
                     None
+                }
+                (KeyCode::Char('H'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::ToggleHtmlView)
+                }
+                (KeyCode::Char('M'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::ToggleRemoteContent)
                 }
                 // h = move left to mail list
                 (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
@@ -642,7 +670,9 @@ impl App {
                 // o = open in browser (message already open in pane)
                 (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::OpenInBrowser),
                 // L = open links picker
-                (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLinks),
+                (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::OpenLinks)
+                }
                 _ if self.mail_action_key(key).is_some() => self.mail_action_key(key),
                 _ => self.contextual_input_action(key),
             },
@@ -750,6 +780,7 @@ impl App {
                     self.search_page.editing = true;
                     None
                 }
+                (KeyCode::Char('o'), KeyModifiers::NONE) => Some(Action::OpenInBrowser),
                 (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
                     self.search_page.active_pane = SearchPane::Results;
                     None
@@ -770,9 +801,15 @@ impl App {
                     self.message_scroll_offset = self.message_scroll_offset.saturating_sub(20);
                     None
                 }
-                (KeyCode::Char('G'), KeyModifiers::SHIFT) => {
+                (KeyCode::Char('G'), modifiers) if plain_or_shift(modifiers) => {
                     self.message_scroll_offset = u16::MAX;
                     None
+                }
+                (KeyCode::Char('H'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::ToggleHtmlView)
+                }
+                (KeyCode::Char('M'), modifiers) if plain_or_shift(modifiers) => {
+                    Some(Action::ToggleRemoteContent)
                 }
                 (KeyCode::Esc, _) => {
                     self.reset_search_preview_selection();
@@ -804,11 +841,17 @@ impl App {
             }
             (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::RefreshRules),
             (KeyCode::Char('e'), _) => Some(Action::ToggleRuleEnabled),
-            (KeyCode::Char('D'), KeyModifiers::SHIFT) => Some(Action::ShowRuleDryRun),
-            (KeyCode::Char('H'), KeyModifiers::SHIFT) => Some(Action::ShowRuleHistory),
+            (KeyCode::Char('D'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::ShowRuleDryRun)
+            }
+            (KeyCode::Char('H'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::ShowRuleHistory)
+            }
             (KeyCode::Char('#'), _) => Some(Action::DeleteRule),
             (KeyCode::Char('n'), _) => Some(Action::OpenRuleFormNew),
-            (KeyCode::Char('E'), KeyModifiers::SHIFT) => Some(Action::OpenRuleFormEdit),
+            (KeyCode::Char('E'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::OpenRuleFormEdit)
+            }
             (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
             _ => self.contextual_input_action(key),
         }
@@ -911,7 +954,7 @@ impl App {
             (KeyCode::Char('r'), _) => Some(Action::RefreshDiagnostics),
             (KeyCode::Char('b'), _) => Some(Action::GenerateBugReport),
             (KeyCode::Char('c'), _) => Some(Action::EditConfig),
-            (KeyCode::Char('L'), KeyModifiers::SHIFT) => Some(Action::OpenLogs),
+            (KeyCode::Char('L'), modifiers) if plain_or_shift(modifiers) => Some(Action::OpenLogs),
             (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
             _ => self.contextual_input_action(key),
         }
@@ -956,8 +999,9 @@ impl App {
             (KeyCode::Char('n'), _) => Some(Action::OpenAccountFormNew),
             (KeyCode::Char('r'), _) => Some(Action::RefreshAccounts),
             (KeyCode::Char('t'), _) => Some(Action::TestAccountForm),
-            (KeyCode::Char('O'), KeyModifiers::SHIFT)
-                if super::account_result_has_details(self.accounts_page.last_result.as_ref()) =>
+            (KeyCode::Char('O'), modifiers)
+                if plain_or_shift(modifiers)
+                    && super::account_result_has_details(self.accounts_page.last_result.as_ref()) =>
             {
                 self.open_last_account_result_details_modal();
                 None

@@ -110,14 +110,14 @@ fn bench_imap_provider() -> ImapProvider {
 
     ImapProvider::with_session_factory(
         AccountId::new(),
-        ImapConfig {
-            host: "bench.local".into(),
-            port: 993,
-            username: "bench".into(),
-            password_ref: "bench".into(),
-            auth_required: false,
-            use_tls: true,
-        },
+        ImapConfig::new(
+            "bench.local".into(),
+            993,
+            "bench".into(),
+            "bench".into(),
+            false,
+            true,
+        ),
         Box::new(factory),
     )
 }

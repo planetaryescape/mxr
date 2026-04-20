@@ -1385,14 +1385,14 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
             } => {
                 let provider = mxr_provider_imap::ImapProvider::new(
                     mxr_core::AccountId::from_provider_id("imap", &account.email),
-                    mxr_provider_imap::config::ImapConfig {
+                    mxr_provider_imap::config::ImapConfig::new(
                         host,
                         port,
                         username,
                         password_ref,
                         auth_required,
                         use_tls,
-                    },
+                    ),
                 );
                 match provider.sync_labels().await {
                     Ok(folders) => {
@@ -1423,15 +1423,16 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
             use_tls,
             ..
         }) => {
-            let provider =
-                mxr_provider_smtp::SmtpSendProvider::new(mxr_provider_smtp::config::SmtpConfig {
+            let provider = mxr_provider_smtp::SmtpSendProvider::new(
+                mxr_provider_smtp::config::SmtpConfig::new(
                     host,
                     port,
                     username,
                     password_ref,
                     auth_required,
                     use_tls,
-                });
+                ),
+            );
             match provider.test_connection().await {
                 Ok(()) => {
                     send = Some(account_step(true, "SMTP send ok".into()));

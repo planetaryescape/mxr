@@ -1829,6 +1829,27 @@ mod tests {
     }
 
     #[test]
+    fn input_uppercase_shortcuts_work_without_explicit_shift_modifier() {
+        let mut h = InputHandler::new();
+        assert_eq!(
+            h.handle_key(KeyEvent::new(KeyCode::Char('H'), KeyModifiers::NONE)),
+            Some(Action::ViewportTop)
+        );
+        assert_eq!(
+            h.handle_key(KeyEvent::new(KeyCode::Char('A'), KeyModifiers::NONE)),
+            Some(Action::AttachmentList)
+        );
+        assert_eq!(
+            h.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+            None
+        );
+        assert_eq!(
+            h.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::NONE)),
+            Some(Action::OpenLogs)
+        );
+    }
+
+    #[test]
     fn input_ctrl_du_page() {
         let mut h = InputHandler::new();
         assert_eq!(
@@ -4573,6 +4594,59 @@ mod tests {
     }
 
     #[test]
+    fn search_preview_o_opens_in_browser() {
+        let mut app = App::new();
+        let results = make_test_envelopes(1);
+        let env = results[0].clone();
+        app.screen = Screen::Search;
+        app.search_page.results = results;
+        app.search_page.session_active = true;
+        app.search_page.active_pane = SearchPane::Preview;
+        app.viewed_thread_messages = vec![env.clone()];
+        app.viewing_envelope = Some(env);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
+
+        assert_eq!(action, Some(Action::OpenInBrowser));
+    }
+
+    #[test]
+    fn search_preview_r_toggles_reader_mode_without_shift_modifier() {
+        let mut app = App::new();
+        let results = make_test_envelopes(1);
+        let env = results[0].clone();
+        app.screen = Screen::Search;
+        app.search_page.results = results;
+        app.search_page.session_active = true;
+        app.search_page.active_pane = SearchPane::Preview;
+        app.viewed_thread_messages = vec![env.clone()];
+        app.viewing_envelope = Some(env);
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('R'), KeyModifiers::NONE));
+
+        assert_eq!(action, Some(Action::ToggleReaderMode));
+    }
+
+    #[test]
+    fn search_preview_h_and_m_toggle_html_controls_without_shift_modifier() {
+        let mut app = App::new();
+        let results = make_test_envelopes(1);
+        let env = results[0].clone();
+        app.screen = Screen::Search;
+        app.search_page.results = results;
+        app.search_page.session_active = true;
+        app.search_page.active_pane = SearchPane::Preview;
+        app.viewed_thread_messages = vec![env.clone()];
+        app.viewing_envelope = Some(env);
+
+        let html = app.handle_key(KeyEvent::new(KeyCode::Char('H'), KeyModifiers::NONE));
+        let remote = app.handle_key(KeyEvent::new(KeyCode::Char('M'), KeyModifiers::NONE));
+
+        assert_eq!(html, Some(Action::ToggleHtmlView));
+        assert_eq!(remote, Some(Action::ToggleRemoteContent));
+    }
+
+    #[test]
     fn search_preview_toggle_select_keeps_current_message_visible() {
         let mut app = App::new();
         let results = make_test_envelopes(2);
@@ -4949,6 +5023,16 @@ mod tests {
         app.screen = Screen::Diagnostics;
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::SHIFT));
+
+        assert_eq!(action, Some(Action::OpenLogs));
+    }
+
+    #[test]
+    fn diagnostics_uppercase_l_opens_logs_without_shift_modifier() {
+        let mut app = App::new();
+        app.screen = Screen::Diagnostics;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('L'), KeyModifiers::NONE));
 
         assert_eq!(action, Some(Action::OpenLogs));
     }

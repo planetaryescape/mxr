@@ -86,14 +86,14 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                         let account_id = mxr_core::AccountId::from_provider_id("imap", &acct.email);
                         let provider = mxr_provider_imap::ImapProvider::new(
                             account_id,
-                            mxr_provider_imap::config::ImapConfig {
-                                host: host.clone(),
-                                port: *port,
-                                username: username.clone(),
-                                password_ref: password_ref.clone(),
-                                auth_required: *auth_required,
-                                use_tls: *use_tls,
-                            },
+                            mxr_provider_imap::config::ImapConfig::new(
+                                host.clone(),
+                                *port,
+                                username.clone(),
+                                password_ref.clone(),
+                                *auth_required,
+                                *use_tls,
+                            ),
                         );
                         let folders = provider.sync_labels().await?;
                         println!("IMAP sync ok for '{}': {} folders", name, folders.len());
@@ -115,14 +115,14 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                         use_tls,
                     } => {
                         let provider = mxr_provider_smtp::SmtpSendProvider::new(
-                            mxr_provider_smtp::config::SmtpConfig {
-                                host: host.clone(),
-                                port: *port,
-                                username: username.clone(),
-                                password_ref: password_ref.clone(),
-                                auth_required: *auth_required,
-                                use_tls: *use_tls,
-                            },
+                            mxr_provider_smtp::config::SmtpConfig::new(
+                                host.clone(),
+                                *port,
+                                username.clone(),
+                                password_ref.clone(),
+                                *auth_required,
+                                *use_tls,
+                            ),
                         );
                         provider.test_connection().await?;
                         println!("SMTP send ok for '{}'", name);

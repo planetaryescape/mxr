@@ -263,14 +263,14 @@ impl AppState {
                     use_tls,
                 }) => Some(Arc::new(mxr_provider_imap::ImapProvider::new(
                     account_id.clone(),
-                    mxr_provider_imap::config::ImapConfig {
-                        host: host.clone(),
-                        port: *port,
-                        username: username.clone(),
-                        password_ref: password_ref.clone(),
-                        auth_required: *auth_required,
-                        use_tls: *use_tls,
-                    },
+                    mxr_provider_imap::config::ImapConfig::new(
+                        host.clone(),
+                        *port,
+                        username.clone(),
+                        password_ref.clone(),
+                        *auth_required,
+                        *use_tls,
+                    ),
                 )) as Arc<dyn MailSyncProvider>),
                 None => None,
             };
@@ -307,14 +307,14 @@ impl AppState {
             }) = &acct_config.send
             {
                 let send_provider = Arc::new(mxr_provider_smtp::SmtpSendProvider::new(
-                    mxr_provider_smtp::config::SmtpConfig {
-                        host: host.clone(),
-                        port: *port,
-                        username: username.clone(),
-                        password_ref: password_ref.clone(),
-                        auth_required: *auth_required,
-                        use_tls: *use_tls,
-                    },
+                    mxr_provider_smtp::config::SmtpConfig::new(
+                        host.clone(),
+                        *port,
+                        username.clone(),
+                        password_ref.clone(),
+                        *auth_required,
+                        *use_tls,
+                    ),
                 )) as Arc<dyn MailSendProvider>;
                 if requested_default == Some(key.as_str()) || default_send_provider.is_none() {
                     default_send_provider = Some(send_provider.clone());

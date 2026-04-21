@@ -390,7 +390,7 @@ fn repair_account_passwords(name: &str) -> anyhow::Result<()> {
         );
     }
 
-    println!("Repaired protected keychain credentials for '{}'.", name);
+    println!("Repaired keychain credentials for '{}'.", name);
     Ok(())
 }
 

@@ -10,8 +10,12 @@ use mxr_protocol::{
     AccountSyncStatus, DaemonHealthClass, IpcCodec, IpcMessage, IpcPayload, Request, Response,
     ResponseData, IPC_PROTOCOL_VERSION,
 };
+use nix::errno::Errno;
+use nix::sys::signal::{kill, Signal};
+use nix::unistd::Pid;
 use std::any::Any;
 use std::panic::AssertUnwindSafe;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 use tokio::net::{UnixListener, UnixStream};
@@ -22,6 +26,9 @@ use tokio_util::codec::Framed;
 const STATUS_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const REQUEST_CONCURRENCY_LIMIT: usize = 64;
 const CONNECTION_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+const SOCKET_PROBE_ATTEMPTS: usize = 5;
+const SOCKET_PROBE_DELAY: Duration = Duration::from_millis(100);
+const ORPHAN_DAEMON_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub async fn run_daemon() -> anyhow::Result<()> {
     let sock_path = AppState::socket_path();
@@ -52,6 +59,7 @@ pub async fn run_daemon() -> anyhow::Result<()> {
     });
 
     let listener = UnixListener::bind(&sock_path)?;
+    write_daemon_pid_file()?;
     tracing::info!("Daemon listening on {}", sock_path.display());
     let request_semaphore = Arc::new(Semaphore::new(REQUEST_CONCURRENCY_LIMIT));
 
@@ -117,6 +125,7 @@ pub async fn run_daemon() -> anyhow::Result<()> {
     drain_connection_tasks(&mut connections, CONNECTION_DRAIN_TIMEOUT).await;
     state.shutdown_runtime_tasks(Duration::from_secs(5)).await;
     let _ = std::fs::remove_file(&sock_path);
+    clear_daemon_pid_file();
     Ok(())
 }
 
@@ -264,9 +273,27 @@ pub async fn ensure_daemon_running() -> anyhow::Result<()> {
             return Ok(());
         }
         SocketState::Stale => {
+            if let Some(pid) = live_daemon_pid() {
+                return recover_broken_running_daemon(
+                    &sock_path,
+                    pid,
+                    "Restarting daemon to recover from a missing IPC socket...",
+                )
+                .await;
+            }
             let _ = std::fs::remove_file(&sock_path);
+            clear_daemon_pid_file();
         }
-        SocketState::Missing => {}
+        SocketState::Missing => {
+            if let Some(pid) = live_daemon_pid() {
+                return recover_broken_running_daemon(
+                    &sock_path,
+                    pid,
+                    "Restarting daemon to recover from a missing IPC socket...",
+                )
+                .await;
+            }
+        }
     }
 
     spawn_daemon_process(&sock_path, "Starting daemon...").await
@@ -386,11 +413,178 @@ pub(crate) async fn inspect_socket_state(path: &std::path::Path) -> SocketState 
         return SocketState::Missing;
     }
 
-    if tokio::net::UnixStream::connect(path).await.is_ok() {
+    if socket_accepts_connections(path).await {
         SocketState::Reachable
     } else {
         SocketState::Stale
     }
+}
+
+async fn socket_accepts_connections(path: &Path) -> bool {
+    for attempt in 0..SOCKET_PROBE_ATTEMPTS {
+        match tokio::net::UnixStream::connect(path).await {
+            Ok(_) => return true,
+            Err(error)
+                if should_retry_socket_probe(&error) && attempt + 1 < SOCKET_PROBE_ATTEMPTS =>
+            {
+                tokio::time::sleep(SOCKET_PROBE_DELAY).await;
+            }
+            Err(_) => return false,
+        }
+    }
+
+    false
+}
+
+fn should_retry_socket_probe(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::ConnectionRefused
+            | std::io::ErrorKind::TimedOut
+            | std::io::ErrorKind::Interrupted
+            | std::io::ErrorKind::WouldBlock
+    )
+}
+
+fn daemon_pid_file_path() -> PathBuf {
+    AppState::data_dir().join("daemon.pid")
+}
+
+fn write_daemon_pid_file() -> anyhow::Result<()> {
+    let pid_path = daemon_pid_file_path();
+    if let Some(parent) = pid_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(pid_path, std::process::id().to_string())?;
+    Ok(())
+}
+
+fn clear_daemon_pid_file() {
+    let _ = std::fs::remove_file(daemon_pid_file_path());
+}
+
+fn read_daemon_pid_file() -> Option<u32> {
+    std::fs::read_to_string(daemon_pid_file_path())
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+fn process_is_alive(pid: u32) -> bool {
+    match kill(Pid::from_raw(pid as i32), None) {
+        Ok(()) | Err(Errno::EPERM) => true,
+        Err(Errno::ESRCH) => false,
+        Err(_) => false,
+    }
+}
+
+fn live_daemon_pid() -> Option<u32> {
+    if let Some(pid) = read_daemon_pid_file() {
+        if process_is_alive(pid) {
+            return Some(pid);
+        }
+        clear_daemon_pid_file();
+    }
+
+    let pid = fallback_live_daemon_pid_without_pid_file()?;
+    let _ = std::fs::write(daemon_pid_file_path(), pid.to_string());
+    Some(pid)
+}
+
+fn fallback_live_daemon_pid_without_pid_file() -> Option<u32> {
+    let current_exe = std::env::current_exe().ok()?;
+    let current_name = current_exe.file_name()?.to_str()?;
+    let output = std::process::Command::new("ps")
+        .args(["-Ao", "pid=,command="])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let mut matches = Vec::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let mut parts = trimmed.split_whitespace();
+        let Some(pid) = parts.next().and_then(|value| value.parse::<u32>().ok()) else {
+            continue;
+        };
+        if pid == std::process::id() {
+            continue;
+        }
+
+        let Some(exe) = parts.next() else {
+            continue;
+        };
+        let Some(arg1) = parts.next() else {
+            continue;
+        };
+        if parts.next().is_some() || arg1 != "daemon" {
+            continue;
+        }
+
+        let Some(exe_name) = Path::new(exe).file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if exe_name == current_name && process_is_alive(pid) {
+            matches.push(pid);
+        }
+    }
+
+    if matches.len() == 1 {
+        matches.into_iter().next()
+    } else {
+        None
+    }
+}
+
+async fn wait_for_process_exit(pid: u32, timeout: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    while tokio::time::Instant::now() < deadline {
+        if !process_is_alive(pid) {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    !process_is_alive(pid)
+}
+
+fn send_signal(pid: u32, signal: Signal) -> anyhow::Result<()> {
+    match kill(Pid::from_raw(pid as i32), Some(signal)) {
+        Ok(()) | Err(Errno::ESRCH) => Ok(()),
+        Err(error) => Err(anyhow::anyhow!(
+            "failed to send {signal:?} to daemon pid {pid}: {error}"
+        )),
+    }
+}
+
+async fn recover_broken_running_daemon(
+    sock_path: &Path,
+    daemon_pid: u32,
+    message: &str,
+) -> anyhow::Result<()> {
+    eprint!("{message}");
+
+    send_signal(daemon_pid, Signal::SIGTERM)?;
+    if !wait_for_process_exit(daemon_pid, ORPHAN_DAEMON_EXIT_TIMEOUT).await {
+        send_signal(daemon_pid, Signal::SIGKILL)?;
+        if !wait_for_process_exit(daemon_pid, Duration::from_secs(1)).await {
+            eprintln!(" failed.");
+            anyhow::bail!(
+                "Broken daemon pid {} did not exit cleanly. Useful next steps: `mxr status`, `mxr logs --level error`, `mxr daemon --foreground`.",
+                daemon_pid
+            );
+        }
+    }
+
+    clear_daemon_pid_file();
+    let _ = std::fs::remove_file(sock_path);
+    spawn_daemon_process(sock_path, "").await
 }
 
 fn is_index_lock_error(message: &str) -> bool {
@@ -542,6 +736,7 @@ async fn restart_daemon_process(
         }
         SocketState::Stale => {
             let _ = std::fs::remove_file(sock_path);
+            clear_daemon_pid_file();
         }
         SocketState::Missing => {}
     }

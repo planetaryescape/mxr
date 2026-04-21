@@ -80,7 +80,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.4.45"
+version = "0.4.46"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.88"
@@ -299,6 +299,7 @@ which = { workspace = true }
 yup-oauth2 = { workspace = true }
 parking_lot = { workspace = true }
 image = { workspace = true }
+nix = { version = "0.30", features = ["signal", "process"] }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }

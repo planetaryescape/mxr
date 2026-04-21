@@ -444,6 +444,7 @@ fn body_metadata_lines(
                 mxr_core::types::BodyPartSource::Exact => "source:exact",
                 mxr_core::types::BodyPartSource::DerivedFromPlain => "source:plain-derived",
                 mxr_core::types::BodyPartSource::DerivedFromHtml => "source:html-derived",
+                mxr_core::types::BodyPartSource::BestEffortSummary => "source:best-effort",
             },
             theme,
             theme.text_muted,

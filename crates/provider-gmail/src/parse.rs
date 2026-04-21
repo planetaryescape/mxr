@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use crate::types::{GmailHeader, GmailMessage, GmailPayload};
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
 use chrono::{TimeZone, Utc};
 use mxr_core::{
@@ -154,7 +154,9 @@ pub fn parse_address_list(raw: &str) -> Vec<Address> {
 }
 
 pub fn base64_decode_url(data: &str) -> Result<String, anyhow::Error> {
-    let bytes = URL_SAFE_NO_PAD.decode(data)?;
+    let bytes = URL_SAFE_NO_PAD
+        .decode(data)
+        .or_else(|_| URL_SAFE.decode(data))?;
     Ok(String::from_utf8(bytes)?)
 }
 
@@ -648,6 +650,13 @@ mod tests {
     }
 
     #[test]
+    fn base64url_decode_accepts_padding() {
+        let encoded = "SGVsbG8sIFdvcmxkIQ==";
+        let decoded = base64_decode_url(encoded).unwrap();
+        assert_eq!(decoded, "Hello, World!");
+    }
+
+    #[test]
     fn parse_list_unsubscribe_multi_uri_prefers_one_click() {
         // Multiple URIs: mailto + https with one-click header
         let headers = make_headers(&[
@@ -1119,5 +1128,70 @@ mod tests {
             attachment.content_location.as_deref(),
             Some("https://example.com/logo.png")
         );
+    }
+
+    #[test]
+    fn extract_body_handles_padded_gmail_base64_parts() {
+        let plain = "Hello from padded plain text";
+        let html = "<p>Hello from padded html</p>";
+        let msg = GmailMessage {
+            id: "msg-padded".to_string(),
+            thread_id: "thread-padded".to_string(),
+            label_ids: Some(vec!["INBOX".to_string()]),
+            snippet: Some("Hello from padded plain text".to_string()),
+            history_id: None,
+            internal_date: Some("1700000000000".to_string()),
+            size_estimate: Some((plain.len() + html.len()) as u64),
+            payload: Some(GmailPayload {
+                mime_type: Some("multipart/alternative".to_string()),
+                headers: Some(make_headers(&[
+                    ("From", "Alice <alice@example.com>"),
+                    ("To", "Bob <bob@example.com>"),
+                    ("Subject", "Padded body"),
+                ])),
+                body: Some(GmailBody {
+                    attachment_id: None,
+                    size: Some((plain.len() + html.len()) as u64),
+                    data: None,
+                }),
+                parts: Some(vec![
+                    GmailPayload {
+                        mime_type: Some("text/plain".to_string()),
+                        headers: Some(make_headers(&[(
+                            "Content-Type",
+                            "text/plain; charset=UTF-8",
+                        )])),
+                        body: Some(GmailBody {
+                            attachment_id: None,
+                            size: Some(plain.len() as u64),
+                            data: Some(URL_SAFE.encode(plain.as_bytes())),
+                        }),
+                        parts: None,
+                        filename: None,
+                    },
+                    GmailPayload {
+                        mime_type: Some("text/html".to_string()),
+                        headers: Some(make_headers(&[(
+                            "Content-Type",
+                            "text/html; charset=UTF-8",
+                        )])),
+                        body: Some(GmailBody {
+                            attachment_id: None,
+                            size: Some(html.len() as u64),
+                            data: Some(URL_SAFE.encode(html.as_bytes())),
+                        }),
+                        parts: None,
+                        filename: None,
+                    },
+                ]),
+                filename: None,
+            }),
+        };
+
+        let body = extract_message_body(&msg);
+        assert_eq!(body.text_plain.as_deref(), Some(plain));
+        assert_eq!(body.text_html.as_deref(), Some(html));
+        assert_eq!(body.metadata.text_plain_source, Some(BodyPartSource::Exact));
+        assert_eq!(body.metadata.text_html_source, Some(BodyPartSource::Exact));
     }
 }

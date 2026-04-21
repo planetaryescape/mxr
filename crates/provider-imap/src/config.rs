@@ -33,11 +33,8 @@ fn default_password_cache() -> Arc<Mutex<Option<String>>> {
 
 fn default_password_reader() -> PasswordReader {
     Arc::new(|password_ref, username| {
-        let entry = keyring::Entry::new(password_ref, username)
-            .map_err(|e| ImapProviderError::Keyring(e.to_string()))?;
-        entry
-            .get_password()
-            .map_err(|e| ImapProviderError::Keyring(format!("Failed to retrieve password: {e}")))
+        mxr_keychain::get_password(password_ref, username)
+            .map_err(|e| ImapProviderError::Keyring(e.to_string()))
     })
 }
 

@@ -130,6 +130,9 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                 }
             }
         }
+        Some(AccountsAction::Repair { name }) => {
+            repair_account_passwords(&name)?;
+        }
     }
     Ok(())
 }
@@ -339,8 +342,55 @@ fn describe_send(send: Option<&mxr_config::SendProviderConfig>) -> &'static str 
 }
 
 fn store_password(service: &str, username: &str, password: &str) -> anyhow::Result<()> {
-    let entry = keyring::Entry::new(service, username)?;
-    entry.set_password(password)?;
+    mxr_keychain::set_password(service, username, password)?;
+    Ok(())
+}
+
+fn repair_account_passwords(name: &str) -> anyhow::Result<()> {
+    let config = mxr_config::load_config().unwrap_or_default();
+    let account = config
+        .accounts
+        .get(name)
+        .ok_or_else(|| anyhow::anyhow!("Account '{}' not found", name))?;
+
+    let mut repaired_any = false;
+
+    if let Some(mxr_config::SyncProviderConfig::Imap {
+        username,
+        password_ref,
+        auth_required,
+        ..
+    }) = &account.sync
+    {
+        if *auth_required {
+            let password = prompt_secret(&format!("IMAP password for {}: ", username))?;
+            store_password(password_ref, username, &password)?;
+            repaired_any = true;
+        }
+    }
+
+    if let Some(mxr_config::SendProviderConfig::Smtp {
+        username,
+        password_ref,
+        auth_required,
+        ..
+    }) = &account.send
+    {
+        if *auth_required {
+            let password = prompt_secret(&format!("SMTP password for {}: ", username))?;
+            store_password(password_ref, username, &password)?;
+            repaired_any = true;
+        }
+    }
+
+    if !repaired_any {
+        anyhow::bail!(
+            "Account '{}' has no password-backed IMAP/SMTP credentials to repair",
+            name
+        );
+    }
+
+    println!("Repaired protected keychain credentials for '{}'.", name);
     Ok(())
 }
 

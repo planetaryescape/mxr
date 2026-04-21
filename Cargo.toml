@@ -55,6 +55,7 @@ members = [
     "crates/config",
     "crates/core",
     "crates/export",
+    "crates/keychain",
     "crates/mail-parse",
     "crates/outbound",
     "crates/protocol",
@@ -79,7 +80,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.4.41"
+version = "0.4.42"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.88"
@@ -102,6 +103,7 @@ mxr-compose = { path = "crates/compose", version = "0.4.33" }
 mxr-config = { path = "crates/config", version = "0.4.33" }
 mxr-core = { path = "crates/core", version = "0.4.33" }
 mxr-export = { path = "crates/export", version = "0.4.33" }
+mxr-keychain = { path = "crates/keychain", version = "0.4.33" }
 mxr-mail-parse = { path = "crates/mail-parse", version = "0.4.33" }
 mxr-outbound = { path = "crates/outbound", version = "0.4.33" }
 mxr-protocol = { path = "crates/protocol", version = "0.4.33" }
@@ -187,6 +189,8 @@ axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors"] }
 tower = { version = "0.5", features = ["util"] }
 keyring = { version = "3", features = ["apple-native"] }
+security-framework = { version = "3", features = ["OSX_10_15"] }
+security-framework-sys = "2"
 base64 = "0.22"
 mail-parser = "0.9"
 url = "2"
@@ -226,6 +230,7 @@ mxr-compose = { workspace = true }
 mxr-config = { workspace = true }
 mxr-core = { workspace = true }
 mxr-export = { workspace = true }
+mxr-keychain = { workspace = true }
 mxr-protocol = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-provider-gmail = { workspace = true }

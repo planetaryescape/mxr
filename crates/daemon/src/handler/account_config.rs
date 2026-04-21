@@ -726,6 +726,6 @@ fn persist_account_password(
     if password_ref.trim().is_empty() {
         anyhow::bail!("{service} pass ref is required to store the password.");
     }
-    keyring::Entry::new(password_ref, username)?.set_password(password)?;
+    mxr_keychain::set_password(password_ref, username, password)?;
     Ok(())
 }

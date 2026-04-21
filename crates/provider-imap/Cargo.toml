@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 mxr-core = { workspace = true }
+mxr-keychain = { workspace = true }
 mxr-mail-parse = { workspace = true }
 async-imap = { workspace = true }
 async-native-tls = { workspace = true }
@@ -19,7 +20,6 @@ async-std = { version = "1", features = ["default"] }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
-keyring = { workspace = true }
 mail-parser = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

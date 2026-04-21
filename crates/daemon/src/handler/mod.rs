@@ -1726,7 +1726,7 @@ fn persist_account_password(
     if password_ref.trim().is_empty() {
         anyhow::bail!("{service} pass ref is required to store the password.");
     }
-    keyring::Entry::new(password_ref, username)?.set_password(password)?;
+    mxr_keychain::set_password(password_ref, username, password)?;
     Ok(())
 }
 
@@ -3351,6 +3351,95 @@ mod tests {
                 );
             }
             other => panic!("Expected Bodies, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_get_body_rehydrates_legacy_best_effort_body_from_provider() {
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let id = sync_and_get_first_id(&state).await;
+
+        let stale = mxr_core::types::MessageBody {
+            message_id: id.clone(),
+            text_plain: Some("No readable body content was available for this message.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: mxr_core::types::MessageMetadata::default(),
+        };
+        state.store.insert_body(&stale).await.unwrap();
+
+        let msg = IpcMessage {
+            id: 19,
+            payload: IpcPayload::Request(Request::GetBody {
+                message_id: id.clone(),
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Body { body },
+            }) => {
+                assert_ne!(body.text_plain, stale.text_plain);
+                assert!(
+                    body.text_plain.is_some() || body.text_html.is_some(),
+                    "legacy synthesized body should be replaced with provider content"
+                );
+            }
+            other => panic!("Expected Body, got {:?}", other),
+        }
+
+        let stored = state.store.get_body(&id).await.unwrap().unwrap();
+        assert_ne!(stored.text_plain, stale.text_plain);
+        assert!(
+            stored.text_plain.is_some() || stored.text_html.is_some(),
+            "rehydrated body should be persisted back into the store"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_get_body_rehydrates_best_effort_summary_when_snippet_implies_real_body() {
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let id = sync_and_get_first_id(&state).await;
+
+        let stale = mxr_core::types::MessageBody {
+            message_id: id.clone(),
+            text_plain: Some("No readable body content was available for this message.".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: mxr_core::types::MessageMetadata {
+                text_plain_source: Some(mxr_core::types::BodyPartSource::BestEffortSummary),
+                raw_headers: Some(
+                    "Content-Type: multipart/alternative; boundary=\"debug-boundary\"".into(),
+                ),
+                ..Default::default()
+            },
+        };
+        state.store.insert_body(&stale).await.unwrap();
+
+        let msg = IpcMessage {
+            id: 20,
+            payload: IpcPayload::Request(Request::GetBody {
+                message_id: id.clone(),
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Body { body },
+            }) => {
+                assert_ne!(body.text_plain, stale.text_plain);
+                assert!(
+                    body.text_plain.is_some() || body.text_html.is_some(),
+                    "stored best-effort summaries should be repaired when provider content exists"
+                );
+            }
+            other => panic!("Expected Body, got {:?}", other),
         }
     }
 

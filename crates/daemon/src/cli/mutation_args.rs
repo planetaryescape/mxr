@@ -9,6 +9,8 @@ pub enum AccountsAction {
     Show { name: String },
     /// Test account connectivity
     Test { name: String },
+    /// Re-save account passwords into the protected keychain store
+    Repair { name: String },
 }
 
 #[derive(Subcommand)]

@@ -193,6 +193,7 @@ pub enum BodyPartSource {
     Exact,
     DerivedFromPlain,
     DerivedFromHtml,
+    BestEffortSummary,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -226,11 +227,12 @@ impl MessageBody {
             return false;
         }
 
-        let Some(summary) = self.best_effort_readable_summary() else {
+        let Some(summary) = self.computed_best_effort_readable_summary() else {
             return false;
         };
 
         self.text_plain = Some(summary);
+        self.metadata.text_plain_source = Some(BodyPartSource::BestEffortSummary);
         true
     }
 
@@ -239,6 +241,28 @@ impl MessageBody {
             return None;
         }
 
+        self.computed_best_effort_readable_summary()
+    }
+
+    pub fn is_legacy_best_effort_plain_summary(&self) -> bool {
+        self.text_html.is_none()
+            && self.metadata.text_plain_source.is_none()
+            && self.computed_best_effort_readable_summary().as_deref() == self.text_plain.as_deref()
+    }
+
+    pub fn mark_best_effort_summary_source(&mut self) -> bool {
+        if self.text_html.is_some()
+            || self.metadata.text_plain_source.is_some()
+            || self.computed_best_effort_readable_summary().as_deref() != self.text_plain.as_deref()
+        {
+            return false;
+        }
+
+        self.metadata.text_plain_source = Some(BodyPartSource::BestEffortSummary);
+        true
+    }
+
+    fn computed_best_effort_readable_summary(&self) -> Option<String> {
         let mut sections = Vec::new();
 
         if let Some(calendar) = &self.metadata.calendar {

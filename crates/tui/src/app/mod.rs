@@ -2505,6 +2505,7 @@ impl App {
                     BodyPartSource::Exact => "source:exact",
                     BodyPartSource::DerivedFromPlain => "source:plain-derived",
                     BodyPartSource::DerivedFromHtml => "source:html-derived",
+                    BodyPartSource::BestEffortSummary => "source:best-effort",
                 }
                 .to_string(),
             );

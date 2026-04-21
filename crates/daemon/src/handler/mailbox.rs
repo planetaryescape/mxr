@@ -4,7 +4,10 @@ use super::{
 };
 use crate::state::AppState;
 use mxr_core::id::{AccountId, AttachmentId, LabelId, MessageId, ThreadId};
-use mxr_core::types::{HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind, MessageBody};
+use mxr_core::types::{
+    BodyPartSource, Envelope, HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind,
+    MessageBody,
+};
 use mxr_protocol::ResponseData;
 use scraper::{Html, Selector};
 use std::collections::HashSet;
@@ -200,26 +203,78 @@ async fn normalize_body_if_needed(
     message_id: &MessageId,
     body: MessageBody,
 ) -> Result<MessageBody, String> {
-    if body.text_plain.is_some() || body.text_html.is_some() {
+    let envelope = if stored_body_needs_provider_repair(&body, None) {
+        state
+            .store
+            .get_envelope(message_id)
+            .await
+            .map_err(|error| error.to_string())?
+    } else {
+        None
+    };
+
+    if !stored_body_needs_provider_repair(&body, envelope.as_ref()) {
         return Ok(body);
     }
 
-    let Some(envelope) = state
-        .store
-        .get_envelope(message_id)
-        .await
-        .map_err(|error| error.to_string())?
-    else {
+    if let Ok(rehydrated) = hydrate_body_from_provider(state, message_id).await {
+        return Ok(rehydrated);
+    }
+
+    let Some(envelope) = envelope else {
         let mut normalized = body;
+        normalized.mark_best_effort_summary_source();
         normalized.ensure_best_effort_readable();
         return Ok(normalized);
     };
 
+    let mut normalized = body;
+    normalized.mark_best_effort_summary_source();
+
     state
         .sync_engine
-        .repair_body(&envelope, &body)
+        .repair_body(&envelope, &normalized)
         .await
         .map_err(|error| error.to_string())
+}
+
+fn stored_body_needs_provider_repair(body: &MessageBody, envelope: Option<&Envelope>) -> bool {
+    if body.text_html.is_some() {
+        return false;
+    }
+
+    if body.text_plain.is_none() || body.is_legacy_best_effort_plain_summary() {
+        return true;
+    }
+
+    if body.metadata.text_plain_source != Some(BodyPartSource::BestEffortSummary) {
+        return false;
+    }
+
+    best_effort_summary_looks_suspicious(body, envelope)
+}
+
+fn best_effort_summary_looks_suspicious(body: &MessageBody, envelope: Option<&Envelope>) -> bool {
+    let snippet_suggests_body = envelope.is_some_and(|envelope| {
+        let snippet = envelope.snippet.trim();
+        !snippet.is_empty()
+            && body
+                .text_plain
+                .as_deref()
+                .is_none_or(|summary| !summary.contains(snippet))
+    });
+
+    if snippet_suggests_body {
+        return true;
+    }
+
+    let Some(raw_headers) = body.metadata.raw_headers.as_deref() else {
+        return false;
+    };
+    let raw_headers = raw_headers.to_ascii_lowercase();
+    raw_headers.contains("content-type: multipart/alternative")
+        || raw_headers.contains("content-type: text/plain")
+        || raw_headers.contains("content-type: text/html")
 }
 
 async fn hydrate_body_from_provider(

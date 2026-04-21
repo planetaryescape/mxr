@@ -12,10 +12,10 @@ workspace = true
 
 [dependencies]
 mxr-core = { workspace = true }
+mxr-keychain = { workspace = true }
 mxr-outbound = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
-keyring = { workspace = true }
 lettre = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

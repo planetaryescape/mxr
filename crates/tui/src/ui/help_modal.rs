@@ -194,6 +194,7 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 entries: vec![
                     ("/".into(), "Edit query".into()),
                     ("o / Enter / →".into(), "Open selected message".into()),
+                    ("F".into(), "Open selected message in full view".into()),
                     ("x".into(), "Select result".into()),
                     ("Tab".into(), "Switch results and preview".into()),
                     (
@@ -212,8 +213,10 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 ("/".into(), "Edit query".into()),
                 ("x".into(), "Select current message".into()),
                 ("Tab".into(), "Switch results and preview".into()),
+                ("F".into(), "Toggle full message view".into()),
                 ("A".into(), "Open attachments".into()),
                 ("L".into(), "Open links".into()),
+                ("D".into(), "Unsubscribe when available".into()),
                 ("R".into(), "Toggle reading view".into()),
                 ("H".into(), "Toggle original HTML".into()),
                 ("M".into(), "Toggle remote images".into()),

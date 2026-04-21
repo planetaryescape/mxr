@@ -53,10 +53,16 @@ pub fn draw(
     );
     frame.render_widget(query, chunks[0]);
 
-    let inner = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
-        .split(chunks[1]);
+    let preview_fullscreen = state.preview_fullscreen && state.active_pane == SearchPane::Preview;
+    let inner = if preview_fullscreen {
+        vec![chunks[1]]
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+            .split(chunks[1])
+            .to_vec()
+    };
     let list_active_pane = match state.active_pane {
         SearchPane::Results => ActivePane::MailList,
         SearchPane::Preview => ActivePane::MessageView,
@@ -66,36 +72,40 @@ pub fn draw(
         SearchPane::Preview => ActivePane::MessageView,
     };
 
-    if should_render_results_blank(state, result_count) {
-        frame.render_widget(
-            Paragraph::new(results_blank_state(state))
-                .block(
-                    Block::default()
-                        .title(results_title(state, result_count))
-                        .borders(Borders::ALL)
-                        .border_style(theme.border_style(state.active_pane == SearchPane::Results)),
-                )
-                .wrap(Wrap { trim: false }),
-            inner[0],
-        );
-    } else {
-        let title = results_title(state, result_count);
-        mail_list::draw_view(
-            frame,
-            inner[0],
-            &mail_list::MailListView {
-                rows,
-                selected_index: state.selected_index,
-                scroll_offset: state.scroll_offset,
-                active_pane: &list_active_pane,
-                title: &title,
-                selected_set,
-                mode: mail_list_mode,
-                loading_message: None,
-                loading_throbber: None,
-            },
-            theme,
-        );
+    if !preview_fullscreen {
+        if should_render_results_blank(state, result_count) {
+            frame.render_widget(
+                Paragraph::new(results_blank_state(state))
+                    .block(
+                        Block::default()
+                            .title(results_title(state, result_count))
+                            .borders(Borders::ALL)
+                            .border_style(
+                                theme.border_style(state.active_pane == SearchPane::Results),
+                            ),
+                    )
+                    .wrap(Wrap { trim: false }),
+                inner[0],
+            );
+        } else {
+            let title = results_title(state, result_count);
+            mail_list::draw_view(
+                frame,
+                inner[0],
+                &mail_list::MailListView {
+                    rows,
+                    selected_index: state.selected_index,
+                    scroll_offset: state.scroll_offset,
+                    active_pane: &list_active_pane,
+                    title: &title,
+                    selected_set,
+                    mode: mail_list_mode,
+                    loading_message: None,
+                    loading_throbber: None,
+                },
+                theme,
+            );
+        }
     }
 
     if should_render_preview_blank(state, preview_messages) {
@@ -108,12 +118,12 @@ pub fn draw(
                         .border_style(theme.border_style(state.active_pane == SearchPane::Preview)),
                 )
                 .wrap(Wrap { trim: false }),
-            inner[1],
+            *inner.last().unwrap_or(&chunks[1]),
         );
     } else {
         message_view::draw(
             frame,
-            inner[1],
+            *inner.last().unwrap_or(&chunks[1]),
             preview_messages,
             preview_scroll,
             &preview_active_pane,

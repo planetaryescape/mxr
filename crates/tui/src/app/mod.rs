@@ -252,6 +252,7 @@ pub struct SearchPageState {
     pub load_to_end: bool,
     pub session_id: u64,
     pub active_pane: SearchPane,
+    pub preview_fullscreen: bool,
     pub selected_index: usize,
     pub scroll_offset: usize,
     pub result_selected: bool,
@@ -282,6 +283,7 @@ impl Default for SearchPageState {
             load_to_end: false,
             session_id: 0,
             active_pane: SearchPane::Results,
+            preview_fullscreen: false,
             selected_index: 0,
             scroll_offset: 0,
             result_selected: false,
@@ -2150,6 +2152,7 @@ impl App {
         self.search_page.load_to_end = false;
         self.search_page.session_active = false;
         self.search_page.active_pane = SearchPane::Results;
+        self.search_page.preview_fullscreen = false;
         self.search_page.selected_index = 0;
         self.search_page.scroll_offset = 0;
         self.search_page.result_selected = false;
@@ -2174,6 +2177,7 @@ impl App {
         self.search_page.load_to_end = false;
         self.search_page.session_active = !self.search_page.query.trim().is_empty();
         self.search_page.active_pane = SearchPane::Results;
+        self.search_page.preview_fullscreen = false;
         self.search_page.selected_index = 0;
         self.search_page.scroll_offset = 0;
         self.search_page.result_selected = false;
@@ -2421,6 +2425,7 @@ impl App {
     pub fn reset_search_preview_selection(&mut self) {
         self.search_page.result_selected = false;
         self.search_page.active_pane = SearchPane::Results;
+        self.search_page.preview_fullscreen = false;
         self.clear_message_view_state();
     }
 

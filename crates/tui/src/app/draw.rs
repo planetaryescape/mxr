@@ -183,34 +183,23 @@ impl App {
                     }
                 }
                 LayoutMode::FullScreen => {
-                    if self.mailbox_view == MailboxView::Subscriptions {
-                        let preview_blocks = self.thread_message_blocks();
-                        ui::subscriptions_page::draw(
-                            frame,
-                            content_area,
-                            &mut ui::subscriptions_page::SubscriptionsPageView {
-                                entries: &self.subscriptions_page.entries,
-                                selected_index: self.selected_index,
-                                scroll_offset: self.scroll_offset,
-                                active_pane: &self.active_pane,
-                                preview_blocks: &preview_blocks,
-                                message_scroll_offset: self.message_scroll_offset,
-                                html_images: &mut self.html_image_assets,
-                            },
-                            theme,
-                        );
-                    } else {
-                        let preview_blocks = self.thread_message_blocks();
-                        ui::message_view::draw(
-                            frame,
-                            content_area,
-                            &preview_blocks,
-                            self.message_scroll_offset,
-                            &self.active_pane,
-                            theme,
-                            &mut self.html_image_assets,
-                        );
-                    }
+                    let chunks = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
+                        .split(content_area);
+
+                    ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
+
+                    let preview_blocks = self.thread_message_blocks();
+                    ui::message_view::draw(
+                        frame,
+                        chunks[1],
+                        &preview_blocks,
+                        self.message_scroll_offset,
+                        &self.active_pane,
+                        theme,
+                        &mut self.html_image_assets,
+                    );
                 }
             },
             Screen::Search => {

@@ -318,6 +318,7 @@ fn search_page_snapshot() {
         load_to_end: false,
         session_id: 1,
         active_pane: mxr_tui::app::SearchPane::Results,
+        preview_fullscreen: false,
         selected_index: 0,
         scroll_offset: 0,
         result_selected: true,

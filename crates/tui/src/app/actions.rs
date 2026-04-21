@@ -338,6 +338,9 @@ impl App {
                     (LayoutMode::ThreePane, ActivePane::Sidebar) => ActivePane::MailList,
                     (LayoutMode::ThreePane, ActivePane::MailList) => ActivePane::MessageView,
                     (LayoutMode::ThreePane, ActivePane::MessageView) => ActivePane::Sidebar,
+                    // FullScreen: Sidebar → MessageView → Sidebar
+                    (LayoutMode::FullScreen, ActivePane::Sidebar) => ActivePane::MessageView,
+                    (LayoutMode::FullScreen, ActivePane::MessageView) => ActivePane::Sidebar,
                     // TwoPane: Sidebar → MailList → Sidebar
                     (_, ActivePane::Sidebar) => ActivePane::MailList,
                     (_, ActivePane::MailList) => ActivePane::Sidebar,
@@ -1248,7 +1251,25 @@ impl App {
                 self.open_url_modal();
             }
             Action::ToggleFullscreen => {
-                if self.layout_mode == LayoutMode::FullScreen {
+                if self.screen == Screen::Search {
+                    if self.search_page.preview_fullscreen
+                        && self.search_page.active_pane == SearchPane::Preview
+                    {
+                        self.search_page.preview_fullscreen = false;
+                        self.status_message = Some("Showing split view".into());
+                    } else if self.search_page.result_selected
+                        || self.selected_search_envelope().is_some()
+                    {
+                        if !self.search_page.result_selected {
+                            self.open_selected_search_result();
+                        }
+                        if self.search_page.result_selected {
+                            self.search_page.preview_fullscreen = true;
+                            self.search_page.active_pane = SearchPane::Preview;
+                            self.status_message = Some("Showing full message view".into());
+                        }
+                    }
+                } else if self.layout_mode == LayoutMode::FullScreen {
                     self.layout_mode = LayoutMode::ThreePane;
                     self.status_message = Some("Showing split view".into());
                 } else if self.viewing_envelope.is_some() {

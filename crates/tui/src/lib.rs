@@ -2134,6 +2134,37 @@ mod tests {
     }
 
     #[test]
+    fn fullscreen_keeps_sidebar_visible() {
+        let mut app = App::new();
+        app.labels = make_test_labels();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::ToggleFullscreen);
+
+        let output = render_to_string(120, 20, |frame| app.draw(frame));
+        assert!(output.contains("Sidebar"));
+        assert!(output.contains("Inbox"));
+        assert!(output.contains("Subject 0"));
+    }
+
+    #[test]
+    fn fullscreen_switch_pane_skips_hidden_mail_list() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(1);
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::ToggleFullscreen);
+        assert_eq!(app.active_pane, ActivePane::MessageView);
+
+        app.apply(Action::SwitchPane);
+        assert_eq!(app.active_pane, ActivePane::Sidebar);
+
+        app.apply(Action::SwitchPane);
+        assert_eq!(app.active_pane, ActivePane::MessageView);
+    }
+
+    #[test]
     fn command_palette_toggle() {
         let mut p = CommandPalette::default();
         assert!(!p.visible);
@@ -4792,6 +4823,86 @@ mod tests {
 
         assert_eq!(html, Some(Action::ToggleHtmlView));
         assert_eq!(remote, Some(Action::ToggleRemoteContent));
+    }
+
+    #[test]
+    fn search_results_f_opens_full_message_view() {
+        let mut app = App::new();
+        let results = make_test_envelopes(2);
+        let env = results[0].clone();
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = results;
+        app.search_page.session_active = true;
+        app.search_page.active_pane = SearchPane::Results;
+
+        let action = app.handle_key(KeyEvent::new(KeyCode::Char('F'), KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::ToggleFullscreen));
+
+        app.apply(Action::ToggleFullscreen);
+
+        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
+        assert!(app.search_page.result_selected);
+        assert!(app.search_page.preview_fullscreen);
+        assert_eq!(
+            app.viewing_envelope
+                .as_ref()
+                .map(|message| message.id.clone()),
+            Some(env.id)
+        );
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Showing full message view")
+        );
+    }
+
+    #[test]
+    fn search_preview_f_toggles_back_to_split_view() {
+        let mut app = App::new();
+        let results = make_test_envelopes(1);
+        let env = results[0].clone();
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = results;
+        app.search_page.session_active = true;
+        app.search_page.active_pane = SearchPane::Preview;
+        app.search_page.result_selected = true;
+        app.search_page.preview_fullscreen = true;
+        app.viewed_thread_messages = vec![env.clone()];
+        app.viewing_envelope = Some(env);
+
+        app.apply(Action::ToggleFullscreen);
+
+        assert!(!app.search_page.preview_fullscreen);
+        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
+        assert_eq!(app.status_message.as_deref(), Some("Showing split view"));
+    }
+
+    #[test]
+    fn search_fullscreen_render_hides_results_pane() {
+        let mut app = App::new();
+        let results = make_test_envelopes(1);
+        let env = results[0].clone();
+        app.screen = Screen::Search;
+        app.search_page.query = "deploy".into();
+        app.search_page.results = results;
+        app.search_page.session_active = true;
+        app.search_page.active_pane = SearchPane::Preview;
+        app.search_page.result_selected = true;
+        app.search_page.preview_fullscreen = true;
+        app.viewed_thread_messages = vec![env.clone()];
+        app.viewing_envelope = Some(env);
+        app.body_view_state = BodyViewState::Ready {
+            raw: "hello".into(),
+            rendered: "hello".into(),
+            source: BodySource::Plain,
+            metadata: BodyViewMetadata::default(),
+        };
+
+        let output = render_to_string(120, 20, |frame| app.draw(frame));
+
+        assert!(output.contains("Search All Mail"));
+        assert!(!output.contains("Search Results /"));
     }
 
     #[test]

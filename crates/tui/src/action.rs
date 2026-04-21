@@ -234,6 +234,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | TestAccountForm
                 | ReauthorizeAccountForm
                 | SetDefaultAccount
+                | ToggleFullscreen
         ),
         RulesList | RulesForm => matches!(
             action,

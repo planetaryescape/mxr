@@ -1053,6 +1053,7 @@ pub async fn run() -> anyhow::Result<()> {
                             apply_all_envelopes_refresh(&mut app, envelopes);
                         }
                         AsyncResult::AllEnvelopes(Err(e)) => {
+                            app.mailbox_loading_message = None;
                             app.status_message =
                                 Some(format!("Mailbox refresh failed: {e}"));
                         }
@@ -1061,27 +1062,12 @@ pub async fn run() -> anyhow::Result<()> {
                             app.pending_account_switch = false;
                             app.apply_account_operation_result(result);
                             if was_switch {
-                                // Clear stale data from previous account
-                                app.viewing_envelope = None;
-                                app.envelopes.clear();
-                                app.all_envelopes.clear();
-                                app.search_page.results.clear();
-                                app.subscriptions_page.entries.clear();
-                                app.active_label = None;
-                                app.pending_active_label = None;
-                                app.pending_label_fetch = None;
-                                app.selected_index = 0;
-                                app.scroll_offset = 0;
-                                // Trigger full refresh for new account
-                                app.pending_labels_refresh = true;
-                                app.pending_all_envelopes_refresh = true;
-                                app.pending_subscriptions_refresh = true;
-                                app.pending_status_refresh = true;
-                                app.desired_system_mailbox = Some("INBOX".into());
-                                app.status_message = Some("Account switched".into());
+                                app.handle_account_switch_complete();
                             }
                         }
                         AsyncResult::AccountOperation(Err(e)) => {
+                            app.pending_account_switch = false;
+                            app.mailbox_loading_message = None;
                             app.accounts_page.operation_in_flight = false;
                             app.accounts_page.throbber = Default::default();
                             app.accounts_page.status = Some(format!("Account error: {e}"));
@@ -1385,6 +1371,7 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
 }
 
 fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>) {
+    let switched_accounts = app.mailbox_loading_message.take().is_some();
     let selected_id = (app.active_label.is_none()
         && app.pending_active_label.is_none()
         && !app.search_active
@@ -1407,6 +1394,9 @@ fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>
                 .min(app.subscriptions_page.entries.len().saturating_sub(1));
         }
         app.queue_body_window();
+    }
+    if switched_accounts {
+        app.status_message = Some("Account switched".into());
     }
 }
 
@@ -1480,9 +1470,9 @@ fn restore_mail_list_selection(app: &mut App, selected_id: Option<mxr_core::Mess
 mod tests {
     use super::action::Action;
     use super::app::{
-        ActivePane, App, BodySource, BodyViewMetadata, BodyViewState, LayoutMode, MutationEffect,
-        PendingSearchRequest, PendingSendMode, Screen, SearchPane, SearchTarget, SidebarItem,
-        SEARCH_PAGE_SIZE,
+        ActivePane, App, BodySource, BodyViewMetadata, BodyViewState, LayoutMode, MailboxView,
+        MutationEffect, PendingSearchRequest, PendingSendMode, Screen, SearchPane, SearchTarget,
+        SidebarItem, SEARCH_PAGE_SIZE,
     };
     use super::input::InputHandler;
     use super::ui::command_palette::default_commands;
@@ -2120,6 +2110,27 @@ mod tests {
         assert_eq!(app.layout_mode, LayoutMode::ThreePane);
         app.apply(Action::CloseMessageView);
         assert_eq!(app.layout_mode, LayoutMode::TwoPane);
+    }
+
+    #[test]
+    fn fullscreen_opens_selected_message_from_mail_list() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(3);
+        app.all_envelopes = app.envelopes.clone();
+
+        app.apply(Action::ToggleFullscreen);
+
+        assert_eq!(app.layout_mode, LayoutMode::FullScreen);
+        assert_eq!(app.active_pane, ActivePane::MessageView);
+        assert!(app.viewing_envelope.is_some());
+        assert_eq!(
+            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            Some(app.envelopes[0].id.clone())
+        );
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Showing full message view")
+        );
     }
 
     #[test]
@@ -5520,6 +5531,7 @@ mod tests {
     #[test]
     fn reader_mode_toggle_shows_raw_html_when_disabled() {
         let mut app = App::new();
+        app.html_view = false;
         app.envelopes = make_test_envelopes(1);
         app.all_envelopes = app.envelopes.clone();
         let env = app.envelopes[0].clone();
@@ -5607,22 +5619,6 @@ mod tests {
 
         match &app.body_view_state {
             BodyViewState::Ready {
-                source: BodySource::Plain,
-                metadata,
-                ..
-            } => {
-                assert_eq!(metadata.mode, super::app::BodyViewMode::Text);
-                assert!(metadata.inline_images);
-                assert!(metadata.remote_content_available);
-                assert!(metadata.remote_content_enabled);
-            }
-            other => panic!("expected text ready state, got {other:?}"),
-        }
-
-        app.apply(Action::ToggleHtmlView);
-
-        match &app.body_view_state {
-            BodyViewState::Ready {
                 source: BodySource::Html,
                 metadata,
                 ..
@@ -5634,26 +5630,47 @@ mod tests {
             }
             other => panic!("expected html ready state, got {other:?}"),
         }
+
+        app.apply(Action::ToggleHtmlView);
+
+        match &app.body_view_state {
+            BodyViewState::Ready {
+                source: BodySource::Plain,
+                metadata,
+                ..
+            } => {
+                assert_eq!(metadata.mode, super::app::BodyViewMode::Text);
+                assert!(metadata.inline_images);
+                assert!(metadata.remote_content_available);
+                assert!(metadata.remote_content_enabled);
+            }
+            other => panic!("expected text ready state, got {other:?}"),
+        }
+        assert_eq!(app.status_message.as_deref(), Some("Showing reading view"));
         assert!(app
             .status_bar_state()
             .body_status
             .as_deref()
-            .is_some_and(|status| status.contains("remote:on")));
+            .is_some_and(|status| status.contains("reading view")));
 
         app.apply(Action::ToggleRemoteContent);
 
         match &app.body_view_state {
             BodyViewState::Ready { metadata, .. } => {
-                assert_eq!(metadata.mode, super::app::BodyViewMode::Html);
+                assert_eq!(metadata.mode, super::app::BodyViewMode::Text);
                 assert!(!metadata.remote_content_enabled);
             }
-            other => panic!("expected html ready state, got {other:?}"),
+            other => panic!("expected text ready state, got {other:?}"),
         }
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("Remote images blocked in HTML view")
+        );
         assert!(app
             .status_bar_state()
             .body_status
             .as_deref()
-            .is_some_and(|status| status.contains("remote:off")));
+            .is_some_and(|status| status.contains("reading view")));
     }
 
     #[test]
@@ -5678,7 +5695,6 @@ mod tests {
         );
 
         app.apply(Action::OpenSelected);
-        app.apply(Action::ToggleHtmlView);
         let reader_mode_before = app.reader_mode;
 
         app.apply(Action::ToggleReaderMode);
@@ -5686,7 +5702,7 @@ mod tests {
         assert_eq!(app.reader_mode, reader_mode_before);
         assert_eq!(
             app.status_message.as_deref(),
-            Some("Reader mode only applies in text view")
+            Some("Switch to text view to use reading view")
         );
     }
 
@@ -5712,13 +5728,74 @@ mod tests {
             .status_bar_state()
             .body_status
             .as_deref()
-            .is_some_and(|status| !status.contains("reader:7/12")));
+            .is_some_and(|status| !status.contains("trimmed 5 lines")));
 
         app.show_reader_stats = true;
         assert!(app
             .status_bar_state()
             .body_status
             .as_deref()
-            .is_some_and(|status| status.contains("reader:7/12")));
+            .is_some_and(|status| status.contains("trimmed 5 lines")));
+    }
+
+    #[test]
+    fn account_switch_complete_closes_open_message_state() {
+        let mut app = App::new();
+        app.envelopes = make_test_envelopes(2);
+        app.all_envelopes = app.envelopes.clone();
+        app.mailbox_view = MailboxView::Subscriptions;
+        app.layout_mode = LayoutMode::FullScreen;
+        app.active_pane = ActivePane::MessageView;
+        app.viewing_envelope = Some(app.envelopes[0].clone());
+        app.viewed_thread_messages = app.envelopes.clone();
+        app.body_view_state = BodyViewState::Ready {
+            raw: "hello".into(),
+            rendered: "hello".into(),
+            source: BodySource::Plain,
+            metadata: BodyViewMetadata::default(),
+        };
+        app.active_label = Some(LabelId::new());
+        app.pending_active_label = Some(LabelId::new());
+        app.pending_label_fetch = Some(LabelId::new());
+        app.selected_set.insert(app.envelopes[0].id.clone());
+
+        app.handle_account_switch_complete();
+
+        assert!(app.viewing_envelope.is_none());
+        assert!(app.viewed_thread_messages.is_empty());
+        assert!(matches!(app.body_view_state, BodyViewState::Empty { .. }));
+        assert_eq!(app.mailbox_view, MailboxView::Messages);
+        assert_eq!(app.layout_mode, LayoutMode::TwoPane);
+        assert_eq!(app.active_pane, ActivePane::MailList);
+        assert!(app.envelopes.is_empty());
+        assert!(app.all_envelopes.is_empty());
+        assert!(app.search_page.results.is_empty());
+        assert!(app.subscriptions_page.entries.is_empty());
+        assert!(app.selected_set.is_empty());
+        assert!(app.active_label.is_none());
+        assert!(app.pending_active_label.is_none());
+        assert!(app.pending_label_fetch.is_none());
+        assert!(app.pending_labels_refresh);
+        assert!(app.pending_all_envelopes_refresh);
+        assert!(app.pending_subscriptions_refresh);
+        assert!(app.pending_status_refresh);
+        assert_eq!(
+            app.mailbox_loading_message.as_deref(),
+            Some("Loading selected account...")
+        );
+        assert_eq!(app.desired_system_mailbox.as_deref(), Some("INBOX"));
+    }
+
+    #[test]
+    fn mailbox_refresh_clears_account_switch_loader() {
+        let mut app = App::new();
+        app.handle_account_switch_complete();
+
+        let envelopes = make_test_envelopes(2);
+        apply_all_envelopes_refresh(&mut app, envelopes.clone());
+
+        assert!(app.mailbox_loading_message.is_none());
+        assert_eq!(app.status_message.as_deref(), Some("Account switched"));
+        assert_eq!(app.all_envelopes.len(), envelopes.len());
     }
 }

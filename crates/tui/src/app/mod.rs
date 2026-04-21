@@ -757,6 +757,8 @@ pub struct App {
     pub status_request_id: u64,
     pub diagnostics_request_id: u64,
     pub desired_system_mailbox: Option<String>,
+    pub mailbox_loading_message: Option<String>,
+    pub mailbox_loading_throbber: ThrobberState,
     pub status_message: Option<String>,
     pending_preview_read: Option<PendingPreviewRead>,
     pub pending_mutation_count: usize,
@@ -920,6 +922,8 @@ impl App {
             status_request_id: 0,
             diagnostics_request_id: 0,
             desired_system_mailbox: None,
+            mailbox_loading_message: None,
+            mailbox_loading_throbber: ThrobberState::default(),
             status_message: None,
             pending_preview_read: None,
             pending_mutation_count: 0,
@@ -932,7 +936,7 @@ impl App {
             pending_unsubscribe_confirm: None,
             pending_unsubscribe_action: None,
             reader_mode: render.reader_mode,
-            html_view: false,
+            html_view: true,
             render_html_command: render.html_command.clone(),
             show_reader_stats: render.show_reader_stats,
             remote_content_enabled: render.html_remote_content,
@@ -2486,54 +2490,18 @@ impl App {
             return None;
         };
 
-        let mut chips = vec![match metadata.mode {
-            BodyViewMode::Text => "text".to_string(),
-            BodyViewMode::Html => "html".to_string(),
-        }];
-        chips.push(
-            match source {
-                BodySource::Plain => "plain",
-                BodySource::Html => "html-part",
-                BodySource::Fallback => "fallback",
-                BodySource::Snippet => "snippet",
-            }
-            .to_string(),
-        );
-        if let Some(provenance) = metadata.provenance {
-            chips.push(
-                match provenance {
-                    BodyPartSource::Exact => "source:exact",
-                    BodyPartSource::DerivedFromPlain => "source:plain-derived",
-                    BodyPartSource::DerivedFromHtml => "source:html-derived",
-                    BodyPartSource::BestEffortSummary => "source:best-effort",
-                }
-                .to_string(),
-            );
-        }
-        if metadata.reader_applied {
-            chips.push("reader".into());
-        }
-        if metadata.flowed {
-            chips.push("flowed".into());
-        }
-        if metadata.inline_images {
-            chips.push("inline-images".into());
-        }
-        if metadata.mode == BodyViewMode::Html && metadata.remote_content_available {
-            chips.push(if metadata.remote_content_enabled {
-                "remote:on".into()
-            } else {
-                "remote:off".into()
-            });
-        }
-        if self.show_reader_stats {
-            if let (Some(original), Some(cleaned)) =
-                (metadata.original_lines, metadata.cleaned_lines)
-            {
-                chips.push(format!("reader:{cleaned}/{original}"));
-            }
-        }
-        Some(chips.join(" "))
+        Some(body_status_labels(metadata, source, self.show_reader_stats).join(" "))
+    }
+
+    pub(crate) fn current_body_mode_status_message(&self) -> Option<String> {
+        let BodyViewState::Ready {
+            source, metadata, ..
+        } = &self.body_view_state
+        else {
+            return None;
+        };
+
+        Some(format!("Showing {}", primary_body_label(metadata, source)))
     }
 
     pub fn status_bar_state(&self) -> ui::status_bar::StatusBarState {
@@ -3708,6 +3676,34 @@ impl App {
         self.body_view_state = BodyViewState::Empty { preview: None };
     }
 
+    pub(crate) fn handle_account_switch_complete(&mut self) {
+        self.clear_message_view_state();
+        self.close_attachment_panel();
+        self.mailbox_view = MailboxView::Messages;
+        self.layout_mode = LayoutMode::TwoPane;
+        if self.active_pane == ActivePane::MessageView {
+            self.active_pane = ActivePane::MailList;
+        }
+        self.envelopes.clear();
+        self.all_envelopes.clear();
+        self.search_page.results.clear();
+        self.subscriptions_page.entries.clear();
+        self.selected_set.clear();
+        self.active_label = None;
+        self.pending_active_label = None;
+        self.pending_label_fetch = None;
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+        self.pending_labels_refresh = true;
+        self.pending_all_envelopes_refresh = true;
+        self.pending_subscriptions_refresh = true;
+        self.pending_status_refresh = true;
+        self.desired_system_mailbox = Some("INBOX".into());
+        self.mailbox_loading_message = Some("Loading selected account...".into());
+        self.mailbox_loading_throbber = ThrobberState::default();
+        self.status_message = Some("Loading selected account...".into());
+    }
+
     pub(crate) fn apply_removed_message_ids(&mut self, ids: &[MessageId]) {
         if ids.is_empty() {
             return;
@@ -4009,6 +4005,89 @@ fn unsubscribe_method_label(method: &UnsubscribeMethod) -> &'static str {
         UnsubscribeMethod::HttpLink { .. } => "browser link",
         UnsubscribeMethod::BodyLink { .. } => "body link",
         UnsubscribeMethod::None => "none",
+    }
+}
+
+pub(crate) fn body_status_labels(
+    metadata: &BodyViewMetadata,
+    source: &BodySource,
+    show_reader_stats: bool,
+) -> Vec<String> {
+    let mut chips = vec![primary_body_label(metadata, source).to_string()];
+
+    if metadata.reader_applied {
+        let origin = match source {
+            BodySource::Plain => "from plain text",
+            BodySource::Html => "from html",
+            BodySource::Fallback => "from summary",
+            BodySource::Snippet => "from snippet",
+        };
+        chips.push(origin.to_string());
+    }
+    if metadata.inline_images {
+        chips.push("inline images".into());
+    }
+    if metadata.flowed {
+        chips.push("wrapped text".into());
+    }
+    if metadata.mode == BodyViewMode::Html && metadata.remote_content_available {
+        chips.push(if metadata.remote_content_enabled {
+            "remote images shown".into()
+        } else {
+            "remote images blocked".into()
+        });
+    }
+    if show_reader_stats {
+        if let Some(label) = reader_trim_label(metadata) {
+            chips.push(label);
+        }
+    }
+
+    chips
+}
+
+pub(crate) fn unsubscribe_banner_label(method: &UnsubscribeMethod) -> Option<&'static str> {
+    match method {
+        UnsubscribeMethod::OneClick { .. } => Some("One-click unsubscribe"),
+        UnsubscribeMethod::HttpLink { .. } | UnsubscribeMethod::BodyLink { .. } => {
+            Some("Open unsubscribe page")
+        }
+        UnsubscribeMethod::Mailto { .. } => Some("Email unsubscribe"),
+        UnsubscribeMethod::None => None,
+    }
+}
+
+fn reader_trim_label(metadata: &BodyViewMetadata) -> Option<String> {
+    if !metadata.reader_applied {
+        return None;
+    }
+
+    let (Some(original), Some(cleaned)) = (metadata.original_lines, metadata.cleaned_lines) else {
+        return None;
+    };
+
+    if cleaned >= original {
+        return None;
+    }
+
+    let trimmed = original - cleaned;
+    Some(format!(
+        "trimmed {trimmed} {}",
+        if trimmed == 1 { "line" } else { "lines" }
+    ))
+}
+
+fn primary_body_label(metadata: &BodyViewMetadata, source: &BodySource) -> &'static str {
+    match (metadata.mode, metadata.reader_applied, source) {
+        (BodyViewMode::Html, _, BodySource::Html) => "original html",
+        (BodyViewMode::Html, _, BodySource::Plain) => "plain text (no html)",
+        (BodyViewMode::Html, _, BodySource::Fallback) => "message summary (no html)",
+        (BodyViewMode::Html, _, BodySource::Snippet) => "snippet preview",
+        (BodyViewMode::Text, true, _) => "reading view",
+        (BodyViewMode::Text, false, BodySource::Plain) => "plain text",
+        (BodyViewMode::Text, false, BodySource::Html) => "html as text",
+        (BodyViewMode::Text, false, BodySource::Fallback) => "message summary",
+        (BodyViewMode::Text, false, BodySource::Snippet) => "snippet preview",
     }
 }
 

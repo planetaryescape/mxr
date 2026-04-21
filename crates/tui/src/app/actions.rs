@@ -54,6 +54,9 @@ impl App {
         if self.search_is_pending() {
             self.search_page.throbber.calc_next();
         }
+        if self.mailbox_loading_message.is_some() {
+            self.mailbox_loading_throbber.calc_next();
+        }
         if self.accounts_page.operation_in_flight {
             self.accounts_page.throbber.calc_next();
         }
@@ -1099,12 +1102,13 @@ impl App {
             // Phase 2: Reader mode
             Action::ToggleReaderMode => {
                 if self.html_view {
-                    self.status_message = Some("Reader mode only applies in text view".into());
+                    self.status_message = Some("Switch to text view to use reading view".into());
                 } else if let BodyViewState::Ready { .. } = self.body_view_state {
                     self.reader_mode = !self.reader_mode;
                     if let Some(env) = self.viewing_envelope.clone() {
                         self.body_view_state = self.resolve_body_view_state(&env);
                     }
+                    self.status_message = self.current_body_mode_status_message();
                 }
             }
             Action::ToggleHtmlView => {
@@ -1115,11 +1119,7 @@ impl App {
                 if let Some(env) = self.viewing_envelope.clone() {
                     self.body_view_state = self.resolve_body_view_state(&env);
                 }
-                self.status_message = Some(if self.html_view {
-                    "HTML view enabled".into()
-                } else {
-                    "Text view enabled".into()
-                });
+                self.status_message = self.current_body_mode_status_message();
             }
             Action::ToggleRemoteContent => {
                 self.remote_content_enabled = !self.remote_content_enabled;
@@ -1129,9 +1129,9 @@ impl App {
                     self.body_view_state = self.resolve_body_view_state(&env);
                 }
                 self.status_message = Some(if self.remote_content_enabled {
-                    "Remote content enabled".into()
+                    "Remote images shown in HTML view".into()
                 } else {
-                    "Remote content disabled".into()
+                    "Remote images blocked in HTML view".into()
                 });
             }
             Action::ToggleSignature => {
@@ -1250,8 +1250,29 @@ impl App {
             Action::ToggleFullscreen => {
                 if self.layout_mode == LayoutMode::FullScreen {
                     self.layout_mode = LayoutMode::ThreePane;
+                    self.status_message = Some("Showing split view".into());
                 } else if self.viewing_envelope.is_some() {
                     self.layout_mode = LayoutMode::FullScreen;
+                    self.status_message = Some("Showing full message view".into());
+                } else if self.screen == Screen::Mailbox {
+                    match self.mailbox_view {
+                        MailboxView::Subscriptions => {
+                            if let Some(entry) = self.selected_subscription_entry().cloned() {
+                                self.open_envelope(entry.envelope);
+                                self.layout_mode = LayoutMode::FullScreen;
+                                self.active_pane = ActivePane::MessageView;
+                                self.status_message = Some("Showing full message view".into());
+                            }
+                        }
+                        MailboxView::Messages => {
+                            if let Some(row) = self.selected_mail_row() {
+                                self.open_envelope(row.representative);
+                                self.layout_mode = LayoutMode::FullScreen;
+                                self.active_pane = ActivePane::MessageView;
+                                self.status_message = Some("Showing full message view".into());
+                            }
+                        }
+                    }
                 }
             }
             Action::ExportThread => {

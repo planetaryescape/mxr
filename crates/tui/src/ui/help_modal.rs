@@ -214,7 +214,10 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 ("Tab".into(), "Switch results and preview".into()),
                 ("A".into(), "Open attachments".into()),
                 ("L".into(), "Open links".into()),
-                ("R".into(), "Toggle reader mode".into()),
+                ("R".into(), "Toggle reading view".into()),
+                ("H".into(), "Toggle original HTML".into()),
+                ("M".into(), "Toggle remote images".into()),
+                ("O".into(), "Open in browser".into()),
                 (
                     "r / a / f / e".into(),
                     "Reply, reply all, forward, archive".into(),

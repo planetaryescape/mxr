@@ -111,6 +111,11 @@ impl App {
                                 title: &mail_title,
                                 selected_set: &self.selected_set,
                                 mode: self.mail_list_mode,
+                                loading_message: self.mailbox_loading_message.as_deref(),
+                                loading_throbber: self
+                                    .mailbox_loading_message
+                                    .as_ref()
+                                    .map(|_| &self.mailbox_loading_throbber),
                             },
                             theme,
                         );
@@ -157,6 +162,11 @@ impl App {
                                 title: &mail_title,
                                 selected_set: &self.selected_set,
                                 mode: self.mail_list_mode,
+                                loading_message: self.mailbox_loading_message.as_deref(),
+                                loading_throbber: self
+                                    .mailbox_loading_message
+                                    .as_ref()
+                                    .map(|_| &self.mailbox_loading_throbber),
                             },
                             theme,
                         );

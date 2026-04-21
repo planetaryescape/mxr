@@ -118,6 +118,7 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
                 "move_down",
                 "move_up",
                 "open",
+                "toggle_fullscreen",
                 "reply",
                 "archive",
                 "search_all_mail",
@@ -137,6 +138,8 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
                 "archive",
                 "star",
                 "attachment_list",
+                "open_links",
+                "toggle_fullscreen",
                 "toggle_reader_mode",
                 "toggle_html_view",
                 "toggle_remote_content",
@@ -297,5 +300,12 @@ mod tests {
         assert!(labels.contains(&"Archive".to_string()));
         assert!(labels.contains(&"Read + Archive".to_string()));
         assert!(labels.contains(&"Apply Label".to_string()));
+    }
+
+    #[test]
+    fn message_view_hints_include_open_links() {
+        let hints = hints_for_context(UiContext::MailboxMessage, 0);
+        let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
+        assert!(labels.contains(&"Open Links".to_string()));
     }
 }

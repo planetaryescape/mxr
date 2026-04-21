@@ -91,6 +91,8 @@ pub fn draw(
                 title: &title,
                 selected_set,
                 mode: mail_list_mode,
+                loading_message: None,
+                loading_throbber: None,
             },
             theme,
         );

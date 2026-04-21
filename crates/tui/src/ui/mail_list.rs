@@ -6,6 +6,7 @@ use mxr_core::types::MessageFlags;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use std::collections::HashSet;
+use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
 #[cfg(test)]
 use unicode_width::UnicodeWidthStr;
 
@@ -17,6 +18,8 @@ pub struct MailListView<'a> {
     pub title: &'a str,
     pub selected_set: &'a HashSet<MessageId>,
     pub mode: MailListMode,
+    pub loading_message: Option<&'a str>,
+    pub loading_throbber: Option<&'a throbber_widgets_tui::ThrobberState>,
 }
 
 #[expect(
@@ -44,6 +47,8 @@ pub fn draw(
             title,
             selected_set: &HashSet::new(),
             mode: MailListMode::Threads,
+            loading_message: None,
+            loading_throbber: None,
         },
         theme,
     );
@@ -54,6 +59,43 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
     let border_style = theme.border_style(is_focused);
 
     let visible_height = area.height.saturating_sub(2) as usize;
+
+    if view.rows.is_empty() {
+        if let (Some(message), Some(throbber)) = (view.loading_message, view.loading_throbber) {
+            let block = Block::default()
+                .title(format!(" {} ", view.title))
+                .borders(Borders::ALL)
+                .border_style(border_style);
+            let inner = block.inner(area);
+            frame.render_widget(block, area);
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Percentage(45),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Percentage(45),
+                ])
+                .split(inner);
+            frame.render_widget(
+                Paragraph::new(
+                    Throbber::default()
+                        .throbber_set(BRAILLE_SIX)
+                        .throbber_style(Style::default().fg(theme.accent))
+                        .to_symbol_span(throbber),
+                )
+                .alignment(Alignment::Center),
+                chunks[1],
+            );
+            frame.render_widget(
+                Paragraph::new(message)
+                    .style(Style::default().fg(theme.text_muted))
+                    .alignment(Alignment::Center),
+                chunks[2],
+            );
+            return;
+        }
+    }
 
     let table_rows: Vec<Row> = view
         .rows
@@ -487,6 +529,8 @@ mod tests {
                     title: "Inbox",
                     selected_set: &selected_set,
                     mode: MailListMode::Threads,
+                    loading_message: None,
+                    loading_throbber: None,
                 },
                 &Theme::default(),
             );
@@ -511,5 +555,33 @@ mod tests {
 
         assert_eq!(style.bg, Some(Color::Rgb(73, 88, 109)));
         assert_eq!(style.fg, Some(Color::White));
+    }
+
+    #[test]
+    fn loading_placeholder_renders_when_mailbox_is_loading() {
+        use mxr_test_support::render_to_string;
+        use throbber_widgets_tui::ThrobberState;
+
+        let throbber = ThrobberState::default();
+        let rendered = render_to_string(60, 8, |frame| {
+            draw_view(
+                frame,
+                Rect::new(0, 0, 60, 8),
+                &MailListView {
+                    rows: &[],
+                    selected_index: 0,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MailList,
+                    title: "Inbox",
+                    selected_set: &HashSet::new(),
+                    mode: MailListMode::Threads,
+                    loading_message: Some("Loading selected account..."),
+                    loading_throbber: Some(&throbber),
+                },
+                &Theme::default(),
+            );
+        });
+
+        assert!(rendered.contains("Loading selected account..."));
     }
 }

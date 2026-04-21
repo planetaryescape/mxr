@@ -1,5 +1,6 @@
 use crate::app::{
-    ActivePane, AttachmentSummary, BodySource, BodyViewMetadata, BodyViewMode, BodyViewState,
+    body_status_labels, unsubscribe_banner_label, ActivePane, AttachmentSummary, BodySource,
+    BodyViewMetadata, BodyViewMode, BodyViewState,
 };
 use crate::terminal_images::{HtmlImageEntry, HtmlImageRenderState};
 use crate::theme::Theme;
@@ -146,7 +147,10 @@ pub fn draw(
             text_lines.push(Line::from(vec![
                 Span::styled(format!("{:<label_width$}", "List:"), label_style),
                 Span::styled(
-                    " unsubscribe ",
+                    format!(
+                        " {} (D) ",
+                        unsubscribe_banner_label(&env.unsubscribe).unwrap_or("Unsubscribe")
+                    ),
                     Style::default().bg(theme.warning).fg(Color::Black).bold(),
                 ),
             ]));
@@ -410,7 +414,46 @@ mod tests {
         assert!(rendered.contains("Logo"));
         assert!(rendered.contains("Badge"));
         assert!(rendered.contains("Hero"));
-        assert!(rendered.contains("remote:off"));
+        assert!(rendered.contains("original html"));
+        assert!(rendered.contains("remote images blocked"));
+    }
+
+    #[test]
+    fn unsubscribe_header_uses_explicit_action_label() {
+        let mut env = envelope();
+        env.unsubscribe = UnsubscribeMethod::OneClick {
+            url: "https://example.com/unsub".into(),
+        };
+        let block = ThreadMessageBlock {
+            envelope: env,
+            body_state: BodyViewState::Ready {
+                raw: "hello".into(),
+                rendered: "hello".into(),
+                source: BodySource::Plain,
+                metadata: BodyViewMetadata::default(),
+            },
+            labels: vec![],
+            attachments: vec![],
+            selected: true,
+            bulk_selected: false,
+            has_unsubscribe: true,
+            signature_expanded: false,
+        };
+
+        let rendered = render_to_string(100, 18, |frame| {
+            let mut html_images = HashMap::new();
+            draw(
+                frame,
+                Rect::new(0, 0, 100, 18),
+                &[block],
+                0,
+                &ActivePane::MessageView,
+                &Theme::default(),
+                &mut html_images,
+            );
+        });
+
+        assert!(rendered.contains("One-click unsubscribe (D)"));
     }
 }
 
@@ -419,68 +462,24 @@ fn body_metadata_lines(
     source: &BodySource,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
-    let mut chips = Vec::new();
-    chips.push(body_chip(
-        match metadata.mode {
-            BodyViewMode::Text => "text",
-            BodyViewMode::Html => "html",
-        },
-        theme,
-        theme.accent,
-    ));
-    chips.push(body_chip(
-        match source {
-            BodySource::Plain => "plain",
-            BodySource::Html => "html-part",
-            BodySource::Fallback => "fallback",
-            BodySource::Snippet => "snippet",
-        },
-        theme,
-        theme.success,
-    ));
-    if let Some(provenance) = metadata.provenance {
-        chips.push(body_chip(
-            match provenance {
-                mxr_core::types::BodyPartSource::Exact => "source:exact",
-                mxr_core::types::BodyPartSource::DerivedFromPlain => "source:plain-derived",
-                mxr_core::types::BodyPartSource::DerivedFromHtml => "source:html-derived",
-                mxr_core::types::BodyPartSource::BestEffortSummary => "source:best-effort",
-            },
-            theme,
-            theme.text_muted,
-        ));
-    }
-    if metadata.reader_applied {
-        chips.push(body_chip("reader", theme, theme.warning));
-    }
-    if metadata.flowed {
-        chips.push(body_chip("flowed", theme, theme.link_fg));
-    }
-    if metadata.inline_images {
-        chips.push(body_chip("inline-images", theme, theme.success));
-    }
-    if metadata.mode == BodyViewMode::Html && metadata.remote_content_available {
-        chips.push(body_chip(
-            if metadata.remote_content_enabled {
-                "remote:on"
+    let labels = body_status_labels(metadata, source, true);
+    let label_count = labels.len();
+    let chips: Vec<Span<'static>> = labels
+        .into_iter()
+        .enumerate()
+        .flat_map(|(index, label)| {
+            let color = if index == 0 {
+                theme.accent
             } else {
-                "remote:off"
-            },
-            theme,
-            if metadata.remote_content_enabled {
-                theme.success
-            } else {
-                theme.warning
-            },
-        ));
-    }
-    if let (Some(original), Some(cleaned)) = (metadata.original_lines, metadata.cleaned_lines) {
-        chips.push(body_chip(
-            &format!("reader:{cleaned}/{original}"),
-            theme,
-            theme.text_muted,
-        ));
-    }
+                theme.text_muted
+            };
+            let mut spans = vec![body_chip(&label, theme, color)];
+            if index + 1 < label_count {
+                spans.push(Span::raw(" "));
+            }
+            spans
+        })
+        .collect();
 
     if chips.is_empty() {
         Vec::new()

@@ -245,19 +245,19 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Mail".into(),
         },
         PaletteCommand {
-            label: "Toggle Reader Mode".into(),
+            label: "Toggle Reading View".into(),
             shortcut: "R".into(),
             action: Action::ToggleReaderMode,
             category: "View".into(),
         },
         PaletteCommand {
-            label: "Toggle HTML View".into(),
+            label: "Toggle Original HTML".into(),
             shortcut: "H".into(),
             action: Action::ToggleHtmlView,
             category: "View".into(),
         },
         PaletteCommand {
-            label: "Toggle Remote Content".into(),
+            label: "Toggle Remote Images".into(),
             shortcut: "M".into(),
             action: Action::ToggleRemoteContent,
             category: "View".into(),
@@ -467,7 +467,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "View".into(),
         },
         PaletteCommand {
-            label: "Toggle Fullscreen".into(),
+            label: "Toggle Full View".into(),
             shortcut: "F".into(),
             action: Action::ToggleFullscreen,
             category: "View".into(),

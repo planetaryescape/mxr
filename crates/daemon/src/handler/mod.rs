@@ -1244,10 +1244,10 @@ async fn authorize_account_config(
         }
         _ => match &account.send {
             Some(AccountSendConfigData::OutlookPersonal { .. }) => {
-                Some(crate::mxr_provider_outlook::OutlookTenant::Personal)
+                Some(mxr_provider_outlook::OutlookTenant::Personal)
             }
             Some(AccountSendConfigData::OutlookWork { .. }) => {
-                Some(crate::mxr_provider_outlook::OutlookTenant::Work)
+                Some(mxr_provider_outlook::OutlookTenant::Work)
             }
             _ => None,
         },
@@ -1578,14 +1578,14 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                         );
                         let provider = mxr_provider_imap::ImapProvider::with_session_factory(
                             mxr_core::AccountId::from_provider_id("outlook", &email),
-                            mxr_provider_imap::config::ImapConfig {
-                                host: "outlook.office365.com".to_string(),
-                                port: 993,
-                                username: email,
-                                password_ref: String::new(),
-                                auth_required: true,
-                                use_tls: true,
-                            },
+                            mxr_provider_imap::config::ImapConfig::new(
+                                "outlook.office365.com".to_string(),
+                                993,
+                                email,
+                                String::new(),
+                                true,
+                                true,
+                            ),
                             Box::new(factory),
                         );
                         match provider.sync_labels().await {
@@ -1979,11 +1979,15 @@ fn persist_account_passwords(account: &AccountConfigData) -> anyhow::Result<()> 
         sync_kind = %match account.sync {
             Some(AccountSyncConfigData::Gmail { .. }) => "gmail",
             Some(AccountSyncConfigData::Imap { .. }) => "imap",
+            Some(AccountSyncConfigData::OutlookPersonal { .. }) => "outlook",
+            Some(AccountSyncConfigData::OutlookWork { .. }) => "outlook-work",
             None => "none",
         },
         send_kind = %match account.send {
             Some(AccountSendConfigData::Gmail) => "gmail",
             Some(AccountSendConfigData::Smtp { .. }) => "smtp",
+            Some(AccountSendConfigData::OutlookPersonal { .. }) => "outlook",
+            Some(AccountSendConfigData::OutlookWork { .. }) => "outlook-work",
             None => "none",
         },
         has_inline_imap_password = matches!(

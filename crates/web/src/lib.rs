@@ -230,6 +230,8 @@ fn account_sync_kind(account: &mxr_protocol::AccountConfigData) -> &'static str 
     match account.sync {
         Some(mxr_protocol::AccountSyncConfigData::Gmail { .. }) => "gmail",
         Some(mxr_protocol::AccountSyncConfigData::Imap { .. }) => "imap",
+        Some(mxr_protocol::AccountSyncConfigData::OutlookPersonal { .. }) => "outlook",
+        Some(mxr_protocol::AccountSyncConfigData::OutlookWork { .. }) => "outlook-work",
         None => "none",
     }
 }
@@ -238,6 +240,8 @@ fn account_send_kind(account: &mxr_protocol::AccountConfigData) -> &'static str 
     match account.send {
         Some(mxr_protocol::AccountSendConfigData::Gmail) => "gmail",
         Some(mxr_protocol::AccountSendConfigData::Smtp { .. }) => "smtp",
+        Some(mxr_protocol::AccountSendConfigData::OutlookPersonal { .. }) => "outlook",
+        Some(mxr_protocol::AccountSendConfigData::OutlookWork { .. }) => "outlook-work",
         None => "none",
     }
 }

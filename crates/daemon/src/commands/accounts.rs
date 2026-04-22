@@ -157,14 +157,14 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                         let provider =
                             mxr_provider_imap::ImapProvider::with_session_factory(
                                 account_id,
-                                mxr_provider_imap::config::ImapConfig {
-                                    host: "outlook.office365.com".to_string(),
-                                    port: 993,
-                                    username: email,
-                                    password_ref: String::new(),
-                                    auth_required: true,
-                                    use_tls: true,
-                                },
+                                mxr_provider_imap::config::ImapConfig::new(
+                                    "outlook.office365.com".to_string(),
+                                    993,
+                                    email,
+                                    String::new(),
+                                    true,
+                                    true,
+                                ),
                                 Box::new(factory),
                             );
                         let folders = provider.sync_labels().await?;

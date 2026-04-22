@@ -13,6 +13,8 @@ workspace = true
 
 [dependencies]
 mxr-core = { workspace = true }
+mxr-keychain = { workspace = true }
+anyhow = { workspace = true }
 mxr-mail-parse = { workspace = true }
 async-imap = { workspace = true }
 async-native-tls = { workspace = true }

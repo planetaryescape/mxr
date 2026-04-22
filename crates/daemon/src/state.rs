@@ -1055,14 +1055,14 @@ fn build_outlook_sync_provider(
     Ok(Some(Arc::new(
         mxr_provider_imap::ImapProvider::with_session_factory(
             account_id.clone(),
-            mxr_provider_imap::config::ImapConfig {
-                host: "outlook.office365.com".to_string(),
-                port: 993,
-                username: email.to_string(),
-                password_ref: String::new(),
-                auth_required: true,
-                use_tls: true,
-            },
+            mxr_provider_imap::config::ImapConfig::new(
+                "outlook.office365.com".to_string(),
+                993,
+                email.to_string(),
+                String::new(),
+                true,
+                true,
+            ),
             Box::new(factory),
         ),
     ) as Arc<dyn MailSyncProvider>))

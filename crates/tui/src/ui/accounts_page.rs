@@ -410,7 +410,7 @@ fn build_fields(form: &crate::app::AccountFormState) -> Vec<(&'static str, Strin
         }
         AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => {
             fields.push(("Azure client ID", form.outlook_client_id.clone(), true));
-            fields.push(("Token ref", form.outlook_token_ref.clone(), false));
+            fields.push(("Outlook token ref", form.outlook_token_ref.clone(), false));
         }
     }
 
@@ -459,6 +459,7 @@ fn account_field_help_text(label: &str) -> &'static str {
         "Client ID" => "Google OAuth client ID for custom Gmail auth.",
         "Client Secret" => "Google OAuth client secret for custom Gmail auth.",
         "Token ref" => "Where mxr stores the Gmail OAuth token. Usually auto-filled from the account key.",
+        "Outlook token ref" => "Where mxr stores the Outlook OAuth token. Usually auto-filled from the account key.",
         "IMAP host" => "Incoming mail server hostname, usually something like imap.example.com.",
         "IMAP port" => "Usually 993 for TLS IMAP.",
         "IMAP user" => "Usually your full email address or mailbox login.",

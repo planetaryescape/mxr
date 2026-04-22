@@ -1,7 +1,9 @@
 import { Tabs } from "@base-ui/react";
-import { MailSearch } from "lucide-react";
+import { Download, ExternalLink, MailSearch, Paperclip } from "lucide-react";
 import { useEffect, useRef, type RefObject } from "react";
 import type {
+  LayoutMode,
+  MailboxRow,
   ReaderMode,
   SearchMode,
   SearchResponse,
@@ -11,6 +13,7 @@ import type {
 } from "../../shared/types";
 import { cn } from "../lib/cn";
 import { MailRow, DateGroupHeader } from "../components/MailRow";
+import { mailboxRowSelectionId } from "../lib/mailboxSelection";
 import { ReaderPane } from "./ReaderPane";
 import type { FlattenedEntry } from "./types";
 
@@ -33,20 +36,28 @@ export function SearchWorkspace(props: {
   selectedThreadId: string | null;
   onSelect: (threadId: string) => void;
   onOpen: () => void;
+  layoutMode: LayoutMode;
   thread: ThreadResponse | null;
   readerMode: ReaderMode;
   setReaderMode: (mode: ReaderMode) => void;
+  remoteContentEnabled: boolean;
+  setRemoteContentEnabled: (value: boolean) => void;
   signatureExpanded: boolean;
+  onArchive: () => void;
+  onCloseReader: () => void;
   onLoadMore?: () => void;
+  onOpenAttachment?: (attachmentId: string, messageId: string) => void;
+  onDownloadAttachment?: (attachmentId: string, messageId: string) => void;
 }) {
   const resultsRef = useRef<HTMLDivElement | null>(null);
+  const showReader = props.layoutMode !== "twoPane";
 
   useEffect(() => {
     if (!props.selectedThreadId) {
       return;
     }
     const selectedRow = resultsRef.current?.querySelector<HTMLElement>(
-      `[data-thread-id="${props.selectedThreadId}"]`,
+      `[data-row-id="${props.selectedThreadId}"]`,
     );
     if (selectedRow && typeof selectedRow.scrollIntoView === "function") {
       selectedRow.scrollIntoView({ block: "nearest" });
@@ -59,8 +70,20 @@ export function SearchWorkspace(props: {
   );
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 xl:grid-cols-[minmax(22rem,0.92fr)_minmax(32rem,1.15fr)]">
-      <section className="min-h-0 border-r border-outline bg-panel">
+    <div
+      className={cn(
+        "grid h-full min-h-0 grid-cols-1",
+        props.layoutMode === "threePane"
+          ? "xl:grid-cols-[minmax(22rem,0.92fr)_minmax(32rem,1.15fr)]"
+          : "",
+      )}
+    >
+      <section
+        className={cn(
+          "flex min-h-0 flex-col border-r border-outline bg-panel",
+          props.layoutMode === "fullScreen" ? "hidden" : "",
+        )}
+      >
         {/* Search header */}
         <div className="border-b border-outline px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
@@ -146,7 +169,6 @@ export function SearchWorkspace(props: {
         <div
           ref={resultsRef}
           className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto"
-          style={{ height: "calc(100% - 10rem)" }}
         >
           {props.explain && props.state.explain ? (
             <div className="border-b border-outline bg-panel-muted px-3 py-2">
@@ -161,15 +183,35 @@ export function SearchWorkspace(props: {
             {props.rows.map((entry) =>
               entry.kind === "header" ? (
                 <DateGroupHeader key={entry.id} label={entry.label} />
+              ) : entry.row.kind === "attachment" && entry.row.attachment_id ? (
+                <AttachmentSearchRow
+                  key={entry.id}
+                  row={entry.row}
+                  selected={
+                    props.selectedThreadId === mailboxRowSelectionId(entry.row)
+                  }
+                  multiSelected={props.selectedMessageIds.has(entry.row.id)}
+                  pending={props.pendingMessageIds.has(entry.row.id)}
+                  onSelect={() => props.onSelect(mailboxRowSelectionId(entry.row))}
+                  onOpen={props.onOpen}
+                  onOpenAttachment={() =>
+                    props.onOpenAttachment?.(entry.row.attachment_id!, entry.row.id)
+                  }
+                  onDownloadAttachment={() =>
+                    props.onDownloadAttachment?.(entry.row.attachment_id!, entry.row.id)
+                  }
+                />
               ) : (
                 <MailRow
                   key={entry.id}
                   row={entry.row}
-                  selected={props.selectedThreadId === entry.row.thread_id}
+                  selected={
+                    props.selectedThreadId === mailboxRowSelectionId(entry.row)
+                  }
                   multiSelected={props.selectedMessageIds.has(entry.row.id)}
                   pending={props.pendingMessageIds.has(entry.row.id)}
                   removing={false}
-                  onSelect={() => props.onSelect(entry.row.thread_id)}
+                  onSelect={() => props.onSelect(mailboxRowSelectionId(entry.row))}
                   onOpen={props.onOpen}
                   onContextMenu={() => {}}
                 />
@@ -188,15 +230,117 @@ export function SearchWorkspace(props: {
         </div>
       </section>
 
-      <ReaderPane
-        className="hidden min-h-0 xl:flex"
-        thread={props.thread}
-        readerMode={props.readerMode}
-        setReaderMode={props.setReaderMode}
-        signatureExpanded={props.signatureExpanded}
-        onArchive={() => undefined}
-        onCloseReader={() => undefined}
-      />
+      {showReader ? (
+        <ReaderPane
+          className={cn(
+            props.layoutMode === "fullScreen"
+              ? "min-h-0 flex"
+              : "hidden min-h-0 xl:flex",
+            props.layoutMode === "fullScreen" ? "xl:col-span-2" : "",
+          )}
+          thread={props.thread}
+          readerMode={props.readerMode}
+          setReaderMode={props.setReaderMode}
+          remoteContentEnabled={props.remoteContentEnabled}
+          setRemoteContentEnabled={props.setRemoteContentEnabled}
+          signatureExpanded={props.signatureExpanded}
+          onArchive={props.onArchive}
+          onCloseReader={props.onCloseReader}
+        />
+      ) : null}
+
+      {showReader && props.layoutMode !== "fullScreen" ? (
+        <ReaderPane
+          className="fixed inset-y-12 right-0 z-10 flex w-[min(100vw-4rem,32rem)] border-l border-outline bg-panel xl:hidden"
+          thread={props.thread}
+          readerMode={props.readerMode}
+          setReaderMode={props.setReaderMode}
+          remoteContentEnabled={props.remoteContentEnabled}
+          setRemoteContentEnabled={props.setRemoteContentEnabled}
+          signatureExpanded={props.signatureExpanded}
+          onArchive={props.onArchive}
+          onCloseReader={props.onCloseReader}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AttachmentSearchRow(props: {
+  row: MailboxRow;
+  selected: boolean;
+  multiSelected: boolean;
+  pending: boolean;
+  onSelect: () => void;
+  onOpen: () => void;
+  onOpenAttachment: () => void;
+  onDownloadAttachment: () => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-testid="mail-row"
+      data-row-id={mailboxRowSelectionId(props.row)}
+      data-thread-id={props.row.thread_id}
+      className={cn(
+        "group flex w-full items-start gap-2.5 border-l-2 px-2.5 py-2 text-left transition-colors",
+        props.selected
+          ? "border-l-accent bg-panel-elevated"
+          : props.multiSelected
+            ? "border-l-success/60 bg-success/6"
+            : "border-l-transparent hover:bg-panel-elevated/50",
+      )}
+      onClick={props.onSelect}
+      onDoubleClick={props.onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          props.onOpen();
+        }
+      }}
+    >
+      <Paperclip className="mt-0.5 size-3.5 shrink-0 text-accent" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-[length:var(--text-sm)] font-semibold text-foreground">
+            {props.row.attachment_filename ?? props.row.subject}
+          </span>
+          <span className="shrink-0 font-mono text-[length:var(--text-xs)] tabular-nums text-foreground-subtle">
+            {props.pending ? "Syncing" : props.row.date_label}
+          </span>
+        </div>
+        <p className="mt-0.5 truncate text-[length:var(--text-sm)] text-foreground">
+          {props.row.sender} · {props.row.snippet}
+        </p>
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            className="flex items-center gap-1 border border-outline px-2 py-1 text-[length:var(--text-xs)] text-foreground-muted hover:bg-panel-elevated hover:text-foreground"
+            style={{ borderRadius: "var(--radius-sm)" }}
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onOpenAttachment();
+            }}
+            aria-label={`Open attachment ${props.row.attachment_filename ?? props.row.subject}`}
+          >
+            <ExternalLink className="size-3" />
+            Open
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-1 border border-outline px-2 py-1 text-[length:var(--text-xs)] text-foreground-muted hover:bg-panel-elevated hover:text-foreground"
+            style={{ borderRadius: "var(--radius-sm)" }}
+            onClick={(event) => {
+              event.stopPropagation();
+              props.onDownloadAttachment();
+            }}
+            aria-label={`Download attachment ${props.row.attachment_filename ?? props.row.subject}`}
+          >
+            <Download className="size-3" />
+            Download
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

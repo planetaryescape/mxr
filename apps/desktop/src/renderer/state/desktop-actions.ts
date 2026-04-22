@@ -3,6 +3,7 @@ import type {
   ComposeFrontmatter,
   ComposeSession,
   ComposeSessionKind,
+  DiagnosticsWorkspaceSection,
   FocusContext,
   LayoutMode,
   MailboxRow,
@@ -37,6 +38,8 @@ export type DesktopActionContext = {
   screen: WorkbenchScreen;
   mailboxRows: FlattenedEntry[];
   searchRows: FlattenedEntry[];
+  selectedSidebarItemId: string | null;
+  setSelectedSidebarItemId: Dispatch<SetStateAction<string | null>>;
   selectedMailboxThreadId: string | null;
   selectedSearchThreadId: string | null;
   setSelectedMailboxThreadId: (threadId: string | null) => void;
@@ -52,6 +55,7 @@ export type DesktopActionContext = {
   setShowInboxZero: Dispatch<SetStateAction<boolean>>;
   helpOpen: boolean;
   setHelpOpen: Dispatch<SetStateAction<boolean>>;
+  setOnboardingOpen: Dispatch<SetStateAction<boolean>>;
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: Dispatch<SetStateAction<boolean>>;
   setCommandQuery: Dispatch<SetStateAction<string>>;
@@ -63,7 +67,10 @@ export type DesktopActionContext = {
   loadAccounts: () => Promise<void>;
   loadDiagnostics: () => Promise<void>;
   applySidebarLensById: (itemId: string) => Promise<void>;
-  applySidebarLens: (item: SidebarItem, options?: { preserveFocus?: boolean }) => Promise<void>;
+  applySidebarLens: (
+    item: SidebarItem,
+    options?: { preserveFocus?: boolean },
+  ) => Promise<void>;
   archiveSelected: () => Promise<void>;
   mutateSelected: (
     path: string,
@@ -73,9 +80,13 @@ export type DesktopActionContext = {
   effectiveSelection: string[];
   selectedRow: MailboxRow | null;
   openThread: () => void;
+  openThreadAndFocusReader: () => void;
   refreshCurrentView: (options?: { preserveReader?: boolean }) => Promise<void>;
   showNotice: (message: string) => void;
-  openComposeShell: (kind: ComposeSessionKind, messageId?: string) => Promise<void>;
+  openComposeShell: (
+    kind: ComposeSessionKind,
+    messageId?: string,
+  ) => Promise<void>;
   openApplyLabelDialog: () => void;
   openMoveDialog: () => void;
   setUnsubscribeDialogOpen: Dispatch<SetStateAction<boolean>>;
@@ -100,6 +111,7 @@ export type DesktopActionContext = {
   setMailListMode: Dispatch<SetStateAction<"threads" | "messages">>;
   exportSelectedThread: () => Promise<void>;
   generateBugReport: () => Promise<void>;
+  setDiagnosticsSection: Dispatch<SetStateAction<DiagnosticsWorkspaceSection>>;
   openDiagnosticsDetails: () => Promise<void>;
   openConfigFile: () => Promise<void>;
   openLogs: () => Promise<void>;
@@ -111,7 +123,11 @@ export type DesktopActionContext = {
   openAccountForm: () => void;
   testCurrentAccount: () => Promise<void>;
   makeSelectedAccountDefault: () => Promise<void>;
-  formatPendingMutationLabel: (verb: string, count: number, detail?: string) => string;
+  formatPendingMutationLabel: (
+    verb: string,
+    count: number,
+    detail?: string,
+  ) => string;
   switchAccount?: (key: string) => Promise<void>;
   triggerSync: () => Promise<void>;
   composeOpen: boolean;
@@ -120,142 +136,200 @@ export type DesktopActionContext = {
   setComposeDraft: Dispatch<SetStateAction<ComposeFrontmatter | null>>;
 };
 
-export function runDesktopAction(action: DesktopAction | string, context: DesktopActionContext) {
+export function runDesktopAction(
+  action: DesktopAction | string,
+  context: DesktopActionContext,
+) {
+  if (
+    typeof action === "string" &&
+    action.startsWith("open_diagnostics_section:")
+  ) {
+    const section = action.slice(
+      "open_diagnostics_section:".length,
+    ) as DiagnosticsWorkspaceSection;
+    context.switchScreen("diagnostics");
+    context.setDiagnosticsSection(section);
+    context.setFocusContext("mailList");
+    return;
+  }
+
   switch (action) {
     case "move_down":
     case "scroll_down":
     case "next_message":
+      if (context.focusContext === "reader") {
+        scrollReaderBy(READER_SCROLL_STEP);
+        return;
+      }
       if (context.focusContext === "sidebar") {
-        void moveSidebarSelection(1, context.sidebar, context.applySidebarLens);
+        void moveSidebarSelection(
+          1,
+          context.sidebar,
+          context.selectedSidebarItemId,
+          context.setSelectedSidebarItemId,
+        );
         return;
       }
       maybeExtendVisualSelection(
         context,
         moveSelection(
-        1,
-        context.screen,
-        context.mailboxRows,
-        context.searchRows,
-        context.selectedMailboxThreadId,
-        context.selectedSearchThreadId,
-        {
-          setMailbox: context.setSelectedMailboxThreadId,
-          setSearch: context.setSelectedSearchThreadId,
-        },
+          1,
+          context.screen,
+          context.mailboxRows,
+          context.searchRows,
+          context.selectedMailboxThreadId,
+          context.selectedSearchThreadId,
+          {
+            setMailbox: context.setSelectedMailboxThreadId,
+            setSearch: context.setSelectedSearchThreadId,
+          },
         ),
       );
       return;
     case "move_up":
     case "scroll_up":
     case "prev_message":
+      if (context.focusContext === "reader") {
+        scrollReaderBy(-READER_SCROLL_STEP);
+        return;
+      }
       if (context.focusContext === "sidebar") {
-        void moveSidebarSelection(-1, context.sidebar, context.applySidebarLens);
+        void moveSidebarSelection(
+          -1,
+          context.sidebar,
+          context.selectedSidebarItemId,
+          context.setSelectedSidebarItemId,
+        );
         return;
       }
       maybeExtendVisualSelection(
         context,
         moveSelection(
-        -1,
-        context.screen,
-        context.mailboxRows,
-        context.searchRows,
-        context.selectedMailboxThreadId,
-        context.selectedSearchThreadId,
-        {
-          setMailbox: context.setSelectedMailboxThreadId,
-          setSearch: context.setSelectedSearchThreadId,
-        },
+          -1,
+          context.screen,
+          context.mailboxRows,
+          context.searchRows,
+          context.selectedMailboxThreadId,
+          context.selectedSearchThreadId,
+          {
+            setMailbox: context.setSelectedMailboxThreadId,
+            setSearch: context.setSelectedSearchThreadId,
+          },
         ),
       );
       return;
     case "page_down":
       if (context.focusContext === "sidebar") {
-        void moveSidebarSelection(8, context.sidebar, context.applySidebarLens);
+        void moveSidebarSelection(
+          8,
+          context.sidebar,
+          context.selectedSidebarItemId,
+          context.setSelectedSidebarItemId,
+        );
         return;
       }
       maybeExtendVisualSelection(
         context,
         moveSelection(
-        8,
-        context.screen,
-        context.mailboxRows,
-        context.searchRows,
-        context.selectedMailboxThreadId,
-        context.selectedSearchThreadId,
-        {
-          setMailbox: context.setSelectedMailboxThreadId,
-          setSearch: context.setSelectedSearchThreadId,
-        },
+          8,
+          context.screen,
+          context.mailboxRows,
+          context.searchRows,
+          context.selectedMailboxThreadId,
+          context.selectedSearchThreadId,
+          {
+            setMailbox: context.setSelectedMailboxThreadId,
+            setSearch: context.setSelectedSearchThreadId,
+          },
         ),
       );
       return;
     case "page_up":
       if (context.focusContext === "sidebar") {
-        void moveSidebarSelection(-8, context.sidebar, context.applySidebarLens);
+        void moveSidebarSelection(
+          -8,
+          context.sidebar,
+          context.selectedSidebarItemId,
+          context.setSelectedSidebarItemId,
+        );
         return;
       }
       maybeExtendVisualSelection(
         context,
         moveSelection(
-        -8,
-        context.screen,
-        context.mailboxRows,
-        context.searchRows,
-        context.selectedMailboxThreadId,
-        context.selectedSearchThreadId,
-        {
-          setMailbox: context.setSelectedMailboxThreadId,
-          setSearch: context.setSelectedSearchThreadId,
-        },
+          -8,
+          context.screen,
+          context.mailboxRows,
+          context.searchRows,
+          context.selectedMailboxThreadId,
+          context.selectedSearchThreadId,
+          {
+            setMailbox: context.setSelectedMailboxThreadId,
+            setSearch: context.setSelectedSearchThreadId,
+          },
         ),
       );
       return;
     case "jump_top":
     case "visible_top":
       if (context.focusContext === "sidebar") {
-        void jumpSidebarSelection("top", context.sidebar, context.applySidebarLens);
+        void jumpSidebarSelection("top", context.sidebar, context.setSelectedSidebarItemId);
         return;
       }
       maybeExtendVisualSelection(
         context,
-        jumpSelection("top", context.screen, context.mailboxRows, context.searchRows, {
-        setMailbox: context.setSelectedMailboxThreadId,
-        setSearch: context.setSelectedSearchThreadId,
-        }),
+        jumpSelection(
+          "top",
+          context.screen,
+          context.mailboxRows,
+          context.searchRows,
+          {
+            setMailbox: context.setSelectedMailboxThreadId,
+            setSearch: context.setSelectedSearchThreadId,
+          },
+        ),
       );
       return;
     case "jump_bottom":
     case "visible_bottom":
       if (context.focusContext === "sidebar") {
-        void jumpSidebarSelection("bottom", context.sidebar, context.applySidebarLens);
+        void jumpSidebarSelection("bottom", context.sidebar, context.setSelectedSidebarItemId);
         return;
       }
       maybeExtendVisualSelection(
         context,
-        jumpSelection("bottom", context.screen, context.mailboxRows, context.searchRows, {
-        setMailbox: context.setSelectedMailboxThreadId,
-        setSearch: context.setSelectedSearchThreadId,
-        }),
+        jumpSelection(
+          "bottom",
+          context.screen,
+          context.mailboxRows,
+          context.searchRows,
+          {
+            setMailbox: context.setSelectedMailboxThreadId,
+            setSearch: context.setSelectedSearchThreadId,
+          },
+        ),
       );
       return;
     case "visible_middle":
     case "center_current":
-      context.setFocusContext(context.layoutMode === "twoPane" ? "mailList" : "reader");
+      context.setFocusContext(
+        context.layoutMode === "twoPane" ? "mailList" : "reader",
+      );
       return;
     case "next_search_result":
       maybeExtendVisualSelection(
         context,
         moveSelection(
-        1,
-        context.screen,
-        context.mailboxRows,
-        context.searchRows,
-        context.selectedMailboxThreadId,
-        context.selectedSearchThreadId,
-        {
-          setMailbox: context.setSelectedMailboxThreadId,
-          setSearch: context.setSelectedSearchThreadId,
-        },
+          1,
+          context.screen,
+          context.mailboxRows,
+          context.searchRows,
+          context.selectedMailboxThreadId,
+          context.selectedSearchThreadId,
+          {
+            setMailbox: context.setSelectedMailboxThreadId,
+            setSearch: context.setSelectedSearchThreadId,
+          },
         ),
       );
       return;
@@ -263,26 +337,32 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       maybeExtendVisualSelection(
         context,
         moveSelection(
-        -1,
-        context.screen,
-        context.mailboxRows,
-        context.searchRows,
-        context.selectedMailboxThreadId,
-        context.selectedSearchThreadId,
-        {
-          setMailbox: context.setSelectedMailboxThreadId,
-          setSearch: context.setSelectedSearchThreadId,
-        },
+          -1,
+          context.screen,
+          context.mailboxRows,
+          context.searchRows,
+          context.selectedMailboxThreadId,
+          context.selectedSearchThreadId,
+          {
+            setMailbox: context.setSelectedMailboxThreadId,
+            setSearch: context.setSelectedSearchThreadId,
+          },
         ),
       );
       return;
     case "open":
-      // In sidebar: Enter opens the label and moves focus to mail list
       if (context.focusContext === "sidebar") {
-        context.setFocusContext("mailList");
+        void openSelectedSidebarItem(context);
         return;
       }
       context.openThread();
+      return;
+    case "open_focus_reader":
+      if (context.focusContext === "sidebar") {
+        void openSelectedSidebarItem(context);
+        return;
+      }
+      context.openThreadAndFocusReader();
       return;
     case "back":
     case "quit_view":
@@ -302,7 +382,9 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       if (context.commandPaletteOpen) {
         context.setCommandPaletteOpen(false);
         context.setCommandQuery("");
-        context.setFocusContext(context.screen === "search" ? "search" : "mailList");
+        context.setFocusContext(
+          context.screen === "search" ? "search" : "mailList",
+        );
         return;
       }
       if (context.layoutMode === "fullScreen") {
@@ -318,6 +400,7 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       }
       return;
     case "search":
+    case "search_all_mail":
     case "open_search_screen":
     case "open_tab_2":
       context.switchScreen("search");
@@ -430,7 +513,10 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       }
       void context.mutateSelected(
         "/mutations/star",
-        { message_ids: context.effectiveSelection, starred: !context.selectedRow.starred },
+        {
+          message_ids: context.effectiveSelection,
+          starred: !context.selectedRow.starred,
+        },
         {
           preserveReader: true,
           optimistic: { starred: !context.selectedRow.starred },
@@ -486,16 +572,27 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       if (!context.thread) {
         return;
       }
-      context.setLayoutMode((current) => (current === "fullScreen" ? "threePane" : "fullScreen"));
+      context.setLayoutMode((current) =>
+        current === "fullScreen" ? "threePane" : "fullScreen",
+      );
       return;
     case "toggle_reader_mode":
       context.setReaderMode((current) => nextReaderMode(current));
+      return;
+    case "toggle_html_view":
+      context.setReaderMode((current) =>
+        current === "html" ? "reader" : "html",
+      );
       return;
     case "toggle_remote_content":
       context.setRemoteContentEnabled((current) => !current);
       return;
     case "help":
       context.setHelpOpen(true);
+      return;
+    case "show_onboarding":
+      context.setOnboardingOpen(true);
+      context.setFocusContext("dialog");
       return;
     case "refresh_rules":
       void context.loadRules();
@@ -507,7 +604,9 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       void context.loadDiagnostics();
       return;
     case "sync":
-      void context.triggerSync().then(() => context.refreshCurrentView({ preserveReader: true }));
+      void context
+        .triggerSync()
+        .then(() => context.refreshCurrentView({ preserveReader: true }));
       context.showNotice("Syncing with server");
       return;
     case "compose":
@@ -529,9 +628,8 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       }
       return;
     case "apply_label":
-      // In sidebar: l opens the active label's mailbox (like TUI)
       if (context.focusContext === "sidebar") {
-        context.setFocusContext("mailList");
+        void openSelectedSidebarItem(context);
         return;
       }
       if (context.selectedRow) {
@@ -583,7 +681,9 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       } else {
         context.setVisualAnchorMessageId(null);
       }
-      context.showNotice(!context.visualMode ? "-- VISUAL LINE --" : "Visual mode off");
+      context.showNotice(
+        !context.visualMode ? "-- VISUAL LINE --" : "Visual mode off",
+      );
       return;
     case "export_thread":
       void context.exportSelectedThread();
@@ -614,7 +714,11 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       return;
     case "select_all": {
       const rows = activeRows(context);
-      const ids = new Set(rows.filter((e) => e.kind === "row").map((e) => e.kind === "row" ? e.row.id : ""));
+      const ids = new Set(
+        rows
+          .filter((e) => e.kind === "row")
+          .map((e) => (e.kind === "row" ? e.row.id : "")),
+      );
       context.setSelectedMessageIds(ids);
       context.showNotice(`${ids.size} selected`);
       return;
@@ -625,26 +729,39 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       return;
     case "select_read": {
       const rows = activeRows(context);
-      const ids = new Set(rows.filter((e) => e.kind === "row" && !e.row.unread).map((e) => e.kind === "row" ? e.row.id : ""));
+      const ids = new Set(
+        rows
+          .filter((e) => e.kind === "row" && !e.row.unread)
+          .map((e) => (e.kind === "row" ? e.row.id : "")),
+      );
       context.setSelectedMessageIds(ids);
       context.showNotice(`${ids.size} read selected`);
       return;
     }
     case "select_unread": {
       const rows = activeRows(context);
-      const ids = new Set(rows.filter((e) => e.kind === "row" && e.row.unread).map((e) => e.kind === "row" ? e.row.id : ""));
+      const ids = new Set(
+        rows
+          .filter((e) => e.kind === "row" && e.row.unread)
+          .map((e) => (e.kind === "row" ? e.row.id : "")),
+      );
       context.setSelectedMessageIds(ids);
       context.showNotice(`${ids.size} unread selected`);
       return;
     }
     case "select_starred": {
       const rows = activeRows(context);
-      const ids = new Set(rows.filter((e) => e.kind === "row" && e.row.starred).map((e) => e.kind === "row" ? e.row.id : ""));
+      const ids = new Set(
+        rows
+          .filter((e) => e.kind === "row" && e.row.starred)
+          .map((e) => (e.kind === "row" ? e.row.id : "")),
+      );
       context.setSelectedMessageIds(ids);
       context.showNotice(`${ids.size} starred selected`);
       return;
     }
     case "filter_mailbox":
+    case "mailbox_filter":
       context.openMailboxFilter?.();
       return;
     case "go_label":
@@ -654,7 +771,9 @@ export function runDesktopAction(action: DesktopAction | string, context: Deskto
       context.openSavedSearchDialog();
       return;
     case "toggle_mail_list_mode":
-      context.setMailListMode((current) => (current === "threads" ? "messages" : "threads"));
+      context.setMailListMode((current) =>
+        current === "threads" ? "messages" : "threads",
+      );
       return;
     case "generate_bug_report":
       void context.generateBugReport();
@@ -723,7 +842,11 @@ export function isTypingTarget(element: Element | null) {
   if (!(element instanceof HTMLElement)) {
     return false;
   }
-  return element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.isContentEditable;
+  return (
+    element.tagName === "INPUT" ||
+    element.tagName === "TEXTAREA" ||
+    element.isContentEditable
+  );
 }
 
 export function normalizeKeyToken(event: KeyboardEvent) {
@@ -770,6 +893,21 @@ export function nextFocusContext(
   return order[(index + 1) % order.length] ?? order[0];
 }
 
+const READER_SCROLL_STEP = 72;
+
+function scrollReaderBy(delta: number) {
+  const readers = document.querySelectorAll<HTMLElement>(
+    '[data-reader-scroll-container="true"]',
+  );
+  for (const reader of readers) {
+    if (typeof reader.scrollBy === "function") {
+      reader.scrollBy({ top: delta, behavior: "auto" });
+      continue;
+    }
+    reader.scrollTop += delta;
+  }
+}
+
 function moveSelection(
   delta: number,
   screen: WorkbenchScreen,
@@ -780,12 +918,16 @@ function moveSelection(
   setters: SelectionSetters,
 ): Extract<FlattenedEntry, { kind: "row" }>["row"] | null {
   const entries = (screen === "search" ? searchRows : mailboxRows).filter(
-    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> => entry.kind === "row",
+    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> =>
+      entry.kind === "row",
   );
   const current = screen === "search" ? searchThreadId : mailboxThreadId;
-  const currentIndex = entries.findIndex((entry) => entry.row.thread_id === current);
-  const nextIndex = clampIndex(currentIndex < 0 ? 0 : currentIndex + delta, entries.length);
-  const next = entries[nextIndex]?.row.thread_id ?? null;
+  const currentIndex = entries.findIndex((entry) => entry.id === current);
+  const nextIndex = clampIndex(
+    currentIndex < 0 ? 0 : currentIndex + delta,
+    entries.length,
+  );
+  const next = entries[nextIndex]?.id ?? null;
   if (screen === "search") {
     setters.setSearch(next);
   } else {
@@ -802,18 +944,21 @@ function jumpSelection(
   setters: SelectionSetters,
 ): Extract<FlattenedEntry, { kind: "row" }>["row"] | null {
   const entries = (screen === "search" ? searchRows : mailboxRows).filter(
-    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> => entry.kind === "row",
+    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> =>
+      entry.kind === "row",
   );
   const next =
     direction === "top"
-      ? (entries[0]?.row.thread_id ?? null)
-      : (entries[entries.length - 1]?.row.thread_id ?? null);
+      ? (entries[0]?.id ?? null)
+      : (entries[entries.length - 1]?.id ?? null);
   if (screen === "search") {
     setters.setSearch(next);
   } else {
     setters.setMailbox(next);
   }
-  return direction === "top" ? (entries[0]?.row ?? null) : (entries[entries.length - 1]?.row ?? null);
+  return direction === "top"
+    ? (entries[0]?.row ?? null)
+    : (entries[entries.length - 1]?.row ?? null);
 }
 
 function maybeExtendVisualSelection(
@@ -834,10 +979,14 @@ function maybeExtendVisualSelection(
     return;
   }
 
-  const entries = (context.screen === "search" ? context.searchRows : context.mailboxRows).filter(
-    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> => entry.kind === "row",
+  const entries = (
+    context.screen === "search" ? context.searchRows : context.mailboxRows
+  ).filter(
+    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> =>
+      entry.kind === "row",
   );
-  const anchorId = context.visualAnchorMessageId ?? context.selectedRow?.id ?? nextRow.id;
+  const anchorId =
+    context.visualAnchorMessageId ?? context.selectedRow?.id ?? nextRow.id;
   const anchorIndex = entries.findIndex((entry) => entry.row.id === anchorId);
   const targetIndex = entries.findIndex((entry) => entry.row.id === nextRow.id);
 
@@ -847,8 +996,13 @@ function maybeExtendVisualSelection(
     return;
   }
 
-  const [start, end] = anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
-  context.setSelectedMessageIds(new Set(entries.slice(start, end + 1).map((entry) => entry.row.id)));
+  const [start, end] =
+    anchorIndex < targetIndex
+      ? [anchorIndex, targetIndex]
+      : [targetIndex, anchorIndex];
+  context.setSelectedMessageIds(
+    new Set(entries.slice(start, end + 1).map((entry) => entry.row.id)),
+  );
 }
 
 function clampIndex(index: number, length: number) {
@@ -861,24 +1015,28 @@ function clampIndex(index: number, length: number) {
 async function moveSidebarSelection(
   delta: number,
   sidebar: SidebarPayload,
-  applySidebarLens: (item: SidebarItem, options?: { preserveFocus?: boolean }) => Promise<void>,
+  selectedSidebarItemId: string | null,
+  setSelectedSidebarItemId: Dispatch<SetStateAction<string | null>>,
 ) {
   const items = sidebar.sections.flatMap((section) => section.items);
   if (items.length === 0) {
     return;
   }
-  const currentIndex = items.findIndex((item) => item.active);
-  const nextIndex = clampIndex(currentIndex < 0 ? 0 : currentIndex + delta, items.length);
+  const currentIndex = items.findIndex((item) => item.id === selectedSidebarItemId);
+  const nextIndex = clampIndex(
+    currentIndex < 0 ? 0 : currentIndex + delta,
+    items.length,
+  );
   const next = items[nextIndex];
   if (next) {
-    await applySidebarLens(next, { preserveFocus: true });
+    setSelectedSidebarItemId(next.id);
   }
 }
 
 async function jumpSidebarSelection(
   direction: "top" | "bottom",
   sidebar: SidebarPayload,
-  applySidebarLens: (item: SidebarItem, options?: { preserveFocus?: boolean }) => Promise<void>,
+  setSelectedSidebarItemId: Dispatch<SetStateAction<string | null>>,
 ) {
   const items = sidebar.sections.flatMap((section) => section.items);
   if (items.length === 0) {
@@ -886,8 +1044,35 @@ async function jumpSidebarSelection(
   }
   const next = direction === "top" ? items[0] : items[items.length - 1];
   if (next) {
-    await applySidebarLens(next, { preserveFocus: true });
+    setSelectedSidebarItemId(next.id);
   }
+}
+
+async function openSelectedSidebarItem(context: DesktopActionContext) {
+  const item = selectedSidebarItem(context.sidebar, context.selectedSidebarItemId);
+  if (!item) {
+    return;
+  }
+  if (context.screen !== "mailbox") {
+    context.switchScreen("mailbox");
+  }
+  await context.applySidebarLens(item);
+}
+
+function selectedSidebarItem(
+  sidebar: SidebarPayload,
+  selectedSidebarItemId: string | null,
+): SidebarItem | null {
+  const items = sidebar.sections.flatMap((section) => section.items);
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    items.find((item) => item.id === selectedSidebarItemId) ??
+    items.find((item) => item.active) ??
+    items[0] ??
+    null
+  );
 }
 
 function activeRows(context: DesktopActionContext): FlattenedEntry[] {

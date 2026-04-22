@@ -21,6 +21,7 @@ pub(crate) struct BridgeChrome {
 #[derive(Debug, Serialize)]
 pub(crate) struct MessageRowView {
     pub(crate) id: String,
+    pub(crate) kind: &'static str,
     pub(crate) thread_id: String,
     pub(crate) provider_id: String,
     pub(crate) sender: String,
@@ -31,6 +32,14 @@ pub(crate) struct MessageRowView {
     pub(crate) unread: bool,
     pub(crate) starred: bool,
     pub(crate) has_attachments: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) message_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) attachment_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) attachment_filename: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) attachment_size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]

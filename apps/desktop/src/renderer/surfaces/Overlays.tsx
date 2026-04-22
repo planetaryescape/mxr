@@ -290,6 +290,67 @@ export function HelpOverlay(props: {
   );
 }
 
+export function OnboardingOverlay(props: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!props.open) {
+    return null;
+  }
+
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-canvas/80 px-4 py-6">
+      <section className="surface w-full max-w-3xl px-6 py-6">
+        <div className="flex items-start justify-between gap-4 border-b border-outline pb-4">
+          <div>
+            <p className="mono-meta">Start Here</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+              Start here
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-foreground-muted">
+              Desktop should make the main mail loop feel effortless: sync quietly, read locally,
+              compose in your editor, and keep mailbox actions one shortcut away.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded border border-outline bg-panel-elevated px-3 py-1.5 text-xs uppercase text-foreground-muted"
+            onClick={props.onClose}
+          >
+            Close
+          </button>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <article className="surface-muted px-4 py-4">
+            <p className="mono-meta">1. Connect</p>
+            <h3 className="mt-2 text-sm font-semibold text-foreground">Add an account</h3>
+            <p className="mt-2 text-sm leading-6 text-foreground-muted">
+              Gmail and IMAP feed the same local model so sync, search, and mutations stay
+              consistent.
+            </p>
+          </article>
+          <article className="surface-muted px-4 py-4">
+            <p className="mono-meta">2. Read</p>
+            <h3 className="mt-2 text-sm font-semibold text-foreground">Pick the right view</h3>
+            <p className="mt-2 text-sm leading-6 text-foreground-muted">
+              Reader mode stays plain-text first. HTML mode is there when fidelity matters, with
+              remote content kept explicit.
+            </p>
+          </article>
+          <article className="surface-muted px-4 py-4">
+            <p className="mono-meta">3. Compose</p>
+            <h3 className="mt-2 text-sm font-semibold text-foreground">Draft in $EDITOR</h3>
+            <p className="mt-2 text-sm leading-6 text-foreground-muted">
+              New mail, replies, and forwards all share the same draft session so save, reopen,
+              and send stay predictable.
+            </p>
+          </article>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function InboxZeroOverlay(props: { open: boolean; onDismiss: () => void }) {
   if (!props.open) {
     return null;

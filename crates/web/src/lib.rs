@@ -15,8 +15,9 @@ use axum::{
 use chrome::{ack_mutation, ack_request, build_bridge_chrome, load_mailbox_selection};
 use chrono::{DateTime, Local, TimeZone, Utc};
 use envelope_list::{
-    dedupe_search_results_by_thread, group_envelopes, message_row_view, reorder_envelopes,
-    thread_reader_mode,
+    attachment_search_rows, dedupe_search_results_by_thread, group_envelopes, group_row_views,
+    list_bodies_by_message_ids, list_envelopes_by_message_ids, mailbox_message_rows,
+    mailbox_thread_rows, message_row_view, reorder_envelopes, thread_reader_mode,
 };
 use futures::{SinkExt, StreamExt};
 use mxr_compose::{
@@ -28,7 +29,10 @@ use mxr_config::load_config;
 use mxr_core::{
     id::LabelId,
     id::{AccountId, DraftId, MessageId, ThreadId},
-    types::{Draft, Envelope, Label, MessageBody, ReplyHeaders, SearchMode, SortOrder},
+    types::{
+        Draft, Envelope, Label, MessageBody, ReplyHeaders, SearchMode, Snoozed, SortOrder,
+        SubscriptionSummary,
+    },
 };
 use mxr_mail_parse::parse_address_list;
 use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload, Request, ResponseData};
@@ -67,6 +71,7 @@ pub fn app(_config: WebServerConfig) -> Router {
         .route("/thread/{thread_id}/export", get(export_thread))
         .route("/compose/session", post(start_compose_session))
         .route("/compose/session/refresh", post(refresh_compose_session))
+        .route("/compose/session/restore", post(restore_compose_session))
         .route("/compose/session/update", post(update_compose_session))
         .route("/compose/session/send", post(send_compose_session))
         .route("/compose/session/save", post(save_compose_session))
@@ -244,6 +249,8 @@ struct MailboxQuery {
     #[serde(default)]
     offset: u32,
     #[serde(default)]
+    view: MailboxView,
+    #[serde(default)]
     lens_kind: MailboxLensKind,
     #[serde(default)]
     label_id: Option<String>,
@@ -253,6 +260,23 @@ struct MailboxQuery {
     sender_email: Option<String>,
     #[serde(default)]
     token: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum MailboxView {
+    #[default]
+    Threads,
+    Messages,
+}
+
+impl MailboxView {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Threads => "threads",
+            Self::Messages => "messages",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
@@ -345,6 +369,11 @@ struct ComposeSessionStartRequest {
 #[derive(Debug, Deserialize)]
 struct ComposeSessionPathRequest {
     draft_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComposeSessionRestoreRequest {
+    draft_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -453,13 +482,19 @@ async fn mailbox(
         query.offset,
     )
     .await?;
+    let view = query.view;
+    let groups = match view {
+        MailboxView::Threads => group_row_views(mailbox_thread_rows(mailbox.envelopes)),
+        MailboxView::Messages => group_row_views(mailbox_message_rows(mailbox.envelopes)),
+    };
     Ok(Json(json!({
         "shell": chrome.shell,
         "sidebar": chrome.sidebar,
         "mailbox": {
             "lensLabel": mailbox.lens_label,
+            "view": view.as_str(),
             "counts": mailbox.counts,
-            "groups": group_envelopes(mailbox.envelopes),
+            "groups": groups,
         }
     })))
 }
@@ -563,7 +598,9 @@ async fn search(
         _ => SortOrder::DateDesc,
     };
 
-    let thread_scope = query.scope.as_deref().unwrap_or("threads") == "threads";
+    let scope = query.scope.as_deref().unwrap_or("threads");
+    let thread_scope = scope == "threads";
+    let attachment_scope = scope == "attachments";
 
     match ipc_request(
         &state.config.socket_path,
@@ -609,14 +646,26 @@ async fn search(
                     _ => return Err(BridgeError::UnexpectedResponse),
                 }
             };
+            let bodies = if attachment_scope {
+                list_bodies_by_message_ids(&state.config.socket_path, &message_ids).await?
+            } else {
+                Vec::new()
+            };
+            let (groups, total) = if attachment_scope {
+                let rows = attachment_search_rows(&envelopes, &bodies);
+                let total = rows.len();
+                (group_row_views(rows), total)
+            } else {
+                (group_envelopes(envelopes), effective_results.len())
+            };
 
             Ok(Json(json!({
                 "scope": query.scope.unwrap_or_else(|| "threads".to_string()),
                 "sort": query.sort.unwrap_or_else(|| "recent".to_string()),
                 "mode": query.mode.unwrap_or_default(),
-                "total": effective_results.len(),
+                "total": total,
                 "has_more": has_more,
-                "groups": group_envelopes(envelopes),
+                "groups": groups,
                 "explain": explain,
             })))
         }
@@ -643,6 +692,21 @@ async fn refresh_compose_session(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let session = load_compose_session(Path::new(&request.draft_path)).await?;
+    Ok(Json(json!({ "session": session })))
+}
+
+async fn restore_compose_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<ComposeSessionRestoreRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let session = restore_saved_draft_session(
+        &state.config.socket_path,
+        parse_draft_id(&request.draft_id)?,
+    )
+    .await?;
     Ok(Json(json!({ "session": session })))
 }
 
@@ -1279,6 +1343,12 @@ fn parse_message_id(value: &str) -> Result<MessageId, BridgeError> {
         .map_err(|_| BridgeError::Ipc(format!("invalid message id: {value}")))
 }
 
+fn parse_draft_id(value: &str) -> Result<DraftId, BridgeError> {
+    Uuid::parse_str(value)
+        .map(DraftId::from_uuid)
+        .map_err(|_| BridgeError::Ipc(format!("invalid draft id: {value}")))
+}
+
 fn parse_attachment_id(value: &str) -> Result<mxr_core::AttachmentId, BridgeError> {
     Uuid::parse_str(value)
         .map(mxr_core::AttachmentId::from_uuid)
@@ -1509,6 +1579,120 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
         attachments: frontmatter.attach.into_iter().map(PathBuf::from).collect(),
         created_at: now,
         updated_at: now,
+    })
+}
+
+async fn restore_saved_draft_session(
+    socket_path: &Path,
+    draft_id: DraftId,
+) -> Result<serde_json::Value, BridgeError> {
+    let draft = saved_draft(socket_path, &draft_id).await?;
+    let account = account_summary(socket_path, &draft.account_id).await?;
+    let (draft_path, cursor_line) = mxr_compose::create_draft_file_async(
+        ComposeKind::New {
+            to: String::new(),
+            subject: draft.subject.clone(),
+        },
+        &account.email,
+    )
+    .await
+    .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+
+    let frontmatter = ComposeFrontmatter {
+        to: format_addresses(&draft.to),
+        cc: format_addresses(&draft.cc),
+        bcc: format_addresses(&draft.bcc),
+        subject: draft.subject.clone(),
+        from: account.email.clone(),
+        in_reply_to: draft
+            .reply_headers
+            .as_ref()
+            .map(|headers| headers.in_reply_to.clone()),
+        references: draft
+            .reply_headers
+            .as_ref()
+            .map(|headers| headers.references.clone())
+            .unwrap_or_default(),
+        attach: draft
+            .attachments
+            .iter()
+            .map(|attachment| attachment.display().to_string())
+            .collect(),
+    };
+    let rendered = render_compose_file(&frontmatter, &draft.body_markdown, None)
+        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    write_compose_file(&draft_path, rendered).await?;
+
+    let mut session = load_compose_session(&draft_path).await?;
+    session["cursorLine"] = json!(cursor_line);
+    session["accountId"] = json!(account.account_id);
+    session["kind"] = json!("new");
+    session["editorCommand"] = json!(resolved_editor_command());
+    Ok(session)
+}
+
+async fn saved_draft(socket_path: &Path, draft_id: &DraftId) -> Result<Draft, BridgeError> {
+    match ipc_request(socket_path, Request::ListDrafts).await? {
+        ResponseData::Drafts { drafts } => drafts
+            .into_iter()
+            .find(|draft| &draft.id == draft_id)
+            .ok_or_else(|| BridgeError::Ipc(format!("draft {draft_id} not found"))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+fn format_addresses(addresses: &[mxr_core::Address]) -> String {
+    addresses
+        .iter()
+        .map(|address| match address.name.as_deref() {
+            Some(name) if !name.trim().is_empty() => format!("{name} <{}>", address.email),
+            _ => address.email.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn draft_summary_view(draft: Draft) -> serde_json::Value {
+    json!({
+        "id": draft.id,
+        "account_id": draft.account_id,
+        "subject": draft.subject,
+        "recipients": format_addresses(&draft.to),
+        "updated_at": draft.updated_at,
+        "attachment_count": draft.attachments.len(),
+    })
+}
+
+fn subscription_summary_view(subscription: SubscriptionSummary) -> serde_json::Value {
+    json!({
+        "account_id": subscription.account_id,
+        "sender_name": subscription.sender_name,
+        "sender_email": subscription.sender_email,
+        "message_count": subscription.message_count,
+        "latest_message_id": subscription.latest_message_id,
+        "latest_thread_id": subscription.latest_thread_id,
+        "latest_subject": subscription.latest_subject,
+        "latest_snippet": subscription.latest_snippet,
+        "latest_date": subscription.latest_date,
+        "latest_has_attachments": subscription.latest_has_attachments,
+        "unread": !subscription.latest_flags.contains(mxr_core::MessageFlags::READ),
+    })
+}
+
+fn snoozed_summary_view(entry: &Snoozed, envelope: &Envelope) -> serde_json::Value {
+    json!({
+        "message_id": entry.message_id,
+        "thread_id": envelope.thread_id,
+        "sender": envelope
+            .from
+            .name
+            .clone()
+            .unwrap_or_else(|| envelope.from.email.clone()),
+        "subject": envelope.subject,
+        "snippet": envelope.snippet,
+        "wake_at": entry.wake_at,
+        "unread": !envelope.flags.contains(mxr_core::MessageFlags::READ),
+        "has_attachments": envelope.has_attachments,
     })
 }
 
@@ -1770,9 +1954,12 @@ async fn list_subscriptions(
     )
     .await?
     {
-        ResponseData::Subscriptions { subscriptions } => {
-            Ok(Json(json!({ "subscriptions": subscriptions })))
-        }
+        ResponseData::Subscriptions { subscriptions } => Ok(Json(json!({
+            "subscriptions": subscriptions
+                .into_iter()
+                .map(subscription_summary_view)
+                .collect::<Vec<_>>()
+        }))),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
@@ -1921,7 +2108,9 @@ async fn list_drafts(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     match ipc_request(&state.config.socket_path, Request::ListDrafts).await? {
-        ResponseData::Drafts { drafts } => Ok(Json(json!({ "drafts": drafts }))),
+        ResponseData::Drafts { drafts } => Ok(Json(json!({
+            "drafts": drafts.into_iter().map(draft_summary_view).collect::<Vec<_>>()
+        }))),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
@@ -1933,7 +2122,25 @@ async fn list_snoozed(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     match ipc_request(&state.config.socket_path, Request::ListSnoozed).await? {
-        ResponseData::SnoozedMessages { snoozed } => Ok(Json(json!({ "snoozed": snoozed }))),
+        ResponseData::SnoozedMessages { snoozed } => {
+            let message_ids = snoozed
+                .iter()
+                .map(|entry| entry.message_id.clone())
+                .collect::<Vec<_>>();
+            let envelopes =
+                list_envelopes_by_message_ids(&state.config.socket_path, &message_ids).await?;
+            Ok(Json(json!({
+                "snoozed": snoozed
+                    .into_iter()
+                    .filter_map(|entry| {
+                        envelopes
+                            .iter()
+                            .find(|envelope| envelope.id == entry.message_id)
+                            .map(|envelope| snoozed_summary_view(&entry, envelope))
+                    })
+                    .collect::<Vec<_>>()
+            })))
+        }
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
@@ -1978,10 +2185,11 @@ mod tests {
     use chrono::Utc;
     use futures::{SinkExt, StreamExt};
     use mxr_core::{
-        id::{AccountId, MessageId, ThreadId},
+        id::{AccountId, AttachmentId, MessageId, ThreadId},
         types::{
-            Address, Envelope, Label, LabelKind, MessageBody, MessageFlags, MessageMetadata,
-            SavedSearch, SortOrder, SubscriptionSummary, Thread, UnsubscribeMethod,
+            Address, AttachmentDisposition, AttachmentMeta, Envelope, Label, LabelKind,
+            MessageBody, MessageFlags, MessageMetadata, SavedSearch, SortOrder,
+            SubscriptionSummary, Thread, UnsubscribeMethod,
         },
     };
     use mxr_protocol::{
@@ -2299,6 +2507,28 @@ mod tests {
         }
     }
 
+    fn sample_attachment_body(envelope: &Envelope) -> MessageBody {
+        MessageBody {
+            message_id: envelope.id.clone(),
+            text_plain: Some("plain text".into()),
+            text_html: Some("<p>rich html</p>".into()),
+            attachments: vec![AttachmentMeta {
+                id: AttachmentId::new(),
+                message_id: envelope.id.clone(),
+                filename: "deploy.log".into(),
+                mime_type: "text/plain".into(),
+                disposition: AttachmentDisposition::Attachment,
+                content_id: None,
+                content_location: None,
+                size_bytes: 1024,
+                local_path: None,
+                provider_id: "provider-attachment-1".into(),
+            }],
+            fetched_at: Utc::now(),
+            metadata: MessageMetadata::default(),
+        }
+    }
+
     #[tokio::test]
     async fn mailbox_endpoint_lists_envelopes() {
         let temp = TempDir::new().unwrap();
@@ -2481,6 +2711,136 @@ mod tests {
         assert_eq!(
             json["mailbox"]["groups"][0]["rows"][0]["subject"],
             "Archive rollup"
+        );
+    }
+
+    #[tokio::test]
+    async fn mailbox_endpoint_shapes_thread_and_message_views() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+
+        let first = sample_envelope();
+        let mut second = sample_envelope();
+        second.id = MessageId::new();
+        second.thread_id = first.thread_id.clone();
+        second.subject = "Mailroom follow-up".into();
+        second.snippet = "Same thread, newer message".into();
+
+        let labels = sample_labels(&first.account_id);
+        let saved_search = sample_saved_search(first.account_id.clone());
+        let subscription = sample_subscription(&first.account_id);
+        let inbox_label_id = labels[0].id.clone();
+
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |request| match request {
+                Request::GetStatus => Some(Response::Ok {
+                    data: ResponseData::Status {
+                        uptime_secs: 42,
+                        accounts: vec!["personal".into()],
+                        total_messages: 8124,
+                        daemon_pid: Some(999),
+                        sync_statuses: Vec::new(),
+                        protocol_version: IPC_PROTOCOL_VERSION,
+                        daemon_version: Some("0.4.4".into()),
+                        daemon_build_id: Some("build-123".into()),
+                        repair_required: false,
+                        semantic_runtime: None,
+                    },
+                }),
+                Request::ListLabels { account_id: None } => Some(Response::Ok {
+                    data: ResponseData::Labels {
+                        labels: labels.clone(),
+                    },
+                }),
+                Request::ListSavedSearches => Some(Response::Ok {
+                    data: ResponseData::SavedSearches {
+                        searches: vec![saved_search.clone()],
+                    },
+                }),
+                Request::ListSubscriptions {
+                    account_id: None,
+                    limit: 8,
+                } => Some(Response::Ok {
+                    data: ResponseData::Subscriptions {
+                        subscriptions: vec![subscription.clone()],
+                    },
+                }),
+                Request::ListEnvelopes {
+                    limit: 200,
+                    offset: 0,
+                    label_id: Some(label_id),
+                    account_id: None,
+                } if label_id == inbox_label_id => Some(Response::Ok {
+                    data: ResponseData::Envelopes {
+                        envelopes: vec![first.clone(), second.clone()],
+                    },
+                }),
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let client = reqwest::Client::new();
+        let threads_response = client
+            .get(format!("http://{addr}/mailbox?view=threads"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(threads_response.status(), reqwest::StatusCode::OK);
+
+        let threads_json: serde_json::Value = threads_response.json().await.unwrap();
+        assert_eq!(threads_json["mailbox"]["view"], "threads");
+        assert_eq!(
+            threads_json["mailbox"]["groups"][0]["rows"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            threads_json["mailbox"]["groups"][0]["rows"][0]["kind"],
+            "thread"
+        );
+        assert_eq!(
+            threads_json["mailbox"]["groups"][0]["rows"][0]["message_count"],
+            2
+        );
+
+        let messages_response = client
+            .get(format!("http://{addr}/mailbox?view=messages"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(messages_response.status(), reqwest::StatusCode::OK);
+
+        let messages_json: serde_json::Value = messages_response.json().await.unwrap();
+        assert_eq!(messages_json["mailbox"]["view"], "messages");
+        assert_eq!(
+            messages_json["mailbox"]["groups"][0]["rows"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            messages_json["mailbox"]["groups"][0]["rows"][0]["kind"],
+            "message"
+        );
+        assert_eq!(
+            messages_json["mailbox"]["groups"][0]["rows"][1]["subject"],
+            "Mailroom follow-up"
         );
     }
 
@@ -2922,6 +3282,98 @@ mod tests {
         assert_eq!(json["total"], 1);
         assert_eq!(json["groups"][0]["rows"].as_array().unwrap().len(), 1);
         assert_eq!(json["groups"][0]["rows"][0]["subject"], "First match");
+    }
+
+    #[tokio::test]
+    async fn search_endpoint_returns_attachment_rows_for_attachment_scope() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+
+        let mut envelope = sample_envelope();
+        envelope.has_attachments = true;
+        envelope.subject = "Deploy artifacts".into();
+        let body = sample_attachment_body(&envelope);
+        let attachment_id = body.attachments[0].id.to_string();
+        let message_id = envelope.id.to_string();
+
+        let result = SearchResultItem {
+            message_id: envelope.id.clone(),
+            account_id: envelope.account_id.clone(),
+            thread_id: envelope.thread_id.clone(),
+            score: 9.5,
+            mode: mxr_core::types::SearchMode::Lexical,
+        };
+        let requested_ids = vec![envelope.id.clone()];
+
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |request| match request {
+                Request::Search {
+                    query,
+                    limit: 200,
+                    offset: 0,
+                    mode: None,
+                    sort: Some(SortOrder::DateDesc),
+                    explain: false,
+                } if query == "deploy artifacts" => Some(Response::Ok {
+                    data: ResponseData::SearchResults {
+                        results: vec![result.clone()],
+                        has_more: false,
+                        explain: None,
+                    },
+                }),
+                Request::ListEnvelopesByIds { message_ids } if message_ids == requested_ids => {
+                    Some(Response::Ok {
+                        data: ResponseData::Envelopes {
+                            envelopes: vec![envelope.clone()],
+                        },
+                    })
+                }
+                Request::ListBodies { message_ids } if message_ids == requested_ids => {
+                    Some(Response::Ok {
+                        data: ResponseData::Bodies {
+                            bodies: vec![body.clone()],
+                        },
+                    })
+                }
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(format!(
+                "http://{addr}/search?q=deploy%20artifacts&scope=attachments"
+            ))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["scope"], "attachments");
+        assert_eq!(json["total"], 1);
+        assert_eq!(json["groups"][0]["rows"][0]["id"], message_id);
+        assert_eq!(json["groups"][0]["rows"][0]["kind"], "attachment");
+        assert_eq!(json["groups"][0]["rows"][0]["attachment_id"], attachment_id);
+        assert_eq!(
+            json["groups"][0]["rows"][0]["attachment_filename"],
+            "deploy.log"
+        );
+        assert_eq!(
+            json["groups"][0]["rows"][0]["snippet"],
+            "text/plain · 1024 bytes"
+        );
     }
 
     #[tokio::test]

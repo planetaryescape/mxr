@@ -10,6 +10,8 @@ import type {
   MailboxRow,
   SidebarItem,
   SnoozePreset,
+  ThreadBody,
+  ThreadResponse,
 } from "../../shared/types";
 import { fetchJson } from "./bridgeHttp";
 import type { DesktopRequestCoordinator } from "./requestCoordinator";
@@ -22,6 +24,7 @@ export function useMailboxDialogActions(props: {
   screen: "mailbox" | "search" | "rules" | "accounts" | "diagnostics";
   layoutMode: "twoPane" | "threePane" | "fullScreen";
   selectedRow: MailboxRow | null;
+  thread: ThreadResponse | null;
   effectiveSelection: string[];
   labelOptions: string[];
   selectedLabels: string[];
@@ -251,12 +254,25 @@ export function useMailboxDialogActions(props: {
   });
 
   const openSelectedInBrowser = useEffectEvent(async () => {
-    if (!props.selectedRow?.provider_id) {
+    if (props.bridge.kind !== "ready" || !props.selectedRow) {
       return;
     }
-    await openExternalUrl(
-      `https://mail.google.com/mail/u/0/#inbox/${props.selectedRow.provider_id}`,
-    );
+    const thread = await loadThreadForBrowserOpen(props.bridge, props.requestCoordinator, {
+      selectedRow: props.selectedRow,
+      thread: props.thread,
+    });
+    const body =
+      thread?.bodies.find((candidate) => candidate.message_id === props.selectedRow.id) ?? null;
+    const html = body ? buildBrowserDocument(thread.thread.subject, body) : null;
+    if (!thread || !html) {
+      props.showNotice("No readable body available");
+      return;
+    }
+    await window.mxrDesktop.openBrowserDocument({
+      title: thread.thread.subject,
+      html,
+      suggestedFilename: `${thread.thread.id}.html`,
+    });
     props.showNotice("Opened in browser");
   });
 
@@ -367,4 +383,57 @@ export function useMailboxDialogActions(props: {
     exportSelectedThread,
     generateBugReport,
   };
+}
+
+async function loadThreadForBrowserOpen(
+  bridge: Extract<BridgeState, { kind: "ready" }>,
+  requestCoordinator: DesktopRequestCoordinator,
+  props: {
+    selectedRow: MailboxRow | null;
+    thread: ThreadResponse | null;
+  },
+) {
+  if (!props.selectedRow) {
+    return null;
+  }
+  if (props.thread?.thread.id === props.selectedRow.thread_id) {
+    return props.thread;
+  }
+  const result = await requestCoordinator.runReplaceable(
+    `thread:browser-open:${props.selectedRow.thread_id}`,
+    ({ signal }) =>
+      fetchJson<ThreadResponse>(
+        bridge.baseUrl,
+        bridge.authToken,
+        `/thread/${props.selectedRow.thread_id}`,
+        {
+          signal,
+          requestLabel: "thread:browser-open",
+        },
+      ),
+  );
+  return result.status === "committed" ? result.value : null;
+}
+
+function buildBrowserDocument(subject: string, body: ThreadBody) {
+  if (body.text_html) {
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
+      subject,
+    )}</title></head><body>${body.text_html}</body></html>`;
+  }
+  if (body.text_plain) {
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
+      subject,
+    )}</title></head><body><pre>${escapeHtml(body.text_plain)}</pre></body></html>`;
+  }
+  return null;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

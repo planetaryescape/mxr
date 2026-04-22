@@ -131,7 +131,7 @@ export const tuiDesktopManifest = {
       },
       {
         "action": "toggle_fullscreen",
-        "label": "Toggle Fullscreen",
+        "label": "Full View",
         "display": "F",
         "tokens": [
           "F"
@@ -187,7 +187,7 @@ export const tuiDesktopManifest = {
       },
       {
         "action": "open_in_browser",
-        "label": "Source",
+        "label": "Browser",
         "display": "O",
         "tokens": [
           "O"
@@ -195,7 +195,7 @@ export const tuiDesktopManifest = {
       },
       {
         "action": "toggle_reader_mode",
-        "label": "Reader",
+        "label": "Reading View",
         "display": "R",
         "tokens": [
           "R"
@@ -526,8 +526,16 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "toggle_fullscreen",
+        "label": "Full View",
+        "display": "F",
+        "tokens": [
+          "F"
+        ]
+      },
+      {
         "action": "toggle_html_view",
-        "label": "HTML View",
+        "label": "Original HTML",
         "display": "H",
         "tokens": [
           "H"
@@ -551,7 +559,7 @@ export const tuiDesktopManifest = {
       },
       {
         "action": "toggle_remote_content",
-        "label": "Remote Media",
+        "label": "Remote Images",
         "display": "M",
         "tokens": [
           "M"
@@ -559,7 +567,7 @@ export const tuiDesktopManifest = {
       },
       {
         "action": "open_in_browser",
-        "label": "Source",
+        "label": "Browser",
         "display": "O",
         "tokens": [
           "O"
@@ -567,7 +575,7 @@ export const tuiDesktopManifest = {
       },
       {
         "action": "toggle_reader_mode",
-        "label": "Reader",
+        "label": "Reading View",
         "display": "R",
         "tokens": [
           "R"
@@ -754,8 +762,16 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "toggle_fullscreen",
+        "label": "Full View",
+        "display": "F",
+        "tokens": [
+          "F"
+        ]
+      },
+      {
         "action": "toggle_html_view",
-        "label": "HTML View",
+        "label": "Original HTML",
         "display": "H",
         "tokens": [
           "H"
@@ -779,7 +795,7 @@ export const tuiDesktopManifest = {
       },
       {
         "action": "toggle_remote_content",
-        "label": "Remote Media",
+        "label": "Remote Images",
         "display": "M",
         "tokens": [
           "M"
@@ -787,7 +803,7 @@ export const tuiDesktopManifest = {
       },
       {
         "action": "open_in_browser",
-        "label": "Source",
+        "label": "Browser",
         "display": "O",
         "tokens": [
           "O"
@@ -795,7 +811,7 @@ export const tuiDesktopManifest = {
       },
       {
         "action": "toggle_reader_mode",
-        "label": "Reader",
+        "label": "Reading View",
         "display": "R",
         "tokens": [
           "R"
@@ -1005,25 +1021,25 @@ export const tuiDesktopManifest = {
       "category": "Mail"
     },
     {
-      "label": "Open Message Source",
+      "label": "Open In Browser",
       "shortcut": "O",
       "action": "open_in_browser",
       "category": "Mail"
     },
     {
-      "label": "Toggle Reader Mode",
+      "label": "Toggle Reading View",
       "shortcut": "R",
       "action": "toggle_reader_mode",
       "category": "View"
     },
     {
-      "label": "Toggle HTML View",
+      "label": "Toggle Original HTML",
       "shortcut": "H",
       "action": "toggle_html_view",
       "category": "View"
     },
     {
-      "label": "Toggle Remote Content",
+      "label": "Toggle Remote Images",
       "shortcut": "M",
       "action": "toggle_remote_content",
       "category": "View"
@@ -1233,7 +1249,7 @@ export const tuiDesktopManifest = {
       "category": "View"
     },
     {
-      "label": "Toggle Fullscreen",
+      "label": "Toggle Full View",
       "shortcut": "F",
       "action": "toggle_fullscreen",
       "category": "View"

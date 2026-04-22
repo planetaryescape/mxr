@@ -31,6 +31,7 @@ type UiChromeState = {
   commandPaletteOpen: boolean;
   commandQuery: string;
   helpOpen: boolean;
+  onboardingOpen: boolean;
   actionNotice: string | null;
   pendingMutation: PendingMutationState | null;
   showInboxZero: boolean;
@@ -38,6 +39,7 @@ type UiChromeState = {
   mailListMode: "threads" | "messages";
   signatureExpanded: boolean;
   remoteContentEnabled: boolean;
+  selectedSidebarItemId: string | null;
   selectedMessageIds: Set<string>;
   visualMode: boolean;
   visualAnchorMessageId: string | null;
@@ -106,6 +108,7 @@ const INITIAL_UI_CHROME: UiChromeState = {
   commandPaletteOpen: false,
   commandQuery: "",
   helpOpen: false,
+  onboardingOpen: false,
   actionNotice: null,
   pendingMutation: null,
   showInboxZero: false,
@@ -113,6 +116,7 @@ const INITIAL_UI_CHROME: UiChromeState = {
   mailListMode: "threads",
   signatureExpanded: false,
   remoteContentEnabled: false,
+  selectedSidebarItemId: null,
   selectedMessageIds: new Set(),
   visualMode: false,
   visualAnchorMessageId: null,
@@ -203,6 +207,7 @@ export function useDesktopAppState() {
 
   const modalOpen =
     composeState.composeOpen ||
+    uiChrome.onboardingOpen ||
     dialogState.labelDialogOpen ||
     dialogState.moveDialogOpen ||
     dialogState.snoozeDialogOpen ||
@@ -230,6 +235,7 @@ export function useDesktopAppState() {
         reportOpen: false,
       },
     });
+    updateField(dispatchUiChrome, "onboardingOpen", false);
     updateField(dispatchRulesState, "ruleFormOpen", false);
     updateField(dispatchAccountsState, "accountFormOpen", false);
   }, []);
@@ -263,6 +269,9 @@ export function useDesktopAppState() {
     helpOpen: uiChrome.helpOpen,
     setHelpOpen: (updater: SetStateAction<boolean>) =>
       updateField(dispatchUiChrome, "helpOpen", updater),
+    onboardingOpen: uiChrome.onboardingOpen,
+    setOnboardingOpen: (updater: SetStateAction<boolean>) =>
+      updateField(dispatchUiChrome, "onboardingOpen", updater),
     actionNotice: uiChrome.actionNotice,
     setActionNotice: (updater: SetStateAction<string | null>) =>
       updateField(dispatchUiChrome, "actionNotice", updater),
@@ -284,6 +293,9 @@ export function useDesktopAppState() {
     remoteContentEnabled: uiChrome.remoteContentEnabled,
     setRemoteContentEnabled: (updater: SetStateAction<boolean>) =>
       updateField(dispatchUiChrome, "remoteContentEnabled", updater),
+    selectedSidebarItemId: uiChrome.selectedSidebarItemId,
+    setSelectedSidebarItemId: (updater: SetStateAction<string | null>) =>
+      updateField(dispatchUiChrome, "selectedSidebarItemId", updater),
     selectedMessageIds: uiChrome.selectedMessageIds,
     setSelectedMessageIds: (updater: SetStateAction<Set<string>>) =>
       updateField(dispatchUiChrome, "selectedMessageIds", updater),

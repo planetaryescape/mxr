@@ -3,7 +3,7 @@ import type { SetStateAction } from "react";
 import type {
   AccountsResponse,
   BridgeState,
-  DiagnosticsResponse,
+  DiagnosticsWorkspaceState,
   FocusContext,
   LayoutMode,
   MailboxPayload,
@@ -33,7 +33,7 @@ type WorkbenchCoreState = {
   thread: ThreadResponse | null;
   rulesState: RulesResponse;
   accountsState: AccountsResponse;
-  diagnosticsState: DiagnosticsResponse | null;
+  diagnosticsState: DiagnosticsWorkspaceState | null;
 };
 
 export function useWorkbenchCoreState(props: {
@@ -107,7 +107,7 @@ export function useWorkbenchCoreState(props: {
     setAccountsState: (updater: SetStateAction<AccountsResponse>) =>
       updateField(dispatch, "accountsState", updater),
     diagnosticsState: state.diagnosticsState,
-    setDiagnosticsState: (updater: SetStateAction<DiagnosticsResponse | null>) =>
+    setDiagnosticsState: (updater: SetStateAction<DiagnosticsWorkspaceState | null>) =>
       updateField(dispatch, "diagnosticsState", updater),
   };
 }

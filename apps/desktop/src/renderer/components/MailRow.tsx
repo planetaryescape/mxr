@@ -1,6 +1,7 @@
 import { Paperclip, Star } from "lucide-react";
 import { cn } from "../lib/cn";
 import type { MailboxRow } from "../../shared/types";
+import { mailboxRowSelectionId } from "../lib/mailboxSelection";
 
 export function MailRow(props: {
   row: MailboxRow;
@@ -15,6 +16,7 @@ export function MailRow(props: {
   return (
     <button
       data-testid="mail-row"
+      data-row-id={mailboxRowSelectionId(props.row)}
       data-thread-id={props.row.thread_id}
       className={cn(
         "group flex w-full items-start gap-2.5 border-l-2 px-2.5 py-2 text-left transition-colors",

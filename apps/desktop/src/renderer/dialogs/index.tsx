@@ -1,4 +1,5 @@
 import { Dialog } from "@base-ui/react";
+import { useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type {
   AccountOperationResponse,
@@ -39,34 +40,174 @@ export function LabelDialog(props: {
   onCustomLabelChange: (value: string) => void;
   onSubmit: () => void;
 }) {
+  const popupRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [activeOptionIndex, setActiveOptionIndex] = useState(0);
+  const initialOptionIndex = clampIndex(
+    props.options.findIndex((label) => props.selected.includes(label)),
+    props.options.length,
+  );
+
+  useEffect(() => {
+    if (!props.open) {
+      return;
+    }
+    setActiveOptionIndex(initialOptionIndex);
+  }, [initialOptionIndex, props.open]);
+
+  useEffect(() => {
+    if (!props.open) {
+      return;
+    }
+    const focusTimer = window.setTimeout(() => {
+      optionRefs.current[activeOptionIndex]?.focus() ?? popupRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [activeOptionIndex, props.open]);
+
+  useEffect(() => {
+    if (!props.open) {
+      return;
+    }
+    const activeOption = optionRefs.current[activeOptionIndex];
+    if (activeOption && typeof activeOption.scrollIntoView === "function") {
+      activeOption.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeOptionIndex, props.open]);
+
+  const activeLabel = props.options[activeOptionIndex] ?? null;
+
   return (
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-40 w-[min(32rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none">
+        <Dialog.Popup
+          ref={popupRef}
+          initialFocus={false}
+          tabIndex={-1}
+          className="fixed left-1/2 top-1/2 z-40 w-[min(32rem,calc(100vw-3rem))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-outline bg-panel px-6 py-6 outline-none"
+          onKeyDown={(event) => {
+            const target = event.target;
+            const isTextInput = target instanceof HTMLInputElement;
+
+            if (isTextInput) {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                props.onSubmit();
+              }
+              return;
+            }
+
+            if (event.key === "j" || event.key === "ArrowDown") {
+              event.preventDefault();
+              setActiveOptionIndex((current) =>
+                clampIndex(current + 1, props.options.length),
+              );
+              return;
+            }
+
+            if (event.key === "k" || event.key === "ArrowUp") {
+              event.preventDefault();
+              setActiveOptionIndex((current) =>
+                clampIndex(current - 1, props.options.length),
+              );
+              return;
+            }
+
+            if (event.key === " " || event.key === "Spacebar") {
+              if (!activeLabel) {
+                return;
+              }
+              event.preventDefault();
+              props.onToggle(activeLabel);
+              return;
+            }
+
+            if (event.key === "Enter") {
+              event.preventDefault();
+              props.onSubmit();
+            }
+          }}
+        >
           <Dialog.Title className="text-2xl font-semibold tracking-tight text-foreground">
             Apply label
           </Dialog.Title>
           <Dialog.Description className="mt-3 text-sm text-foreground-muted">
-            Add one or more labels to the selected message.
+            Toggle existing labels from the list. Use Tab only when you want the
+            custom-label field.
           </Dialog.Description>
-          <div className="mt-5 grid gap-3">
-            {props.options.map((label) => (
-              <label
+          <div
+            ref={listRef}
+            className="subtle-scrollbar mt-5 max-h-[min(24rem,48vh)] overflow-y-auto border border-outline bg-canvas-elevated"
+            style={{ borderRadius: "var(--radius-sm)" }}
+          >
+            {props.options.map((label, index) => (
+              <button
                 key={label}
-                className="flex items-center gap-3 rounded-md border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground-muted"
+                ref={(element) => {
+                  optionRefs.current[index] = element;
+                }}
+                type="button"
+                role="checkbox"
+                aria-checked={props.selected.includes(label)}
+                tabIndex={index === activeOptionIndex ? 0 : -1}
+                data-active={index === activeOptionIndex ? "true" : "false"}
+                data-selected={props.selected.includes(label) ? "true" : "false"}
+                className={cn(
+                  "group flex h-[var(--row-height)] min-h-[var(--row-height)] w-full items-center gap-2.5 border-l-2 px-2.5 py-2 text-left transition-colors",
+                  index === activeOptionIndex && props.selected.includes(label)
+                    ? "border-l-accent bg-accent/10"
+                    : index === activeOptionIndex
+                      ? "border-l-accent bg-panel-elevated"
+                      : props.selected.includes(label)
+                        ? "border-l-success/60 bg-success/6"
+                        : "border-l-transparent hover:bg-panel-elevated/50",
+                )}
+                onFocus={() => setActiveOptionIndex(index)}
+                onMouseEnter={() => setActiveOptionIndex(index)}
+                onClick={() => props.onToggle(label)}
               >
-                <input
-                  type="checkbox"
-                  checked={props.selected.includes(label)}
-                  onChange={() => props.onToggle(label)}
-                />
-                <span>{label}</span>
-              </label>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "mt-[1px] flex size-5 shrink-0 items-center justify-center rounded-sm border transition-colors",
+                    props.selected.includes(label)
+                      ? "border-accent bg-accent/15 text-accent"
+                      : "border-outline-strong bg-canvas-elevated text-transparent",
+                  )}
+                >
+                  ✓
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={cn(
+                      "truncate text-[length:var(--text-sm)]",
+                      index === activeOptionIndex || props.selected.includes(label)
+                        ? "font-medium text-foreground"
+                        : "text-foreground-muted",
+                    )}
+                  >
+                    {label}
+                  </p>
+                  <p className="mt-0.5 text-[length:var(--text-xs)] text-foreground-subtle">
+                    {props.selected.includes(label) ? "Selected" : "Available"}
+                  </p>
+                </div>
+              </button>
             ))}
           </div>
-          <label className="mt-5 grid gap-2">
+          <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.18em] text-foreground-subtle">
+            j/k move  space toggle  enter apply  tab custom labels  esc close
+          </p>
+          <label
+            className="mt-5 grid gap-2 border border-outline bg-canvas-elevated px-3 py-3"
+            style={{ borderRadius: "var(--radius-sm)" }}
+          >
             <span className="mono-meta">Custom labels</span>
+            <span className="text-xs text-foreground-subtle">
+              Optional. Add new labels or multiple labels separated by commas.
+            </span>
             <input
               className="rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground outline-none placeholder:text-foreground-subtle"
               placeholder="Follow Up, Waiting"
@@ -94,6 +235,13 @@ export function LabelDialog(props: {
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+function clampIndex(index: number, length: number) {
+  if (length <= 0) {
+    return 0;
+  }
+  return Math.min(Math.max(index, 0), length - 1);
 }
 
 export function MoveDialog(props: {

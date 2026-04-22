@@ -48,13 +48,24 @@ export interface DesktopApi {
   retryBridge(): Promise<BridgeState>;
   useBundledMxr(): Promise<BridgeState>;
   setExternalBinaryPath(path: string): Promise<BridgeState>;
-  openDraftInEditor(request: OpenDraftInEditorRequest): Promise<ActionAckResponse>;
+  pickAttachments(): Promise<FilePickerResponse>;
+  openDraftInEditor(
+    request: OpenDraftInEditorRequest,
+  ): Promise<ActionAckResponse>;
+  openBrowserDocument(
+    request: OpenBrowserDocumentRequest,
+  ): Promise<ActionAckResponse>;
   openExternalUrl(url: string): Promise<ActionAckResponse>;
   openLocalPath(path: string): Promise<ActionAckResponse>;
   openConfigFile(): Promise<ActionAckResponse>;
 }
 
-export type WorkbenchScreen = "mailbox" | "search" | "rules" | "accounts" | "diagnostics";
+export type WorkbenchScreen =
+  | "mailbox"
+  | "search"
+  | "rules"
+  | "accounts"
+  | "diagnostics";
 
 export type LayoutMode = "twoPane" | "threePane" | "fullScreen";
 
@@ -75,6 +86,15 @@ export type SearchSort = "relevant" | "recent";
 
 export type SearchMode = "lexical" | "hybrid" | "semantic";
 
+export type DiagnosticsWorkspaceSection =
+  | "overview"
+  | "drafts"
+  | "subscriptions"
+  | "snoozed"
+  | "semantic"
+  | "labels"
+  | "saved-searches";
+
 export interface WorkbenchShellPayload {
   accountLabel: string;
   syncLabel: string;
@@ -91,7 +111,12 @@ export interface SidebarItem {
   lens: SidebarLens;
 }
 
-export type SidebarLensKind = "inbox" | "all_mail" | "label" | "saved_search" | "subscription";
+export type SidebarLensKind =
+  | "inbox"
+  | "all_mail"
+  | "label"
+  | "saved_search"
+  | "subscription";
 
 export interface SidebarLens {
   kind: SidebarLensKind;
@@ -117,6 +142,7 @@ export interface MailboxCounts {
 
 export interface MailboxRow {
   id: string;
+  kind?: "thread" | "message" | "attachment";
   thread_id: string;
   provider_id: string;
   sender: string;
@@ -127,6 +153,10 @@ export interface MailboxRow {
   unread: boolean;
   starred: boolean;
   has_attachments: boolean;
+  message_count?: number;
+  attachment_id?: string;
+  attachment_filename?: string;
+  attachment_size_bytes?: number;
 }
 
 export interface MailboxGroup {
@@ -137,6 +167,7 @@ export interface MailboxGroup {
 
 export interface MailboxPayload {
   lensLabel: string;
+  view?: "threads" | "messages";
   counts: MailboxCounts;
   groups: MailboxGroup[];
 }
@@ -327,6 +358,74 @@ export interface DiagnosticsResponse {
   report: DiagnosticsReport;
 }
 
+export interface SubscriptionSummary {
+  account_id: string;
+  sender_name?: string | null;
+  sender_email: string;
+  message_count: number;
+  latest_message_id: string;
+  latest_thread_id: string;
+  latest_subject: string;
+  latest_snippet: string;
+  latest_date: string;
+  latest_has_attachments: boolean;
+  unread: boolean;
+}
+
+export interface SubscriptionsResponse {
+  subscriptions: SubscriptionSummary[];
+}
+
+export interface SnoozedMessageSummary {
+  message_id: string;
+  thread_id: string;
+  sender: string;
+  subject: string;
+  snippet: string;
+  wake_at: string;
+  unread: boolean;
+  has_attachments: boolean;
+}
+
+export interface SnoozedResponse {
+  snoozed: SnoozedMessageSummary[];
+}
+
+export interface SemanticProfileRecord {
+  id: string;
+  profile: string;
+  dimensions: number;
+  enabled: boolean;
+}
+
+export interface SemanticRuntimeMetrics {
+  queue_depth: number;
+  in_flight: number;
+  last_queue_wait_ms?: number | null;
+  last_extract_ms?: number | null;
+  last_embedding_prep_ms?: number | null;
+  last_ingest_ms?: number | null;
+}
+
+export interface SemanticStatusSnapshot {
+  enabled: boolean;
+  active_profile: string;
+  profiles: SemanticProfileRecord[];
+  runtime: SemanticRuntimeMetrics;
+}
+
+export interface SemanticStatusResponse {
+  status: SemanticStatusSnapshot;
+}
+
+export interface DiagnosticsWorkspaceState {
+  report: DiagnosticsReport;
+  drafts: SavedDraftSummary[];
+  snoozed: SnoozedMessageSummary[];
+  subscriptions: SubscriptionSummary[];
+  semanticStatus: SemanticStatusSnapshot;
+}
+
 export interface EmptyStatePayload {
   title: string;
   detail: string;
@@ -368,6 +467,19 @@ export interface ComposeSessionResponse {
   session: ComposeSession;
 }
 
+export interface SavedDraftSummary {
+  id: string;
+  account_id: string;
+  subject: string;
+  recipients: string;
+  updated_at: string;
+  attachment_count: number;
+}
+
+export interface SavedDraftsResponse {
+  drafts: SavedDraftSummary[];
+}
+
 export interface SnoozePreset {
   id: string;
   label: string;
@@ -405,4 +517,14 @@ export interface OpenDraftInEditorRequest {
   draftPath: string;
   editorCommand: string;
   cursorLine?: number;
+}
+
+export interface OpenBrowserDocumentRequest {
+  title: string;
+  html: string;
+  suggestedFilename?: string;
+}
+
+export interface FilePickerResponse {
+  paths: string[];
 }

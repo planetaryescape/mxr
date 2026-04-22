@@ -5,10 +5,11 @@ import type {
   ThreadResponse,
   UtilityRailPayload,
 } from "../../shared/types";
-import { Filter, X } from "lucide-react";
+import { Filter, RefreshCw, X } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { cn } from "../lib/cn";
 import { MailRow, DateGroupHeader } from "../components/MailRow";
+import { mailboxRowSelectionId } from "../lib/mailboxSelection";
 import { SkeletonMailList } from "../lib/skeleton";
 import { ReaderPane } from "./ReaderPane";
 import type { FlattenedEntry } from "./types";
@@ -17,9 +18,11 @@ export function MailboxWorkspace(props: {
   mailbox: MailboxPayload;
   rows: FlattenedEntry[];
   mailListMode: "threads" | "messages";
+  onMailListModeChange: (mode: "threads" | "messages") => void;
   selectedThreadId: string | null;
   selectedMessageIds: Set<string>;
   pendingMessageIds: Set<string>;
+  loadingLabel: string | null;
   removingIds?: Set<string>;
   filterQuery: string;
   filterOpen: boolean;
@@ -32,6 +35,8 @@ export function MailboxWorkspace(props: {
   thread: ThreadResponse | null;
   readerMode: ReaderMode;
   setReaderMode: (mode: ReaderMode) => void;
+  remoteContentEnabled: boolean;
+  setRemoteContentEnabled: (value: boolean) => void;
   signatureExpanded: boolean;
   onArchive: () => void;
   onCloseReader: () => void;
@@ -46,7 +51,7 @@ export function MailboxWorkspace(props: {
       return;
     }
     const selectedRow = listRef.current?.querySelector<HTMLElement>(
-      `[data-thread-id="${props.selectedThreadId}"]`,
+      `[data-row-id="${props.selectedThreadId}"]`,
     );
     if (selectedRow && typeof selectedRow.scrollIntoView === "function") {
       selectedRow.scrollIntoView({ block: "nearest" });
@@ -86,6 +91,7 @@ export function MailboxWorkspace(props: {
     >
       <section
         ref={listRef}
+        aria-busy={props.loadingLabel ? "true" : "false"}
         className={cn(
           "subtle-scrollbar flex min-h-0 flex-col border-r border-outline bg-panel",
           props.layoutMode === "fullScreen" ? "hidden" : "",
@@ -103,9 +109,44 @@ export function MailboxWorkspace(props: {
               </span>
             ) : null}
           </div>
-          <span className="font-mono text-[length:var(--text-xs)] tabular-nums text-foreground-subtle">
-            {props.mailbox.counts.total}
-          </span>
+          <div className="flex items-center gap-2">
+            {props.loadingLabel ? (
+              <span
+                role="status"
+                aria-live="polite"
+                className="inline-flex items-center gap-1 border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[length:var(--text-xs)] text-accent"
+                style={{ borderRadius: "var(--radius-sm)" }}
+              >
+                <RefreshCw className="size-3 animate-spin" />
+                <span>{`Loading ${props.loadingLabel}...`}</span>
+              </span>
+            ) : null}
+            <div
+              className="flex border border-outline bg-canvas-elevated p-0.5"
+              style={{ borderRadius: "var(--radius-sm)" }}
+            >
+              {(["threads", "messages"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={props.mailListMode === mode}
+                  className={cn(
+                    "px-2 py-0.5 text-[length:var(--text-xs)] uppercase transition-colors",
+                    props.mailListMode === mode
+                      ? "bg-accent/12 text-accent"
+                      : "text-foreground-subtle hover:text-foreground",
+                  )}
+                  style={{ borderRadius: "var(--radius-sm)" }}
+                  onClick={() => props.onMailListModeChange(mode)}
+                >
+                  {mode === "threads" ? "Threads" : "Messages"}
+                </button>
+              ))}
+            </div>
+            <span className="font-mono text-[length:var(--text-xs)] tabular-nums text-foreground-subtle">
+              {props.mailbox.counts.total}
+            </span>
+          </div>
         </div>
 
         {/* Inline filter bar */}
@@ -148,13 +189,17 @@ export function MailboxWorkspace(props: {
                 <MailRow
                   key={entry.id}
                   row={entry.row}
-                  selected={props.selectedThreadId === entry.row.thread_id}
+                  selected={
+                    props.selectedThreadId === mailboxRowSelectionId(entry.row)
+                  }
                   multiSelected={props.selectedMessageIds.has(entry.row.id)}
                   pending={props.pendingMessageIds.has(entry.row.id)}
                   removing={props.removingIds?.has(entry.row.id) ?? false}
-                  onSelect={() => props.onSelect(entry.row.thread_id)}
+                  onSelect={() => props.onSelect(mailboxRowSelectionId(entry.row))}
                   onOpen={props.onOpen}
-                  onContextMenu={(e) => props.onRowContextMenu?.(e, entry.row.thread_id)}
+                  onContextMenu={(e) =>
+                    props.onRowContextMenu?.(e, mailboxRowSelectionId(entry.row))
+                  }
                 />
               ),
             )}
@@ -174,6 +219,8 @@ export function MailboxWorkspace(props: {
           thread={props.thread}
           readerMode={props.readerMode}
           setReaderMode={props.setReaderMode}
+          remoteContentEnabled={props.remoteContentEnabled}
+          setRemoteContentEnabled={props.setRemoteContentEnabled}
           signatureExpanded={props.signatureExpanded}
           onArchive={props.onArchive}
           onCloseReader={props.onCloseReader}
@@ -186,6 +233,8 @@ export function MailboxWorkspace(props: {
           thread={props.thread}
           readerMode={props.readerMode}
           setReaderMode={props.setReaderMode}
+          remoteContentEnabled={props.remoteContentEnabled}
+          setRemoteContentEnabled={props.setRemoteContentEnabled}
           signatureExpanded={props.signatureExpanded}
           onArchive={props.onArchive}
           onCloseReader={props.onCloseReader}

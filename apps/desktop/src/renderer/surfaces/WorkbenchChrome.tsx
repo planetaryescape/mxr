@@ -60,8 +60,11 @@ export function WorkbenchTabs(props: {
 export function NavigationSidebar(props: {
   unreadCount: number;
   sidebar: SidebarPayload;
+  selectedItemId: string | null;
+  focused: boolean;
   accountLabel: string;
   accounts: Array<{ key: string; name: string; is_default: boolean }>;
+  onSelectSidebarItem: (itemId: string) => void;
   onSwitchAccount: (key: string) => void;
   onApplySidebarLens: (item: SidebarItem) => void;
 }) {
@@ -126,11 +129,14 @@ export function NavigationSidebar(props: {
                   type="button"
                   className={cn(
                     "flex w-full items-center justify-between border-l-2 px-2 py-1.5 text-left text-[length:var(--text-sm)] transition-colors",
-                    item.active
+                    props.focused && props.selectedItemId === item.id
                       ? "border-l-accent bg-panel-elevated text-foreground"
-                      : "border-l-transparent text-foreground-muted hover:bg-panel-elevated/40 hover:text-foreground",
+                      : item.active
+                        ? "border-l-accent/40 bg-panel-elevated/60 text-foreground"
+                        : "border-l-transparent text-foreground-muted hover:bg-panel-elevated/40 hover:text-foreground",
                   )}
                   onClick={() => props.onApplySidebarLens(item)}
+                  onMouseEnter={() => props.onSelectSidebarItem(item.id)}
                 >
                   <span className="truncate">{item.label}</span>
                   {item.unread > 0 ? (
@@ -164,6 +170,7 @@ export function WorkbenchHeader(props: {
   statusMessage: string;
   pendingBindingTokens: string[] | null;
   actionNotice: string | null;
+  pendingMailboxLabel: string | null;
   pendingMutationLabel: string | null;
   canResumeDraft: boolean;
   onResumeDraft: () => void;
@@ -193,6 +200,17 @@ export function WorkbenchHeader(props: {
             style={{ borderRadius: "var(--radius-sm)" }}
           >
             {props.actionNotice}
+          </span>
+        ) : null}
+        {props.pendingMailboxLabel ? (
+          <span
+            role="status"
+            aria-live="polite"
+            className="inline-flex items-center gap-1 border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[length:var(--text-xs)] text-accent"
+            style={{ borderRadius: "var(--radius-sm)" }}
+          >
+            <RefreshCw className="size-3 animate-spin" />
+            <span>{`Loading ${props.pendingMailboxLabel}...`}</span>
           </span>
         ) : null}
         {props.pendingMutationLabel ? (

@@ -1,6 +1,9 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { OpenBrowserDocumentRequest } from "../shared/types.js";
 import { BridgeManager } from "./bridge-manager.js";
 import { openDraftInEditor } from "./open-editor.js";
 import { runBinary } from "./run-binary.js";
@@ -60,7 +63,22 @@ app.whenReady().then(async () => {
   ipcMain.handle("mxr:setExternalBinaryPath", (_event, path: string) =>
     bridgeManager.setExternalBinaryPath(path),
   );
+  ipcMain.handle("mxr:pickAttachments", async () => {
+    const result = await dialog.showOpenDialog({
+      title: "Attach files",
+      properties: ["openFile", "multiSelections"],
+    });
+    return { paths: result.canceled ? [] : result.filePaths };
+  });
   ipcMain.handle("mxr:openDraftInEditor", (_event, request) => openDraftInEditor(request));
+  ipcMain.handle("mxr:openBrowserDocument", async (_event, request: OpenBrowserDocumentRequest) => {
+    const path = await writeBrowserDocument(request);
+    const errorMessage = await shell.openPath(path);
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
+    return { ok: true };
+  });
   ipcMain.handle("mxr:openExternalUrl", async (_event, url: string) => {
     await shell.openExternal(url);
     return { ok: true };
@@ -110,4 +128,18 @@ async function readMxrConfigPath(binaryPath: string): Promise<string> {
     throw new Error(stderr || "mxr config path returned no output");
   }
   return configPath;
+}
+
+async function writeBrowserDocument(request: OpenBrowserDocumentRequest): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "mxr-desktop-browser-"));
+  const filename = sanitizeBrowserFilename(request.suggestedFilename ?? request.title);
+  const path = join(dir, filename.endsWith(".html") ? filename : `${filename}.html`);
+  await writeFile(path, request.html, "utf8");
+  return path;
+}
+
+function sanitizeBrowserFilename(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  const normalized = trimmed.replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized || "message";
 }

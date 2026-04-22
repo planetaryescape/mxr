@@ -16,6 +16,8 @@ export function ComposeDialog(props: {
   onDraftChange: Dispatch<SetStateAction<ComposeFrontmatter | null>>;
   onClose: () => void;
   onOpenEditor: () => void;
+  onAttachFiles: () => void;
+  onRemoveAttachment: (path: string) => void;
   onRefresh: () => void;
   onSend: () => void;
   onSave: () => void;
@@ -191,6 +193,42 @@ export function ComposeDialog(props: {
               {/* Subject */}
               <FieldRow label="Subject" value={props.draft.subject} onChange={(v) => props.onDraftChange((c) => c ? { ...c, subject: v } : c)} placeholder="Subject" />
 
+              <div className="flex shrink-0 items-start gap-3 border-b border-outline/50 px-4 py-2">
+                <span className="w-14 shrink-0 pt-1 text-right text-[length:var(--text-xs)] text-foreground-subtle">
+                  Attach
+                </span>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="border border-outline bg-panel-elevated px-2 py-1 text-[length:var(--text-xs)] text-foreground-muted hover:text-foreground"
+                    style={{ borderRadius: "var(--radius-sm)" }}
+                    onClick={props.onAttachFiles}
+                  >
+                    Attach files
+                  </button>
+                  {props.draft.attach.map((path) => {
+                    const label = attachmentLabel(path);
+                    return (
+                      <span
+                        key={path}
+                        className="flex items-center gap-1.5 bg-accent/12 px-2 py-0.5 text-[length:var(--text-xs)] text-accent"
+                        style={{ borderRadius: "var(--radius-sm)" }}
+                      >
+                        <span className="truncate">{label}</span>
+                        <button
+                          type="button"
+                          className="text-accent/70 hover:text-accent"
+                          aria-label={`Remove attachment ${label}`}
+                          onClick={() => props.onRemoveAttachment(path)}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Body editor with vim motions */}
               <div className="min-h-0 flex-1 border-t border-outline">
                 <VimEditor
@@ -245,6 +283,11 @@ function FieldRow(props: { label: string; value: string; placeholder?: string; o
       />
     </label>
   );
+}
+
+function attachmentLabel(path: string) {
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
 }
 
 function VimEditor(props: { value: string; onChange: (value: string) => void; onFocusFields?: () => void }) {

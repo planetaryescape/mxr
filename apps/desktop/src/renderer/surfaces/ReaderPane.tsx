@@ -1,5 +1,5 @@
 import { Archive, ChevronDown, ChevronRight, Paperclip, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AttachmentMeta, MailboxRow, ReaderMode, ThreadBody, ThreadResponse } from "../../shared/types";
 import { cn } from "../lib/cn";
 import { SkeletonReaderBody, SkeletonReaderHeader } from "../lib/skeleton";
@@ -10,6 +10,8 @@ export function ReaderPane(props: {
   thread: ThreadResponse | null;
   readerMode: ReaderMode;
   setReaderMode: (mode: ReaderMode) => void;
+  remoteContentEnabled: boolean;
+  setRemoteContentEnabled: (value: boolean) => void;
   signatureExpanded: boolean;
   onArchive: () => void;
   onCloseReader: () => void;
@@ -34,10 +36,16 @@ export function ReaderPane(props: {
       />
 
       {/* Conversation body */}
-      <div className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto scroll-smooth">
+      <div
+        data-testid="reader-scroll-region"
+        data-reader-scroll-container="true"
+        className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto scroll-smooth"
+      >
         <ConversationView
           thread={props.thread}
           readerMode={props.readerMode}
+          remoteContentEnabled={props.remoteContentEnabled}
+          setRemoteContentEnabled={props.setRemoteContentEnabled}
           signatureExpanded={props.signatureExpanded}
         />
       </div>
@@ -109,6 +117,8 @@ function ThreadHeader(props: {
 function ConversationView(props: {
   thread: ThreadResponse;
   readerMode: ReaderMode;
+  remoteContentEnabled: boolean;
+  setRemoteContentEnabled: (value: boolean) => void;
   signatureExpanded: boolean;
 }) {
   const { messages, bodies } = props.thread;
@@ -141,6 +151,8 @@ function ConversationView(props: {
           message={msg}
           body={bodyMap.get(msg.id) ?? null}
           readerMode={props.readerMode}
+          remoteContentEnabled={props.remoteContentEnabled}
+          setRemoteContentEnabled={props.setRemoteContentEnabled}
           signatureExpanded={props.signatureExpanded}
           defaultExpanded={index === lastIndex}
           isOnly={messages.length === 1}
@@ -154,6 +166,8 @@ function MessageCard(props: {
   message: MailboxRow;
   body: ThreadBody | null;
   readerMode: ReaderMode;
+  remoteContentEnabled: boolean;
+  setRemoteContentEnabled: (value: boolean) => void;
   signatureExpanded: boolean;
   defaultExpanded: boolean;
   isOnly: boolean;
@@ -217,12 +231,14 @@ function MessageCard(props: {
       {/* Message body -- shown when expanded */}
       {expanded ? (
         <div className="px-4 pb-4 pl-[3.75rem]">
-          <MessageBody
-            body={props.body}
-            readerMode={props.readerMode}
-            signatureExpanded={props.signatureExpanded}
-            snippet={props.message.snippet}
-          />
+            <MessageBody
+              body={props.body}
+              readerMode={props.readerMode}
+              remoteContentEnabled={props.remoteContentEnabled}
+              setRemoteContentEnabled={props.setRemoteContentEnabled}
+              signatureExpanded={props.signatureExpanded}
+              snippet={props.message.snippet}
+            />
           {/* Inline attachments */}
           {props.body && props.body.attachments.length > 0 ? (
             <AttachmentList attachments={props.body.attachments} />
@@ -236,11 +252,11 @@ function MessageCard(props: {
 function MessageBody(props: {
   body: ThreadBody | null;
   readerMode: ReaderMode;
+  remoteContentEnabled: boolean;
+  setRemoteContentEnabled: (value: boolean) => void;
   signatureExpanded: boolean;
   snippet: string;
 }) {
-  const [remoteContentAllowed, setRemoteContentAllowed] = useState(false);
-
   if (!props.body) {
     return (
       <p className="text-[length:var(--text-base)] leading-relaxed text-foreground-subtle italic">
@@ -255,30 +271,20 @@ function MessageBody(props: {
 
   // HTML mode
   if (props.readerMode === "html" && htmlBody) {
-    const sanitizedHtml = remoteContentAllowed ? htmlBody : stripRemoteContent(htmlBody);
+    const sanitizedHtml = props.remoteContentEnabled ? htmlBody : stripRemoteContent(htmlBody);
     return (
       <div>
-        {!remoteContentAllowed ? (
+        {!props.remoteContentEnabled ? (
           <button
             className="mb-2 border border-outline bg-canvas-elevated px-2.5 py-1 text-[length:var(--text-xs)] text-foreground-muted transition-colors hover:text-foreground"
             style={{ borderRadius: "var(--radius-sm)" }}
-            onClick={() => setRemoteContentAllowed(true)}
+            onClick={() => props.setRemoteContentEnabled(true)}
           >
-            Load remote content
+            Load remote content (M)
           </button>
         ) : null}
 
-        <iframe
-          className="w-full border border-outline bg-white"
-          style={{
-            minHeight: "24rem",
-            height: "calc(100vh - 16rem)",
-            borderRadius: "var(--radius-sm)",
-          }}
-          srcDoc={sanitizedHtml}
-          title="HTML message"
-          sandbox="allow-same-origin"
-        />
+        <HtmlMessageFrame html={sanitizedHtml} />
       </div>
     );
   }
@@ -323,6 +329,156 @@ function MessageBody(props: {
         );
       })}
     </div>
+  );
+}
+
+const MIN_HTML_FRAME_HEIGHT_PX = 384;
+const HTML_FRAME_SETTLE_DELAYS_MS = [50, 200, 500] as const;
+const READER_HTML_CSS = `
+  :root {
+    color-scheme: light;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    color: #111827;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    line-height: 1.5;
+  }
+
+  body {
+    padding: 0.75rem;
+    overflow-wrap: anywhere;
+  }
+
+  img, video, iframe, table {
+    max-width: 100% !important;
+  }
+
+  img, video {
+    height: auto !important;
+  }
+
+  pre {
+    white-space: pre-wrap;
+  }
+`;
+
+function HtmlMessageFrame(props: { html: string }) {
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const [frameHeight, setFrameHeight] = useState(MIN_HTML_FRAME_HEIGHT_PX);
+  const srcDoc = useMemo(() => wrapHtmlForReader(props.html), [props.html]);
+
+  useEffect(() => {
+    setFrameHeight(MIN_HTML_FRAME_HEIGHT_PX);
+
+    const frame = frameRef.current;
+    if (!frame) {
+      return;
+    }
+
+    let resizeObserver: ResizeObserver | null = null;
+    let animationFrameId: number | null = null;
+    const timeoutIds: number[] = [];
+
+    const syncHeight = () => {
+      const doc = frame.contentDocument;
+      if (!doc) {
+        return;
+      }
+
+      const bodyHeight = Math.max(
+        doc.body?.scrollHeight ?? 0,
+        doc.body?.offsetHeight ?? 0,
+      );
+      const rootHeight = Math.max(
+        doc.documentElement?.scrollHeight ?? 0,
+        doc.documentElement?.offsetHeight ?? 0,
+      );
+      const nextHeight = Math.max(
+        MIN_HTML_FRAME_HEIGHT_PX,
+        bodyHeight,
+        rootHeight,
+      );
+
+      setFrameHeight(nextHeight);
+    };
+
+    const scheduleHeightSync = () => {
+      if (typeof window.requestAnimationFrame === "function") {
+        animationFrameId = window.requestAnimationFrame(() => {
+          animationFrameId = null;
+          syncHeight();
+        });
+        return;
+      }
+      syncHeight();
+    };
+
+    const registerResizeObserver = () => {
+      if (typeof ResizeObserver === "undefined") {
+        return;
+      }
+
+      const doc = frame.contentDocument;
+      if (!doc) {
+        return;
+      }
+
+      resizeObserver = new ResizeObserver(() => {
+        syncHeight();
+      });
+
+      if (doc.documentElement) {
+        resizeObserver.observe(doc.documentElement);
+      }
+      if (doc.body) {
+        resizeObserver.observe(doc.body);
+      }
+    };
+
+    const handleLoad = () => {
+      scheduleHeightSync();
+      for (const delay of HTML_FRAME_SETTLE_DELAYS_MS) {
+        timeoutIds.push(window.setTimeout(syncHeight, delay));
+      }
+      registerResizeObserver();
+    };
+
+    frame.addEventListener("load", handleLoad);
+
+    if (frame.contentDocument?.readyState === "complete") {
+      handleLoad();
+    }
+
+    return () => {
+      frame.removeEventListener("load", handleLoad);
+      resizeObserver?.disconnect();
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+      for (const timeoutId of timeoutIds) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [srcDoc]);
+
+  return (
+    <iframe
+      ref={frameRef}
+      className="block w-full border border-outline bg-white"
+      style={{
+        minHeight: `${MIN_HTML_FRAME_HEIGHT_PX}px`,
+        height: `${frameHeight}px`,
+        borderRadius: "var(--radius-sm)",
+      }}
+      srcDoc={srcDoc}
+      title="HTML message"
+      sandbox="allow-same-origin"
+      scrolling="no"
+    />
   );
 }
 
@@ -389,4 +545,17 @@ function stripRemoteContent(html: string): string {
     .replace(/<img\s[^>]*src=["']https?:\/\/[^"']*["'][^>]*\/?>/gi, "<!-- remote image blocked -->")
     .replace(/url\(["']?https?:\/\/[^)"']*["']?\)/gi, "url()")
     .replace(/<link\s[^>]*href=["']https?:\/\/[^"']*["'][^>]*\/?>/gi, "<!-- remote stylesheet blocked -->");
+}
+
+function wrapHtmlForReader(html: string): string {
+  const styleTag = `<style>${READER_HTML_CSS}</style>`;
+
+  if (/<html[\s>]/i.test(html)) {
+    if (/<head[\s>]/i.test(html)) {
+      return html.replace(/<head([^>]*)>/i, `<head$1>${styleTag}`);
+    }
+    return html.replace(/<html([^>]*)>/i, `<html$1><head>${styleTag}</head>`);
+  }
+
+  return `<!doctype html><html><head>${styleTag}</head><body>${html}</body></html>`;
 }

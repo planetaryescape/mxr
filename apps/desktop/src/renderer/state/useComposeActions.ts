@@ -8,6 +8,7 @@ import type {
   ComposeSessionKind,
   ComposeSessionResponse,
   FocusContext,
+  SavedDraftSummary,
   WorkbenchScreen,
 } from "../../shared/types";
 import { fetchJson } from "./bridgeHttp";
@@ -244,6 +245,41 @@ export function useComposeActions(props: {
     props.setFocusContext("compose");
   });
 
+  const openSavedDraft = useEffectEvent(async (draft: SavedDraftSummary) => {
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready") {
+      return;
+    }
+    if (props.composeSession && !props.composeOpen) {
+      props.setComposeOpen(true);
+      props.setFocusContext("compose");
+      props.showNotice("Finish current draft before starting another");
+      return;
+    }
+    if (props.composeSession && props.composeOpen) {
+      props.showNotice("Finish current draft before starting another");
+      return;
+    }
+
+    const payload = await props.requestCoordinator.enqueueMutation(() =>
+      fetchJson<ComposeSessionResponse>(
+        bridge.baseUrl,
+        bridge.authToken,
+        "/compose/session/restore",
+        {
+          method: "POST",
+          body: JSON.stringify({ draft_id: draft.id }),
+          requestLabel: "compose:restore",
+        },
+      ),
+    );
+
+    hydrateComposeSession(payload.session);
+    props.setComposeOpen(true);
+    props.setFocusContext("compose");
+    props.showNotice(`Resumed ${draft.subject || "saved draft"}`);
+  });
+
   const closeComposeShell = useEffectEvent(() => {
     props.setComposeOpen(false);
     props.setComposeError(null);
@@ -346,6 +382,7 @@ export function useComposeActions(props: {
     persistComposeDraft,
     refreshComposeSession,
     openComposeShell,
+    openSavedDraft,
     closeComposeShell,
     submitComposeAction,
     discardComposeSession,

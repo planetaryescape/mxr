@@ -1,6 +1,14 @@
 import { useEffect } from "react";
-import type { FocusContext, WorkbenchScreen } from "../../shared/types";
-import type { DesktopAction, DesktopBindingContext, PendingBinding } from "../lib/tui-manifest";
+import type {
+  DiagnosticsWorkspaceSection,
+  FocusContext,
+  WorkbenchScreen,
+} from "../../shared/types";
+import type {
+  DesktopAction,
+  DesktopBindingContext,
+  PendingBinding,
+} from "../lib/tui-manifest";
 import { resolveBindingAction } from "../lib/tui-manifest";
 import { isTypingTarget, normalizeKeyToken } from "./desktop-actions";
 
@@ -23,6 +31,10 @@ export function useDesktopKeyboardShortcuts(props: {
   setFocusContext: (context: FocusContext) => void;
   selectedMessageIds: Set<string>;
   visualMode: boolean;
+  diagnosticsScreenShortcuts: Record<
+    string,
+    DiagnosticsWorkspaceSection
+  > | null;
   dispatchAction: (action: DesktopAction | string) => void;
 }) {
   const {
@@ -44,6 +56,7 @@ export function useDesktopKeyboardShortcuts(props: {
     setFocusContext,
     selectedMessageIds,
     visualMode,
+    diagnosticsScreenShortcuts,
     dispatchAction,
   } = props;
 
@@ -73,7 +86,9 @@ export function useDesktopKeyboardShortcuts(props: {
         ) {
           event.preventDefault();
           if (filteredCommandCount > 0) {
-            setSelectedCommandIndex(Math.min(selectedCommandIndex + 1, filteredCommandCount - 1));
+            setSelectedCommandIndex(
+              Math.min(selectedCommandIndex + 1, filteredCommandCount - 1),
+            );
           }
           return;
         }
@@ -186,13 +201,72 @@ export function useDesktopKeyboardShortcuts(props: {
         }
       }
 
+      if (
+        screen === "diagnostics" &&
+        diagnosticsScreenShortcuts &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
+        const diagnosticsSection = diagnosticsScreenShortcuts[event.key];
+        if (diagnosticsSection) {
+          event.preventDefault();
+          setPendingBinding(null);
+          dispatchAction(`open_diagnostics_section:${diagnosticsSection}`);
+          return;
+        }
+      }
+
+      if (
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        event.key === "/"
+      ) {
+        event.preventDefault();
+        setPendingBinding(null);
+        dispatchAction("search_all_mail");
+        return;
+      }
+
+      if (
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        event.key === "o" &&
+        (focusContext === "mailList" || focusContext === "search")
+      ) {
+        event.preventDefault();
+        setPendingBinding(null);
+        dispatchAction("open_focus_reader");
+        return;
+      }
+
+      if (
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        event.key === "l" &&
+        focusContext === "reader"
+      ) {
+        event.preventDefault();
+        setPendingBinding(null);
+        dispatchAction("apply_label");
+        return;
+      }
+
       const token = normalizeKeyToken(event);
       if (!token) {
         return;
       }
 
       const now = Date.now();
-      const next = resolveBindingAction(bindingContext, token, pendingBinding, now);
+      const next = resolveBindingAction(
+        bindingContext,
+        token,
+        pendingBinding,
+        now,
+      );
       if (!next) {
         return;
       }
@@ -225,6 +299,7 @@ export function useDesktopKeyboardShortcuts(props: {
     screen,
     selectedCommandIndex,
     selectedMessageIds,
+    diagnosticsScreenShortcuts,
     setFocusContext,
     setSelectedCommandIndex,
     setPendingBinding,

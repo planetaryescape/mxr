@@ -2,15 +2,20 @@ import type {
   AccountOperationResponse,
   AccountsResponse,
   BridgeReadyState,
-  DiagnosticsResponse,
+  DiagnosticsWorkspaceSection,
+  DiagnosticsWorkspaceState,
   LayoutMode,
   MailboxPayload,
   ReaderMode,
   RulesResponse,
+  SavedDraftSummary,
   SearchMode,
   SearchResponse,
   SearchScope,
   SearchSort,
+  SidebarItem,
+  SnoozedMessageSummary,
+  SubscriptionSummary,
   ThreadResponse,
   UtilityRailPayload,
   WorkbenchScreen,
@@ -27,6 +32,8 @@ export function WorkbenchContent(props: {
   mailbox: MailboxPayload;
   mailboxRows: FlattenedEntry[];
   mailListMode: "threads" | "messages";
+  mailboxLoadingLabel: string | null;
+  onMailListModeChange: (mode: "threads" | "messages") => void;
   selectedMailboxThreadId: string | null;
   selectedMessageIds: Set<string>;
   pendingMessageIds: Set<string>;
@@ -35,7 +42,11 @@ export function WorkbenchContent(props: {
   layoutMode: LayoutMode;
   thread: ThreadResponse | null;
   readerMode: ReaderMode;
-  setReaderMode: (mode: ReaderMode | ((current: ReaderMode) => ReaderMode)) => void;
+  setReaderMode: (
+    mode: ReaderMode | ((current: ReaderMode) => ReaderMode),
+  ) => void;
+  remoteContentEnabled: boolean;
+  setRemoteContentEnabled: (value: boolean) => void;
   signatureExpanded: boolean;
   onArchive: () => void;
   onCloseReader: () => void;
@@ -51,7 +62,9 @@ export function WorkbenchContent(props: {
   searchScope: SearchScope;
   onSearchScopeChange: (value: SearchScope) => void;
   searchMode: SearchMode;
-  onSearchModeChange: (value: SearchMode | ((current: SearchMode) => SearchMode)) => void;
+  onSearchModeChange: (
+    value: SearchMode | ((current: SearchMode) => SearchMode),
+  ) => void;
   searchSort: SearchSort;
   onSearchSortChange: (value: SearchSort) => void;
   searchExplain: boolean;
@@ -61,6 +74,11 @@ export function WorkbenchContent(props: {
   selectedSearchThreadId: string | null;
   onSelectSearchThread: (threadId: string | null) => void;
   onLoadMoreSearch?: () => void;
+  onOpenSearchAttachment?: (attachmentId: string, messageId: string) => void;
+  onDownloadSearchAttachment?: (
+    attachmentId: string,
+    messageId: string,
+  ) => void;
   rulesState: RulesResponse;
   selectedRuleId: string | null;
   rulePanelMode: "details" | "history" | "dryRun";
@@ -84,8 +102,20 @@ export function WorkbenchContent(props: {
   onTestAccount: () => void;
   onSetDefaultAccount: () => void;
   bridge: BridgeReadyState;
-  diagnosticsState: DiagnosticsResponse | null;
+  diagnosticsState: DiagnosticsWorkspaceState | null;
+  diagnosticsSection: DiagnosticsWorkspaceSection;
+  onDiagnosticsSectionChange: (section: DiagnosticsWorkspaceSection) => void;
   onGenerateBugReport: () => void;
+  labels: SidebarItem[];
+  savedSearches: SidebarItem[];
+  onResumeSavedDraft: (draft: SavedDraftSummary) => void;
+  onOpenSubscription: (subscription: SubscriptionSummary) => void;
+  onOpenSnoozed: (message: SnoozedMessageSummary) => void;
+  onSemanticReindex: () => void;
+  onCreateLabel: (name: string) => void;
+  onRenameLabel: (oldName: string, newName: string) => void;
+  onDeleteLabel: (name: string) => void;
+  onDeleteSavedSearch: (name: string) => void;
 }) {
   return (
     <section className="min-h-0 flex-1 overflow-hidden">
@@ -94,6 +124,8 @@ export function WorkbenchContent(props: {
           mailbox={props.mailbox}
           rows={props.mailboxRows}
           mailListMode={props.mailListMode}
+          loadingLabel={props.mailboxLoadingLabel}
+          onMailListModeChange={props.onMailListModeChange}
           selectedThreadId={props.selectedMailboxThreadId}
           selectedMessageIds={props.selectedMessageIds}
           pendingMessageIds={props.pendingMessageIds}
@@ -103,6 +135,8 @@ export function WorkbenchContent(props: {
           thread={props.thread}
           readerMode={props.readerMode}
           setReaderMode={props.setReaderMode}
+          remoteContentEnabled={props.remoteContentEnabled}
+          setRemoteContentEnabled={props.setRemoteContentEnabled}
           signatureExpanded={props.signatureExpanded}
           onArchive={props.onArchive}
           onCloseReader={props.onCloseReader}
@@ -135,11 +169,18 @@ export function WorkbenchContent(props: {
           selectedThreadId={props.selectedSearchThreadId}
           onSelect={props.onSelectSearchThread}
           onOpen={props.onOpenThread}
+          layoutMode={props.layoutMode}
           thread={props.thread}
           readerMode={props.readerMode}
           setReaderMode={props.setReaderMode}
+          remoteContentEnabled={props.remoteContentEnabled}
+          setRemoteContentEnabled={props.setRemoteContentEnabled}
           signatureExpanded={props.signatureExpanded}
+          onArchive={props.onArchive}
+          onCloseReader={props.onCloseReader}
           onLoadMore={props.onLoadMoreSearch}
+          onOpenAttachment={props.onOpenSearchAttachment}
+          onDownloadAttachment={props.onDownloadSearchAttachment}
         />
       ) : null}
 
@@ -179,7 +220,19 @@ export function WorkbenchContent(props: {
         <DiagnosticsWorkspace
           bridge={props.bridge}
           diagnostics={props.diagnosticsState}
+          activeSection={props.diagnosticsSection}
+          onSectionChange={props.onDiagnosticsSectionChange}
           onGenerateBugReport={props.onGenerateBugReport}
+          labels={props.labels}
+          savedSearches={props.savedSearches}
+          onResumeDraft={props.onResumeSavedDraft}
+          onOpenSubscription={props.onOpenSubscription}
+          onOpenSnoozed={props.onOpenSnoozed}
+          onSemanticReindex={props.onSemanticReindex}
+          onCreateLabel={props.onCreateLabel}
+          onRenameLabel={props.onRenameLabel}
+          onDeleteLabel={props.onDeleteLabel}
+          onDeleteSavedSearch={props.onDeleteSavedSearch}
         />
       ) : null}
     </section>

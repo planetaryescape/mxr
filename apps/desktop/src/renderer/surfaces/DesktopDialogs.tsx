@@ -39,6 +39,8 @@ export function DesktopDialogs(props: {
   ) => void;
   onCloseCompose: () => void;
   onOpenComposeEditor: () => void;
+  onAttachComposeFiles: () => void;
+  onRemoveComposeAttachment: (path: string) => void;
   onRefreshCompose: () => void;
   onSendCompose: () => void;
   onSaveCompose: () => void;
@@ -129,6 +131,8 @@ export function DesktopDialogs(props: {
         onDraftChange={props.onComposeDraftChange}
         onClose={props.onCloseCompose}
         onOpenEditor={props.onOpenComposeEditor}
+        onAttachFiles={props.onAttachComposeFiles}
+        onRemoveAttachment={props.onRemoveComposeAttachment}
         onRefresh={props.onRefreshCompose}
         onSend={props.onSendCompose}
         onSave={props.onSaveCompose}

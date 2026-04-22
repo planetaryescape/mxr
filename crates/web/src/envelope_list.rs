@@ -47,6 +47,26 @@ pub(crate) async fn list_envelopes_by_message_ids(
     }
 }
 
+pub(crate) async fn list_bodies_by_message_ids(
+    socket_path: &Path,
+    message_ids: &[MessageId],
+) -> Result<Vec<MessageBody>, BridgeError> {
+    if message_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    match ipc_request(
+        socket_path,
+        Request::ListBodies {
+            message_ids: message_ids.to_vec(),
+        },
+    )
+    .await?
+    {
+        ResponseData::Bodies { bodies } => Ok(reorder_bodies(bodies, message_ids)),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 pub(crate) async fn run_saved_search(
     socket_path: &Path,
     name: &str,
@@ -118,12 +138,23 @@ pub(crate) async fn search_result_envelopes(
 }
 
 pub(crate) fn group_envelopes(envelopes: Vec<Envelope>) -> Vec<MessageGroupView> {
+    group_row_views(
+        envelopes
+            .into_iter()
+            .map(|envelope| {
+                let date = envelope.date;
+                (date, message_row_view(&envelope))
+            })
+            .collect(),
+    )
+}
+
+pub(crate) fn group_row_views(rows: Vec<(DateTime<Utc>, MessageRowView)>) -> Vec<MessageGroupView> {
     // Grouping is a web presentation choice, not daemon protocol.
     let mut groups = Vec::<MessageGroupView>::new();
 
-    for envelope in envelopes {
-        let (group_id, label) = date_bucket(envelope.date);
-        let row = message_row_view(&envelope);
+    for (date, row) in rows {
+        let (group_id, label) = date_bucket(date);
         if let Some(existing) = groups.iter_mut().find(|group| group.id == group_id) {
             existing.rows.push(row);
         } else {
@@ -136,6 +167,74 @@ pub(crate) fn group_envelopes(envelopes: Vec<Envelope>) -> Vec<MessageGroupView>
     }
 
     groups
+}
+
+pub(crate) fn mailbox_message_rows(
+    envelopes: Vec<Envelope>,
+) -> Vec<(DateTime<Utc>, MessageRowView)> {
+    envelopes
+        .into_iter()
+        .map(|envelope| {
+            let date = envelope.date;
+            let mut row = message_row_view(&envelope);
+            row.kind = "message";
+            (date, row)
+        })
+        .collect()
+}
+
+pub(crate) fn mailbox_thread_rows(
+    envelopes: Vec<Envelope>,
+) -> Vec<(DateTime<Utc>, MessageRowView)> {
+    let mut message_counts = HashMap::new();
+    for envelope in &envelopes {
+        *message_counts
+            .entry(envelope.thread_id.clone())
+            .or_insert(0_u32) += 1;
+    }
+
+    let mut seen = HashSet::new();
+    envelopes
+        .into_iter()
+        .filter_map(|envelope| {
+            if !seen.insert(envelope.thread_id.clone()) {
+                return None;
+            }
+            let date = envelope.date;
+            let mut row = message_row_view(&envelope);
+            row.kind = "thread";
+            row.message_count = message_counts.get(&envelope.thread_id).copied();
+            Some((date, row))
+        })
+        .collect()
+}
+
+pub(crate) fn attachment_search_rows(
+    envelopes: &[Envelope],
+    bodies: &[MessageBody],
+) -> Vec<(DateTime<Utc>, MessageRowView)> {
+    let envelopes_by_id = envelopes
+        .iter()
+        .map(|envelope| (envelope.id.clone(), envelope))
+        .collect::<HashMap<_, _>>();
+
+    let mut rows = Vec::new();
+    for body in bodies {
+        let Some(envelope) = envelopes_by_id.get(&body.message_id) else {
+            continue;
+        };
+        for attachment in &body.attachments {
+            let mut row = message_row_view(envelope);
+            row.kind = "attachment";
+            row.has_attachments = true;
+            row.attachment_id = Some(attachment.id.to_string());
+            row.attachment_filename = Some(attachment.filename.clone());
+            row.attachment_size_bytes = Some(attachment.size_bytes);
+            row.snippet = format!("{} · {} bytes", attachment.mime_type, attachment.size_bytes);
+            rows.push((envelope.date, row));
+        }
+    }
+    rows
 }
 
 pub(crate) fn date_bucket(date: DateTime<Utc>) -> (&'static str, &'static str) {
@@ -155,6 +254,7 @@ pub(crate) fn date_bucket(date: DateTime<Utc>) -> (&'static str, &'static str) {
 pub(crate) fn message_row_view(envelope: &Envelope) -> MessageRowView {
     MessageRowView {
         id: envelope.id.to_string(),
+        kind: "message",
         thread_id: envelope.thread_id.to_string(),
         provider_id: envelope.provider_id.clone(),
         sender: envelope
@@ -169,6 +269,10 @@ pub(crate) fn message_row_view(envelope: &Envelope) -> MessageRowView {
         unread: !envelope.flags.contains(MessageFlags::READ),
         starred: envelope.flags.contains(MessageFlags::STARRED),
         has_attachments: envelope.has_attachments,
+        message_count: None,
+        attachment_id: None,
+        attachment_filename: None,
+        attachment_size_bytes: None,
     }
 }
 
@@ -195,6 +299,15 @@ pub(crate) fn reorder_envelopes(envelopes: Vec<Envelope>, order: &[MessageId]) -
     let mut by_id = HashMap::new();
     for envelope in envelopes {
         by_id.insert(envelope.id.clone(), envelope);
+    }
+
+    order.iter().filter_map(|id| by_id.remove(id)).collect()
+}
+
+pub(crate) fn reorder_bodies(bodies: Vec<MessageBody>, order: &[MessageId]) -> Vec<MessageBody> {
+    let mut by_id = HashMap::new();
+    for body in bodies {
+        by_id.insert(body.message_id.clone(), body);
     }
 
     order.iter().filter_map(|id| by_id.remove(id)).collect()

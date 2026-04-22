@@ -1,18 +1,23 @@
-import { startTransition, useEffectEvent } from "react";
+import { startTransition, useEffectEvent, useRef } from "react";
 import type { RefObject, SetStateAction } from "react";
 import type {
   AccountsResponse,
   BridgeState,
   DiagnosticsResponse,
+  DiagnosticsWorkspaceState,
   FocusContext,
   LayoutMode,
   MailboxResponse,
   ReaderMode,
   RulesResponse,
+  SavedDraftsResponse,
+  SemanticStatusResponse,
   SearchMode,
   SearchResponse,
   SearchScope,
   SearchSort,
+  SnoozedResponse,
+  SubscriptionsResponse,
   SidebarItem,
   SidebarLens,
   SidebarPayload,
@@ -20,6 +25,10 @@ import type {
   WorkbenchScreen,
   WorkbenchShellPayload,
 } from "../../shared/types";
+import {
+  firstMailboxRowSelectionId,
+  mailboxRowSelectionId,
+} from "../lib/mailboxSelection";
 import { fetchJson } from "./bridgeHttp";
 import type { DesktopRequestCoordinator } from "./requestCoordinator";
 
@@ -35,8 +44,12 @@ export function useWorkbenchShellActions(props: {
   searchExplain: boolean;
   sidebar: SidebarPayload;
   selectedRow: { thread_id: string } | null;
+  selectedMailboxThreadId: string | null;
+  selectedSearchThreadId: string | null;
   screen: WorkbenchScreen;
   layoutMode: LayoutMode;
+  mailListMode: "threads" | "messages";
+  mailboxLabel: string;
   setBridge: StateSetter<BridgeState>;
   setShell: StateSetter<WorkbenchShellPayload>;
   setSidebar: StateSetter<SidebarPayload>;
@@ -54,51 +67,73 @@ export function useWorkbenchShellActions(props: {
   setSelectedRuleId: StateSetter<string | null>;
   setAccountsState: StateSetter<AccountsResponse>;
   setSelectedAccountId: StateSetter<string | null>;
-  setDiagnosticsState: StateSetter<DiagnosticsResponse | null>;
+  setDiagnosticsState: StateSetter<DiagnosticsWorkspaceState | null>;
   setFocusContext: StateSetter<FocusContext>;
   setCommandPaletteOpen: StateSetter<boolean>;
   setCommandQuery: StateSetter<string>;
+  setMailboxLoadingLabel: StateSetter<string | null>;
   setReaderMode: StateSetter<ReaderMode>;
   setSignatureExpanded: StateSetter<boolean>;
   searchInputRef: RefObject<HTMLInputElement | null>;
 }) {
+  const mailboxLoadRequestIdRef = useRef(0);
+
   const loadMailbox = useEffectEvent(
-    async (lens?: SidebarLens, options?: { preserveReader?: boolean }) => {
+    async (
+      lens?: SidebarLens,
+      options?: { preserveReader?: boolean; pendingLabel?: string },
+    ) => {
       const bridge = props.bridge;
       if (bridge.kind !== "ready") {
         return;
       }
 
-      const path = mailboxPath(lens);
-      const result = await props.requestCoordinator.runReplaceable(
-        `mailbox:${path}`,
-        ({ signal }) =>
-          fetchJson<MailboxResponse>(bridge.baseUrl, bridge.authToken, path, {
-            signal,
-            requestLabel: "mailbox",
-          }),
+      const requestId = mailboxLoadRequestIdRef.current + 1;
+      mailboxLoadRequestIdRef.current = requestId;
+      props.setMailboxLoadingLabel(
+        options?.pendingLabel ?? activeMailboxLabel(props.sidebar, props.mailboxLabel),
       );
-      if (result.status !== "committed") {
-        return;
-      }
-      const payload = result.value;
-      startTransition(() => {
-        props.setShell(payload.shell);
-        props.setSidebar(payload.sidebar);
-        props.setMailbox(payload.mailbox);
-        if (!options?.preserveReader) {
-          props.setScreen("mailbox");
-          props.setLayoutMode("twoPane");
-          props.setThread(null);
+
+      const path = mailboxPath(lens, props.mailListMode);
+      try {
+        const result = await props.requestCoordinator.runReplaceable(
+          `mailbox:${path}`,
+          ({ signal }) =>
+            fetchJson<MailboxResponse>(bridge.baseUrl, bridge.authToken, path, {
+              signal,
+              requestLabel: "mailbox",
+            }),
+        );
+        if (result.status !== "committed") {
+          return;
         }
-        props.setSelectedMailboxThreadId(
-          payload.mailbox.groups.flatMap((group) => group.rows)[0]?.thread_id ?? null,
-        );
-        props.setShowInboxZero(
-          payload.mailbox.groups.length === 0 && payload.mailbox.lensLabel === "Inbox",
-        );
-        props.setWorkbenchReady(true);
-      });
+        const payload = result.value;
+        startTransition(() => {
+          props.setShell(payload.shell);
+          props.setSidebar(payload.sidebar);
+          props.setMailbox(payload.mailbox);
+          if (!options?.preserveReader) {
+            props.setScreen("mailbox");
+            props.setLayoutMode("twoPane");
+            props.setThread(null);
+          }
+          props.setSelectedMailboxThreadId(
+            findPreservedSelectionId(
+              payload.mailbox.groups,
+              props.selectedMailboxThreadId,
+            ),
+          );
+          props.setShowInboxZero(
+            payload.mailbox.groups.length === 0 &&
+              payload.mailbox.lensLabel === "Inbox",
+          );
+          props.setWorkbenchReady(true);
+        });
+      } finally {
+        if (mailboxLoadRequestIdRef.current === requestId) {
+          props.setMailboxLoadingLabel(null);
+        }
+      }
     },
   );
 
@@ -134,7 +169,7 @@ export function useWorkbenchShellActions(props: {
     startTransition(() => {
       props.setSearchState(payload);
       props.setSelectedSearchThreadId(
-        payload.groups.flatMap((group) => group.rows)[0]?.thread_id ?? null,
+        findPreservedSelectionId(payload.groups, props.selectedSearchThreadId),
       );
     });
   });
@@ -265,29 +300,65 @@ export function useWorkbenchShellActions(props: {
     const result = await props.requestCoordinator.runReplaceable(
       "diagnostics:report",
       ({ signal }) =>
-        fetchJson<DiagnosticsResponse>(bridge.baseUrl, bridge.authToken, "/diagnostics", {
-          signal,
-          requestLabel: "diagnostics",
-        }),
+        Promise.all([
+          fetchJson<DiagnosticsResponse>(bridge.baseUrl, bridge.authToken, "/diagnostics", {
+            signal,
+            requestLabel: "diagnostics",
+          }),
+          fetchJson<SavedDraftsResponse>(bridge.baseUrl, bridge.authToken, "/drafts", {
+            signal,
+            requestLabel: "drafts",
+          }),
+          fetchJson<SnoozedResponse>(bridge.baseUrl, bridge.authToken, "/snoozed", {
+            signal,
+            requestLabel: "snoozed",
+          }),
+          fetchJson<SubscriptionsResponse>(bridge.baseUrl, bridge.authToken, "/subscriptions", {
+            signal,
+            requestLabel: "subscriptions",
+          }),
+          fetchJson<SemanticStatusResponse>(
+            bridge.baseUrl,
+            bridge.authToken,
+            "/semantic/status",
+            {
+              signal,
+              requestLabel: "semantic:status",
+            },
+          ),
+        ]),
     );
     if (result.status !== "committed") {
       return;
     }
-    const payload = result.value;
-    startTransition(() => props.setDiagnosticsState(payload));
+    const [diagnostics, drafts, snoozed, subscriptions, semanticStatus] = result.value;
+    startTransition(() =>
+      props.setDiagnosticsState({
+        report: diagnostics.report,
+        drafts: drafts.drafts,
+        snoozed: snoozed.snoozed,
+        subscriptions: subscriptions.subscriptions,
+        semanticStatus: semanticStatus.status,
+      }),
+    );
   });
 
-  const openThread = useEffectEvent(() => {
+  const openSelectedThread = (focusReader: boolean) => {
     if (!props.selectedRow) {
       return;
     }
     props.setLayoutMode("threePane");
-    props.setFocusContext("reader");
-    if (props.screen === "search") {
-      props.setSelectedSearchThreadId(props.selectedRow.thread_id);
-      return;
-    }
-    props.setSelectedMailboxThreadId(props.selectedRow.thread_id);
+    props.setFocusContext(
+      focusReader ? "reader" : props.screen === "search" ? "search" : "mailList",
+    );
+  };
+
+  const openThread = useEffectEvent(() => {
+    openSelectedThread(false);
+  });
+
+  const openThreadAndFocusReader = useEffectEvent(() => {
+    openSelectedThread(true);
   });
 
   const closeReader = useEffectEvent(() => {
@@ -306,7 +377,7 @@ export function useWorkbenchShellActions(props: {
       if (!options?.preserveFocus) {
         props.setFocusContext("mailList");
       }
-      await loadMailbox(item.lens);
+      await loadMailbox(item.lens, { pendingLabel: item.label });
     },
   );
 
@@ -343,12 +414,29 @@ export function useWorkbenchShellActions(props: {
     loadAccounts,
     loadDiagnostics,
     openThread,
+    openThreadAndFocusReader,
     closeReader,
     refreshBridge,
     applySidebarLens,
     applySidebarLensById,
     switchScreen,
   };
+}
+
+function findPreservedSelectionId(
+  groups: MailboxResponse["mailbox"]["groups"] | SearchResponse["groups"],
+  currentSelectionId: string | null,
+) {
+  if (currentSelectionId) {
+    for (const group of groups) {
+      for (const row of group.rows) {
+        if (mailboxRowSelectionId(row) === currentSelectionId) {
+          return currentSelectionId;
+        }
+      }
+    }
+  }
+  return firstMailboxRowSelectionId(groups);
 }
 
 function setActiveSidebarItem(sidebar: SidebarPayload, activeId: string): SidebarPayload {
@@ -373,12 +461,24 @@ function findSidebarItem(sidebar: SidebarPayload, itemId: string): SidebarItem |
   return null;
 }
 
-function mailboxPath(lens?: SidebarLens) {
+function activeMailboxLabel(sidebar: SidebarPayload, fallbackLabel: string) {
+  for (const section of sidebar.sections) {
+    const activeItem = section.items.find((item) => item.active);
+    if (activeItem) {
+      return activeItem.label;
+    }
+  }
+  return fallbackLabel;
+}
+
+function mailboxPath(lens?: SidebarLens, view: "threads" | "messages" = "threads") {
+  const params = new URLSearchParams();
+  params.set("view", view);
+
   if (!lens) {
-    return "/mailbox";
+    return `/mailbox?${params.toString()}`;
   }
 
-  const params = new URLSearchParams();
   params.set("lens_kind", lens.kind);
 
   if (lens.labelId) {

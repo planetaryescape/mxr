@@ -6,6 +6,8 @@ const ACCOUNT_ID = "11111111-1111-7111-8111-111111111111";
 
 type DesktopMockOptions = {
   delayReadMutation?: Promise<void>;
+  delayMailbox?: Promise<void>;
+  delayMailboxLensKind?: string;
 };
 
 type MailboxState = {
@@ -57,11 +59,26 @@ export const desktopMockServer = setupServer(
 
     if (path === "/mailbox") {
       const lens = url.searchParams.get("lens_kind");
+      const view = url.searchParams.get("view") ?? "threads";
+      if (
+        currentOptions.delayMailbox &&
+        (!currentOptions.delayMailboxLensKind ||
+          currentOptions.delayMailboxLensKind === lens)
+      ) {
+        await currentOptions.delayMailbox;
+      }
       const isAllMail = lens === "all_mail";
       const isSubscriptions = lens === "subscription";
+      const rows = (
+        isSubscriptions ? currentState.allMailRows.slice(0, 2)
+        : isAllMail ? currentState.allMailRows
+        : currentState.inboxRows
+      ).map((row) => rowWithFlags(currentState, row));
+      const displayRows = view === "messages" ? rows : dedupeByThread(rows);
       return HttpResponse.json({
         mailbox: {
           lensLabel: isSubscriptions ? "Subscriptions" : isAllMail ? "All Mail" : "Inbox",
+          view,
           counts: isSubscriptions
             ? { unread: 1, total: 2 }
             : isAllMail
@@ -71,11 +88,14 @@ export const desktopMockServer = setupServer(
             {
               id: isSubscriptions ? "subscriptions" : isAllMail ? "earlier" : "today",
               label: isSubscriptions ? "Subscriptions" : isAllMail ? "Earlier" : "Today",
-              rows: (
-                isSubscriptions ? currentState.allMailRows.slice(0, 2)
-                : isAllMail ? currentState.allMailRows
-                : currentState.inboxRows
-              ).map((row) => rowWithFlags(currentState, row)),
+              rows: displayRows.map((row) => ({
+                ...row,
+                kind: view === "messages" ? "message" : "thread",
+                message_count:
+                  view === "messages"
+                    ? undefined
+                    : rows.filter((candidate) => candidate.thread_id === row.thread_id).length,
+              })),
             },
           ],
         },
@@ -123,6 +143,28 @@ export const desktopMockServer = setupServer(
                   active: false,
                   lens: { kind: "label", labelId: "label-follow-up" },
                 },
+                {
+                  id: "waiting",
+                  label: "Waiting",
+                  unread: 1,
+                  total: 12,
+                  active: false,
+                  lens: { kind: "label", labelId: "label-waiting" },
+                },
+              ],
+            },
+            {
+              id: "saved-searches",
+              title: "Saved searches",
+              items: [
+                {
+                  id: "saved-search-deploy",
+                  label: "Deploys",
+                  unread: 0,
+                  total: 0,
+                  active: false,
+                  lens: { kind: "saved_search", savedSearch: "Deploys" },
+                },
               ],
             },
           ],
@@ -150,13 +192,15 @@ export const desktopMockServer = setupServer(
         messages: [
           {
             ...rowWithFlags(currentState, currentState.inboxRows[0]),
+            kind: "message",
           },
         ],
         bodies: [
           {
             message_id: "msg-1",
             text_plain: "Production deploy succeeded in 42 seconds.",
-            text_html: "<p>Production deploy succeeded in <strong>42 seconds</strong>.</p>",
+            text_html:
+              '<p>Production deploy succeeded in <strong>42 seconds</strong>.</p><img src="https://cdn.example.com/deploy.png" alt="deploy chart" />',
             attachments: [
               {
                 id: "attachment-1",
@@ -186,6 +230,7 @@ export const desktopMockServer = setupServer(
         messages: [
           {
             ...rowWithFlags(currentState, currentState.inboxRows[1]),
+            kind: "message",
           },
         ],
         bodies: [
@@ -205,12 +250,40 @@ export const desktopMockServer = setupServer(
     }
 
     if (path === "/search") {
+      const scope = url.searchParams.get("scope") ?? "threads";
       const mode = url.searchParams.get("mode") ?? "lexical";
       const sort = url.searchParams.get("sort") ?? "relevant";
       const explain = url.searchParams.get("explain") === "true";
 
+      if (scope === "attachments") {
+        return HttpResponse.json({
+          scope,
+          sort,
+          mode,
+          total: 1,
+          groups: [
+            {
+              id: "results",
+              label: "Results",
+              rows: [
+                {
+                  ...rowWithFlags(currentState, currentState.inboxRows[0]),
+                  kind: "attachment",
+                  subject: "deploy.log",
+                  snippet: "Deploy complete · Production deploy succeeded in 42 seconds.",
+                  attachment_id: "attachment-1",
+                  attachment_filename: "deploy.log",
+                  attachment_size_bytes: 1024,
+                },
+              ],
+            },
+          ],
+          explain: explain ? { mode, sort, query: url.searchParams.get("q") } : null,
+        });
+      }
+
       return HttpResponse.json({
-        scope: "threads",
+        scope,
         sort,
         mode,
         total: 1,
@@ -218,7 +291,13 @@ export const desktopMockServer = setupServer(
           {
             id: "results",
             label: "Results",
-            rows: [rowWithFlags(currentState, currentState.inboxRows[0])],
+            rows: [
+              {
+                ...rowWithFlags(currentState, currentState.inboxRows[0]),
+                kind: scope === "messages" ? "message" : "thread",
+                message_count: scope === "threads" ? 2 : undefined,
+              },
+            ],
           },
         ],
         explain: explain ? { mode, sort, query: url.searchParams.get("q") } : null,
@@ -259,6 +338,28 @@ export const desktopMockServer = setupServer(
       return HttpResponse.json(composeSessionFor("new"));
     }
 
+    if (path === "/compose/session/restore") {
+      return HttpResponse.json({
+        session: {
+          ...composeSessionFor("new").session,
+          draftPath: "/tmp/restored-draft.md",
+          frontmatter: {
+            to: "teammate@example.com",
+            cc: "",
+            bcc: "",
+            subject: "Recovered draft",
+            from: "me@example.com",
+            attach: ["/tmp/wireframes.png"],
+            references: [],
+            in_reply_to: null,
+          },
+          bodyMarkdown: "Recovered body",
+          previewHtml: "<p>Recovered body</p>",
+          issues: [],
+        },
+      });
+    }
+
     if (
       path === "/compose/session/send" ||
       path === "/compose/session/save" ||
@@ -287,6 +388,72 @@ export const desktopMockServer = setupServer(
           log_size_bytes: 2048,
           recommended_next_steps: ["None"],
           recent_error_logs: [],
+        },
+      });
+    }
+
+    if (path === "/drafts") {
+      return HttpResponse.json({
+        drafts: [
+          {
+            id: "44444444-4444-7444-8444-444444444444",
+            account_id: ACCOUNT_ID,
+            subject: "Recovered draft",
+            recipients: "teammate@example.com",
+            updated_at: "2026-04-22T09:00:00Z",
+            attachment_count: 1,
+          },
+        ],
+      });
+    }
+
+    if (path === "/subscriptions") {
+      return HttpResponse.json({
+        subscriptions: [
+          {
+            account_id: ACCOUNT_ID,
+            sender_name: "Vercel",
+            sender_email: "notifications@vercel.com",
+            message_count: 12,
+            latest_message_id: "msg-1",
+            latest_thread_id: "thread-1",
+            latest_subject: "Deploy complete",
+            latest_snippet: "Production deploy succeeded in 42 seconds.",
+            latest_date: "2026-04-22T09:15:00Z",
+            latest_has_attachments: true,
+            unread: true,
+          },
+        ],
+      });
+    }
+
+    if (path === "/snoozed") {
+      return HttpResponse.json({
+        snoozed: [
+          {
+            message_id: "msg-2",
+            thread_id: "thread-2",
+            sender: "Stripe",
+            subject: "Billing alert",
+            snippet: "A customer payment needs manual review.",
+            wake_at: "2026-04-23T08:00:00Z",
+            unread: true,
+            has_attachments: true,
+          },
+        ],
+      });
+    }
+
+    if (path === "/semantic/status") {
+      return HttpResponse.json({
+        status: {
+          enabled: true,
+          active_profile: "bge-small-en-v1.5",
+          profiles: [],
+          runtime: {
+            queue_depth: 2,
+            in_flight: 1,
+          },
         },
       });
     }
@@ -450,7 +617,12 @@ export const desktopMockServer = setupServer(
       path === "/mutations/trash" ||
       path === "/mutations/spam" ||
       path === "/mutations/labels" ||
-      path === "/mutations/move"
+      path === "/mutations/move" ||
+      path === "/semantic/reindex" ||
+      path === "/saved-searches/delete" ||
+      path === "/labels/create" ||
+      path === "/labels/rename" ||
+      path === "/labels/delete"
     ) {
       return HttpResponse.json({ ok: true });
     }
@@ -491,11 +663,13 @@ function createDesktopMockState(): DesktopMockState {
       unreadByMessageId: {
         "msg-1": true,
         "msg-2": true,
+        "msg-4": false,
         "msg-3": false,
       },
       starredByMessageId: {
         "msg-1": false,
         "msg-2": false,
+        "msg-4": false,
         "msg-3": true,
       },
     },
@@ -520,6 +694,17 @@ function createDesktopMockState(): DesktopMockState {
         subject: "Billing alert",
         snippet: "A customer payment needs manual review.",
         date_label: "9m",
+        has_attachments: true,
+      },
+      {
+        id: "msg-4",
+        thread_id: "thread-1",
+        provider_id: "gmail-msg-4",
+        sender: "Vercel",
+        sender_detail: "notifications@vercel.com",
+        subject: "Deploy follow-up",
+        snippet: "Logs and rollout metrics attached.",
+        date_label: "3m",
         has_attachments: true,
       },
     ],
@@ -549,6 +734,17 @@ function rowWithFlags(state: DesktopMockState, row: MailboxRowFixture) {
     unread: state.mailboxState.unreadByMessageId[row.id],
     starred: state.mailboxState.starredByMessageId[row.id],
   };
+}
+
+function dedupeByThread<T extends { thread_id: string }>(rows: T[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    if (seen.has(row.thread_id)) {
+      return false;
+    }
+    seen.add(row.thread_id);
+    return true;
+  });
 }
 
 function composeSessionFor(kind: string) {

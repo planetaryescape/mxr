@@ -290,12 +290,12 @@ See [18-addendum-oauth.md](18-addendum-oauth.md) for the bundled client ID mecha
 
 ```toml
 [accounts.personal-outlook.sync]
-provider = "outlook-personal"
+provider = "outlook"
 token_ref = "mxr/personal-outlook"
 # client_id = "..."  # only needed if not using bundled client ID
 
 [accounts.personal-outlook.send]
-provider = "outlook-personal"
+provider = "outlook"
 token_ref = "mxr/personal-outlook"
 ```
 

@@ -1838,8 +1838,8 @@ fn config_sync_kind_label(sync: &mxr_config::SyncProviderConfig) -> String {
     match sync {
         mxr_config::SyncProviderConfig::Gmail { .. } => "gmail".into(),
         mxr_config::SyncProviderConfig::Imap { .. } => "imap".into(),
-        mxr_config::SyncProviderConfig::OutlookPersonal { .. }
-        | mxr_config::SyncProviderConfig::OutlookWork { .. } => "outlook".into(),
+        mxr_config::SyncProviderConfig::OutlookPersonal { .. } => "outlook".into(),
+        mxr_config::SyncProviderConfig::OutlookWork { .. } => "outlook-work".into(),
     }
 }
 
@@ -1847,8 +1847,8 @@ fn config_send_kind_label(send: &mxr_config::SendProviderConfig) -> String {
     match send {
         mxr_config::SendProviderConfig::Gmail => "gmail".into(),
         mxr_config::SendProviderConfig::Smtp { .. } => "smtp".into(),
-        mxr_config::SendProviderConfig::OutlookPersonal { .. }
-        | mxr_config::SendProviderConfig::OutlookWork { .. } => "outlook".into(),
+        mxr_config::SendProviderConfig::OutlookPersonal { .. } => "outlook".into(),
+        mxr_config::SendProviderConfig::OutlookWork { .. } => "outlook-work".into(),
     }
 }
 

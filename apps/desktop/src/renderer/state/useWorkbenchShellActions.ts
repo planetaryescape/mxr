@@ -402,7 +402,7 @@ export function useWorkbenchShellActions(props: {
       queueMicrotask(() => props.searchInputRef.current?.focus());
       return;
     }
-    props.setFocusContext(next === "mailbox" ? "mailList" : "sidebar");
+    props.setFocusContext(next === "mailbox" ? "mailList" : "mailList");
   });
 
   return {

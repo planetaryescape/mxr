@@ -12,6 +12,7 @@ export interface BridgeReadyState {
   usingBundled: boolean;
   daemonVersion: string | null;
   protocolVersion: number;
+  initialMailbox: MailboxResponse | null;
 }
 
 export interface BridgeMismatchState {
@@ -48,6 +49,10 @@ export interface DesktopApi {
   retryBridge(): Promise<BridgeState>;
   useBundledMxr(): Promise<BridgeState>;
   setExternalBinaryPath(path: string): Promise<BridgeState>;
+  getDesktopSettings(): Promise<DesktopSettings>;
+  updateDesktopSettings(
+    patch: DesktopSettingsPatch,
+  ): Promise<DesktopSettings>;
   pickAttachments(): Promise<FilePickerResponse>;
   openDraftInEditor(
     request: OpenDraftInEditorRequest,
@@ -86,6 +91,34 @@ export type SearchSort = "relevant" | "recent";
 
 export type SearchMode = "lexical" | "hybrid" | "semantic";
 
+export type DesktopThemeId =
+  | "mxr-dark"
+  | "mxr-light"
+  | "catppuccin-mocha"
+  | "gruvbox-dark"
+  | "nightfox"
+  | "kanagawa-wave"
+  | "one-dark";
+
+export type DesktopKeymapContext =
+  | "mailList"
+  | "threadView"
+  | "messageView"
+  | "rules"
+  | "accounts"
+  | "diagnostics";
+
+export type DesktopKeymapBindings = Partial<
+  Record<DesktopKeymapContext, Record<string, string>>
+>;
+
+export interface DesktopSettings {
+  theme: DesktopThemeId;
+  keymapOverrides: DesktopKeymapBindings;
+}
+
+export type DesktopSettingsPatch = Partial<DesktopSettings>;
+
 export type DiagnosticsWorkspaceSection =
   | "overview"
   | "drafts"
@@ -93,7 +126,8 @@ export type DiagnosticsWorkspaceSection =
   | "snoozed"
   | "semantic"
   | "labels"
-  | "saved-searches";
+  | "saved-searches"
+  | "settings";
 
 export interface WorkbenchShellPayload {
   accountLabel: string;

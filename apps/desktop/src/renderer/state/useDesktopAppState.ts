@@ -10,7 +10,7 @@ import type {
   SearchSort,
   SnoozePreset,
 } from "../../shared/types";
-import type { PendingBinding } from "../lib/tui-manifest";
+import type { PendingBinding } from "../lib/keymap";
 import { objectStateReducer, updateField } from "./objectState";
 
 export type PendingMutationState = {

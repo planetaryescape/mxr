@@ -80,7 +80,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.4.47"
+version = "0.4.48"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.88"
@@ -159,7 +159,7 @@ anyhow = "1"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 parking_lot = "0.12"
 
 # Async traits

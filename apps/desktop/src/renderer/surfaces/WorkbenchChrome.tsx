@@ -176,10 +176,15 @@ export function WorkbenchHeader(props: {
   onResumeDraft: () => void;
   onSync: () => void;
   onCompose: () => void;
+  composeShortcut?: string | null;
   onReply: () => void;
+  replyShortcut?: string | null;
   onForward: () => void;
+  forwardShortcut?: string | null;
   onLabel: () => void;
+  labelShortcut?: string | null;
   onSnooze: () => void;
+  snoozeShortcut?: string | null;
   selectedRowAvailable: boolean;
   accountLabel: string;
   syncLabel: string;
@@ -244,28 +249,32 @@ export function WorkbenchHeader(props: {
           >
             <RefreshCw className="size-3" />
           </button>
-          <HeaderActionButton label="Compose" shortcut="C" onClick={props.onCompose} />
+          <HeaderActionButton
+            label="Compose"
+            shortcut={props.composeShortcut ?? "C"}
+            onClick={props.onCompose}
+          />
           <HeaderActionButton
             label="Reply"
-            shortcut="R"
+            shortcut={props.replyShortcut ?? "R"}
             disabled={!props.selectedRowAvailable}
             onClick={props.onReply}
           />
           <HeaderActionButton
             label="Forward"
-            shortcut="F"
+            shortcut={props.forwardShortcut ?? "F"}
             disabled={!props.selectedRowAvailable}
             onClick={props.onForward}
           />
           <HeaderActionButton
             label="Label"
-            shortcut="L"
+            shortcut={props.labelShortcut ?? "L"}
             disabled={!props.selectedRowAvailable}
             onClick={props.onLabel}
           />
           <HeaderActionButton
             label="Snooze"
-            shortcut="Z"
+            shortcut={props.snoozeShortcut ?? "Z"}
             disabled={!props.selectedRowAvailable}
             onClick={props.onSnooze}
           />

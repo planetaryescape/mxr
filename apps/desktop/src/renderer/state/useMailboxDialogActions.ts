@@ -257,14 +257,19 @@ export function useMailboxDialogActions(props: {
     if (props.bridge.kind !== "ready" || !props.selectedRow) {
       return;
     }
+    const selectedRow = props.selectedRow;
     const thread = await loadThreadForBrowserOpen(props.bridge, props.requestCoordinator, {
-      selectedRow: props.selectedRow,
+      selectedRow,
       thread: props.thread,
     });
     const body =
-      thread?.bodies.find((candidate) => candidate.message_id === props.selectedRow.id) ?? null;
-    const html = body ? buildBrowserDocument(thread.thread.subject, body) : null;
-    if (!thread || !html) {
+      thread?.bodies.find((candidate) => candidate.message_id === selectedRow.id) ?? null;
+    if (!thread || !body) {
+      props.showNotice("No readable body available");
+      return;
+    }
+    const html = buildBrowserDocument(thread.thread.subject, body);
+    if (!html) {
       props.showNotice("No readable body available");
       return;
     }
@@ -393,19 +398,20 @@ async function loadThreadForBrowserOpen(
     thread: ThreadResponse | null;
   },
 ) {
-  if (!props.selectedRow) {
+  const selectedRow = props.selectedRow;
+  if (!selectedRow) {
     return null;
   }
-  if (props.thread?.thread.id === props.selectedRow.thread_id) {
+  if (props.thread?.thread.id === selectedRow.thread_id) {
     return props.thread;
   }
   const result = await requestCoordinator.runReplaceable(
-    `thread:browser-open:${props.selectedRow.thread_id}`,
+    `thread:browser-open:${selectedRow.thread_id}`,
     ({ signal }) =>
       fetchJson<ThreadResponse>(
         bridge.baseUrl,
         bridge.authToken,
-        `/thread/${props.selectedRow.thread_id}`,
+        `/thread/${selectedRow.thread_id}`,
         {
           signal,
           requestLabel: "thread:browser-open",

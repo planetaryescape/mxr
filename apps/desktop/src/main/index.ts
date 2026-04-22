@@ -7,9 +7,11 @@ import type { OpenBrowserDocumentRequest } from "../shared/types.js";
 import { BridgeManager } from "./bridge-manager.js";
 import { openDraftInEditor } from "./open-editor.js";
 import { runBinary } from "./run-binary.js";
+import { DesktopSettingsStore } from "./settings-store.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const bridgeManager = new BridgeManager();
+const settingsStore = new DesktopSettingsStore();
 const CONFIG_PATH_TIMEOUT_MS = 8_000;
 
 async function createWindow(): Promise<void> {
@@ -62,6 +64,10 @@ app.whenReady().then(async () => {
   ipcMain.handle("mxr:useBundledMxr", () => bridgeManager.useBundledBinary());
   ipcMain.handle("mxr:setExternalBinaryPath", (_event, path: string) =>
     bridgeManager.setExternalBinaryPath(path),
+  );
+  ipcMain.handle("mxr:getDesktopSettings", () => settingsStore.get());
+  ipcMain.handle("mxr:updateDesktopSettings", (_event, patch) =>
+    settingsStore.set(patch),
   );
   ipcMain.handle("mxr:pickAttachments", async () => {
     const result = await dialog.showOpenDialog({

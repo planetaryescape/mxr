@@ -40,11 +40,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::net::TcpListener;
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
+
+static NEXT_BRIDGE_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone)]
 pub struct WebServerConfig {
@@ -192,6 +195,71 @@ fn ensure_authorized(
         return Ok(());
     }
     Err(BridgeError::Unauthorized)
+}
+
+fn next_bridge_request_id() -> u64 {
+    NEXT_BRIDGE_REQUEST_ID.fetch_add(1, Ordering::Relaxed)
+}
+
+fn bridge_request_id(headers: &HeaderMap) -> u64 {
+    headers
+        .get("x-mxr-request-id")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or_else(next_bridge_request_id)
+}
+
+fn bridge_error_kind(error: &BridgeError) -> &'static str {
+    match error {
+        BridgeError::Connect(_) => "connect",
+        BridgeError::Ipc(_) => "ipc",
+        BridgeError::Unauthorized => "unauthorized",
+        BridgeError::UnexpectedResponse => "unexpected_response",
+    }
+}
+
+fn bridge_error_is_missing_file(error: &BridgeError) -> bool {
+    matches!(
+        error,
+        BridgeError::Ipc(message) if message.contains("No such file or directory (os error 2)")
+    )
+}
+
+fn account_sync_kind(account: &mxr_protocol::AccountConfigData) -> &'static str {
+    match account.sync {
+        Some(mxr_protocol::AccountSyncConfigData::Gmail { .. }) => "gmail",
+        Some(mxr_protocol::AccountSyncConfigData::Imap { .. }) => "imap",
+        None => "none",
+    }
+}
+
+fn account_send_kind(account: &mxr_protocol::AccountConfigData) -> &'static str {
+    match account.send {
+        Some(mxr_protocol::AccountSendConfigData::Gmail) => "gmail",
+        Some(mxr_protocol::AccountSendConfigData::Smtp { .. }) => "smtp",
+        None => "none",
+    }
+}
+
+fn account_has_inline_imap_password(account: &mxr_protocol::AccountConfigData) -> bool {
+    matches!(
+        account.sync,
+        Some(mxr_protocol::AccountSyncConfigData::Imap {
+            password: Some(ref password),
+            ..
+        }) if !password.is_empty()
+    )
+}
+
+fn account_has_inline_smtp_password(account: &mxr_protocol::AccountConfigData) -> bool {
+    matches!(
+        account.send,
+        Some(mxr_protocol::AccountSendConfigData::Smtp {
+            password: Some(ref password),
+            ..
+        }) if !password.is_empty()
+    )
 }
 
 async fn status(
@@ -717,8 +785,35 @@ async fn update_compose_session(
     Json(request): Json<ComposeSessionUpdateRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let request_id = bridge_request_id(&headers);
     let path = Path::new(&request.draft_path);
-    let content = read_compose_file(path).await?;
+    let draft_file = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("unknown");
+    tracing::debug!(
+        request_id,
+        endpoint = "compose/update",
+        draft_file,
+        draft_exists = path.exists(),
+        "bridge compose update requested"
+    );
+    let content = match read_compose_file(path).await {
+        Ok(content) => content,
+        Err(error) => {
+            tracing::warn!(
+                request_id,
+                endpoint = "compose/update",
+                draft_file,
+                stage = "read",
+                error_kind = bridge_error_kind(&error),
+                missing_file = bridge_error_is_missing_file(&error),
+                draft_exists = path.exists(),
+                "bridge compose update failed"
+            );
+            return Err(error);
+        }
+    };
     let (_existing_frontmatter, file_body) =
         parse_compose_file(&content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
     let body = request.body.unwrap_or(file_body);
@@ -735,8 +830,42 @@ async fn update_compose_session(
     };
     let rendered = render_compose_file(&updated, &body, context.as_deref())
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
-    write_compose_file(path, rendered).await?;
-    let session = load_compose_session(path).await?;
+    if let Err(error) = write_compose_file(path, rendered).await {
+        tracing::warn!(
+            request_id,
+            endpoint = "compose/update",
+            draft_file,
+            stage = "write",
+            error_kind = bridge_error_kind(&error),
+            missing_file = bridge_error_is_missing_file(&error),
+            draft_exists = path.exists(),
+            parent_exists = path.parent().is_some_and(|parent| parent.exists()),
+            "bridge compose update failed"
+        );
+        return Err(error);
+    }
+    let session = match load_compose_session(path).await {
+        Ok(session) => session,
+        Err(error) => {
+            tracing::warn!(
+                request_id,
+                endpoint = "compose/update",
+                draft_file,
+                stage = "reload",
+                error_kind = bridge_error_kind(&error),
+                missing_file = bridge_error_is_missing_file(&error),
+                draft_exists = path.exists(),
+                "bridge compose update failed"
+            );
+            return Err(error);
+        }
+    };
+    tracing::debug!(
+        request_id,
+        endpoint = "compose/update",
+        draft_file,
+        "bridge compose update completed"
+    );
     Ok(Json(json!({ "session": session })))
 }
 
@@ -747,8 +876,48 @@ async fn send_compose_session(
     Json(request): Json<ComposeSessionSendRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let request_id = bridge_request_id(&headers);
+    let draft_file = Path::new(&request.draft_path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("unknown");
+    tracing::info!(
+        request_id,
+        endpoint = "compose/send",
+        account_id = %request.account_id,
+        draft_file,
+        "bridge compose send requested"
+    );
     let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
-    let _ = ack_request(&state.config.socket_path, Request::SendDraft { draft }).await?;
+    match ipc_request_with_id(
+        &state.config.socket_path,
+        request_id,
+        Request::SendDraft { draft },
+    )
+    .await
+    {
+        Ok(ResponseData::Ack) => {
+            tracing::info!(
+                request_id,
+                endpoint = "compose/send",
+                account_id = %request.account_id,
+                draft_file,
+                "bridge compose send completed"
+            );
+        }
+        Ok(_) => return Err(BridgeError::UnexpectedResponse),
+        Err(error) => {
+            tracing::warn!(
+                request_id,
+                endpoint = "compose/send",
+                account_id = %request.account_id,
+                draft_file,
+                error_kind = bridge_error_kind(&error),
+                "bridge compose send failed"
+            );
+            return Err(error);
+        }
+    }
     remove_compose_file(Path::new(&request.draft_path)).await?;
     Ok(Json(json!({ "ok": true })))
 }
@@ -760,12 +929,48 @@ async fn save_compose_session(
     Json(request): Json<ComposeSessionSendRequest>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let request_id = bridge_request_id(&headers);
+    let draft_file = Path::new(&request.draft_path)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("unknown");
+    tracing::info!(
+        request_id,
+        endpoint = "compose/save",
+        account_id = %request.account_id,
+        draft_file,
+        "bridge compose save requested"
+    );
     let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
-    let _ = ack_request(
+    match ipc_request_with_id(
         &state.config.socket_path,
+        request_id,
         Request::SaveDraftToServer { draft },
     )
-    .await?;
+    .await
+    {
+        Ok(ResponseData::Ack) => {
+            tracing::info!(
+                request_id,
+                endpoint = "compose/save",
+                account_id = %request.account_id,
+                draft_file,
+                "bridge compose save completed"
+            );
+        }
+        Ok(_) => return Err(BridgeError::UnexpectedResponse),
+        Err(error) => {
+            tracing::warn!(
+                request_id,
+                endpoint = "compose/save",
+                account_id = %request.account_id,
+                draft_file,
+                error_kind = bridge_error_kind(&error),
+                "bridge compose save failed"
+            );
+            return Err(error);
+        }
+    }
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -1043,14 +1248,52 @@ async fn test_account(
     Json(account): Json<mxr_protocol::AccountConfigData>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    match ipc_request(
+    let request_id = bridge_request_id(&headers);
+    tracing::info!(
+        request_id,
+        endpoint = "accounts/test",
+        account_key = %account.key,
+        sync_kind = account_sync_kind(&account),
+        send_kind = account_send_kind(&account),
+        has_inline_imap_password = account_has_inline_imap_password(&account),
+        has_inline_smtp_password = account_has_inline_smtp_password(&account),
+        "bridge account test requested"
+    );
+
+    match ipc_request_with_id(
         &state.config.socket_path,
-        Request::TestAccountConfig { account },
+        request_id,
+        Request::TestAccountConfig {
+            account: account.clone(),
+        },
     )
-    .await?
+    .await
     {
-        ResponseData::AccountOperation { result } => Ok(Json(json!({ "result": result }))),
-        _ => Err(BridgeError::UnexpectedResponse),
+        Ok(ResponseData::AccountOperation { result }) => {
+            tracing::info!(
+                request_id,
+                endpoint = "accounts/test",
+                account_key = %account.key,
+                ok = result.ok,
+                save_ok = result.save.as_ref().map(|step| step.ok),
+                auth_ok = result.auth.as_ref().map(|step| step.ok),
+                sync_ok = result.sync.as_ref().map(|step| step.ok),
+                send_ok = result.send.as_ref().map(|step| step.ok),
+                "bridge account test completed"
+            );
+            Ok(Json(json!({ "result": result })))
+        }
+        Ok(_) => Err(BridgeError::UnexpectedResponse),
+        Err(error) => {
+            tracing::warn!(
+                request_id,
+                endpoint = "accounts/test",
+                account_key = %account.key,
+                error_kind = bridge_error_kind(&error),
+                "bridge account test failed"
+            );
+            Err(error)
+        }
     }
 }
 
@@ -1061,8 +1304,43 @@ async fn upsert_account(
     Json(account): Json<mxr_protocol::AccountConfigData>,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
-    let result = run_account_save_workflow(&state.config.socket_path, account).await?;
-    Ok(Json(json!({ "result": result })))
+    let request_id = bridge_request_id(&headers);
+    tracing::info!(
+        request_id,
+        endpoint = "accounts/upsert",
+        account_key = %account.key,
+        sync_kind = account_sync_kind(&account),
+        send_kind = account_send_kind(&account),
+        has_inline_imap_password = account_has_inline_imap_password(&account),
+        has_inline_smtp_password = account_has_inline_smtp_password(&account),
+        "bridge account upsert requested"
+    );
+    match run_account_save_workflow(request_id, &state.config.socket_path, account.clone()).await {
+        Ok(result) => {
+            tracing::info!(
+                request_id,
+                endpoint = "accounts/upsert",
+                account_key = %account.key,
+                ok = result.ok,
+                save_ok = result.save.as_ref().map(|step| step.ok),
+                auth_ok = result.auth.as_ref().map(|step| step.ok),
+                sync_ok = result.sync.as_ref().map(|step| step.ok),
+                send_ok = result.send.as_ref().map(|step| step.ok),
+                "bridge account upsert completed"
+            );
+            Ok(Json(json!({ "result": result })))
+        }
+        Err(error) => {
+            tracing::warn!(
+                request_id,
+                endpoint = "accounts/upsert",
+                account_key = %account.key,
+                error_kind = bridge_error_kind(&error),
+                "bridge account upsert failed"
+            );
+            Err(error)
+        }
+    }
 }
 
 async fn set_default_account(
@@ -1263,12 +1541,20 @@ async fn events(
 }
 
 async fn ipc_request(socket_path: &Path, request: Request) -> Result<ResponseData, BridgeError> {
+    ipc_request_with_id(socket_path, next_bridge_request_id(), request).await
+}
+
+async fn ipc_request_with_id(
+    socket_path: &Path,
+    request_id: u64,
+    request: Request,
+) -> Result<ResponseData, BridgeError> {
     let stream = UnixStream::connect(socket_path)
         .await
         .map_err(|error| BridgeError::Connect(error.to_string()))?;
     let mut framed = Framed::new(stream, IpcCodec::new());
     let message = IpcMessage {
-        id: 1,
+        id: request_id,
         payload: IpcPayload::Request(request),
     };
     framed
@@ -1767,16 +2053,18 @@ fn resolved_editor_command() -> String {
 }
 
 async fn request_account_operation(
+    request_id: u64,
     socket_path: &Path,
     request: Request,
 ) -> Result<mxr_protocol::AccountOperationResult, BridgeError> {
-    match ipc_request(socket_path, request).await? {
+    match ipc_request_with_id(socket_path, request_id, request).await? {
         ResponseData::AccountOperation { result } => Ok(result),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }
 
 async fn run_account_save_workflow(
+    request_id: u64,
     socket_path: &Path,
     account: mxr_protocol::AccountConfigData,
 ) -> Result<mxr_protocol::AccountOperationResult, BridgeError> {
@@ -1786,6 +2074,7 @@ async fn run_account_save_workflow(
         .is_some_and(|sync| matches!(sync, mxr_protocol::AccountSyncConfigData::Gmail { .. }))
     {
         request_account_operation(
+            request_id,
             socket_path,
             Request::AuthorizeAccountConfig {
                 account: account.clone(),
@@ -1804,6 +2093,7 @@ async fn run_account_save_workflow(
     merge_account_operation_result(
         &mut result,
         request_account_operation(
+            request_id,
             socket_path,
             Request::UpsertAccountConfig {
                 account: account.clone(),
@@ -1818,7 +2108,12 @@ async fn run_account_save_workflow(
 
     merge_account_operation_result(
         &mut result,
-        request_account_operation(socket_path, Request::TestAccountConfig { account }).await?,
+        request_account_operation(
+            request_id,
+            socket_path,
+            Request::TestAccountConfig { account },
+        )
+        .await?,
     );
 
     Ok(result)

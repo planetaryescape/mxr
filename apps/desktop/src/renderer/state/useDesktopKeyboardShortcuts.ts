@@ -1,18 +1,16 @@
 import { useEffect } from "react";
 import type {
-  DiagnosticsWorkspaceSection,
-  FocusContext,
-  WorkbenchScreen,
-} from "../../shared/types";
-import type {
   DesktopAction,
   DesktopBindingContext,
+  EffectiveDesktopKeymap,
   PendingBinding,
-} from "../lib/tui-manifest";
-import { resolveBindingAction } from "../lib/tui-manifest";
+} from "../lib/keymap";
+import type { FocusContext, WorkbenchScreen } from "../../shared/types";
+import { resolveBindingAction } from "../lib/keymap";
 import { isTypingTarget, normalizeKeyToken } from "./desktop-actions";
 
 export function useDesktopKeyboardShortcuts(props: {
+  keymap: EffectiveDesktopKeymap;
   bindingContext: DesktopBindingContext;
   pendingBinding: PendingBinding | null;
   setPendingBinding: (binding: PendingBinding | null) => void;
@@ -31,13 +29,10 @@ export function useDesktopKeyboardShortcuts(props: {
   setFocusContext: (context: FocusContext) => void;
   selectedMessageIds: Set<string>;
   visualMode: boolean;
-  diagnosticsScreenShortcuts: Record<
-    string,
-    DiagnosticsWorkspaceSection
-  > | null;
   dispatchAction: (action: DesktopAction | string) => void;
 }) {
   const {
+    keymap,
     bindingContext,
     pendingBinding,
     setPendingBinding,
@@ -56,7 +51,6 @@ export function useDesktopKeyboardShortcuts(props: {
     setFocusContext,
     selectedMessageIds,
     visualMode,
-    diagnosticsScreenShortcuts,
     dispatchAction,
   } = props;
 
@@ -202,22 +196,6 @@ export function useDesktopKeyboardShortcuts(props: {
       }
 
       if (
-        screen === "diagnostics" &&
-        diagnosticsScreenShortcuts &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey
-      ) {
-        const diagnosticsSection = diagnosticsScreenShortcuts[event.key];
-        if (diagnosticsSection) {
-          event.preventDefault();
-          setPendingBinding(null);
-          dispatchAction(`open_diagnostics_section:${diagnosticsSection}`);
-          return;
-        }
-      }
-
-      if (
         !event.metaKey &&
         !event.ctrlKey &&
         !event.altKey &&
@@ -261,12 +239,25 @@ export function useDesktopKeyboardShortcuts(props: {
       }
 
       const now = Date.now();
-      const next = resolveBindingAction(
-        bindingContext,
-        token,
-        pendingBinding,
-        now,
-      );
+      const next =
+        resolveBindingAction(
+          keymap,
+          bindingContext,
+          token,
+          pendingBinding,
+          now,
+        ) ??
+        (bindingContext === "rules" ||
+        bindingContext === "accounts" ||
+        bindingContext === "diagnostics"
+          ? resolveBindingAction(
+              keymap,
+              "mailList",
+              token,
+              pendingBinding,
+              now,
+            )
+          : null);
       if (!next) {
         return;
       }
@@ -293,16 +284,17 @@ export function useDesktopKeyboardShortcuts(props: {
     dispatchAction,
     filteredCommandCount,
     focusContext,
+    keymap,
     modalOpen,
     pendingBinding,
     runSelectedCommand,
     screen,
     selectedCommandIndex,
     selectedMessageIds,
-    diagnosticsScreenShortcuts,
     setFocusContext,
     setSelectedCommandIndex,
     setPendingBinding,
+    submitCompose,
     visualMode,
   ]);
 }

@@ -476,7 +476,12 @@ pub fn init_tracing(foreground: bool) -> anyhow::Result<()> {
         .append(true)
         .open(log_dir.join("mxr.log"))?;
 
-    let file_layer = fmt::layer().with_writer(file).with_ansi(false);
+    let file_layer = fmt::layer()
+        .json()
+        .with_current_span(true)
+        .with_span_list(true)
+        .with_writer(file)
+        .with_ansi(false);
 
     if foreground {
         let stdout_layer = fmt::layer().with_writer(std::io::stdout);

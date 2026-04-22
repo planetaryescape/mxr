@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MailboxResponse } from "../shared/types.js";
 import { BridgeManager } from "./bridge-manager.js";
 
 vi.mock("electron", () => ({
@@ -22,6 +23,57 @@ function deferred<T>() {
 
 describe("BridgeManager", () => {
   let userDataDir: string;
+  const initialMailbox: MailboxResponse = {
+    mailbox: {
+      lensLabel: "Inbox",
+      counts: { unread: 1, total: 1 },
+      groups: [
+        {
+          id: "today",
+          label: "Today",
+          rows: [
+            {
+              id: "msg-1",
+              kind: "thread",
+              thread_id: "thread-1",
+              provider_id: "provider-1",
+              sender: "Test Sender",
+              subject: "Initial mailbox payload",
+              snippet: "Seeded during bridge verification",
+              date_label: "Today",
+              unread: true,
+              starred: false,
+              has_attachments: false,
+            },
+          ],
+        },
+      ],
+    },
+    sidebar: {
+      sections: [
+        {
+          id: "system",
+          title: "System",
+          items: [
+            {
+              id: "inbox",
+              label: "Inbox",
+              unread: 1,
+              total: 1,
+              active: true,
+              lens: { kind: "inbox" },
+            },
+          ],
+        },
+      ],
+    },
+    shell: {
+      accountLabel: "personal",
+      syncLabel: "Synced",
+      statusMessage: "Ready",
+      commandHint: "Ctrl-p",
+    },
+  };
 
   beforeEach(async () => {
     userDataDir = await mkdtemp(join(tmpdir(), "mxr-desktop-bridge-"));
@@ -53,7 +105,7 @@ describe("BridgeManager", () => {
     const manager = new BridgeManager({
       inspectBinary,
       launchBridge,
-      verifyBridgeContract: vi.fn(async () => {}),
+      verifyBridgeContract: vi.fn(async () => initialMailbox),
       createAuthToken: () => "token-1",
       getUserDataPath: () => userDataDir,
       getBundledBinaryPath: () => "/tmp/bundled-mxr",
@@ -79,6 +131,7 @@ describe("BridgeManager", () => {
       kind: "ready",
       binaryPath: "/tmp/external-mxr",
       usingBundled: false,
+      initialMailbox,
     });
     expect(retriedState).toEqual(externalState);
     expect(stopFirst).toHaveBeenCalledTimes(1);
@@ -112,7 +165,7 @@ describe("BridgeManager", () => {
     const manager = new BridgeManager({
       inspectBinary,
       launchBridge,
-      verifyBridgeContract: vi.fn(async () => {}),
+      verifyBridgeContract: vi.fn(async () => initialMailbox),
       createAuthToken: () => "token-2",
       getUserDataPath: () => userDataDir,
       getBundledBinaryPath: () => "/tmp/bundled-mxr",

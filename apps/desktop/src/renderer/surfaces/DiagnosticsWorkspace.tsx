@@ -1,6 +1,6 @@
 import { Tabs } from "@base-ui/react";
 import { MailWarning } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
   BridgeState,
   DiagnosticsWorkspaceSection,
@@ -11,6 +11,14 @@ import type {
   SubscriptionSummary,
 } from "../../shared/types";
 import { cn } from "../lib/cn";
+import { useDesktopSettings } from "../lib/theme";
+import {
+  createEffectiveKeymap,
+  formatKeymapBindings,
+  parseKeymapBindings,
+  serializeKeymapBindings,
+} from "../lib/keymap";
+import { desktopThemes } from "../lib/themes";
 import { HeaderActionButton, StatCard } from "./shared";
 
 export function DiagnosticsWorkspace(props: {
@@ -33,6 +41,11 @@ export function DiagnosticsWorkspace(props: {
   const [newLabelName, setNewLabelName] = useState("");
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [keymapText, setKeymapText] = useState("");
+  const [keymapError, setKeymapError] = useState<string | null>(null);
+  const [keymapStatus, setKeymapStatus] = useState<string | null>(null);
+  const { theme, setTheme, settings, updateDesktopSettings } =
+    useDesktopSettings();
 
   const semanticStatus = props.diagnostics?.semanticStatus;
   const workspaceTabClass = cn(
@@ -46,6 +59,31 @@ export function DiagnosticsWorkspace(props: {
     snoozed: props.diagnostics?.snoozed.length ?? 0,
     labels: props.labels.length,
     savedSearches: props.savedSearches.length,
+  };
+  const effectiveKeymap = useMemo(
+    () => createEffectiveKeymap(settings.keymapOverrides),
+    [settings.keymapOverrides],
+  );
+
+  useEffect(() => {
+    setKeymapText(
+      formatKeymapBindings(serializeKeymapBindings(effectiveKeymap)),
+    );
+    setKeymapError(null);
+  }, [effectiveKeymap]);
+
+  const saveKeymap = async () => {
+    try {
+      const parsed = parseKeymapBindings(keymapText);
+      await updateDesktopSettings({ keymapOverrides: parsed });
+      setKeymapError(null);
+      setKeymapStatus("Keymap saved");
+    } catch (error) {
+      setKeymapStatus(null);
+      setKeymapError(
+        error instanceof Error ? error.message : "Invalid keymap JSON",
+      );
+    }
   };
 
   return (
@@ -131,6 +169,13 @@ export function DiagnosticsWorkspace(props: {
             >
               Saved Searches
               <TabCount value={workspaceCounts.savedSearches} />
+            </Tabs.Tab>
+            <Tabs.Tab
+              value="settings"
+              className={workspaceTabClass}
+              style={{ borderRadius: "var(--radius-sm)" }}
+            >
+              Settings
             </Tabs.Tab>
           </Tabs.List>
 
@@ -534,6 +579,86 @@ export function DiagnosticsWorkspace(props: {
                 </p>
               ) : null}
             </Panel>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="settings">
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Panel
+                title="Appearance"
+                subtitle="Desktop presentation stays local to this machine"
+              >
+                <label className="flex flex-col gap-1.5 text-sm text-foreground">
+                  <span className="mono-meta">Theme</span>
+                  <select
+                    aria-label="Theme"
+                    className="border border-outline bg-canvas-elevated px-2 py-1.5 text-sm text-foreground outline-none"
+                    style={{ borderRadius: "var(--radius-sm)" }}
+                    value={theme}
+                    onChange={(event) =>
+                      void setTheme(event.target.value as typeof theme)
+                    }
+                  >
+                    {desktopThemes.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </Panel>
+
+              <Panel
+                title="Keymaps"
+                subtitle="JSONC overrides by context then shortcut"
+              >
+                <label className="flex flex-col gap-1.5 text-sm text-foreground">
+                  <span className="mono-meta">Keymap JSON</span>
+                  <textarea
+                    aria-label="Keymap JSON"
+                    className="min-h-64 border border-outline bg-canvas-elevated px-3 py-2 font-mono text-xs text-foreground outline-none"
+                    style={{ borderRadius: "var(--radius-sm)" }}
+                    value={keymapText}
+                    onChange={(event) => {
+                      setKeymapText(event.target.value);
+                      setKeymapError(null);
+                      setKeymapStatus(null);
+                    }}
+                    spellCheck={false}
+                  />
+                </label>
+                <p className="text-xs leading-5 text-foreground-subtle">
+                  Contexts: <code>mailList</code>, <code>threadView</code>,{" "}
+                  <code>messageView</code>, <code>rules</code>,{" "}
+                  <code>accounts</code>, <code>diagnostics</code>.
+                </p>
+                {keymapError ? (
+                  <p className="text-xs text-danger">{keymapError}</p>
+                ) : null}
+                {keymapStatus ? (
+                  <p className="text-xs text-success">{keymapStatus}</p>
+                ) : null}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="border border-outline px-2 py-1.5 text-xs text-foreground-muted hover:bg-panel hover:text-foreground"
+                    style={{ borderRadius: "var(--radius-sm)" }}
+                    onClick={() => void saveKeymap()}
+                  >
+                    Save keymap
+                  </button>
+                  <button
+                    type="button"
+                    className="border border-outline px-2 py-1.5 text-xs text-foreground-subtle hover:bg-panel hover:text-foreground"
+                    style={{ borderRadius: "var(--radius-sm)" }}
+                    onClick={() =>
+                      void updateDesktopSettings({ keymapOverrides: {} })
+                    }
+                  >
+                    Reset to defaults
+                  </button>
+                </div>
+              </Panel>
+            </div>
           </Tabs.Panel>
         </Tabs.Root>
       </section>

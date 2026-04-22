@@ -5,9 +5,7 @@ use security_framework::base::Error as SecurityError;
 #[cfg(target_os = "macos")]
 use security_framework::os::macos::keychain::SecKeychain;
 #[cfg(target_os = "macos")]
-use security_framework::passwords::{
-    delete_generic_password, generic_password, set_generic_password_options, PasswordOptions,
-};
+use security_framework::passwords::{generic_password, set_generic_password, PasswordOptions};
 #[cfg(target_os = "macos")]
 use security_framework_sys::base::errSecItemNotFound;
 
@@ -75,30 +73,60 @@ fn keychain_password_options(service: &str, account: &str) -> PasswordOptions {
 
 #[cfg(target_os = "macos")]
 fn read_password_without_ui(service: &str, account: &str) -> Result<String, KeychainError> {
-    let _interaction_lock = SecKeychain::disable_user_interaction()
-        .map_err(|error| map_security_error("Failed to disable keychain UI", error))?;
-    let password = generic_password(keychain_password_options(service, account))
-        .map_err(|error| map_security_error("Failed to read password from keychain", error))?;
-    decode_password(password, "Failed to decode keychain password")
+    tracing::debug!(
+        credential_service = service,
+        "reading macOS keychain credential without user interaction"
+    );
+    let _interaction_lock = SecKeychain::disable_user_interaction().map_err(|error| {
+        tracing::warn!(
+            credential_service = service,
+            operation = "disable_user_interaction",
+            security_code = error.code(),
+            "failed to disable macOS keychain UI"
+        );
+        map_security_error("Failed to disable keychain UI", error)
+    })?;
+    let password =
+        generic_password(keychain_password_options(service, account)).map_err(|error| {
+            tracing::warn!(
+                credential_service = service,
+                operation = "read_password",
+                security_code = error.code(),
+                "failed to read macOS keychain credential"
+            );
+            map_security_error("Failed to read password from keychain", error)
+        })?;
+    let decoded = decode_password(password, "Failed to decode keychain password")?;
+    tracing::debug!(
+        credential_service = service,
+        "read macOS keychain credential without user interaction"
+    );
+    Ok(decoded)
 }
 
 #[cfg(target_os = "macos")]
 fn write_password(service: &str, account: &str, password: &str) -> Result<(), KeychainError> {
-    match delete_generic_password(service, account) {
-        Ok(()) => {}
-        Err(error) if error.code() == errSecItemNotFound => {}
-        Err(error) => {
-            return Err(map_security_error(
-                "Failed to replace existing password in keychain",
-                error,
-            ));
-        }
-    }
-    set_generic_password_options(
-        password.as_bytes(),
-        keychain_password_options(service, account),
-    )
-    .map_err(|error| map_security_error("Failed to store password in keychain", error))
+    tracing::info!(
+        credential_service = service,
+        "persisting macOS keychain credential"
+    );
+
+    // Preserve the existing keychain item's access metadata instead of deleting
+    // and recreating it, which can reset ACL/trust behavior on macOS.
+    set_generic_password(service, account, password.as_bytes()).map_err(|error| {
+        tracing::warn!(
+            credential_service = service,
+            operation = "set_password",
+            security_code = error.code(),
+            "failed to store macOS keychain credential"
+        );
+        map_security_error("Failed to store password in keychain", error)
+    })?;
+    tracing::info!(
+        credential_service = service,
+        "persisted macOS keychain credential"
+    );
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -123,12 +151,26 @@ fn get_password_macos_with(
 ) -> Result<String, KeychainError> {
     match (ops.read_without_ui)(service, account) {
         Ok(password) => Ok(password),
-        Err(error) if error.is_not_found() => Err(KeychainError::not_found(format!(
-            "No password was found in the macOS keychain for {service}/{account}"
-        ))),
-        Err(error) => Err(KeychainError::access(format!(
-            "Password for {service}/{account} requires interactive macOS keychain approval. Re-save that account password once with `mxr accounts repair` so mxr can read it non-interactively. Original error: {error}"
-        ))),
+        Err(error) if error.is_not_found() => {
+            tracing::info!(
+                credential_service = service,
+                result = "not_found",
+                "macOS keychain credential missing"
+            );
+            Err(KeychainError::not_found(format!(
+                "No password was found in the macOS keychain for {service}/{account}"
+            )))
+        }
+        Err(error) => {
+            tracing::warn!(
+                credential_service = service,
+                result = "interactive_approval_required",
+                "macOS keychain credential requires interactive approval"
+            );
+            Err(KeychainError::access(format!(
+                "Password for {service}/{account} requires interactive macOS keychain approval. Re-save that account password once with `mxr accounts repair` so mxr can read it non-interactively. Original error: {error}"
+            )))
+        }
     }
 }
 
@@ -167,6 +209,9 @@ pub fn set_password(service: &str, account: &str, password: &str) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    use security_framework::passwords::delete_generic_password;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[cfg(target_os = "macos")]
     #[test]
@@ -206,5 +251,27 @@ mod tests {
             error.to_string(),
             "No password was found in the macOS keychain for mxr/test/user"
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "uses the real macOS keychain"]
+    fn macos_real_keychain_round_trip() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let service = format!("mxr-keychain-roundtrip-{suffix}");
+        let account = format!("roundtrip-{suffix}");
+        let password = format!("pw-{suffix}");
+
+        let _ = delete_generic_password(&service, &account);
+
+        set_password(&service, &account, &password).expect("should persist test password");
+        let read_back =
+            get_password(&service, &account).expect("should read test password without UI");
+        assert_eq!(read_back, password);
+
+        delete_generic_password(&service, &account).expect("should delete test password");
     }
 }

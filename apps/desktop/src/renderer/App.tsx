@@ -1,7 +1,6 @@
 import {
   Database,
   Inbox,
-  RefreshCw,
   ScanSearch,
   Sparkles,
   UserRoundCog,
@@ -52,9 +51,13 @@ import type {
 import {
   bindingsForContext,
   commandPaletteEntries,
+  createEffectiveKeymap,
+  shortcutForAction,
   type DesktopAction,
   type DesktopBindingContext,
-} from "./lib/tui-manifest";
+} from "./lib/keymap";
+import { firstMailboxRowSelectionId } from "./lib/mailboxSelection";
+import { useDesktopSettings } from "./lib/theme";
 import { runDesktopAction } from "./state/desktop-actions";
 import { fetchJson } from "./state/bridgeHttp";
 import { useDesktopAppState } from "./state/useDesktopAppState";
@@ -69,7 +72,6 @@ import { useWorkbenchCoreState } from "./state/useWorkbenchCoreState";
 import {
   useContextMenu,
   ContextMenuOverlay,
-  type ContextMenuItem,
 } from "./lib/context-menu";
 import { DesktopDialogs } from "./surfaces/DesktopDialogs";
 import {
@@ -171,20 +173,8 @@ type OptimisticRowPatch = {
 };
 
 const EMPTY_MESSAGE_ID_SET = new Set<string>();
-const DIAGNOSTICS_SHORTCUT_SECTIONS: Record<
-  string,
-  DiagnosticsWorkspaceSection
-> = {
-  O: "overview",
-  D: "drafts",
-  S: "subscriptions",
-  Z: "snoozed",
-  M: "semantic",
-  L: "labels",
-  A: "saved-searches",
-};
-
 export default function App() {
+  const { settings } = useDesktopSettings();
   const {
     bridge,
     setBridge,
@@ -464,20 +454,30 @@ export default function App() {
     [pendingMutation],
   );
   const searchRefreshKey = `${deferredSearchQuery}\u0000${searchScope}\u0000${searchMode}\u0000${searchSort}\u0000${searchExplain ? "1" : "0"}`;
+  const effectiveKeymap = useMemo(
+    () => createEffectiveKeymap(settings.keymapOverrides),
+    [settings.keymapOverrides],
+  );
   const bindingContext: DesktopBindingContext =
-    focusContext === "reader"
+    screen === "rules"
+      ? "rules"
+      : screen === "accounts"
+        ? "accounts"
+        : screen === "diagnostics"
+          ? "diagnostics"
+          : focusContext === "reader"
       ? "messageView"
       : focusContext === "sidebar"
         ? "mailList"
-      : layoutMode === "twoPane"
-        ? "mailList"
-        : "threadView";
+        : layoutMode === "twoPane"
+          ? "mailList"
+          : "threadView";
   const helpSections = useMemo(
     () => [
       {
         id: "mailList",
         title: "Mail list",
-        entries: bindingsForContext("mailList").map((entry) => ({
+        entries: bindingsForContext(effectiveKeymap, "mailList").map((entry) => ({
           ...entry,
           display: displayShortcut(entry.action, entry.display, isMacPlatform),
         })),
@@ -485,7 +485,7 @@ export default function App() {
       {
         id: "threadView",
         title: "Thread view",
-        entries: bindingsForContext("threadView").map((entry) => ({
+        entries: bindingsForContext(effectiveKeymap, "threadView").map((entry) => ({
           ...entry,
           display: displayShortcut(entry.action, entry.display, isMacPlatform),
         })),
@@ -493,13 +493,13 @@ export default function App() {
       {
         id: "messageView",
         title: "Message view",
-        entries: bindingsForContext("messageView").map((entry) => ({
+        entries: bindingsForContext(effectiveKeymap, "messageView").map((entry) => ({
           ...entry,
           display: displayShortcut(entry.action, entry.display, isMacPlatform),
         })),
       },
     ],
-    [isMacPlatform],
+    [effectiveKeymap, isMacPlatform],
   );
 
   const [mailboxFilterOpen, setMailboxFilterOpen] = useState(false);
@@ -544,7 +544,7 @@ export default function App() {
 
   const commandActions = useMemo(
     () => [
-      ...commandPaletteEntries().map((item) => ({
+      ...commandPaletteEntries(effectiveKeymap).map((item) => ({
         ...item,
         shortcut: displayShortcut(item.action, item.shortcut, isMacPlatform),
       })),
@@ -552,7 +552,14 @@ export default function App() {
         action: "filter_mailbox",
         category: "Navigation",
         label: "Filter mailbox",
-        shortcut: "Ctrl-F",
+        shortcut: displayShortcut(
+          "filter_mailbox",
+          shortcutForAction(effectiveKeymap, "filter_mailbox", [
+            "mailList",
+            "threadView",
+          ]) ?? "Ctrl-F",
+          isMacPlatform,
+        ),
       },
       {
         action: "select_all",
@@ -594,49 +601,89 @@ export default function App() {
         action: "toggle_remote_content",
         category: "View",
         label: "Toggle remote content",
-        shortcut: "M",
+        shortcut: displayShortcut(
+          "toggle_remote_content",
+          shortcutForAction(effectiveKeymap, "toggle_remote_content", [
+            "messageView",
+          ]) ?? "M",
+          isMacPlatform,
+        ),
       },
       {
         action: "open_diagnostics_section:overview",
         category: "Diagnostics",
         label: "Open diagnostics overview",
-        shortcut: "O",
+        shortcut:
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:overview", [
+            "diagnostics",
+          ]) ?? "O",
       },
       {
         action: "open_diagnostics_section:drafts",
         category: "Diagnostics",
         label: "Open diagnostics drafts",
-        shortcut: "D",
+        shortcut:
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:drafts", [
+            "diagnostics",
+          ]) ?? "D",
       },
       {
         action: "open_diagnostics_section:subscriptions",
         category: "Diagnostics",
         label: "Open diagnostics subscriptions",
-        shortcut: "S",
+        shortcut:
+          shortcutForAction(
+            effectiveKeymap,
+            "open_diagnostics_section:subscriptions",
+            ["diagnostics"],
+          ) ?? "S",
       },
       {
         action: "open_diagnostics_section:snoozed",
         category: "Diagnostics",
         label: "Open diagnostics snoozed",
-        shortcut: "Z",
+        shortcut:
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:snoozed", [
+            "diagnostics",
+          ]) ?? "Z",
       },
       {
         action: "open_diagnostics_section:semantic",
         category: "Diagnostics",
         label: "Open diagnostics semantic",
-        shortcut: "M",
+        shortcut:
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:semantic", [
+            "diagnostics",
+          ]) ?? "M",
       },
       {
         action: "open_diagnostics_section:labels",
         category: "Diagnostics",
         label: "Open diagnostics labels",
-        shortcut: "L",
+        shortcut:
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:labels", [
+            "diagnostics",
+          ]) ?? "L",
       },
       {
         action: "open_diagnostics_section:saved-searches",
         category: "Diagnostics",
         label: "Open diagnostics saved searches",
-        shortcut: "A",
+        shortcut:
+          shortcutForAction(
+            effectiveKeymap,
+            "open_diagnostics_section:saved-searches",
+            ["diagnostics"],
+          ) ?? "A",
+      },
+      {
+        action: "open_diagnostics_section:settings",
+        category: "Diagnostics",
+        label: "Open diagnostics settings",
+        shortcut:
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:settings", [
+            "diagnostics",
+          ]) ?? "T",
       },
       ...accountsState.accounts.map((a) => ({
         action: `switch_account:${a.key ?? a.account_id}`,
@@ -645,7 +692,7 @@ export default function App() {
         shortcut: "",
       })),
     ],
-    [isMacPlatform, accountsState.accounts],
+    [effectiveKeymap, isMacPlatform, accountsState.accounts],
   );
 
   const {
@@ -763,6 +810,9 @@ export default function App() {
   });
 
   const syncComposeDraft = useEffectEvent(async () => {
+    if (composeBusy) {
+      return;
+    }
     try {
       await persistComposeDraft();
     } catch (error) {
@@ -874,7 +924,10 @@ export default function App() {
     selectedRuleId,
     commandPaletteOpen,
     commandInputRef,
+    workbenchReady,
     setBridge,
+    setShell,
+    setSidebar,
     loadMailbox,
     loadSearch,
     loadThread,
@@ -885,6 +938,9 @@ export default function App() {
     applyOptimisticRowPatch,
     runPendingMutation,
     refreshCurrentView,
+    setSelectedMailboxThreadId,
+    setShowInboxZero,
+    setWorkbenchReady,
     setMailbox,
     setSearchState,
     setThread,
@@ -1324,6 +1380,7 @@ export default function App() {
   });
 
   useDesktopKeyboardShortcuts({
+    keymap: effectiveKeymap,
     bindingContext,
     pendingBinding,
     setPendingBinding,
@@ -1347,8 +1404,6 @@ export default function App() {
     setFocusContext,
     selectedMessageIds,
     visualMode,
-    diagnosticsScreenShortcuts:
-      screen === "diagnostics" ? DIAGNOSTICS_SHORTCUT_SECTIONS : null,
     dispatchAction,
   });
 
@@ -1399,6 +1454,8 @@ export default function App() {
     sidebar,
     searchQuery,
     setSearchQuery,
+    effectiveKeymap,
+    isMacPlatform,
     switchScreen,
     applySidebarLens,
     pendingBinding,
@@ -1650,6 +1707,8 @@ function renderDesktopWorkbench(props: {
   sidebar: SidebarPayload;
   searchQuery: string;
   setSearchQuery: StateSetter<string>;
+  effectiveKeymap: ReturnType<typeof createEffectiveKeymap>;
+  isMacPlatform: boolean;
   switchScreen: (next: WorkbenchScreen) => void;
   applySidebarLens: (item: SidebarItem) => Promise<void>;
   pendingBinding: { tokens: string[] } | null;
@@ -1677,6 +1736,7 @@ function renderDesktopWorkbench(props: {
   mailbox: MailboxPayload;
   mailboxRows: FlattenedEntry[];
   mailListMode: "threads" | "messages";
+  setMailListMode: StateSetter<"threads" | "messages">;
   selectedSidebarItemId: string | null;
   setSelectedSidebarItemId: StateSetter<string | null>;
   selectedMailboxThreadId: string | null;
@@ -1862,6 +1922,20 @@ function renderDesktopWorkbench(props: {
   setAccountDraftJson: StateSetter<string>;
   saveAccountDraft: () => Promise<void>;
 }) {
+  const shortcut = (
+    action: string,
+    preferredContexts?: DesktopBindingContext[],
+  ) => {
+    const display = shortcutForAction(
+      props.effectiveKeymap,
+      action,
+      preferredContexts,
+    );
+    return display
+      ? displayShortcut(action, display, props.isMacPlatform)
+      : null;
+  };
+
   return (
     <div className="flex h-dvh bg-canvas text-foreground">
       <div className="flex min-w-0 flex-1 flex-col">
@@ -1893,16 +1967,21 @@ function renderDesktopWorkbench(props: {
           }}
           onSync={() => props.dispatchAction("sync")}
           onCompose={() => void props.openComposeShell("new")}
+          composeShortcut={shortcut("compose", ["mailList", "threadView"])}
           onReply={() =>
             props.selectedRow &&
             void props.openComposeShell("reply", props.selectedRow.id)
           }
+          replyShortcut={shortcut("reply", ["mailList", "messageView"])}
           onForward={() =>
             props.selectedRow &&
             void props.openComposeShell("forward", props.selectedRow.id)
           }
+          forwardShortcut={shortcut("forward", ["mailList", "messageView"])}
           onLabel={() => props.selectedRow && props.openApplyLabelDialog()}
+          labelShortcut={shortcut("apply_label", ["mailList", "messageView"])}
           onSnooze={() => props.selectedRow && void props.openSnoozeDialog()}
+          snoozeShortcut={shortcut("snooze", ["mailList", "messageView"])}
           selectedRowAvailable={Boolean(props.selectedRow)}
           accountLabel={props.shell.accountLabel}
           syncLabel={props.shell.syncLabel}
@@ -1982,72 +2061,82 @@ function renderDesktopWorkbench(props: {
                 props.contextMenu.show(e, [
                   {
                     label: "Archive",
-                    shortcut: "E",
+                    shortcut: shortcut("archive", ["mailList", "messageView"]) ?? "E",
                     onClick: () => props.dispatchAction("archive"),
                   },
                   {
                     label: "Star",
-                    shortcut: "S",
+                    shortcut: shortcut("star", ["mailList", "messageView"]) ?? "S",
                     onClick: () => props.dispatchAction("star"),
                   },
                   {
                     label: "Mark read",
-                    shortcut: "I",
+                    shortcut:
+                      shortcut("mark_read", ["mailList", "messageView"]) ?? "I",
                     onClick: () => props.dispatchAction("mark_read"),
                     separator: true,
                   },
                   {
                     label: "Apply label",
-                    shortcut: "L",
+                    shortcut:
+                      shortcut("apply_label", ["mailList", "messageView"]) ?? "L",
                     onClick: () => props.dispatchAction("apply_label"),
                   },
                   {
                     label: "Move to",
-                    shortcut: "V",
+                    shortcut:
+                      shortcut("move_to_label", ["mailList", "messageView"]) ?? "V",
                     onClick: () => props.dispatchAction("move_to_label"),
                   },
                   {
                     label: "Snooze",
-                    shortcut: "Z",
+                    shortcut: shortcut("snooze", ["mailList", "messageView"]) ?? "Z",
                     onClick: () => props.dispatchAction("snooze"),
                     separator: true,
                   },
                   {
                     label: "Reply",
-                    shortcut: "R",
+                    shortcut: shortcut("reply", ["mailList", "messageView"]) ?? "R",
                     onClick: () => props.dispatchAction("reply"),
                   },
                   {
                     label: "Reply all",
-                    shortcut: "A",
+                    shortcut:
+                      shortcut("reply_all", ["mailList", "messageView"]) ?? "A",
                     onClick: () => props.dispatchAction("reply_all"),
                   },
                   {
                     label: "Forward",
-                    shortcut: "F",
+                    shortcut:
+                      shortcut("forward", ["mailList", "messageView"]) ?? "F",
                     onClick: () => props.dispatchAction("forward"),
                     separator: true,
                   },
                   {
                     label: "Open in browser",
-                    shortcut: "O",
+                    shortcut:
+                      shortcut("open_in_browser", ["mailList", "messageView"]) ??
+                      "O",
                     onClick: () => props.dispatchAction("open_in_browser"),
                   },
                   {
                     label: "Export",
-                    shortcut: "E",
+                    shortcut:
+                      shortcut("export_thread", ["mailList", "messageView"]) ??
+                      "E",
                     onClick: () => props.dispatchAction("export_thread"),
                     separator: true,
                   },
                   {
                     label: "Spam",
-                    shortcut: "!",
+                    shortcut: shortcut("spam", ["mailList", "messageView"]) ?? "!",
                     danger: true,
                     onClick: () => props.dispatchAction("spam"),
                   },
                   {
                     label: "Trash",
-                    shortcut: "#",
+                    shortcut:
+                      shortcut("trash", ["mailList", "messageView"]) ?? "#",
                     danger: true,
                     onClick: () => props.dispatchAction("trash"),
                   },
@@ -2141,10 +2230,12 @@ function renderDesktopWorkbench(props: {
 
             <WorkbenchStatusBar
               hints={buildStatusHints(
+                props.effectiveKeymap,
                 props.screen,
                 props.focusContext,
                 props.selectedMessageIds.size,
                 props.layoutMode,
+                props.isMacPlatform,
               )}
               screen={props.screen}
               layoutMode={props.layoutMode}
@@ -2589,7 +2680,10 @@ function useWorkbenchLifecycle(props: {
   selectedRuleId: string | null;
   commandPaletteOpen: boolean;
   commandInputRef: RefObject<HTMLInputElement | null>;
+  workbenchReady: boolean;
   setBridge: StateSetter<BridgeState>;
+  setShell: StateSetter<WorkbenchShellPayload>;
+  setSidebar: StateSetter<SidebarPayload>;
   loadMailbox: (
     lens?: SidebarLens,
     options?: { preserveReader?: boolean },
@@ -2610,6 +2704,9 @@ function useWorkbenchLifecycle(props: {
     work: () => Promise<void>,
   ) => Promise<void>;
   refreshCurrentView: (options?: { preserveReader?: boolean }) => Promise<void>;
+  setSelectedMailboxThreadId: StateSetter<string | null>;
+  setShowInboxZero: StateSetter<boolean>;
+  setWorkbenchReady: StateSetter<boolean>;
   setMailbox: StateSetter<MailboxPayload>;
   setSearchState: StateSetter<SearchResponse>;
   setThread: StateSetter<ThreadResponse | null>;
@@ -2630,7 +2727,10 @@ function useWorkbenchLifecycle(props: {
     selectedRuleId,
     commandPaletteOpen,
     commandInputRef,
+    workbenchReady,
     setBridge,
+    setShell,
+    setSidebar,
     loadMailbox,
     loadSearch,
     loadThread,
@@ -2641,6 +2741,9 @@ function useWorkbenchLifecycle(props: {
     applyOptimisticRowPatch,
     runPendingMutation,
     refreshCurrentView,
+    setSelectedMailboxThreadId,
+    setShowInboxZero,
+    setWorkbenchReady,
     setMailbox,
     setSearchState,
     setThread,
@@ -2654,10 +2757,30 @@ function useWorkbenchLifecycle(props: {
     setBridge(await window.mxrDesktop.getBridgeState());
   });
 
-  const refreshMailbox = useEffectEvent(async () => {
-    if (bridge.kind === "ready") {
-      await loadMailbox();
+  const bootstrapMailbox = useEffectEvent(async () => {
+    if (bridge.kind !== "ready") {
+      return;
     }
+
+    if (!workbenchReady && bridge.initialMailbox) {
+      const payload = bridge.initialMailbox;
+      startTransition(() => {
+        setShell(payload.shell);
+        setSidebar(payload.sidebar);
+        setMailbox(payload.mailbox);
+        setSelectedMailboxThreadId(
+          firstMailboxRowSelectionId(payload.mailbox.groups),
+        );
+        setShowInboxZero(
+          payload.mailbox.groups.length === 0 &&
+            payload.mailbox.lensLabel === "Inbox",
+        );
+        setWorkbenchReady(true);
+      });
+      return;
+    }
+
+    await loadMailbox();
   });
 
   const refreshSearch = useEffectEvent(async () => {
@@ -2705,7 +2828,7 @@ function useWorkbenchLifecycle(props: {
 
   useEffect(() => {
     if (bridge.kind === "ready" && bridgeGeneration > 0) {
-      void refreshMailbox();
+      void bootstrapMailbox();
       void loadAccounts();
     }
   }, [bridge.kind, bridgeGeneration, mailListMode]);
@@ -3210,19 +3333,63 @@ function formatPendingMutationLabel(
 }
 
 function buildStatusHints(
+  keymap: ReturnType<typeof createEffectiveKeymap>,
   screen: WorkbenchScreen,
   focusContext: FocusContext,
   selectedCount: number,
   layoutMode: LayoutMode,
+  isMacPlatform: boolean,
 ) {
+  const hintKey = (
+    action: string,
+    contexts: DesktopBindingContext[],
+    fallback: string,
+  ) =>
+    displayShortcut(
+      action,
+      shortcutForAction(keymap, action, contexts) ?? fallback,
+      isMacPlatform,
+    );
+
   if (selectedCount > 0) {
     return [
       { key: "Esc", label: "Clear" },
-      { key: "e", label: "Archive" },
-      { key: "l", label: "Label" },
-      { key: "v", label: "Move" },
-      { key: "I", label: "Read" },
-      { key: "U", label: "Unread" },
+      {
+        key: hintKey("archive", ["mailList", "threadView", "messageView"], "e"),
+        label: "Archive",
+      },
+      {
+        key: hintKey(
+          "apply_label",
+          ["mailList", "threadView", "messageView"],
+          "l",
+        ),
+        label: "Label",
+      },
+      {
+        key: hintKey(
+          "move_to_label",
+          ["mailList", "threadView", "messageView"],
+          "v",
+        ),
+        label: "Move",
+      },
+      {
+        key: hintKey(
+          "mark_read",
+          ["mailList", "threadView", "messageView"],
+          "I",
+        ),
+        label: "Read",
+      },
+      {
+        key: hintKey(
+          "mark_unread",
+          ["mailList", "threadView", "messageView"],
+          "U",
+        ),
+        label: "Unread",
+      },
     ];
   }
 
@@ -3230,11 +3397,14 @@ function buildStatusHints(
     return [
       { key: "k", label: "Up" },
       { key: "j", label: "Down" },
-      { key: "r", label: "Reply" },
-      { key: "a", label: "Reply All" },
-      { key: "f", label: "Forward" },
-      { key: "l", label: "Label" },
-      { key: "R", label: "Reading View" },
+      { key: hintKey("reply", ["messageView"], "r"), label: "Reply" },
+      { key: hintKey("reply_all", ["messageView"], "a"), label: "Reply All" },
+      { key: hintKey("forward", ["messageView"], "f"), label: "Forward" },
+      { key: hintKey("apply_label", ["messageView"], "l"), label: "Label" },
+      {
+        key: hintKey("toggle_reader_mode", ["messageView"], "R"),
+        label: "Reading View",
+      },
     ];
   }
 
@@ -3265,18 +3435,21 @@ function buildStatusHints(
     return [
       { key: "j", label: "Down" },
       { key: "k", label: "Up" },
-      { key: "n", label: "New" },
-      { key: "E", label: "Edit" },
-      { key: "D", label: "Dry Run" },
-      { key: "H", label: "History" },
+      { key: hintKey("open_rule_form_new", ["rules"], "n"), label: "New" },
+      { key: hintKey("open_rule_form_edit", ["rules"], "e"), label: "Edit" },
+      { key: hintKey("show_rule_dry_run", ["rules"], "d"), label: "Dry Run" },
+      { key: hintKey("show_rule_history", ["rules"], "h"), label: "History" },
     ];
   }
 
   if (screen === "accounts") {
     return [
-      { key: "n", label: "New" },
-      { key: "t", label: "Test" },
-      { key: "d", label: "Default" },
+      { key: hintKey("open_account_form_new", ["accounts"], "n"), label: "New" },
+      { key: hintKey("test_account_form", ["accounts"], "t"), label: "Test" },
+      {
+        key: hintKey("set_default_account", ["accounts"], "d"),
+        label: "Default",
+      },
       { key: "Enter", label: "Edit" },
       { key: "r", label: "Refresh" },
       { key: "?", label: "Help" },
@@ -3285,13 +3458,46 @@ function buildStatusHints(
 
   if (screen === "diagnostics") {
     return [
-      { key: "O", label: "Overview" },
-      { key: "D", label: "Drafts" },
-      { key: "S", label: "Subs" },
-      { key: "Z", label: "Snoozed" },
-      { key: "M", label: "Semantic" },
-      { key: "L", label: "Labels" },
-      { key: "A", label: "Searches" },
+      {
+        key: hintKey("open_diagnostics_section:overview", ["diagnostics"], "O"),
+        label: "Overview",
+      },
+      {
+        key: hintKey("open_diagnostics_section:drafts", ["diagnostics"], "D"),
+        label: "Drafts",
+      },
+      {
+        key: hintKey(
+          "open_diagnostics_section:subscriptions",
+          ["diagnostics"],
+          "S",
+        ),
+        label: "Subs",
+      },
+      {
+        key: hintKey("open_diagnostics_section:snoozed", ["diagnostics"], "Z"),
+        label: "Snoozed",
+      },
+      {
+        key: hintKey("open_diagnostics_section:semantic", ["diagnostics"], "M"),
+        label: "Semantic",
+      },
+      {
+        key: hintKey("open_diagnostics_section:labels", ["diagnostics"], "L"),
+        label: "Labels",
+      },
+      {
+        key: hintKey(
+          "open_diagnostics_section:saved-searches",
+          ["diagnostics"],
+          "A",
+        ),
+        label: "Searches",
+      },
+      {
+        key: hintKey("open_diagnostics_section:settings", ["diagnostics"], "T"),
+        label: "Settings",
+      },
     ];
   }
 
@@ -3299,8 +3505,18 @@ function buildStatusHints(
     { key: "j", label: "Down" },
     { key: "k", label: "Up" },
     { key: "o", label: "Open" },
-    { key: "r", label: "Reply" },
-    { key: "l", label: "Label" },
+    {
+      key: hintKey("reply", ["mailList", "threadView", "messageView"], "r"),
+      label: "Reply",
+    },
+    {
+      key: hintKey(
+        "apply_label",
+        ["mailList", "threadView", "messageView"],
+        "l",
+      ),
+      label: "Label",
+    },
     { key: "/", label: "Search" },
     { key: "x", label: "Select" },
   ];

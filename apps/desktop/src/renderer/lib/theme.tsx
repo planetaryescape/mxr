@@ -1,48 +1,107 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import type {
+  DesktopSettings,
+  DesktopSettingsPatch,
+  DesktopThemeId,
+} from "../../shared/types";
 
-type Theme = "dark" | "light";
+const DEFAULT_SETTINGS: DesktopSettings = {
+  theme: "mxr-dark",
+  keymapOverrides: {},
+};
 
-interface ThemeContextValue {
-  theme: Theme;
-  toggleTheme: () => void;
+interface DesktopSettingsContextValue {
+  loaded: boolean;
+  settings: DesktopSettings;
+  theme: DesktopThemeId;
+  setTheme: (theme: DesktopThemeId) => Promise<DesktopSettings>;
+  updateDesktopSettings: (
+    patch: DesktopSettingsPatch,
+  ) => Promise<DesktopSettings>;
 }
 
-const ThemeContext = createContext<ThemeContextValue>({
-  theme: "dark",
-  toggleTheme: () => {},
+const DesktopSettingsContext = createContext<DesktopSettingsContextValue>({
+  loaded: false,
+  settings: DEFAULT_SETTINGS,
+  theme: DEFAULT_SETTINGS.theme,
+  setTheme: async () => DEFAULT_SETTINGS,
+  updateDesktopSettings: async () => DEFAULT_SETTINGS,
 });
 
 export function useTheme() {
-  return useContext(ThemeContext);
+  const context = useContext(DesktopSettingsContext);
+  return {
+    loaded: context.loaded,
+    theme: context.theme,
+    setTheme: context.setTheme,
+  };
 }
 
-const STORAGE_KEY = "mxr-theme";
+export function useDesktopSettings() {
+  return useContext(DesktopSettingsContext);
+}
 
 export function ThemeProvider(props: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    try {
-      return (localStorage.getItem(STORAGE_KEY) as Theme) ?? "dark";
-    } catch {
-      return "dark";
-    }
-  });
+  const [loaded, setLoaded] = useState(false);
+  const [settings, setSettings] = useState<DesktopSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    try {
-      localStorage.setItem(STORAGE_KEY, theme);
-    } catch {
-      // Ignore storage errors
-    }
-  }, [theme]);
+    let cancelled = false;
 
-  const toggleTheme = useCallback(() => {
-    setTheme((current) => (current === "dark" ? "light" : "dark"));
+    void window.mxrDesktop
+      .getDesktopSettings()
+      .then((next) => {
+        if (cancelled) {
+          return;
+        }
+        setSettings(next);
+        setLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", settings.theme);
+  }, [settings.theme]);
+
+  const value = useMemo<DesktopSettingsContextValue>(
+    () => ({
+      loaded,
+      settings,
+      theme: settings.theme,
+      setTheme: async (theme) => {
+        const next = await window.mxrDesktop.updateDesktopSettings({ theme });
+        setSettings(next);
+        return next;
+      },
+      updateDesktopSettings: async (patch) => {
+        const next = await window.mxrDesktop.updateDesktopSettings(patch);
+        setSettings(next);
+        return next;
+      },
+    }),
+    [loaded, settings],
+  );
+
   return (
-    <ThemeContext value={{ theme, toggleTheme }}>
+    <DesktopSettingsContext value={value}>
       {props.children}
-    </ThemeContext>
+    </DesktopSettingsContext>
   );
 }

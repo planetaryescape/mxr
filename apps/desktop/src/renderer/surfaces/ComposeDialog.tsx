@@ -1,6 +1,7 @@
 import { Dialog } from "@base-ui/react";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { flushSync } from "react-dom";
 import type { ComposeFrontmatter, ComposeSession, UtilityRailPayload } from "../../shared/types";
 import { cn } from "../lib/cn";
 import { composeTitle } from "./formatters";
@@ -74,6 +75,46 @@ export function ComposeDialog(props: {
     toRef.current?.focus();
   };
 
+  const commitPendingRecipients = useCallback(() => {
+    const pending = contactQuery
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (pending.length === 0) {
+      return;
+    }
+
+    flushSync(() => {
+      props.onDraftChange((current) => {
+        if (!current) {
+          return current;
+        }
+        const nextRecipients = (current.to || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        for (const email of pending) {
+          if (!nextRecipients.includes(email)) {
+            nextRecipients.push(email);
+          }
+        }
+        return { ...current, to: nextRecipients.join(", ") };
+      });
+      setContactQuery("");
+      setShowContacts(false);
+    });
+  }, [contactQuery, props.onDraftChange]);
+
+  const handleSend = useCallback(() => {
+    commitPendingRecipients();
+    props.onSend();
+  }, [commitPendingRecipients, props.onSend]);
+
+  const handleSave = useCallback(() => {
+    commitPendingRecipients();
+    props.onSave();
+  }, [commitPendingRecipients, props.onSave]);
+
   const handleToKeyDown = (e: React.KeyboardEvent) => {
     if (showContacts && filteredContacts.length > 0) {
       if (e.key === "ArrowDown") { e.preventDefault(); setContactIndex((i) => Math.min(i + 1, filteredContacts.length - 1)); return; }
@@ -82,8 +123,8 @@ export function ComposeDialog(props: {
     }
     if (e.key === "Enter") {
       e.preventDefault();
-      if (contactQuery.includes("@")) {
-        addRecipient(contactQuery);
+      if (contactQuery.trim()) {
+        commitPendingRecipients();
       }
       return;
     }
@@ -108,8 +149,8 @@ export function ComposeDialog(props: {
           className="fixed inset-4 z-40 flex flex-col overflow-hidden border border-outline bg-panel outline-none"
           style={{ borderRadius: "var(--radius-md)" }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); props.onSend(); }
-            if (e.key === "s" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); props.onSave(); }
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSend(); }
+            if (e.key === "s" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSave(); }
           }}
         >
           {props.session && props.draft ? (
@@ -250,14 +291,14 @@ export function ComposeDialog(props: {
                   <button type="button" className="px-2 py-1 text-[length:var(--text-xs)] text-foreground-subtle hover:text-danger" onClick={props.onDiscard}>
                     Discard
                   </button>
-                  <button type="button" className="px-2 py-1 text-[length:var(--text-xs)] text-foreground-muted hover:text-foreground" onClick={props.onSave}>
+                  <button type="button" className="px-2 py-1 text-[length:var(--text-xs)] text-foreground-muted hover:text-foreground" onClick={handleSave}>
                     Save
                   </button>
                   <button
                     type="button"
                     className="bg-accent/12 px-3 py-1 text-[length:var(--text-xs)] font-medium text-accent hover:bg-accent/20"
                     style={{ borderRadius: "var(--radius-sm)" }}
-                    onClick={props.onSend}
+                    onClick={handleSend}
                   >
                     Send
                   </button>

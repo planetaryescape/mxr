@@ -31,6 +31,7 @@ use mxr_reader::ReaderConfig;
 use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, StringMatch};
 use mxr_search::parse_query;
 use std::sync::Arc;
+use tracing::Instrument;
 
 pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
@@ -41,7 +42,21 @@ type HandlerResult = Result<ResponseData, String>;
 
 pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessage {
     let response_data = match &msg.payload {
-        IpcPayload::Request(req) => dispatch(state, req).await,
+        IpcPayload::Request(req) => {
+            let request = request_kind(req);
+            let account_id = request_account_id(req)
+                .map(|id| id.as_str())
+                .unwrap_or_else(|| "-".to_string());
+            let account_key = request_account_key(req).unwrap_or("-");
+            let span = tracing::info_span!(
+                "ipc_request",
+                request_id = msg.id,
+                request,
+                account_id,
+                account_key
+            );
+            dispatch(state, req).instrument(span).await
+        }
         _ => Response::Error {
             message: "Expected a Request".to_string(),
         },
@@ -1685,6 +1700,35 @@ fn send_data_to_config(
 }
 
 fn persist_account_passwords(account: &AccountConfigData) -> anyhow::Result<()> {
+    tracing::debug!(
+        account_key = %account.key,
+        sync_kind = %match account.sync {
+            Some(AccountSyncConfigData::Gmail { .. }) => "gmail",
+            Some(AccountSyncConfigData::Imap { .. }) => "imap",
+            None => "none",
+        },
+        send_kind = %match account.send {
+            Some(AccountSendConfigData::Gmail) => "gmail",
+            Some(AccountSendConfigData::Smtp { .. }) => "smtp",
+            None => "none",
+        },
+        has_inline_imap_password = matches!(
+            account.sync,
+            Some(AccountSyncConfigData::Imap {
+                password: Some(ref password),
+                ..
+            }) if !password.is_empty()
+        ),
+        has_inline_smtp_password = matches!(
+            account.send,
+            Some(AccountSendConfigData::Smtp {
+                password: Some(ref password),
+                ..
+            }) if !password.is_empty()
+        ),
+        "persisting inline account credentials if supplied"
+    );
+
     if let Some(AccountSyncConfigData::Imap {
         auth_required,
         username,
@@ -1718,6 +1762,13 @@ fn persist_account_password(
     password: &str,
 ) -> anyhow::Result<()> {
     if !auth_required || password.is_empty() {
+        tracing::debug!(
+            credential_service = service,
+            password_ref,
+            auth_required,
+            password_supplied = !password.is_empty(),
+            "skipping credential persist"
+        );
         return Ok(());
     }
     if username.trim().is_empty() {
@@ -1726,7 +1777,17 @@ fn persist_account_password(
     if password_ref.trim().is_empty() {
         anyhow::bail!("{service} pass ref is required to store the password.");
     }
+    tracing::info!(
+        credential_service = service,
+        password_ref,
+        "persisting credential to keychain"
+    );
     mxr_keychain::set_password(password_ref, username, password)?;
+    tracing::info!(
+        credential_service = service,
+        password_ref,
+        "credential persisted to keychain"
+    );
     Ok(())
 }
 

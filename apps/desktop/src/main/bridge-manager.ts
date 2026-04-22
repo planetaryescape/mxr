@@ -7,7 +7,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
-import type { BridgeState, MxrStatusSnapshot } from "../shared/types.js";
+import type { BridgeState, MailboxResponse, MxrStatusSnapshot } from "../shared/types.js";
 import { runBinary } from "./run-binary.js";
 import {
   assertBridgeMailboxContract,
@@ -51,7 +51,7 @@ type BridgeIntent =
 interface BridgeManagerOptions {
   inspectBinary?: (binaryPath: string) => Promise<MxrStatusSnapshot>;
   launchBridge?: (binaryPath: string, authToken: string) => Promise<ManagedBridgeProcess>;
-  verifyBridgeContract?: (connection: BridgeConnection) => Promise<void>;
+  verifyBridgeContract?: (connection: BridgeConnection) => Promise<MailboxResponse>;
   createAuthToken?: () => string;
   getUserDataPath?: () => string;
   getBundledBinaryPath?: () => string | null;
@@ -64,7 +64,9 @@ export class BridgeManager {
     binaryPath: string,
     authToken: string,
   ) => Promise<ManagedBridgeProcess>;
-  private readonly verifyBridgeContractImpl: (connection: BridgeConnection) => Promise<void>;
+  private readonly verifyBridgeContractImpl: (
+    connection: BridgeConnection,
+  ) => Promise<MailboxResponse>;
   private readonly createAuthToken: () => string;
   private readonly getUserDataPath: () => string;
   private readonly getBundledBinaryPath: () => string | null;
@@ -290,7 +292,7 @@ export class BridgeManager {
       const authToken = this.createAuthToken();
       const bridge = await this.launchBridge(binaryPath, authToken);
       this.bridgeProcess = bridge;
-      await this.verifyBridgeContractImpl(bridge.connection);
+      const initialMailbox = await this.verifyBridgeContractImpl(bridge.connection);
       return {
         kind: "ready",
         baseUrl: bridge.connection.baseUrl,
@@ -299,6 +301,7 @@ export class BridgeManager {
         usingBundled,
         daemonVersion: candidateStatus.daemon_version ?? null,
         protocolVersion: candidateStatus.protocol_version,
+        initialMailbox,
       };
     } catch (error) {
       await this.stopBridge();
@@ -476,7 +479,9 @@ async function childExit(child: SpawnedBridgeProcess): Promise<void> {
   });
 }
 
-async function verifyBridgeContract(connection: BridgeConnection): Promise<void> {
+async function verifyBridgeContract(
+  connection: BridgeConnection,
+): Promise<MailboxResponse> {
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), BRIDGE_VERIFY_TIMEOUT_MS);
   try {
@@ -492,7 +497,9 @@ async function verifyBridgeContract(connection: BridgeConnection): Promise<void>
     }
 
     try {
-      assertBridgeMailboxContract(await response.json());
+      const payload = await response.json();
+      assertBridgeMailboxContract(payload);
+      return payload as MailboxResponse;
     } catch (error) {
       throw new Error(
         `This mxr binary exposes a legacy desktop web bridge. Rebuild mxr and try again. (${formatError(error)})`,

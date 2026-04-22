@@ -34,25 +34,77 @@ export function ContextMenuOverlay(props: {
   onClose: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const { menu, onClose } = props;
 
   useEffect(() => {
-    if (!props.menu) return;
-    const handleClick = () => props.onClose();
+    if (!menu) {
+      setActiveIndex(null);
+      return;
+    }
+
+    setActiveIndex(findNextInteractiveIndex(menu.items, -1, 1));
+  }, [menu]);
+
+  useEffect(() => {
+    if (!menu) return;
+    const handleClick = () => onClose();
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") props.onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      if (e.key === "ArrowDown" || e.key === "j") {
+        e.preventDefault();
+        setActiveIndex((current) =>
+          findNextInteractiveIndex(
+            menu.items,
+            current ?? -1,
+            1,
+          ),
+        );
+        return;
+      }
+
+      if (e.key === "ArrowUp" || e.key === "k") {
+        e.preventDefault();
+        setActiveIndex((current) =>
+          findNextInteractiveIndex(
+            menu.items,
+            current ?? menu.items.length,
+            -1,
+          ),
+        );
+        return;
+      }
+
+      if (e.key === "Enter" || e.key === " ") {
+        const nextIndex = activeIndex;
+        if (nextIndex == null) {
+          return;
+        }
+        const item = menu.items[nextIndex];
+        if (!item || item.separator || item.disabled) {
+          return;
+        }
+        e.preventDefault();
+        item.onClick();
+        onClose();
+      }
     };
     document.addEventListener("click", handleClick);
-    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
     return () => {
       document.removeEventListener("click", handleClick);
-      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [props.menu, props.onClose]);
+  }, [activeIndex, menu, onClose]);
 
-  if (!props.menu) return null;
+  if (!menu) return null;
 
   // Position adjustment to stay in viewport
-  const { x, y, items } = props.menu;
+  const { x, y, items } = menu;
 
   return (
     <div
@@ -74,14 +126,19 @@ export function ContextMenuOverlay(props: {
             key={`${item.label}-${i}`}
             type="button"
             disabled={item.disabled}
+            data-active={activeIndex === i ? "true" : "false"}
             className={cn(
               "flex w-full items-center justify-between px-3 py-1.5 text-left text-[length:var(--text-sm)] transition-colors",
+              activeIndex === i && !item.disabled && !item.separator
+                ? "bg-panel-elevated text-foreground"
+                : "",
               item.disabled
                 ? "text-foreground-subtle"
                 : item.danger
                   ? "text-danger hover:bg-danger/10"
                   : "text-foreground-muted hover:bg-panel-elevated hover:text-foreground",
             )}
+            onMouseEnter={() => setActiveIndex(i)}
             onClick={(e) => {
               e.stopPropagation();
               item.onClick();
@@ -99,4 +156,25 @@ export function ContextMenuOverlay(props: {
       )}
     </div>
   );
+}
+
+function findNextInteractiveIndex(
+  items: ContextMenuItem[],
+  start: number,
+  direction: 1 | -1,
+) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  let index = start;
+  for (let count = 0; count < items.length; count += 1) {
+    index = (index + direction + items.length) % items.length;
+    const item = items[index];
+    if (item && !item.separator && !item.disabled) {
+      return index;
+    }
+  }
+
+  return null;
 }

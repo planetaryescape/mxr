@@ -1,7 +1,7 @@
 {
   "name": "mxr-desktop",
   "private": true,
-  "version": "0.4.47",
+  "version": "0.4.48",
   "type": "module",
   "main": "dist-electron/main/index.js",
   "scripts": {
@@ -30,6 +30,8 @@
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-virtual": "^3.13.23",
     "clsx": "^2.1.1",
+    "electron-store": "^11.0.2",
+    "jsonc-parser": "^3.3.1",
     "lucide-react": "^0.577.0",
     "monaco-vim": "^0.4.4",
     "react": "^19.2.0",

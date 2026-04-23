@@ -841,6 +841,14 @@ pub enum AccountSyncConfigData {
         auth_required: bool,
         use_tls: bool,
     },
+    OutlookPersonal {
+        client_id: Option<String>,
+        token_ref: String,
+    },
+    OutlookWork {
+        client_id: Option<String>,
+        token_ref: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -863,6 +871,12 @@ pub struct AccountOperationResult {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AccountSendConfigData {
     Gmail,
+    OutlookPersonal {
+        token_ref: String,
+    },
+    OutlookWork {
+        token_ref: String,
+    },
     Smtp {
         host: String,
         port: u16,

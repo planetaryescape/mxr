@@ -444,6 +444,8 @@ pub enum AccountFormMode {
     Gmail,
     ImapSmtp,
     SmtpOnly,
+    OutlookPersonal,
+    OutlookWork,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -467,6 +469,9 @@ pub struct AccountFormState {
     pub gmail_client_secret: String,
     pub gmail_token_ref: String,
     pub gmail_authorized: bool,
+    pub outlook_client_id: String,
+    pub outlook_token_ref: String,
+    pub outlook_authorized: bool,
     pub imap_host: String,
     pub imap_port: String,
     pub imap_username: String,
@@ -500,6 +505,9 @@ impl Default for AccountFormState {
             gmail_client_secret: String::new(),
             gmail_token_ref: String::new(),
             gmail_authorized: false,
+            outlook_client_id: String::new(),
+            outlook_token_ref: String::new(),
+            outlook_authorized: false,
             imap_host: String::new(),
             imap_port: "993".into(),
             imap_username: String::new(),
@@ -1386,6 +1394,7 @@ impl App {
             }
             AccountFormMode::ImapSmtp => 16,
             AccountFormMode::SmtpOnly => 10,
+            AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => 6,
         }
     }
 
@@ -1433,6 +1442,11 @@ impl App {
         } else {
             form.gmail_token_ref.trim().to_string()
         };
+        let outlook_token_ref = if form.outlook_token_ref.trim().is_empty() {
+            format!("mxr/{key}-outlook")
+        } else {
+            form.outlook_token_ref.trim().to_string()
+        };
         let sync = match form.mode {
             AccountFormMode::Gmail => Some(mxr_protocol::AccountSyncConfigData::Gmail {
                 credential_source: form.gmail_credential_source.clone(),
@@ -1458,9 +1472,41 @@ impl App {
                 use_tls: true,
             }),
             AccountFormMode::SmtpOnly => None,
+            AccountFormMode::OutlookPersonal => {
+                let client_id = if form.outlook_client_id.trim().is_empty() {
+                    None
+                } else {
+                    Some(form.outlook_client_id.trim().to_string())
+                };
+                Some(mxr_protocol::AccountSyncConfigData::OutlookPersonal {
+                    client_id,
+                    token_ref: outlook_token_ref.clone(),
+                })
+            }
+            AccountFormMode::OutlookWork => {
+                let client_id = if form.outlook_client_id.trim().is_empty() {
+                    None
+                } else {
+                    Some(form.outlook_client_id.trim().to_string())
+                };
+                Some(mxr_protocol::AccountSyncConfigData::OutlookWork {
+                    client_id,
+                    token_ref: outlook_token_ref.clone(),
+                })
+            }
         };
         let send = match form.mode {
             AccountFormMode::Gmail => Some(mxr_protocol::AccountSendConfigData::Gmail),
+            AccountFormMode::OutlookPersonal => {
+                Some(mxr_protocol::AccountSendConfigData::OutlookPersonal {
+                    token_ref: outlook_token_ref,
+                })
+            }
+            AccountFormMode::OutlookWork => {
+                Some(mxr_protocol::AccountSendConfigData::OutlookWork {
+                    token_ref: outlook_token_ref,
+                })
+            }
             AccountFormMode::ImapSmtp | AccountFormMode::SmtpOnly => {
                 Some(mxr_protocol::AccountSendConfigData::Smtp {
                     host: form.smtp_host.trim().to_string(),
@@ -1643,6 +1689,9 @@ impl App {
                     });
                 }
             }
+            AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => {
+                // Key and email validated above; client_id is optional if bundled.
+            }
         }
 
         if save.is_none() && auth.is_none() && sync.is_none() && send.is_none() {
@@ -1695,10 +1744,14 @@ impl App {
         match (self.accounts_page.form.mode, forward) {
             (AccountFormMode::Gmail, true) => AccountFormMode::ImapSmtp,
             (AccountFormMode::ImapSmtp, true) => AccountFormMode::SmtpOnly,
-            (AccountFormMode::SmtpOnly, true) => AccountFormMode::Gmail,
-            (AccountFormMode::Gmail, false) => AccountFormMode::SmtpOnly,
+            (AccountFormMode::SmtpOnly, true) => AccountFormMode::OutlookPersonal,
+            (AccountFormMode::OutlookPersonal, true) => AccountFormMode::OutlookWork,
+            (AccountFormMode::OutlookWork, true) => AccountFormMode::Gmail,
+            (AccountFormMode::Gmail, false) => AccountFormMode::OutlookWork,
             (AccountFormMode::ImapSmtp, false) => AccountFormMode::Gmail,
             (AccountFormMode::SmtpOnly, false) => AccountFormMode::ImapSmtp,
+            (AccountFormMode::OutlookPersonal, false) => AccountFormMode::SmtpOnly,
+            (AccountFormMode::OutlookWork, false) => AccountFormMode::OutlookPersonal,
         }
     }
 
@@ -1718,6 +1771,8 @@ impl App {
             form.smtp_username.trim(),
             form.smtp_password_ref.trim(),
             form.smtp_password.trim(),
+            form.outlook_client_id.trim(),
+            form.outlook_token_ref.trim(),
         ]
         .iter()
         .any(|value| !value.is_empty())
@@ -1791,14 +1846,25 @@ impl App {
     }
 
     fn refresh_account_form_derived_fields(&mut self) {
+        let key = self.accounts_page.form.key.trim().to_string();
         if matches!(self.accounts_page.form.mode, AccountFormMode::Gmail) {
-            let key = self.accounts_page.form.key.trim();
             let token_ref = if key.is_empty() {
                 String::new()
             } else {
                 format!("mxr/{key}-gmail")
             };
             self.accounts_page.form.gmail_token_ref = token_ref;
+        }
+        if matches!(
+            self.accounts_page.form.mode,
+            AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork
+        ) {
+            let token_ref = if key.is_empty() {
+                String::new()
+            } else {
+                format!("mxr/{key}-outlook")
+            };
+            self.accounts_page.form.outlook_token_ref = token_ref;
         }
     }
 
@@ -3610,11 +3676,16 @@ impl App {
         self.accounts_page.status = Some(result.summary.clone());
         self.accounts_page.last_result = Some(result.clone());
         self.accounts_page.form.last_result = Some(result.clone());
-        self.accounts_page.form.gmail_authorized = result
-            .auth
-            .as_ref()
-            .map(|step| step.ok)
-            .unwrap_or(self.accounts_page.form.gmail_authorized);
+        if let Some(ok) = result.auth.as_ref().map(|step| step.ok) {
+            match self.accounts_page.form.mode {
+                AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => {
+                    self.accounts_page.form.outlook_authorized = ok;
+                }
+                _ => {
+                    self.accounts_page.form.gmail_authorized = ok;
+                }
+            }
+        }
         if result.save.as_ref().is_some_and(|step| step.ok) {
             self.accounts_page.new_account_draft = None;
             self.accounts_page.resume_new_account_draft_prompt_open = false;
@@ -4242,12 +4313,36 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 form.imap_password_ref = password_ref;
                 form.imap_auth_required = auth_required;
             }
+            mxr_protocol::AccountSyncConfigData::OutlookPersonal {
+                client_id,
+                token_ref,
+            } => {
+                form.mode = AccountFormMode::OutlookPersonal;
+                form.outlook_client_id = client_id.unwrap_or_default();
+                form.outlook_token_ref = token_ref;
+            }
+            mxr_protocol::AccountSyncConfigData::OutlookWork {
+                client_id,
+                token_ref,
+            } => {
+                form.mode = AccountFormMode::OutlookWork;
+                form.outlook_client_id = client_id.unwrap_or_default();
+                form.outlook_token_ref = token_ref;
+            }
         }
     } else {
         form.mode = AccountFormMode::SmtpOnly;
     }
 
     match account.send {
+        Some(
+            mxr_protocol::AccountSendConfigData::OutlookPersonal { token_ref }
+            | mxr_protocol::AccountSendConfigData::OutlookWork { token_ref },
+        ) => {
+            if form.outlook_token_ref.is_empty() {
+                form.outlook_token_ref = token_ref;
+            }
+        }
         Some(mxr_protocol::AccountSendConfigData::Smtp {
             host,
             port,
@@ -4310,6 +4405,10 @@ fn account_form_field_value(form: &AccountFormState) -> Option<&str> {
         (AccountFormMode::SmtpOnly, 7) => None,
         (AccountFormMode::SmtpOnly, 8) => Some(form.smtp_password_ref.as_str()),
         (AccountFormMode::SmtpOnly, 9) => Some(form.smtp_password.as_str()),
+        (AccountFormMode::OutlookPersonal, 4) | (AccountFormMode::OutlookWork, 4) => {
+            Some(form.outlook_client_id.as_str())
+        }
+        (AccountFormMode::OutlookPersonal, 5) | (AccountFormMode::OutlookWork, 5) => None, // token_ref is read-only
         _ => None,
     }
 }
@@ -4351,6 +4450,9 @@ where
         (AccountFormMode::SmtpOnly, 6) => &mut form.smtp_username,
         (AccountFormMode::SmtpOnly, 8) => &mut form.smtp_password_ref,
         (AccountFormMode::SmtpOnly, 9) => &mut form.smtp_password,
+        (AccountFormMode::OutlookPersonal, 4) | (AccountFormMode::OutlookWork, 4) => {
+            &mut form.outlook_client_id
+        }
         _ => return,
     };
     update(field);

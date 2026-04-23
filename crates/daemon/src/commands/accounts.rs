@@ -1,6 +1,7 @@
 use crate::cli::AccountsAction;
 use mxr_core::provider::MailSyncProvider;
 use mxr_provider_gmail::auth::{GmailAuth, BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET};
+use mxr_provider_outlook::auth::BUNDLED_CLIENT_ID as OUTLOOK_BUNDLED_CLIENT_ID;
 
 pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
     match action {
@@ -8,7 +9,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
             let config = mxr_config::load_config().unwrap_or_default();
             if config.accounts.is_empty() {
                 println!("No accounts configured.");
-                println!("Run: mxr accounts add gmail|imap|smtp|imap-smtp");
+                println!("Run: mxr accounts add gmail|imap|smtp|imap-smtp|outlook|outlook-work");
             } else {
                 for (key, acct) in &config.accounts {
                     println!(
@@ -27,8 +28,10 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
             "imap" => add_imap(true).await?,
             "imap-smtp" => add_imap(true).await?,
             "smtp" => add_smtp_only().await?,
+            "outlook" => add_outlook().await?,
+            "outlook-work" => add_outlook_work().await?,
             other => anyhow::bail!(
-                "Unknown provider '{}'. Supported: gmail, imap, smtp, imap-smtp",
+                "Unknown provider '{}'. Supported: gmail, imap, smtp, imap-smtp, outlook, outlook-work",
                 other
             ),
         },
@@ -98,11 +101,141 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                         let folders = provider.sync_labels().await?;
                         println!("IMAP sync ok for '{}': {} folders", name, folders.len());
                     }
+                    mxr_config::SyncProviderConfig::OutlookPersonal {
+                        client_id,
+                        token_ref,
+                    }
+                    | mxr_config::SyncProviderConfig::OutlookWork {
+                        client_id,
+                        token_ref,
+                    } => {
+                        let tenant = match &acct.sync {
+                            Some(mxr_config::SyncProviderConfig::OutlookWork { .. }) => {
+                                mxr_provider_outlook::OutlookTenant::Work
+                            }
+                            _ => mxr_provider_outlook::OutlookTenant::Personal,
+                        };
+                        let cid = client_id
+                            .clone()
+                            .or_else(|| OUTLOOK_BUNDLED_CLIENT_ID.map(String::from))
+                            .ok_or_else(|| {
+                                anyhow::anyhow!("no client_id and no bundled OUTLOOK_CLIENT_ID")
+                            })?;
+                        let auth = std::sync::Arc::new(
+                            mxr_provider_outlook::OutlookAuth::new(
+                                cid,
+                                token_ref.clone(),
+                                tenant,
+                            ),
+                        );
+                        let email = acct.email.clone();
+                        let token_fn: std::sync::Arc<
+                            dyn Fn() -> futures::future::BoxFuture<
+                                'static,
+                                anyhow::Result<String>,
+                            > + Send
+                                + Sync,
+                        > = std::sync::Arc::new(move || {
+                            let auth = auth.clone();
+                            Box::pin(async move {
+                                auth.get_valid_access_token()
+                                    .await
+                                    .map_err(|e| anyhow::anyhow!(e))
+                            })
+                        });
+                        let account_id = mxr_core::AccountId::from_provider_id(
+                            "outlook",
+                            &email,
+                        );
+                        let factory =
+                            mxr_provider_imap::XOAuth2ImapSessionFactory::new(
+                                "outlook.office365.com".to_string(),
+                                993,
+                                email.clone(),
+                                token_fn,
+                            );
+                        let provider =
+                            mxr_provider_imap::ImapProvider::with_session_factory(
+                                account_id,
+                                mxr_provider_imap::config::ImapConfig::new(
+                                    "outlook.office365.com".to_string(),
+                                    993,
+                                    email,
+                                    String::new(),
+                                    true,
+                                    true,
+                                ),
+                                Box::new(factory),
+                            );
+                        let folders = provider.sync_labels().await?;
+                        println!(
+                            "Outlook IMAP ok for '{}': {} folders",
+                            name,
+                            folders.len()
+                        );
+                    }
                 }
             }
 
             if let Some(send) = &acct.send {
                 match send {
+                    mxr_config::SendProviderConfig::OutlookPersonal { token_ref }
+                    | mxr_config::SendProviderConfig::OutlookWork { token_ref } => {
+                        let tenant = match &acct.send {
+                            Some(mxr_config::SendProviderConfig::OutlookWork { .. }) => {
+                                mxr_provider_outlook::OutlookTenant::Work
+                            }
+                            _ => mxr_provider_outlook::OutlookTenant::Personal,
+                        };
+                        let cid = match &acct.sync {
+                            Some(
+                                mxr_config::SyncProviderConfig::OutlookPersonal {
+                                    client_id: Some(id),
+                                    ..
+                                }
+                                | mxr_config::SyncProviderConfig::OutlookWork {
+                                    client_id: Some(id),
+                                    ..
+                                },
+                            ) => id.clone(),
+                            _ => OUTLOOK_BUNDLED_CLIENT_ID
+                                .map(String::from)
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!("no client_id and no bundled OUTLOOK_CLIENT_ID")
+                                })?,
+                        };
+                        let auth = std::sync::Arc::new(mxr_provider_outlook::OutlookAuth::new(
+                            cid,
+                            token_ref.clone(),
+                            tenant,
+                        ));
+                        let email = acct.email.clone();
+                        let token_fn: std::sync::Arc<
+                            dyn Fn() -> futures::future::BoxFuture<
+                                'static,
+                                anyhow::Result<String>,
+                            > + Send
+                                + Sync,
+                        > = std::sync::Arc::new(move || {
+                            let auth = auth.clone();
+                            Box::pin(async move {
+                                auth.get_valid_access_token()
+                                    .await
+                                    .map_err(|e| anyhow::anyhow!(e))
+                            })
+                        });
+                        let provider = mxr_provider_outlook::OutlookSmtpSendProvider::new(
+                            "smtp.office365.com".to_string(),
+                            587,
+                            email,
+                            token_fn,
+                        );
+                        provider
+                            .test_connection()
+                            .await
+                            .map_err(|e| anyhow::anyhow!(e))?;
+                        println!("Outlook SMTP ok for '{}'", name);
+                    }
                     mxr_config::SendProviderConfig::Gmail => {
                         println!("Gmail send ok for '{}'", name);
                     }
@@ -329,6 +462,8 @@ fn describe_sync(sync: Option<&mxr_config::SyncProviderConfig>) -> &'static str 
     match sync {
         Some(mxr_config::SyncProviderConfig::Gmail { .. }) => "gmail",
         Some(mxr_config::SyncProviderConfig::Imap { .. }) => "imap",
+        Some(mxr_config::SyncProviderConfig::OutlookPersonal { .. }) => "outlook",
+        Some(mxr_config::SyncProviderConfig::OutlookWork { .. }) => "outlook-work",
         None => "none",
     }
 }
@@ -337,8 +472,123 @@ fn describe_send(send: Option<&mxr_config::SendProviderConfig>) -> &'static str 
     match send {
         Some(mxr_config::SendProviderConfig::Gmail) => "gmail",
         Some(mxr_config::SendProviderConfig::Smtp { .. }) => "smtp",
+        Some(mxr_config::SendProviderConfig::OutlookPersonal { .. }) => "outlook",
+        Some(mxr_config::SendProviderConfig::OutlookWork { .. }) => "outlook-work",
         None => "none",
     }
+}
+
+async fn add_outlook() -> anyhow::Result<()> {
+    add_outlook_inner(mxr_provider_outlook::OutlookTenant::Personal).await
+}
+
+async fn add_outlook_work() -> anyhow::Result<()> {
+    add_outlook_inner(mxr_provider_outlook::OutlookTenant::Work).await
+}
+
+async fn add_outlook_inner(
+    tenant: mxr_provider_outlook::OutlookTenant,
+) -> anyhow::Result<()> {
+    let label = match tenant {
+        mxr_provider_outlook::OutlookTenant::Personal => "Outlook (Personal)",
+        mxr_provider_outlook::OutlookTenant::Work => "Outlook (Work)",
+    };
+    println!("Adding {label} account (OAuth2 + IMAP + SMTP)\n");
+
+    let client_id = match OUTLOOK_BUNDLED_CLIENT_ID {
+        Some(id) => {
+            println!("Using bundled Azure app credentials.");
+            id.to_string()
+        }
+        None => {
+            println!("No bundled Azure app client ID found.");
+            println!(
+                "Register a multi-tenant public client app at https://portal.azure.com and enter your client ID below."
+            );
+            prompt("Azure app client ID: ")?
+        }
+    };
+
+    let account_name = prompt("\nAccount name (e.g. personal, work): ")?;
+    ensure_account_available(&account_name)?;
+    let display_name = prompt_default("Display name", &account_name)?;
+    let email = prompt("Microsoft email address: ")?;
+
+    let token_ref = format!("mxr/{account_name}-outlook");
+    let auth = mxr_provider_outlook::OutlookAuth::new(
+        client_id.clone(),
+        token_ref.clone(),
+        tenant,
+    );
+
+    println!("\nStarting Microsoft device code authorization...");
+    let device_resp = auth.start_device_flow().await?;
+
+    println!(
+        "\nGo to {} and enter: {}",
+        device_resp.verification_uri, device_resp.user_code
+    );
+    let open_url = device_resp
+        .verification_uri_complete
+        .as_deref()
+        .unwrap_or(&device_resp.verification_uri);
+    if open::that(open_url).is_ok() {
+        println!("(Browser opened automatically)");
+    } else {
+        println!("(Could not open browser — copy the URL above)");
+    }
+    println!(
+        "Waiting for authorization (expires in {} seconds)...\n",
+        device_resp.expires_in
+    );
+
+    let tokens = auth
+        .poll_for_token(&device_resp.device_code, device_resp.interval)
+        .await?;
+    auth.save_tokens(&tokens)?;
+    println!("Authorization successful!\n");
+
+    let client_id_stored = if OUTLOOK_BUNDLED_CLIENT_ID.is_some() {
+        None
+    } else {
+        Some(client_id)
+    };
+    let (sync_config, send_config) = match auth.tenant_kind() {
+        mxr_provider_outlook::OutlookTenant::Work => (
+            mxr_config::SyncProviderConfig::OutlookWork {
+                client_id: client_id_stored,
+                token_ref: token_ref.clone(),
+            },
+            mxr_config::SendProviderConfig::OutlookWork {
+                token_ref: token_ref.clone(),
+            },
+        ),
+        mxr_provider_outlook::OutlookTenant::Personal => (
+            mxr_config::SyncProviderConfig::OutlookPersonal {
+                client_id: client_id_stored,
+                token_ref: token_ref.clone(),
+            },
+            mxr_config::SendProviderConfig::OutlookPersonal {
+                token_ref: token_ref.clone(),
+            },
+        ),
+    };
+
+    upsert_account(
+        account_name.clone(),
+        mxr_config::AccountConfig {
+            name: display_name,
+            email,
+            sync: Some(sync_config),
+            send: Some(send_config),
+        },
+    )?;
+
+    println!(
+        "Account '{}' saved. Restart daemon to load it.",
+        account_name
+    );
+    Ok(())
 }
 
 fn store_password(service: &str, username: &str, password: &str) -> anyhow::Result<()> {

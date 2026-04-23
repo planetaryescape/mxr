@@ -121,3 +121,112 @@ The docs site will include a guide for creating your own Google Cloud project an
 - Adding the credentials to mxr config
 
 This is optional — the bundled client ID is the default and recommended path.
+
+---
+
+## A010: Outlook OAuth2 — Device Code Flow & Bundled Client ID
+
+**Affects**: 03-providers.md, 12-config.md
+
+**What was missing**: The Outlook provider uses a different OAuth2 flow (device code) and a different credential distribution mechanism than Gmail. This section documents it.
+
+---
+
+## Bundled Outlook Client ID
+
+mxr can ship a bundled Azure `client_id` compiled into the binary at build time using a compile-time environment variable:
+
+```bash
+OUTLOOK_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx cargo build --release
+```
+
+The value is embedded via `option_env!("OUTLOOK_CLIENT_ID")` in `crates/provider-outlook/src/auth.rs`. If the env var is not set at compile time, the constant is `None` and users must supply their own `client_id`.
+
+### Checking whether a bundled ID is present
+
+At runtime, if no bundled client ID is compiled in and no `client_id` is set in config, mxr will print an error and refuse to authenticate.
+
+### Release builds
+
+For official releases, set `OUTLOOK_CLIENT_ID` in the CI environment:
+
+```yaml
+# GitHub Actions example
+- name: Build
+  env:
+    OUTLOOK_CLIENT_ID: ${{ secrets.OUTLOOK_CLIENT_ID }}
+  run: cargo build --release
+```
+
+---
+
+## Azure App Registration Requirements
+
+Unlike Google, Microsoft does not enforce a strict verified/unverified user cap for device code flow apps. However, an Azure app registration is required.
+
+### Creating the app registration
+
+1. Go to [portal.azure.com](https://portal.azure.com) > Azure Active Directory > App registrations > New registration.
+2. Name: `mxr` (or any name).
+3. Supported account types: choose based on target audience:
+   - **Personal + work/school**: "Accounts in any organizational directory and personal Microsoft accounts" — use the `/common` endpoint (not recommended; personal device code was unreliable; use separate registrations).
+   - **Personal only** (`outlook` variant): "Personal Microsoft accounts only" — uses `/consumers` endpoint.
+   - **Work/school only** (`outlook-work` variant): "Accounts in any organizational directory only" — uses `/organizations` endpoint.
+4. Redirect URI: leave blank (device code flow does not use redirects).
+5. After creation, copy the **Application (client) ID** — this is the value for `OUTLOOK_CLIENT_ID`.
+
+### API permissions
+
+Under the app registration, add delegated permissions:
+- `IMAP.AccessAsUser.All` (under Office 365 Exchange Online)
+- `SMTP.Send` (under Office 365 Exchange Online)
+- `offline_access` (under Microsoft Graph)
+
+Grant admin consent if required by the tenant.
+
+### Tenant-specific endpoints
+
+| Variant | Endpoint | Allowed accounts |
+|---|---|---|
+| `outlook` (personal) | `/consumers` | `@outlook.com`, `@hotmail.com`, `@live.com` |
+| `outlook-work` | `/organizations` | M365, Exchange Online work/school |
+
+Separate app registrations (one per tenant type) are the recommended approach. A single `/common` registration can work but may behave inconsistently for personal accounts with device code flow.
+
+---
+
+## BYOC: Bring Your Own Client ID (Outlook)
+
+Users can provide their own Azure `client_id` per account:
+
+```toml
+[accounts.work.sync]
+provider = "outlook-work"
+token_ref = "mxr/work-outlook"
+client_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+```
+
+### Resolution order
+
+1. If `client_id` is set in the account's sync config, use it.
+2. Otherwise use the `OUTLOOK_CLIENT_ID` value compiled into the binary.
+3. If neither is set, authentication fails with a clear error message.
+
+---
+
+## Token Storage
+
+Outlook tokens are stored as JSON at:
+
+```
+~/.local/share/mxr/tokens/<token_ref>.json
+```
+
+File permissions: `0600`.
+
+The token file contains:
+- `access_token` — short-lived (~1 hour)
+- `refresh_token` — long-lived
+- `expires_at` — RFC 3339 timestamp
+
+Both sync (IMAP) and send (SMTP) share the same token file via the same `token_ref`. The access token is auto-refreshed when within 5 minutes of expiry.

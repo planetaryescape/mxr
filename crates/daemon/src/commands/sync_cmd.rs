@@ -47,8 +47,12 @@ fn account_id_from_config(account: &AccountConfig) -> AccountId {
     let provider = match (&account.sync, &account.send) {
         (Some(SyncProviderConfig::Gmail { .. }), _) => "gmail",
         (Some(SyncProviderConfig::Imap { .. }), _) => "imap",
+        (Some(SyncProviderConfig::OutlookPersonal { .. }), _) => "outlook",
+        (Some(SyncProviderConfig::OutlookWork { .. }), _) => "outlook-work",
         (None, Some(SendProviderConfig::Gmail)) => "gmail",
         (None, Some(SendProviderConfig::Smtp { .. })) => "smtp",
+        (None, Some(SendProviderConfig::OutlookPersonal { .. })) => "outlook",
+        (None, Some(SendProviderConfig::OutlookWork { .. })) => "outlook-work",
         (None, None) => "account",
     };
     AccountId::from_provider_id(provider, &account.email)

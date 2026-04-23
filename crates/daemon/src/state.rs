@@ -171,7 +171,7 @@ impl AppState {
 
     async fn create_providers_from_config(
         config: &mxr_config::MxrConfig,
-        store: &Arc<Store>,
+        store: &Store,
     ) -> anyhow::Result<ProviderSetup> {
         let mut providers = HashMap::new();
         let mut send_providers = HashMap::new();
@@ -745,7 +745,7 @@ fn test_attachment_dir() -> std::path::PathBuf {
 
 async fn open_search_index(
     index_path: &std::path::Path,
-    store: &Arc<Store>,
+    store: &Store,
 ) -> anyhow::Result<SearchIndex> {
     match SearchIndex::open_with_rebuild_status(index_path) {
         Ok((index, rebuilt)) => {

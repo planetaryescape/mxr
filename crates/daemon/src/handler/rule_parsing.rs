@@ -2,14 +2,13 @@ use mxr_core::types::system_labels;
 use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, StringMatch};
 use mxr_search::parse_query;
 use crate::state::AppState;
-use std::sync::Arc;
 
 pub(super) fn parse_rule_value(value: serde_json::Value) -> Result<Rule, String> {
     serde_json::from_value(value).map_err(|e| e.to_string())
 }
 
 pub(super) async fn build_rule_from_form(
-    state: &Arc<AppState>,
+    state: &AppState,
     existing_rule: Option<&String>,
     name: &str,
     condition: &str,

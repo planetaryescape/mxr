@@ -2,7 +2,6 @@ use crate::state::AppState;
 use mxr_rules::{DryRunResult, Rule, RuleEngine};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 pub(super) fn protocol_event_entry(entry: mxr_store::EventLogEntry) -> mxr_protocol::EventLogEntry {
     mxr_protocol::EventLogEntry {
@@ -39,7 +38,7 @@ pub(crate) fn recent_log_lines_sync(
 }
 
 pub(super) async fn recent_log_lines(
-    state: &Arc<AppState>,
+    state: &AppState,
     limit: usize,
     level: Option<&str>,
 ) -> Result<Vec<String>, String> {
@@ -54,20 +53,20 @@ pub(super) async fn recent_log_lines(
     Ok(lines)
 }
 
-pub(super) async fn file_size(state: &Arc<AppState>, path: PathBuf) -> u64 {
+pub(super) async fn file_size(state: &AppState, path: PathBuf) -> u64 {
     run_admin_blocking(state, "file_size", move || Ok(file_size_sync(&path)))
         .await
         .unwrap_or(0)
 }
 
-pub(super) async fn dir_size(state: &Arc<AppState>, path: PathBuf) -> u64 {
+pub(super) async fn dir_size(state: &AppState, path: PathBuf) -> u64 {
     run_admin_blocking(state, "dir_size", move || Ok(dir_size_sync(&path)))
         .await
         .unwrap_or(0)
 }
 
 async fn run_admin_blocking<T, F>(
-    state: &Arc<AppState>,
+    state: &AppState,
     operation: &'static str,
     task: F,
 ) -> Result<T, String>
@@ -138,7 +137,7 @@ fn looks_structured_query(query: &str) -> bool {
         || trimmed.contains(" NOT ")
 }
 
-pub(super) async fn persist_rule(state: &Arc<AppState>, rule: &Rule) -> Result<(), String> {
+pub(super) async fn persist_rule(state: &AppState, rule: &Rule) -> Result<(), String> {
     let conditions_json = serde_json::to_string(&rule.conditions).map_err(|e| e.to_string())?;
     let actions_json = serde_json::to_string(&rule.actions).map_err(|e| e.to_string())?;
     state
@@ -162,7 +161,7 @@ fn row_to_rule(row: &sqlx::sqlite::SqliteRow) -> Result<Rule, String> {
 }
 
 pub(super) async fn dry_run_rules(
-    state: &Arc<AppState>,
+    state: &AppState,
     rule_key: Option<String>,
     all: bool,
     after: Option<String>,

@@ -4,10 +4,9 @@ use mxr_core::{Account, AccountId};
 use mxr_protocol::AccountSyncStatus;
 use mxr_store::SyncRuntimeStatus;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 pub(super) async fn collect_status_snapshot(
-    state: &Arc<AppState>,
+    state: &AppState,
 ) -> Result<(Vec<String>, u32, Vec<AccountSyncStatus>), String> {
     let started_at = std::time::Instant::now();
     let accounts = state
@@ -62,7 +61,7 @@ pub(super) async fn collect_status_snapshot(
 }
 
 pub(super) async fn build_account_sync_status(
-    state: &Arc<AppState>,
+    state: &AppState,
     account_id: &AccountId,
 ) -> Result<AccountSyncStatus, String> {
     let account = state
@@ -115,7 +114,7 @@ pub(super) fn describe_cursor_for_status(cursor: Option<&mxr_core::types::SyncCu
 }
 
 pub(super) async fn collect_doctor_report(
-    state: &Arc<AppState>,
+    state: &AppState,
 ) -> Result<mxr_protocol::DoctorReport, String> {
     let started_at = std::time::Instant::now();
     let data_dir = mxr_config::data_dir();

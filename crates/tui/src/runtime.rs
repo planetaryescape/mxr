@@ -56,7 +56,7 @@ pub(crate) enum ReplaceableRequest {
     },
     Diagnostics {
         kind: ReplaceableRequestKey,
-        request: Request,
+        request: Box<Request>,
         request_id: u64,
         enqueued_at: Instant,
     },
@@ -379,7 +379,7 @@ async fn execute_replaceable_request(
                 queue_wait_ms = enqueued_at.elapsed().as_secs_f64() * 1000.0,
                 "tui diagnostics refresh dequeued"
             );
-            let result = ipc_call(bg, request).await;
+            let result = ipc_call(bg, *request).await;
             AsyncResult::Diagnostics {
                 request_id,
                 result: Box::new(result),
@@ -421,6 +421,53 @@ mod tests {
         match pending.pop_front() {
             Some(ReplaceableRequest::Status { request_id, .. }) => assert_eq!(request_id, 2),
             other => panic!("expected status request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn enqueue_replaceable_request_replaces_matching_diagnostics_requests() {
+        let mut pending = VecDeque::new();
+        enqueue_replaceable_request(
+            &mut pending,
+            ReplaceableRequest::Diagnostics {
+                kind: ReplaceableRequestKey::DiagnosticsLogs,
+                request: Box::new(Request::GetLogs {
+                    limit: 20,
+                    level: None,
+                }),
+                request_id: 1,
+                enqueued_at: Instant::now(),
+            },
+        );
+        enqueue_replaceable_request(
+            &mut pending,
+            ReplaceableRequest::Diagnostics {
+                kind: ReplaceableRequestKey::DiagnosticsLogs,
+                request: Box::new(Request::GetLogs {
+                    limit: 50,
+                    level: None,
+                }),
+                request_id: 2,
+                enqueued_at: Instant::now(),
+            },
+        );
+
+        assert_eq!(pending.len(), 1);
+        match pending.pop_front() {
+            Some(ReplaceableRequest::Diagnostics {
+                kind,
+                request,
+                request_id,
+                ..
+            }) => {
+                assert_eq!(kind, ReplaceableRequestKey::DiagnosticsLogs);
+                assert_eq!(request_id, 2);
+                match *request {
+                    Request::GetLogs { limit, level: None } => assert_eq!(limit, 50),
+                    other => panic!("expected diagnostics logs request, got {other:?}"),
+                }
+            }
+            other => panic!("expected diagnostics logs request, got {other:?}"),
         }
     }
 

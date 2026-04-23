@@ -1,7 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use once_cell::sync::OnceCell;
 use serde::Deserialize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 type PasswordReader = Arc<dyn Fn(&str, &str) -> Result<String, SmtpError> + Send + Sync>;
 
@@ -17,7 +18,7 @@ pub struct SmtpConfig {
     #[serde(default = "default_true")]
     pub use_tls: bool,
     #[serde(skip, default = "default_password_cache")]
-    password_cache: Arc<Mutex<Option<String>>>,
+    password_cache: Arc<OnceCell<String>>,
     #[serde(skip, default = "default_password_reader")]
     password_reader: PasswordReader,
 }
@@ -26,8 +27,8 @@ fn default_true() -> bool {
     true
 }
 
-fn default_password_cache() -> Arc<Mutex<Option<String>>> {
-    Arc::new(Mutex::new(None))
+fn default_password_cache() -> Arc<OnceCell<String>> {
+    Arc::new(OnceCell::new())
 }
 
 fn default_password_reader() -> PasswordReader {
@@ -60,18 +61,9 @@ impl SmtpConfig {
 
     /// Retrieve the SMTP password from the system keyring.
     pub fn resolve_password(&self) -> Result<String, SmtpError> {
-        let mut cached = self
-            .password_cache
-            .lock()
-            .map_err(|_| SmtpError::Keyring("Failed to lock SMTP password cache".to_string()))?;
-
-        if let Some(password) = cached.as_ref() {
-            return Ok(password.clone());
-        }
-
-        let password = (self.password_reader)(&self.password_ref, &self.username)?;
-        *cached = Some(password.clone());
-        Ok(password)
+        self.password_cache
+            .get_or_try_init(|| (self.password_reader)(&self.password_ref, &self.username))
+            .cloned()
     }
 
     #[cfg(test)]
@@ -108,6 +100,8 @@ pub enum SmtpError {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Barrier;
+    use std::time::Duration;
 
     #[test]
     fn default_use_tls_is_true() {
@@ -160,6 +154,68 @@ mod tests {
 
         assert_eq!(config.resolve_password().unwrap(), "app-password");
         assert_eq!(clone.resolve_password().unwrap(), "app-password");
+        assert_eq!(lookup_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn failed_lookup_does_not_poison_cache() {
+        let lookup_count = Arc::new(AtomicUsize::new(0));
+        let reader_count = lookup_count.clone();
+        let config = SmtpConfig::new(
+            "smtp.example.com".into(),
+            587,
+            "user".into(),
+            "mxr/test".into(),
+            true,
+            true,
+        )
+        .with_password_reader_for_tests(Arc::new(move |_, _| {
+            let attempt = reader_count.fetch_add(1, Ordering::SeqCst);
+            if attempt == 0 {
+                Err(SmtpError::Keyring("denied".to_string()))
+            } else {
+                Ok("app-password".to_string())
+            }
+        }));
+
+        assert!(config.resolve_password().is_err());
+        assert_eq!(config.resolve_password().unwrap(), "app-password");
+        assert_eq!(config.resolve_password().unwrap(), "app-password");
+        assert_eq!(lookup_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn parallel_lookups_share_one_reader_call() {
+        let lookup_count = Arc::new(AtomicUsize::new(0));
+        let reader_count = lookup_count.clone();
+        let barrier = Arc::new(Barrier::new(8));
+        let config = Arc::new(
+            SmtpConfig::new(
+                "smtp.example.com".into(),
+                587,
+                "user".into(),
+                "mxr/test".into(),
+                true,
+                true,
+            )
+            .with_password_reader_for_tests(Arc::new(move |_, _| {
+                reader_count.fetch_add(1, Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(25));
+                Ok("app-password".to_string())
+            })),
+        );
+
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                let config = config.clone();
+                let barrier = barrier.clone();
+                scope.spawn(move || {
+                    barrier.wait();
+                    assert_eq!(config.resolve_password().unwrap(), "app-password");
+                });
+            }
+        });
+
         assert_eq!(lookup_count.load(Ordering::SeqCst), 1);
     }
 }

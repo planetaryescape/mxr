@@ -6,10 +6,9 @@ use crate::state::AppState;
 use mxr_core::types::{Address, Draft, Envelope, UnsubscribeMethod};
 use mxr_protocol::{ForwardContext, MutationCommand, ReplyContext, ResponseData};
 use mxr_store::EventLogRefs;
-use std::sync::Arc;
 
 async fn log_mutation(
-    state: &Arc<AppState>,
+    state: &AppState,
     envelope: &Envelope,
     summary: String,
     details: Option<String>,
@@ -40,7 +39,7 @@ fn quoted_subject(subject: &str) -> String {
     }
 }
 
-pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> HandlerResult {
+pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> HandlerResult {
     let message_ids = match cmd {
         MutationCommand::Archive { message_ids }
         | MutationCommand::ReadAndArchive { message_ids }
@@ -237,7 +236,7 @@ pub(super) async fn mutation(state: &Arc<AppState>, cmd: &MutationCommand) -> Ha
 }
 
 pub(super) async fn snooze(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &mxr_core::MessageId,
     wake_at: &chrono::DateTime<chrono::Utc>,
 ) -> HandlerResult {
@@ -266,10 +265,7 @@ pub(super) async fn snooze(
     Ok(ResponseData::Ack)
 }
 
-pub(super) async fn unsnooze(
-    state: &Arc<AppState>,
-    message_id: &mxr_core::MessageId,
-) -> HandlerResult {
+pub(super) async fn unsnooze(state: &AppState, message_id: &mxr_core::MessageId) -> HandlerResult {
     let snoozed = state
         .store
         .get_snooze(message_id)
@@ -298,7 +294,7 @@ pub(super) async fn unsnooze(
     Ok(ResponseData::Ack)
 }
 
-pub(super) async fn list_snoozed(state: &Arc<AppState>) -> HandlerResult {
+pub(super) async fn list_snoozed(state: &AppState) -> HandlerResult {
     let snoozed = state
         .store
         .list_snoozed()
@@ -307,7 +303,7 @@ pub(super) async fn list_snoozed(state: &Arc<AppState>) -> HandlerResult {
     Ok(ResponseData::SnoozedMessages { snoozed })
 }
 
-pub(super) async fn list_drafts(state: &Arc<AppState>) -> HandlerResult {
+pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
     let Some(default_account_id) = state.default_account_id_opt() else {
         return Ok(ResponseData::Drafts { drafts: Vec::new() });
     };
@@ -320,7 +316,7 @@ pub(super) async fn list_drafts(state: &Arc<AppState>) -> HandlerResult {
 }
 
 pub(super) async fn prepare_reply(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &mxr_core::MessageId,
     reply_all: bool,
 ) -> HandlerResult {
@@ -370,7 +366,7 @@ pub(super) async fn prepare_reply(
 }
 
 pub(super) async fn prepare_forward(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &mxr_core::MessageId,
 ) -> HandlerResult {
     let envelope = state
@@ -403,7 +399,7 @@ pub(super) async fn prepare_forward(
     })
 }
 
-pub(super) async fn send_draft(state: &Arc<AppState>, draft: &Draft) -> HandlerResult {
+pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult {
     let sender = state
         .get_send_provider(Some(&draft.account_id))
         .ok_or_else(|| "No send provider configured".to_string())?;
@@ -424,7 +420,7 @@ pub(super) async fn send_draft(state: &Arc<AppState>, draft: &Draft) -> HandlerR
     Ok(ResponseData::Ack)
 }
 
-pub(super) async fn save_draft_to_server(state: &Arc<AppState>, draft: &Draft) -> HandlerResult {
+pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> HandlerResult {
     let sender = state
         .get_send_provider(Some(&draft.account_id))
         .ok_or_else(|| "No send provider configured".to_string())?;
@@ -452,7 +448,7 @@ pub(super) async fn save_draft_to_server(state: &Arc<AppState>, draft: &Draft) -
 }
 
 pub(super) async fn unsubscribe(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &mxr_core::MessageId,
 ) -> HandlerResult {
     let envelope = state
@@ -561,7 +557,7 @@ fn resolve_to_provider_ids(labels: &[mxr_core::types::Label], refs: &[String]) -
 }
 
 pub(super) async fn set_flags(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &mxr_core::MessageId,
     flags: mxr_core::MessageFlags,
 ) -> HandlerResult {

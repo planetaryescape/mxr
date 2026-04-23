@@ -2,10 +2,9 @@ use super::{diagnostics_impl, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{ExportFormat, SearchMode, SortOrder};
-use std::sync::Arc;
 
 pub(super) async fn search(
-    state: &Arc<AppState>,
+    state: &AppState,
     query: &str,
     limit: u32,
     offset: u32,
@@ -16,23 +15,20 @@ pub(super) async fn search(
     diagnostics_impl::search(state, query, limit, offset, mode, sort, explain).await
 }
 
-pub(super) async fn count(state: &Arc<AppState>, query: &str, mode: SearchMode) -> HandlerResult {
+pub(super) async fn count(state: &AppState, query: &str, mode: SearchMode) -> HandlerResult {
     diagnostics_impl::count(state, query, mode).await
 }
 
-pub(super) async fn get_headers(state: &Arc<AppState>, message_id: &MessageId) -> HandlerResult {
+pub(super) async fn get_headers(state: &AppState, message_id: &MessageId) -> HandlerResult {
     diagnostics_impl::get_headers(state, message_id).await
 }
 
-pub(super) async fn sync_now(
-    state: &Arc<AppState>,
-    account_id: Option<&AccountId>,
-) -> HandlerResult {
+pub(super) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     diagnostics_impl::sync_now(state, account_id).await
 }
 
 pub(super) async fn export_thread(
-    state: &Arc<AppState>,
+    state: &AppState,
     thread_id: &ThreadId,
     format: &ExportFormat,
 ) -> HandlerResult {
@@ -40,16 +36,13 @@ pub(super) async fn export_thread(
 }
 
 pub(super) async fn export_search(
-    state: &Arc<AppState>,
+    state: &AppState,
     query: &str,
     format: &ExportFormat,
 ) -> HandlerResult {
     diagnostics_impl::export_search(state, query, format).await
 }
 
-pub(super) async fn get_sync_status(
-    state: &Arc<AppState>,
-    account_id: &AccountId,
-) -> HandlerResult {
+pub(super) async fn get_sync_status(state: &AppState, account_id: &AccountId) -> HandlerResult {
     diagnostics_impl::get_sync_status(state, account_id).await
 }

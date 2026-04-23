@@ -482,7 +482,7 @@ pub async fn run() -> anyhow::Result<()> {
             ] {
                 let _ = replaceable.send(ReplaceableRequest::Diagnostics {
                     kind,
-                    request,
+                    request: Box::new(request),
                     request_id,
                     enqueued_at: Instant::now(),
                 });

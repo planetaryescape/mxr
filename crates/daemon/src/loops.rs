@@ -344,7 +344,7 @@ fn truncate_token(token: &str) -> String {
 }
 
 async fn apply_rules_to_messages(
-    state: &Arc<AppState>,
+    state: &AppState,
     account_id: &AccountId,
     provider: &dyn MailSyncProvider,
     message_ids: &[mxr_core::MessageId],
@@ -454,7 +454,7 @@ async fn apply_rules_to_messages(
 }
 
 async fn execute_rule_action(
-    state: &Arc<AppState>,
+    state: &AppState,
     account_id: &AccountId,
     provider: &dyn MailSyncProvider,
     message_id: &mxr_core::MessageId,

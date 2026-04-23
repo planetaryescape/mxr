@@ -2,9 +2,12 @@ use assert_cmd::Command;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
+use std::sync::{Mutex, MutexGuard};
 use std::thread::sleep;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
+
+static DAEMON_LIFECYCLE_LOCK: Mutex<()> = Mutex::new(());
 
 struct TestDaemon {
     socket_path: PathBuf,
@@ -45,6 +48,7 @@ impl Drop for TestDaemon {
 
 #[test]
 fn status_autostarted_daemon_stays_resident() {
+    let _guard = daemon_lifecycle_guard();
     let temp = TempDir::new().expect("temp dir");
     let instance = unique_instance_name("mxr-test-daemon");
     let data_dir = temp.path().join("data");
@@ -91,6 +95,7 @@ fn status_autostarted_daemon_stays_resident() {
 
 #[test]
 fn status_recovers_running_daemon_when_socket_path_disappears() {
+    let _guard = daemon_lifecycle_guard();
     let temp = TempDir::new().expect("temp dir");
     let instance = unique_instance_name("mxr-test-daemon-recover");
     let data_dir = temp.path().join("data");
@@ -140,6 +145,10 @@ fn status_recovers_running_daemon_when_socket_path_disappears() {
         second_stderr.contains("Restarting daemon to recover from a missing IPC socket... ready."),
         "expected recovery restart message, stderr={second_stderr:?}"
     );
+}
+
+fn daemon_lifecycle_guard() -> MutexGuard<'static, ()> {
+    DAEMON_LIFECYCLE_LOCK.lock().expect("daemon lifecycle lock")
 }
 
 fn run_status(instance: &str, data_dir: &Path, config_dir: &Path) -> (String, String) {

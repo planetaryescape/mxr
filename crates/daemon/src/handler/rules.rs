@@ -3,16 +3,15 @@ use super::{build_rule_from_form, parse_rule_value, rule_to_form_data, HandlerRe
 use crate::state::AppState;
 use mxr_protocol::ResponseData;
 use mxr_rules::Rule;
-use std::sync::Arc;
 
-pub(super) async fn list_rules(state: &Arc<AppState>) -> HandlerResult {
+pub(super) async fn list_rules(state: &AppState) -> HandlerResult {
     let rows = state.store.list_rules().await.map_err(|e| e.to_string())?;
     Ok(ResponseData::Rules {
         rules: rows.iter().map(mxr_store::row_to_rule_json).collect(),
     })
 }
 
-pub(super) async fn get_rule(state: &Arc<AppState>, rule: &str) -> HandlerResult {
+pub(super) async fn get_rule(state: &AppState, rule: &str) -> HandlerResult {
     match state
         .store
         .get_rule_by_id_or_name(rule)
@@ -26,7 +25,7 @@ pub(super) async fn get_rule(state: &Arc<AppState>, rule: &str) -> HandlerResult
     }
 }
 
-pub(super) async fn get_rule_form(state: &Arc<AppState>, rule: &str) -> HandlerResult {
+pub(super) async fn get_rule_form(state: &AppState, rule: &str) -> HandlerResult {
     match state
         .store
         .get_rule_by_id_or_name(rule)
@@ -43,16 +42,13 @@ pub(super) async fn get_rule_form(state: &Arc<AppState>, rule: &str) -> HandlerR
     }
 }
 
-pub(super) async fn upsert_rule_value(
-    state: &Arc<AppState>,
-    value: serde_json::Value,
-) -> HandlerResult {
+pub(super) async fn upsert_rule_value(state: &AppState, value: serde_json::Value) -> HandlerResult {
     let rule = parse_rule_value(value.clone())?;
     persist_rule(state, &rule).await?;
     Ok(ResponseData::RuleData { rule: value })
 }
 
-pub(super) async fn delete_rule(state: &Arc<AppState>, rule: &str) -> HandlerResult {
+pub(super) async fn delete_rule(state: &AppState, rule: &str) -> HandlerResult {
     match state
         .store
         .get_rule_by_id_or_name(rule)
@@ -76,7 +72,7 @@ pub(super) async fn delete_rule(state: &Arc<AppState>, rule: &str) -> HandlerRes
 }
 
 pub(super) async fn upsert_rule_form(
-    state: &Arc<AppState>,
+    state: &AppState,
     existing_rule: Option<&String>,
     name: &str,
     condition: &str,
@@ -100,7 +96,7 @@ pub(super) async fn upsert_rule_form(
 }
 
 pub(super) async fn list_rule_history(
-    state: &Arc<AppState>,
+    state: &AppState,
     rule: Option<&String>,
     limit: u32,
 ) -> HandlerResult {
@@ -134,7 +130,7 @@ pub(super) async fn list_rule_history(
 }
 
 pub(super) async fn dry_run(
-    state: &Arc<AppState>,
+    state: &AppState,
     rule: Option<&String>,
     all: bool,
     after: Option<&String>,

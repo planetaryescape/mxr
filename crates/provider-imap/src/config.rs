@@ -1,8 +1,9 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use crate::error::ImapProviderError;
+use once_cell::sync::OnceCell;
 use serde::Deserialize;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 type PasswordReader = Arc<dyn Fn(&str, &str) -> Result<String, ImapProviderError> + Send + Sync>;
 
@@ -18,7 +19,7 @@ pub struct ImapConfig {
     #[serde(default = "default_true")]
     pub use_tls: bool,
     #[serde(skip, default = "default_password_cache")]
-    password_cache: Arc<Mutex<Option<String>>>,
+    password_cache: Arc<OnceCell<String>>,
     #[serde(skip, default = "default_password_reader")]
     password_reader: PasswordReader,
 }
@@ -27,8 +28,8 @@ fn default_true() -> bool {
     true
 }
 
-fn default_password_cache() -> Arc<Mutex<Option<String>>> {
-    Arc::new(Mutex::new(None))
+fn default_password_cache() -> Arc<OnceCell<String>> {
+    Arc::new(OnceCell::new())
 }
 
 fn default_password_reader() -> PasswordReader {
@@ -61,17 +62,9 @@ impl ImapConfig {
 
     /// Retrieve the IMAP password from the system keyring.
     pub fn resolve_password(&self) -> Result<String, ImapProviderError> {
-        let mut cached = self.password_cache.lock().map_err(|_| {
-            ImapProviderError::Keyring("Failed to lock IMAP password cache".to_string())
-        })?;
-
-        if let Some(password) = cached.as_ref() {
-            return Ok(password.clone());
-        }
-
-        let password = (self.password_reader)(&self.password_ref, &self.username)?;
-        *cached = Some(password.clone());
-        Ok(password)
+        self.password_cache
+            .get_or_try_init(|| (self.password_reader)(&self.password_ref, &self.username))
+            .cloned()
     }
 
     #[cfg(test)]

@@ -7,7 +7,6 @@ use mxr_core::types::{SearchMode, SortOrder};
 use mxr_search::{ast::QueryNode, parse_query, MxrSchema, QueryBuilder, SearchPage, SearchResult};
 use mxr_semantic::{should_use_semantic, SemanticHit};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use super::{paginate_results, sort_results};
 use crate::handler::should_fallback_to_tantivy;
@@ -23,7 +22,7 @@ struct SearchExecutionOptions {
 }
 
 pub(super) async fn execute_search(
-    state: &Arc<AppState>,
+    state: &AppState,
     query: &str,
     limit: usize,
     offset: usize,
@@ -76,7 +75,7 @@ pub(super) async fn execute_search(
 }
 
 async fn execute_search_ast(
-    state: &Arc<AppState>,
+    state: &AppState,
     _query: &str,
     ast: &QueryNode,
     options: &SearchExecutionOptions,
@@ -303,7 +302,7 @@ async fn execute_search_ast(
 }
 
 pub(super) async fn lexical_search(
-    state: &Arc<AppState>,
+    state: &AppState,
     ast: &QueryNode,
     limit: usize,
     offset: usize,
@@ -320,7 +319,7 @@ pub(super) async fn lexical_search(
 }
 
 pub(super) async fn filter_dense_hits(
-    state: &Arc<AppState>,
+    state: &AppState,
     ast: &QueryNode,
     hits: Vec<SemanticHit>,
 ) -> Result<Vec<SearchResult>, String> {
@@ -366,6 +365,7 @@ mod tests {
     use crate::state::AppState;
     use crate::test_fixtures::TestEnvelopeBuilder;
     use mxr_core::types::{AttachmentDisposition, AttachmentMeta, MessageBody, MessageMetadata};
+    use std::sync::Arc;
     use tempfile::tempdir;
 
     fn keyword_embedder(
@@ -402,7 +402,7 @@ mod tests {
         }
     }
 
-    async fn enable_semantic_for_test(state: &Arc<AppState>) {
+    async fn enable_semantic_for_test(state: &AppState) {
         let mut config = state.config_snapshot();
         config.search.semantic.enabled = true;
         state.set_config_for_test(config).await;

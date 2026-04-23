@@ -415,7 +415,7 @@ fn build_reply_references(envelope: &mxr_core::types::Envelope) -> Vec<String> {
 
 /// Build an ExportThread from a thread_id by fetching envelopes and bodies from the store.
 async fn build_export_thread(
-    state: &Arc<AppState>,
+    state: &AppState,
     thread_id: &mxr_core::ThreadId,
 ) -> Result<ExportThread, String> {
     let thread = state
@@ -473,7 +473,7 @@ async fn build_export_thread(
 }
 
 async fn find_label_by_name(
-    state: &Arc<AppState>,
+    state: &AppState,
     account_id: &mxr_core::AccountId,
     name: &str,
 ) -> Result<mxr_core::Label, String> {
@@ -498,7 +498,7 @@ fn render_message_context(body: &mxr_core::types::MessageBody) -> String {
 }
 
 async fn populate_envelope_label_provider_ids(
-    state: &Arc<AppState>,
+    state: &AppState,
     envelope: &mut mxr_core::types::Envelope,
     labels: &[mxr_core::types::Label],
 ) -> Result<(), String> {
@@ -516,7 +516,7 @@ async fn populate_envelope_label_provider_ids(
 }
 
 async fn persist_local_label_changes(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &mxr_core::MessageId,
     add: &[String],
     remove: &[String],
@@ -564,7 +564,7 @@ async fn persist_local_label_changes(
 }
 
 pub(crate) async fn reconcile_label_mutation(
-    state: &Arc<AppState>,
+    state: &AppState,
     provider: &dyn MailSyncProvider,
     message_id: &mxr_core::MessageId,
     add: &[String],
@@ -594,7 +594,7 @@ fn same_remote_message(candidate: &mxr_core::Envelope, original: &mxr_core::Enve
 }
 
 async fn find_reconciled_message_id(
-    state: &Arc<AppState>,
+    state: &AppState,
     original: &mxr_core::Envelope,
     previous_message_id: &mxr_core::MessageId,
 ) -> Result<mxr_core::MessageId, String> {
@@ -636,7 +636,7 @@ async fn find_reconciled_message_id(
 }
 
 pub(crate) async fn apply_snooze(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &mxr_core::MessageId,
     wake_at: &chrono::DateTime<chrono::Utc>,
 ) -> Result<(), String> {
@@ -689,7 +689,7 @@ pub(crate) async fn apply_snooze(
 }
 
 pub(crate) async fn restore_snoozed_message(
-    state: &Arc<AppState>,
+    state: &AppState,
     snoozed: &Snoozed,
 ) -> Result<(), String> {
     let provider_id = state
@@ -734,7 +734,7 @@ fn parse_rule_value(value: serde_json::Value) -> Result<Rule, String> {
 }
 
 async fn build_rule_from_form(
-    state: &Arc<AppState>,
+    state: &AppState,
     existing_rule: Option<&String>,
     name: &str,
     condition: &str,
@@ -1026,7 +1026,7 @@ fn string_match_to_query(field: &str, pattern: &StringMatch) -> Result<String, S
     }
 }
 
-async fn list_runtime_accounts(state: &Arc<AppState>) -> Result<Vec<AccountSummaryData>, String> {
+async fn list_runtime_accounts(state: &AppState) -> Result<Vec<AccountSummaryData>, String> {
     use std::collections::BTreeMap;
 
     let config = state.config_snapshot();
@@ -1792,7 +1792,7 @@ fn persist_account_password(
 }
 
 async fn handle_export_thread(
-    state: &Arc<AppState>,
+    state: &AppState,
     thread_id: &mxr_core::ThreadId,
     format: &ExportFormat,
 ) -> Response {
@@ -1808,11 +1808,7 @@ async fn handle_export_thread(
     }
 }
 
-async fn handle_export_search(
-    state: &Arc<AppState>,
-    query: &str,
-    format: &ExportFormat,
-) -> Response {
+async fn handle_export_search(state: &AppState, query: &str, format: &ExportFormat) -> Response {
     let search_results = match state
         .search
         .search(query, 100, 0, mxr_core::types::SortOrder::DateDesc)
@@ -1866,7 +1862,7 @@ async fn handle_export_search(
 }
 
 async fn materialize_attachment_file(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &mxr_core::MessageId,
     attachment_id: &mxr_core::AttachmentId,
 ) -> Result<mxr_protocol::AttachmentFile, mxr_core::MxrError> {

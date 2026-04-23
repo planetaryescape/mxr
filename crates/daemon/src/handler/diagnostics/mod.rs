@@ -17,7 +17,6 @@ use mxr_protocol::IPC_PROTOCOL_VERSION;
 use mxr_protocol::{ResponseData, SearchExplain, SearchExplainResult, SearchResultItem};
 use mxr_search::{SearchPage, SearchResult};
 use std::collections::HashMap;
-use std::sync::Arc;
 
 #[derive(Debug)]
 struct SearchExecution {
@@ -39,7 +38,7 @@ struct ExecutionExplainInput<'a> {
 }
 
 pub(crate) async fn list_events(
-    state: &Arc<AppState>,
+    state: &AppState,
     limit: u32,
     level: Option<&str>,
     category: Option<&str>,
@@ -54,16 +53,12 @@ pub(crate) async fn list_events(
     })
 }
 
-pub(crate) async fn get_logs(
-    state: &Arc<AppState>,
-    limit: u32,
-    level: Option<&str>,
-) -> HandlerResult {
+pub(crate) async fn get_logs(state: &AppState, limit: u32, level: Option<&str>) -> HandlerResult {
     let lines = recent_log_lines(state, limit as usize, level).await?;
     Ok(ResponseData::LogLines { lines })
 }
 
-pub(crate) async fn doctor_report(state: &Arc<AppState>) -> HandlerResult {
+pub(crate) async fn doctor_report(state: &AppState) -> HandlerResult {
     let report = collect_doctor_report(state).await?;
     Ok(ResponseData::DoctorReport { report })
 }
@@ -92,7 +87,7 @@ pub(crate) async fn bug_report(
 }
 
 pub(crate) async fn search(
-    state: &Arc<AppState>,
+    state: &AppState,
     query: &str,
     limit: u32,
     offset: u32,
@@ -117,14 +112,14 @@ pub(crate) async fn search(
     })
 }
 
-pub(crate) async fn count(state: &Arc<AppState>, query: &str, mode: SearchMode) -> HandlerResult {
+pub(crate) async fn count(state: &AppState, query: &str, mode: SearchMode) -> HandlerResult {
     let results = execute_search(state, query, 10_000, 0, mode, SortOrder::DateDesc, false).await;
     Ok(ResponseData::Count {
         count: results.map_err(|e| e.to_string())?.results.len() as u32,
     })
 }
 
-pub(crate) async fn get_headers(state: &Arc<AppState>, message_id: &MessageId) -> HandlerResult {
+pub(crate) async fn get_headers(state: &AppState, message_id: &MessageId) -> HandlerResult {
     match state
         .store
         .get_envelope(message_id)
@@ -181,7 +176,7 @@ pub(crate) async fn get_headers(state: &Arc<AppState>, message_id: &MessageId) -
     }
 }
 
-pub(crate) async fn list_saved_searches(state: &Arc<AppState>) -> HandlerResult {
+pub(crate) async fn list_saved_searches(state: &AppState) -> HandlerResult {
     let searches = state
         .store
         .list_saved_searches()
@@ -191,7 +186,7 @@ pub(crate) async fn list_saved_searches(state: &Arc<AppState>) -> HandlerResult 
 }
 
 pub(crate) async fn list_subscriptions(
-    state: &Arc<AppState>,
+    state: &AppState,
     account_id: Option<&AccountId>,
     limit: u32,
 ) -> HandlerResult {
@@ -207,7 +202,7 @@ pub(crate) async fn list_subscriptions(
     Ok(ResponseData::Subscriptions { subscriptions })
 }
 
-pub(crate) async fn semantic_status(state: &Arc<AppState>) -> HandlerResult {
+pub(crate) async fn semantic_status(state: &AppState) -> HandlerResult {
     let snapshot = state
         .semantic
         .status_snapshot()
@@ -216,7 +211,7 @@ pub(crate) async fn semantic_status(state: &Arc<AppState>) -> HandlerResult {
     Ok(ResponseData::SemanticStatus { snapshot })
 }
 
-pub(crate) async fn enable_semantic(state: &Arc<AppState>, enabled: bool) -> HandlerResult {
+pub(crate) async fn enable_semantic(state: &AppState, enabled: bool) -> HandlerResult {
     if enabled {
         let profile = state.config_snapshot().search.semantic.active_profile;
         state
@@ -234,7 +229,7 @@ pub(crate) async fn enable_semantic(state: &Arc<AppState>, enabled: bool) -> Han
 }
 
 pub(crate) async fn install_semantic_profile(
-    state: &Arc<AppState>,
+    state: &AppState,
     profile: SemanticProfile,
 ) -> HandlerResult {
     state
@@ -246,7 +241,7 @@ pub(crate) async fn install_semantic_profile(
 }
 
 pub(crate) async fn use_semantic_profile(
-    state: &Arc<AppState>,
+    state: &AppState,
     profile: SemanticProfile,
 ) -> HandlerResult {
     state
@@ -263,7 +258,7 @@ pub(crate) async fn use_semantic_profile(
     semantic_status(state).await
 }
 
-pub(crate) async fn reindex_semantic(state: &Arc<AppState>) -> HandlerResult {
+pub(crate) async fn reindex_semantic(state: &AppState) -> HandlerResult {
     state
         .semantic
         .reindex_active()
@@ -273,7 +268,7 @@ pub(crate) async fn reindex_semantic(state: &Arc<AppState>) -> HandlerResult {
 }
 
 pub(crate) async fn create_saved_search(
-    state: &Arc<AppState>,
+    state: &AppState,
     name: &str,
     query: &str,
     search_mode: SearchMode,
@@ -297,7 +292,7 @@ pub(crate) async fn create_saved_search(
     Ok(ResponseData::SavedSearchData { search })
 }
 
-pub(crate) async fn delete_saved_search(state: &Arc<AppState>, name: &str) -> HandlerResult {
+pub(crate) async fn delete_saved_search(state: &AppState, name: &str) -> HandlerResult {
     match state
         .store
         .delete_saved_search_by_name(name)
@@ -309,11 +304,7 @@ pub(crate) async fn delete_saved_search(state: &Arc<AppState>, name: &str) -> Ha
     }
 }
 
-pub(crate) async fn run_saved_search(
-    state: &Arc<AppState>,
-    name: &str,
-    limit: u32,
-) -> HandlerResult {
+pub(crate) async fn run_saved_search(state: &AppState, name: &str, limit: u32) -> HandlerResult {
     let saved = state
         .store
         .get_saved_search_by_name(name)
@@ -337,7 +328,7 @@ pub(crate) async fn run_saved_search(
     })
 }
 
-pub(crate) async fn get_status(state: &Arc<AppState>) -> HandlerResult {
+pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
     let (accounts, total_messages, sync_statuses) = collect_status_snapshot(state).await?;
     let repair_required = crate::server::search_requires_repair(state, total_messages).await;
     let semantic_runtime = state
@@ -360,10 +351,7 @@ pub(crate) async fn get_status(state: &Arc<AppState>) -> HandlerResult {
     })
 }
 
-pub(crate) async fn sync_now(
-    state: &Arc<AppState>,
-    account_id: Option<&AccountId>,
-) -> HandlerResult {
+pub(crate) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     let provider = state.get_provider(account_id)?.clone();
     let outcome = state
         .sync_engine
@@ -381,7 +369,7 @@ pub(crate) async fn sync_now(
 }
 
 pub(crate) async fn export_thread(
-    state: &Arc<AppState>,
+    state: &AppState,
     thread_id: &ThreadId,
     format: &ExportFormat,
 ) -> HandlerResult {
@@ -392,7 +380,7 @@ pub(crate) async fn export_thread(
 }
 
 pub(crate) async fn export_search(
-    state: &Arc<AppState>,
+    state: &AppState,
     query: &str,
     format: &ExportFormat,
 ) -> HandlerResult {
@@ -402,10 +390,7 @@ pub(crate) async fn export_search(
     }
 }
 
-pub(crate) async fn get_sync_status(
-    state: &Arc<AppState>,
-    account_id: &AccountId,
-) -> HandlerResult {
+pub(crate) async fn get_sync_status(state: &AppState, account_id: &AccountId) -> HandlerResult {
     let sync = build_account_sync_status(state, account_id).await?;
     Ok(ResponseData::SyncStatus { sync })
 }
@@ -542,7 +527,7 @@ fn reciprocal_rank_fusion(
 }
 
 async fn sort_results(
-    state: &Arc<AppState>,
+    state: &AppState,
     mut results: Vec<SearchResult>,
     sort: SortOrder,
 ) -> Result<Vec<SearchResult>, String> {

@@ -3,11 +3,10 @@ use mxr_export::{ExportAttachment, ExportMessage, ExportThread};
 use mxr_protocol::*;
 use mxr_reader::ReaderConfig;
 use crate::state::AppState;
-use std::sync::Arc;
 
 /// Build an ExportThread from a thread_id by fetching envelopes and bodies from the store.
 async fn build_export_thread(
-    state: &Arc<AppState>,
+    state: &AppState,
     thread_id: &mxr_core::ThreadId,
 ) -> Result<ExportThread, String> {
     let thread = state
@@ -65,7 +64,7 @@ async fn build_export_thread(
 }
 
 pub(super) async fn handle_export_thread(
-    state: &Arc<AppState>,
+    state: &AppState,
     thread_id: &mxr_core::ThreadId,
     format: &ExportFormat,
 ) -> Response {
@@ -82,7 +81,7 @@ pub(super) async fn handle_export_thread(
 }
 
 pub(super) async fn handle_export_search(
-    state: &Arc<AppState>,
+    state: &AppState,
     query: &str,
     format: &ExportFormat,
 ) -> Response {
@@ -144,7 +143,7 @@ pub(super) async fn handle_export_search(
 }
 
 pub(super) async fn materialize_attachment_file(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &mxr_core::MessageId,
     attachment_id: &mxr_core::AttachmentId,
 ) -> Result<mxr_protocol::AttachmentFile, mxr_core::MxrError> {

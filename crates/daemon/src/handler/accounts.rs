@@ -7,7 +7,7 @@ use crate::state::AppState;
 use mxr_protocol::{AccountConfigData, ResponseData};
 use std::sync::Arc;
 
-pub(super) async fn list_accounts(state: &Arc<AppState>) -> HandlerResult {
+pub(super) async fn list_accounts(state: &AppState) -> HandlerResult {
     let accounts = list_runtime_accounts(state).await?;
     Ok(ResponseData::Accounts { accounts })
 }

@@ -3,7 +3,6 @@
 use mxr_core::MxrError;
 use mxr_search::{SearchIndexEntry, SearchServiceHandle, SearchUpdateBatch};
 use mxr_store::Store;
-use std::sync::Arc;
 
 /// Progress callback data for reindexing.
 #[derive(Debug, Clone)]
@@ -16,7 +15,7 @@ pub enum ReindexProgress {
 /// Drop and rebuild the Tantivy index from all messages in SQLite.
 pub async fn reindex(
     search: &SearchServiceHandle,
-    store: &Arc<Store>,
+    store: &Store,
     mut progress: impl FnMut(ReindexProgress),
 ) -> Result<u32, MxrError> {
     let total = store
@@ -95,6 +94,7 @@ pub async fn reindex(
 mod tests {
     use super::*;
     use crate::state::AppState;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn reindex_empty_store_produces_empty_index() {

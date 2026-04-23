@@ -7,10 +7,11 @@ Manage accounts
 Usage: mxr accounts [COMMAND]
 
 Commands:
-  add   Add an account
-  show  Show account details
-  test  Test account connectivity
-  help  Print this message or the help of the given subcommand(s)
+  add     Add an account
+  show    Show account details
+  test    Test account connectivity
+  repair  Re-save account passwords into the protected keychain store
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help  Print help

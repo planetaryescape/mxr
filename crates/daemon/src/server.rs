@@ -382,7 +382,7 @@ pub(crate) fn classify_health(
     }
 }
 
-pub(crate) async fn search_requires_repair(state: &Arc<AppState>, total_messages: u32) -> bool {
+pub(crate) async fn search_requires_repair(state: &AppState, total_messages: u32) -> bool {
     if total_messages == 0 {
         return false;
     }

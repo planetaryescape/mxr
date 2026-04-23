@@ -4,7 +4,7 @@ use mxr_protocol::*;
 use std::sync::Arc;
 
 pub(super) async fn list_runtime_accounts(
-    state: &Arc<AppState>,
+    state: &AppState,
 ) -> Result<Vec<AccountSummaryData>, String> {
     use std::collections::BTreeMap;
 

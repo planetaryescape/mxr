@@ -12,7 +12,6 @@ use mxr_protocol::ResponseData;
 use scraper::{Html, Selector};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 fn resolve_account_id(
     state: &AppState,
@@ -25,7 +24,7 @@ fn resolve_account_id(
 }
 
 pub(super) async fn list_envelopes(
-    state: &Arc<AppState>,
+    state: &AppState,
     label_id: Option<&LabelId>,
     account_id: Option<&AccountId>,
     limit: u32,
@@ -69,7 +68,7 @@ pub(super) async fn list_envelopes(
 }
 
 pub(super) async fn list_envelopes_by_ids(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_ids: &[MessageId],
 ) -> HandlerResult {
     let mut envelopes = state
@@ -89,7 +88,7 @@ pub(super) async fn list_envelopes_by_ids(
     Ok(ResponseData::Envelopes { envelopes })
 }
 
-pub(super) async fn get_envelope(state: &Arc<AppState>, message_id: &MessageId) -> HandlerResult {
+pub(super) async fn get_envelope(state: &AppState, message_id: &MessageId) -> HandlerResult {
     match state
         .store
         .get_envelope(message_id)
@@ -110,13 +109,13 @@ pub(super) async fn get_envelope(state: &Arc<AppState>, message_id: &MessageId) 
     }
 }
 
-pub(super) async fn get_body(state: &Arc<AppState>, message_id: &MessageId) -> HandlerResult {
+pub(super) async fn get_body(state: &AppState, message_id: &MessageId) -> HandlerResult {
     let body = load_body_for_message(state, message_id).await?;
     Ok(ResponseData::Body { body })
 }
 
 pub(super) async fn get_html_image_assets(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &MessageId,
     allow_remote: bool,
 ) -> HandlerResult {
@@ -141,7 +140,7 @@ pub(super) async fn get_html_image_assets(
 }
 
 pub(super) async fn download_attachment(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &MessageId,
     attachment_id: &AttachmentId,
 ) -> HandlerResult {
@@ -152,7 +151,7 @@ pub(super) async fn download_attachment(
 }
 
 pub(super) async fn open_attachment(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &MessageId,
     attachment_id: &AttachmentId,
 ) -> HandlerResult {
@@ -183,7 +182,7 @@ fn collect_html_image_sources(html: &str) -> Vec<String> {
 }
 
 async fn load_body_for_message(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &MessageId,
 ) -> Result<MessageBody, String> {
     if let Some(body) = state
@@ -199,7 +198,7 @@ async fn load_body_for_message(
 }
 
 async fn normalize_body_if_needed(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &MessageId,
     body: MessageBody,
 ) -> Result<MessageBody, String> {
@@ -215,6 +214,20 @@ async fn normalize_body_if_needed(
 
     if !stored_body_needs_provider_repair(&body, envelope.as_ref()) {
         return Ok(body);
+    }
+
+    if stored_body_has_authoritative_best_effort_summary(&body) {
+        let Some(envelope) = envelope else {
+            let mut normalized = body;
+            normalized.ensure_best_effort_readable();
+            return Ok(normalized);
+        };
+
+        return state
+            .sync_engine
+            .repair_body(&envelope, &body)
+            .await
+            .map_err(|error| error.to_string());
     }
 
     if let Ok(rehydrated) = hydrate_body_from_provider(state, message_id).await {
@@ -254,6 +267,10 @@ fn stored_body_needs_provider_repair(body: &MessageBody, envelope: Option<&Envel
     best_effort_summary_looks_suspicious(body, envelope)
 }
 
+fn stored_body_has_authoritative_best_effort_summary(body: &MessageBody) -> bool {
+    body.text_plain.is_none() && body.text_html.is_none() && body.metadata.calendar.is_some()
+}
+
 fn best_effort_summary_looks_suspicious(body: &MessageBody, envelope: Option<&Envelope>) -> bool {
     let snippet_suggests_body = envelope.is_some_and(|envelope| {
         let snippet = envelope.snippet.trim();
@@ -278,7 +295,7 @@ fn best_effort_summary_looks_suspicious(body: &MessageBody, envelope: Option<&En
 }
 
 async fn hydrate_body_from_provider(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &MessageId,
 ) -> Result<MessageBody, String> {
     let envelope = state
@@ -320,7 +337,7 @@ async fn hydrate_body_from_provider(
 }
 
 async fn resolve_html_image_asset(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &MessageId,
     body: &MessageBody,
     source: &str,
@@ -514,7 +531,7 @@ fn filename_matches(filename: &str, source: &str) -> bool {
 }
 
 async fn materialize_data_uri_asset(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &MessageId,
     source: &str,
 ) -> Result<(PathBuf, Option<String>), String> {
@@ -565,7 +582,7 @@ fn decode_base64_data_uri_fallback(source: &str) -> Result<Vec<u8>, String> {
 }
 
 async fn materialize_remote_asset(
-    state: &Arc<AppState>,
+    state: &AppState,
     message_id: &MessageId,
     source: &str,
 ) -> Result<(PathBuf, Option<String>), String> {
@@ -606,7 +623,7 @@ fn html_image_dir(state: &AppState, message_id: &MessageId) -> PathBuf {
         .join(message_id.as_str())
 }
 
-pub(super) async fn list_bodies(state: &Arc<AppState>, message_ids: &[MessageId]) -> HandlerResult {
+pub(super) async fn list_bodies(state: &AppState, message_ids: &[MessageId]) -> HandlerResult {
     tracing::debug!(count = message_ids.len(), "ListBodies: fetching bodies");
     let mut bodies = Vec::with_capacity(message_ids.len());
     for id in message_ids {
@@ -620,7 +637,7 @@ pub(super) async fn list_bodies(state: &Arc<AppState>, message_ids: &[MessageId]
     Ok(ResponseData::Bodies { bodies })
 }
 
-pub(super) async fn get_thread(state: &Arc<AppState>, thread_id: &ThreadId) -> HandlerResult {
+pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
     let thread = state
         .store
         .get_thread(thread_id)
@@ -640,10 +657,7 @@ pub(super) async fn get_thread(state: &Arc<AppState>, thread_id: &ThreadId) -> H
     Ok(ResponseData::Thread { thread, messages })
 }
 
-pub(super) async fn list_labels(
-    state: &Arc<AppState>,
-    account_id: Option<&AccountId>,
-) -> HandlerResult {
+pub(super) async fn list_labels(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
     let Some(account_id) = account_id
         .cloned()
         .or_else(|| state.default_account_id_opt())
@@ -659,7 +673,7 @@ pub(super) async fn list_labels(
 }
 
 pub(super) async fn create_label(
-    state: &Arc<AppState>,
+    state: &AppState,
     name: &str,
     color: Option<&str>,
     account_id: Option<&AccountId>,
@@ -682,7 +696,7 @@ pub(super) async fn create_label(
 }
 
 pub(super) async fn delete_label(
-    state: &Arc<AppState>,
+    state: &AppState,
     name: &str,
     account_id: Option<&AccountId>,
 ) -> HandlerResult {
@@ -702,7 +716,7 @@ pub(super) async fn delete_label(
 }
 
 pub(super) async fn rename_label(
-    state: &Arc<AppState>,
+    state: &AppState,
     old: &str,
     new: &str,
     account_id: Option<&AccountId>,

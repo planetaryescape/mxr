@@ -122,11 +122,11 @@ mxr-tui = { path = "crates/tui", version = "0.4.33" }
 mxr-web = { path = "crates/web", version = "0.4.33" }
 
 glob-match = "0.2"
-which = "7"
+which = "8"
 
 # IMAP (fork with ENABLE/NAMESPACE support, published as mxr-async-imap)
 async-imap = { package = "mxr-async-imap", version = "0.10.6" }
-async-native-tls = "0.5"
+async-native-tls = "0.6"
 
 # Async
 tokio = { version = "1", features = ["full"] }
@@ -140,7 +140,7 @@ serde_bytes = "0.11"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "uuid", "chrono", "migrate"] }
 
 # Search
-tantivy = "0.22"
+tantivy = "0.26"
 
 # TUI
 ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
@@ -180,11 +180,11 @@ futures = "0.3"
 dirs = "6"
 
 # Config
-toml = "0.8"
+toml = "1.1"
 
 # Gmail/OAuth
-yup-oauth2 = "11"
-reqwest = { version = "0.12", features = ["json"] }
+yup-oauth2 = "12"
+reqwest = { version = "0.13", features = ["json"] }
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors"] }
 tower = { version = "0.5", features = ["util"] }
@@ -192,9 +192,9 @@ keyring = { version = "3", features = ["apple-native"] }
 security-framework = { version = "3", features = ["OSX_10_15"] }
 security-framework-sys = "2"
 base64 = "0.22"
-mail-parser = "0.9"
+mail-parser = "0.11"
 url = "2"
-scraper = "0.24"
+scraper = "0.26"
 data-url = "0.3"
 mime_guess = "2"
 mail-builder = "0.4.4"
@@ -204,14 +204,14 @@ nucleo = "0.5"
 unicode-width = "0.2"
 
 # Reader
-html2text = "0.14"
+html2text = "0.17"
 htmlescape = "0.3"
 regex = "1"
 once_cell = "1"
 
 # Compose
 serde_yaml = "0.9"
-comrak = { version = "0.31", default-features = false, features = ["shortcodes"] }
+comrak = { version = "0.52", default-features = false, features = ["shortcodes"] }
 
 # SMTP
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "hostname", "pool", "smtp-transport"] }

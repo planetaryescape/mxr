@@ -173,7 +173,7 @@ jobs:
       - name: Generate changelog
         run: git cliff --tag "${GITHUB_REF_NAME}" --output CHANGELOG_RELEASE.md
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: needs.build-binaries.result == 'success'
         with:
           path: artifacts
@@ -201,7 +201,7 @@ jobs:
     if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true

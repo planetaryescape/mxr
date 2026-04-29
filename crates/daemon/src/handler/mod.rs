@@ -1727,8 +1727,10 @@ async fn authorize_account_config(
                 | AccountSyncConfigData::OutlookWork { client_id, token_ref },
             ) => (client_id.clone(), token_ref.clone()),
             _ => match &account.send {
-                Some(AccountSendConfigData::OutlookPersonal { token_ref }
-                | AccountSendConfigData::OutlookWork { token_ref }) => (None, token_ref.clone()),
+                Some(
+                    AccountSendConfigData::OutlookPersonal { client_id, token_ref }
+                    | AccountSendConfigData::OutlookWork { client_id, token_ref },
+                ) => (client_id.clone(), token_ref.clone()),
                 _ => unreachable!(),
             },
         };
@@ -1750,15 +1752,17 @@ async fn authorize_account_config(
         }
         let auth = mxr_provider_outlook::OutlookAuth::new(cid, token_ref, tenant);
         if !reauthorize {
-            if let Ok(Some(_)) = auth.load_tokens() {
-                return account_operation_result(
-                    true,
-                    "Outlook authorization ready.".into(),
-                    None,
-                    Some(account_step(true, "Existing OAuth token loaded.".into())),
-                    None,
-                    None,
-                );
+            if let Ok(Some(tokens)) = auth.load_tokens() {
+                if !tokens.is_near_expiry() {
+                    return account_operation_result(
+                        true,
+                        "Outlook authorization ready.".into(),
+                        None,
+                        Some(account_step(true, "Existing OAuth token loaded.".into())),
+                        None,
+                        None,
+                    );
+                }
             }
         }
         let device_resp = match auth.start_device_flow().await {
@@ -1774,10 +1778,15 @@ async fn authorize_account_config(
                 );
             }
         };
-        let _ = open::that(&device_resp.verification_uri);
+        let device_code_url = device_resp
+            .verification_uri_complete
+            .clone()
+            .unwrap_or_else(|| device_resp.verification_uri.clone());
+        let device_code_user_code = device_resp.user_code.clone();
+        let _ = open::that(&device_code_url);
         tracing::info!(
             user_code = %device_resp.user_code,
-            url = %device_resp.verification_uri,
+            url = %device_code_url,
             "Outlook device code flow started — user must enter code in browser"
         );
         return match auth.poll_for_token(&device_resp.device_code, device_resp.interval).await {
@@ -1792,14 +1801,16 @@ async fn authorize_account_config(
                         None,
                     )
                 } else {
-                    account_operation_result(
-                        true,
-                        "Outlook authorization complete.".into(),
-                        None,
-                        Some(account_step(true, "Token stored successfully.".into())),
-                        None,
-                        None,
-                    )
+                    AccountOperationResult {
+                        ok: true,
+                        summary: "Outlook authorization complete.".into(),
+                        save: None,
+                        auth: Some(account_step(true, "Token stored successfully.".into())),
+                        sync: None,
+                        send: None,
+                        device_code_url: Some(device_code_url),
+                        device_code_user_code: Some(device_code_user_code),
+                    }
                 }
             }
             Err(e) => account_operation_result(
@@ -2093,16 +2104,17 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
             send_cfg @ (AccountSendConfigData::OutlookPersonal { .. }
                 | AccountSendConfigData::OutlookWork { .. }),
         ) => {
-            let (token_ref, tenant) = match send_cfg {
-                AccountSendConfigData::OutlookPersonal { token_ref } => {
-                    (token_ref, mxr_provider_outlook::OutlookTenant::Personal)
+            let (token_ref, send_client_id, tenant) = match send_cfg {
+                AccountSendConfigData::OutlookPersonal { token_ref, client_id } => {
+                    (token_ref, client_id, mxr_provider_outlook::OutlookTenant::Personal)
                 }
-                AccountSendConfigData::OutlookWork { token_ref } => {
-                    (token_ref, mxr_provider_outlook::OutlookTenant::Work)
+                AccountSendConfigData::OutlookWork { token_ref, client_id } => {
+                    (token_ref, client_id, mxr_provider_outlook::OutlookTenant::Work)
                 }
                 _ => unreachable!(),
             };
-            let cid = mxr_provider_outlook::BUNDLED_CLIENT_ID.map(String::from);
+            let cid = send_client_id
+                .or_else(|| mxr_provider_outlook::BUNDLED_CLIENT_ID.map(String::from));
             match cid {
                 None => {
                     ok = false;
@@ -2238,6 +2250,8 @@ fn account_operation_result(
         auth,
         sync,
         send,
+        device_code_url: None,
+        device_code_user_code: None,
     }
 }
 
@@ -2373,11 +2387,11 @@ fn provider_kind_label(kind: &mxr_core::ProviderKind) -> &'static str {
 fn send_config_to_data(send: mxr_config::SendProviderConfig) -> AccountSendConfigData {
     match send {
         mxr_config::SendProviderConfig::Gmail => AccountSendConfigData::Gmail,
-        mxr_config::SendProviderConfig::OutlookPersonal { token_ref } => {
-            AccountSendConfigData::OutlookPersonal { token_ref }
+        mxr_config::SendProviderConfig::OutlookPersonal { client_id, token_ref } => {
+            AccountSendConfigData::OutlookPersonal { client_id, token_ref }
         }
-        mxr_config::SendProviderConfig::OutlookWork { token_ref } => {
-            AccountSendConfigData::OutlookWork { token_ref }
+        mxr_config::SendProviderConfig::OutlookWork { client_id, token_ref } => {
+            AccountSendConfigData::OutlookWork { client_id, token_ref }
         }
         mxr_config::SendProviderConfig::Smtp {
             host,
@@ -2448,11 +2462,11 @@ fn send_data_to_config(
 ) -> Result<mxr_config::SendProviderConfig, String> {
     match data {
         AccountSendConfigData::Gmail => Ok(mxr_config::SendProviderConfig::Gmail),
-        AccountSendConfigData::OutlookPersonal { token_ref } => {
-            Ok(mxr_config::SendProviderConfig::OutlookPersonal { token_ref })
+        AccountSendConfigData::OutlookPersonal { client_id, token_ref } => {
+            Ok(mxr_config::SendProviderConfig::OutlookPersonal { client_id, token_ref })
         }
-        AccountSendConfigData::OutlookWork { token_ref } => {
-            Ok(mxr_config::SendProviderConfig::OutlookWork { token_ref })
+        AccountSendConfigData::OutlookWork { client_id, token_ref } => {
+            Ok(mxr_config::SendProviderConfig::OutlookWork { client_id, token_ref })
         }
         AccountSendConfigData::Fake => Ok(mxr_config::SendProviderConfig::Fake),
         AccountSendConfigData::Smtp {

@@ -425,8 +425,8 @@ impl AppState {
             }
 
             if let Some(
-                mxr_config::SendProviderConfig::OutlookPersonal { token_ref }
-                | mxr_config::SendProviderConfig::OutlookWork { token_ref },
+                mxr_config::SendProviderConfig::OutlookPersonal { token_ref, .. }
+                | mxr_config::SendProviderConfig::OutlookWork { token_ref, .. },
             ) = &acct_config.send
             {
                 let tenant = match &acct_config.send {

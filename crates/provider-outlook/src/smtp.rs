@@ -77,7 +77,7 @@ impl MailSendProvider for OutlookSmtpSendProvider {
     }
 
     async fn send(&self, draft: &Draft, from: &Address) -> Result<SendReceipt, MxrError> {
-        let message = build_message(draft, from, false)
+        let _message = build_message(draft, from, false)
             .map_err(|e| MxrError::Provider(format!("failed to build message: {e}")))?;
 
         #[cfg(not(test))]
@@ -87,7 +87,7 @@ impl MailSendProvider for OutlookSmtpSendProvider {
                 .await
                 .map_err(|e| MxrError::Provider(e))?;
             transport
-                .send(message)
+                .send(_message)
                 .await
                 .map_err(|e| MxrError::Provider(format!("SMTP send failed: {e}")))?;
         }

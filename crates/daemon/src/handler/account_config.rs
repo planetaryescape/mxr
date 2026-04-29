@@ -486,6 +486,8 @@ pub(super) fn account_operation_result(
         auth,
         sync,
         send,
+        device_code_url: None,
+        device_code_user_code: None,
     }
 }
 

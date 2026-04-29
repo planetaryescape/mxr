@@ -761,6 +761,7 @@ async fn add_outlook_inner(
                 token_ref: token_ref.clone(),
             },
             mxr_config::SendProviderConfig::OutlookWork {
+                client_id: None,
                 token_ref: token_ref.clone(),
             },
         ),
@@ -770,6 +771,7 @@ async fn add_outlook_inner(
                 token_ref: token_ref.clone(),
             },
             mxr_config::SendProviderConfig::OutlookPersonal {
+                client_id: None,
                 token_ref: token_ref.clone(),
             },
         ),

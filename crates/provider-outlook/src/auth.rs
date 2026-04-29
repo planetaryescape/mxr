@@ -101,11 +101,14 @@ impl OutlookAuth {
     }
 
     fn token_path(&self) -> PathBuf {
+        let safe_ref = self
+            .token_ref
+            .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'], "_");
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("mxr")
             .join("tokens")
-            .join(format!("{}.json", self.token_ref))
+            .join(format!("{safe_ref}.json"))
     }
 
     pub fn load_tokens(&self) -> Result<Option<OutlookTokens>, OutlookError> {
@@ -124,13 +127,14 @@ impl OutlookAuth {
             std::fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(tokens)?;
-        std::fs::write(&path, content)?;
-        // Set 0600 permissions on Unix
+        let tmp_path = path.with_extension("json.tmp");
+        std::fs::write(&tmp_path, &content)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+            std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600))?;
         }
+        std::fs::rename(&tmp_path, &path)?;
         Ok(())
     }
 

@@ -679,6 +679,8 @@ mod tests {
                         auth: None,
                         sync: None,
                         send: None,
+                        device_code_url: None,
+                        device_code_user_code: None,
                     },
                 },
                 IpcCategory::MxrPlatform,

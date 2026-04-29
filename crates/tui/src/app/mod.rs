@@ -486,11 +486,16 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
 
     match account.send {
         Some(
-            mxr_protocol::AccountSendConfigData::OutlookPersonal { token_ref }
-            | mxr_protocol::AccountSendConfigData::OutlookWork { token_ref },
+            mxr_protocol::AccountSendConfigData::OutlookPersonal { token_ref, client_id }
+            | mxr_protocol::AccountSendConfigData::OutlookWork { token_ref, client_id },
         ) => {
             if form.outlook_token_ref.is_empty() {
                 form.outlook_token_ref = token_ref;
+            }
+            if form.outlook_client_id.is_empty() {
+                if let Some(cid) = client_id {
+                    form.outlook_client_id = cid;
+                }
             }
         }
         Some(mxr_protocol::AccountSendConfigData::Smtp {

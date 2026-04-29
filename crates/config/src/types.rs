@@ -121,10 +121,16 @@ pub enum SendProviderConfig {
         use_tls: bool,
     },
     OutlookPersonal {
+        /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_id: Option<String>,
         /// Token file reference — shared with sync provider.
         token_ref: String,
     },
     OutlookWork {
+        /// Azure app client ID. None = use bundled OUTLOOK_CLIENT_ID.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_id: Option<String>,
         /// Token file reference — shared with sync provider.
         token_ref: String,
     },

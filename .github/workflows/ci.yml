@@ -198,4 +198,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo install --path . --locked --root "$RUNNER_TEMP/mxr-install"
-      - run: "$RUNNER_TEMP/mxr-install/bin/mxr" version
+      - run: |
+          "$RUNNER_TEMP/mxr-install/bin/mxr" version

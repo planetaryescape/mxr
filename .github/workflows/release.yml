@@ -99,10 +99,10 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/v}"
           ARCHIVE="mxr-v${VERSION}-${{ matrix.archive }}"
           mkdir -p release
-          cp target/${{ matrix.target }}/release/mxr release/
+          cp "target/${{ matrix.target }}/release/mxr" release/
           cp LICENSE-MIT LICENSE-APACHE README.md release/
-          cd release && tar czf "../${ARCHIVE}" * && cd ..
-          echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
+          cd release && tar czf "../${ARCHIVE}" ./* && cd ..
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
       - name: Generate CLI SHA256 checksum
         if: needs.plan.outputs.cli_changed == 'true'
@@ -136,7 +136,7 @@ jobs:
           DESKTOP_ZIP=$(find apps/desktop/out/make -name '*.zip' -print -quit)
           test -n "${DESKTOP_ZIP}"
           cp "${DESKTOP_ZIP}" "${DESKTOP_ARCHIVE}"
-          echo "DESKTOP_ARCHIVE=${DESKTOP_ARCHIVE}" >> $GITHUB_ENV
+          echo "DESKTOP_ARCHIVE=${DESKTOP_ARCHIVE}" >> "$GITHUB_ENV"
 
       - name: Generate desktop SHA256 checksum
         if: needs.plan.outputs.desktop_source_changed == 'true'

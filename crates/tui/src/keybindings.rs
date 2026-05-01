@@ -35,7 +35,13 @@ pub enum ViewContext {
 pub fn parse_key_string(s: &str) -> Result<KeyBinding, String> {
     let mut keys = Vec::new();
 
-    if let Some(rest) = s.strip_prefix("Ctrl-") {
+    if let Some(rest) = s.strip_prefix("Ctrl-Alt-") {
+        let ch = rest.chars().next().ok_or("Missing char after Ctrl-Alt-")?;
+        keys.push(KeyPress {
+            code: KeyCode::Char(ch),
+            modifiers: KeyModifiers::CONTROL | KeyModifiers::ALT,
+        });
+    } else if let Some(rest) = s.strip_prefix("Ctrl-") {
         let ch = rest.chars().next().ok_or("Missing char after Ctrl-")?;
         keys.push(KeyPress {
             code: KeyCode::Char(ch),
@@ -160,6 +166,8 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "open_tab_5" => Some(Action::OpenTab5),
         "toggle_signature" => Some(Action::ToggleSignature),
         "show_onboarding" => Some(Action::ShowOnboarding),
+        #[cfg(debug_assertions)]
+        "dump_action_trace" => Some(Action::DumpActionTrace),
         _ => None,
     }
 }
@@ -172,6 +180,9 @@ pub fn format_keybinding(kb: &KeyBinding) -> String {
             let mut s = String::new();
             if kp.modifiers.contains(KeyModifiers::CONTROL) {
                 s.push_str("Ctrl-");
+            }
+            if kp.modifiers.contains(KeyModifiers::ALT) {
+                s.push_str("Alt-");
             }
             match kp.code {
                 KeyCode::Char(c) => s.push(c),
@@ -279,6 +290,8 @@ fn action_display_name(action: &str) -> String {
         "show_onboarding" => "Start Here".into(),
         "quit_view" => "Quit".into(),
         "clear_selection" => "Clear Sel".into(),
+        #[cfg(debug_assertions)]
+        "dump_action_trace" => "Dump Trace".into(),
         _ => action
             .split('_')
             .map(|part| {
@@ -410,6 +423,10 @@ pub fn default_keybindings() -> KeybindingConfig {
             mail_list.insert(kb, action.to_string());
         }
     }
+    #[cfg(debug_assertions)]
+    if let Ok(kb) = parse_key_string("Ctrl-Alt-d") {
+        mail_list.insert(kb, "dump_action_trace".to_string());
+    }
 
     // Message view defaults
     let mv_defaults = [
@@ -446,6 +463,10 @@ pub fn default_keybindings() -> KeybindingConfig {
         if let Ok(kb) = parse_key_string(key) {
             message_view.insert(kb, action.to_string());
         }
+    }
+    #[cfg(debug_assertions)]
+    if let Ok(kb) = parse_key_string("Ctrl-Alt-d") {
+        message_view.insert(kb, "dump_action_trace".to_string());
     }
 
     // Thread view defaults
@@ -484,6 +505,10 @@ pub fn default_keybindings() -> KeybindingConfig {
         if let Ok(kb) = parse_key_string(key) {
             thread_view.insert(kb, action.to_string());
         }
+    }
+    #[cfg(debug_assertions)]
+    if let Ok(kb) = parse_key_string("Ctrl-Alt-d") {
+        thread_view.insert(kb, "dump_action_trace".to_string());
     }
 
     KeybindingConfig {

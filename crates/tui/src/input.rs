@@ -210,6 +210,13 @@ impl InputHandler {
                 Some(Action::ToggleFullscreen)
             }
             (KeyState::Normal, KeyCode::Char('?'), _) => Some(Action::Help),
+            #[cfg(debug_assertions)]
+            (KeyState::Normal, KeyCode::Char('d'), modifiers)
+                if modifiers.contains(KeyModifiers::CONTROL)
+                    && modifiers.contains(KeyModifiers::ALT) =>
+            {
+                Some(Action::DumpActionTrace)
+            }
 
             _ => None,
         }

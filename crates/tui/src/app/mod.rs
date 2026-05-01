@@ -14,6 +14,7 @@ mod message_actions;
 mod modal_actions;
 mod mutation_actions;
 mod mutation_helpers;
+mod recorder;
 mod rule_actions;
 mod runtime_helpers;
 mod screen_actions;
@@ -37,6 +38,7 @@ use mxr_core::MxrError;
 use mxr_protocol::{MutationCommand, Request, Response, ResponseData};
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::prelude::*;
+use recorder::ActionRecorder;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 use throbber_widgets_tui::ThrobberState;
@@ -122,6 +124,7 @@ pub struct App {
     pub pending_mutation_count: usize,
     pub pending_mutation_status: Option<String>,
     pub pending_mutation_queue: Vec<(Request, MutationEffect)>,
+    recorder: ActionRecorder,
     input: InputHandler,
 }
 
@@ -192,6 +195,7 @@ impl App {
             pending_mutation_count: 0,
             pending_mutation_status: None,
             pending_mutation_queue: Vec::new(),
+            recorder: ActionRecorder::new(1000),
             input: InputHandler::new(),
         }
     }

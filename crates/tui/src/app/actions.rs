@@ -70,10 +70,13 @@ impl App {
     }
 
     pub fn apply(&mut self, action: Action) {
+        self.recorder.record(&action, &self.screen);
         // Clear status message on any action
         self.status_message = None;
 
         match action {
+            #[cfg(debug_assertions)]
+            Action::DumpActionTrace => self.dump_action_trace(),
             Action::RefreshAccounts
             | Action::OpenAccountFormNew
             | Action::SaveAccountForm
@@ -177,6 +180,19 @@ impl App {
         }
     }
 
+    #[cfg(debug_assertions)]
+    fn dump_action_trace(&mut self) {
+        let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let path = mxr_config::data_dir().join(format!("action-trace-{timestamp}.jsonl"));
+        match self.recorder.flush_to(&path) {
+            Ok(()) => {
+                self.status_message = Some(format!("Action trace written to {}", path.display()));
+            }
+            Err(error) => {
+                self.status_message = Some(format!("Action trace write failed: {error}"));
+            }
+        }
+    }
 }
 
 fn render_plain_text_browser_document(text: &str) -> String {

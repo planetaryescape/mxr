@@ -115,6 +115,14 @@ impl App {
     }
 
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        #[cfg(debug_assertions)]
+        if key.code == KeyCode::Char('d')
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+            && key.modifiers.contains(KeyModifiers::ALT)
+        {
+            return Some(Action::DumpActionTrace);
+        }
+
         if self.modals.error.is_some() {
             return match (key.code, key.modifiers) {
                 (KeyCode::Char('j') | KeyCode::Down, _) => {

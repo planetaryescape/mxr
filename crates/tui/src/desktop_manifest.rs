@@ -100,7 +100,14 @@ fn key_press_token(key: &crate::keybindings::KeyPress) -> String {
         .contains(ratatui::crossterm::event::KeyModifiers::CONTROL)
     {
         if let KeyCode::Char(c) = key.code {
-            return format!("Ctrl-{}", c.to_ascii_lowercase());
+            let mut prefix = String::from("Ctrl-");
+            if key
+                .modifiers
+                .contains(ratatui::crossterm::event::KeyModifiers::ALT)
+            {
+                prefix.push_str("Alt-");
+            }
+            return format!("{prefix}{}", c.to_ascii_lowercase());
         }
     }
 
@@ -184,6 +191,8 @@ fn action_name(action: &Action) -> Option<&'static str> {
         Action::ToggleFullscreen => Some("toggle_fullscreen"),
         Action::ExportThread => Some("export_thread"),
         Action::Help => Some("help"),
+        #[cfg(debug_assertions)]
+        Action::DumpActionTrace => Some("dump_action_trace"),
         Action::ToggleMailListMode => Some("toggle_mail_list_mode"),
         Action::RefreshRules => Some("refresh_rules"),
         Action::RefreshDiagnostics => Some("refresh_diagnostics"),

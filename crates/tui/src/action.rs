@@ -125,6 +125,9 @@ pub enum Action {
 
     // Help
     Help,
+    // Debug-only diagnostics
+    #[cfg(debug_assertions)]
+    DumpActionTrace,
 
     // No-op (for unrecognized keys)
     Noop,
@@ -187,6 +190,11 @@ impl UiContext {
 pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
     use Action::*;
     use UiContext::*;
+
+    #[cfg(debug_assertions)]
+    if matches!(action, DumpActionTrace) {
+        return true;
+    }
 
     match context {
         MailboxSidebar | MailboxList | MailboxMessage => true,

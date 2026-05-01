@@ -179,14 +179,14 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3.0.0
         if: needs.build-binaries.result == 'success'
         with:
           body_path: CHANGELOG_RELEASE.md
           files: artifacts/*
           generate_release_notes: false
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3.0.0
         if: needs.build-binaries.result == 'skipped'
         with:
           body_path: CHANGELOG_RELEASE.md

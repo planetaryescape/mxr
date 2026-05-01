@@ -11,6 +11,18 @@ pub enum AccountsAction {
     Test { name: String },
     /// Re-save account passwords into the protected keychain store
     Repair { name: String },
+    /// Disable an account without deleting local cached mail
+    Disable { name: String },
+    /// Remove an account from config; cached mail is kept unless purged
+    Remove {
+        name: String,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        yes: bool,
+        #[arg(long)]
+        purge_local_data: bool,
+    },
 }
 
 #[derive(Subcommand)]

@@ -1,21 +1,21 @@
 use crate::app::{App, ComposeAction, PendingSend, PendingSendMode};
 use crate::async_result::ComposeReadyData;
 use crate::ipc::{ipc_call, IpcRequest};
+use mxr_core::AccountId;
 use mxr_core::MxrError;
-use mxr_protocol::{Request, Response, ResponseData};
+use mxr_protocol::{AccountSummaryData, Request, Response, ResponseData};
 use tokio::sync::mpsc;
 
 pub(crate) async fn handle_compose_action(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     action: ComposeAction,
 ) -> Result<ComposeReadyData, MxrError> {
-    let from = get_account_email(bg).await?;
-
-    let kind = match action {
-        ComposeAction::EditDraft(path) => {
+    let (account_id, from, kind) = match action {
+        ComposeAction::EditDraft { path, account_id } => {
             // Re-edit existing draft — skip creating a new file
             let cursor_line = 1;
             return Ok(ComposeReadyData {
+                account_id,
                 draft_path: path.clone(),
                 cursor_line,
                 initial_content: mxr_compose::read_draft_file_async(&path)
@@ -23,8 +23,19 @@ pub(crate) async fn handle_compose_action(
                     .map_err(|e| MxrError::Ipc(e.to_string()))?,
             });
         }
-        ComposeAction::New { to, subject } => mxr_compose::ComposeKind::New { to, subject },
-        ComposeAction::Reply { message_id } => {
+        ComposeAction::New { to, subject } => {
+            let account = resolve_compose_account(bg, None).await?;
+            (
+                account.account_id,
+                account.email,
+                mxr_compose::ComposeKind::New { to, subject },
+            )
+        }
+        ComposeAction::Reply {
+            message_id,
+            account_id,
+        } => {
+            let account = resolve_compose_account(bg, Some(&account_id)).await?;
             let resp = ipc_call(
                 bg,
                 Request::PrepareReply {
@@ -33,7 +44,7 @@ pub(crate) async fn handle_compose_action(
                 },
             )
             .await?;
-            match resp {
+            let kind = match resp {
                 Response::Ok {
                     data: ResponseData::ReplyContext { context },
                 } => mxr_compose::ComposeKind::Reply {
@@ -46,9 +57,14 @@ pub(crate) async fn handle_compose_action(
                 },
                 Response::Error { message } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
-            }
+            };
+            (account_id, account.email, kind)
         }
-        ComposeAction::ReplyAll { message_id } => {
+        ComposeAction::ReplyAll {
+            message_id,
+            account_id,
+        } => {
+            let account = resolve_compose_account(bg, Some(&account_id)).await?;
             let resp = ipc_call(
                 bg,
                 Request::PrepareReply {
@@ -57,7 +73,7 @@ pub(crate) async fn handle_compose_action(
                 },
             )
             .await?;
-            match resp {
+            let kind = match resp {
                 Response::Ok {
                     data: ResponseData::ReplyContext { context },
                 } => mxr_compose::ComposeKind::Reply {
@@ -70,11 +86,16 @@ pub(crate) async fn handle_compose_action(
                 },
                 Response::Error { message } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
-            }
+            };
+            (account_id, account.email, kind)
         }
-        ComposeAction::Forward { message_id } => {
+        ComposeAction::Forward {
+            message_id,
+            account_id,
+        } => {
+            let account = resolve_compose_account(bg, Some(&account_id)).await?;
             let resp = ipc_call(bg, Request::PrepareForward { message_id }).await?;
-            match resp {
+            let kind = match resp {
                 Response::Ok {
                     data: ResponseData::ForwardContext { context },
                 } => mxr_compose::ComposeKind::Forward {
@@ -83,7 +104,8 @@ pub(crate) async fn handle_compose_action(
                 },
                 Response::Error { message } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
-            }
+            };
+            (account_id, account.email, kind)
         }
     };
 
@@ -92,6 +114,7 @@ pub(crate) async fn handle_compose_action(
         .map_err(|e| MxrError::Ipc(e.to_string()))?;
 
     Ok(ComposeReadyData {
+        account_id,
         draft_path: path.clone(),
         cursor_line,
         initial_content: mxr_compose::read_draft_file_async(&path)
@@ -100,21 +123,30 @@ pub(crate) async fn handle_compose_action(
     })
 }
 
-pub(crate) async fn get_account_email(
+pub(crate) async fn resolve_compose_account(
     bg: &mpsc::UnboundedSender<IpcRequest>,
-) -> Result<String, MxrError> {
+    account_id: Option<&AccountId>,
+) -> Result<AccountSummaryData, MxrError> {
     let resp = ipc_call(bg, Request::ListAccounts).await?;
     match resp {
         Response::Ok {
             data: ResponseData::Accounts { mut accounts },
         } => {
+            if let Some(account_id) = account_id {
+                return accounts
+                    .into_iter()
+                    .find(|account| &account.account_id == account_id)
+                    .ok_or_else(|| {
+                        MxrError::Ipc(format!("Compose account not found: {account_id}"))
+                    });
+            }
             if let Some(index) = accounts.iter().position(|account| account.is_default) {
-                Ok(accounts.remove(index).email)
+                Ok(accounts.remove(index))
             } else {
                 accounts
                     .into_iter()
                     .next()
-                    .map(|account| account.email)
+                    .map(|account| account)
                     .ok_or_else(|| MxrError::Ipc("No runtime account configured".into()))
             }
         }
@@ -155,6 +187,7 @@ pub(crate) async fn pending_send_from_edited_draft(
     };
 
     Ok(Some(PendingSend {
+        account_id: data.account_id.clone(),
         fm,
         body,
         draft_path: data.draft_path.clone(),

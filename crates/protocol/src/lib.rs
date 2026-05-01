@@ -25,6 +25,7 @@ mod tests {
             key: "work".into(),
             name: "Work".into(),
             email: "work@example.com".into(),
+            enabled: true,
             sync: None,
             send: None,
             is_default: true,
@@ -579,6 +580,25 @@ mod tests {
             (
                 ResponseData::SnoozedMessages {
                     snoozed: Vec::new(),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                ResponseData::MutationResult {
+                    result: MutationResultData {
+                        requested: 1,
+                        succeeded: 1,
+                        skipped: 0,
+                        failed: 0,
+                        accounts: vec![AccountMutationResultData {
+                            account_id: AccountId::new(),
+                            account_name: "Work".into(),
+                            succeeded: 1,
+                            skipped: 0,
+                            failed: 0,
+                            error: None,
+                        }],
+                    },
                 },
                 IpcCategory::CoreMail,
             ),

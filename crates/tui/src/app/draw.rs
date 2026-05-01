@@ -64,7 +64,7 @@ impl App {
                 ui_context,
                 search_active: self.search_bar.active,
                 help_modal_open: self.help_modal_open,
-                selected_count: self.selected_set.len(),
+                selected_count: self.mailbox.selected_set.len(),
                 bulk_confirm_open: self.pending_bulk_confirm.is_some(),
                 sync_status: self.last_sync_status.clone(),
                 _marker: std::marker::PhantomData,
@@ -73,7 +73,7 @@ impl App {
         );
 
         match self.screen {
-            Screen::Mailbox => match self.layout_mode {
+            Screen::Mailbox => match self.mailbox.layout_mode {
                 LayoutMode::TwoPane => {
                     let chunks = Layout::default()
                         .direction(Direction::Horizontal)
@@ -82,18 +82,18 @@ impl App {
 
                     ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
 
-                    if self.mailbox_view == MailboxView::Subscriptions {
+                    if self.mailbox.mailbox_view == MailboxView::Subscriptions {
                         let preview_blocks = self.thread_message_blocks();
                         ui::subscriptions_page::draw(
                             frame,
                             chunks[1],
                             &mut ui::subscriptions_page::SubscriptionsPageView {
-                                entries: &self.subscriptions_page.entries,
-                                selected_index: self.selected_index,
-                                scroll_offset: self.scroll_offset,
-                                active_pane: &self.active_pane,
+                                entries: &self.mailbox.subscriptions_page.entries,
+                                selected_index: self.mailbox.selected_index,
+                                scroll_offset: self.mailbox.scroll_offset,
+                                active_pane: &self.mailbox.active_pane,
                                 preview_blocks: &preview_blocks,
-                                message_scroll_offset: self.message_scroll_offset,
+                                message_scroll_offset: self.mailbox.message_scroll_offset,
                                 html_images: &mut self.html_image_assets,
                             },
                             theme,
@@ -105,17 +105,18 @@ impl App {
                             chunks[1],
                             &ui::mail_list::MailListView {
                                 rows: &self.mail_list_rows(),
-                                selected_index: self.selected_index,
-                                scroll_offset: self.scroll_offset,
-                                active_pane: &self.active_pane,
+                                selected_index: self.mailbox.selected_index,
+                                scroll_offset: self.mailbox.scroll_offset,
+                                active_pane: &self.mailbox.active_pane,
                                 title: &mail_title,
-                                selected_set: &self.selected_set,
-                                mode: self.mail_list_mode,
-                                loading_message: self.mailbox_loading_message.as_deref(),
+                                selected_set: &self.mailbox.selected_set,
+                                mode: self.mailbox.mail_list_mode,
+                                loading_message: self.mailbox.mailbox_loading_message.as_deref(),
                                 loading_throbber: self
+                                    .mailbox
                                     .mailbox_loading_message
                                     .as_ref()
-                                    .map(|_| &self.mailbox_loading_throbber),
+                                    .map(|_| &self.mailbox.mailbox_loading_throbber),
                             },
                             theme,
                         );
@@ -129,18 +130,18 @@ impl App {
 
                     ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
 
-                    if self.mailbox_view == MailboxView::Subscriptions {
+                    if self.mailbox.mailbox_view == MailboxView::Subscriptions {
                         let preview_blocks = self.thread_message_blocks();
                         ui::subscriptions_page::draw(
                             frame,
                             chunks[1],
                             &mut ui::subscriptions_page::SubscriptionsPageView {
-                                entries: &self.subscriptions_page.entries,
-                                selected_index: self.selected_index,
-                                scroll_offset: self.scroll_offset,
-                                active_pane: &self.active_pane,
+                                entries: &self.mailbox.subscriptions_page.entries,
+                                selected_index: self.mailbox.selected_index,
+                                scroll_offset: self.mailbox.scroll_offset,
+                                active_pane: &self.mailbox.active_pane,
                                 preview_blocks: &preview_blocks,
-                                message_scroll_offset: self.message_scroll_offset,
+                                message_scroll_offset: self.mailbox.message_scroll_offset,
                                 html_images: &mut self.html_image_assets,
                             },
                             theme,
@@ -156,17 +157,18 @@ impl App {
                             inner[0],
                             &ui::mail_list::MailListView {
                                 rows: &self.mail_list_rows(),
-                                selected_index: self.selected_index,
-                                scroll_offset: self.scroll_offset,
-                                active_pane: &self.active_pane,
+                                selected_index: self.mailbox.selected_index,
+                                scroll_offset: self.mailbox.scroll_offset,
+                                active_pane: &self.mailbox.active_pane,
                                 title: &mail_title,
-                                selected_set: &self.selected_set,
-                                mode: self.mail_list_mode,
-                                loading_message: self.mailbox_loading_message.as_deref(),
+                                selected_set: &self.mailbox.selected_set,
+                                mode: self.mailbox.mail_list_mode,
+                                loading_message: self.mailbox.mailbox_loading_message.as_deref(),
                                 loading_throbber: self
+                                    .mailbox
                                     .mailbox_loading_message
                                     .as_ref()
-                                    .map(|_| &self.mailbox_loading_throbber),
+                                    .map(|_| &self.mailbox.mailbox_loading_throbber),
                             },
                             theme,
                         );
@@ -175,8 +177,8 @@ impl App {
                             frame,
                             inner[1],
                             &preview_blocks,
-                            self.message_scroll_offset,
-                            &self.active_pane,
+                            self.mailbox.message_scroll_offset,
+                            &self.mailbox.active_pane,
                             theme,
                             &mut self.html_image_assets,
                         );
@@ -195,8 +197,8 @@ impl App {
                         frame,
                         chunks[1],
                         &preview_blocks,
-                        self.message_scroll_offset,
-                        &self.active_pane,
+                        self.mailbox.message_scroll_offset,
+                        &self.mailbox.active_pane,
                         theme,
                         &mut self.html_image_assets,
                     );
@@ -210,10 +212,10 @@ impl App {
                     content_area,
                     &self.search_page,
                     &rows,
-                    &self.selected_set,
+                    &self.mailbox.selected_set,
                     self.search_list_mode(),
                     &preview_blocks,
-                    self.message_scroll_offset,
+                    self.mailbox.message_scroll_offset,
                     &mut self.html_image_assets,
                     theme,
                 );
@@ -253,10 +255,10 @@ impl App {
         ui::compose_picker::draw(frame, area, &self.compose_picker, theme);
 
         // Attachment overlay
-        ui::attachment_modal::draw(frame, area, &self.attachment_panel, theme);
+        ui::attachment_modal::draw(frame, area, &self.mailbox.attachment_panel, theme);
 
         // URL picker overlay
-        ui::url_modal::draw(frame, area, self.url_modal.as_ref(), theme);
+        ui::url_modal::draw(frame, area, self.mailbox.url_modal.as_ref(), theme);
 
         // Snooze overlay
         ui::snooze_modal::draw(frame, area, &self.snooze_panel, &self.snooze_config, theme);
@@ -285,7 +287,7 @@ impl App {
             ui::help_modal::HelpModalState {
                 open: self.help_modal_open,
                 ui_context,
-                selected_count: self.selected_set.len(),
+                selected_count: self.mailbox.selected_set.len(),
                 scroll_offset: self.help_scroll_offset,
                 query: &self.help_query,
                 selected: self.help_selected,

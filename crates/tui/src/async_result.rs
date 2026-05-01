@@ -92,6 +92,7 @@ pub(crate) enum AsyncResult {
 }
 
 pub(crate) struct ComposeReadyData {
+    pub(crate) account_id: mxr_core::AccountId,
     pub(crate) draft_path: std::path::PathBuf,
     pub(crate) cursor_line: usize,
     pub(crate) initial_content: String,

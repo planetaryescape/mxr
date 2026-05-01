@@ -105,4 +105,29 @@ impl super::Store {
             })
             .collect()
     }
+
+    pub async fn set_account_enabled(
+        &self,
+        id: &AccountId,
+        enabled: bool,
+    ) -> Result<(), sqlx::Error> {
+        let id_str = id.as_str();
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query("UPDATE accounts SET enabled = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(enabled)
+            .bind(now)
+            .bind(id_str)
+            .execute(self.writer())
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_account(&self, id: &AccountId) -> Result<u64, sqlx::Error> {
+        let id_str = id.as_str();
+        let result = sqlx::query("DELETE FROM accounts WHERE id = ?1")
+            .bind(id_str)
+            .execute(self.writer())
+            .await?;
+        Ok(result.rows_affected())
+    }
 }

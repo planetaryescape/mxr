@@ -181,10 +181,53 @@ where
     }
 
     let resp = client.request(build_request(selection.ids)).await?;
+    handle_mutation_response(resp, options.success_message)
+}
+
+pub(super) fn handle_mutation_response(
+    resp: Response,
+    success_message: &str,
+) -> anyhow::Result<()> {
     match resp {
         Response::Ok {
             data: ResponseData::Ack,
-        } => println!("{}", options.success_message),
+        } => println!("{success_message}"),
+        Response::Ok {
+            data: ResponseData::MutationResult { result },
+        } => {
+            for account in &result.accounts {
+                if account.succeeded > 0 {
+                    println!(
+                        "{} {} message(s) on '{}'.",
+                        success_message, account.succeeded, account.account_name
+                    );
+                }
+                if account.skipped > 0 {
+                    eprintln!(
+                        "Skipped {} message(s) on '{}' ({}).",
+                        account.skipped,
+                        account.account_name,
+                        account.error.as_deref().unwrap_or("account unavailable")
+                    );
+                }
+                if account.failed > 0 {
+                    eprintln!(
+                        "Failed {} message(s) on '{}' ({}).",
+                        account.failed,
+                        account.account_name,
+                        account.error.as_deref().unwrap_or("mutation failed")
+                    );
+                }
+            }
+            if result.succeeded == 0 {
+                anyhow::bail!(
+                    "No messages changed (requested {}, skipped {}, failed {})",
+                    result.requested,
+                    result.skipped,
+                    result.failed
+                );
+            }
+        }
         Response::Error { message } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }

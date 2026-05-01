@@ -325,7 +325,7 @@ export function useComposeActions(props: {
         props.showNotice(successMessage);
         await props.refreshCurrentView({ preserveReader: true });
       } catch (error) {
-        props.setComposeError(error instanceof Error ? error.message : "Compose action failed");
+        props.setComposeError(composeActionErrorMessage(error, path));
       } finally {
         props.setComposeBusy(null);
       }
@@ -391,4 +391,36 @@ export function useComposeActions(props: {
       composeBodyRef.current = body;
     },
   };
+}
+
+function composeActionErrorMessage(
+  error: unknown,
+  path: "/compose/session/send" | "/compose/session/save",
+) {
+  const message = error instanceof Error ? error.message : "Compose action failed";
+  if (path !== "/compose/session/send" || !isMacKeychainRepairError(message)) {
+    return message;
+  }
+
+  const accountKey = extractMxrRepairAccountKey(message);
+  const command = accountKey
+    ? `mxr accounts repair ${accountKey}`
+    : "mxr accounts repair <account>";
+  return `Send failed: mxr cannot read this account password from macOS Keychain. Run \`${command}\`, then retry.`;
+}
+
+function isMacKeychainRepairError(message: string) {
+  return (
+    message.includes("requires interactive macOS keychain approval") ||
+    message.includes("macOS keychain credential requires interactive approval")
+  );
+}
+
+function extractMxrRepairAccountKey(message: string) {
+  const match = message.match(/Password for mxr\/([^/\s]+)\/[^\s]+ requires interactive/u);
+  const service = match?.[1];
+  if (!service) {
+    return null;
+  }
+  return service.replace(/-(smtp|imap)$/u, "");
 }

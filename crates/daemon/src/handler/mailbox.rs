@@ -49,6 +49,15 @@ pub(super) async fn list_envelopes(
     };
 
     let mut envelopes = result.map_err(|e| e.to_string())?;
+    let enabled_accounts = state
+        .store
+        .list_accounts()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|account| account.id)
+        .collect::<HashSet<_>>();
+    envelopes.retain(|envelope| enabled_accounts.contains(&envelope.account_id));
     for envelope in &mut envelopes {
         if let Ok(labels) = state
             .store

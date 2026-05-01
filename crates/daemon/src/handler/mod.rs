@@ -1101,7 +1101,7 @@ async fn list_runtime_accounts(state: &AppState) -> Result<Vec<AccountSummaryDat
                 provider_kind: account_primary_provider_kind(&account),
                 sync_kind: account.sync.as_ref().map(config_sync_kind_label),
                 send_kind: account.send.as_ref().map(config_send_kind_label),
-                enabled: true,
+                enabled: account.enabled,
                 is_default: false,
                 source: AccountSourceData::Config,
                 editable: AccountEditModeData::Full,
@@ -1116,6 +1116,7 @@ async fn list_runtime_accounts(state: &AppState) -> Result<Vec<AccountSummaryDat
         summary.provider_kind = account_primary_provider_kind(&account);
         summary.sync_kind = account.sync.as_ref().map(config_sync_kind_label);
         summary.send_kind = account.send.as_ref().map(config_send_kind_label);
+        summary.enabled = account.enabled;
         summary.sync = account.sync.clone().map(sync_config_to_data);
         summary.send = account.send.clone().map(send_config_to_data);
         summary.is_default = default_config_key.as_deref() == Some(key.as_str());
@@ -1148,6 +1149,7 @@ fn list_account_configs() -> Result<Vec<AccountConfigData>, String> {
             key,
             name: account.name,
             email: account.email,
+            enabled: account.enabled,
             sync: account.sync.map(sync_config_to_data),
             send: account.send.map(send_config_to_data),
         })
@@ -1169,6 +1171,7 @@ async fn upsert_account_config(
             mxr_config::AccountConfig {
                 name: account.name.clone(),
                 email: account.email.clone(),
+                enabled: account.enabled,
                 sync: account.sync.clone().map(sync_data_to_config).transpose()?,
                 send: account.send.clone().map(send_data_to_config).transpose()?,
             },
@@ -1975,6 +1978,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use chrono::TimeZone;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex as StdMutex;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2087,6 +2091,115 @@ mod tests {
                     }
                 })
                 .collect()
+        }
+    }
+
+    struct FailingSendProvider {
+        message: &'static str,
+    }
+
+    struct FailingSyncProvider {
+        account_id: mxr_core::AccountId,
+        message: &'static str,
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl mxr_core::MailSendProvider for FailingSendProvider {
+        fn name(&self) -> &str {
+            "failing-send"
+        }
+
+        async fn send(
+            &self,
+            _draft: &mxr_core::Draft,
+            _from: &mxr_core::Address,
+        ) -> Result<mxr_core::SendReceipt, mxr_core::MxrError> {
+            Err(mxr_core::MxrError::Provider(self.message.to_string()))
+        }
+    }
+
+    #[async_trait]
+    impl mxr_core::MailSyncProvider for FailingSyncProvider {
+        fn name(&self) -> &str {
+            "failing-sync"
+        }
+
+        fn account_id(&self) -> &mxr_core::AccountId {
+            &self.account_id
+        }
+
+        fn capabilities(&self) -> mxr_core::SyncCapabilities {
+            mxr_core::SyncCapabilities {
+                labels: true,
+                server_search: false,
+                delta_sync: false,
+                push: false,
+                batch_operations: false,
+                native_thread_ids: true,
+            }
+        }
+
+        async fn authenticate(&mut self) -> Result<(), mxr_core::MxrError> {
+            Ok(())
+        }
+
+        async fn refresh_auth(&mut self) -> Result<(), mxr_core::MxrError> {
+            Ok(())
+        }
+
+        async fn sync_labels(&self) -> Result<Vec<mxr_core::Label>, mxr_core::MxrError> {
+            Ok(Vec::new())
+        }
+
+        async fn sync_messages(
+            &self,
+            _cursor: &mxr_core::SyncCursor,
+        ) -> Result<mxr_core::SyncBatch, mxr_core::MxrError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(mxr_core::MxrError::Provider(self.message.to_string()))
+        }
+
+        async fn fetch_attachment(
+            &self,
+            _provider_message_id: &str,
+            _provider_attachment_id: &str,
+        ) -> Result<Vec<u8>, mxr_core::MxrError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(mxr_core::MxrError::Provider(self.message.to_string()))
+        }
+
+        async fn modify_labels(
+            &self,
+            _provider_message_id: &str,
+            _add: &[String],
+            _remove: &[String],
+        ) -> Result<(), mxr_core::MxrError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(mxr_core::MxrError::Provider(self.message.to_string()))
+        }
+
+        async fn trash(&self, _provider_message_id: &str) -> Result<(), mxr_core::MxrError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(mxr_core::MxrError::Provider(self.message.to_string()))
+        }
+
+        async fn set_read(
+            &self,
+            _provider_message_id: &str,
+            _read: bool,
+        ) -> Result<(), mxr_core::MxrError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(mxr_core::MxrError::Provider(self.message.to_string()))
+        }
+
+        async fn set_starred(
+            &self,
+            _provider_message_id: &str,
+            _starred: bool,
+        ) -> Result<(), mxr_core::MxrError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Err(mxr_core::MxrError::Provider(self.message.to_string()))
         }
     }
 
@@ -3939,6 +4052,54 @@ mod tests {
         }
     }
 
+    fn assert_mutation_succeeded(payload: IpcPayload) -> MutationResultData {
+        match payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::MutationResult { result },
+            }) => {
+                assert!(
+                    result.succeeded > 0,
+                    "expected mutation success: {result:?}"
+                );
+                result
+            }
+            other => panic!("Expected MutationResult success, got {:?}", other),
+        }
+    }
+
+    async fn add_failing_sync_account(
+        state: &AppState,
+        calls: Arc<AtomicUsize>,
+    ) -> (mxr_core::AccountId, mxr_core::MessageId) {
+        let account_id = mxr_core::AccountId::from_provider_id("imap", "hello@bhekani.com");
+        let account = mxr_core::Account {
+            id: account_id.clone(),
+            name: "consulting".to_string(),
+            email: "hello@bhekani.com".to_string(),
+            sync_backend: Some(mxr_core::BackendRef {
+                provider_kind: mxr_core::ProviderKind::Imap,
+                config_key: "consulting".to_string(),
+            }),
+            send_backend: None,
+            enabled: true,
+        };
+        state.store.insert_account(&account).await.unwrap();
+        state.add_sync_provider_for_test(Arc::new(FailingSyncProvider {
+            account_id: account_id.clone(),
+            message: "Keyring error: Failed to read password from keychain",
+            calls,
+        }));
+
+        let envelope = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .provider_id("bad-provider-id")
+            .subject("bad account message")
+            .build();
+        let message_id = envelope.id.clone();
+        state.store.upsert_envelope(&envelope).await.unwrap();
+        (account_id, message_id)
+    }
+
     fn tiny_png_bytes() -> Vec<u8> {
         use base64::Engine as _;
         base64::engine::general_purpose::STANDARD
@@ -3959,12 +4120,7 @@ mod tests {
             })),
         };
         let resp = handle_request(&state, &msg).await;
-        match resp.payload {
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack,
-            }) => {}
-            other => panic!("Expected Ack, got {:?}", other),
-        }
+        assert_mutation_succeeded(resp.payload);
 
         // Verify flag is set
         let get_msg = IpcMessage {
@@ -4002,12 +4158,7 @@ mod tests {
             })),
         };
         let resp = handle_request(&state, &msg).await;
-        match resp.payload {
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack,
-            }) => {}
-            other => panic!("Expected Ack, got {:?}", other),
-        }
+        assert_mutation_succeeded(resp.payload);
 
         let envelopes = state
             .store
@@ -4177,12 +4328,7 @@ mod tests {
             })),
         };
         let resp = handle_request(&state, &msg).await;
-        match resp.payload {
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack,
-            }) => {}
-            other => panic!("Expected Ack, got {:?}", other),
-        }
+        assert_mutation_succeeded(resp.payload);
 
         let get_msg = IpcMessage {
             id: 2,
@@ -4215,12 +4361,7 @@ mod tests {
             })),
         };
         let resp = handle_request(&state, &msg).await;
-        match resp.payload {
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack,
-            }) => {}
-            other => panic!("Expected Ack, got {:?}", other),
-        }
+        assert_mutation_succeeded(resp.payload);
 
         let events = state
             .store
@@ -4231,6 +4372,61 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].message_id.as_deref(), Some(id_str.as_str()));
         assert!(events[0].summary.contains("Archived"));
+    }
+
+    #[tokio::test]
+    async fn mutation_archives_healthy_account_when_other_account_provider_fails() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let healthy_id = sync_and_get_first_id(&state).await;
+        let failing_calls = Arc::new(AtomicUsize::new(0));
+        add_failing_sync_account(&state, failing_calls.clone()).await;
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Archive {
+                message_ids: vec![healthy_id],
+            })),
+        };
+        let result = assert_mutation_succeeded(handle_request(&state, &msg).await.payload);
+
+        assert_eq!(result.requested, 1);
+        assert_eq!(result.succeeded, 1);
+        assert_eq!(result.skipped, 0);
+        assert_eq!(failing_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn mixed_account_mutation_returns_partial_success() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let healthy_id = sync_and_get_first_id(&state).await;
+        let failing_calls = Arc::new(AtomicUsize::new(0));
+        let (bad_account_id, bad_id) =
+            add_failing_sync_account(&state, failing_calls.clone()).await;
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Archive {
+                message_ids: vec![healthy_id, bad_id],
+            })),
+        };
+        let result = assert_mutation_succeeded(handle_request(&state, &msg).await.payload);
+
+        assert_eq!(result.requested, 2);
+        assert_eq!(result.succeeded, 1);
+        assert_eq!(result.skipped, 1);
+        assert_eq!(failing_calls.load(Ordering::SeqCst), 1);
+        let bad_account = result
+            .accounts
+            .iter()
+            .find(|account| account.account_id == bad_account_id)
+            .expect("bad account result");
+        assert_eq!(bad_account.succeeded, 0);
+        assert_eq!(bad_account.skipped, 1);
+        assert!(bad_account
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("keychain"));
     }
 
     #[tokio::test]
@@ -4245,12 +4441,7 @@ mod tests {
             })),
         };
         let resp = handle_request(&state, &msg).await;
-        match resp.payload {
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack,
-            }) => {}
-            other => panic!("Expected Ack, got {:?}", other),
-        }
+        assert_mutation_succeeded(resp.payload);
 
         let envelope = state
             .store
@@ -4285,12 +4476,7 @@ mod tests {
             })),
         };
         let resp = handle_request(&state, &msg).await;
-        match resp.payload {
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack,
-            }) => {}
-            other => panic!("Expected Ack, got {:?}", other),
-        }
+        assert_mutation_succeeded(resp.payload);
     }
 
     #[tokio::test]
@@ -4479,12 +4665,7 @@ mod tests {
                 remove: vec![],
             })),
         };
-        match handle_request(&state, &modify).await.payload {
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack,
-            }) => {}
-            other => panic!("Expected Ack, got {:?}", other),
-        }
+        assert_mutation_succeeded(handle_request(&state, &modify).await.payload);
 
         let label_ids = state.store.get_message_label_ids(&id).await.unwrap();
         assert!(label_ids.iter().any(|label_id| label_id == &label.id));
@@ -4640,6 +4821,51 @@ mod tests {
                 data: ResponseData::Ack,
             }) => {}
             other => panic!("Expected Ack, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_send_draft_preserves_keychain_repair_error() {
+        let account_id = mxr_core::AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let sync_provider = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let send_provider: Arc<dyn mxr_core::MailSendProvider> = Arc::new(FailingSendProvider {
+            message: "Keyring error: Password for mxr/consulting-smtp/hello@bhekani.com requires interactive macOS keychain approval. Re-save that account password once with `mxr accounts repair`.",
+        });
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+                .await
+                .unwrap(),
+        );
+
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id,
+            reply_headers: None,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "test@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Test subject".to_string(),
+            body_markdown: "Test body".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::SendDraft { draft }),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Error { message }) => {
+                assert!(message.contains("consulting-smtp"));
+                assert!(message.contains("mxr accounts repair"));
+            }
+            other => panic!("Expected send error, got {:?}", other),
         }
     }
 

@@ -261,6 +261,21 @@ impl super::Store {
             .collect()
     }
 
+    pub async fn list_message_ids_by_account(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<Vec<MessageId>, sqlx::Error> {
+        let aid = account_id.as_str();
+        let rows = sqlx::query("SELECT id FROM messages WHERE account_id = ?1")
+            .bind(aid)
+            .fetch_all(self.reader())
+            .await?;
+
+        rows.into_iter()
+            .map(|row| decode_id(row.get::<String, _>("id").as_str()))
+            .collect()
+    }
+
     pub async fn list_envelopes_by_message_id_header(
         &self,
         account_id: &AccountId,

@@ -1,6 +1,11 @@
 use crate::cli::AccountsAction;
+use crate::ipc_client::IpcClient;
+use crate::state::AppState;
 use mxr_core::provider::MailSyncProvider;
 use mxr_provider_gmail::auth::{GmailAuth, BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET};
+use mxr_search::SearchIndex;
+use mxr_store::Store;
+use std::time::Duration;
 
 pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
     match action {
@@ -12,12 +17,13 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
             } else {
                 for (key, acct) in &config.accounts {
                     println!(
-                        "  {} - {} <{}> [sync: {}, send: {}]",
+                        "  {} - {} <{}> [sync: {}, send: {}, {}]",
                         key,
                         acct.name,
                         acct.email,
                         describe_sync(acct.sync.as_ref()),
-                        describe_send(acct.send.as_ref())
+                        describe_send(acct.send.as_ref()),
+                        if acct.enabled { "enabled" } else { "disabled" }
                     );
                 }
             }
@@ -38,6 +44,7 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
                 Some(acct) => {
                     println!("Name:  {}", acct.name);
                     println!("Email: {}", acct.email);
+                    println!("Enabled: {}", acct.enabled);
                     println!("Sync:  {}", describe_sync(acct.sync.as_ref()));
                     println!("Send:  {}", describe_send(acct.send.as_ref()));
                 }
@@ -133,6 +140,17 @@ pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
         Some(AccountsAction::Repair { name }) => {
             repair_account_passwords(&name)?;
         }
+        Some(AccountsAction::Disable { name }) => {
+            disable_account(&name).await?;
+        }
+        Some(AccountsAction::Remove {
+            name,
+            dry_run,
+            yes,
+            purge_local_data,
+        }) => {
+            remove_account(&name, dry_run, yes, purge_local_data).await?;
+        }
     }
     Ok(())
 }
@@ -178,6 +196,7 @@ async fn add_gmail() -> anyhow::Result<()> {
         mxr_config::AccountConfig {
             name: account_name.clone(),
             email,
+            enabled: true,
             sync: Some(mxr_config::SyncProviderConfig::Gmail {
                 credential_source,
                 client_id,
@@ -245,6 +264,7 @@ async fn add_imap(include_smtp: bool) -> anyhow::Result<()> {
         mxr_config::AccountConfig {
             name: display_name,
             email,
+            enabled: true,
             sync: Some(mxr_config::SyncProviderConfig::Imap {
                 host: imap_host,
                 port: imap_port,
@@ -288,6 +308,7 @@ async fn add_smtp_only() -> anyhow::Result<()> {
         mxr_config::AccountConfig {
             name: display_name,
             email,
+            enabled: true,
             sync: None,
             send: Some(mxr_config::SendProviderConfig::Smtp {
                 host: smtp_host,
@@ -315,6 +336,194 @@ fn upsert_account(name: String, account: mxr_config::AccountConfig) -> anyhow::R
     }
     mxr_config::save_config(&config)?;
     Ok(())
+}
+
+async fn disable_account(name: &str) -> anyhow::Result<()> {
+    let mut config = mxr_config::load_config().unwrap_or_default();
+    let account = config
+        .accounts
+        .get_mut(name)
+        .ok_or_else(|| anyhow::anyhow!("Account '{}' not found", name))?;
+    account.enabled = false;
+    let account_id = account_id_for_config(account);
+    refresh_default_account(&mut config);
+    mxr_config::save_config(&config)?;
+    set_db_account_enabled(&account_id, false).await?;
+    restart_daemon_if_running().await?;
+    println!("Disabled account '{}'.", name);
+    Ok(())
+}
+
+async fn remove_account(
+    name: &str,
+    dry_run: bool,
+    yes: bool,
+    purge_local_data: bool,
+) -> anyhow::Result<()> {
+    let mut config = mxr_config::load_config().unwrap_or_default();
+    let account = config
+        .accounts
+        .get(name)
+        .ok_or_else(|| anyhow::anyhow!("Account '{}' not found", name))?
+        .clone();
+    let account_id = account_id_for_config(&account);
+    let cached_message_count = cached_message_count(&account_id).await.unwrap_or(0);
+
+    if dry_run {
+        println!(
+            "Would remove account '{}' from config and {} {} cached message(s).",
+            name,
+            if purge_local_data { "purge" } else { "detach" },
+            cached_message_count
+        );
+        return Ok(());
+    }
+
+    if purge_local_data
+        && !yes
+        && !prompt_bool(
+            &format!(
+                "Permanently purge {} cached message(s) for '{}'",
+                cached_message_count, name
+            ),
+            false,
+        )?
+    {
+        anyhow::bail!("Aborted");
+    }
+
+    let daemon_was_running = if purge_local_data {
+        shutdown_daemon_if_running().await?
+    } else {
+        false
+    };
+
+    config.accounts.remove(name);
+    refresh_default_account(&mut config);
+    mxr_config::save_config(&config)?;
+    if purge_local_data {
+        purge_db_account(&account_id).await?;
+        restart_daemon_after_change(daemon_was_running).await?;
+    } else {
+        set_db_account_enabled(&account_id, false).await?;
+        restart_daemon_if_running().await?;
+    }
+    if purge_local_data {
+        println!(
+            "Removed account '{}' and purged {} cached message(s).",
+            name, cached_message_count
+        );
+    } else {
+        println!(
+            "Removed account '{}' from config; cached mail detached.",
+            name
+        );
+    }
+    Ok(())
+}
+
+fn account_id_for_config(account: &mxr_config::AccountConfig) -> mxr_core::AccountId {
+    let provider = match account.sync.as_ref() {
+        Some(mxr_config::SyncProviderConfig::Gmail { .. }) => "gmail",
+        Some(mxr_config::SyncProviderConfig::Imap { .. }) => "imap",
+        None => match account.send.as_ref() {
+            Some(mxr_config::SendProviderConfig::Gmail) => "gmail",
+            Some(mxr_config::SendProviderConfig::Smtp { .. }) => "smtp",
+            None => "account",
+        },
+    };
+    mxr_core::AccountId::from_provider_id(provider, &account.email)
+}
+
+fn refresh_default_account(config: &mut mxr_config::MxrConfig) {
+    let current_default_is_enabled = config
+        .general
+        .default_account
+        .as_ref()
+        .and_then(|key| config.accounts.get(key))
+        .map(|account| account.enabled)
+        .unwrap_or(false);
+    if current_default_is_enabled {
+        return;
+    }
+
+    config.general.default_account = config
+        .accounts
+        .iter()
+        .filter(|(_, account)| account.enabled)
+        .map(|(key, _)| key.clone())
+        .min();
+}
+
+async fn set_db_account_enabled(
+    account_id: &mxr_core::AccountId,
+    enabled: bool,
+) -> anyhow::Result<()> {
+    let store = open_store().await?;
+    store.set_account_enabled(account_id, enabled).await?;
+    Ok(())
+}
+
+async fn cached_message_count(account_id: &mxr_core::AccountId) -> anyhow::Result<usize> {
+    let store = open_store().await?;
+    Ok(store.list_message_ids_by_account(account_id).await?.len())
+}
+
+async fn purge_db_account(account_id: &mxr_core::AccountId) -> anyhow::Result<()> {
+    let store = open_store().await?;
+    let message_ids = store.list_message_ids_by_account(account_id).await?;
+    remove_search_docs(&message_ids)?;
+    store.delete_account(account_id).await?;
+    remove_search_docs(&message_ids)?;
+    Ok(())
+}
+
+async fn open_store() -> anyhow::Result<Store> {
+    let data_dir = mxr_config::data_dir();
+    std::fs::create_dir_all(&data_dir)?;
+    Store::new(&data_dir.join("mxr.db"))
+        .await
+        .map_err(Into::into)
+}
+
+fn remove_search_docs(message_ids: &[mxr_core::MessageId]) -> anyhow::Result<()> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+    let index_path = mxr_config::data_dir().join("search_index");
+    std::fs::create_dir_all(&index_path)?;
+    let mut index = SearchIndex::open(&index_path)?;
+    for message_id in message_ids {
+        index.remove_document(message_id);
+    }
+    index.commit()?;
+    Ok(())
+}
+
+async fn restart_daemon_if_running() -> anyhow::Result<()> {
+    restart_daemon_after_change(IpcClient::connect().await.is_ok()).await
+}
+
+async fn restart_daemon_after_change(was_running: bool) -> anyhow::Result<()> {
+    if was_running {
+        crate::server::restart_daemon().await?;
+    }
+    Ok(())
+}
+
+async fn shutdown_daemon_if_running() -> anyhow::Result<bool> {
+    if IpcClient::connect().await.is_err() {
+        return Ok(false);
+    }
+
+    let socket_path = AppState::socket_path();
+    let state =
+        crate::server::shutdown_daemon_for_maintenance(&socket_path, Duration::from_secs(3))
+            .await?;
+    if matches!(state, crate::server::SocketState::Reachable) {
+        anyhow::bail!("Running daemon did not stop cleanly; account removal aborted");
+    }
+    Ok(true)
 }
 
 fn ensure_account_available(name: &str) -> anyhow::Result<()> {

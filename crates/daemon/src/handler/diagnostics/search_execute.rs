@@ -6,7 +6,7 @@ use crate::state::AppState;
 use mxr_core::types::{SearchMode, SortOrder};
 use mxr_search::{ast::QueryNode, parse_query, MxrSchema, QueryBuilder, SearchPage, SearchResult};
 use mxr_semantic::{should_use_semantic, SemanticHit};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::{paginate_results, sort_results};
 use crate::handler::should_fallback_to_tantivy;
@@ -37,8 +37,8 @@ pub(super) async fn execute_search(
         sort,
         explain,
     };
-    match parse_query(query) {
-        Ok(ast) => execute_search_ast(state, query, &ast, &options).await,
+    let mut execution = match parse_query(query) {
+        Ok(ast) => execute_search_ast(state, query, &ast, &options).await?,
         Err(error) => {
             if should_fallback_to_tantivy(query, &error) {
                 let page = state
@@ -61,17 +61,55 @@ pub(super) async fn execute_search(
                     )],
                     results: super::build_explain_results(&page.results, &page.results, &[]),
                 });
-                Ok(SearchExecution {
+                SearchExecution {
                     results: page.results,
                     has_more: page.has_more,
                     executed_mode: SearchMode::Lexical,
                     explain,
-                })
+                }
             } else {
-                Err(format!("Invalid search query: {error}"))
+                return Err(format!("Invalid search query: {error}"));
             }
         }
+    };
+    filter_disabled_accounts(state, &mut execution).await?;
+    Ok(execution)
+}
+
+async fn filter_disabled_accounts(
+    state: &AppState,
+    execution: &mut SearchExecution,
+) -> Result<(), String> {
+    let enabled_accounts = state
+        .store
+        .list_accounts()
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|account| account.id.as_str())
+        .collect::<HashSet<_>>();
+
+    execution
+        .results
+        .retain(|result| enabled_accounts.contains(&result.account_id));
+    if let Some(explain) = execution.explain.as_mut() {
+        let retained_ids = execution
+            .results
+            .iter()
+            .map(|result| result.message_id.clone())
+            .collect::<HashSet<_>>();
+        explain
+            .results
+            .retain(|result| retained_ids.contains(&result.message_id.as_str()));
+        for (index, result) in explain.results.iter_mut().enumerate() {
+            result.rank = index as u32 + 1;
+        }
+        explain.final_results = execution.results.len() as u32;
     }
+    if execution.results.is_empty() {
+        execution.has_more = false;
+    }
+    Ok(())
 }
 
 async fn execute_search_ast(

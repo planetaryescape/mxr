@@ -756,6 +756,47 @@ mod tests {
     }
 
     #[test]
+    fn parses_accounts_disable_subcommand() {
+        let cli = Cli::parse_from(["mxr", "accounts", "disable", "consulting"]);
+        match cli.command {
+            Some(Command::Accounts {
+                action: Some(AccountsAction::Disable { name }),
+            }) => assert_eq!(name, "consulting"),
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_accounts_remove_subcommand() {
+        let cli = Cli::parse_from([
+            "mxr",
+            "accounts",
+            "remove",
+            "consulting",
+            "--dry-run",
+            "--yes",
+            "--purge-local-data",
+        ]);
+        match cli.command {
+            Some(Command::Accounts {
+                action:
+                    Some(AccountsAction::Remove {
+                        name,
+                        dry_run,
+                        yes,
+                        purge_local_data,
+                    }),
+            }) => {
+                assert_eq!(name, "consulting");
+                assert!(dry_run);
+                assert!(yes);
+                assert!(purge_local_data);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
     fn parses_rules_edit_subcommand() {
         let cli = Cli::parse_from([
             "mxr",

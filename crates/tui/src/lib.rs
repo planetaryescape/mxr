@@ -187,8 +187,8 @@ pub async fn run() -> anyhow::Result<()> {
 
         // Batch any queued body fetches. Current message fetches and window prefetches
         // share the same path so all state transitions stay consistent.
-        if !app.queued_body_fetches.is_empty() {
-            let ids = std::mem::take(&mut app.queued_body_fetches);
+        if !app.mailbox.queued_body_fetches.is_empty() {
+            let ids = std::mem::take(&mut app.mailbox.queued_body_fetches);
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let requested = ids;
@@ -216,7 +216,7 @@ pub async fn run() -> anyhow::Result<()> {
             for message_id in ids {
                 app.in_flight_html_image_asset_requests
                     .insert(message_id.clone());
-                let allow_remote = app.remote_content_enabled;
+                let allow_remote = app.mailbox.remote_content_enabled;
                 let _ = html_assets.send(crate::terminal_images::HtmlImageAssetRequest {
                     message_id,
                     allow_remote,
@@ -239,12 +239,12 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
 
-        if let Some(thread_id) = app.pending_thread_fetch.take() {
-            app.in_flight_thread_fetch = Some(thread_id.clone());
-            app.thread_request_id = app.thread_request_id.wrapping_add(1);
+        if let Some(thread_id) = app.mailbox.pending_thread_fetch.take() {
+            app.mailbox.in_flight_thread_fetch = Some(thread_id.clone());
+            app.mailbox.thread_request_id = app.mailbox.thread_request_id.wrapping_add(1);
             let _ = replaceable.send(ReplaceableRequest::Thread {
                 thread_id,
-                request_id: app.thread_request_id,
+                request_id: app.mailbox.thread_request_id,
                 enqueued_at: Instant::now(),
             });
         }
@@ -310,6 +310,21 @@ pub async fn run() -> anyhow::Result<()> {
                                     archived_count, pending.sender_email
                                 ),
                             }),
+                            Ok(Response::Ok {
+                                data: ResponseData::MutationResult { result },
+                            }) if result.succeeded > 0 => Ok(UnsubscribeResultData {
+                                archived_ids: pending.archive_message_ids,
+                                message: format!(
+                                    "Unsubscribed and archived {} messages from {}",
+                                    result.succeeded, pending.sender_email
+                                ),
+                            }),
+                            Ok(Response::Ok {
+                                data: ResponseData::MutationResult { result },
+                            }) => Err(MxrError::Ipc(format!(
+                                "archive skipped {} message(s)",
+                                result.skipped
+                            ))),
                             Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
                             Err(error) => Err(error),
                             _ => Err(MxrError::Ipc("unexpected response".into())),
@@ -507,8 +522,8 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if app.pending_labels_refresh {
-            app.pending_labels_refresh = false;
+        if app.mailbox.pending_labels_refresh {
+            app.mailbox.pending_labels_refresh = false;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, Request::ListLabels { account_id: None }).await;
@@ -524,8 +539,8 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if app.pending_all_envelopes_refresh {
-            app.pending_all_envelopes_refresh = false;
+        if app.mailbox.pending_all_envelopes_refresh {
+            app.mailbox.pending_all_envelopes_refresh = false;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
@@ -550,8 +565,8 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if app.pending_subscriptions_refresh {
-            app.pending_subscriptions_refresh = false;
+        if app.mailbox.pending_subscriptions_refresh {
+            app.mailbox.pending_subscriptions_refresh = false;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
@@ -640,7 +655,7 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(pending) = app.pending_attachment_action.take() {
+        if let Some(pending) = app.mailbox.pending_attachment_action.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let request = match pending.operation {
@@ -670,7 +685,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         // Spawn non-blocking label envelope fetch
-        if let Some(label_id) = app.pending_label_fetch.take() {
+        if let Some(label_id) = app.mailbox.pending_label_fetch.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
@@ -704,6 +719,15 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::Ack,
                     }) => Ok(effect),
+                    Ok(Response::Ok {
+                        data: ResponseData::MutationResult { result },
+                    }) if result.succeeded > 0 => Ok(effect),
+                    Ok(Response::Ok {
+                        data: ResponseData::MutationResult { result },
+                    }) => Err(MxrError::Ipc(format!(
+                        "mutation skipped {} message(s)",
+                        result.skipped
+                    ))),
                     Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
@@ -713,7 +737,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         // Handle thread export (uses daemon ExportThread which runs mxr-export)
-        if let Some(thread_id) = app.pending_export_thread.take() {
+        if let Some(thread_id) = app.mailbox.pending_export_thread.take() {
             let bg = bg.clone();
             let _ = submit_task(&local_io, async move {
                 let resp = ipc_call(
@@ -783,9 +807,9 @@ pub async fn run() -> anyhow::Result<()> {
                                 if session_id != app.mailbox_search_session_id {
                                     continue;
                                 }
-                                app.envelopes = results.envelopes;
-                                app.selected_index = 0;
-                                app.scroll_offset = 0;
+                                app.mailbox.envelopes = results.envelopes;
+                                app.mailbox.selected_index = 0;
+                                app.mailbox.scroll_offset = 0;
                             }
                         },
                         AsyncResult::Search {
@@ -809,7 +833,7 @@ pub async fn run() -> anyhow::Result<()> {
                                     if session_id != app.mailbox_search_session_id {
                                         continue;
                                     }
-                                    app.envelopes = app.all_envelopes.clone();
+                                    app.mailbox.envelopes = app.mailbox.all_envelopes.clone();
                                 }
                             }
                             app.status_message = Some(format!("Search failed: {error}"));
@@ -1053,7 +1077,7 @@ pub async fn run() -> anyhow::Result<()> {
                             apply_all_envelopes_refresh(&mut app, envelopes);
                         }
                         AsyncResult::AllEnvelopes(Err(e)) => {
-                            app.mailbox_loading_message = None;
+                            app.mailbox.mailbox_loading_message = None;
                             app.status_message =
                                 Some(format!("Mailbox refresh failed: {e}"));
                         }
@@ -1067,7 +1091,7 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::AccountOperation(Err(e)) => {
                             app.pending_account_switch = false;
-                            app.mailbox_loading_message = None;
+                            app.mailbox.mailbox_loading_message = None;
                             app.accounts_page.operation_in_flight = false;
                             app.accounts_page.throbber = Default::default();
                             app.accounts_page.status = Some(format!("Account error: {e}"));
@@ -1092,32 +1116,32 @@ pub async fn run() -> anyhow::Result<()> {
                                 AttachmentOperation::Download => "Downloaded",
                             };
                             let message = format!("{action} {} -> {}", file.filename, file.path);
-                            app.attachment_panel.status = Some(message.clone());
+                            app.mailbox.attachment_panel.status = Some(message.clone());
                             app.status_message = Some(message);
                         }
                         AsyncResult::AttachmentFile {
                             result: Err(e), ..
                         } => {
                             let message = format!("Attachment error: {e}");
-                            app.attachment_panel.status = Some(message.clone());
+                            app.mailbox.attachment_panel.status = Some(message.clone());
                             app.status_message = Some(message);
                         }
                         AsyncResult::LabelEnvelopes(Ok(envelopes)) => {
                             let selected_id =
                                 app.selected_mail_row().map(|row| row.representative.id);
-                            app.envelopes = envelopes;
+                            app.mailbox.envelopes = envelopes;
                             // Only update active_label when this is a user-initiated
                             // label switch (pending_active_label was set). For
                             // refresh-only fetches triggered by sync or mutations,
                             // pending_active_label is None — preserve current label.
-                            if app.pending_active_label.is_some() {
-                                app.active_label = app.pending_active_label.take();
+                            if app.mailbox.pending_active_label.is_some() {
+                                app.mailbox.active_label = app.mailbox.pending_active_label.take();
                             }
                             restore_mail_list_selection(&mut app, selected_id);
                             app.queue_body_window();
                         }
                         AsyncResult::LabelEnvelopes(Err(e)) => {
-                            app.pending_active_label = None;
+                            app.mailbox.pending_active_label = None;
                             app.status_message = Some(format!("Label filter failed: {e}"));
                         }
                         AsyncResult::Bodies { requested, result: Ok(bodies) } => {
@@ -1185,8 +1209,8 @@ pub async fn run() -> anyhow::Result<()> {
                             request_id,
                             result: Ok((thread, messages)),
                         } => {
-                            if request_id != app.thread_request_id {
-                                tracing::trace!(request_id, current_id = app.thread_request_id, "tui stale thread dropped");
+                            if request_id != app.mailbox.thread_request_id {
+                                tracing::trace!(request_id, current_id = app.mailbox.thread_request_id, "tui stale thread dropped");
                                 continue;
                             }
                             app.resolve_thread_success(thread, messages);
@@ -1197,8 +1221,8 @@ pub async fn run() -> anyhow::Result<()> {
                             request_id,
                             result: Err(_),
                         } => {
-                            if request_id != app.thread_request_id {
-                                tracing::trace!(request_id, current_id = app.thread_request_id, "tui stale thread dropped");
+                            if request_id != app.mailbox.thread_request_id {
+                                tracing::trace!(request_id, current_id = app.mailbox.thread_request_id, "tui stale thread dropped");
                                 continue;
                             }
                             app.resolve_thread_fetch_error(&thread_id);
@@ -1212,14 +1236,14 @@ pub async fn run() -> anyhow::Result<()> {
                                     if show_completion_status {
                                         app.status_message = Some("Done".into());
                                     }
-                                    app.pending_subscriptions_refresh = true;
+                                    app.mailbox.pending_subscriptions_refresh = true;
                                 }
                                 app::MutationEffect::RemoveFromListMany(ids) => {
                                     app.apply_removed_message_ids(&ids);
                                     if show_completion_status {
                                         app.status_message = Some("Done".into());
                                     }
-                                    app.pending_subscriptions_refresh = true;
+                                    app.mailbox.pending_subscriptions_refresh = true;
                                 }
                                 app::MutationEffect::UpdateFlags { message_id, flags } => {
                                     app.apply_local_flags(&message_id, flags);
@@ -1234,10 +1258,10 @@ pub async fn run() -> anyhow::Result<()> {
                                     }
                                 }
                                 app::MutationEffect::RefreshList => {
-                                    if let Some(label_id) = app.active_label.clone() {
-                                        app.pending_label_fetch = Some(label_id);
+                                    if let Some(label_id) = app.mailbox.active_label.clone() {
+                                        app.mailbox.pending_label_fetch = Some(label_id);
                                     }
-                                    app.pending_subscriptions_refresh = true;
+                                    app.mailbox.pending_subscriptions_refresh = true;
                                     if show_completion_status {
                                         app.status_message = Some("Synced".into());
                                     }
@@ -1289,7 +1313,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 app.apply_removed_message_ids(&result.archived_ids);
                             }
                             app.status_message = Some(result.message);
-                            app.pending_subscriptions_refresh = true;
+                            app.mailbox.pending_subscriptions_refresh = true;
                         }
                         AsyncResult::Unsubscribe(Err(e)) => {
                             app.status_message = Some(format!("Unsubscribe failed: {e}"));
@@ -1304,11 +1328,8 @@ pub async fn run() -> anyhow::Result<()> {
                             let Some(other) = handle_local_io_result(&mut app, other) else {
                                 continue;
                             };
-                            match other {
-                                AsyncResult::DaemonEvent(event) => {
-                                    handle_daemon_event(&mut app, event)
-                                }
-                                _ => {}
+                            if let AsyncResult::DaemonEvent(event) = other {
+                                handle_daemon_event(&mut app, event)
                             }
                         }
                     }
@@ -1333,12 +1354,12 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
         DaemonEvent::SyncCompleted {
             messages_synced, ..
         } => {
-            app.pending_labels_refresh = true;
-            app.pending_all_envelopes_refresh = true;
-            app.pending_subscriptions_refresh = true;
+            app.mailbox.pending_labels_refresh = true;
+            app.mailbox.pending_all_envelopes_refresh = true;
+            app.mailbox.pending_subscriptions_refresh = true;
             app.pending_status_refresh = true;
-            if let Some(label_id) = app.active_label.clone() {
-                app.pending_label_fetch = Some(label_id);
+            if let Some(label_id) = app.mailbox.active_label.clone() {
+                app.mailbox.pending_label_fetch = Some(label_id);
             }
             if messages_synced > 0 {
                 app.status_message = Some(format!("Synced {messages_synced} messages"));
@@ -1348,6 +1369,7 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             let selected_sidebar = app.selected_sidebar_key();
             for count in &counts {
                 if let Some(label) = app
+                    .mailbox
                     .labels
                     .iter_mut()
                     .find(|label| label.id == count.label_id)
@@ -1371,27 +1393,35 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
 }
 
 fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>) {
-    let switched_accounts = app.mailbox_loading_message.take().is_some();
-    let selected_id = (app.active_label.is_none()
-        && app.pending_active_label.is_none()
+    let switched_accounts = app.mailbox.mailbox_loading_message.take().is_some();
+    let selected_id = (app.mailbox.active_label.is_none()
+        && app.mailbox.pending_active_label.is_none()
         && !app.search_active
-        && app.mailbox_view == app::MailboxView::Messages)
+        && app.mailbox.mailbox_view == app::MailboxView::Messages)
         .then(|| app.selected_mail_row().map(|row| row.representative.id))
         .flatten();
-    app.all_envelopes = envelopes;
-    if app.active_label.is_none() && app.pending_active_label.is_none() && !app.search_active {
-        app.envelopes = app
+    app.mailbox.all_envelopes = envelopes;
+    if app.mailbox.active_label.is_none()
+        && app.mailbox.pending_active_label.is_none()
+        && !app.search_active
+    {
+        app.mailbox.envelopes = app
+            .mailbox
             .all_envelopes
             .iter()
             .filter(|envelope| !envelope.flags.contains(mxr_core::MessageFlags::TRASH))
             .cloned()
             .collect();
-        if app.mailbox_view == app::MailboxView::Messages {
+        if app.mailbox.mailbox_view == app::MailboxView::Messages {
             restore_mail_list_selection(app, selected_id);
         } else {
-            app.selected_index = app
-                .selected_index
-                .min(app.subscriptions_page.entries.len().saturating_sub(1));
+            app.mailbox.selected_index = app.mailbox.selected_index.min(
+                app.mailbox
+                    .subscriptions_page
+                    .entries
+                    .len()
+                    .saturating_sub(1),
+            );
         }
         app.queue_body_window();
     }
@@ -1406,10 +1436,10 @@ fn apply_labels_refresh(app: &mut App, mut labels: Vec<mxr_core::Label>) {
     if let Some(app::SidebarSelectionKey::Label(label_id)) = selected_sidebar.as_ref() {
         preserved_label_ids.insert(label_id.clone());
     }
-    if let Some(label_id) = app.pending_active_label.as_ref() {
+    if let Some(label_id) = app.mailbox.pending_active_label.as_ref() {
         preserved_label_ids.insert(label_id.clone());
     }
-    if let Some(label_id) = app.active_label.as_ref() {
+    if let Some(label_id) = app.mailbox.active_label.as_ref() {
         preserved_label_ids.insert(label_id.clone());
     }
 
@@ -1418,6 +1448,7 @@ fn apply_labels_refresh(app: &mut App, mut labels: Vec<mxr_core::Label>) {
             continue;
         }
         if let Some(existing) = app
+            .mailbox
             .labels
             .iter()
             .find(|label| label.id == label_id)
@@ -1431,7 +1462,7 @@ fn apply_labels_refresh(app: &mut App, mut labels: Vec<mxr_core::Label>) {
         }
     }
 
-    app.labels = labels;
+    app.mailbox.labels = labels;
     app.restore_sidebar_selection(selected_sidebar);
     app.resolve_desired_system_mailbox();
 }
@@ -1439,8 +1470,8 @@ fn apply_labels_refresh(app: &mut App, mut labels: Vec<mxr_core::Label>) {
 fn restore_mail_list_selection(app: &mut App, selected_id: Option<mxr_core::MessageId>) {
     let row_count = app.mail_list_rows().len();
     if row_count == 0 {
-        app.selected_index = 0;
-        app.scroll_offset = 0;
+        app.mailbox.selected_index = 0;
+        app.mailbox.scroll_offset = 0;
         return;
     }
 
@@ -1450,19 +1481,20 @@ fn restore_mail_list_selection(app: &mut App, selected_id: Option<mxr_core::Mess
             .iter()
             .position(|row| row.representative.id == id)
         {
-            app.selected_index = position;
+            app.mailbox.selected_index = position;
         } else {
-            app.selected_index = app.selected_index.min(row_count.saturating_sub(1));
+            app.mailbox.selected_index =
+                app.mailbox.selected_index.min(row_count.saturating_sub(1));
         }
     } else {
-        app.selected_index = 0;
+        app.mailbox.selected_index = 0;
     }
 
     let visible_height = app.visible_height.max(1);
-    if app.selected_index < app.scroll_offset {
-        app.scroll_offset = app.selected_index;
-    } else if app.selected_index >= app.scroll_offset + visible_height {
-        app.scroll_offset = app.selected_index + 1 - visible_height;
+    if app.mailbox.selected_index < app.mailbox.scroll_offset {
+        app.mailbox.scroll_offset = app.mailbox.selected_index;
+    } else if app.mailbox.selected_index >= app.mailbox.scroll_offset + visible_height {
+        app.mailbox.scroll_offset = app.mailbox.selected_index + 1 - visible_height;
     }
 }
 
@@ -1643,6 +1675,7 @@ mod tests {
         std::fs::write(&temp, content).unwrap();
 
         let data = ComposeReadyData {
+            account_id: AccountId::new(),
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: String::new(),
@@ -1672,6 +1705,7 @@ mod tests {
         std::fs::write(&temp, "---\n").unwrap();
 
         let data = ComposeReadyData {
+            account_id: AccountId::new(),
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: String::new(),
@@ -1855,36 +1889,36 @@ mod tests {
     #[test]
     fn app_move_down() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
+        app.mailbox.envelopes = make_test_envelopes(5);
         app.apply(Action::MoveDown);
-        assert_eq!(app.selected_index, 1);
+        assert_eq!(app.mailbox.selected_index, 1);
     }
 
     #[test]
     fn app_move_up_at_zero() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
+        app.mailbox.envelopes = make_test_envelopes(5);
         app.apply(Action::MoveUp);
-        assert_eq!(app.selected_index, 0);
+        assert_eq!(app.mailbox.selected_index, 0);
     }
 
     #[test]
     fn app_jump_top() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(10);
-        app.selected_index = 5;
+        app.mailbox.envelopes = make_test_envelopes(10);
+        app.mailbox.selected_index = 5;
         app.apply(Action::JumpTop);
-        assert_eq!(app.selected_index, 0);
+        assert_eq!(app.mailbox.selected_index, 0);
     }
 
     #[test]
     fn app_switch_pane() {
         let mut app = App::new();
-        assert_eq!(app.active_pane, ActivePane::MailList);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
         app.apply(Action::SwitchPane);
-        assert_eq!(app.active_pane, ActivePane::Sidebar);
+        assert_eq!(app.mailbox.active_pane, ActivePane::Sidebar);
         app.apply(Action::SwitchPane);
-        assert_eq!(app.active_pane, ActivePane::MailList);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
     }
 
     #[test]
@@ -1897,7 +1931,7 @@ mod tests {
     #[test]
     fn app_new_uses_default_reader_mode() {
         let app = App::new();
-        assert!(app.reader_mode);
+        assert!(app.mailbox.reader_mode);
     }
 
     #[test]
@@ -1907,7 +1941,7 @@ mod tests {
             ..Default::default()
         };
         let app = App::from_render_config(&config);
-        assert!(!app.reader_mode);
+        assert!(!app.mailbox.reader_mode);
     }
 
     #[test]
@@ -1920,7 +1954,7 @@ mod tests {
 
         app.apply_runtime_config(&config);
 
-        assert!(!app.reader_mode);
+        assert!(!app.mailbox.reader_mode);
         assert_eq!(app.snooze_config.morning_hour, 7);
         assert_eq!(
             app.theme.selection_fg,
@@ -1958,8 +1992,8 @@ mod tests {
     fn open_in_browser_action_queues_html_body_open() {
         let mut app = App::new();
         let env = make_test_envelopes(1).remove(0);
-        app.viewing_envelope = Some(env.clone());
-        app.body_cache.insert(
+        app.mailbox.viewing_envelope = Some(env.clone());
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -1974,6 +2008,7 @@ mod tests {
         app.apply(Action::OpenInBrowser);
 
         let pending = app
+            .mailbox
             .pending_browser_open
             .as_ref()
             .expect("browser open should be queued");
@@ -1986,8 +2021,8 @@ mod tests {
     fn open_in_browser_action_wraps_plain_text_when_html_is_missing() {
         let mut app = App::new();
         let env = make_test_envelopes(1).remove(0);
-        app.viewing_envelope = Some(env.clone());
-        app.body_cache.insert(
+        app.mailbox.viewing_envelope = Some(env.clone());
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -2002,6 +2037,7 @@ mod tests {
         app.apply(Action::OpenInBrowser);
 
         let pending = app
+            .mailbox
             .pending_browser_open
             .as_ref()
             .expect("plain text should still open in browser");
@@ -2015,8 +2051,8 @@ mod tests {
     fn open_in_browser_action_wraps_best_effort_fallback_body() {
         let mut app = App::new();
         let env = make_test_envelopes(1).remove(0);
-        app.viewing_envelope = Some(env.clone());
-        app.body_cache.insert(
+        app.mailbox.viewing_envelope = Some(env.clone());
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -2048,6 +2084,7 @@ mod tests {
         app.apply(Action::OpenInBrowser);
 
         let pending = app
+            .mailbox
             .pending_browser_open
             .as_ref()
             .expect("best-effort fallback should open in browser");
@@ -2061,13 +2098,16 @@ mod tests {
     fn open_in_browser_action_missing_body_queues_fetch_and_opens_on_success() {
         let mut app = App::new();
         let env = make_test_envelopes(1).remove(0);
-        app.viewing_envelope = Some(env.clone());
+        app.mailbox.viewing_envelope = Some(env.clone());
 
         app.apply(Action::OpenInBrowser);
 
-        assert_eq!(app.queued_body_fetches, vec![env.id.clone()]);
-        assert!(app.in_flight_body_requests.contains(&env.id));
-        assert_eq!(app.pending_browser_open_after_load, Some(env.id.clone()));
+        assert_eq!(app.mailbox.queued_body_fetches, vec![env.id.clone()]);
+        assert!(app.mailbox.in_flight_body_requests.contains(&env.id));
+        assert_eq!(
+            app.mailbox.pending_browser_open_after_load,
+            Some(env.id.clone())
+        );
         assert_eq!(
             app.status_message.as_deref(),
             Some("Loading message body...")
@@ -2083,49 +2123,53 @@ mod tests {
         });
 
         let pending = app
+            .mailbox
             .pending_browser_open
             .as_ref()
             .expect("browser open should resume after body load");
         assert_eq!(pending.message_id, env.id);
         assert!(pending.document.contains("<pre>Loaded later</pre>"));
-        assert!(app.pending_browser_open_after_load.is_none());
+        assert!(app.mailbox.pending_browser_open_after_load.is_none());
     }
 
     #[test]
     fn app_move_down_bounds() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
+        app.mailbox.envelopes = make_test_envelopes(3);
         app.apply(Action::MoveDown);
         app.apply(Action::MoveDown);
         app.apply(Action::MoveDown);
-        assert_eq!(app.selected_index, 2);
+        assert_eq!(app.mailbox.selected_index, 2);
     }
 
     #[test]
     fn layout_mode_switching() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        assert_eq!(app.layout_mode, LayoutMode::TwoPane);
+        app.mailbox.envelopes = make_test_envelopes(3);
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
         app.apply(Action::OpenMessageView);
-        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
         app.apply(Action::CloseMessageView);
-        assert_eq!(app.layout_mode, LayoutMode::TwoPane);
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
     }
 
     #[test]
     fn fullscreen_opens_selected_message_from_mail_list() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::ToggleFullscreen);
 
-        assert_eq!(app.layout_mode, LayoutMode::FullScreen);
-        assert_eq!(app.active_pane, ActivePane::MessageView);
-        assert!(app.viewing_envelope.is_some());
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::FullScreen);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
+        assert!(app.mailbox.viewing_envelope.is_some());
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
-            Some(app.envelopes[0].id.clone())
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
+            Some(app.mailbox.envelopes[0].id.clone())
         );
         assert_eq!(
             app.status_message.as_deref(),
@@ -2136,9 +2180,9 @@ mod tests {
     #[test]
     fn fullscreen_keeps_sidebar_visible() {
         let mut app = App::new();
-        app.labels = make_test_labels();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.labels = make_test_labels();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::ToggleFullscreen);
 
@@ -2151,17 +2195,17 @@ mod tests {
     #[test]
     fn fullscreen_switch_pane_skips_hidden_mail_list() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::ToggleFullscreen);
-        assert_eq!(app.active_pane, ActivePane::MessageView);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
 
         app.apply(Action::SwitchPane);
-        assert_eq!(app.active_pane, ActivePane::Sidebar);
+        assert_eq!(app.mailbox.active_pane, ActivePane::Sidebar);
 
         app.apply(Action::SwitchPane);
-        assert_eq!(app.active_pane, ActivePane::MessageView);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
     }
 
     #[test]
@@ -2228,8 +2272,8 @@ mod tests {
         let different_sender_same_account =
             make_unsubscribe_envelope(account_id, "other@example.com", UnsubscribeMethod::None);
 
-        app.envelopes = vec![target.clone()];
-        app.all_envelopes = vec![
+        app.mailbox.envelopes = vec![target.clone()];
+        app.mailbox.all_envelopes = vec![
             target.clone(),
             same_sender_same_account.clone(),
             same_sender_other_account,
@@ -2259,7 +2303,7 @@ mod tests {
             "news@example.com",
             UnsubscribeMethod::None,
         );
-        app.envelopes = vec![env];
+        app.mailbox.envelopes = vec![env];
 
         app.apply(Action::Unsubscribe);
 
@@ -2280,8 +2324,8 @@ mod tests {
                 url: "https://example.com/one-click".into(),
             },
         );
-        app.envelopes = vec![env.clone()];
-        app.all_envelopes = vec![env.clone()];
+        app.mailbox.envelopes = vec![env.clone()];
+        app.mailbox.all_envelopes = vec![env.clone()];
         app.apply(Action::Unsubscribe);
         app.apply(Action::ConfirmUnsubscribeAndArchiveSender);
 
@@ -2378,40 +2422,40 @@ mod tests {
     #[test]
     fn threepane_l_loads_new_message() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(5);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         // Open first message
         app.apply(Action::OpenSelected);
-        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
-        let first_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
+        let first_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
         // Move focus back to mail list
-        app.active_pane = ActivePane::MailList;
+        app.mailbox.active_pane = ActivePane::MailList;
         // Navigate to second message
         app.apply(Action::MoveDown);
         // Press l (which triggers OpenSelected)
         app.apply(Action::OpenSelected);
-        let second_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+        let second_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
         assert_ne!(
             first_id, second_id,
             "l should load the new message, not stay on old one"
         );
-        assert_eq!(app.selected_index, 1);
+        assert_eq!(app.mailbox.selected_index, 1);
     }
 
     #[test]
     fn threepane_jk_auto_preview() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(5);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         // Open first message to enter ThreePane
         app.apply(Action::OpenSelected);
-        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
-        let first_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
+        let first_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
         // Move focus back to mail list
-        app.active_pane = ActivePane::MailList;
+        app.mailbox.active_pane = ActivePane::MailList;
         // Move down — should auto-preview
         app.apply(Action::MoveDown);
-        let preview_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+        let preview_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
         assert_ne!(first_id, preview_id, "j/k should auto-preview in ThreePane");
         // Body should be loaded from cache (or None if not cached in test)
         // No async fetch needed — bodies are inline with envelopes
@@ -2420,13 +2464,13 @@ mod tests {
     #[test]
     fn twopane_jk_no_auto_preview() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(5);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         // Don't open message — stay in TwoPane
-        assert_eq!(app.layout_mode, LayoutMode::TwoPane);
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
         app.apply(Action::MoveDown);
         assert!(
-            app.viewing_envelope.is_none(),
+            app.mailbox.viewing_envelope.is_none(),
             "j/k should not auto-preview in TwoPane"
         );
         // No body fetch triggered in TwoPane mode
@@ -2437,24 +2481,25 @@ mod tests {
     #[test]
     fn back_in_message_view_closes_preview_pane() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         app.apply(Action::OpenSelected);
-        assert_eq!(app.active_pane, ActivePane::MessageView);
-        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
         app.apply(Action::Back);
-        assert_eq!(app.active_pane, ActivePane::MailList);
-        assert_eq!(app.layout_mode, LayoutMode::TwoPane);
-        assert!(app.viewing_envelope.is_none());
+        assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
+        assert!(app.mailbox.viewing_envelope.is_none());
     }
 
     #[test]
     fn back_in_mail_list_clears_label_filter() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
-        app.all_envelopes = app.envelopes.clone();
-        app.labels = make_test_labels();
+        app.mailbox.envelopes = make_test_envelopes(5);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.mailbox.labels = make_test_labels();
         let inbox_id = app
+            .mailbox
             .labels
             .iter()
             .find(|l| l.name == "INBOX")
@@ -2462,24 +2507,31 @@ mod tests {
             .id
             .clone();
         // Simulate label filter active
-        app.active_label = Some(inbox_id);
-        app.envelopes = vec![app.envelopes[0].clone()]; // Filtered down
-                                                        // Esc should clear filter
+        app.mailbox.active_label = Some(inbox_id);
+        app.mailbox.envelopes = vec![app.mailbox.envelopes[0].clone()]; // Filtered down
+                                                                        // Esc should clear filter
         app.apply(Action::Back);
-        assert!(app.active_label.is_none(), "Esc should clear label filter");
-        assert_eq!(app.envelopes.len(), 5, "Should restore all envelopes");
+        assert!(
+            app.mailbox.active_label.is_none(),
+            "Esc should clear label filter"
+        );
+        assert_eq!(
+            app.mailbox.envelopes.len(),
+            5,
+            "Should restore all envelopes"
+        );
     }
 
     #[test]
     fn back_in_mail_list_closes_threepane_when_no_filter() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         app.apply(Action::OpenSelected); // ThreePane
-        app.active_pane = ActivePane::MailList; // Move back
-                                                // No filter active — Esc should close ThreePane
+        app.mailbox.active_pane = ActivePane::MailList; // Move back
+                                                        // No filter active — Esc should close ThreePane
         app.apply(Action::Back);
-        assert_eq!(app.layout_mode, LayoutMode::TwoPane);
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
     }
 
     // --- Sidebar tests ---
@@ -2487,7 +2539,7 @@ mod tests {
     #[test]
     fn sidebar_system_labels_before_user_labels() {
         let mut app = App::new();
-        app.labels = make_test_labels();
+        app.mailbox.labels = make_test_labels();
         let ordered = app.ordered_visible_labels();
         // System labels should come first
         let first_user_idx = ordered.iter().position(|l| l.kind == LabelKind::User);
@@ -2503,7 +2555,7 @@ mod tests {
     #[test]
     fn sidebar_system_labels_in_correct_order() {
         let mut app = App::new();
-        app.labels = make_test_labels();
+        app.mailbox.labels = make_test_labels();
         let ordered = app.ordered_visible_labels();
         let system_names: Vec<&str> = ordered
             .iter()
@@ -2521,7 +2573,7 @@ mod tests {
     #[test]
     fn sidebar_items_put_inbox_before_all_mail() {
         let mut app = App::new();
-        app.labels = make_test_labels();
+        app.mailbox.labels = make_test_labels();
 
         let items = app.sidebar_items();
         let all_mail_index = items
@@ -2539,7 +2591,7 @@ mod tests {
     #[test]
     fn sidebar_hidden_labels_not_shown() {
         let mut app = App::new();
-        app.labels = make_test_labels();
+        app.mailbox.labels = make_test_labels();
         let ordered = app.ordered_visible_labels();
         let names: Vec<&str> = ordered.iter().map(|l| l.name.as_str()).collect();
         assert!(
@@ -2551,7 +2603,7 @@ mod tests {
     #[test]
     fn sidebar_empty_system_labels_hidden_except_primary() {
         let mut app = App::new();
-        app.labels = make_test_labels();
+        app.mailbox.labels = make_test_labels();
         let ordered = app.ordered_visible_labels();
         let names: Vec<&str> = ordered.iter().map(|l| l.name.as_str()).collect();
         // CHAT has 0 total, 0 unread — should be hidden
@@ -2578,7 +2630,7 @@ mod tests {
     #[test]
     fn sidebar_user_labels_alphabetical() {
         let mut app = App::new();
-        app.labels = make_test_labels();
+        app.mailbox.labels = make_test_labels();
         let ordered = app.ordered_visible_labels();
         let user_names: Vec<&str> = ordered
             .iter()
@@ -2594,18 +2646,26 @@ mod tests {
     #[test]
     fn goto_inbox_sets_active_label() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
-        app.all_envelopes = app.envelopes.clone();
-        app.labels = make_test_labels();
+        app.mailbox.envelopes = make_test_envelopes(5);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.mailbox.labels = make_test_labels();
         app.apply(Action::GoToInbox);
-        let label = app.labels.iter().find(|l| l.name == "INBOX").unwrap();
+        let label = app
+            .mailbox
+            .labels
+            .iter()
+            .find(|l| l.name == "INBOX")
+            .unwrap();
         assert!(
-            app.active_label.is_none(),
+            app.mailbox.active_label.is_none(),
             "GoToInbox should wait for fetch success before swapping active label"
         );
-        assert_eq!(app.pending_active_label.as_ref().unwrap(), &label.id);
+        assert_eq!(
+            app.mailbox.pending_active_label.as_ref().unwrap(),
+            &label.id
+        );
         assert!(
-            app.pending_label_fetch.is_some(),
+            app.mailbox.pending_label_fetch.is_some(),
             "Should trigger label fetch"
         );
     }
@@ -2614,29 +2674,30 @@ mod tests {
     fn goto_inbox_without_labels_records_desired_mailbox() {
         let mut app = App::new();
         app.apply(Action::GoToInbox);
-        assert_eq!(app.desired_system_mailbox.as_deref(), Some("INBOX"));
-        assert!(app.pending_label_fetch.is_none());
-        assert!(app.pending_active_label.is_none());
+        assert_eq!(app.mailbox.desired_system_mailbox.as_deref(), Some("INBOX"));
+        assert!(app.mailbox.pending_label_fetch.is_none());
+        assert!(app.mailbox.pending_active_label.is_none());
     }
 
     #[test]
     fn labels_refresh_resolves_desired_inbox() {
         let mut app = App::new();
-        app.desired_system_mailbox = Some("INBOX".into());
-        app.labels = make_test_labels();
+        app.mailbox.desired_system_mailbox = Some("INBOX".into());
+        app.mailbox.labels = make_test_labels();
 
         app.resolve_desired_system_mailbox();
 
         let inbox_id = app
+            .mailbox
             .labels
             .iter()
             .find(|label| label.name == "INBOX")
             .unwrap()
             .id
             .clone();
-        assert_eq!(app.pending_active_label.as_ref(), Some(&inbox_id));
-        assert_eq!(app.pending_label_fetch.as_ref(), Some(&inbox_id));
-        assert!(app.active_label.is_none());
+        assert_eq!(app.mailbox.pending_active_label.as_ref(), Some(&inbox_id));
+        assert_eq!(app.mailbox.pending_label_fetch.as_ref(), Some(&inbox_id));
+        assert!(app.mailbox.active_label.is_none());
     }
 
     #[test]
@@ -2651,10 +2712,10 @@ mod tests {
             },
         );
 
-        assert!(app.pending_labels_refresh);
-        assert!(app.pending_all_envelopes_refresh);
+        assert!(app.mailbox.pending_labels_refresh);
+        assert!(app.mailbox.pending_all_envelopes_refresh);
         assert!(app.pending_status_refresh);
-        assert!(app.pending_label_fetch.is_none());
+        assert!(app.mailbox.pending_label_fetch.is_none());
         assert_eq!(app.status_message.as_deref(), Some("Synced 5 messages"));
     }
 
@@ -2666,17 +2727,18 @@ mod tests {
             first.flags.remove(MessageFlags::READ);
             first.flags.insert(MessageFlags::STARRED);
         }
-        app.envelopes = envelopes.clone();
-        app.all_envelopes = envelopes;
-        app.labels = make_test_labels();
+        app.mailbox.envelopes = envelopes.clone();
+        app.mailbox.all_envelopes = envelopes;
+        app.mailbox.labels = make_test_labels();
         let inbox = app
+            .mailbox
             .labels
             .iter()
             .find(|label| label.name == "INBOX")
             .unwrap()
             .id
             .clone();
-        app.active_label = Some(inbox);
+        app.mailbox.active_label = Some(inbox);
         app.last_sync_status = Some("synced just now".into());
 
         let state = app.status_bar_state();
@@ -2692,53 +2754,59 @@ mod tests {
     fn all_envelopes_refresh_updates_visible_all_mail() {
         let mut app = App::new();
         let envelopes = make_test_envelopes(4);
-        app.active_label = None;
+        app.mailbox.active_label = None;
         app.search_active = false;
 
         apply_all_envelopes_refresh(&mut app, envelopes.clone());
 
-        assert_eq!(app.all_envelopes.len(), 4);
-        assert_eq!(app.envelopes.len(), 4);
-        assert_eq!(app.selected_index, 0);
+        assert_eq!(app.mailbox.all_envelopes.len(), 4);
+        assert_eq!(app.mailbox.envelopes.len(), 4);
+        assert_eq!(app.mailbox.selected_index, 0);
     }
 
     #[test]
     fn all_envelopes_refresh_preserves_selection_when_possible() {
         let mut app = App::new();
         app.visible_height = 3;
-        app.mail_list_mode = MailListMode::Messages;
+        app.mailbox.mail_list_mode = MailListMode::Messages;
         let initial = make_test_envelopes(4);
-        app.all_envelopes = initial.clone();
-        app.envelopes = initial.clone();
-        app.selected_index = 2;
-        app.scroll_offset = 1;
+        app.mailbox.all_envelopes = initial.clone();
+        app.mailbox.envelopes = initial.clone();
+        app.mailbox.selected_index = 2;
+        app.mailbox.scroll_offset = 1;
 
         let mut refreshed = initial.clone();
         refreshed.push(make_test_envelopes(1).remove(0));
 
         apply_all_envelopes_refresh(&mut app, refreshed);
 
-        assert_eq!(app.selected_index, 2);
-        assert_eq!(app.envelopes[app.selected_index].id, initial[2].id);
-        assert_eq!(app.scroll_offset, 1);
+        assert_eq!(app.mailbox.selected_index, 2);
+        assert_eq!(
+            app.mailbox.envelopes[app.mailbox.selected_index].id,
+            initial[2].id
+        );
+        assert_eq!(app.mailbox.scroll_offset, 1);
     }
 
     #[test]
     fn all_envelopes_refresh_preserves_selected_message_when_rows_shift() {
         let mut app = App::new();
-        app.mail_list_mode = MailListMode::Messages;
+        app.mailbox.mail_list_mode = MailListMode::Messages;
         let initial = make_test_envelopes(4);
         let selected_id = initial[2].id.clone();
-        app.all_envelopes = initial.clone();
-        app.envelopes = initial;
-        app.selected_index = 2;
+        app.mailbox.all_envelopes = initial.clone();
+        app.mailbox.envelopes = initial;
+        app.mailbox.selected_index = 2;
 
         let mut refreshed = make_test_envelopes(1);
-        refreshed.extend(app.envelopes.clone());
+        refreshed.extend(app.mailbox.envelopes.clone());
 
         apply_all_envelopes_refresh(&mut app, refreshed);
 
-        assert_eq!(app.envelopes[app.selected_index].id, selected_id);
+        assert_eq!(
+            app.mailbox.envelopes[app.mailbox.selected_index].id,
+            selected_id
+        );
     }
 
     #[test]
@@ -2753,22 +2821,22 @@ mod tests {
             .clone();
         let initial = make_test_envelopes(2);
         let refreshed = make_test_envelopes(5);
-        app.labels = labels;
-        app.envelopes = initial.clone();
-        app.all_envelopes = initial;
-        app.pending_active_label = Some(inbox_id);
+        app.mailbox.labels = labels;
+        app.mailbox.envelopes = initial.clone();
+        app.mailbox.all_envelopes = initial;
+        app.mailbox.pending_active_label = Some(inbox_id);
 
         apply_all_envelopes_refresh(&mut app, refreshed.clone());
 
-        assert_eq!(app.all_envelopes.len(), refreshed.len());
-        assert_eq!(app.all_envelopes[0].id, refreshed[0].id);
-        assert_eq!(app.envelopes.len(), 2);
+        assert_eq!(app.mailbox.all_envelopes.len(), refreshed.len());
+        assert_eq!(app.mailbox.all_envelopes[0].id, refreshed[0].id);
+        assert_eq!(app.mailbox.envelopes.len(), 2);
     }
 
     #[test]
     fn label_counts_refresh_can_follow_empty_boot() {
         let mut app = App::new();
-        app.desired_system_mailbox = Some("INBOX".into());
+        app.mailbox.desired_system_mailbox = Some("INBOX".into());
 
         handle_daemon_event(
             &mut app,
@@ -2778,30 +2846,31 @@ mod tests {
             },
         );
 
-        assert!(app.pending_labels_refresh);
-        assert!(app.pending_all_envelopes_refresh);
-        assert_eq!(app.desired_system_mailbox.as_deref(), Some("INBOX"));
+        assert!(app.mailbox.pending_labels_refresh);
+        assert!(app.mailbox.pending_all_envelopes_refresh);
+        assert_eq!(app.mailbox.desired_system_mailbox.as_deref(), Some("INBOX"));
     }
 
     #[test]
     fn clear_filter_restores_all_envelopes() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(10);
-        app.all_envelopes = app.envelopes.clone();
-        app.labels = make_test_labels();
+        app.mailbox.envelopes = make_test_envelopes(10);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.mailbox.labels = make_test_labels();
         let inbox_id = app
+            .mailbox
             .labels
             .iter()
             .find(|l| l.name == "INBOX")
             .unwrap()
             .id
             .clone();
-        app.active_label = Some(inbox_id);
-        app.envelopes = vec![app.envelopes[0].clone()]; // Simulate filtered
-        app.selected_index = 0;
+        app.mailbox.active_label = Some(inbox_id);
+        app.mailbox.envelopes = vec![app.mailbox.envelopes[0].clone()]; // Simulate filtered
+        app.mailbox.selected_index = 0;
         app.apply(Action::ClearFilter);
-        assert!(app.active_label.is_none());
-        assert_eq!(app.envelopes.len(), 10, "Should restore full list");
+        assert!(app.mailbox.active_label.is_none());
+        assert_eq!(app.mailbox.envelopes.len(), 10, "Should restore full list");
     }
 
     // --- Mutation effect tests ---
@@ -2809,13 +2878,14 @@ mod tests {
     #[test]
     fn archive_removes_from_list() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
-        app.all_envelopes = app.envelopes.clone();
-        let removed_id = app.envelopes[0].id.clone();
+        app.mailbox.envelopes = make_test_envelopes(5);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let removed_id = app.mailbox.envelopes[0].id.clone();
         app.apply(Action::Archive);
         assert_eq!(app.pending_mutation_queue.len(), 1);
-        assert_eq!(app.envelopes.len(), 4);
+        assert_eq!(app.mailbox.envelopes.len(), 4);
         assert!(!app
+            .mailbox
             .envelopes
             .iter()
             .any(|envelope| envelope.id == removed_id));
@@ -2824,14 +2894,18 @@ mod tests {
     #[test]
     fn star_updates_flags_in_place() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         // First envelope is READ (even index), not starred
-        assert!(!app.envelopes[0].flags.contains(MessageFlags::STARRED));
+        assert!(!app.mailbox.envelopes[0]
+            .flags
+            .contains(MessageFlags::STARRED));
         app.apply(Action::Star);
         assert_eq!(app.pending_mutation_queue.len(), 1);
         assert_eq!(app.pending_mutation_count, 1);
-        assert!(app.envelopes[0].flags.contains(MessageFlags::STARRED));
+        assert!(app.mailbox.envelopes[0]
+            .flags
+            .contains(MessageFlags::STARRED));
     }
 
     #[test]
@@ -2841,9 +2915,9 @@ mod tests {
         for envelope in &mut envelopes {
             envelope.flags.remove(MessageFlags::READ);
         }
-        app.envelopes = envelopes.clone();
-        app.all_envelopes = envelopes.clone();
-        app.selected_set = envelopes
+        app.mailbox.envelopes = envelopes.clone();
+        app.mailbox.all_envelopes = envelopes.clone();
+        app.mailbox.selected_set = envelopes
             .iter()
             .map(|envelope| envelope.id.clone())
             .collect();
@@ -2861,6 +2935,7 @@ mod tests {
             None => panic!("Expected pending bulk confirmation"),
         }
         assert!(app
+            .mailbox
             .envelopes
             .iter()
             .all(|envelope| !envelope.flags.contains(MessageFlags::READ)));
@@ -2871,6 +2946,7 @@ mod tests {
         assert_eq!(app.pending_mutation_count, 1);
         assert!(app.pending_bulk_confirm.is_none());
         assert!(app
+            .mailbox
             .envelopes
             .iter()
             .all(|envelope| envelope.flags.contains(MessageFlags::READ)));
@@ -2887,8 +2963,8 @@ mod tests {
         for envelope in &mut envelopes {
             envelope.flags.remove(MessageFlags::READ);
         }
-        app.envelopes = envelopes.clone();
-        app.all_envelopes = envelopes;
+        app.mailbox.envelopes = envelopes.clone();
+        app.mailbox.all_envelopes = envelopes;
 
         app.apply(Action::MarkRead);
         app.apply(Action::MoveDown);
@@ -2906,14 +2982,14 @@ mod tests {
         let mut app = App::new();
         let mut envelopes = make_test_envelopes(1);
         envelopes[0].flags.remove(MessageFlags::READ);
-        app.envelopes = envelopes.clone();
-        app.all_envelopes = envelopes;
-        let message_id = app.envelopes[0].id.clone();
+        app.mailbox.envelopes = envelopes.clone();
+        app.mailbox.all_envelopes = envelopes;
+        let message_id = app.mailbox.envelopes[0].id.clone();
 
         app.apply(Action::MarkReadAndArchive);
 
-        assert!(app.envelopes.is_empty());
-        assert!(app.all_envelopes.is_empty());
+        assert!(app.mailbox.envelopes.is_empty());
+        assert!(app.mailbox.all_envelopes.is_empty());
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].0 {
             Request::Mutation(MutationCommand::ReadAndArchive { message_ids }) => {
@@ -2930,9 +3006,9 @@ mod tests {
         for envelope in &mut envelopes {
             envelope.flags.remove(MessageFlags::READ);
         }
-        app.envelopes = envelopes.clone();
-        app.all_envelopes = envelopes.clone();
-        app.selected_set = envelopes
+        app.mailbox.envelopes = envelopes.clone();
+        app.mailbox.all_envelopes = envelopes.clone();
+        app.mailbox.selected_set = envelopes
             .iter()
             .map(|envelope| envelope.id.clone())
             .collect();
@@ -2947,15 +3023,15 @@ mod tests {
             },
             None => panic!("Expected pending bulk confirmation"),
         }
-        assert_eq!(app.envelopes.len(), 3);
+        assert_eq!(app.mailbox.envelopes.len(), 3);
 
         app.apply(Action::OpenSelected);
 
         assert!(app.pending_bulk_confirm.is_none());
         assert_eq!(app.pending_mutation_queue.len(), 1);
         assert_eq!(app.pending_mutation_count, 1);
-        assert!(app.envelopes.is_empty());
-        assert!(app.all_envelopes.is_empty());
+        assert!(app.mailbox.envelopes.is_empty());
+        assert!(app.mailbox.all_envelopes.is_empty());
         assert_eq!(
             app.pending_mutation_status.as_deref(),
             Some("Marking 3 messages as read and archiving...")
@@ -2979,31 +3055,32 @@ mod tests {
                 .map(|modal| modal.detail.contains("boom")),
             Some(true)
         );
-        assert!(app.pending_labels_refresh);
-        assert!(app.pending_all_envelopes_refresh);
+        assert!(app.mailbox.pending_labels_refresh);
+        assert!(app.mailbox.pending_all_envelopes_refresh);
         assert!(app.pending_status_refresh);
-        assert!(app.pending_subscriptions_refresh);
+        assert!(app.mailbox.pending_subscriptions_refresh);
     }
 
     #[test]
     fn mutation_failure_reloads_pending_label_fetch() {
         let mut app = App::new();
         let inbox_id = LabelId::new();
-        app.pending_active_label = Some(inbox_id.clone());
+        app.mailbox.pending_active_label = Some(inbox_id.clone());
 
         app.refresh_mailbox_after_mutation_failure();
 
-        assert_eq!(app.pending_label_fetch.as_ref(), Some(&inbox_id));
+        assert_eq!(app.mailbox.pending_label_fetch.as_ref(), Some(&inbox_id));
     }
 
     #[test]
     fn archive_viewing_message_effect() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         // Open first message
         app.apply(Action::OpenSelected);
         let viewing_id = app
+            .mailbox
             .viewing_envelope
             .as_ref()
             .expect("open selected should populate viewing envelope")
@@ -3025,20 +3102,21 @@ mod tests {
     #[test]
     fn archive_keeps_reader_open_and_selects_next_message() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
-        let removed_id = app.viewing_envelope.as_ref().unwrap().id.clone();
-        let next_id = app.envelopes[1].id.clone();
+        let removed_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
+        let next_id = app.mailbox.envelopes[1].id.clone();
 
         app.apply_removed_message_ids(&[removed_id]);
 
-        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
-        assert_eq!(app.selected_index, 0);
-        assert_eq!(app.active_pane, ActivePane::MessageView);
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
+        assert_eq!(app.mailbox.selected_index, 0);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
         assert_eq!(
-            app.viewing_envelope
+            app.mailbox
+                .viewing_envelope
                 .as_ref()
                 .map(|envelope| envelope.id.clone()),
             Some(next_id)
@@ -3048,20 +3126,21 @@ mod tests {
     #[test]
     fn archive_keeps_mail_list_focus_when_reader_was_visible() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
-        app.active_pane = ActivePane::MailList;
-        let removed_id = app.viewing_envelope.as_ref().unwrap().id.clone();
-        let next_id = app.envelopes[1].id.clone();
+        app.mailbox.active_pane = ActivePane::MailList;
+        let removed_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
+        let next_id = app.mailbox.envelopes[1].id.clone();
 
         app.apply_removed_message_ids(&[removed_id]);
 
-        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
-        assert_eq!(app.active_pane, ActivePane::MailList);
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
         assert_eq!(
-            app.viewing_envelope
+            app.mailbox
+                .viewing_envelope
                 .as_ref()
                 .map(|envelope| envelope.id.clone()),
             Some(next_id)
@@ -3071,18 +3150,18 @@ mod tests {
     #[test]
     fn archive_last_visible_message_closes_reader() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
-        let removed_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+        let removed_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
 
         app.apply_removed_message_ids(&[removed_id]);
 
-        assert_eq!(app.layout_mode, LayoutMode::TwoPane);
-        assert_eq!(app.active_pane, ActivePane::MailList);
-        assert!(app.viewing_envelope.is_none());
-        assert!(app.envelopes.is_empty());
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
+        assert!(app.mailbox.viewing_envelope.is_none());
+        assert!(app.mailbox.envelopes.is_empty());
     }
 
     // --- Mail list title tests ---
@@ -3090,8 +3169,8 @@ mod tests {
     #[test]
     fn mail_list_title_shows_message_count() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(5);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         let title = app.mail_list_title();
         assert!(title.contains("5"), "Title should show message count");
         assert!(
@@ -3103,17 +3182,18 @@ mod tests {
     #[test]
     fn mail_list_title_shows_label_name() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
-        app.all_envelopes = app.envelopes.clone();
-        app.labels = make_test_labels();
+        app.mailbox.envelopes = make_test_envelopes(5);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.mailbox.labels = make_test_labels();
         let inbox_id = app
+            .mailbox
             .labels
             .iter()
             .find(|l| l.name == "INBOX")
             .unwrap()
             .id
             .clone();
-        app.active_label = Some(inbox_id);
+        app.mailbox.active_label = Some(inbox_id);
         let title = app.mail_list_title();
         assert!(
             title.contains("Inbox"),
@@ -3124,8 +3204,8 @@ mod tests {
     #[test]
     fn mail_list_title_shows_search_query() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(5);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(5);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         app.search_active = true;
         app.search_bar.query = "deployment".to_string();
         let title = app.mail_list_title();
@@ -3139,59 +3219,68 @@ mod tests {
     #[test]
     fn message_view_body_display() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         app.apply(Action::OpenMessageView);
-        assert_eq!(app.layout_mode, LayoutMode::ThreePane);
-        app.body_view_state = BodyViewState::Ready {
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::ThreePane);
+        app.mailbox.body_view_state = BodyViewState::Ready {
             raw: "Hello".into(),
             rendered: "Hello".into(),
             source: BodySource::Plain,
             metadata: BodyViewMetadata::default(),
         };
-        assert_eq!(app.body_view_state.display_text(), Some("Hello"));
+        assert_eq!(app.mailbox.body_view_state.display_text(), Some("Hello"));
         app.apply(Action::CloseMessageView);
-        assert!(matches!(app.body_view_state, BodyViewState::Empty { .. }));
+        assert!(matches!(
+            app.mailbox.body_view_state,
+            BodyViewState::Empty { .. }
+        ));
     }
 
     #[test]
     fn close_message_view_preserves_reader_mode() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         app.apply(Action::OpenMessageView);
 
         app.apply(Action::CloseMessageView);
 
-        assert!(app.reader_mode);
+        assert!(app.mailbox.reader_mode);
     }
 
     #[test]
     fn open_selected_populates_visible_thread_messages() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
+        app.mailbox.envelopes = make_test_envelopes(3);
         let shared_thread = ThreadId::new();
-        app.envelopes[0].thread_id = shared_thread.clone();
-        app.envelopes[1].thread_id = shared_thread;
-        app.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(5);
-        app.envelopes[1].date = chrono::Utc::now();
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes[0].thread_id = shared_thread.clone();
+        app.mailbox.envelopes[1].thread_id = shared_thread;
+        app.mailbox.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(5);
+        app.mailbox.envelopes[1].date = chrono::Utc::now();
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
 
-        assert_eq!(app.viewed_thread_messages.len(), 2);
-        assert_eq!(app.viewed_thread_messages[0].id, app.envelopes[0].id);
-        assert_eq!(app.viewed_thread_messages[1].id, app.envelopes[1].id);
+        assert_eq!(app.mailbox.viewed_thread_messages.len(), 2);
+        assert_eq!(
+            app.mailbox.viewed_thread_messages[0].id,
+            app.mailbox.envelopes[0].id
+        );
+        assert_eq!(
+            app.mailbox.viewed_thread_messages[1].id,
+            app.mailbox.envelopes[1].id
+        );
     }
 
     #[test]
     fn mail_list_defaults_to_threads() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
+        app.mailbox.envelopes = make_test_envelopes(3);
         let shared_thread = ThreadId::new();
-        app.envelopes[0].thread_id = shared_thread.clone();
-        app.envelopes[1].thread_id = shared_thread;
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes[0].thread_id = shared_thread.clone();
+        app.mailbox.envelopes[1].thread_id = shared_thread;
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         assert_eq!(app.mail_list_rows().len(), 2);
         assert_eq!(
@@ -3203,40 +3292,43 @@ mod tests {
     #[test]
     fn open_thread_focuses_latest_unread_message() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
+        app.mailbox.envelopes = make_test_envelopes(3);
         let shared_thread = ThreadId::new();
-        app.envelopes[0].thread_id = shared_thread.clone();
-        app.envelopes[1].thread_id = shared_thread;
-        app.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(10);
-        app.envelopes[1].date = chrono::Utc::now();
-        app.envelopes[0].flags = MessageFlags::READ;
-        app.envelopes[1].flags = MessageFlags::empty();
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes[0].thread_id = shared_thread.clone();
+        app.mailbox.envelopes[1].thread_id = shared_thread;
+        app.mailbox.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(10);
+        app.mailbox.envelopes[1].date = chrono::Utc::now();
+        app.mailbox.envelopes[0].flags = MessageFlags::READ;
+        app.mailbox.envelopes[1].flags = MessageFlags::empty();
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
 
-        assert_eq!(app.thread_selected_index, 1);
+        assert_eq!(app.mailbox.thread_selected_index, 1);
         assert_eq!(
             app.focused_thread_envelope().map(|env| env.id.clone()),
-            Some(app.envelopes[1].id.clone())
+            Some(app.mailbox.envelopes[1].id.clone())
         );
     }
 
     #[test]
     fn open_selected_marks_unread_message_read_after_dwell() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.envelopes[0].flags = MessageFlags::empty();
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.envelopes[0].flags = MessageFlags::empty();
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
 
-        assert!(!app.envelopes[0].flags.contains(MessageFlags::READ));
-        assert!(!app.all_envelopes[0].flags.contains(MessageFlags::READ));
-        assert!(!app.viewed_thread_messages[0]
+        assert!(!app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(!app.mailbox.all_envelopes[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(!app.mailbox.viewed_thread_messages[0]
             .flags
             .contains(MessageFlags::READ));
         assert!(!app
+            .mailbox
             .viewing_envelope
             .as_ref()
             .unwrap()
@@ -3247,12 +3339,15 @@ mod tests {
         app.expire_pending_preview_read_for_tests();
         app.tick();
 
-        assert!(app.envelopes[0].flags.contains(MessageFlags::READ));
-        assert!(app.all_envelopes[0].flags.contains(MessageFlags::READ));
-        assert!(app.viewed_thread_messages[0]
+        assert!(app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(app.mailbox.all_envelopes[0]
+            .flags
+            .contains(MessageFlags::READ));
+        assert!(app.mailbox.viewed_thread_messages[0]
             .flags
             .contains(MessageFlags::READ));
         assert!(app
+            .mailbox
             .viewing_envelope
             .as_ref()
             .unwrap()
@@ -3262,7 +3357,7 @@ mod tests {
         match &app.pending_mutation_queue[0].0 {
             Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
                 assert!(*read);
-                assert_eq!(message_ids, &vec![app.envelopes[0].id.clone()]);
+                assert_eq!(message_ids, &vec![app.mailbox.envelopes[0].id.clone()]);
             }
             other => panic!("expected set-read mutation, got {other:?}"),
         }
@@ -3271,9 +3366,9 @@ mod tests {
     #[test]
     fn open_selected_on_read_message_does_not_queue_read_mutation() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.envelopes[0].flags = MessageFlags::READ;
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.envelopes[0].flags = MessageFlags::READ;
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
         app.expire_pending_preview_read_for_tests();
@@ -3285,9 +3380,9 @@ mod tests {
     #[test]
     fn reopening_same_message_does_not_queue_duplicate_read_mutation() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.envelopes[0].flags = MessageFlags::empty();
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.envelopes[0].flags = MessageFlags::empty();
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
         app.apply(Action::OpenSelected);
@@ -3301,63 +3396,64 @@ mod tests {
     #[test]
     fn single_message_view_uses_jk_to_scroll() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
 
-        assert_eq!(app.active_pane, ActivePane::MessageView);
-        assert_eq!(app.viewed_thread_messages.len(), 1);
-        assert_eq!(app.thread_selected_index, 0);
-        assert_eq!(app.message_scroll_offset, 0);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MessageView);
+        assert_eq!(app.mailbox.viewed_thread_messages.len(), 1);
+        assert_eq!(app.mailbox.thread_selected_index, 0);
+        assert_eq!(app.mailbox.message_scroll_offset, 0);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
-        assert_eq!(app.thread_selected_index, 0);
-        assert_eq!(app.message_scroll_offset, 1);
+        assert_eq!(app.mailbox.thread_selected_index, 0);
+        assert_eq!(app.mailbox.message_scroll_offset, 1);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-        assert_eq!(app.thread_selected_index, 0);
-        assert_eq!(app.message_scroll_offset, 2);
+        assert_eq!(app.mailbox.thread_selected_index, 0);
+        assert_eq!(app.mailbox.message_scroll_offset, 2);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
-        assert_eq!(app.thread_selected_index, 0);
-        assert_eq!(app.message_scroll_offset, 1);
+        assert_eq!(app.mailbox.thread_selected_index, 0);
+        assert_eq!(app.mailbox.message_scroll_offset, 1);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-        assert_eq!(app.thread_selected_index, 0);
-        assert_eq!(app.message_scroll_offset, 0);
+        assert_eq!(app.mailbox.thread_selected_index, 0);
+        assert_eq!(app.mailbox.message_scroll_offset, 0);
     }
 
     #[test]
     fn thread_move_down_changes_reply_target() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(2);
+        app.mailbox.envelopes = make_test_envelopes(2);
         let shared_thread = ThreadId::new();
-        app.envelopes[0].thread_id = shared_thread.clone();
-        app.envelopes[1].thread_id = shared_thread;
-        app.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(5);
-        app.envelopes[1].date = chrono::Utc::now();
-        app.envelopes[0].flags = MessageFlags::empty();
-        app.envelopes[1].flags = MessageFlags::READ;
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes[0].thread_id = shared_thread.clone();
+        app.mailbox.envelopes[1].thread_id = shared_thread;
+        app.mailbox.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(5);
+        app.mailbox.envelopes[1].date = chrono::Utc::now();
+        app.mailbox.envelopes[0].flags = MessageFlags::empty();
+        app.mailbox.envelopes[1].flags = MessageFlags::READ;
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
         assert_eq!(
             app.focused_thread_envelope().map(|env| env.id.clone()),
-            Some(app.envelopes[0].id.clone())
+            Some(app.mailbox.envelopes[0].id.clone())
         );
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
 
         assert_eq!(
             app.focused_thread_envelope().map(|env| env.id.clone()),
-            Some(app.envelopes[1].id.clone())
+            Some(app.mailbox.envelopes[1].id.clone())
         );
         app.apply(Action::Reply);
         assert_eq!(
             app.pending_compose,
             Some(super::app::ComposeAction::Reply {
-                message_id: app.envelopes[1].id.clone()
+                message_id: app.mailbox.envelopes[1].id.clone(),
+                account_id: app.mailbox.envelopes[1].account_id.clone(),
             })
         );
     }
@@ -3365,24 +3461,24 @@ mod tests {
     #[test]
     fn thread_focus_change_marks_newly_focused_unread_message_read_after_dwell() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(2);
+        app.mailbox.envelopes = make_test_envelopes(2);
         let shared_thread = ThreadId::new();
-        app.envelopes[0].thread_id = shared_thread.clone();
-        app.envelopes[1].thread_id = shared_thread;
-        app.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(5);
-        app.envelopes[1].date = chrono::Utc::now();
-        app.envelopes[0].flags = MessageFlags::empty();
-        app.envelopes[1].flags = MessageFlags::empty();
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes[0].thread_id = shared_thread.clone();
+        app.mailbox.envelopes[1].thread_id = shared_thread;
+        app.mailbox.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(5);
+        app.mailbox.envelopes[1].date = chrono::Utc::now();
+        app.mailbox.envelopes[0].flags = MessageFlags::empty();
+        app.mailbox.envelopes[1].flags = MessageFlags::empty();
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
-        assert_eq!(app.thread_selected_index, 1);
+        assert_eq!(app.mailbox.thread_selected_index, 1);
         assert!(app.pending_mutation_queue.is_empty());
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
 
-        assert_eq!(app.thread_selected_index, 0);
-        assert!(!app.viewed_thread_messages[0]
+        assert_eq!(app.mailbox.thread_selected_index, 0);
+        assert!(!app.mailbox.viewed_thread_messages[0]
             .flags
             .contains(MessageFlags::READ));
         assert!(app.pending_mutation_queue.is_empty());
@@ -3390,10 +3486,11 @@ mod tests {
         app.expire_pending_preview_read_for_tests();
         app.tick();
 
-        assert!(app.viewed_thread_messages[0]
+        assert!(app.mailbox.viewed_thread_messages[0]
             .flags
             .contains(MessageFlags::READ));
         assert!(app
+            .mailbox
             .viewing_envelope
             .as_ref()
             .unwrap()
@@ -3403,7 +3500,7 @@ mod tests {
         match &app.pending_mutation_queue[0].0 {
             Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
                 assert!(*read);
-                assert_eq!(message_ids, &vec![app.envelopes[0].id.clone()]);
+                assert_eq!(message_ids, &vec![app.mailbox.envelopes[0].id.clone()]);
             }
             other => panic!("expected set-read mutation, got {other:?}"),
         }
@@ -3412,32 +3509,32 @@ mod tests {
     #[test]
     fn preview_navigation_only_marks_message_read_after_settling() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(2);
-        app.envelopes[0].flags = MessageFlags::empty();
-        app.envelopes[1].flags = MessageFlags::empty();
-        app.envelopes[0].thread_id = ThreadId::new();
-        app.envelopes[1].thread_id = ThreadId::new();
-        app.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(1);
-        app.envelopes[1].date = chrono::Utc::now();
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(2);
+        app.mailbox.envelopes[0].flags = MessageFlags::empty();
+        app.mailbox.envelopes[1].flags = MessageFlags::empty();
+        app.mailbox.envelopes[0].thread_id = ThreadId::new();
+        app.mailbox.envelopes[1].thread_id = ThreadId::new();
+        app.mailbox.envelopes[0].date = chrono::Utc::now() - chrono::Duration::minutes(1);
+        app.mailbox.envelopes[1].date = chrono::Utc::now();
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
         app.apply(Action::MoveDown);
 
-        assert!(!app.envelopes[0].flags.contains(MessageFlags::READ));
-        assert!(!app.envelopes[1].flags.contains(MessageFlags::READ));
+        assert!(!app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(!app.mailbox.envelopes[1].flags.contains(MessageFlags::READ));
         assert!(app.pending_mutation_queue.is_empty());
 
         app.expire_pending_preview_read_for_tests();
         app.tick();
 
-        assert!(!app.envelopes[0].flags.contains(MessageFlags::READ));
-        assert!(app.envelopes[1].flags.contains(MessageFlags::READ));
+        assert!(!app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
+        assert!(app.mailbox.envelopes[1].flags.contains(MessageFlags::READ));
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].0 {
             Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
                 assert!(*read);
-                assert_eq!(message_ids, &vec![app.envelopes[1].id.clone()]);
+                assert_eq!(message_ids, &vec![app.mailbox.envelopes[1].id.clone()]);
             }
             other => panic!("expected set-read mutation, got {other:?}"),
         }
@@ -3767,12 +3864,12 @@ mod tests {
         envelopes[0].snippet = "mxr publish".into();
         envelopes[1].subject = "support request".into();
         envelopes[1].snippet = "billing".into();
-        app.envelopes = envelopes.clone();
-        app.all_envelopes = envelopes;
+        app.mailbox.envelopes = envelopes.clone();
+        app.mailbox.all_envelopes = envelopes;
 
         app.apply(Action::OpenSearchScreen);
         app.search_page.query.clear();
-        app.search_page.results = app.all_envelopes.clone();
+        app.search_page.results = app.mailbox.all_envelopes.clone();
 
         for ch in "crate".chars() {
             let action = app.handle_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
@@ -3815,7 +3912,7 @@ mod tests {
         app.search_page.selected_index = 1;
         app.search_page.result_selected = true;
         app.search_page.active_pane = SearchPane::Preview;
-        app.viewing_envelope = Some(results[1].clone());
+        app.mailbox.viewing_envelope = Some(results[1].clone());
 
         app.apply(Action::OpenRulesScreen);
         app.apply(Action::OpenSearchScreen);
@@ -3826,7 +3923,10 @@ mod tests {
         assert_eq!(app.search_page.selected_index, 1);
         assert_eq!(app.search_page.active_pane, SearchPane::Preview);
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
             Some(results[1].id.clone())
         );
         assert!(app.pending_search.is_none());
@@ -3873,8 +3973,8 @@ mod tests {
         let mut app = App::new();
         let envelope = make_test_envelopes(1).remove(0);
         app.search_bar.query = "mailbox quick filter".into();
-        app.viewing_envelope = Some(envelope.clone());
-        app.viewed_thread_messages = vec![envelope];
+        app.mailbox.viewing_envelope = Some(envelope.clone());
+        app.mailbox.viewed_thread_messages = vec![envelope];
         app.search_page.query = "stale".into();
         app.search_page.session_active = false;
         app.search_page.results.clear();
@@ -3884,8 +3984,8 @@ mod tests {
         assert_eq!(app.screen, Screen::Search);
         assert!(app.search_page.editing);
         assert!(app.search_page.query.is_empty());
-        assert!(app.viewing_envelope.is_none());
-        assert!(app.viewed_thread_messages.is_empty());
+        assert!(app.mailbox.viewing_envelope.is_none());
+        assert!(app.mailbox.viewed_thread_messages.is_empty());
         assert_eq!(app.search_page.ui_status, crate::app::SearchUiStatus::Idle);
     }
 
@@ -3944,7 +4044,10 @@ mod tests {
         assert_eq!(app.screen, Screen::Search);
         assert_eq!(app.search_page.active_pane, SearchPane::Preview);
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
             Some(results[1].id.clone())
         );
     }
@@ -3957,11 +4060,14 @@ mod tests {
         app.search_page.query = "deploy".into();
         app.search_page.results = results.clone();
         app.search_page.session_active = true;
-        app.all_envelopes = results.clone();
+        app.mailbox.all_envelopes = results.clone();
 
         app.apply(Action::OpenSelected);
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
             Some(results[0].id.clone())
         );
 
@@ -3970,7 +4076,10 @@ mod tests {
             .is_none());
         assert_eq!(app.search_page.active_pane, SearchPane::Results);
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
             Some(results[0].id.clone())
         );
 
@@ -3979,7 +4088,10 @@ mod tests {
             .is_none());
         assert_eq!(app.search_page.selected_index, 1);
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
             Some(results[1].id.clone())
         );
     }
@@ -4039,12 +4151,12 @@ mod tests {
             .date(now - chrono::Duration::minutes(1))
             .build();
         let results = vec![older, newer.clone(), other];
-        app.mail_list_mode = MailListMode::Messages;
+        app.mailbox.mail_list_mode = MailListMode::Messages;
         app.screen = Screen::Search;
         app.search_page.query = "deploy".into();
         app.search_page.results = results.clone();
         app.search_page.session_active = true;
-        app.all_envelopes = results;
+        app.mailbox.all_envelopes = results;
 
         app.apply(Action::ToggleMailListMode);
 
@@ -4058,7 +4170,10 @@ mod tests {
 
         assert_eq!(app.search_page.active_pane, SearchPane::Preview);
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
             Some(newer.id.clone())
         );
     }
@@ -4072,7 +4187,7 @@ mod tests {
         app.search_page.results = results.clone();
         app.search_page.session_active = true;
         app.search_page.selected_index = 1;
-        app.all_envelopes = results.clone();
+        app.mailbox.all_envelopes = results.clone();
 
         app.apply(Action::OpenSelected);
         app.apply_search_page_results(
@@ -4087,7 +4202,10 @@ mod tests {
         assert_eq!(app.search_page.selected_index, 1);
         assert!(app.search_page.result_selected);
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
             Some(results[1].id.clone())
         );
     }
@@ -4101,7 +4219,7 @@ mod tests {
         app.search_page.results = results.clone();
         app.search_page.session_active = true;
         app.search_page.selected_index = 1;
-        app.all_envelopes = results.clone();
+        app.mailbox.all_envelopes = results.clone();
 
         app.apply(Action::OpenSelected);
         app.apply_search_page_results(
@@ -4116,8 +4234,8 @@ mod tests {
         assert_eq!(app.search_page.selected_index, 0);
         assert!(!app.search_page.result_selected);
         assert_eq!(app.search_page.active_pane, SearchPane::Results);
-        assert!(app.viewing_envelope.is_none());
-        assert!(app.viewed_thread_messages.is_empty());
+        assert!(app.mailbox.viewing_envelope.is_none());
+        assert!(app.mailbox.viewed_thread_messages.is_empty());
     }
 
     #[test]
@@ -4354,7 +4472,7 @@ mod tests {
     #[test]
     fn flattened_sidebar_navigation_reaches_saved_searches() {
         let mut app = App::new();
-        app.labels = vec![Label {
+        app.mailbox.labels = vec![Label {
             id: LabelId::new(),
             account_id: AccountId::new(),
             provider_id: "inbox".into(),
@@ -4364,7 +4482,7 @@ mod tests {
             unread_count: 1,
             total_count: 3,
         }];
-        app.saved_searches = vec![SavedSearch {
+        app.mailbox.saved_searches = vec![SavedSearch {
             id: SavedSearchId::new(),
             account_id: None,
             name: "Unread".into(),
@@ -4375,7 +4493,7 @@ mod tests {
             position: 0,
             created_at: chrono::Utc::now(),
         }];
-        app.active_pane = ActivePane::Sidebar;
+        app.mailbox.active_pane = ActivePane::Sidebar;
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
@@ -4390,20 +4508,23 @@ mod tests {
     #[test]
     fn toggle_select_advances_cursor_and_updates_preview() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(2);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(2);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         app.apply(Action::OpenSelected);
-        app.active_pane = ActivePane::MailList;
+        app.mailbox.active_pane = ActivePane::MailList;
 
         app.apply(Action::ToggleSelect);
 
-        assert_eq!(app.selected_index, 1);
+        assert_eq!(app.mailbox.selected_index, 1);
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
-            Some(app.envelopes[1].id.clone())
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
+            Some(app.mailbox.envelopes[1].id.clone())
         );
         assert!(matches!(
-            app.body_view_state,
+            app.mailbox.body_view_state,
             BodyViewState::Loading { ref preview }
                 if preview.as_deref() == Some("Snippet 1")
         ));
@@ -4412,32 +4533,35 @@ mod tests {
     #[test]
     fn toggle_select_in_message_view_keeps_current_message_visible() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(2);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(2);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         app.apply(Action::OpenSelected);
 
-        let original_id = app.viewing_envelope.as_ref().unwrap().id.clone();
+        let original_id = app.mailbox.viewing_envelope.as_ref().unwrap().id.clone();
         app.apply(Action::ToggleSelect);
 
-        assert_eq!(app.selected_index, 0);
+        assert_eq!(app.mailbox.selected_index, 0);
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
             Some(original_id.clone())
         );
-        assert!(app.selected_set.contains(&original_id));
+        assert!(app.mailbox.selected_set.contains(&original_id));
     }
 
     #[test]
     fn label_count_updates_preserve_sidebar_selection_identity() {
         let mut app = App::new();
-        app.labels = make_test_labels();
+        app.mailbox.labels = make_test_labels();
 
         let selected_index = app
             .sidebar_items()
             .iter()
             .position(|item| matches!(item, super::app::SidebarItem::Label(label) if label.name == "Work"))
             .unwrap();
-        app.sidebar_selected = selected_index;
+        app.mailbox.sidebar_selected = selected_index;
 
         handle_daemon_event(
             &mut app,
@@ -4466,15 +4590,16 @@ mod tests {
     #[test]
     fn labels_refresh_preserves_active_label_context_when_label_becomes_empty() {
         let mut app = App::new();
-        app.labels = make_test_labels();
+        app.mailbox.labels = make_test_labels();
         let work = app
+            .mailbox
             .labels
             .iter()
             .find(|label| label.name == "Work")
             .unwrap()
             .clone();
-        app.active_label = Some(work.id.clone());
-        app.sidebar_selected = app
+        app.mailbox.active_label = Some(work.id.clone());
+        app.mailbox.sidebar_selected = app
             .sidebar_items()
             .iter()
             .position(
@@ -4483,6 +4608,7 @@ mod tests {
             .unwrap();
 
         let refreshed = app
+            .mailbox
             .labels
             .iter()
             .filter(|label| label.id != work.id)
@@ -4491,10 +4617,15 @@ mod tests {
 
         super::apply_labels_refresh(&mut app, refreshed);
 
-        let preserved = app.labels.iter().find(|label| label.id == work.id).unwrap();
+        let preserved = app
+            .mailbox
+            .labels
+            .iter()
+            .find(|label| label.id == work.id)
+            .unwrap();
         assert_eq!(preserved.unread_count, 0);
         assert_eq!(preserved.total_count, 0);
-        assert_eq!(app.active_label.as_ref(), Some(&work.id));
+        assert_eq!(app.mailbox.active_label.as_ref(), Some(&work.id));
         assert!(matches!(
             app.selected_sidebar_item(),
             Some(super::app::SidebarItem::Label(label)) if label.id == work.id
@@ -4514,7 +4645,10 @@ mod tests {
         assert_eq!(app.screen, Screen::Search);
         assert_eq!(app.search_page.active_pane, SearchPane::Preview);
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
             Some(app.search_page.results[1].id.clone())
         );
     }
@@ -4522,10 +4656,10 @@ mod tests {
     #[test]
     fn attachment_list_opens_modal_for_current_message() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
-        let env = app.envelopes[0].clone();
-        app.body_cache.insert(
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -4551,18 +4685,21 @@ mod tests {
         app.apply(Action::OpenSelected);
         app.apply(Action::AttachmentList);
 
-        assert!(app.attachment_panel.visible);
-        assert_eq!(app.attachment_panel.attachments.len(), 1);
-        assert_eq!(app.attachment_panel.attachments[0].filename, "report.pdf");
+        assert!(app.mailbox.attachment_panel.visible);
+        assert_eq!(app.mailbox.attachment_panel.attachments.len(), 1);
+        assert_eq!(
+            app.mailbox.attachment_panel.attachments[0].filename,
+            "report.pdf"
+        );
     }
 
     #[test]
     fn attachment_list_sorts_file_attachments_before_inline_images() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
-        let env = app.envelopes[0].clone();
-        app.body_cache.insert(
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -4628,16 +4765,17 @@ mod tests {
         app.apply(Action::OpenSelected);
         app.apply(Action::AttachmentList);
 
-        assert!(app.attachment_panel.visible);
+        assert!(app.mailbox.attachment_panel.visible);
         assert_eq!(
-            app.attachment_panel
+            app.mailbox
+                .attachment_panel
                 .attachments
                 .iter()
                 .map(|attachment| attachment.filename.as_str())
                 .collect::<Vec<_>>(),
             vec!["budget.xlsx", "report.pdf", "inline-1.png", "inline-2.png"]
         );
-        assert_eq!(app.attachment_panel.selected_index, 0);
+        assert_eq!(app.mailbox.attachment_panel.selected_index, 0);
         assert_eq!(
             app.selected_attachment()
                 .map(|attachment| attachment.filename.as_str()),
@@ -4648,10 +4786,10 @@ mod tests {
     #[test]
     fn attachment_list_navigation_follows_sorted_attachment_order() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
-        let env = app.envelopes[0].clone();
-        app.body_cache.insert(
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -4737,9 +4875,9 @@ mod tests {
         app.search_page.results = results;
         app.search_page.session_active = true;
         app.search_page.active_pane = SearchPane::Preview;
-        app.viewed_thread_messages = vec![env.clone()];
-        app.viewing_envelope = Some(env.clone());
-        app.body_cache.insert(
+        app.mailbox.viewed_thread_messages = vec![env.clone()];
+        app.mailbox.viewing_envelope = Some(env.clone());
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -4767,9 +4905,12 @@ mod tests {
 
         app.apply(Action::AttachmentList);
 
-        assert!(app.attachment_panel.visible);
-        assert_eq!(app.attachment_panel.attachments.len(), 1);
-        assert_eq!(app.attachment_panel.attachments[0].filename, "report.pdf");
+        assert!(app.mailbox.attachment_panel.visible);
+        assert_eq!(app.mailbox.attachment_panel.attachments.len(), 1);
+        assert_eq!(
+            app.mailbox.attachment_panel.attachments[0].filename,
+            "report.pdf"
+        );
     }
 
     #[test]
@@ -4781,8 +4922,8 @@ mod tests {
         app.search_page.results = results;
         app.search_page.session_active = true;
         app.search_page.active_pane = SearchPane::Preview;
-        app.viewed_thread_messages = vec![env.clone()];
-        app.viewing_envelope = Some(env);
+        app.mailbox.viewed_thread_messages = vec![env.clone()];
+        app.mailbox.viewing_envelope = Some(env);
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
 
@@ -4798,8 +4939,8 @@ mod tests {
         app.search_page.results = results;
         app.search_page.session_active = true;
         app.search_page.active_pane = SearchPane::Preview;
-        app.viewed_thread_messages = vec![env.clone()];
-        app.viewing_envelope = Some(env);
+        app.mailbox.viewed_thread_messages = vec![env.clone()];
+        app.mailbox.viewing_envelope = Some(env);
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('R'), KeyModifiers::NONE));
 
@@ -4815,8 +4956,8 @@ mod tests {
         app.search_page.results = results;
         app.search_page.session_active = true;
         app.search_page.active_pane = SearchPane::Preview;
-        app.viewed_thread_messages = vec![env.clone()];
-        app.viewing_envelope = Some(env);
+        app.mailbox.viewed_thread_messages = vec![env.clone()];
+        app.mailbox.viewing_envelope = Some(env);
 
         let html = app.handle_key(KeyEvent::new(KeyCode::Char('H'), KeyModifiers::NONE));
         let remote = app.handle_key(KeyEvent::new(KeyCode::Char('M'), KeyModifiers::NONE));
@@ -4845,7 +4986,8 @@ mod tests {
         assert!(app.search_page.result_selected);
         assert!(app.search_page.preview_fullscreen);
         assert_eq!(
-            app.viewing_envelope
+            app.mailbox
+                .viewing_envelope
                 .as_ref()
                 .map(|message| message.id.clone()),
             Some(env.id)
@@ -4868,8 +5010,8 @@ mod tests {
         app.search_page.active_pane = SearchPane::Preview;
         app.search_page.result_selected = true;
         app.search_page.preview_fullscreen = true;
-        app.viewed_thread_messages = vec![env.clone()];
-        app.viewing_envelope = Some(env);
+        app.mailbox.viewed_thread_messages = vec![env.clone()];
+        app.mailbox.viewing_envelope = Some(env);
 
         app.apply(Action::ToggleFullscreen);
 
@@ -4890,9 +5032,9 @@ mod tests {
         app.search_page.active_pane = SearchPane::Preview;
         app.search_page.result_selected = true;
         app.search_page.preview_fullscreen = true;
-        app.viewed_thread_messages = vec![env.clone()];
-        app.viewing_envelope = Some(env);
-        app.body_view_state = BodyViewState::Ready {
+        app.mailbox.viewed_thread_messages = vec![env.clone()];
+        app.mailbox.viewing_envelope = Some(env);
+        app.mailbox.body_view_state = BodyViewState::Ready {
             raw: "hello".into(),
             rendered: "hello".into(),
             source: BodySource::Plain,
@@ -4914,8 +5056,8 @@ mod tests {
         app.search_page.results = results;
         app.search_page.session_active = true;
         app.search_page.active_pane = SearchPane::Preview;
-        app.viewed_thread_messages = vec![env.clone()];
-        app.viewing_envelope = Some(env.clone());
+        app.mailbox.viewed_thread_messages = vec![env.clone()];
+        app.mailbox.viewing_envelope = Some(env.clone());
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
         assert_eq!(action, Some(Action::ToggleSelect));
@@ -4924,12 +5066,13 @@ mod tests {
 
         assert_eq!(app.search_page.selected_index, 0);
         assert_eq!(
-            app.viewing_envelope
+            app.mailbox
+                .viewing_envelope
                 .as_ref()
                 .map(|current| current.id.clone()),
             Some(env.id.clone())
         );
-        assert!(app.selected_set.contains(&env.id));
+        assert!(app.mailbox.selected_set.contains(&env.id));
     }
 
     #[tokio::test]
@@ -4943,6 +5086,7 @@ mod tests {
         std::fs::write(&temp, content).unwrap();
 
         let pending = pending_send_from_edited_draft(&ComposeReadyData {
+            account_id: AccountId::new(),
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: content.to_string(),
@@ -4960,6 +5104,7 @@ mod tests {
     fn send_key_is_ignored_for_unchanged_draft_confirmation() {
         let mut app = App::new();
         app.pending_send_confirm = Some(PendingSend {
+            account_id: AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: "a@example.com".into(),
                 cc: String::new(),
@@ -4987,9 +5132,43 @@ mod tests {
     }
 
     #[test]
+    fn send_key_uses_pending_compose_account() {
+        let mut app = App::new();
+        let pending_account_id = AccountId::new();
+        let other_account_id = AccountId::new();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.envelopes[0].account_id = other_account_id;
+        app.pending_send_confirm = Some(PendingSend {
+            account_id: pending_account_id.clone(),
+            fm: mxr_compose::frontmatter::ComposeFrontmatter {
+                to: "a@example.com".into(),
+                cc: String::new(),
+                bcc: String::new(),
+                subject: "Hello".into(),
+                from: "me@example.com".into(),
+                in_reply_to: None,
+                references: vec![],
+                attach: vec![],
+            },
+            body: "Body".into(),
+            draft_path: std::path::PathBuf::from("/tmp/draft.md"),
+            mode: PendingSendMode::SendOrSave,
+        });
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
+
+        match app.pending_mutation_queue.first() {
+            Some((Request::SendDraft { draft }, _)) => {
+                assert_eq!(draft.account_id, pending_account_id);
+            }
+            other => panic!("Expected SendDraft request, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn compose_blank_recipient_advances_to_subject_modal() {
         let mut app = App::new();
-        app.all_envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = make_test_envelopes(1);
         app.apply(Action::Compose);
 
         assert!(app.compose_picker.visible);
@@ -5010,7 +5189,7 @@ mod tests {
     #[test]
     fn compose_blank_subject_starts_new_compose_with_empty_fields() {
         let mut app = App::new();
-        app.all_envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = make_test_envelopes(1);
         app.apply(Action::Compose);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
@@ -5029,7 +5208,7 @@ mod tests {
     #[test]
     fn escape_closes_recipient_modal_without_starting_compose() {
         let mut app = App::new();
-        app.all_envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = make_test_envelopes(1);
         app.apply(Action::Compose);
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
@@ -5042,7 +5221,7 @@ mod tests {
     #[test]
     fn escape_closes_subject_modal_without_starting_compose() {
         let mut app = App::new();
-        app.all_envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = make_test_envelopes(1);
         app.apply(Action::Compose);
         let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
@@ -5064,6 +5243,7 @@ mod tests {
         std::fs::write(&temp, content).unwrap();
 
         let pending = pending_send_from_edited_draft(&ComposeReadyData {
+            account_id: AccountId::new(),
             draft_path: temp.clone(),
             cursor_line: 1,
             initial_content: String::new(),
@@ -5081,6 +5261,7 @@ mod tests {
     fn send_key_is_ignored_for_missing_recipient_draft_confirmation() {
         let mut app = App::new();
         app.pending_send_confirm = Some(PendingSend {
+            account_id: AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: String::new(),
                 cc: String::new(),
@@ -5110,8 +5291,9 @@ mod tests {
     #[test]
     fn save_key_saves_missing_recipient_draft_to_server() {
         let mut app = App::new();
-        app.all_envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = make_test_envelopes(1);
         app.pending_send_confirm = Some(PendingSend {
+            account_id: AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: String::new(),
                 cc: String::new(),
@@ -5146,7 +5328,9 @@ mod tests {
         std::fs::write(&temp, "draft").unwrap();
 
         let mut app = App::new();
+        let account_id = AccountId::new();
         app.pending_send_confirm = Some(PendingSend {
+            account_id: account_id.clone(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: String::new(),
                 cc: String::new(),
@@ -5167,7 +5351,10 @@ mod tests {
         assert!(app.pending_send_confirm.is_none());
         assert_eq!(
             app.pending_compose,
-            Some(super::app::ComposeAction::EditDraft(temp.clone()))
+            Some(super::app::ComposeAction::EditDraft {
+                path: temp.clone(),
+                account_id,
+            })
         );
 
         let _ = std::fs::remove_file(temp);
@@ -5184,6 +5371,7 @@ mod tests {
 
         let mut app = App::new();
         app.pending_send_confirm = Some(PendingSend {
+            account_id: AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: String::new(),
                 cc: String::new(),
@@ -5212,7 +5400,7 @@ mod tests {
     #[test]
     fn mail_list_l_opens_label_picker_not_message() {
         let mut app = App::new();
-        app.active_pane = ActivePane::MailList;
+        app.mailbox.active_pane = ActivePane::MailList;
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
 
@@ -5343,22 +5531,29 @@ mod tests {
     #[test]
     fn back_clears_selection_before_other_mail_list_back_behavior() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(2);
-        app.all_envelopes = app.envelopes.clone();
-        app.selected_set.insert(app.envelopes[0].id.clone());
+        app.mailbox.envelopes = make_test_envelopes(2);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.mailbox
+            .selected_set
+            .insert(app.mailbox.envelopes[0].id.clone());
 
         app.apply(Action::Back);
 
-        assert!(app.selected_set.is_empty());
+        assert!(app.mailbox.selected_set.is_empty());
         assert_eq!(app.status_message.as_deref(), Some("Selection cleared"));
     }
 
     #[test]
     fn bulk_archive_requires_confirmation_before_queueing() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        app.all_envelopes = app.envelopes.clone();
-        app.selected_set = app.envelopes.iter().map(|env| env.id.clone()).collect();
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.mailbox.selected_set = app
+            .mailbox
+            .envelopes
+            .iter()
+            .map(|env| env.id.clone())
+            .collect();
 
         app.apply(Action::Archive);
 
@@ -5377,16 +5572,21 @@ mod tests {
     #[test]
     fn confirming_bulk_archive_queues_mutation_and_clears_selection() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(3);
-        app.all_envelopes = app.envelopes.clone();
-        app.selected_set = app.envelopes.iter().map(|env| env.id.clone()).collect();
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.mailbox.selected_set = app
+            .mailbox
+            .envelopes
+            .iter()
+            .map(|env| env.id.clone())
+            .collect();
         app.apply(Action::Archive);
 
         app.apply(Action::OpenSelected);
 
         assert!(app.pending_bulk_confirm.is_none());
         assert_eq!(app.pending_mutation_queue.len(), 1);
-        assert!(app.selected_set.is_empty());
+        assert!(app.mailbox.selected_set.is_empty());
     }
 
     #[test]
@@ -5411,18 +5611,19 @@ mod tests {
     #[test]
     fn local_label_changes_update_open_message() {
         let mut app = App::new();
-        app.labels = make_test_labels();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.labels = make_test_labels();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         app.apply(Action::OpenSelected);
 
         let user_label = app
+            .mailbox
             .labels
             .iter()
             .find(|label| label.name == "Work")
             .unwrap()
             .clone();
-        let message_id = app.envelopes[0].id.clone();
+        let message_id = app.mailbox.envelopes[0].id.clone();
 
         app.apply_local_label_refs(
             std::slice::from_ref(&message_id),
@@ -5431,6 +5632,7 @@ mod tests {
         );
 
         assert!(app
+            .mailbox
             .viewing_envelope
             .as_ref()
             .unwrap()
@@ -5441,8 +5643,8 @@ mod tests {
     #[test]
     fn snooze_action_opens_modal_then_queues_request() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::Snooze);
         assert!(app.snooze_panel.visible);
@@ -5455,7 +5657,7 @@ mod tests {
                 message_id,
                 wake_at,
             } => {
-                assert_eq!(message_id, &app.envelopes[0].id);
+                assert_eq!(message_id, &app.mailbox.envelopes[0].id);
                 assert!(*wake_at > chrono::Utc::now());
             }
             other => panic!("expected snooze request, got {other:?}"),
@@ -5465,28 +5667,34 @@ mod tests {
     #[test]
     fn open_selected_cache_miss_enters_loading_with_snippet_preview() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
 
         assert!(matches!(
-            app.body_view_state,
+            app.mailbox.body_view_state,
             BodyViewState::Loading { ref preview }
                 if preview.as_deref() == Some("Snippet 0")
         ));
-        assert_eq!(app.queued_body_fetches, vec![app.envelopes[0].id.clone()]);
-        assert!(app.in_flight_body_requests.contains(&app.envelopes[0].id));
+        assert_eq!(
+            app.mailbox.queued_body_fetches,
+            vec![app.mailbox.envelopes[0].id.clone()]
+        );
+        assert!(app
+            .mailbox
+            .in_flight_body_requests
+            .contains(&app.mailbox.envelopes[0].id));
     }
 
     #[test]
     fn cached_plain_body_resolves_ready_state() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
-        let env = app.envelopes[0].clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
 
-        app.body_cache.insert(
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -5501,7 +5709,7 @@ mod tests {
         app.apply(Action::OpenSelected);
 
         assert!(matches!(
-            app.body_view_state,
+            app.mailbox.body_view_state,
             BodyViewState::Ready {
                 ref raw,
                 ref rendered,
@@ -5514,11 +5722,11 @@ mod tests {
     #[test]
     fn cached_html_only_body_resolves_ready_state() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
-        let env = app.envelopes[0].clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
 
-        app.body_cache.insert(
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -5533,26 +5741,26 @@ mod tests {
         app.apply(Action::OpenSelected);
 
         assert!(matches!(
-            app.body_view_state,
+            app.mailbox.body_view_state,
             BodyViewState::Ready {
                 ref raw,
                 ref rendered,
                 source: BodySource::Html,
-                ..
+                ref metadata,
             } if raw == "<p>Hello html</p>"
-                && rendered.contains("Hello html")
-                && !rendered.contains("<p>")
+                && rendered == raw
+                && metadata.mode == super::app::BodyViewMode::Html
         ));
     }
 
     #[test]
     fn cached_attachment_only_body_resolves_fallback_ready_state() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
-        let env = app.envelopes[0].clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
 
-        app.body_cache.insert(
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -5578,7 +5786,7 @@ mod tests {
         app.apply(Action::OpenSelected);
 
         assert!(matches!(
-            app.body_view_state,
+            app.mailbox.body_view_state,
             BodyViewState::Ready {
                 ref raw,
                 ref rendered,
@@ -5592,32 +5800,32 @@ mod tests {
     #[test]
     fn body_fetch_error_resolves_error_not_loading() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         app.apply(Action::OpenSelected);
-        let env = app.envelopes[0].clone();
+        let env = app.mailbox.envelopes[0].clone();
 
         app.resolve_body_fetch_error(&env.id, "boom".into());
 
         assert!(matches!(
-            app.body_view_state,
+            app.mailbox.body_view_state,
             BodyViewState::Error { ref message, ref preview }
                 if message == "boom" && preview.as_deref() == Some("Snippet 0")
         ));
-        assert!(!app.in_flight_body_requests.contains(&env.id));
+        assert!(!app.mailbox.in_flight_body_requests.contains(&env.id));
     }
 
     #[test]
     fn stale_body_response_does_not_clobber_current_view() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(2);
-        app.all_envelopes = app.envelopes.clone();
+        app.mailbox.envelopes = make_test_envelopes(2);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::OpenSelected);
-        let first = app.envelopes[0].clone();
-        app.active_pane = ActivePane::MailList;
+        let first = app.mailbox.envelopes[0].clone();
+        app.mailbox.active_pane = ActivePane::MailList;
         app.apply(Action::MoveDown);
-        let second = app.envelopes[1].clone();
+        let second = app.mailbox.envelopes[1].clone();
 
         app.resolve_body_success(MessageBody {
             message_id: first.id.clone(),
@@ -5629,11 +5837,14 @@ mod tests {
         });
 
         assert_eq!(
-            app.viewing_envelope.as_ref().map(|env| env.id.clone()),
+            app.mailbox
+                .viewing_envelope
+                .as_ref()
+                .map(|env| env.id.clone()),
             Some(second.id)
         );
         assert!(matches!(
-            app.body_view_state,
+            app.mailbox.body_view_state,
             BodyViewState::Loading { ref preview }
                 if preview.as_deref() == Some("Snippet 1")
         ));
@@ -5642,11 +5853,11 @@ mod tests {
     #[test]
     fn reader_mode_toggle_shows_raw_html_when_disabled() {
         let mut app = App::new();
-        app.html_view = false;
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
-        let env = app.envelopes[0].clone();
-        app.body_cache.insert(
+        app.mailbox.html_view = false;
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -5660,7 +5871,7 @@ mod tests {
 
         app.apply(Action::OpenSelected);
 
-        match &app.body_view_state {
+        match &app.mailbox.body_view_state {
             BodyViewState::Ready { raw, rendered, .. } => {
                 assert_eq!(raw, "<p>Hello html</p>");
                 assert_ne!(rendered, raw);
@@ -5671,7 +5882,7 @@ mod tests {
 
         app.apply(Action::ToggleReaderMode);
 
-        match &app.body_view_state {
+        match &app.mailbox.body_view_state {
             BodyViewState::Ready { raw, rendered, .. } => {
                 assert_eq!(raw, "<p>Hello html</p>");
                 assert_eq!(rendered, raw);
@@ -5681,7 +5892,7 @@ mod tests {
 
         app.apply(Action::ToggleReaderMode);
 
-        match &app.body_view_state {
+        match &app.mailbox.body_view_state {
             BodyViewState::Ready { raw, rendered, .. } => {
                 assert_eq!(raw, "<p>Hello html</p>");
                 assert_ne!(rendered, raw);
@@ -5694,10 +5905,10 @@ mod tests {
     #[test]
     fn html_view_toggle_updates_mode_and_remote_content_status() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
-        let env = app.envelopes[0].clone();
-        app.body_cache.insert(
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -5728,7 +5939,7 @@ mod tests {
 
         app.apply(Action::OpenSelected);
 
-        match &app.body_view_state {
+        match &app.mailbox.body_view_state {
             BodyViewState::Ready {
                 source: BodySource::Html,
                 metadata,
@@ -5744,7 +5955,7 @@ mod tests {
 
         app.apply(Action::ToggleHtmlView);
 
-        match &app.body_view_state {
+        match &app.mailbox.body_view_state {
             BodyViewState::Ready {
                 source: BodySource::Plain,
                 metadata,
@@ -5766,7 +5977,7 @@ mod tests {
 
         app.apply(Action::ToggleRemoteContent);
 
-        match &app.body_view_state {
+        match &app.mailbox.body_view_state {
             BodyViewState::Ready { metadata, .. } => {
                 assert_eq!(metadata.mode, super::app::BodyViewMode::Text);
                 assert!(!metadata.remote_content_enabled);
@@ -5787,10 +5998,10 @@ mod tests {
     #[test]
     fn reader_mode_toggle_is_blocked_in_html_view() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(1);
-        app.all_envelopes = app.envelopes.clone();
-        let env = app.envelopes[0].clone();
-        app.body_cache.insert(
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
+        app.mailbox.body_cache.insert(
             env.id.clone(),
             MessageBody {
                 message_id: env.id.clone(),
@@ -5806,11 +6017,11 @@ mod tests {
         );
 
         app.apply(Action::OpenSelected);
-        let reader_mode_before = app.reader_mode;
+        let reader_mode_before = app.mailbox.reader_mode;
 
         app.apply(Action::ToggleReaderMode);
 
-        assert_eq!(app.reader_mode, reader_mode_before);
+        assert_eq!(app.mailbox.reader_mode, reader_mode_before);
         assert_eq!(
             app.status_message.as_deref(),
             Some("Switch to text view to use reading view")
@@ -5820,7 +6031,7 @@ mod tests {
     #[test]
     fn reader_stats_visibility_respects_config() {
         let mut app = App::new();
-        app.body_view_state = BodyViewState::Ready {
+        app.mailbox.body_view_state = BodyViewState::Ready {
             raw: "Hello".into(),
             rendered: "Hello".into(),
             source: BodySource::Plain,
@@ -5834,14 +6045,14 @@ mod tests {
             },
         };
 
-        app.show_reader_stats = false;
+        app.mailbox.show_reader_stats = false;
         assert!(app
             .status_bar_state()
             .body_status
             .as_deref()
             .is_some_and(|status| !status.contains("trimmed 5 lines")));
 
-        app.show_reader_stats = true;
+        app.mailbox.show_reader_stats = true;
         assert!(app
             .status_bar_state()
             .body_status
@@ -5852,49 +6063,54 @@ mod tests {
     #[test]
     fn account_switch_complete_closes_open_message_state() {
         let mut app = App::new();
-        app.envelopes = make_test_envelopes(2);
-        app.all_envelopes = app.envelopes.clone();
-        app.mailbox_view = MailboxView::Subscriptions;
-        app.layout_mode = LayoutMode::FullScreen;
-        app.active_pane = ActivePane::MessageView;
-        app.viewing_envelope = Some(app.envelopes[0].clone());
-        app.viewed_thread_messages = app.envelopes.clone();
-        app.body_view_state = BodyViewState::Ready {
+        app.mailbox.envelopes = make_test_envelopes(2);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.mailbox.mailbox_view = MailboxView::Subscriptions;
+        app.mailbox.layout_mode = LayoutMode::FullScreen;
+        app.mailbox.active_pane = ActivePane::MessageView;
+        app.mailbox.viewing_envelope = Some(app.mailbox.envelopes[0].clone());
+        app.mailbox.viewed_thread_messages = app.mailbox.envelopes.clone();
+        app.mailbox.body_view_state = BodyViewState::Ready {
             raw: "hello".into(),
             rendered: "hello".into(),
             source: BodySource::Plain,
             metadata: BodyViewMetadata::default(),
         };
-        app.active_label = Some(LabelId::new());
-        app.pending_active_label = Some(LabelId::new());
-        app.pending_label_fetch = Some(LabelId::new());
-        app.selected_set.insert(app.envelopes[0].id.clone());
+        app.mailbox.active_label = Some(LabelId::new());
+        app.mailbox.pending_active_label = Some(LabelId::new());
+        app.mailbox.pending_label_fetch = Some(LabelId::new());
+        app.mailbox
+            .selected_set
+            .insert(app.mailbox.envelopes[0].id.clone());
 
         app.handle_account_switch_complete();
 
-        assert!(app.viewing_envelope.is_none());
-        assert!(app.viewed_thread_messages.is_empty());
-        assert!(matches!(app.body_view_state, BodyViewState::Empty { .. }));
-        assert_eq!(app.mailbox_view, MailboxView::Messages);
-        assert_eq!(app.layout_mode, LayoutMode::TwoPane);
-        assert_eq!(app.active_pane, ActivePane::MailList);
-        assert!(app.envelopes.is_empty());
-        assert!(app.all_envelopes.is_empty());
+        assert!(app.mailbox.viewing_envelope.is_none());
+        assert!(app.mailbox.viewed_thread_messages.is_empty());
+        assert!(matches!(
+            app.mailbox.body_view_state,
+            BodyViewState::Empty { .. }
+        ));
+        assert_eq!(app.mailbox.mailbox_view, MailboxView::Messages);
+        assert_eq!(app.mailbox.layout_mode, LayoutMode::TwoPane);
+        assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
+        assert!(app.mailbox.envelopes.is_empty());
+        assert!(app.mailbox.all_envelopes.is_empty());
         assert!(app.search_page.results.is_empty());
-        assert!(app.subscriptions_page.entries.is_empty());
-        assert!(app.selected_set.is_empty());
-        assert!(app.active_label.is_none());
-        assert!(app.pending_active_label.is_none());
-        assert!(app.pending_label_fetch.is_none());
-        assert!(app.pending_labels_refresh);
-        assert!(app.pending_all_envelopes_refresh);
-        assert!(app.pending_subscriptions_refresh);
+        assert!(app.mailbox.subscriptions_page.entries.is_empty());
+        assert!(app.mailbox.selected_set.is_empty());
+        assert!(app.mailbox.active_label.is_none());
+        assert!(app.mailbox.pending_active_label.is_none());
+        assert!(app.mailbox.pending_label_fetch.is_none());
+        assert!(app.mailbox.pending_labels_refresh);
+        assert!(app.mailbox.pending_all_envelopes_refresh);
+        assert!(app.mailbox.pending_subscriptions_refresh);
         assert!(app.pending_status_refresh);
         assert_eq!(
-            app.mailbox_loading_message.as_deref(),
+            app.mailbox.mailbox_loading_message.as_deref(),
             Some("Loading selected account...")
         );
-        assert_eq!(app.desired_system_mailbox.as_deref(), Some("INBOX"));
+        assert_eq!(app.mailbox.desired_system_mailbox.as_deref(), Some("INBOX"));
     }
 
     #[test]
@@ -5905,8 +6121,8 @@ mod tests {
         let envelopes = make_test_envelopes(2);
         apply_all_envelopes_refresh(&mut app, envelopes.clone());
 
-        assert!(app.mailbox_loading_message.is_none());
+        assert!(app.mailbox.mailbox_loading_message.is_none());
         assert_eq!(app.status_message.as_deref(), Some("Account switched"));
-        assert_eq!(app.all_envelopes.len(), envelopes.len());
+        assert_eq!(app.mailbox.all_envelopes.len(), envelopes.len());
     }
 }

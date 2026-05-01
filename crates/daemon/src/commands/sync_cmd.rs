@@ -159,6 +159,7 @@ mod tests {
             AccountConfig {
                 name: "Personal".into(),
                 email: "me@example.com".into(),
+                enabled: true,
                 sync: Some(SyncProviderConfig::Gmail {
                     credential_source: mxr_config::GmailCredentialSource::Bundled,
                     client_id: "cid".into(),
@@ -173,6 +174,7 @@ mod tests {
             AccountConfig {
                 name: "Work".into(),
                 email: "me@work.example".into(),
+                enabled: true,
                 sync: Some(SyncProviderConfig::Imap {
                     host: "imap.example.com".into(),
                     port: 993,
@@ -201,6 +203,7 @@ mod tests {
             AccountConfig {
                 name: "Work".into(),
                 email: "other@work.example".into(),
+                enabled: true,
                 sync: Some(SyncProviderConfig::Imap {
                     host: "imap.other.example.com".into(),
                     port: 993,

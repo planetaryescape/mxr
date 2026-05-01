@@ -55,7 +55,7 @@ fn account_config_to_summary(account: AccountConfigData) -> AccountSummaryData {
         provider_kind,
         sync_kind: account.sync.as_ref().map(account_sync_kind_label),
         send_kind: account.send.as_ref().map(account_send_kind_label),
-        enabled: true,
+        enabled: account.enabled,
         is_default: account.is_default,
         source: AccountSourceData::Config,
         editable: AccountEditModeData::Full,

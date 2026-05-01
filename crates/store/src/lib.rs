@@ -118,6 +118,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn disabled_account_is_hidden_from_enabled_account_list_but_keeps_row() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        store.set_account_enabled(&account.id, false).await.unwrap();
+
+        assert!(store.list_accounts().await.unwrap().is_empty());
+        let fetched = store.get_account(&account.id).await.unwrap().unwrap();
+        assert!(!fetched.enabled);
+    }
+
+    #[tokio::test]
+    async fn delete_account_cascades_owned_messages() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let env = test_envelope(&account.id);
+        store.upsert_envelope(&env).await.unwrap();
+
+        let deleted = store.delete_account(&account.id).await.unwrap();
+
+        assert_eq!(deleted, 1);
+        assert!(store.get_account(&account.id).await.unwrap().is_none());
+        assert!(store.get_envelope(&env.id).await.unwrap().is_none());
+        assert!(store
+            .list_message_ids_by_account(&account.id)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
     async fn envelope_upsert_and_query() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();

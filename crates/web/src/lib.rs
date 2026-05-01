@@ -2482,7 +2482,7 @@ mod tests {
     use mxr_core::{
         id::{AccountId, AttachmentId, MessageId, ThreadId},
         types::{
-            Address, AttachmentDisposition, AttachmentMeta, Envelope, Label, LabelKind,
+            Address, AttachmentDisposition, AttachmentMeta, Draft, Envelope, Label, LabelKind,
             MessageBody, MessageFlags, MessageMetadata, SavedSearch, SortOrder,
             SubscriptionSummary, Thread, UnsubscribeMethod,
         },
@@ -3850,6 +3850,194 @@ mod tests {
         assert!(
             !std::path::Path::new(refreshed["session"]["draftPath"].as_str().unwrap()).exists()
         );
+    }
+
+    #[tokio::test]
+    async fn compose_session_send_forwards_draft_account_id() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let account = sample_account(&AccountId::new());
+        let expected_account_id = account.account_id.clone();
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(None::<Draft>));
+        let captured_send = captured.clone();
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |request| match request {
+                Request::ListAccounts => Some(Response::Ok {
+                    data: ResponseData::Accounts {
+                        accounts: vec![account.clone()],
+                    },
+                }),
+                Request::SendDraft { draft } => {
+                    *captured_send.lock().unwrap() = Some(draft);
+                    Some(Response::Ok {
+                        data: ResponseData::Ack,
+                    })
+                }
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+        let client = reqwest::Client::new();
+
+        let started: serde_json::Value = client
+            .post(format!("http://{addr}/compose/session"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({ "kind": "new" }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let draft_path = started["session"]["draftPath"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let account_id = started["session"]["accountId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let update_response = client
+            .post(format!("http://{addr}/compose/session/update"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "draft_path": draft_path,
+                "to": "alice@example.com",
+                "cc": "",
+                "bcc": "",
+                "subject": "Bridge send",
+                "from": "me@example.com",
+                "attach": [],
+                "body": "Hello from bridge",
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(update_response.status(), reqwest::StatusCode::OK);
+
+        let send_response = client
+            .post(format!("http://{addr}/compose/session/send"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "draft_path": draft_path,
+                "account_id": account_id,
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(send_response.status(), reqwest::StatusCode::OK);
+
+        let draft = captured
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("send draft should be forwarded");
+        assert_eq!(draft.account_id, expected_account_id);
+        assert_eq!(draft.subject, "Bridge send");
+        assert_eq!(draft.body_markdown, "Hello from bridge");
+        assert_eq!(draft.to[0].email, "alice@example.com");
+    }
+
+    #[tokio::test]
+    async fn compose_session_send_propagates_daemon_error() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let account = sample_account(&AccountId::new());
+        let expected_error = format!(
+            "No send provider configured for account {}",
+            account.account_id
+        );
+        let error_for_server = expected_error.clone();
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |request| match request {
+                Request::ListAccounts => Some(Response::Ok {
+                    data: ResponseData::Accounts {
+                        accounts: vec![account.clone()],
+                    },
+                }),
+                Request::SendDraft { .. } => Some(Response::Error {
+                    message: error_for_server.clone(),
+                }),
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+        let client = reqwest::Client::new();
+
+        let started: serde_json::Value = client
+            .post(format!("http://{addr}/compose/session"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({ "kind": "new" }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let draft_path = started["session"]["draftPath"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let account_id = started["session"]["accountId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let update_response = client
+            .post(format!("http://{addr}/compose/session/update"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "draft_path": draft_path,
+                "to": "alice@example.com",
+                "cc": "",
+                "bcc": "",
+                "subject": "Bridge send",
+                "from": "me@example.com",
+                "attach": [],
+                "body": "Hello",
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(update_response.status(), reqwest::StatusCode::OK);
+
+        let send_response = client
+            .post(format!("http://{addr}/compose/session/send"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "draft_path": draft_path,
+                "account_id": account_id,
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(send_response.status(), reqwest::StatusCode::BAD_GATEWAY);
+
+        let body = send_response.text().await.unwrap();
+        assert!(body.contains(&expected_error));
+        assert!(std::path::Path::new(&draft_path).exists());
+        let _ = std::fs::remove_file(draft_path);
     }
 
     #[tokio::test]

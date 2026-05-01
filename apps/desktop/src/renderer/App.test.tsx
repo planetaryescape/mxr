@@ -165,6 +165,7 @@ function installFetchMocks(options?: {
   delayReadMutation?: Promise<void>;
   delayMailbox?: Promise<void>;
   delayMailboxLensKind?: string;
+  sendFailureMessage?: string;
 }) {
   configureDesktopMockServer(options);
   return {
@@ -990,6 +991,46 @@ describe("App", () => {
           request.method === "POST",
       ),
     ).toHaveLength(1);
+    expect(
+      getRecordedDesktopRequests().filter(
+        (request) =>
+          request.path === "/compose/session/send" &&
+          request.method === "POST",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("keeps compose open and shows keychain repair guidance when send fails", async () => {
+    installDesktopApi();
+    installFetchMocks({
+      sendFailureMessage:
+        "ipc error: Provider error: Keyring error: Password for mxr/consulting-smtp/hello@bhekani.com requires interactive macOS keychain approval.",
+    });
+
+    renderApp();
+
+    await findActiveLens("Inbox");
+
+    fireEvent.keyDown(window, { key: "c" });
+
+    expect(
+      await screen.findByRole("heading", { name: "New message" }),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("Type a name or email..."), {
+      target: { value: "client@example.com" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(
+      await screen.findByText((content) =>
+        content.includes("mxr accounts repair consulting"),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "New message" }),
+    ).toBeInTheDocument();
     expect(
       getRecordedDesktopRequests().filter(
         (request) =>

@@ -374,6 +374,25 @@ pub struct ForwardContext {
     pub forwarded_content: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccountMutationResultData {
+    pub account_id: AccountId,
+    pub account_name: String,
+    pub succeeded: u32,
+    pub skipped: u32,
+    pub failed: u32,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MutationResultData {
+    pub requested: u32,
+    pub succeeded: u32,
+    pub skipped: u32,
+    pub failed: u32,
+    pub accounts: Vec<AccountMutationResultData>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status")]
 #[allow(clippy::large_enum_variant)]
@@ -446,6 +465,9 @@ pub enum ResponseData {
     },
     ExportResult {
         content: String,
+    },
+    MutationResult {
+        result: MutationResultData,
     },
 
     // mxr app/platform responses.
@@ -542,7 +564,8 @@ impl ResponseData {
             | Self::ForwardContext { .. }
             | Self::Drafts { .. }
             | Self::SnoozedMessages { .. }
-            | Self::ExportResult { .. } => IpcCategory::CoreMail,
+            | Self::ExportResult { .. }
+            | Self::MutationResult { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }
@@ -776,9 +799,15 @@ pub struct AccountConfigData {
     pub key: String,
     pub name: String,
     pub email: String,
+    #[serde(default = "default_account_enabled")]
+    pub enabled: bool,
     pub sync: Option<AccountSyncConfigData>,
     pub send: Option<AccountSendConfigData>,
     pub is_default: bool,
+}
+
+fn default_account_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

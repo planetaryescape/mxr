@@ -10,7 +10,7 @@ impl App {
         crate::ui::help_modal::HelpModalState {
             open: self.help_modal_open,
             ui_context: self.current_ui_context(),
-            selected_count: self.selected_set.len(),
+            selected_count: self.mailbox.selected_set.len(),
             scroll_offset: self.help_scroll_offset,
             query: &self.help_query,
             selected: self.help_selected,
@@ -296,16 +296,10 @@ impl App {
                                 references: pending.fm.references.clone(),
                             }
                         });
-                        let account_id = self
-                            .envelopes
-                            .first()
-                            .or(self.all_envelopes.first())
-                            .map(|e| e.account_id.clone())
-                            .unwrap_or_default();
                         let now = chrono::Utc::now();
                         let draft = mxr_core::Draft {
                             id: mxr_core::id::DraftId::new(),
-                            account_id,
+                            account_id: pending.account_id.clone(),
                             reply_headers,
                             to: parse_addrs(&pending.fm.to),
                             cc: parse_addrs(&pending.fm.cc),
@@ -344,16 +338,10 @@ impl App {
                                 references: pending.fm.references.clone(),
                             }
                         });
-                        let account_id = self
-                            .envelopes
-                            .first()
-                            .or(self.all_envelopes.first())
-                            .map(|e| e.account_id.clone())
-                            .unwrap_or_default();
                         let now = chrono::Utc::now();
                         let draft = mxr_core::Draft {
                             id: mxr_core::id::DraftId::new(),
-                            account_id,
+                            account_id: pending.account_id.clone(),
                             reply_headers,
                             to: parse_addrs(&pending.fm.to),
                             cc: parse_addrs(&pending.fm.cc),
@@ -381,7 +369,10 @@ impl App {
                 (KeyCode::Char('e'), KeyModifiers::NONE) => {
                     // Edit again — reopen editor
                     if let Some(pending) = self.pending_send_confirm.take() {
-                        self.pending_compose = Some(ComposeAction::EditDraft(pending.draft_path));
+                        self.pending_compose = Some(ComposeAction::EditDraft {
+                            path: pending.draft_path,
+                            account_id: pending.account_id,
+                        });
                     }
                     return None;
                 }
@@ -456,14 +447,14 @@ impl App {
         }
 
         // Route keys to URL modal when active
-        if let Some(ref mut url_state) = self.url_modal {
+        if let Some(ref mut url_state) = self.mailbox.url_modal {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter | KeyCode::Char('o'), _) => {
                     if let Some(url) = url_state.selected_url().map(|s| s.to_string()) {
                         ui::url_modal::open_url(&url);
                         self.status_message = Some(format!("Opening {url}"));
                     }
-                    self.url_modal = None;
+                    self.mailbox.url_modal = None;
                     return None;
                 }
                 (KeyCode::Char('y'), _) => {
@@ -498,7 +489,7 @@ impl App {
                         }
                         self.status_message = Some(format!("Copied: {url}"));
                     }
-                    self.url_modal = None;
+                    self.mailbox.url_modal = None;
                     return None;
                 }
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
@@ -510,7 +501,7 @@ impl App {
                     return None;
                 }
                 (KeyCode::Esc | KeyCode::Char('q'), _) => {
-                    self.url_modal = None;
+                    self.mailbox.url_modal = None;
                     return None;
                 }
                 _ => return None,
@@ -518,7 +509,7 @@ impl App {
         }
 
         // Route keys to compose picker when active
-        if self.attachment_panel.visible {
+        if self.mailbox.attachment_panel.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter | KeyCode::Char('o'), _) => {
                     self.queue_attachment_action(AttachmentOperation::Open);
@@ -529,16 +520,19 @@ impl App {
                     return None;
                 }
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
-                    if self.attachment_panel.selected_index + 1
-                        < self.attachment_panel.attachments.len()
+                    if self.mailbox.attachment_panel.selected_index + 1
+                        < self.mailbox.attachment_panel.attachments.len()
                     {
-                        self.attachment_panel.selected_index += 1;
+                        self.mailbox.attachment_panel.selected_index += 1;
                     }
                     return None;
                 }
                 (KeyCode::Char('k') | KeyCode::Up, _) => {
-                    self.attachment_panel.selected_index =
-                        self.attachment_panel.selected_index.saturating_sub(1);
+                    self.mailbox.attachment_panel.selected_index = self
+                        .mailbox
+                        .attachment_panel
+                        .selected_index
+                        .saturating_sub(1);
                     return None;
                 }
                 (KeyCode::Esc | KeyCode::Char('A'), _) => {
@@ -634,7 +628,7 @@ impl App {
         }
 
         // Route keys based on active pane
-        match self.active_pane {
+        match self.mailbox.active_pane {
             ActivePane::MessageView => match (key.code, key.modifiers) {
                 (KeyCode::Char('/'), KeyModifiers::NONE) => Some(Action::OpenGlobalSearch),
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
@@ -647,15 +641,17 @@ impl App {
                     None
                 }
                 (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                    self.message_scroll_offset = self.message_scroll_offset.saturating_add(20);
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_add(20);
                     None
                 }
                 (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
-                    self.message_scroll_offset = self.message_scroll_offset.saturating_sub(20);
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_sub(20);
                     None
                 }
                 (KeyCode::Char('G'), modifiers) if plain_or_shift(modifiers) => {
-                    self.message_scroll_offset = u16::MAX;
+                    self.mailbox.message_scroll_offset = u16::MAX;
                     None
                 }
                 (KeyCode::Char('H'), modifiers) if plain_or_shift(modifiers) => {
@@ -666,7 +662,7 @@ impl App {
                 }
                 // h = move left to mail list
                 (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
-                    self.active_pane = ActivePane::MailList;
+                    self.mailbox.active_pane = ActivePane::MailList;
                     None
                 }
                 // o = open in browser (message already open in pane)
@@ -707,7 +703,7 @@ impl App {
                 (KeyCode::Char('f'), KeyModifiers::CONTROL) => Some(Action::OpenMailboxFilter),
                 // h = move left to sidebar
                 (KeyCode::Char('h') | KeyCode::Left, KeyModifiers::NONE) => {
-                    self.active_pane = ActivePane::Sidebar;
+                    self.mailbox.active_pane = ActivePane::Sidebar;
                     None
                 }
                 // Right arrow opens selected message
@@ -796,15 +792,17 @@ impl App {
                     None
                 }
                 (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                    self.message_scroll_offset = self.message_scroll_offset.saturating_add(20);
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_add(20);
                     None
                 }
                 (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
-                    self.message_scroll_offset = self.message_scroll_offset.saturating_sub(20);
+                    self.mailbox.message_scroll_offset =
+                        self.mailbox.message_scroll_offset.saturating_sub(20);
                     None
                 }
                 (KeyCode::Char('G'), modifiers) if plain_or_shift(modifiers) => {
-                    self.message_scroll_offset = u16::MAX;
+                    self.mailbox.message_scroll_offset = u16::MAX;
                     None
                 }
                 (KeyCode::Char('H'), modifiers) if plain_or_shift(modifiers) => {

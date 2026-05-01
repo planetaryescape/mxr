@@ -156,7 +156,7 @@ pub(crate) fn submit_pending_work(
     app: &mut App,
     local_io: &mpsc::UnboundedSender<AsyncResultTask>,
 ) {
-    if let Some(pending) = app.pending_browser_open.take() {
+    if let Some(pending) = app.mailbox.pending_browser_open.take() {
         let _ = submit_task(local_io, async move {
             AsyncResult::BrowserOpened(
                 open_browser_file(pending.message_id, pending.document).await,
@@ -255,6 +255,7 @@ mod tests {
 
     fn test_pending_send(draft_path: std::path::PathBuf) -> PendingSend {
         PendingSend {
+            account_id: mxr_core::AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: String::new(),
                 cc: String::new(),

@@ -1,6 +1,7 @@
 mod actions;
 mod draw;
 mod input;
+mod state;
 use crate::action::{Action, PatternKind, ScreenContext, UiContext};
 use crate::async_result::SearchResultData;
 use crate::client::Client;
@@ -23,6 +24,9 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 use throbber_widgets_tui::ThrobberState;
 use tui_textarea::TextArea;
+
+pub use state::MailboxState;
+use state::PendingPreviewRead;
 
 const PREVIEW_MARK_READ_DELAY: Duration = Duration::from_secs(5);
 pub const SEARCH_PAGE_SIZE: u32 = 200;
@@ -62,6 +66,7 @@ pub enum MutationEffect {
 
 /// Draft waiting for user confirmation after editor closes.
 pub struct PendingSend {
+    pub account_id: AccountId,
     pub fm: mxr_compose::frontmatter::ComposeFrontmatter,
     pub body: String,
     pub draft_path: std::path::PathBuf,
@@ -83,11 +88,26 @@ pub enum PendingSendMode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ComposeAction {
-    New { to: String, subject: String },
-    EditDraft(std::path::PathBuf),
-    Reply { message_id: MessageId },
-    ReplyAll { message_id: MessageId },
-    Forward { message_id: MessageId },
+    New {
+        to: String,
+        subject: String,
+    },
+    EditDraft {
+        path: std::path::PathBuf,
+        account_id: AccountId,
+    },
+    Reply {
+        message_id: MessageId,
+        account_id: AccountId,
+    },
+    ReplyAll {
+        message_id: MessageId,
+        account_id: AccountId,
+    },
+    Forward {
+        message_id: MessageId,
+        account_id: AccountId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -633,12 +653,6 @@ impl BodyViewState {
     }
 }
 
-#[derive(Debug, Clone)]
-struct PendingPreviewRead {
-    message_id: MessageId,
-    due_at: Instant,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchTarget {
     Mailbox,
@@ -674,39 +688,19 @@ pub struct PendingSearchDebounce {
 
 pub struct App {
     pub theme: Theme,
-    pub envelopes: Vec<Envelope>,
-    pub all_envelopes: Vec<Envelope>,
-    pub mailbox_view: MailboxView,
-    pub labels: Vec<Label>,
+    pub mailbox: MailboxState,
     pub screen: Screen,
-    pub mail_list_mode: MailListMode,
-    pub selected_index: usize,
-    pub scroll_offset: usize,
-    pub active_pane: ActivePane,
     pub should_quit: bool,
-    pub layout_mode: LayoutMode,
     pub search_bar: SearchBar,
     pub search_page: SearchPageState,
     pub command_palette: CommandPalette,
-    pub body_view_state: BodyViewState,
-    pub viewing_envelope: Option<Envelope>,
-    pub viewed_thread: Option<Thread>,
-    pub viewed_thread_messages: Vec<Envelope>,
-    pub thread_selected_index: usize,
-    pub message_scroll_offset: u16,
     pub last_sync_status: Option<String>,
     pub visible_height: usize,
-    pub body_cache: HashMap<MessageId, MessageBody>,
     pub html_image_support: Option<TerminalImageSupport>,
     pub html_image_assets: HashMap<MessageId, HashMap<String, HtmlImageEntry>>,
-    pub queued_body_fetches: Vec<MessageId>,
     pub queued_html_image_asset_fetches: Vec<MessageId>,
     pub queued_html_image_decodes: Vec<HtmlImageKey>,
-    pub in_flight_body_requests: HashSet<MessageId>,
     pub in_flight_html_image_asset_requests: HashSet<MessageId>,
-    pub pending_thread_fetch: Option<mxr_core::ThreadId>,
-    pub in_flight_thread_fetch: Option<mxr_core::ThreadId>,
-    pub thread_request_id: u64,
     pub pending_search: Option<PendingSearchRequest>,
     pub pending_search_count: Option<PendingSearchCountRequest>,
     pub pending_search_debounce: Option<PendingSearchDebounce>,
@@ -723,8 +717,6 @@ pub struct App {
     pub rule_form_request_id: u64,
     pub pending_rule_form_save: bool,
     pub pending_bug_report: bool,
-    pub pending_browser_open: Option<PendingBrowserOpen>,
-    pub pending_browser_open_after_load: Option<MessageId>,
     pub pending_config_edit: bool,
     pub pending_log_open: bool,
     pub pending_diagnostics_details: Option<DiagnosticsPaneKind>,
@@ -736,33 +728,19 @@ pub struct App {
     /// True when the set-default was triggered from sidebar account switching
     /// (vs the Accounts tab). Used to trigger full state reset on completion.
     pub pending_account_switch: bool,
-    pub sidebar_selected: usize,
-    pub sidebar_section: SidebarSection,
     pub help_modal_open: bool,
     pub help_scroll_offset: u16,
     pub help_query: String,
     pub help_selected: usize,
-    pub saved_searches: Vec<mxr_core::SavedSearch>,
-    pub subscriptions_page: SubscriptionsPageState,
     pub rules_page: RulesPageState,
     pub diagnostics_page: DiagnosticsPageState,
     pub accounts_page: AccountsPageState,
     pub onboarding: FeatureOnboardingState,
     pub pending_local_state_save: bool,
-    pub active_label: Option<mxr_core::LabelId>,
-    pub pending_label_fetch: Option<mxr_core::LabelId>,
-    pub pending_active_label: Option<mxr_core::LabelId>,
-    pub pending_labels_refresh: bool,
-    pub pending_all_envelopes_refresh: bool,
-    pub pending_subscriptions_refresh: bool,
     pub pending_status_refresh: bool,
     pub status_request_id: u64,
     pub diagnostics_request_id: u64,
-    pub desired_system_mailbox: Option<String>,
-    pub mailbox_loading_message: Option<String>,
-    pub mailbox_loading_throbber: ThrobberState,
     pub status_message: Option<String>,
-    pending_preview_read: Option<PendingPreviewRead>,
     pub pending_mutation_count: usize,
     pub pending_mutation_status: Option<String>,
     pub pending_mutation_queue: Vec<(Request, MutationEffect)>,
@@ -772,28 +750,11 @@ pub struct App {
     pub error_modal: Option<ErrorModalState>,
     pub pending_unsubscribe_confirm: Option<PendingUnsubscribeConfirm>,
     pub pending_unsubscribe_action: Option<PendingUnsubscribeAction>,
-    pub reader_mode: bool,
-    pub html_view: bool,
-    pub render_html_command: Option<String>,
-    pub show_reader_stats: bool,
-    pub remote_content_enabled: bool,
-    pub signature_expanded: bool,
     pub label_picker: LabelPicker,
     pub compose_picker: ComposePicker,
-    pub attachment_panel: AttachmentPanelState,
     pub snooze_panel: SnoozePanelState,
-    pub pending_attachment_action: Option<PendingAttachmentAction>,
-    pub selected_set: HashSet<MessageId>,
-    pub visual_mode: bool,
-    pub visual_anchor: Option<usize>,
-    pub pending_export_thread: Option<mxr_core::id::ThreadId>,
     pub snooze_config: mxr_config::SnoozeConfig,
-    pub sidebar_accounts_expanded: bool,
-    pub sidebar_system_expanded: bool,
-    pub sidebar_user_expanded: bool,
-    pub sidebar_saved_searches_expanded: bool,
     pending_label_action: Option<(LabelPickerMode, String)>,
-    pub url_modal: Option<ui::url_modal::UrlModalState>,
     pub rule_condition_editor: TextArea<'static>,
     pub rule_action_editor: TextArea<'static>,
     input: InputHandler,
@@ -824,10 +785,10 @@ impl App {
 
     pub fn apply_runtime_config(&mut self, config: &mxr_config::MxrConfig) {
         self.theme = Theme::from_spec(&config.appearance.theme);
-        self.reader_mode = config.render.reader_mode;
-        self.render_html_command = config.render.html_command.clone();
-        self.show_reader_stats = config.render.show_reader_stats;
-        self.remote_content_enabled = config.render.html_remote_content;
+        self.mailbox.reader_mode = config.render.reader_mode;
+        self.mailbox.render_html_command = config.render.html_command.clone();
+        self.mailbox.show_reader_stats = config.render.show_reader_stats;
+        self.mailbox.remote_content_enabled = config.render.html_remote_content;
         self.snooze_config = config.snooze.clone();
     }
 
@@ -841,39 +802,19 @@ impl App {
     ) -> Self {
         Self {
             theme: Theme::default(),
-            envelopes: Vec::new(),
-            all_envelopes: Vec::new(),
-            mailbox_view: MailboxView::Messages,
-            labels: Vec::new(),
+            mailbox: MailboxState::from_render_config(render),
             screen: Screen::Mailbox,
-            mail_list_mode: MailListMode::Threads,
-            selected_index: 0,
-            scroll_offset: 0,
-            active_pane: ActivePane::MailList,
             should_quit: false,
-            layout_mode: LayoutMode::TwoPane,
             search_bar: SearchBar::default(),
             search_page: SearchPageState::default(),
             command_palette: CommandPalette::default(),
-            body_view_state: BodyViewState::Empty { preview: None },
-            viewing_envelope: None,
-            viewed_thread: None,
-            viewed_thread_messages: Vec::new(),
-            thread_selected_index: 0,
-            message_scroll_offset: 0,
             last_sync_status: None,
             visible_height: 20,
-            body_cache: HashMap::new(),
             html_image_support: None,
             html_image_assets: HashMap::new(),
-            queued_body_fetches: Vec::new(),
             queued_html_image_asset_fetches: Vec::new(),
             queued_html_image_decodes: Vec::new(),
-            in_flight_body_requests: HashSet::new(),
             in_flight_html_image_asset_requests: HashSet::new(),
-            pending_thread_fetch: None,
-            in_flight_thread_fetch: None,
-            thread_request_id: 0,
             pending_search: None,
             pending_search_count: None,
             pending_search_debounce: None,
@@ -890,8 +831,6 @@ impl App {
             rule_form_request_id: 0,
             pending_rule_form_save: false,
             pending_bug_report: false,
-            pending_browser_open: None,
-            pending_browser_open_after_load: None,
             pending_config_edit: false,
             pending_log_open: false,
             pending_diagnostics_details: None,
@@ -901,33 +840,19 @@ impl App {
             pending_account_authorize: None,
             pending_account_set_default: None,
             pending_account_switch: false,
-            sidebar_selected: 0,
-            sidebar_section: SidebarSection::Labels,
             help_modal_open: false,
             help_scroll_offset: 0,
             help_query: String::new(),
             help_selected: 0,
-            saved_searches: Vec::new(),
-            subscriptions_page: SubscriptionsPageState::default(),
             rules_page: RulesPageState::default(),
             diagnostics_page: DiagnosticsPageState::default(),
             accounts_page: AccountsPageState::default(),
             onboarding: FeatureOnboardingState::default(),
             pending_local_state_save: false,
-            active_label: None,
-            pending_label_fetch: None,
-            pending_active_label: None,
-            pending_labels_refresh: false,
-            pending_all_envelopes_refresh: false,
-            pending_subscriptions_refresh: false,
             pending_status_refresh: false,
             status_request_id: 0,
             diagnostics_request_id: 0,
-            desired_system_mailbox: None,
-            mailbox_loading_message: None,
-            mailbox_loading_throbber: ThrobberState::default(),
             status_message: None,
-            pending_preview_read: None,
             pending_mutation_count: 0,
             pending_mutation_status: None,
             pending_mutation_queue: Vec::new(),
@@ -937,28 +862,11 @@ impl App {
             error_modal: None,
             pending_unsubscribe_confirm: None,
             pending_unsubscribe_action: None,
-            reader_mode: render.reader_mode,
-            html_view: true,
-            render_html_command: render.html_command.clone(),
-            show_reader_stats: render.show_reader_stats,
-            remote_content_enabled: render.html_remote_content,
-            signature_expanded: false,
             label_picker: LabelPicker::default(),
             compose_picker: ComposePicker::default(),
-            attachment_panel: AttachmentPanelState::default(),
             snooze_panel: SnoozePanelState::default(),
-            pending_attachment_action: None,
-            selected_set: HashSet::new(),
-            visual_mode: false,
-            visual_anchor: None,
-            pending_export_thread: None,
             snooze_config: snooze_config.clone(),
-            sidebar_accounts_expanded: true,
-            sidebar_system_expanded: true,
-            sidebar_user_expanded: true,
-            sidebar_saved_searches_expanded: true,
             pending_label_action: None,
-            url_modal: None,
             rule_condition_editor: TextArea::default(),
             rule_action_editor: TextArea::default(),
             input: InputHandler::new(),
@@ -966,18 +874,20 @@ impl App {
     }
 
     pub fn selected_envelope(&self) -> Option<&Envelope> {
-        if self.mailbox_view == MailboxView::Subscriptions {
+        if self.mailbox.mailbox_view == MailboxView::Subscriptions {
             return self
+                .mailbox
                 .subscriptions_page
                 .entries
-                .get(self.selected_index)
+                .get(self.mailbox.selected_index)
                 .map(|entry| &entry.envelope);
         }
 
-        match self.mail_list_mode {
-            MailListMode::Messages => self.envelopes.get(self.selected_index),
+        match self.mailbox.mail_list_mode {
+            MailListMode::Messages => self.mailbox.envelopes.get(self.mailbox.selected_index),
             MailListMode::Threads => self.selected_mail_row().and_then(|row| {
-                self.envelopes
+                self.mailbox
+                    .envelopes
                     .iter()
                     .find(|env| env.id == row.representative.id)
             }),
@@ -995,7 +905,7 @@ impl App {
     }
 
     pub fn mail_list_rows(&self) -> Vec<MailListRow> {
-        Self::build_mail_list_rows(&self.envelopes, self.mail_list_mode)
+        Self::build_mail_list_rows(&self.mailbox.envelopes, self.mailbox.mail_list_mode)
     }
 
     pub fn search_mail_list_rows(&self) -> Vec<MailListRow> {
@@ -1003,18 +913,25 @@ impl App {
     }
 
     pub fn selected_mail_row(&self) -> Option<MailListRow> {
-        if self.mailbox_view == MailboxView::Subscriptions {
+        if self.mailbox.mailbox_view == MailboxView::Subscriptions {
             return None;
         }
-        self.mail_list_rows().get(self.selected_index).cloned()
+        self.mail_list_rows()
+            .get(self.mailbox.selected_index)
+            .cloned()
     }
 
     pub fn selected_subscription_entry(&self) -> Option<&SubscriptionEntry> {
-        self.subscriptions_page.entries.get(self.selected_index)
+        self.mailbox
+            .subscriptions_page
+            .entries
+            .get(self.mailbox.selected_index)
     }
 
     pub fn focused_thread_envelope(&self) -> Option<&Envelope> {
-        self.viewed_thread_messages.get(self.thread_selected_index)
+        self.mailbox
+            .viewed_thread_messages
+            .get(self.mailbox.thread_selected_index)
     }
 
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
@@ -1026,7 +943,7 @@ impl App {
             .iter()
             .filter(|a| a.sync_kind.is_some())
             .collect();
-        if sync_accounts.len() > 1 && self.sidebar_accounts_expanded {
+        if sync_accounts.len() > 1 && self.mailbox.sidebar_accounts_expanded {
             items.extend(sync_accounts.into_iter().cloned().map(SidebarItem::Account));
         }
         let mut system_labels = Vec::new();
@@ -1038,17 +955,18 @@ impl App {
                 user_labels.push(label.clone());
             }
         }
-        if self.sidebar_system_expanded {
+        if self.mailbox.sidebar_system_expanded {
             items.extend(system_labels.into_iter().map(SidebarItem::Label));
         }
         items.push(SidebarItem::AllMail);
         items.push(SidebarItem::Subscriptions);
-        if self.sidebar_user_expanded {
+        if self.mailbox.sidebar_user_expanded {
             items.extend(user_labels.into_iter().map(SidebarItem::Label));
         }
-        if self.sidebar_saved_searches_expanded {
+        if self.mailbox.sidebar_saved_searches_expanded {
             items.extend(
-                self.saved_searches
+                self.mailbox
+                    .saved_searches
                     .iter()
                     .cloned()
                     .map(SidebarItem::SavedSearch),
@@ -1070,30 +988,33 @@ impl App {
             })
             .collect();
         SidebarView {
-            labels: &self.labels,
-            active_pane: &self.active_pane,
-            saved_searches: &self.saved_searches,
-            sidebar_selected: self.sidebar_selected,
+            labels: &self.mailbox.labels,
+            active_pane: &self.mailbox.active_pane,
+            saved_searches: &self.mailbox.saved_searches,
+            sidebar_selected: self.mailbox.sidebar_selected,
             all_mail_active: !self.search_active
-                && self.mailbox_view == MailboxView::Messages
-                && self.active_label.is_none()
-                && self.pending_active_label.is_none(),
-            subscriptions_active: self.mailbox_view == MailboxView::Subscriptions,
-            subscription_count: self.subscriptions_page.entries.len(),
+                && self.mailbox.mailbox_view == MailboxView::Messages
+                && self.mailbox.active_label.is_none()
+                && self.mailbox.pending_active_label.is_none(),
+            subscriptions_active: self.mailbox.mailbox_view == MailboxView::Subscriptions,
+            subscription_count: self.mailbox.subscriptions_page.entries.len(),
             accounts,
-            accounts_expanded: self.sidebar_accounts_expanded,
-            system_expanded: self.sidebar_system_expanded,
-            user_expanded: self.sidebar_user_expanded,
-            saved_searches_expanded: self.sidebar_saved_searches_expanded,
+            accounts_expanded: self.mailbox.sidebar_accounts_expanded,
+            system_expanded: self.mailbox.sidebar_system_expanded,
+            user_expanded: self.mailbox.sidebar_user_expanded,
+            saved_searches_expanded: self.mailbox.sidebar_saved_searches_expanded,
             active_label: self
+                .mailbox
                 .pending_active_label
                 .as_ref()
-                .or(self.active_label.as_ref()),
+                .or(self.mailbox.active_label.as_ref()),
         }
     }
 
     pub fn selected_sidebar_item(&self) -> Option<SidebarItem> {
-        self.sidebar_items().get(self.sidebar_selected).cloned()
+        self.sidebar_items()
+            .get(self.mailbox.sidebar_selected)
+            .cloned()
     }
 
     pub(crate) fn selected_sidebar_key(&self) -> Option<SidebarSelectionKey> {
@@ -1126,9 +1047,12 @@ impl App {
                 _ => false,
             })
         }) {
-            Some(index) => self.sidebar_selected = index,
+            Some(index) => self.mailbox.sidebar_selected = index,
             None => {
-                self.sidebar_selected = self.sidebar_selected.min(items.len().saturating_sub(1));
+                self.mailbox.sidebar_selected = self
+                    .mailbox
+                    .sidebar_selected
+                    .min(items.len().saturating_sub(1));
             }
         }
         self.sync_sidebar_section();
@@ -1263,7 +1187,7 @@ impl App {
 
     pub fn current_ui_context(&self) -> UiContext {
         match self.screen {
-            Screen::Mailbox => match self.active_pane {
+            Screen::Mailbox => match self.mailbox.active_pane {
                 ActivePane::Sidebar => UiContext::MailboxSidebar,
                 ActivePane::MailList => UiContext::MailboxList,
                 ActivePane::MessageView => UiContext::MailboxMessage,
@@ -1304,10 +1228,10 @@ impl App {
         self.accounts_page.onboarding_required = true;
         self.accounts_page.onboarding_modal_open = true;
         self.onboarding.visible = false;
-        self.active_label = None;
-        self.pending_active_label = None;
-        self.pending_label_fetch = None;
-        self.desired_system_mailbox = None;
+        self.mailbox.active_label = None;
+        self.mailbox.pending_active_label = None;
+        self.mailbox.pending_label_fetch = None;
+        self.mailbox.desired_system_mailbox = None;
     }
 
     fn complete_account_setup_onboarding(&mut self) {
@@ -1481,6 +1405,7 @@ impl App {
             key,
             name,
             email,
+            enabled: true,
             sync,
             send,
             is_default,
@@ -1844,8 +1769,8 @@ impl App {
     }
 
     fn mail_row_count(&self) -> usize {
-        if self.mailbox_view == MailboxView::Subscriptions {
-            return self.subscriptions_page.entries.len();
+        if self.mailbox.mailbox_view == MailboxView::Subscriptions {
+            return self.mailbox.subscriptions_page.entries.len();
         }
         self.mail_list_rows().len()
     }
@@ -1855,7 +1780,7 @@ impl App {
     }
 
     fn search_list_mode(&self) -> MailListMode {
-        self.mail_list_mode
+        self.mailbox.mail_list_mode
     }
 
     fn build_mail_list_rows(envelopes: &[Envelope], mode: MailListMode) -> Vec<MailListRow> {
@@ -1910,24 +1835,24 @@ impl App {
                 return self
                     .selected_search_envelope()
                     .or_else(|| self.focused_thread_envelope())
-                    .or(self.viewing_envelope.as_ref());
+                    .or(self.mailbox.viewing_envelope.as_ref());
             }
             return self
                 .focused_thread_envelope()
-                .or(self.viewing_envelope.as_ref())
+                .or(self.mailbox.viewing_envelope.as_ref())
                 .or_else(|| self.selected_search_envelope());
         }
 
         self.focused_thread_envelope()
-            .or(self.viewing_envelope.as_ref())
+            .or(self.mailbox.viewing_envelope.as_ref())
             .or_else(|| self.selected_envelope())
     }
 
     pub async fn load(&mut self, client: &mut Client) -> Result<(), MxrError> {
-        self.labels = client.list_labels().await?;
-        self.all_envelopes = client.list_envelopes(5000, 0).await?;
+        self.mailbox.labels = client.list_labels().await?;
+        self.mailbox.all_envelopes = client.list_envelopes(5000, 0).await?;
         self.load_initial_mailbox(client).await?;
-        self.saved_searches = client.list_saved_searches().await.unwrap_or_default();
+        self.mailbox.saved_searches = client.list_saved_searches().await.unwrap_or_default();
         self.set_subscriptions(client.list_subscriptions(500).await.unwrap_or_default());
         if let Ok(Response::Ok {
             data:
@@ -1956,13 +1881,14 @@ impl App {
 
     async fn load_initial_mailbox(&mut self, client: &mut Client) -> Result<(), MxrError> {
         let Some(inbox_id) = self
+            .mailbox
             .labels
             .iter()
             .find(|label| label.name == "INBOX")
             .map(|label| label.id.clone())
         else {
-            self.envelopes = self.all_mail_envelopes();
-            self.active_label = None;
+            self.mailbox.envelopes = self.all_mail_envelopes();
+            self.mailbox.active_label = None;
             return Ok(());
         };
 
@@ -1978,28 +1904,28 @@ impl App {
             Ok(Response::Ok {
                 data: ResponseData::Envelopes { envelopes },
             }) => {
-                self.envelopes = envelopes;
-                self.active_label = Some(inbox_id);
-                self.pending_active_label = None;
-                self.pending_label_fetch = None;
-                self.sidebar_selected = 0;
+                self.mailbox.envelopes = envelopes;
+                self.mailbox.active_label = Some(inbox_id);
+                self.mailbox.pending_active_label = None;
+                self.mailbox.pending_label_fetch = None;
+                self.mailbox.sidebar_selected = 0;
                 Ok(())
             }
             Ok(Response::Error { message }) => {
-                self.envelopes = self.all_mail_envelopes();
-                self.active_label = None;
+                self.mailbox.envelopes = self.all_mail_envelopes();
+                self.mailbox.active_label = None;
                 self.status_message = Some(format!("Inbox load failed: {message}"));
                 Ok(())
             }
             Ok(_) => {
-                self.envelopes = self.all_mail_envelopes();
-                self.active_label = None;
+                self.mailbox.envelopes = self.all_mail_envelopes();
+                self.mailbox.active_label = None;
                 self.status_message = Some("Inbox load failed: unexpected response".into());
                 Ok(())
             }
             Err(error) => {
-                self.envelopes = self.all_mail_envelopes();
-                self.active_label = None;
+                self.mailbox.envelopes = self.all_mail_envelopes();
+                self.mailbox.active_label = None;
                 self.status_message = Some(format!("Inbox load failed: {error}"));
                 Ok(())
             }
@@ -2030,6 +1956,7 @@ impl App {
 
     pub fn ordered_visible_labels(&self) -> Vec<&Label> {
         let mut system: Vec<&Label> = self
+            .mailbox
             .labels
             .iter()
             .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
@@ -2043,6 +1970,7 @@ impl App {
         system.sort_by_key(|l| crate::ui::sidebar::system_label_order(&l.name));
 
         let mut user: Vec<&Label> = self
+            .mailbox
             .labels
             .iter()
             .filter(|l| !crate::ui::sidebar::should_hide_label(&l.name))
@@ -2066,14 +1994,14 @@ impl App {
     }
 
     fn sidebar_move_down(&mut self) {
-        if self.sidebar_selected + 1 < self.sidebar_items().len() {
-            self.sidebar_selected += 1;
+        if self.mailbox.sidebar_selected + 1 < self.sidebar_items().len() {
+            self.mailbox.sidebar_selected += 1;
         }
         self.sync_sidebar_section();
     }
 
     fn sidebar_move_up(&mut self) {
-        self.sidebar_selected = self.sidebar_selected.saturating_sub(1);
+        self.mailbox.sidebar_selected = self.mailbox.sidebar_selected.saturating_sub(1);
         self.sync_sidebar_section();
     }
 
@@ -2289,7 +2217,7 @@ impl App {
     }
 
     fn sync_sidebar_section(&mut self) {
-        self.sidebar_section = match self.selected_sidebar_item() {
+        self.mailbox.sidebar_section = match self.selected_sidebar_item() {
             Some(SidebarItem::SavedSearch(_)) => SidebarSection::SavedSearches,
             _ => SidebarSection::Labels,
         };
@@ -2311,11 +2239,12 @@ impl App {
 
     fn collapse_current_sidebar_section(&mut self) {
         match self.current_sidebar_group() {
-            SidebarGroup::SystemLabels => self.sidebar_system_expanded = false,
-            SidebarGroup::UserLabels => self.sidebar_user_expanded = false,
-            SidebarGroup::SavedSearches => self.sidebar_saved_searches_expanded = false,
+            SidebarGroup::SystemLabels => self.mailbox.sidebar_system_expanded = false,
+            SidebarGroup::UserLabels => self.mailbox.sidebar_user_expanded = false,
+            SidebarGroup::SavedSearches => self.mailbox.sidebar_saved_searches_expanded = false,
         }
-        self.sidebar_selected = self
+        self.mailbox.sidebar_selected = self
+            .mailbox
             .sidebar_selected
             .min(self.sidebar_items().len().saturating_sub(1));
         self.sync_sidebar_section();
@@ -2323,11 +2252,12 @@ impl App {
 
     fn expand_current_sidebar_section(&mut self) {
         match self.current_sidebar_group() {
-            SidebarGroup::SystemLabels => self.sidebar_system_expanded = true,
-            SidebarGroup::UserLabels => self.sidebar_user_expanded = true,
-            SidebarGroup::SavedSearches => self.sidebar_saved_searches_expanded = true,
+            SidebarGroup::SystemLabels => self.mailbox.sidebar_system_expanded = true,
+            SidebarGroup::UserLabels => self.mailbox.sidebar_user_expanded = true,
+            SidebarGroup::SavedSearches => self.mailbox.sidebar_saved_searches_expanded = true,
         }
-        self.sidebar_selected = self
+        self.mailbox.sidebar_selected = self
+            .mailbox
             .sidebar_selected
             .min(self.sidebar_items().len().saturating_sub(1));
         self.sync_sidebar_section();
@@ -2348,13 +2278,14 @@ impl App {
         let query = query_source.to_lowercase();
         if query.is_empty() {
             Self::bump_search_session_id(&mut self.mailbox_search_session_id);
-            self.envelopes = self.all_mail_envelopes();
+            self.mailbox.envelopes = self.all_mail_envelopes();
             self.search_active = false;
         } else {
             let query_words: Vec<&str> = query.split_whitespace().collect();
             // Instant client-side filter: every query word must prefix-match
             // some word in subject, from, or snippet
             let filtered: Vec<Envelope> = self
+                .mailbox
                 .all_envelopes
                 .iter()
                 .filter(|e| !e.flags.contains(MessageFlags::TRASH))
@@ -2380,7 +2311,7 @@ impl App {
                     .cmp(&sane_mail_sort_timestamp(&left.date))
                     .then_with(|| right.id.as_str().cmp(&left.id.as_str()))
             });
-            self.envelopes = filtered;
+            self.mailbox.envelopes = filtered;
             self.search_active = true;
             let session_id = Self::bump_search_session_id(&mut self.mailbox_search_session_id);
             self.queue_search_request(
@@ -2393,8 +2324,8 @@ impl App {
                 session_id,
             );
         }
-        self.selected_index = 0;
-        self.scroll_offset = 0;
+        self.mailbox.selected_index = 0;
+        self.mailbox.scroll_offset = 0;
     }
 
     pub fn search_is_pending(&self) -> bool {
@@ -2431,11 +2362,14 @@ impl App {
 
     /// Compute the mail list title based on active filter/search.
     pub fn mail_list_title(&self) -> String {
-        if self.mailbox_view == MailboxView::Subscriptions {
-            return format!("Subscriptions ({})", self.subscriptions_page.entries.len());
+        if self.mailbox.mailbox_view == MailboxView::Subscriptions {
+            return format!(
+                "Subscriptions ({})",
+                self.mailbox.subscriptions_page.entries.len()
+            );
         }
 
-        let list_name = match self.mail_list_mode {
+        let list_name = match self.mailbox.mail_list_mode {
             MailListMode::Threads => "Threads",
             MailListMode::Messages => "Messages",
         };
@@ -2443,11 +2377,12 @@ impl App {
         if self.search_active {
             format!("Search: {} ({list_count})", self.search_bar.query)
         } else if let Some(label_id) = self
+            .mailbox
             .pending_active_label
             .as_ref()
-            .or(self.active_label.as_ref())
+            .or(self.mailbox.active_label.as_ref())
         {
-            if let Some(label) = self.labels.iter().find(|l| &l.id == label_id) {
+            if let Some(label) = self.mailbox.labels.iter().find(|l| &l.id == label_id) {
                 let name = crate::ui::sidebar::humanize_label(&label.name);
                 format!("{name} {list_name} ({list_count})")
             } else {
@@ -2459,7 +2394,8 @@ impl App {
     }
 
     fn all_mail_envelopes(&self) -> Vec<Envelope> {
-        self.all_envelopes
+        self.mailbox
+            .all_envelopes
             .iter()
             .filter(|envelope| !envelope.flags.contains(MessageFlags::TRASH))
             .cloned()
@@ -2468,19 +2404,25 @@ impl App {
 
     fn active_label_record(&self) -> Option<&Label> {
         let label_id = self
+            .mailbox
             .pending_active_label
             .as_ref()
-            .or(self.active_label.as_ref())?;
-        self.labels.iter().find(|label| &label.id == label_id)
+            .or(self.mailbox.active_label.as_ref())?;
+        self.mailbox
+            .labels
+            .iter()
+            .find(|label| &label.id == label_id)
     }
 
     fn global_starred_count(&self) -> usize {
-        self.labels
+        self.mailbox
+            .labels
             .iter()
             .find(|label| label.name.eq_ignore_ascii_case("STARRED"))
             .map(|label| label.total_count as usize)
             .unwrap_or_else(|| {
-                self.all_envelopes
+                self.mailbox
+                    .all_envelopes
                     .iter()
                     .filter(|envelope| envelope.flags.contains(MessageFlags::STARRED))
                     .count()
@@ -2490,18 +2432,18 @@ impl App {
     fn active_body_status(&self) -> Option<String> {
         let BodyViewState::Ready {
             source, metadata, ..
-        } = &self.body_view_state
+        } = &self.mailbox.body_view_state
         else {
             return None;
         };
 
-        Some(body_status_labels(metadata, source, self.show_reader_stats).join(" "))
+        Some(body_status_labels(metadata, source, self.mailbox.show_reader_stats).join(" "))
     }
 
     pub(crate) fn current_body_mode_status_message(&self) -> Option<String> {
         let BodyViewState::Ready {
             source, metadata, ..
-        } = &self.body_view_state
+        } = &self.mailbox.body_view_state
         else {
             return None;
         };
@@ -2513,8 +2455,9 @@ impl App {
         let starred_count = self.global_starred_count();
         let body_status = self.active_body_status();
 
-        if self.mailbox_view == MailboxView::Subscriptions {
+        if self.mailbox.mailbox_view == MailboxView::Subscriptions {
             let unread_count = self
+                .mailbox
                 .subscriptions_page
                 .entries
                 .iter()
@@ -2522,7 +2465,7 @@ impl App {
                 .count();
             return ui::status_bar::StatusBarState {
                 mailbox_name: "SUBSCRIPTIONS".into(),
-                total_count: self.subscriptions_page.entries.len(),
+                total_count: self.mailbox.subscriptions_page.entries.len(),
                 unread_count,
                 starred_count,
                 body_status: body_status.clone(),
@@ -2537,7 +2480,7 @@ impl App {
             let results = if self.screen == Screen::Search {
                 &self.search_page.results
             } else {
-                &self.envelopes
+                &self.mailbox.envelopes
             };
             let unread_count = results
                 .iter()
@@ -2571,6 +2514,7 @@ impl App {
         }
 
         let unread_count = self
+            .mailbox
             .envelopes
             .iter()
             .filter(|envelope| !envelope.flags.contains(MessageFlags::READ))
@@ -2581,7 +2525,7 @@ impl App {
                 .diagnostics_page
                 .total_messages
                 .map(|count| count as usize)
-                .unwrap_or_else(|| self.all_envelopes.len()),
+                .unwrap_or_else(|| self.mailbox.all_envelopes.len()),
             unread_count,
             starred_count,
             body_status,
@@ -2632,13 +2576,14 @@ impl App {
     }
 
     pub fn resolve_desired_system_mailbox(&mut self) {
-        let Some(target) = self.desired_system_mailbox.as_deref() else {
+        let Some(target) = self.mailbox.desired_system_mailbox.as_deref() else {
             return;
         };
-        if self.pending_active_label.is_some() || self.active_label.is_some() {
+        if self.mailbox.pending_active_label.is_some() || self.mailbox.active_label.is_some() {
             return;
         }
         if let Some(label_id) = self
+            .mailbox
             .labels
             .iter()
             .find(|label| label.name.eq_ignore_ascii_case(target))
@@ -2650,24 +2595,27 @@ impl App {
 
     /// In ThreePane mode, auto-load the preview for the currently selected envelope.
     fn auto_preview(&mut self) {
-        if self.mailbox_view == MailboxView::Subscriptions {
+        if self.mailbox.mailbox_view == MailboxView::Subscriptions {
             if let Some(entry) = self.selected_subscription_entry().cloned() {
-                if self.viewing_envelope.as_ref().map(|e| &e.id) != Some(&entry.envelope.id) {
+                if self.mailbox.viewing_envelope.as_ref().map(|e| &e.id) != Some(&entry.envelope.id)
+                {
                     self.open_envelope(entry.envelope);
                 }
             } else {
-                self.pending_preview_read = None;
-                self.viewing_envelope = None;
-                self.viewed_thread = None;
-                self.viewed_thread_messages.clear();
-                self.body_view_state = BodyViewState::Empty { preview: None };
+                self.mailbox.pending_preview_read = None;
+                self.mailbox.viewing_envelope = None;
+                self.mailbox.viewed_thread = None;
+                self.mailbox.viewed_thread_messages.clear();
+                self.mailbox.body_view_state = BodyViewState::Empty { preview: None };
             }
             return;
         }
 
-        if self.layout_mode == LayoutMode::ThreePane {
+        if self.mailbox.layout_mode == LayoutMode::ThreePane {
             if let Some(row) = self.selected_mail_row() {
-                if self.viewing_envelope.as_ref().map(|e| &e.id) != Some(&row.representative.id) {
+                if self.mailbox.viewing_envelope.as_ref().map(|e| &e.id)
+                    != Some(&row.representative.id)
+                {
                     self.open_envelope(row.representative);
                 }
             }
@@ -2683,6 +2631,7 @@ impl App {
         }
         if let Some(env) = self.selected_search_envelope().cloned() {
             if self
+                .mailbox
                 .viewing_envelope
                 .as_ref()
                 .map(|current| current.id.clone())
@@ -2731,21 +2680,23 @@ impl App {
     /// Only fetches bodies not already in cache.
     pub fn queue_body_window(&mut self) {
         const BUFFER: usize = 50;
-        let source_envelopes: Vec<Envelope> = if self.mailbox_view == MailboxView::Subscriptions {
-            self.subscriptions_page
-                .entries
-                .iter()
-                .map(|entry| entry.envelope.clone())
-                .collect()
-        } else {
-            self.envelopes.clone()
-        };
+        let source_envelopes: Vec<Envelope> =
+            if self.mailbox.mailbox_view == MailboxView::Subscriptions {
+                self.mailbox
+                    .subscriptions_page
+                    .entries
+                    .iter()
+                    .map(|entry| entry.envelope.clone())
+                    .collect()
+            } else {
+                self.mailbox.envelopes.clone()
+            };
         let len = source_envelopes.len();
         if len == 0 {
             return;
         }
-        let start = self.selected_index.saturating_sub(BUFFER / 2);
-        let end = (self.selected_index + BUFFER / 2).min(len);
+        let start = self.mailbox.selected_index.saturating_sub(BUFFER / 2);
+        let end = (self.mailbox.selected_index + BUFFER / 2).min(len);
         let ids: Vec<MessageId> = source_envelopes[start..end]
             .iter()
             .map(|e| e.id.clone())
@@ -2757,25 +2708,26 @@ impl App {
 
     fn open_envelope(&mut self, env: Envelope) {
         self.close_attachment_panel();
-        self.signature_expanded = false;
-        self.viewed_thread = None;
-        self.viewed_thread_messages = self.optimistic_thread_messages(&env);
-        self.thread_selected_index = self.default_thread_selected_index();
-        self.viewing_envelope = self.focused_thread_envelope().cloned();
-        if let Some(viewing_envelope) = self.viewing_envelope.clone() {
+        self.mailbox.signature_expanded = false;
+        self.mailbox.viewed_thread = None;
+        self.mailbox.viewed_thread_messages = self.optimistic_thread_messages(&env);
+        self.mailbox.thread_selected_index = self.default_thread_selected_index();
+        self.mailbox.viewing_envelope = self.focused_thread_envelope().cloned();
+        if let Some(viewing_envelope) = self.mailbox.viewing_envelope.clone() {
             self.schedule_preview_read(&viewing_envelope);
         }
-        for message in self.viewed_thread_messages.clone() {
+        for message in self.mailbox.viewed_thread_messages.clone() {
             self.queue_body_fetch(message.id);
         }
         self.queue_thread_fetch(env.thread_id.clone());
         self.queue_html_assets_for_current_view();
-        self.message_scroll_offset = 0;
+        self.mailbox.message_scroll_offset = 0;
         self.ensure_current_body_state();
     }
 
     fn optimistic_thread_messages(&self, env: &Envelope) -> Vec<Envelope> {
         let mut messages: Vec<Envelope> = self
+            .mailbox
             .all_envelopes
             .iter()
             .filter(|candidate| candidate.thread_id == env.thread_id)
@@ -2789,22 +2741,23 @@ impl App {
     }
 
     fn default_thread_selected_index(&self) -> usize {
-        self.viewed_thread_messages
+        self.mailbox
+            .viewed_thread_messages
             .iter()
             .rposition(|message| !message.flags.contains(MessageFlags::READ))
-            .or_else(|| self.viewed_thread_messages.len().checked_sub(1))
+            .or_else(|| self.mailbox.viewed_thread_messages.len().checked_sub(1))
             .unwrap_or(0)
     }
 
     fn sync_focused_thread_envelope(&mut self) {
         self.close_attachment_panel();
-        self.viewing_envelope = self.focused_thread_envelope().cloned();
-        if let Some(viewing_envelope) = self.viewing_envelope.clone() {
+        self.mailbox.viewing_envelope = self.focused_thread_envelope().cloned();
+        if let Some(viewing_envelope) = self.mailbox.viewing_envelope.clone() {
             self.schedule_preview_read(&viewing_envelope);
         } else {
-            self.pending_preview_read = None;
+            self.mailbox.pending_preview_read = None;
         }
-        self.message_scroll_offset = 0;
+        self.mailbox.message_scroll_offset = 0;
         self.ensure_current_body_state();
     }
 
@@ -2812,11 +2765,12 @@ impl App {
         if envelope.flags.contains(MessageFlags::READ)
             || self.has_pending_set_read(&envelope.id, true)
         {
-            self.pending_preview_read = None;
+            self.mailbox.pending_preview_read = None;
             return;
         }
 
         if self
+            .mailbox
             .pending_preview_read
             .as_ref()
             .is_some_and(|pending| pending.message_id == envelope.id)
@@ -2824,7 +2778,7 @@ impl App {
             return;
         }
 
-        self.pending_preview_read = Some(PendingPreviewRead {
+        self.mailbox.pending_preview_read = Some(PendingPreviewRead {
             message_id: envelope.id.clone(),
             due_at: Instant::now() + PREVIEW_MARK_READ_DELAY,
         });
@@ -2843,15 +2797,16 @@ impl App {
     }
 
     fn process_pending_preview_read(&mut self) {
-        let Some(pending) = self.pending_preview_read.clone() else {
+        let Some(pending) = self.mailbox.pending_preview_read.clone() else {
             return;
         };
         if Instant::now() < pending.due_at {
             return;
         }
-        self.pending_preview_read = None;
+        self.mailbox.pending_preview_read = None;
 
         let Some(envelope) = self
+            .mailbox
             .viewing_envelope
             .clone()
             .filter(|envelope| envelope.id == pending.message_id)
@@ -2880,7 +2835,7 @@ impl App {
 
     pub fn next_background_timeout(&self, fallback: Duration) -> Duration {
         let mut timeout = fallback;
-        if let Some(pending) = self.pending_preview_read.as_ref() {
+        if let Some(pending) = self.mailbox.pending_preview_read.as_ref() {
             timeout = timeout.min(
                 pending
                     .due_at
@@ -2904,71 +2859,75 @@ impl App {
 
     #[cfg(test)]
     pub fn expire_pending_preview_read_for_tests(&mut self) {
-        if let Some(pending) = self.pending_preview_read.as_mut() {
+        if let Some(pending) = self.mailbox.pending_preview_read.as_mut() {
             pending.due_at = Instant::now();
         }
     }
 
     fn move_thread_focus_down(&mut self) {
-        if self.thread_selected_index + 1 < self.viewed_thread_messages.len() {
-            self.thread_selected_index += 1;
+        if self.mailbox.thread_selected_index + 1 < self.mailbox.viewed_thread_messages.len() {
+            self.mailbox.thread_selected_index += 1;
             self.sync_focused_thread_envelope();
         }
     }
 
     fn move_thread_focus_up(&mut self) {
-        if self.thread_selected_index > 0 {
-            self.thread_selected_index -= 1;
+        if self.mailbox.thread_selected_index > 0 {
+            self.mailbox.thread_selected_index -= 1;
             self.sync_focused_thread_envelope();
         }
     }
 
     fn move_message_view_down(&mut self) {
-        if self.viewed_thread_messages.len() > 1 {
+        if self.mailbox.viewed_thread_messages.len() > 1 {
             self.move_thread_focus_down();
         } else {
-            self.message_scroll_offset = self.message_scroll_offset.saturating_add(1);
+            self.mailbox.message_scroll_offset =
+                self.mailbox.message_scroll_offset.saturating_add(1);
         }
     }
 
     fn move_message_view_up(&mut self) {
-        if self.viewed_thread_messages.len() > 1 {
+        if self.mailbox.viewed_thread_messages.len() > 1 {
             self.move_thread_focus_up();
         } else {
-            self.message_scroll_offset = self.message_scroll_offset.saturating_sub(1);
+            self.mailbox.message_scroll_offset =
+                self.mailbox.message_scroll_offset.saturating_sub(1);
         }
     }
 
     fn ensure_current_body_state(&mut self) {
-        if let Some(env) = self.viewing_envelope.clone() {
-            if !self.body_cache.contains_key(&env.id) {
+        if let Some(env) = self.mailbox.viewing_envelope.clone() {
+            if !self.mailbox.body_cache.contains_key(&env.id) {
                 self.queue_body_fetch(env.id.clone());
             }
-            self.body_view_state = self.resolve_body_view_state(&env);
+            self.mailbox.body_view_state = self.resolve_body_view_state(&env);
         } else {
-            self.body_view_state = BodyViewState::Empty { preview: None };
+            self.mailbox.body_view_state = BodyViewState::Empty { preview: None };
         }
     }
 
     fn queue_body_fetch(&mut self, message_id: MessageId) {
-        if self.body_cache.contains_key(&message_id)
-            || self.in_flight_body_requests.contains(&message_id)
-            || self.queued_body_fetches.contains(&message_id)
+        if self.mailbox.body_cache.contains_key(&message_id)
+            || self.mailbox.in_flight_body_requests.contains(&message_id)
+            || self.mailbox.queued_body_fetches.contains(&message_id)
         {
             return;
         }
 
-        self.in_flight_body_requests.insert(message_id.clone());
-        self.queued_body_fetches.push(message_id);
+        self.mailbox
+            .in_flight_body_requests
+            .insert(message_id.clone());
+        self.mailbox.queued_body_fetches.push(message_id);
     }
 
     fn queue_thread_fetch(&mut self, thread_id: mxr_core::ThreadId) {
-        if self.pending_thread_fetch.as_ref() == Some(&thread_id)
-            || self.in_flight_thread_fetch.as_ref() == Some(&thread_id)
+        if self.mailbox.pending_thread_fetch.as_ref() == Some(&thread_id)
+            || self.mailbox.in_flight_thread_fetch.as_ref() == Some(&thread_id)
         {
             return;
         }
-        self.pending_thread_fetch = Some(thread_id);
+        self.mailbox.pending_thread_fetch = Some(thread_id);
     }
 
     fn envelope_preview(envelope: &Envelope) -> Option<String> {
@@ -2982,13 +2941,13 @@ impl App {
 
     fn reader_config(&self) -> mxr_reader::ReaderConfig {
         mxr_reader::ReaderConfig {
-            html_command: self.render_html_command.clone(),
+            html_command: self.mailbox.render_html_command.clone(),
             ..Default::default()
         }
     }
 
     fn render_body(&self, raw: &str, source: BodySource) -> (String, Option<(usize, usize)>) {
-        if !self.reader_mode || source == BodySource::Snippet {
+        if !self.mailbox.reader_mode || source == BodySource::Snippet {
             return (raw.to_string(), None);
         }
 
@@ -3056,7 +3015,7 @@ impl App {
                 .text_html
                 .as_deref()
                 .is_some_and(Self::html_has_remote_content),
-            remote_content_enabled: self.remote_content_enabled,
+            remote_content_enabled: self.mailbox.remote_content_enabled,
             original_lines: stats.map(|(original, _)| original),
             cleaned_lines: stats.map(|(_, cleaned)| cleaned),
         }
@@ -3065,8 +3024,8 @@ impl App {
     fn resolve_body_view_state(&self, envelope: &Envelope) -> BodyViewState {
         let preview = Self::envelope_preview(envelope);
 
-        if let Some(body) = self.body_cache.get(&envelope.id) {
-            if self.html_view {
+        if let Some(body) = self.mailbox.body_cache.get(&envelope.id) {
+            if self.mailbox.html_view {
                 if let Some(raw) = body.text_html.clone() {
                     let metadata = self.body_view_metadata(
                         body,
@@ -3106,7 +3065,7 @@ impl App {
                     body,
                     BodySource::Plain,
                     BodyViewMode::Text,
-                    self.reader_mode,
+                    self.mailbox.reader_mode,
                     stats,
                 );
                 return BodyViewState::Ready {
@@ -3123,7 +3082,7 @@ impl App {
                     body,
                     BodySource::Html,
                     BodyViewMode::Text,
-                    self.reader_mode,
+                    self.mailbox.reader_mode,
                     stats,
                 );
                 return BodyViewState::Ready {
@@ -3140,7 +3099,7 @@ impl App {
                     body,
                     BodySource::Fallback,
                     BodyViewMode::Text,
-                    self.reader_mode,
+                    self.mailbox.reader_mode,
                     stats,
                 );
                 return BodyViewState::Ready {
@@ -3154,7 +3113,7 @@ impl App {
             return BodyViewState::Empty { preview };
         }
 
-        if self.in_flight_body_requests.contains(&envelope.id) {
+        if self.mailbox.in_flight_body_requests.contains(&envelope.id) {
             BodyViewState::Loading { preview }
         } else {
             BodyViewState::Empty { preview }
@@ -3163,34 +3122,41 @@ impl App {
 
     pub fn resolve_body_success(&mut self, body: MessageBody) {
         let message_id = body.message_id.clone();
-        self.in_flight_body_requests.remove(&message_id);
-        self.body_cache.insert(message_id.clone(), body);
+        self.mailbox.in_flight_body_requests.remove(&message_id);
+        self.mailbox.body_cache.insert(message_id.clone(), body);
         self.queue_html_assets_for_message(&message_id);
 
-        if self.pending_browser_open_after_load.as_ref() == Some(&message_id) {
-            self.pending_browser_open_after_load = None;
-            if let Some(body) = self.body_cache.get(&message_id).cloned() {
+        if self.mailbox.pending_browser_open_after_load.as_ref() == Some(&message_id) {
+            self.mailbox.pending_browser_open_after_load = None;
+            if let Some(body) = self.mailbox.body_cache.get(&message_id).cloned() {
                 self.queue_browser_open_for_body(message_id.clone(), &body);
             }
         }
 
-        if self.viewing_envelope.as_ref().map(|env| env.id.clone()) == Some(message_id) {
+        if self
+            .mailbox
+            .viewing_envelope
+            .as_ref()
+            .map(|env| env.id.clone())
+            == Some(message_id)
+        {
             self.ensure_current_body_state();
         }
     }
 
     pub fn resolve_body_fetch_error(&mut self, message_id: &MessageId, message: String) {
-        self.in_flight_body_requests.remove(message_id);
-        if self.pending_browser_open_after_load.as_ref() == Some(message_id) {
-            self.pending_browser_open_after_load = None;
+        self.mailbox.in_flight_body_requests.remove(message_id);
+        if self.mailbox.pending_browser_open_after_load.as_ref() == Some(message_id) {
+            self.mailbox.pending_browser_open_after_load = None;
         }
 
         if let Some(env) = self
+            .mailbox
             .viewing_envelope
             .as_ref()
             .filter(|env| &env.id == message_id)
         {
-            self.body_view_state = BodyViewState::Error {
+            self.mailbox.body_view_state = BodyViewState::Error {
                 message,
                 preview: Self::envelope_preview(env),
             };
@@ -3202,11 +3168,12 @@ impl App {
     }
 
     pub fn queue_html_assets_for_current_view(&mut self) {
-        if !self.html_view {
+        if !self.mailbox.html_view {
             return;
         }
 
         let message_ids = self
+            .mailbox
             .viewed_thread_messages
             .iter()
             .map(|message| message.id.clone())
@@ -3217,10 +3184,10 @@ impl App {
     }
 
     pub fn queue_html_assets_for_message(&mut self, message_id: &MessageId) {
-        if !self.html_view {
+        if !self.mailbox.html_view {
             return;
         }
-        let Some(body) = self.body_cache.get(message_id) else {
+        let Some(body) = self.mailbox.body_cache.get(message_id) else {
             return;
         };
         if body.text_html.is_none() {
@@ -3242,6 +3209,7 @@ impl App {
 
     pub fn invalidate_html_assets_for_current_view(&mut self) {
         let message_ids = self
+            .mailbox
             .viewed_thread_messages
             .iter()
             .map(|message| message.id.clone())
@@ -3286,10 +3254,16 @@ impl App {
         }
         self.html_image_assets.insert(message_id.clone(), entries);
 
-        if self.remote_content_enabled != allow_remote {
+        if self.mailbox.remote_content_enabled != allow_remote {
             return;
         }
-        if self.viewing_envelope.as_ref().map(|env| env.id.clone()) == Some(message_id) {
+        if self
+            .mailbox
+            .viewing_envelope
+            .as_ref()
+            .map(|env| env.id.clone())
+            == Some(message_id)
+        {
             self.ensure_current_body_state();
         }
     }
@@ -3356,19 +3330,26 @@ impl App {
     }
 
     pub fn current_viewing_body(&self) -> Option<&MessageBody> {
-        self.viewing_envelope
+        self.mailbox
+            .viewing_envelope
             .as_ref()
-            .and_then(|env| self.body_cache.get(&env.id))
+            .and_then(|env| self.mailbox.body_cache.get(&env.id))
     }
 
     pub fn selected_attachment(&self) -> Option<&AttachmentMeta> {
-        self.attachment_panel
+        self.mailbox
+            .attachment_panel
             .attachments
-            .get(self.attachment_panel.selected_index)
+            .get(self.mailbox.attachment_panel.selected_index)
     }
 
     pub fn open_attachment_panel(&mut self) {
-        let Some(message_id) = self.viewing_envelope.as_ref().map(|env| env.id.clone()) else {
+        let Some(message_id) = self
+            .mailbox
+            .viewing_envelope
+            .as_ref()
+            .map(|env| env.id.clone())
+        else {
             self.status_message = Some("No message selected".into());
             return;
         };
@@ -3384,11 +3365,11 @@ impl App {
             return;
         }
 
-        self.attachment_panel.visible = true;
-        self.attachment_panel.message_id = Some(message_id);
-        self.attachment_panel.attachments = attachments;
-        self.attachment_panel.selected_index = 0;
-        self.attachment_panel.status = None;
+        self.mailbox.attachment_panel.visible = true;
+        self.mailbox.attachment_panel.message_id = Some(message_id);
+        self.mailbox.attachment_panel.attachments = attachments;
+        self.mailbox.attachment_panel.selected_index = 0;
+        self.mailbox.attachment_panel.status = None;
     }
 
     pub fn open_url_modal(&mut self) {
@@ -3404,27 +3385,27 @@ impl App {
             self.status_message = Some("No links found".into());
             return;
         }
-        self.url_modal = Some(ui::url_modal::UrlModalState::new(urls));
+        self.mailbox.url_modal = Some(ui::url_modal::UrlModalState::new(urls));
     }
 
     pub fn close_attachment_panel(&mut self) {
-        self.attachment_panel = AttachmentPanelState::default();
-        self.pending_attachment_action = None;
+        self.mailbox.attachment_panel = AttachmentPanelState::default();
+        self.mailbox.pending_attachment_action = None;
     }
 
     pub fn queue_attachment_action(&mut self, operation: AttachmentOperation) {
-        let Some(message_id) = self.attachment_panel.message_id.clone() else {
+        let Some(message_id) = self.mailbox.attachment_panel.message_id.clone() else {
             return;
         };
         let Some(attachment) = self.selected_attachment().cloned() else {
             return;
         };
 
-        self.attachment_panel.status = Some(match operation {
+        self.mailbox.attachment_panel.status = Some(match operation {
             AttachmentOperation::Open => format!("Opening {}...", attachment.filename),
             AttachmentOperation::Download => format!("Downloading {}...", attachment.filename),
         });
-        self.pending_attachment_action = Some(PendingAttachmentAction {
+        self.mailbox.pending_attachment_action = Some(PendingAttachmentAction {
             message_id,
             attachment_id: attachment.id,
             operation,
@@ -3433,12 +3414,12 @@ impl App {
 
     pub fn resolve_attachment_file(&mut self, file: &mxr_protocol::AttachmentFile) {
         let path = std::path::PathBuf::from(&file.path);
-        for attachment in &mut self.attachment_panel.attachments {
+        for attachment in &mut self.mailbox.attachment_panel.attachments {
             if attachment.id == file.attachment_id {
                 attachment.local_path = Some(path.clone());
             }
         }
-        for body in self.body_cache.values_mut() {
+        for body in self.mailbox.body_cache.values_mut() {
             for attachment in &mut body.attachments {
                 if attachment.id == file.attachment_id {
                     attachment.local_path = Some(path.clone());
@@ -3452,7 +3433,8 @@ impl App {
             .label_provider_ids
             .iter()
             .filter_map(|provider_id| {
-                self.labels
+                self.mailbox
+                    .labels
                     .iter()
                     .find(|label| &label.provider_id == provider_id)
                     .map(|label| crate::ui::sidebar::humanize_label(&label.name).to_string())
@@ -3461,7 +3443,8 @@ impl App {
     }
 
     fn attachment_summaries_for_envelope(&self, envelope: &Envelope) -> Vec<AttachmentSummary> {
-        self.body_cache
+        self.mailbox
+            .body_cache
             .get(&envelope.id)
             .map(|body| {
                 body.attachments
@@ -3476,18 +3459,23 @@ impl App {
     }
 
     fn thread_message_blocks(&self) -> Vec<ui::message_view::ThreadMessageBlock> {
-        self.viewed_thread_messages
+        self.mailbox
+            .viewed_thread_messages
             .iter()
             .map(|message| ui::message_view::ThreadMessageBlock {
                 envelope: message.clone(),
                 body_state: self.resolve_body_view_state(message),
                 labels: self.label_chips_for_envelope(message),
                 attachments: self.attachment_summaries_for_envelope(message),
-                selected: self.viewing_envelope.as_ref().map(|env| env.id.clone())
+                selected: self
+                    .mailbox
+                    .viewing_envelope
+                    .as_ref()
+                    .map(|env| env.id.clone())
                     == Some(message.id.clone()),
-                bulk_selected: self.selected_set.contains(&message.id),
+                bulk_selected: self.mailbox.selected_set.contains(&message.id),
                 has_unsubscribe: !matches!(message.unsubscribe, UnsubscribeMethod::None),
-                signature_expanded: self.signature_expanded,
+                signature_expanded: self.mailbox.signature_expanded,
             })
             .collect()
     }
@@ -3500,25 +3488,26 @@ impl App {
     ) {
         let add_provider_ids = self.resolve_label_provider_ids(add);
         let remove_provider_ids = self.resolve_label_provider_ids(remove);
-        for envelope in self
-            .envelopes
-            .iter_mut()
-            .chain(self.all_envelopes.iter_mut())
-            .chain(self.search_page.results.iter_mut())
-            .chain(self.viewed_thread_messages.iter_mut())
-        {
-            if message_ids
-                .iter()
-                .any(|message_id| message_id == &envelope.id)
-            {
-                apply_provider_label_changes(
-                    &mut envelope.label_provider_ids,
-                    &add_provider_ids,
-                    &remove_provider_ids,
-                );
+        for envelopes in [
+            &mut self.mailbox.envelopes,
+            &mut self.mailbox.all_envelopes,
+            &mut self.search_page.results,
+            &mut self.mailbox.viewed_thread_messages,
+        ] {
+            for envelope in envelopes {
+                if message_ids
+                    .iter()
+                    .any(|message_id| message_id == &envelope.id)
+                {
+                    apply_provider_label_changes(
+                        &mut envelope.label_provider_ids,
+                        &add_provider_ids,
+                        &remove_provider_ids,
+                    );
+                }
             }
         }
-        if let Some(ref mut envelope) = self.viewing_envelope {
+        if let Some(ref mut envelope) = self.mailbox.viewing_envelope {
             if message_ids
                 .iter()
                 .any(|message_id| message_id == &envelope.id)
@@ -3533,18 +3522,19 @@ impl App {
     }
 
     pub fn apply_local_flags(&mut self, message_id: &MessageId, flags: MessageFlags) {
-        for envelope in self
-            .envelopes
-            .iter_mut()
-            .chain(self.all_envelopes.iter_mut())
-            .chain(self.search_page.results.iter_mut())
-            .chain(self.viewed_thread_messages.iter_mut())
-        {
-            if &envelope.id == message_id {
-                envelope.flags = flags;
+        for envelopes in [
+            &mut self.mailbox.envelopes,
+            &mut self.mailbox.all_envelopes,
+            &mut self.search_page.results,
+            &mut self.mailbox.viewed_thread_messages,
+        ] {
+            for envelope in envelopes {
+                if &envelope.id == message_id {
+                    envelope.flags = flags;
+                }
             }
         }
-        if let Some(envelope) = self.viewing_envelope.as_mut() {
+        if let Some(envelope) = self.mailbox.viewing_envelope.as_mut() {
             if &envelope.id == message_id {
                 envelope.flags = flags;
             }
@@ -3656,56 +3646,57 @@ impl App {
     }
 
     pub fn refresh_mailbox_after_mutation_failure(&mut self) {
-        self.pending_labels_refresh = true;
-        self.pending_all_envelopes_refresh = true;
+        self.mailbox.pending_labels_refresh = true;
+        self.mailbox.pending_all_envelopes_refresh = true;
         self.pending_status_refresh = true;
-        self.pending_subscriptions_refresh = true;
+        self.mailbox.pending_subscriptions_refresh = true;
         if let Some(label_id) = self
+            .mailbox
             .pending_active_label
             .clone()
-            .or_else(|| self.active_label.clone())
+            .or_else(|| self.mailbox.active_label.clone())
         {
-            self.pending_label_fetch = Some(label_id);
+            self.mailbox.pending_label_fetch = Some(label_id);
         }
     }
 
     pub(crate) fn clear_message_view_state(&mut self) {
-        self.pending_preview_read = None;
-        self.viewing_envelope = None;
-        self.viewed_thread = None;
-        self.viewed_thread_messages.clear();
-        self.thread_selected_index = 0;
-        self.pending_thread_fetch = None;
-        self.in_flight_thread_fetch = None;
-        self.message_scroll_offset = 0;
-        self.body_view_state = BodyViewState::Empty { preview: None };
+        self.mailbox.pending_preview_read = None;
+        self.mailbox.viewing_envelope = None;
+        self.mailbox.viewed_thread = None;
+        self.mailbox.viewed_thread_messages.clear();
+        self.mailbox.thread_selected_index = 0;
+        self.mailbox.pending_thread_fetch = None;
+        self.mailbox.in_flight_thread_fetch = None;
+        self.mailbox.message_scroll_offset = 0;
+        self.mailbox.body_view_state = BodyViewState::Empty { preview: None };
     }
 
     pub(crate) fn handle_account_switch_complete(&mut self) {
         self.clear_message_view_state();
         self.close_attachment_panel();
-        self.mailbox_view = MailboxView::Messages;
-        self.layout_mode = LayoutMode::TwoPane;
-        if self.active_pane == ActivePane::MessageView {
-            self.active_pane = ActivePane::MailList;
+        self.mailbox.mailbox_view = MailboxView::Messages;
+        self.mailbox.layout_mode = LayoutMode::TwoPane;
+        if self.mailbox.active_pane == ActivePane::MessageView {
+            self.mailbox.active_pane = ActivePane::MailList;
         }
-        self.envelopes.clear();
-        self.all_envelopes.clear();
+        self.mailbox.envelopes.clear();
+        self.mailbox.all_envelopes.clear();
         self.search_page.results.clear();
-        self.subscriptions_page.entries.clear();
-        self.selected_set.clear();
-        self.active_label = None;
-        self.pending_active_label = None;
-        self.pending_label_fetch = None;
-        self.selected_index = 0;
-        self.scroll_offset = 0;
-        self.pending_labels_refresh = true;
-        self.pending_all_envelopes_refresh = true;
-        self.pending_subscriptions_refresh = true;
+        self.mailbox.subscriptions_page.entries.clear();
+        self.mailbox.selected_set.clear();
+        self.mailbox.active_label = None;
+        self.mailbox.pending_active_label = None;
+        self.mailbox.pending_label_fetch = None;
+        self.mailbox.selected_index = 0;
+        self.mailbox.scroll_offset = 0;
+        self.mailbox.pending_labels_refresh = true;
+        self.mailbox.pending_all_envelopes_refresh = true;
+        self.mailbox.pending_subscriptions_refresh = true;
         self.pending_status_refresh = true;
-        self.desired_system_mailbox = Some("INBOX".into());
-        self.mailbox_loading_message = Some("Loading selected account...".into());
-        self.mailbox_loading_throbber = ThrobberState::default();
+        self.mailbox.desired_system_mailbox = Some("INBOX".into());
+        self.mailbox.mailbox_loading_message = Some("Loading selected account...".into());
+        self.mailbox.mailbox_loading_throbber = ThrobberState::default();
         self.status_message = Some("Loading selected account...".into());
     }
 
@@ -3715,25 +3706,31 @@ impl App {
         }
 
         let viewing_removed = self
+            .mailbox
             .viewing_envelope
             .as_ref()
             .is_some_and(|envelope| ids.iter().any(|id| id == &envelope.id));
-        let reader_was_open =
-            self.layout_mode == LayoutMode::ThreePane && self.viewing_envelope.is_some();
+        let reader_was_open = self.mailbox.layout_mode == LayoutMode::ThreePane
+            && self.mailbox.viewing_envelope.is_some();
 
-        self.envelopes
+        self.mailbox
+            .envelopes
             .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
-        self.all_envelopes
+        self.mailbox
+            .all_envelopes
             .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
         self.search_page
             .results
             .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
-        self.viewed_thread_messages
+        self.mailbox
+            .viewed_thread_messages
             .retain(|envelope| !ids.iter().any(|id| id == &envelope.id));
-        self.selected_set
+        self.mailbox
+            .selected_set
             .retain(|message_id| !ids.iter().any(|id| id == message_id));
 
-        self.selected_index = self
+        self.mailbox.selected_index = self
+            .mailbox
             .selected_index
             .min(self.mail_row_count().saturating_sub(1));
         self.search_page.selected_index = self
@@ -3758,10 +3755,12 @@ impl App {
                 }
             }
 
-            if self.viewing_envelope.is_none() && self.layout_mode == LayoutMode::ThreePane {
-                self.layout_mode = LayoutMode::TwoPane;
-                if self.active_pane == ActivePane::MessageView {
-                    self.active_pane = ActivePane::MailList;
+            if self.mailbox.viewing_envelope.is_none()
+                && self.mailbox.layout_mode == LayoutMode::ThreePane
+            {
+                self.mailbox.layout_mode = LayoutMode::TwoPane;
+                if self.mailbox.active_pane == ActivePane::MessageView {
+                    self.mailbox.active_pane = ActivePane::MailList;
                 }
             }
         } else {
@@ -3774,15 +3773,17 @@ impl App {
     }
 
     fn message_flags(&self, message_id: &MessageId) -> Option<MessageFlags> {
-        self.envelopes
+        self.mailbox
+            .envelopes
             .iter()
-            .chain(self.all_envelopes.iter())
+            .chain(self.mailbox.all_envelopes.iter())
             .chain(self.search_page.results.iter())
-            .chain(self.viewed_thread_messages.iter())
+            .chain(self.mailbox.viewed_thread_messages.iter())
             .find(|envelope| &envelope.id == message_id)
             .map(|envelope| envelope.flags)
             .or_else(|| {
-                self.viewing_envelope
+                self.mailbox
+                    .viewing_envelope
                     .as_ref()
                     .filter(|envelope| &envelope.id == message_id)
                     .map(|envelope| envelope.flags)
@@ -3809,7 +3810,8 @@ impl App {
     fn resolve_label_provider_ids(&self, refs: &[String]) -> Vec<String> {
         refs.iter()
             .filter_map(|label_ref| {
-                self.labels
+                self.mailbox
+                    .labels
                     .iter()
                     .find(|label| label.provider_id == *label_ref || label.name == *label_ref)
                     .map(|label| label.provider_id.clone())
@@ -3820,10 +3822,11 @@ impl App {
 
     pub fn resolve_thread_success(&mut self, thread: Thread, mut messages: Vec<Envelope>) {
         let thread_id = thread.id.clone();
-        self.in_flight_thread_fetch = None;
+        self.mailbox.in_flight_thread_fetch = None;
         messages.sort_by_key(|message| message.date);
 
         if self
+            .mailbox
             .viewing_envelope
             .as_ref()
             .map(|env| env.thread_id.clone())
@@ -3833,11 +3836,12 @@ impl App {
             for message in &messages {
                 self.queue_body_fetch(message.id.clone());
             }
-            self.viewed_thread = Some(thread);
-            self.viewed_thread_messages = messages;
-            self.thread_selected_index = focused_message_id
+            self.mailbox.viewed_thread = Some(thread);
+            self.mailbox.viewed_thread_messages = messages;
+            self.mailbox.thread_selected_index = focused_message_id
                 .and_then(|message_id| {
-                    self.viewed_thread_messages
+                    self.mailbox
+                        .viewed_thread_messages
                         .iter()
                         .position(|message| message.id == message_id)
                 })
@@ -3848,15 +3852,15 @@ impl App {
     }
 
     pub fn resolve_thread_fetch_error(&mut self, thread_id: &mxr_core::ThreadId) {
-        if self.in_flight_thread_fetch.as_ref() == Some(thread_id) {
-            self.in_flight_thread_fetch = None;
+        if self.mailbox.in_flight_thread_fetch.as_ref() == Some(thread_id) {
+            self.mailbox.in_flight_thread_fetch = None;
         }
     }
 
     /// Get IDs to mutate: selected_set if non-empty, else context_envelope.
     fn mutation_target_ids(&self) -> Vec<MessageId> {
-        if !self.selected_set.is_empty() {
-            self.selected_set.iter().cloned().collect()
+        if !self.mailbox.selected_set.is_empty() {
+            self.mailbox.selected_set.iter().cloned().collect()
         } else if let Some(env) = self.context_envelope() {
             vec![env.id.clone()]
         } else {
@@ -3865,9 +3869,9 @@ impl App {
     }
 
     fn clear_selection(&mut self) {
-        self.selected_set.clear();
-        self.visual_mode = false;
-        self.visual_anchor = None;
+        self.mailbox.selected_set.clear();
+        self.mailbox.visual_mode = false;
+        self.mailbox.visual_anchor = None;
     }
 
     #[expect(
@@ -3904,18 +3908,18 @@ impl App {
 
     /// Update visual selection range when moving in visual mode.
     fn update_visual_selection(&mut self) {
-        if self.visual_mode {
-            if let Some(anchor) = self.visual_anchor {
+        if self.mailbox.visual_mode {
+            if let Some(anchor) = self.mailbox.visual_anchor {
                 let (cursor, source) = if self.screen == Screen::Search {
                     (self.search_page.selected_index, &self.search_page.results)
                 } else {
-                    (self.selected_index, &self.envelopes)
+                    (self.mailbox.selected_index, &self.mailbox.envelopes)
                 };
                 let start = anchor.min(cursor);
                 let end = anchor.max(cursor);
-                self.selected_set.clear();
+                self.mailbox.selected_set.clear();
                 for env in source.iter().skip(start).take(end - start + 1) {
-                    self.selected_set.insert(env.id.clone());
+                    self.mailbox.selected_set.insert(env.id.clone());
                 }
             }
         }
@@ -3924,10 +3928,10 @@ impl App {
     /// Ensure selected_index is visible within the scroll viewport.
     fn ensure_visible(&mut self) {
         let h = self.visible_height.max(1);
-        if self.selected_index < self.scroll_offset {
-            self.scroll_offset = self.selected_index;
-        } else if self.selected_index >= self.scroll_offset + h {
-            self.scroll_offset = self.selected_index + 1 - h;
+        if self.mailbox.selected_index < self.mailbox.scroll_offset {
+            self.mailbox.scroll_offset = self.mailbox.selected_index;
+        } else if self.mailbox.selected_index >= self.mailbox.scroll_offset + h {
+            self.mailbox.scroll_offset = self.mailbox.selected_index + 1 - h;
         }
         // Prefetch bodies for messages near the cursor
         self.queue_body_window();
@@ -3937,7 +3941,7 @@ impl App {
         let selected_id = self
             .selected_subscription_entry()
             .map(|entry| entry.summary.latest_message_id.clone());
-        self.subscriptions_page.entries = subscriptions
+        self.mailbox.subscriptions_page.entries = subscriptions
             .into_iter()
             .map(|summary| SubscriptionEntry {
                 envelope: subscription_summary_to_envelope(&summary),
@@ -3945,38 +3949,47 @@ impl App {
             })
             .collect();
 
-        if self.subscriptions_page.entries.is_empty() {
-            if self.mailbox_view == MailboxView::Subscriptions {
-                self.selected_index = 0;
-                self.scroll_offset = 0;
-                self.viewing_envelope = None;
-                self.viewed_thread = None;
-                self.viewed_thread_messages.clear();
-                self.body_view_state = BodyViewState::Empty { preview: None };
+        if self.mailbox.subscriptions_page.entries.is_empty() {
+            if self.mailbox.mailbox_view == MailboxView::Subscriptions {
+                self.mailbox.selected_index = 0;
+                self.mailbox.scroll_offset = 0;
+                self.mailbox.viewing_envelope = None;
+                self.mailbox.viewed_thread = None;
+                self.mailbox.viewed_thread_messages.clear();
+                self.mailbox.body_view_state = BodyViewState::Empty { preview: None };
             }
             return;
         }
 
         if let Some(selected_id) = selected_id {
             if let Some(position) = self
+                .mailbox
                 .subscriptions_page
                 .entries
                 .iter()
                 .position(|entry| entry.summary.latest_message_id == selected_id)
             {
-                self.selected_index = position;
+                self.mailbox.selected_index = position;
             } else {
-                self.selected_index = self
-                    .selected_index
-                    .min(self.subscriptions_page.entries.len().saturating_sub(1));
+                self.mailbox.selected_index = self.mailbox.selected_index.min(
+                    self.mailbox
+                        .subscriptions_page
+                        .entries
+                        .len()
+                        .saturating_sub(1),
+                );
             }
         } else {
-            self.selected_index = self
-                .selected_index
-                .min(self.subscriptions_page.entries.len().saturating_sub(1));
+            self.mailbox.selected_index = self.mailbox.selected_index.min(
+                self.mailbox
+                    .subscriptions_page
+                    .entries
+                    .len()
+                    .saturating_sub(1),
+            );
         }
 
-        if self.mailbox_view == MailboxView::Subscriptions {
+        if self.mailbox.mailbox_view == MailboxView::Subscriptions {
             self.ensure_visible();
             self.auto_preview();
         }
@@ -4197,6 +4210,7 @@ fn account_summary_to_config(
         key: account.key.clone()?,
         name: account.name.clone(),
         email: account.email.clone(),
+        enabled: account.enabled,
         sync: account.sync.clone(),
         send: account.send.clone(),
         is_default: account.is_default,

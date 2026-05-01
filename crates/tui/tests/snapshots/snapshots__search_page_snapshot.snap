@@ -1,6 +1,6 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 355
+assertion_line: 360
 expression: snapshot
 ---
 "╭ Search All Mail [lexical] ─────────────────────────────────────────────────────────────╮"
@@ -13,9 +13,9 @@ expression: snapshot
 "│                                       ││Date:     2024-03-15 09:30                     │"
 "│                                       ││Subject:  Snapshot fixture                     │"
 "│                                       ││ INBOX                                         │"
-"│                                       ││List:      unsubscribe                         │"
+"│                                       ││List:      Open unsubscribe page (D)           │"
 "│                                       ││                                               │"
-"│                                       ││ text  plain                                   │"
+"│                                       ││ plain text                                    │"
 "│                                       ││                                               │"
 "│                                       ││Preview body                                   │"
 "│                                       ││                                               │"

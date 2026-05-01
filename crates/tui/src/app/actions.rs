@@ -25,7 +25,7 @@ impl App {
             return;
         };
 
-        self.pending_browser_open = Some(PendingBrowserOpen {
+        self.mailbox.pending_browser_open = Some(PendingBrowserOpen {
             message_id,
             document,
         });
@@ -33,14 +33,19 @@ impl App {
     }
 
     fn queue_current_message_browser_open(&mut self) {
-        let Some(message_id) = self.viewing_envelope.as_ref().map(|env| env.id.clone()) else {
+        let Some(message_id) = self
+            .mailbox
+            .viewing_envelope
+            .as_ref()
+            .map(|env| env.id.clone())
+        else {
             self.status_message = Some("No message selected".into());
             return;
         };
 
         let Some(body) = self.current_viewing_body() else {
             self.queue_body_fetch(message_id.clone());
-            self.pending_browser_open_after_load = Some(message_id);
+            self.mailbox.pending_browser_open_after_load = Some(message_id);
             self.status_message = Some("Loading message body...".into());
             return;
         };
@@ -54,8 +59,8 @@ impl App {
         if self.search_is_pending() {
             self.search_page.throbber.calc_next();
         }
-        if self.mailbox_loading_message.is_some() {
-            self.mailbox_loading_throbber.calc_next();
+        if self.mailbox.mailbox_loading_message.is_some() {
+            self.mailbox.mailbox_loading_throbber.calc_next();
         }
         if self.accounts_page.operation_in_flight {
             self.accounts_page.throbber.calc_next();
@@ -78,15 +83,15 @@ impl App {
                 }
                 self.maybe_preserve_new_account_form_draft();
                 self.screen = Screen::Mailbox;
-                self.active_pane = if self.layout_mode == LayoutMode::ThreePane {
+                self.mailbox.active_pane = if self.mailbox.layout_mode == LayoutMode::ThreePane {
                     ActivePane::MailList
                 } else {
-                    self.active_pane
+                    self.mailbox.active_pane
                 };
             }
             Action::OpenSearchScreen => {
                 self.maybe_preserve_new_account_form_draft();
-                self.pending_preview_read = None;
+                self.mailbox.pending_preview_read = None;
                 self.screen = Screen::Search;
                 if self.search_page.has_session() {
                     self.search_page.editing = false;
@@ -101,7 +106,7 @@ impl App {
             }
             Action::OpenGlobalSearch => {
                 self.maybe_preserve_new_account_form_draft();
-                self.pending_preview_read = None;
+                self.mailbox.pending_preview_read = None;
                 self.search_bar.deactivate();
                 self.screen = Screen::Search;
                 if !self.search_page.has_session() {
@@ -115,18 +120,18 @@ impl App {
             }
             Action::OpenRulesScreen => {
                 self.maybe_preserve_new_account_form_draft();
-                self.pending_preview_read = None;
+                self.mailbox.pending_preview_read = None;
                 self.screen = Screen::Rules;
                 self.rules_page.refresh_pending = true;
             }
             Action::OpenDiagnosticsScreen => {
                 self.maybe_preserve_new_account_form_draft();
-                self.pending_preview_read = None;
+                self.mailbox.pending_preview_read = None;
                 self.screen = Screen::Diagnostics;
                 self.diagnostics_page.refresh_pending = true;
             }
             Action::OpenAccountsScreen => {
-                self.pending_preview_read = None;
+                self.mailbox.pending_preview_read = None;
                 self.screen = Screen::Accounts;
                 self.accounts_page.refresh_pending = true;
             }
@@ -226,8 +231,8 @@ impl App {
                     self.sync_search_cursor_after_move();
                     return;
                 }
-                if self.selected_index + 1 < self.mail_row_count() {
-                    self.selected_index += 1;
+                if self.mailbox.selected_index + 1 < self.mail_row_count() {
+                    self.mailbox.selected_index += 1;
                 }
                 self.ensure_visible();
                 self.update_visual_selection();
@@ -241,8 +246,8 @@ impl App {
                     self.sync_search_cursor_after_move();
                     return;
                 }
-                if self.selected_index > 0 {
-                    self.selected_index -= 1;
+                if self.mailbox.selected_index > 0 {
+                    self.mailbox.selected_index -= 1;
                 }
                 self.ensure_visible();
                 self.update_visual_selection();
@@ -254,8 +259,8 @@ impl App {
                     self.sync_search_cursor_after_move();
                     return;
                 }
-                self.selected_index = 0;
-                self.scroll_offset = 0;
+                self.mailbox.selected_index = 0;
+                self.mailbox.scroll_offset = 0;
                 self.auto_preview();
             }
             Action::JumpBottom => {
@@ -270,7 +275,7 @@ impl App {
                     return;
                 }
                 if self.mail_row_count() > 0 {
-                    self.selected_index = self.mail_row_count() - 1;
+                    self.mailbox.selected_index = self.mail_row_count() - 1;
                 }
                 self.ensure_visible();
                 self.auto_preview();
@@ -284,8 +289,8 @@ impl App {
                     return;
                 }
                 let page = self.visible_height.max(1);
-                self.selected_index =
-                    (self.selected_index + page).min(self.mail_row_count().saturating_sub(1));
+                self.mailbox.selected_index = (self.mailbox.selected_index + page)
+                    .min(self.mail_row_count().saturating_sub(1));
                 self.ensure_visible();
                 self.auto_preview();
             }
@@ -298,29 +303,32 @@ impl App {
                     return;
                 }
                 let page = self.visible_height.max(1);
-                self.selected_index = self.selected_index.saturating_sub(page);
+                self.mailbox.selected_index = self.mailbox.selected_index.saturating_sub(page);
                 self.ensure_visible();
                 self.auto_preview();
             }
             Action::ViewportTop => {
-                self.selected_index = self.scroll_offset;
+                self.mailbox.selected_index = self.mailbox.scroll_offset;
                 self.auto_preview();
             }
             Action::ViewportMiddle => {
                 let visible_height = 20;
-                self.selected_index = (self.scroll_offset + visible_height / 2)
+                self.mailbox.selected_index = (self.mailbox.scroll_offset + visible_height / 2)
                     .min(self.mail_row_count().saturating_sub(1));
                 self.auto_preview();
             }
             Action::ViewportBottom => {
                 let visible_height = 20;
-                self.selected_index = (self.scroll_offset + visible_height)
+                self.mailbox.selected_index = (self.mailbox.scroll_offset + visible_height)
                     .min(self.mail_row_count().saturating_sub(1));
                 self.auto_preview();
             }
             Action::CenterCurrent => {
                 let visible_height = 20;
-                self.scroll_offset = self.selected_index.saturating_sub(visible_height / 2);
+                self.mailbox.scroll_offset = self
+                    .mailbox
+                    .selected_index
+                    .saturating_sub(visible_height / 2);
             }
             Action::SwitchPane => {
                 if self.screen == Screen::Search {
@@ -333,19 +341,20 @@ impl App {
                     };
                     return;
                 }
-                self.active_pane = match (self.layout_mode, self.active_pane) {
-                    // ThreePane: Sidebar → MailList → MessageView → Sidebar
-                    (LayoutMode::ThreePane, ActivePane::Sidebar) => ActivePane::MailList,
-                    (LayoutMode::ThreePane, ActivePane::MailList) => ActivePane::MessageView,
-                    (LayoutMode::ThreePane, ActivePane::MessageView) => ActivePane::Sidebar,
-                    // FullScreen: Sidebar → MessageView → Sidebar
-                    (LayoutMode::FullScreen, ActivePane::Sidebar) => ActivePane::MessageView,
-                    (LayoutMode::FullScreen, ActivePane::MessageView) => ActivePane::Sidebar,
-                    // TwoPane: Sidebar → MailList → Sidebar
-                    (_, ActivePane::Sidebar) => ActivePane::MailList,
-                    (_, ActivePane::MailList) => ActivePane::Sidebar,
-                    (_, ActivePane::MessageView) => ActivePane::Sidebar,
-                };
+                self.mailbox.active_pane =
+                    match (self.mailbox.layout_mode, self.mailbox.active_pane) {
+                        // ThreePane: Sidebar → MailList → MessageView → Sidebar
+                        (LayoutMode::ThreePane, ActivePane::Sidebar) => ActivePane::MailList,
+                        (LayoutMode::ThreePane, ActivePane::MailList) => ActivePane::MessageView,
+                        (LayoutMode::ThreePane, ActivePane::MessageView) => ActivePane::Sidebar,
+                        // FullScreen: Sidebar → MessageView → Sidebar
+                        (LayoutMode::FullScreen, ActivePane::Sidebar) => ActivePane::MessageView,
+                        (LayoutMode::FullScreen, ActivePane::MessageView) => ActivePane::Sidebar,
+                        // TwoPane: Sidebar → MailList → Sidebar
+                        (_, ActivePane::Sidebar) => ActivePane::MailList,
+                        (_, ActivePane::MailList) => ActivePane::Sidebar,
+                        (_, ActivePane::MessageView) => ActivePane::Sidebar,
+                    };
             }
             Action::OpenSelected => {
                 if let Some(pending) = self.pending_bulk_confirm.take() {
@@ -360,21 +369,21 @@ impl App {
                     self.open_selected_search_result();
                     return;
                 }
-                if self.mailbox_view == MailboxView::Subscriptions {
+                if self.mailbox.mailbox_view == MailboxView::Subscriptions {
                     if let Some(entry) = self.selected_subscription_entry().cloned() {
                         self.open_envelope(entry.envelope);
-                        self.layout_mode = LayoutMode::ThreePane;
-                        self.active_pane = ActivePane::MessageView;
+                        self.mailbox.layout_mode = LayoutMode::ThreePane;
+                        self.mailbox.active_pane = ActivePane::MessageView;
                     }
                     return;
                 }
                 if let Some(row) = self.selected_mail_row() {
                     self.open_envelope(row.representative);
-                    self.layout_mode = LayoutMode::ThreePane;
-                    self.active_pane = ActivePane::MessageView;
+                    self.mailbox.layout_mode = LayoutMode::ThreePane;
+                    self.mailbox.active_pane = ActivePane::MessageView;
                 }
             }
-            Action::Back => match self.active_pane {
+            Action::Back => match self.mailbox.active_pane {
                 _ if self.screen != Screen::Mailbox => {
                     self.screen = Screen::Mailbox;
                 }
@@ -382,13 +391,13 @@ impl App {
                     self.apply(Action::CloseMessageView);
                 }
                 ActivePane::MailList => {
-                    if !self.selected_set.is_empty() {
+                    if !self.mailbox.selected_set.is_empty() {
                         self.apply(Action::ClearSelection);
                     } else if self.search_active {
                         self.apply(Action::CloseSearch);
-                    } else if self.active_label.is_some() {
+                    } else if self.mailbox.active_label.is_some() {
                         self.apply(Action::ClearFilter);
-                    } else if self.layout_mode == LayoutMode::ThreePane {
+                    } else if self.mailbox.layout_mode == LayoutMode::ThreePane {
                         self.apply(Action::CloseMessageView);
                     }
                 }
@@ -421,7 +430,7 @@ impl App {
                         self.trigger_live_search();
                     }
                     // Return focus to mail list so j/k navigates results
-                    self.active_pane = ActivePane::MailList;
+                    self.mailbox.active_pane = ActivePane::MailList;
                 }
             }
             Action::CycleSearchMode => {
@@ -438,78 +447,84 @@ impl App {
                 self.search_active = false;
                 Self::bump_search_session_id(&mut self.mailbox_search_session_id);
                 // Restore full envelope list
-                self.envelopes = self.all_mail_envelopes();
-                self.selected_index = 0;
-                self.scroll_offset = 0;
+                self.mailbox.envelopes = self.all_mail_envelopes();
+                self.mailbox.selected_index = 0;
+                self.mailbox.scroll_offset = 0;
             }
             Action::NextSearchResult => {
-                if self.search_active && self.selected_index + 1 < self.envelopes.len() {
-                    self.selected_index += 1;
+                if self.search_active
+                    && self.mailbox.selected_index + 1 < self.mailbox.envelopes.len()
+                {
+                    self.mailbox.selected_index += 1;
                     self.ensure_visible();
                     self.auto_preview();
                 }
             }
             Action::PrevSearchResult => {
-                if self.search_active && self.selected_index > 0 {
-                    self.selected_index -= 1;
+                if self.search_active && self.mailbox.selected_index > 0 {
+                    self.mailbox.selected_index -= 1;
                     self.ensure_visible();
                     self.auto_preview();
                 }
             }
             // Navigation
             Action::GoToInbox => {
-                if let Some(label) = self.labels.iter().find(|l| l.name == "INBOX") {
+                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "INBOX") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
-                    self.desired_system_mailbox = Some("INBOX".into());
+                    self.mailbox.desired_system_mailbox = Some("INBOX".into());
                 }
             }
             Action::GoToStarred => {
-                if let Some(label) = self.labels.iter().find(|l| l.name == "STARRED") {
+                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "STARRED") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
-                    self.desired_system_mailbox = Some("STARRED".into());
+                    self.mailbox.desired_system_mailbox = Some("STARRED".into());
                 }
             }
             Action::GoToSent => {
-                if let Some(label) = self.labels.iter().find(|l| l.name == "SENT") {
+                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "SENT") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
-                    self.desired_system_mailbox = Some("SENT".into());
+                    self.mailbox.desired_system_mailbox = Some("SENT".into());
                 }
             }
             Action::GoToDrafts => {
-                if let Some(label) = self.labels.iter().find(|l| l.name == "DRAFT") {
+                if let Some(label) = self.mailbox.labels.iter().find(|l| l.name == "DRAFT") {
                     self.apply(Action::SelectLabel(label.id.clone()));
                 } else {
-                    self.desired_system_mailbox = Some("DRAFT".into());
+                    self.mailbox.desired_system_mailbox = Some("DRAFT".into());
                 }
             }
             Action::GoToAllMail => {
-                self.mailbox_view = MailboxView::Messages;
+                self.mailbox.mailbox_view = MailboxView::Messages;
                 self.apply(Action::ClearFilter);
             }
             Action::OpenSubscriptions => {
-                self.mailbox_view = MailboxView::Subscriptions;
-                self.active_label = None;
-                self.pending_active_label = None;
-                self.pending_label_fetch = None;
-                self.pending_preview_read = None;
-                self.desired_system_mailbox = None;
+                self.mailbox.mailbox_view = MailboxView::Subscriptions;
+                self.mailbox.active_label = None;
+                self.mailbox.pending_active_label = None;
+                self.mailbox.pending_label_fetch = None;
+                self.mailbox.pending_preview_read = None;
+                self.mailbox.desired_system_mailbox = None;
                 self.search_active = false;
                 self.screen = Screen::Mailbox;
-                self.active_pane = ActivePane::MailList;
-                self.selected_index = self
-                    .selected_index
-                    .min(self.subscriptions_page.entries.len().saturating_sub(1));
-                self.scroll_offset = 0;
-                if self.subscriptions_page.entries.is_empty() {
-                    self.pending_subscriptions_refresh = true;
+                self.mailbox.active_pane = ActivePane::MailList;
+                self.mailbox.selected_index = self.mailbox.selected_index.min(
+                    self.mailbox
+                        .subscriptions_page
+                        .entries
+                        .len()
+                        .saturating_sub(1),
+                );
+                self.mailbox.scroll_offset = 0;
+                if self.mailbox.subscriptions_page.entries.is_empty() {
+                    self.mailbox.pending_subscriptions_refresh = true;
                 }
                 self.auto_preview();
             }
             Action::GoToLabel => {
-                self.mailbox_view = MailboxView::Messages;
+                self.mailbox.mailbox_view = MailboxView::Messages;
                 self.apply(Action::ClearFilter);
             }
             Action::OpenTab1 => {
@@ -548,14 +563,14 @@ impl App {
                     self.open_selected_search_result();
                     return;
                 }
-                if self.mailbox_view == MailboxView::Subscriptions {
+                if self.mailbox.mailbox_view == MailboxView::Subscriptions {
                     if let Some(entry) = self.selected_subscription_entry().cloned() {
                         self.open_envelope(entry.envelope);
-                        self.layout_mode = LayoutMode::ThreePane;
+                        self.mailbox.layout_mode = LayoutMode::ThreePane;
                     }
                 } else if let Some(row) = self.selected_mail_row() {
                     self.open_envelope(row.representative);
-                    self.layout_mode = LayoutMode::ThreePane;
+                    self.mailbox.layout_mode = LayoutMode::ThreePane;
                 }
             }
             Action::CloseMessageView => {
@@ -564,26 +579,26 @@ impl App {
                     return;
                 }
                 self.close_attachment_panel();
-                self.layout_mode = LayoutMode::TwoPane;
-                self.active_pane = ActivePane::MailList;
-                self.pending_preview_read = None;
-                self.viewing_envelope = None;
-                self.viewed_thread = None;
-                self.viewed_thread_messages.clear();
-                self.thread_selected_index = 0;
-                self.pending_thread_fetch = None;
-                self.in_flight_thread_fetch = None;
-                self.message_scroll_offset = 0;
-                self.body_view_state = BodyViewState::Empty { preview: None };
+                self.mailbox.layout_mode = LayoutMode::TwoPane;
+                self.mailbox.active_pane = ActivePane::MailList;
+                self.mailbox.pending_preview_read = None;
+                self.mailbox.viewing_envelope = None;
+                self.mailbox.viewed_thread = None;
+                self.mailbox.viewed_thread_messages.clear();
+                self.mailbox.thread_selected_index = 0;
+                self.mailbox.pending_thread_fetch = None;
+                self.mailbox.in_flight_thread_fetch = None;
+                self.mailbox.message_scroll_offset = 0;
+                self.mailbox.body_view_state = BodyViewState::Empty { preview: None };
             }
             Action::ToggleMailListMode => {
-                if self.mailbox_view == MailboxView::Subscriptions {
+                if self.mailbox.mailbox_view == MailboxView::Subscriptions {
                     return;
                 }
                 let search_row_message_id = (self.screen == Screen::Search)
                     .then(|| self.selected_search_envelope().map(|env| env.id.clone()))
                     .flatten();
-                self.mail_list_mode = match self.mail_list_mode {
+                self.mailbox.mail_list_mode = match self.mailbox.mail_list_mode {
                     MailListMode::Threads => MailListMode::Messages,
                     MailListMode::Messages => MailListMode::Threads,
                 };
@@ -599,7 +614,8 @@ impl App {
                         self.ensure_search_visible();
                     }
                 } else {
-                    self.selected_index = self
+                    self.mailbox.selected_index = self
+                        .mailbox
                         .selected_index
                         .min(self.mail_row_count().saturating_sub(1));
                 }
@@ -689,15 +705,15 @@ impl App {
                 self.status_message = Some("Opening diagnostics details...".into());
             }
             Action::SelectLabel(label_id) => {
-                self.mailbox_view = MailboxView::Messages;
-                self.pending_label_fetch = Some(label_id);
-                self.pending_active_label = self.pending_label_fetch.clone();
-                self.desired_system_mailbox = None;
-                self.active_pane = ActivePane::MailList;
+                self.mailbox.mailbox_view = MailboxView::Messages;
+                self.mailbox.pending_label_fetch = Some(label_id);
+                self.mailbox.pending_active_label = self.mailbox.pending_label_fetch.clone();
+                self.mailbox.desired_system_mailbox = None;
+                self.mailbox.active_pane = ActivePane::MailList;
                 self.screen = Screen::Mailbox;
             }
             Action::SelectSavedSearch(query, mode) => {
-                self.mailbox_view = MailboxView::Messages;
+                self.mailbox.mailbox_view = MailboxView::Messages;
                 if self.screen == Screen::Search {
                     self.search_page.query = query.clone();
                     self.search_page.editing = false;
@@ -709,29 +725,29 @@ impl App {
                     self.trigger_live_search();
                 } else {
                     self.search_active = true;
-                    self.active_pane = ActivePane::MailList;
+                    self.mailbox.active_pane = ActivePane::MailList;
                     self.search_bar.query = query.clone();
                     self.search_bar.mode = mode;
                     self.trigger_live_search();
                 }
             }
             Action::ClearFilter => {
-                self.mailbox_view = MailboxView::Messages;
-                self.active_label = None;
-                self.pending_active_label = None;
-                self.pending_preview_read = None;
-                self.desired_system_mailbox = None;
+                self.mailbox.mailbox_view = MailboxView::Messages;
+                self.mailbox.active_label = None;
+                self.mailbox.pending_active_label = None;
+                self.mailbox.pending_preview_read = None;
+                self.mailbox.desired_system_mailbox = None;
                 self.search_active = false;
-                self.envelopes = self.all_mail_envelopes();
-                self.selected_index = 0;
-                self.scroll_offset = 0;
+                self.mailbox.envelopes = self.all_mail_envelopes();
+                self.mailbox.selected_index = 0;
+                self.mailbox.scroll_offset = 0;
             }
 
             // Phase 2: Email actions (Gmail-native A005)
             Action::Compose => {
                 // Build contacts from known envelopes (senders we've seen)
                 let mut seen = std::collections::HashMap::new();
-                for env in &self.all_envelopes {
+                for env in &self.mailbox.all_envelopes {
                     seen.entry(env.from.email.clone()).or_insert_with(|| {
                         crate::ui::compose_picker::Contact {
                             name: env.from.name.clone().unwrap_or_default(),
@@ -747,6 +763,7 @@ impl App {
                 if let Some(env) = self.context_envelope() {
                     self.pending_compose = Some(ComposeAction::Reply {
                         message_id: env.id.clone(),
+                        account_id: env.account_id.clone(),
                     });
                 }
             }
@@ -754,6 +771,7 @@ impl App {
                 if let Some(env) = self.context_envelope() {
                     self.pending_compose = Some(ComposeAction::ReplyAll {
                         message_id: env.id.clone(),
+                        account_id: env.account_id.clone(),
                     });
                 }
             }
@@ -761,6 +779,7 @@ impl App {
                 if let Some(env) = self.context_envelope() {
                     self.pending_compose = Some(ComposeAction::Forward {
                         message_id: env.id.clone(),
+                        account_id: env.account_id.clone(),
                     });
                 }
             }
@@ -987,7 +1006,7 @@ impl App {
                 } else {
                     // Open label picker
                     self.label_picker
-                        .open(self.labels.clone(), LabelPickerMode::Apply);
+                        .open(self.mailbox.labels.clone(), LabelPickerMode::Apply);
                 }
             }
             Action::MoveToLabel => {
@@ -1016,7 +1035,7 @@ impl App {
                 } else {
                     // Open label picker
                     self.label_picker
-                        .open(self.labels.clone(), LabelPickerMode::Move);
+                        .open(self.mailbox.labels.clone(), LabelPickerMode::Move);
                 }
             }
             Action::Unsubscribe => {
@@ -1027,6 +1046,7 @@ impl App {
                     } else {
                         let sender_email = env.from.email.clone();
                         let archive_message_ids = self
+                            .mailbox
                             .all_envelopes
                             .iter()
                             .filter(|candidate| {
@@ -1104,41 +1124,41 @@ impl App {
 
             // Phase 2: Reader mode
             Action::ToggleReaderMode => {
-                if self.html_view {
+                if self.mailbox.html_view {
                     self.status_message = Some("Switch to text view to use reading view".into());
-                } else if let BodyViewState::Ready { .. } = self.body_view_state {
-                    self.reader_mode = !self.reader_mode;
-                    if let Some(env) = self.viewing_envelope.clone() {
-                        self.body_view_state = self.resolve_body_view_state(&env);
+                } else if let BodyViewState::Ready { .. } = self.mailbox.body_view_state {
+                    self.mailbox.reader_mode = !self.mailbox.reader_mode;
+                    if let Some(env) = self.mailbox.viewing_envelope.clone() {
+                        self.mailbox.body_view_state = self.resolve_body_view_state(&env);
                     }
                     self.status_message = self.current_body_mode_status_message();
                 }
             }
             Action::ToggleHtmlView => {
-                self.html_view = !self.html_view;
-                if self.html_view {
+                self.mailbox.html_view = !self.mailbox.html_view;
+                if self.mailbox.html_view {
                     self.queue_html_assets_for_current_view();
                 }
-                if let Some(env) = self.viewing_envelope.clone() {
-                    self.body_view_state = self.resolve_body_view_state(&env);
+                if let Some(env) = self.mailbox.viewing_envelope.clone() {
+                    self.mailbox.body_view_state = self.resolve_body_view_state(&env);
                 }
                 self.status_message = self.current_body_mode_status_message();
             }
             Action::ToggleRemoteContent => {
-                self.remote_content_enabled = !self.remote_content_enabled;
+                self.mailbox.remote_content_enabled = !self.mailbox.remote_content_enabled;
                 self.invalidate_html_assets_for_current_view();
                 self.queue_html_assets_for_current_view();
-                if let Some(env) = self.viewing_envelope.clone() {
-                    self.body_view_state = self.resolve_body_view_state(&env);
+                if let Some(env) = self.mailbox.viewing_envelope.clone() {
+                    self.mailbox.body_view_state = self.resolve_body_view_state(&env);
                 }
-                self.status_message = Some(if self.remote_content_enabled {
+                self.status_message = Some(if self.mailbox.remote_content_enabled {
                     "Remote images shown in HTML view".into()
                 } else {
                     "Remote images blocked in HTML view".into()
                 });
             }
             Action::ToggleSignature => {
-                self.signature_expanded = !self.signature_expanded;
+                self.mailbox.signature_expanded = !self.mailbox.signature_expanded;
             }
 
             // Phase 2: Batch operations (A007)
@@ -1149,41 +1169,43 @@ impl App {
                         UiContext::MailboxList | UiContext::SearchResults
                     );
                     let id = env.id.clone();
-                    if self.selected_set.contains(&id) {
-                        self.selected_set.remove(&id);
+                    if self.mailbox.selected_set.contains(&id) {
+                        self.mailbox.selected_set.remove(&id);
                     } else {
-                        self.selected_set.insert(id);
+                        self.mailbox.selected_set.insert(id);
                     }
                     if should_advance && self.screen == Screen::Search {
                         if self.search_page.selected_index + 1 < self.search_row_count() {
                             self.search_page.selected_index += 1;
                         }
                         self.sync_search_cursor_after_move();
-                    } else if should_advance && self.selected_index + 1 < self.mail_row_count() {
-                        self.selected_index += 1;
+                    } else if should_advance
+                        && self.mailbox.selected_index + 1 < self.mail_row_count()
+                    {
+                        self.mailbox.selected_index += 1;
                         self.ensure_visible();
                         self.auto_preview();
                     }
-                    let count = self.selected_set.len();
+                    let count = self.mailbox.selected_set.len();
                     self.status_message = Some(format!("{count} selected"));
                 }
             }
             Action::VisualLineMode => {
-                if self.visual_mode {
+                if self.mailbox.visual_mode {
                     // Exit visual mode
-                    self.visual_mode = false;
-                    self.visual_anchor = None;
+                    self.mailbox.visual_mode = false;
+                    self.mailbox.visual_anchor = None;
                     self.status_message = Some("Visual mode off".into());
                 } else {
-                    self.visual_mode = true;
-                    self.visual_anchor = Some(if self.screen == Screen::Search {
+                    self.mailbox.visual_mode = true;
+                    self.mailbox.visual_anchor = Some(if self.screen == Screen::Search {
                         self.search_page.selected_index
                     } else {
-                        self.selected_index
+                        self.mailbox.selected_index
                     });
                     // Add current to selection
                     if let Some(env) = self.context_envelope() {
-                        self.selected_set.insert(env.id.clone());
+                        self.mailbox.selected_set.insert(env.id.clone());
                     }
                     self.status_message = Some("-- VISUAL LINE --".into());
                 }
@@ -1192,33 +1214,34 @@ impl App {
                 let envelopes = if self.screen == Screen::Search {
                     &self.search_page.results
                 } else {
-                    &self.envelopes
+                    &self.mailbox.envelopes
                 };
                 match pattern {
                     PatternKind::All => {
-                        self.selected_set = envelopes.iter().map(|e| e.id.clone()).collect();
+                        self.mailbox.selected_set =
+                            envelopes.iter().map(|e| e.id.clone()).collect();
                     }
                     PatternKind::None => {
-                        self.selected_set.clear();
-                        self.visual_mode = false;
-                        self.visual_anchor = None;
+                        self.mailbox.selected_set.clear();
+                        self.mailbox.visual_mode = false;
+                        self.mailbox.visual_anchor = None;
                     }
                     PatternKind::Read => {
-                        self.selected_set = envelopes
+                        self.mailbox.selected_set = envelopes
                             .iter()
                             .filter(|e| e.flags.contains(MessageFlags::READ))
                             .map(|e| e.id.clone())
                             .collect();
                     }
                     PatternKind::Unread => {
-                        self.selected_set = envelopes
+                        self.mailbox.selected_set = envelopes
                             .iter()
                             .filter(|e| !e.flags.contains(MessageFlags::READ))
                             .map(|e| e.id.clone())
                             .collect();
                     }
                     PatternKind::Starred => {
-                        self.selected_set = envelopes
+                        self.mailbox.selected_set = envelopes
                             .iter()
                             .filter(|e| e.flags.contains(MessageFlags::STARRED))
                             .map(|e| e.id.clone())
@@ -1227,7 +1250,7 @@ impl App {
                     PatternKind::Thread => {
                         if let Some(env) = self.context_envelope() {
                             let tid = env.thread_id.clone();
-                            self.selected_set = envelopes
+                            self.mailbox.selected_set = envelopes
                                 .iter()
                                 .filter(|e| e.thread_id == tid)
                                 .map(|e| e.id.clone())
@@ -1235,13 +1258,13 @@ impl App {
                         }
                     }
                 }
-                let count = self.selected_set.len();
+                let count = self.mailbox.selected_set.len();
                 self.status_message = Some(format!("{count} selected"));
             }
 
             // Phase 2: Other actions
             Action::AttachmentList => {
-                if self.attachment_panel.visible {
+                if self.mailbox.attachment_panel.visible {
                     self.close_attachment_panel();
                 } else {
                     self.open_attachment_panel();
@@ -1269,27 +1292,27 @@ impl App {
                             self.status_message = Some("Showing full message view".into());
                         }
                     }
-                } else if self.layout_mode == LayoutMode::FullScreen {
-                    self.layout_mode = LayoutMode::ThreePane;
+                } else if self.mailbox.layout_mode == LayoutMode::FullScreen {
+                    self.mailbox.layout_mode = LayoutMode::ThreePane;
                     self.status_message = Some("Showing split view".into());
-                } else if self.viewing_envelope.is_some() {
-                    self.layout_mode = LayoutMode::FullScreen;
+                } else if self.mailbox.viewing_envelope.is_some() {
+                    self.mailbox.layout_mode = LayoutMode::FullScreen;
                     self.status_message = Some("Showing full message view".into());
                 } else if self.screen == Screen::Mailbox {
-                    match self.mailbox_view {
+                    match self.mailbox.mailbox_view {
                         MailboxView::Subscriptions => {
                             if let Some(entry) = self.selected_subscription_entry().cloned() {
                                 self.open_envelope(entry.envelope);
-                                self.layout_mode = LayoutMode::FullScreen;
-                                self.active_pane = ActivePane::MessageView;
+                                self.mailbox.layout_mode = LayoutMode::FullScreen;
+                                self.mailbox.active_pane = ActivePane::MessageView;
                                 self.status_message = Some("Showing full message view".into());
                             }
                         }
                         MailboxView::Messages => {
                             if let Some(row) = self.selected_mail_row() {
                                 self.open_envelope(row.representative);
-                                self.layout_mode = LayoutMode::FullScreen;
-                                self.active_pane = ActivePane::MessageView;
+                                self.mailbox.layout_mode = LayoutMode::FullScreen;
+                                self.mailbox.active_pane = ActivePane::MessageView;
                                 self.status_message = Some("Showing full message view".into());
                             }
                         }
@@ -1298,7 +1321,7 @@ impl App {
             }
             Action::ExportThread => {
                 if let Some(env) = self.context_envelope() {
-                    self.pending_export_thread = Some(env.thread_id.clone());
+                    self.mailbox.pending_export_thread = Some(env.thread_id.clone());
                     self.status_message = Some("Exporting thread...".into());
                 } else {
                     self.status_message = Some("No message selected".into());

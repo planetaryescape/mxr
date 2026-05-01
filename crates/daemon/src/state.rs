@@ -203,9 +203,13 @@ impl AppState {
                     provider_kind,
                     config_key: key.clone(),
                 }),
-                enabled: true,
+                enabled: acct_config.enabled,
             };
             store.insert_account(&account).await?;
+
+            if !acct_config.enabled {
+                continue;
+            }
 
             let sync_provider = match &acct_config.sync {
                 Some(mxr_config::SyncProviderConfig::Gmail {
@@ -489,21 +493,41 @@ impl AppState {
         account_id: Option<&AccountId>,
     ) -> std::result::Result<Arc<dyn MailSyncProvider>, String> {
         let runtime = self.runtime.read();
-        account_id
-            .and_then(|id| runtime.providers.get(id).cloned())
-            .or_else(|| runtime.default_provider.clone())
-            .ok_or_else(|| "no sync-capable accounts configured".to_string())
+        match account_id {
+            Some(id) => runtime
+                .providers
+                .get(id)
+                .cloned()
+                .ok_or_else(|| format!("No sync provider configured for account {id}")),
+            None => runtime
+                .default_provider
+                .clone()
+                .ok_or_else(|| "no sync-capable accounts configured".to_string()),
+        }
     }
 
-    /// Get send provider for a specific account, or fall back to default.
+    pub fn send_provider_for_account(
+        &self,
+        account_id: &AccountId,
+    ) -> std::result::Result<Arc<dyn MailSendProvider>, String> {
+        self.runtime
+            .read()
+            .send_providers
+            .get(account_id)
+            .cloned()
+            .ok_or_else(|| format!("No send provider configured for account {account_id}"))
+    }
+
+    /// Get send provider for a specific account, or the default when no account is specified.
     pub fn get_send_provider(
         &self,
         account_id: Option<&AccountId>,
     ) -> Option<Arc<dyn MailSendProvider>> {
         let runtime = self.runtime.read();
-        account_id
-            .and_then(|id| runtime.send_providers.get(id).cloned())
-            .or_else(|| runtime.default_send_provider.clone())
+        match account_id {
+            Some(id) => runtime.send_providers.get(id).cloned(),
+            None => runtime.default_send_provider.clone(),
+        }
     }
 
     pub fn runtime_account_ids(&self) -> Vec<AccountId> {
@@ -525,6 +549,14 @@ impl AppState {
             .iter()
             .map(|(account_id, provider)| (account_id.clone(), provider.clone()))
             .collect()
+    }
+
+    #[cfg(test)]
+    pub fn add_sync_provider_for_test(&self, provider: Arc<dyn MailSyncProvider>) {
+        self.runtime
+            .write()
+            .providers
+            .insert(provider.account_id().clone(), provider);
     }
 
     pub fn mark_sync_loop_spawned(&self, account_id: &AccountId) -> bool {
@@ -943,5 +975,67 @@ use_tls = true
         assert!(setup.send_providers.is_empty());
         assert!(setup.default_provider.is_none());
         assert!(setup.default_send_provider.is_none());
+    }
+
+    #[tokio::test]
+    async fn create_providers_from_config_skips_disabled_accounts() {
+        let store = Arc::new(Store::in_memory().await.expect("store"));
+        let mut config = imap_smtp_config("personal");
+        config
+            .accounts
+            .get_mut("personal")
+            .expect("personal account")
+            .enabled = false;
+
+        let setup = AppState::create_providers_from_config(&config, &store)
+            .await
+            .expect("provider setup");
+
+        assert_eq!(setup.providers.len(), 1);
+        let default_account = store
+            .get_account(
+                setup
+                    .default_provider
+                    .as_ref()
+                    .expect("fallback default provider")
+                    .account_id(),
+            )
+            .await
+            .expect("account fetch")
+            .expect("stored account");
+        assert_eq!(default_account.name, "Work");
+
+        let disabled_account_id = AccountId::from_provider_id("imap", "me@example.com");
+        let disabled_account = store
+            .get_account(&disabled_account_id)
+            .await
+            .expect("account fetch")
+            .expect("disabled account row");
+        assert!(!disabled_account.enabled);
+        assert_eq!(store.list_accounts().await.expect("list accounts").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn explicit_send_provider_lookup_does_not_fallback_to_default() {
+        let (state, _) = AppState::in_memory_with_fake()
+            .await
+            .expect("state with default send provider");
+        let other_account_id = AccountId::new();
+
+        assert!(state.get_send_provider(None).is_some());
+        assert!(state.get_send_provider(Some(&other_account_id)).is_none());
+        assert!(state.send_provider_for_account(&other_account_id).is_err());
+    }
+
+    #[tokio::test]
+    async fn explicit_sync_provider_lookup_does_not_fallback_to_default() {
+        let (state, _) = AppState::in_memory_with_fake()
+            .await
+            .expect("state with default sync provider");
+        let other_account_id = AccountId::new();
+
+        assert!(state.get_provider(None).is_ok());
+        assert!(state.get_provider(Some(&other_account_id)).is_err());
+        assert!(state.sync_provider_for_account(&other_account_id).is_none());
     }
 }

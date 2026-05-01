@@ -4,8 +4,12 @@ use super::{
 };
 use crate::state::AppState;
 use mxr_core::types::{Address, Draft, Envelope, UnsubscribeMethod};
-use mxr_protocol::{ForwardContext, MutationCommand, ReplyContext, ResponseData};
+use mxr_protocol::{
+    AccountMutationResultData, ForwardContext, MutationCommand, MutationResultData, ReplyContext,
+    ResponseData,
+};
 use mxr_store::EventLogRefs;
+use std::collections::HashMap;
 
 async fn log_mutation(
     state: &AppState,
@@ -40,7 +44,94 @@ fn quoted_subject(subject: &str) -> String {
 }
 
 pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> HandlerResult {
-    let message_ids = match cmd {
+    let message_ids = mutation_message_ids(cmd);
+    let mut grouped: HashMap<mxr_core::AccountId, Vec<Envelope>> = HashMap::new();
+    for message_id in message_ids {
+        let envelope = state
+            .store
+            .get_envelope(message_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Message not found: {message_id}"))?;
+        grouped
+            .entry(envelope.account_id.clone())
+            .or_default()
+            .push(envelope);
+    }
+
+    let mut accounts = Vec::new();
+    for (account_id, envelopes) in grouped {
+        let account_name = state
+            .store
+            .get_account(&account_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|account| account.name)
+            .unwrap_or_else(|| account_id.to_string());
+
+        let mut account_result = AccountMutationResultData {
+            account_id: account_id.clone(),
+            account_name,
+            succeeded: 0,
+            skipped: 0,
+            failed: 0,
+            error: None,
+        };
+
+        let provider = match state.get_provider(Some(&account_id)) {
+            Ok(provider) => provider,
+            Err(error) => {
+                account_result.skipped = envelopes.len() as u32;
+                account_result.error = Some(format!("account unavailable: {error}"));
+                accounts.push(account_result);
+                continue;
+            }
+        };
+
+        for (index, envelope) in envelopes.iter().enumerate() {
+            match apply_mutation_to_envelope(state, provider.as_ref(), cmd, envelope).await {
+                Ok(()) => {
+                    account_result.succeeded += 1;
+                    let (summary, details) = mutation_log_entry(cmd, envelope);
+                    if let Err(error) = log_mutation(state, envelope, summary, details).await {
+                        tracing::warn!(%error, "failed to record mutation event");
+                    }
+                }
+                Err(error) => {
+                    account_result.skipped += (envelopes.len() - index) as u32;
+                    account_result.error = Some(format!("account unavailable: {error}"));
+                    break;
+                }
+            }
+        }
+
+        accounts.push(account_result);
+    }
+
+    accounts.sort_by(|left, right| {
+        left.account_name
+            .to_lowercase()
+            .cmp(&right.account_name.to_lowercase())
+            .then_with(|| left.account_id.as_str().cmp(&right.account_id.as_str()))
+    });
+    let succeeded = accounts.iter().map(|account| account.succeeded).sum();
+    let skipped = accounts.iter().map(|account| account.skipped).sum();
+    let failed = accounts.iter().map(|account| account.failed).sum();
+
+    Ok(ResponseData::MutationResult {
+        result: MutationResultData {
+            requested: message_ids.len() as u32,
+            succeeded,
+            skipped,
+            failed,
+            accounts,
+        },
+    })
+}
+
+fn mutation_message_ids(cmd: &MutationCommand) -> &[mxr_core::MessageId] {
+    match cmd {
         MutationCommand::Archive { message_ids }
         | MutationCommand::ReadAndArchive { message_ids }
         | MutationCommand::Trash { message_ids }
@@ -49,190 +140,164 @@ pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> Handler
         | MutationCommand::SetRead { message_ids, .. }
         | MutationCommand::ModifyLabels { message_ids, .. }
         | MutationCommand::Move { message_ids, .. } => message_ids,
-    };
+    }
+}
 
-    for message_id in message_ids {
-        let envelope = state
-            .store
-            .get_envelope(message_id)
+async fn apply_mutation_to_envelope(
+    state: &AppState,
+    provider: &dyn mxr_core::MailSyncProvider,
+    cmd: &MutationCommand,
+    envelope: &Envelope,
+) -> Result<(), String> {
+    let message_id = &envelope.id;
+    let provider_id = &envelope.provider_id;
+    match cmd {
+        MutationCommand::Archive { .. } => {
+            provider
+                .modify_labels(provider_id, &[], &["INBOX".to_string()])
+                .await
+                .map_err(|e| e.to_string())?;
+            reconcile_label_mutation(state, provider, message_id, &[], &["INBOX".to_string()]).await
+        }
+        MutationCommand::ReadAndArchive { .. } => {
+            provider
+                .set_read(provider_id, true)
+                .await
+                .map_err(|e| e.to_string())?;
+            state
+                .store
+                .set_read(message_id, true)
+                .await
+                .map_err(|e| e.to_string())?;
+            provider
+                .modify_labels(provider_id, &[], &["INBOX".to_string()])
+                .await
+                .map_err(|e| e.to_string())?;
+            reconcile_label_mutation(state, provider, message_id, &[], &["INBOX".to_string()]).await
+        }
+        MutationCommand::Trash { .. } => {
+            provider.trash(provider_id).await.map_err(|e| e.to_string())
+        }
+        MutationCommand::Spam { .. } => provider
+            .modify_labels(provider_id, &["SPAM".to_string()], &["INBOX".to_string()])
             .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("Message not found: {message_id}"))?;
-        let provider_id = &envelope.provider_id;
-        let provider = state.get_provider(Some(&envelope.account_id))?.clone();
-
-        let result = match cmd {
-            MutationCommand::Archive { .. } => {
-                provider
-                    .modify_labels(provider_id, &[], &["INBOX".to_string()])
-                    .await
-                    .map_err(|e| e.to_string())?;
-                reconcile_label_mutation(
-                    state,
-                    provider.as_ref(),
-                    message_id,
-                    &[],
-                    &["INBOX".to_string()],
-                )
+            .map_err(|e| e.to_string()),
+        MutationCommand::Star { starred, .. } => {
+            provider
+                .set_starred(provider_id, *starred)
                 .await
-            }
-            MutationCommand::ReadAndArchive { .. } => {
-                provider
-                    .set_read(provider_id, true)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                state
-                    .store
-                    .set_read(message_id, true)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                provider
-                    .modify_labels(provider_id, &[], &["INBOX".to_string()])
-                    .await
-                    .map_err(|e| e.to_string())?;
-                reconcile_label_mutation(
-                    state,
-                    provider.as_ref(),
-                    message_id,
-                    &[],
-                    &["INBOX".to_string()],
-                )
+                .map_err(|e| e.to_string())?;
+            state
+                .store
+                .set_starred(message_id, *starred)
                 .await
-            }
-            MutationCommand::Trash { .. } => {
-                provider.trash(provider_id).await.map_err(|e| e.to_string())
-            }
-            MutationCommand::Spam { .. } => provider
-                .modify_labels(provider_id, &["SPAM".to_string()], &["INBOX".to_string()])
+                .map_err(|e| e.to_string())
+        }
+        MutationCommand::SetRead { read, .. } => {
+            provider
+                .set_read(provider_id, *read)
                 .await
-                .map_err(|e| e.to_string()),
-            MutationCommand::Star { starred, .. } => {
-                provider
-                    .set_starred(provider_id, *starred)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                state
-                    .store
-                    .set_starred(message_id, *starred)
-                    .await
-                    .map_err(|e| e.to_string())
-            }
-            MutationCommand::SetRead { read, .. } => {
-                provider
-                    .set_read(provider_id, *read)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                state
-                    .store
-                    .set_read(message_id, *read)
-                    .await
-                    .map_err(|e| e.to_string())
-            }
-            MutationCommand::ModifyLabels { add, remove, .. } => {
-                let labels = state
-                    .store
-                    .list_labels_by_account(&envelope.account_id)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let resolved_add = resolve_to_provider_ids(&labels, add);
-                let resolved_remove = resolve_to_provider_ids(&labels, remove);
-                provider
-                    .modify_labels(provider_id, &resolved_add, &resolved_remove)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                reconcile_label_mutation(
-                    state,
-                    provider.as_ref(),
-                    message_id,
-                    &resolved_add,
-                    &resolved_remove,
-                )
+                .map_err(|e| e.to_string())?;
+            state
+                .store
+                .set_read(message_id, *read)
                 .await
-            }
-            MutationCommand::Move { target_label, .. } => {
-                let labels = state
-                    .store
-                    .list_labels_by_account(&envelope.account_id)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let resolved_target =
-                    resolve_to_provider_ids(&labels, std::slice::from_ref(target_label));
-                provider
-                    .modify_labels(provider_id, &resolved_target, &["INBOX".to_string()])
-                    .await
-                    .map_err(|e| e.to_string())?;
-                reconcile_label_mutation(
-                    state,
-                    provider.as_ref(),
-                    message_id,
-                    &resolved_target,
-                    &["INBOX".to_string()],
-                )
+                .map_err(|e| e.to_string())
+        }
+        MutationCommand::ModifyLabels { add, remove, .. } => {
+            let labels = state
+                .store
+                .list_labels_by_account(&envelope.account_id)
                 .await
-            }
-        };
-
-        result?;
-        let (summary, details) = match cmd {
-            MutationCommand::Archive { .. } => (
-                format!("Archived {}", quoted_subject(&envelope.subject)),
-                Some(format!("from={}", envelope.from.email)),
-            ),
-            MutationCommand::ReadAndArchive { .. } => (
-                format!(
-                    "Marked {} as read and archived",
-                    quoted_subject(&envelope.subject)
-                ),
-                Some(format!("from={}", envelope.from.email)),
-            ),
-            MutationCommand::Trash { .. } => (
-                format!("Moved {} to trash", quoted_subject(&envelope.subject)),
-                Some(format!("from={}", envelope.from.email)),
-            ),
-            MutationCommand::Spam { .. } => (
-                format!("Marked {} as spam", quoted_subject(&envelope.subject)),
-                Some(format!("from={}", envelope.from.email)),
-            ),
-            MutationCommand::Star { starred, .. } => (
-                if *starred {
-                    format!("Starred {}", quoted_subject(&envelope.subject))
-                } else {
-                    format!("Unstarred {}", quoted_subject(&envelope.subject))
-                },
-                Some(format!("from={}", envelope.from.email)),
-            ),
-            MutationCommand::SetRead { read, .. } => (
-                if *read {
-                    format!("Marked {} as read", quoted_subject(&envelope.subject))
-                } else {
-                    format!("Marked {} as unread", quoted_subject(&envelope.subject))
-                },
-                Some(format!("from={}", envelope.from.email)),
-            ),
-            MutationCommand::ModifyLabels { add, remove, .. } => (
-                format!("Updated labels on {}", quoted_subject(&envelope.subject)),
-                Some(format!(
-                    "from={} add={} remove={}",
-                    envelope.from.email,
-                    add.join(","),
-                    remove.join(",")
-                )),
-            ),
-            MutationCommand::Move { target_label, .. } => (
-                format!(
-                    "Moved {} to {}",
-                    quoted_subject(&envelope.subject),
-                    target_label
-                ),
-                Some(format!("from={}", envelope.from.email)),
-            ),
-        };
-        if let Err(error) = log_mutation(state, &envelope, summary, details).await {
-            tracing::warn!(%error, "failed to record mutation event");
+                .map_err(|e| e.to_string())?;
+            let resolved_add = resolve_to_provider_ids(&labels, add);
+            let resolved_remove = resolve_to_provider_ids(&labels, remove);
+            provider
+                .modify_labels(provider_id, &resolved_add, &resolved_remove)
+                .await
+                .map_err(|e| e.to_string())?;
+            reconcile_label_mutation(state, provider, message_id, &resolved_add, &resolved_remove)
+                .await
+        }
+        MutationCommand::Move { target_label, .. } => {
+            let labels = state
+                .store
+                .list_labels_by_account(&envelope.account_id)
+                .await
+                .map_err(|e| e.to_string())?;
+            let resolved_target =
+                resolve_to_provider_ids(&labels, std::slice::from_ref(target_label));
+            provider
+                .modify_labels(provider_id, &resolved_target, &["INBOX".to_string()])
+                .await
+                .map_err(|e| e.to_string())?;
+            reconcile_label_mutation(
+                state,
+                provider,
+                message_id,
+                &resolved_target,
+                &["INBOX".to_string()],
+            )
+            .await
         }
     }
+}
 
-    Ok(ResponseData::Ack)
+fn mutation_log_entry(cmd: &MutationCommand, envelope: &Envelope) -> (String, Option<String>) {
+    match cmd {
+        MutationCommand::Archive { .. } => (
+            format!("Archived {}", quoted_subject(&envelope.subject)),
+            Some(format!("from={}", envelope.from.email)),
+        ),
+        MutationCommand::ReadAndArchive { .. } => (
+            format!(
+                "Marked {} as read and archived",
+                quoted_subject(&envelope.subject)
+            ),
+            Some(format!("from={}", envelope.from.email)),
+        ),
+        MutationCommand::Trash { .. } => (
+            format!("Moved {} to trash", quoted_subject(&envelope.subject)),
+            Some(format!("from={}", envelope.from.email)),
+        ),
+        MutationCommand::Spam { .. } => (
+            format!("Marked {} as spam", quoted_subject(&envelope.subject)),
+            Some(format!("from={}", envelope.from.email)),
+        ),
+        MutationCommand::Star { starred, .. } => (
+            if *starred {
+                format!("Starred {}", quoted_subject(&envelope.subject))
+            } else {
+                format!("Unstarred {}", quoted_subject(&envelope.subject))
+            },
+            Some(format!("from={}", envelope.from.email)),
+        ),
+        MutationCommand::SetRead { read, .. } => (
+            if *read {
+                format!("Marked {} as read", quoted_subject(&envelope.subject))
+            } else {
+                format!("Marked {} as unread", quoted_subject(&envelope.subject))
+            },
+            Some(format!("from={}", envelope.from.email)),
+        ),
+        MutationCommand::ModifyLabels { add, remove, .. } => (
+            format!("Updated labels on {}", quoted_subject(&envelope.subject)),
+            Some(format!(
+                "from={} add={} remove={}",
+                envelope.from.email,
+                add.join(","),
+                remove.join(",")
+            )),
+        ),
+        MutationCommand::Move { target_label, .. } => (
+            format!(
+                "Moved {} to {}",
+                quoted_subject(&envelope.subject),
+                target_label
+            ),
+            Some(format!("from={}", envelope.from.email)),
+        ),
+    }
 }
 
 pub(super) async fn snooze(
@@ -400,9 +465,7 @@ pub(super) async fn prepare_forward(
 }
 
 pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult {
-    let sender = state
-        .get_send_provider(Some(&draft.account_id))
-        .ok_or_else(|| "No send provider configured".to_string())?;
+    let sender = state.send_provider_for_account(&draft.account_id)?;
     let account = state
         .store
         .get_account(&draft.account_id)
@@ -421,9 +484,7 @@ pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult
 }
 
 pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> HandlerResult {
-    let sender = state
-        .get_send_provider(Some(&draft.account_id))
-        .ok_or_else(|| "No send provider configured".to_string())?;
+    let sender = state.send_provider_for_account(&draft.account_id)?;
     let account = state
         .store
         .get_account(&draft.account_id)
@@ -459,9 +520,7 @@ pub(super) async fn unsubscribe(
         .ok_or_else(|| "Message not found".to_string())?;
     match &envelope.unsubscribe {
         UnsubscribeMethod::Mailto { address, subject } => {
-            let sender = state
-                .get_send_provider(Some(&envelope.account_id))
-                .ok_or_else(|| "No send provider configured".to_string())?;
+            let sender = state.send_provider_for_account(&envelope.account_id)?;
             let account = state
                 .store
                 .get_account(&envelope.account_id)

@@ -80,7 +80,7 @@ pub(super) async fn list_runtime_accounts(
                 provider_kind: account_primary_provider_kind(&account),
                 sync_kind: account.sync.as_ref().map(config_sync_kind_label),
                 send_kind: account.send.as_ref().map(config_send_kind_label),
-                enabled: true,
+                enabled: account.enabled,
                 is_default: false,
                 source: AccountSourceData::Config,
                 editable: AccountEditModeData::Full,
@@ -95,6 +95,7 @@ pub(super) async fn list_runtime_accounts(
         summary.provider_kind = account_primary_provider_kind(&account);
         summary.sync_kind = account.sync.as_ref().map(config_sync_kind_label);
         summary.send_kind = account.send.as_ref().map(config_send_kind_label);
+        summary.enabled = account.enabled;
         summary.sync = account.sync.clone().map(sync_config_to_data);
         summary.send = account.send.clone().map(send_config_to_data);
         summary.is_default = default_config_key.as_deref() == Some(key.as_str());
@@ -127,6 +128,7 @@ pub(super) fn list_account_configs() -> Result<Vec<AccountConfigData>, String> {
             key,
             name: account.name,
             email: account.email,
+            enabled: account.enabled,
             sync: account.sync.map(sync_config_to_data),
             send: account.send.map(send_config_to_data),
         })
@@ -148,6 +150,7 @@ pub(super) async fn upsert_account_config(
             mxr_config::AccountConfig {
                 name: account.name.clone(),
                 email: account.email.clone(),
+                enabled: account.enabled,
                 sync: account.sync.clone().map(sync_data_to_config).transpose()?,
                 send: account.send.clone().map(send_data_to_config).transpose()?,
             },

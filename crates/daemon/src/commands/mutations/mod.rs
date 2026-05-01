@@ -345,6 +345,8 @@ pub async fn snooze(
             &selection,
         )?;
     }
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
     for id in &selection.ids {
         let resp = client
             .request(Request::Snooze {
@@ -355,14 +357,23 @@ pub async fn snooze(
         match resp {
             Response::Ok {
                 data: ResponseData::Ack,
-            } => {}
-            Response::Error { message } => anyhow::bail!("{message}"),
-            _ => anyhow::bail!("Unexpected response"),
+            } => succeeded += 1,
+            Response::Error { message } => {
+                failed += 1;
+                eprintln!("Skipped {} ({message})", id.as_str());
+            }
+            _ => {
+                failed += 1;
+                eprintln!("Skipped {} (unexpected response)", id.as_str());
+            }
         }
+    }
+    if succeeded == 0 {
+        anyhow::bail!("No messages snoozed ({} failed)", failed);
     }
     println!(
         "Snoozed {} message(s) until {}",
-        selection.ids.len(),
+        succeeded,
         wake_at.to_rfc3339()
     );
     Ok(())
@@ -380,6 +391,8 @@ pub async fn unsnooze(message_id: Option<String>, all: bool) -> anyhow::Result<(
                     println!("No snoozed messages");
                     return Ok(());
                 }
+                let mut succeeded = 0usize;
+                let mut failed = 0usize;
                 for s in &snoozed {
                     let resp = client
                         .request(Request::Unsnooze {
@@ -389,14 +402,21 @@ pub async fn unsnooze(message_id: Option<String>, all: bool) -> anyhow::Result<(
                     match resp {
                         Response::Ok {
                             data: ResponseData::Ack,
-                        } => {}
+                        } => succeeded += 1,
                         Response::Error { message } => {
+                            failed += 1;
                             eprintln!("Failed to unsnooze {}: {message}", s.message_id);
                         }
-                        _ => {}
+                        _ => {
+                            failed += 1;
+                            eprintln!("Failed to unsnooze {}: unexpected response", s.message_id);
+                        }
                     }
                 }
-                println!("Unsnoozed {} message(s)", snoozed.len());
+                if succeeded == 0 && failed > 0 {
+                    anyhow::bail!("No messages unsnoozed ({} failed)", failed);
+                }
+                println!("Unsnoozed {} message(s)", succeeded);
             }
             Response::Error { message } => anyhow::bail!("{message}"),
             _ => anyhow::bail!("Unexpected response"),
@@ -470,6 +490,8 @@ pub async fn unsubscribe(
     if requires_confirmation(true, selection.used_search, selection.ids.len(), yes) {
         confirm_action("unsubscribe", &selection)?;
     }
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
     for id in &selection.ids {
         let resp = client
             .request(Request::Unsubscribe {
@@ -479,12 +501,21 @@ pub async fn unsubscribe(
         match resp {
             Response::Ok {
                 data: ResponseData::Ack,
-            } => {}
-            Response::Error { message } => anyhow::bail!("{message}"),
-            _ => anyhow::bail!("Unexpected response"),
+            } => succeeded += 1,
+            Response::Error { message } => {
+                failed += 1;
+                eprintln!("Skipped {} ({message})", id.as_str());
+            }
+            _ => {
+                failed += 1;
+                eprintln!("Skipped {} (unexpected response)", id.as_str());
+            }
         }
     }
-    println!("Unsubscribed from {} message(s)", selection.ids.len());
+    if succeeded == 0 {
+        anyhow::bail!("No messages unsubscribed ({} failed)", failed);
+    }
+    println!("Unsubscribed from {} message(s)", succeeded);
     Ok(())
 }
 

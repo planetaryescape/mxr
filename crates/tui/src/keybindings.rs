@@ -606,7 +606,7 @@ mod tests {
         let bindings = all_bindings_for_context(ViewContext::MailList);
         let labels: Vec<String> = bindings.into_iter().map(|(_, label)| label).collect();
         assert!(labels.contains(&"Apply Label".to_string()));
-        assert!(labels.contains(&"Toggle Fullscreen".to_string()));
+        assert!(labels.contains(&"Full View".to_string()));
         assert!(labels.contains(&"Visual Line Mode".to_string()));
         assert!(labels.contains(&"Go Inbox".to_string()));
         assert!(labels.contains(&"Edit Config".to_string()));

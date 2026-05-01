@@ -40,6 +40,8 @@ pub struct GeneralConfig {
 pub struct AccountConfig {
     pub name: String,
     pub email: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
     pub sync: Option<SyncProviderConfig>,
     pub send: Option<SendProviderConfig>,
 }
@@ -83,6 +85,10 @@ pub enum SendProviderConfig {
 }
 
 fn default_auth_required() -> bool {
+    true
+}
+
+fn default_enabled() -> bool {
     true
 }
 

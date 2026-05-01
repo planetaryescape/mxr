@@ -8,6 +8,7 @@ type DesktopMockOptions = {
   delayReadMutation?: Promise<void>;
   delayMailbox?: Promise<void>;
   delayMailboxLensKind?: string;
+  sendFailureMessage?: string;
 };
 
 type MailboxState = {
@@ -365,6 +366,9 @@ export const desktopMockServer = setupServer(
       path === "/compose/session/save" ||
       path === "/compose/session/discard"
     ) {
+      if (path === "/compose/session/send" && currentOptions.sendFailureMessage) {
+        return HttpResponse.json({ error: currentOptions.sendFailureMessage }, { status: 502 });
+      }
       return HttpResponse.json({ ok: true });
     }
 

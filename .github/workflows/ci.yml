@@ -16,9 +16,80 @@ env:
   RUSTFLAGS: -Dwarnings
 
 jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      docs: ${{ steps.filter.outputs.docs }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+      expensive: ${{ steps.filter.outputs.expensive }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          rust=false
+          docs=false
+          desktop=false
+          expensive=false
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            rust=true
+            docs=true
+            desktop=true
+            expensive=true
+          else
+            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              base="${PR_BASE_SHA}"
+              head="HEAD"
+            else
+              base="${BEFORE}"
+              head="${SHA}"
+            fi
+
+            if [[ -z "${base}" || "${base}" =~ ^0+$ ]]; then
+              rust=true
+              docs=true
+              desktop=true
+            else
+              while IFS= read -r path; do
+                [[ -z "${path}" ]] && continue
+                case "${path}" in
+                  Cargo.toml|Cargo.lock|deny.toml|rust-toolchain*|build.rs|crates/*|src/*|tests/*|benches/*|examples/*|.sqlx/*|scripts/test_quality_audit.sh)
+                    rust=true
+                    ;;
+                  site/*)
+                    docs=true
+                    ;;
+                  apps/desktop/*)
+                    desktop=true
+                    ;;
+                esac
+              done < <(git diff --name-only "${base}" "${head}")
+            fi
+          fi
+
+          {
+            echo "rust=${rust}"
+            echo "docs=${docs}"
+            echo "desktop=${desktop}"
+            echo "expensive=${expensive}"
+          } >> "${GITHUB_OUTPUT}"
+
   deny:
     name: cargo deny
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
       - uses: EmbarkStudios/cargo-deny-action@v2
@@ -26,6 +97,8 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -35,6 +108,8 @@ jobs:
   fmt:
     name: Format
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -45,6 +120,8 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     env:
       RUSTFLAGS: ""
     steps:
@@ -58,6 +135,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -68,6 +147,8 @@ jobs:
   test-quality-audit:
     name: Test Quality Audit (non-blocking)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
@@ -80,7 +161,8 @@ jobs:
   test-quality-gate:
     name: Test Quality Gate (changed files)
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -90,6 +172,8 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -108,6 +192,8 @@ jobs:
   sqlx:
     name: SQLx Offline
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -118,6 +204,8 @@ jobs:
   docs:
     name: Docs Build
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.expensive == 'true'
     defaults:
       run:
         working-directory: site
@@ -127,13 +215,15 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: site/package.json
-      - run: npm install
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
       - run: npm run build
 
   desktop:
     name: Desktop Build
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.expensive == 'true'
     defaults:
       run:
         working-directory: apps/desktop
@@ -160,6 +250,8 @@ jobs:
 
   build:
     name: Build
+    needs: changes
+    if: needs.changes.outputs.expensive == 'true'
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -173,6 +265,8 @@ jobs:
   rustdoc:
     name: Rustdoc
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.expensive == 'true'
     env:
       RUSTDOCFLAGS: -Dwarnings
     steps:
@@ -184,6 +278,8 @@ jobs:
   msrv:
     name: MSRV (1.75)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.75
@@ -193,6 +289,8 @@ jobs:
   install-check:
     name: Install Smoke Test
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable

@@ -100,12 +100,13 @@ fn build_draft_rfc2822_with_attachments(
     builder
         .write_to_vec()
         .map_err(|err| GmailSendError::Build(err.to_string()))
-        .inspect(|_| {
+        .map(|bytes| {
             tracing::trace!(
                 attachment_count = attachments.len(),
                 elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
                 "gmail draft build completed"
             );
+            bytes
         })
 }
 

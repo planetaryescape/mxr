@@ -146,7 +146,6 @@ pub(crate) async fn resolve_compose_account(
                 accounts
                     .into_iter()
                     .next()
-                    .map(|account| account)
                     .ok_or_else(|| MxrError::Ipc("No runtime account configured".into()))
             }
         }

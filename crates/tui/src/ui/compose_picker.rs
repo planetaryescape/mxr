@@ -1,8 +1,9 @@
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ComposePickerMode {
+    #[default]
     To,
     Subject,
 }
@@ -35,12 +36,6 @@ pub struct ComposePicker {
     /// Already-chosen recipients.
     pub recipients: Vec<String>,
     pub pending_to: String,
-}
-
-impl Default for ComposePickerMode {
-    fn default() -> Self {
-        Self::To
-    }
 }
 
 impl ComposePicker {

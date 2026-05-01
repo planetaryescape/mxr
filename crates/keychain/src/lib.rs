@@ -177,7 +177,7 @@ fn get_password_macos_with(
 pub fn get_password(service: &str, account: &str) -> Result<String, KeychainError> {
     #[cfg(target_os = "macos")]
     {
-        return get_password_macos_with(service, account, &MacosKeychainOps::default());
+        get_password_macos_with(service, account, &MacosKeychainOps::default())
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -193,7 +193,7 @@ pub fn get_password(service: &str, account: &str) -> Result<String, KeychainErro
 pub fn set_password(service: &str, account: &str, password: &str) -> Result<(), KeychainError> {
     #[cfg(target_os = "macos")]
     {
-        return write_password(service, account, password);
+        write_password(service, account, password)
     }
 
     #[cfg(not(target_os = "macos"))]

@@ -22,7 +22,7 @@ jobs:
       has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
       build_matrix: ${{ steps.matrix.outputs.build_matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - id: previous-tag
@@ -57,17 +57,17 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.build_matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: needs.plan.outputs.desktop_source_changed == 'true'
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
 
@@ -142,7 +142,7 @@ jobs:
         if: needs.plan.outputs.desktop_source_changed == 'true'
         run: shasum -a 256 "${{ env.DESKTOP_ARCHIVE }}" > "${{ env.DESKTOP_ARCHIVE }}.sha256"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: needs.plan.outputs.cli_changed == 'true'
         with:
           name: ${{ matrix.target }}-cli
@@ -150,7 +150,7 @@ jobs:
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: needs.plan.outputs.desktop_source_changed == 'true'
         with:
           name: ${{ matrix.target }}-desktop
@@ -164,7 +164,7 @@ jobs:
     needs: [plan, build-binaries]
     if: always() && needs.plan.result == 'success' && (needs.build-binaries.result == 'success' || needs.build-binaries.result == 'skipped')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
@@ -173,7 +173,7 @@ jobs:
       - name: Generate changelog
         run: git cliff --tag "${GITHUB_REF_NAME}" --output CHANGELOG_RELEASE.md
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: needs.build-binaries.result == 'success'
         with:
           path: artifacts
@@ -200,8 +200,8 @@ jobs:
     needs: [plan, github-release]
     if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true

@@ -1,4 +1,173 @@
-use super::super::*;
+use crate::ui;
+use mxr_config::RenderConfig;
+use mxr_core::id::{AttachmentId, MessageId};
+use mxr_core::types::*;
+use std::collections::{HashMap, HashSet};
+use std::time::Instant;
+use throbber_widgets_tui::ThrobberState;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingBrowserOpen {
+    pub message_id: MessageId,
+    pub document: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActivePane {
+    Sidebar,
+    MailList,
+    MessageView,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MailListMode {
+    Threads,
+    Messages,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MailboxView {
+    Messages,
+    Subscriptions,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidebarSection {
+    Labels,
+    SavedSearches,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutMode {
+    TwoPane,
+    ThreePane,
+    FullScreen,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodySource {
+    Plain,
+    Html,
+    Fallback,
+    Snippet,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BodyViewMode {
+    #[default]
+    Text,
+    Html,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BodyViewMetadata {
+    pub mode: BodyViewMode,
+    pub provenance: Option<BodyPartSource>,
+    pub reader_applied: bool,
+    pub flowed: bool,
+    pub inline_images: bool,
+    pub remote_content_available: bool,
+    pub remote_content_enabled: bool,
+    pub original_lines: Option<usize>,
+    pub cleaned_lines: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BodyViewState {
+    Loading {
+        preview: Option<String>,
+    },
+    Ready {
+        raw: String,
+        rendered: String,
+        source: BodySource,
+        metadata: BodyViewMetadata,
+    },
+    Empty {
+        preview: Option<String>,
+    },
+    Error {
+        message: String,
+        preview: Option<String>,
+    },
+}
+
+impl BodyViewState {
+    pub fn display_text(&self) -> Option<&str> {
+        match self {
+            Self::Ready { rendered, .. } => Some(rendered.as_str()),
+            Self::Loading { preview } => preview.as_deref(),
+            Self::Empty { preview } => preview.as_deref(),
+            Self::Error { preview, .. } => preview.as_deref(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MailListRow {
+    pub thread_id: mxr_core::ThreadId,
+    pub representative: Envelope,
+    pub message_count: usize,
+    pub unread_count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubscriptionEntry {
+    pub summary: SubscriptionSummary,
+    pub envelope: Envelope,
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone)]
+pub enum SidebarItem {
+    Account(mxr_protocol::AccountSummaryData),
+    AllMail,
+    Subscriptions,
+    Label(Label),
+    SavedSearch(mxr_core::SavedSearch),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SidebarSelectionKey {
+    Account(String),
+    AllMail,
+    Subscriptions,
+    Label(mxr_core::LabelId),
+    SavedSearch(String),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SubscriptionsPageState {
+    pub entries: Vec<SubscriptionEntry>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AttachmentOperation {
+    Open,
+    Download,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AttachmentPanelState {
+    pub visible: bool,
+    pub message_id: Option<MessageId>,
+    pub attachments: Vec<AttachmentMeta>,
+    pub selected_index: usize,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingAttachmentAction {
+    pub message_id: MessageId,
+    pub attachment_id: AttachmentId,
+    pub operation: AttachmentOperation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachmentSummary {
+    pub filename: String,
+    pub size_bytes: u64,
+}
 
 #[derive(Debug, Clone)]
 pub(in crate::app) struct PendingPreviewRead {

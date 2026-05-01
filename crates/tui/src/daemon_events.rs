@@ -10,7 +10,7 @@ pub(crate) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.pending_labels_refresh = true;
             app.pending_all_envelopes_refresh = true;
             app.pending_subscriptions_refresh = true;
-            app.pending_status_refresh = true;
+            app.diagnostics.pending_status_refresh = true;
             if let Some(label_id) = app.active_label.clone() {
                 app.pending_label_fetch = Some(label_id);
             }
@@ -33,12 +33,12 @@ pub(crate) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.restore_sidebar_selection(selected_sidebar);
         }
         DaemonEvent::SyncError { account_id, error } => {
-            app.error_modal = Some(app::ErrorModalState::new(
+            app.modals.error = Some(app::ErrorModalState::new(
                 "Sync Failed",
                 format!("Account: {account_id}\n\n{error}"),
             ));
             app.status_message = Some(format!("Sync error: {error}"));
-            app.pending_status_refresh = true;
+            app.diagnostics.pending_status_refresh = true;
         }
         _ => {}
     }
@@ -47,12 +47,12 @@ pub(crate) fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
 pub(crate) fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<Envelope>) {
     let selected_id = (app.active_label.is_none()
         && app.pending_active_label.is_none()
-        && !app.search_active
+        && !app.search.active
         && app.mailbox_view == MailboxView::Messages)
         .then(|| app.selected_mail_row().map(|row| row.representative.id))
         .flatten();
     app.all_envelopes = envelopes;
-    if app.active_label.is_none() && app.pending_active_label.is_none() && !app.search_active {
+    if app.active_label.is_none() && app.pending_active_label.is_none() && !app.search.active {
         app.envelopes = app
             .all_envelopes
             .iter()

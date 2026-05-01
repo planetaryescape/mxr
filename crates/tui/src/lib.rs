@@ -98,14 +98,14 @@ pub async fn run() -> anyhow::Result<()> {
     let local_state = local_state::load();
 
     let mut app = App::from_config(&config);
-    app.onboarding.seen = local_state.onboarding_seen;
+    app.modals.onboarding.seen = local_state.onboarding_seen;
     if config.accounts.is_empty() {
-        app.accounts_page.refresh_pending = true;
+        app.accounts.page.refresh_pending = true;
     } else {
         app.load(&mut client).await?;
         app.maybe_show_feature_onboarding();
         // Load accounts for sidebar account section
-        app.accounts_page.refresh_pending = true;
+        app.accounts.page.refresh_pending = true;
     }
 
     let mut terminal = ratatui::init();
@@ -127,8 +127,8 @@ pub async fn run() -> anyhow::Result<()> {
     loop {
         crate::local_io::submit_pending_work(&mut app, &local_io);
 
-        if app.pending_config_edit {
-            app.pending_config_edit = false;
+        if app.diagnostics.pending_config_edit {
+            app.diagnostics.pending_config_edit = false;
             let result = run_with_terminal_suspended(&mut terminal, &mut events, || {
                 edit_tui_config(&mut app)
             });
@@ -137,7 +137,7 @@ pub async fn run() -> anyhow::Result<()> {
                     app.status_message = Some(message);
                 }
                 Err(error) => {
-                    app.error_modal = Some(app::ErrorModalState::new(
+                    app.modals.error = Some(app::ErrorModalState::new(
                         "Config Reload Failed",
                         format!(
                             "Config could not be reloaded after editing.\n\n{error}\n\nFix the file and run Edit Config again."
@@ -147,15 +147,15 @@ pub async fn run() -> anyhow::Result<()> {
                 }
             }
         }
-        if app.pending_log_open {
-            app.pending_log_open = false;
+        if app.diagnostics.pending_log_open {
+            app.diagnostics.pending_log_open = false;
             let result = run_with_terminal_suspended(&mut terminal, &mut events, open_tui_log_file);
             match result {
                 Ok(message) => {
                     app.status_message = Some(message);
                 }
                 Err(error) => {
-                    app.error_modal = Some(app::ErrorModalState::new(
+                    app.modals.error = Some(app::ErrorModalState::new(
                         "Open Logs Failed",
                         format!(
                             "The log file could not be opened.\n\n{error}\n\nCheck that the daemon has created the log file and try again."
@@ -165,16 +165,16 @@ pub async fn run() -> anyhow::Result<()> {
                 }
             }
         }
-        if let Some(pane) = app.pending_diagnostics_details.take() {
+        if let Some(pane) = app.diagnostics.pending_details.take() {
             let result = run_with_terminal_suspended(&mut terminal, &mut events, || {
-                open_diagnostics_pane_details(&app.diagnostics_page, pane)
+                open_diagnostics_pane_details(&app.diagnostics.page, pane)
             });
             match result {
                 Ok(message) => {
                     app.status_message = Some(message);
                 }
                 Err(error) => {
-                    app.error_modal = Some(app::ErrorModalState::new(
+                    app.modals.error = Some(app::ErrorModalState::new(
                         "Diagnostics Open Failed",
                         format!(
                             "The diagnostics source could not be opened.\n\n{error}\n\nTry refresh first, then open details again."
@@ -259,15 +259,15 @@ pub async fn run() -> anyhow::Result<()> {
         let timeout = app.next_background_timeout(timeout);
 
         // Spawn non-blocking search
-        if let Some(pending) = app.pending_search.take() {
+        if let Some(pending) = app.search.pending.take() {
             let _ = replaceable.send(ReplaceableRequest::Search(pending));
         }
 
-        if let Some(pending) = app.pending_search_count.take() {
+        if let Some(pending) = app.search.pending_count.take() {
             let _ = replaceable.send(ReplaceableRequest::SearchCount(pending));
         }
 
-        if let Some(pending) = app.pending_unsubscribe_action.take() {
+        if let Some(pending) = app.modals.pending_unsubscribe_action.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let unsubscribe_resp = ipc_call(
@@ -336,8 +336,8 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if app.rules_page.refresh_pending {
-            app.rules_page.refresh_pending = false;
+        if app.rules.page.refresh_pending {
+            app.rules.page.refresh_pending = false;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, Request::ListRules).await;
@@ -353,25 +353,25 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(rule) = app.pending_rule_detail.take() {
-            app.rule_detail_request_id = app.rule_detail_request_id.wrapping_add(1);
+        if let Some(rule) = app.rules.pending_detail.take() {
+            app.rules.detail_request_id = app.rules.detail_request_id.wrapping_add(1);
             let _ = replaceable.send(ReplaceableRequest::RuleDetail {
                 rule,
-                request_id: app.rule_detail_request_id,
+                request_id: app.rules.detail_request_id,
                 enqueued_at: Instant::now(),
             });
         }
 
-        if let Some(rule) = app.pending_rule_history.take() {
-            app.rule_history_request_id = app.rule_history_request_id.wrapping_add(1);
+        if let Some(rule) = app.rules.pending_history.take() {
+            app.rules.history_request_id = app.rules.history_request_id.wrapping_add(1);
             let _ = replaceable.send(ReplaceableRequest::RuleHistory {
                 rule,
-                request_id: app.rule_history_request_id,
+                request_id: app.rules.history_request_id,
                 enqueued_at: Instant::now(),
             });
         }
 
-        if let Some(rule) = app.pending_rule_dry_run.take() {
+        if let Some(rule) = app.rules.pending_dry_run.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
@@ -395,16 +395,16 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(rule) = app.pending_rule_form_load.take() {
-            app.rule_form_request_id = app.rule_form_request_id.wrapping_add(1);
+        if let Some(rule) = app.rules.pending_form_load.take() {
+            app.rules.form_request_id = app.rules.form_request_id.wrapping_add(1);
             let _ = replaceable.send(ReplaceableRequest::RuleForm {
                 rule,
-                request_id: app.rule_form_request_id,
+                request_id: app.rules.form_request_id,
                 enqueued_at: Instant::now(),
             });
         }
 
-        if let Some(rule) = app.pending_rule_delete.take() {
+        if let Some(rule) = app.rules.pending_delete.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, Request::DeleteRule { rule }).await;
@@ -417,7 +417,7 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(rule) = app.pending_rule_upsert.take() {
+        if let Some(rule) = app.rules.pending_upsert.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, Request::UpsertRule { rule }).await;
@@ -433,15 +433,15 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if app.pending_rule_form_save {
-            app.pending_rule_form_save = false;
+        if app.rules.pending_form_save {
+            app.rules.pending_form_save = false;
             let bg = bg.clone();
-            let existing_rule = app.rules_page.form.existing_rule.clone();
-            let name = app.rules_page.form.name.clone();
-            let condition = app.rules_page.form.condition.clone();
-            let action = app.rules_page.form.action.clone();
-            let priority = app.rules_page.form.priority.parse::<i32>().unwrap_or(100);
-            let enabled = app.rules_page.form.enabled;
+            let existing_rule = app.rules.page.form.existing_rule.clone();
+            let name = app.rules.page.form.name.clone();
+            let condition = app.rules.page.form.condition.clone();
+            let action = app.rules.page.form.action.clone();
+            let priority = app.rules.page.form.priority.parse::<i32>().unwrap_or(100);
+            let enabled = app.rules.page.form.enabled;
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
                     &bg,
@@ -467,12 +467,12 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if app.diagnostics_page.refresh_pending {
-            app.diagnostics_page.refresh_pending = false;
-            app.pending_status_refresh = false;
-            app.diagnostics_page.pending_requests = 4;
-            app.diagnostics_request_id = app.diagnostics_request_id.wrapping_add(1);
-            let request_id = app.diagnostics_request_id;
+        if app.diagnostics.page.refresh_pending {
+            app.diagnostics.page.refresh_pending = false;
+            app.diagnostics.pending_status_refresh = false;
+            app.diagnostics.page.pending_requests = 4;
+            app.diagnostics.request_id = app.diagnostics.request_id.wrapping_add(1);
+            let request_id = app.diagnostics.request_id;
             for (kind, request) in [
                 (ReplaceableRequestKey::DiagnosticsStatus, Request::GetStatus),
                 (
@@ -504,17 +504,17 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
 
-        if app.pending_status_refresh {
-            app.pending_status_refresh = false;
-            app.status_request_id = app.status_request_id.wrapping_add(1);
+        if app.diagnostics.pending_status_refresh {
+            app.diagnostics.pending_status_refresh = false;
+            app.diagnostics.status_request_id = app.diagnostics.status_request_id.wrapping_add(1);
             let _ = replaceable.send(ReplaceableRequest::Status {
-                request_id: app.status_request_id,
+                request_id: app.diagnostics.status_request_id,
                 enqueued_at: Instant::now(),
             });
         }
 
-        if app.accounts_page.refresh_pending {
-            app.accounts_page.refresh_pending = false;
+        if app.accounts.page.refresh_pending {
+            app.accounts.page.refresh_pending = false;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let result = load_accounts_page_accounts(&bg).await;
@@ -589,7 +589,7 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(account) = app.pending_account_save.take() {
+        if let Some(account) = app.accounts.pending_save.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let result = run_account_save_workflow(&bg, account).await;
@@ -597,7 +597,7 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(account) = app.pending_account_test.take() {
+        if let Some(account) = app.accounts.pending_test.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let result =
@@ -606,7 +606,7 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some((account, reauthorize)) = app.pending_account_authorize.take() {
+        if let Some((account, reauthorize)) = app.accounts.pending_authorize.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let result = request_account_operation(
@@ -621,7 +621,7 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(key) = app.pending_account_set_default.take() {
+        if let Some(key) = app.accounts.pending_set_default.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let result =
@@ -630,8 +630,8 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if app.pending_bug_report {
-            app.pending_bug_report = false;
+        if app.diagnostics.pending_bug_report {
+            app.diagnostics.pending_bug_report = false;
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(
@@ -772,7 +772,7 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         // Handle compose actions
-        if let Some(compose_action) = app.pending_compose.take() {
+        if let Some(compose_action) = app.compose.pending_compose.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let result = handle_compose_action(&bg, compose_action).await;
@@ -798,13 +798,13 @@ pub async fn run() -> anyhow::Result<()> {
                             result: Ok(results),
                         } => match target {
                             app::SearchTarget::SearchPage => {
-                                if session_id != app.search_page.session_id {
+                                if session_id != app.search.page.session_id {
                                     continue;
                                 }
                                 app.apply_search_page_results(append, results);
                             }
                             app::SearchTarget::Mailbox => {
-                                if session_id != app.mailbox_search_session_id {
+                                if session_id != app.search.mailbox_session_id {
                                     continue;
                                 }
                                 app.mailbox.envelopes = results.envelopes;
@@ -820,17 +820,17 @@ pub async fn run() -> anyhow::Result<()> {
                         } => {
                             match target {
                                 app::SearchTarget::SearchPage => {
-                                    if session_id != app.search_page.session_id {
+                                    if session_id != app.search.page.session_id {
                                         continue;
                                     }
-                                    app.search_page.loading_more = false;
-                                    app.search_page.load_to_end = false;
-                                    app.search_page.count_pending = false;
-                                    app.search_page.total_count = None;
-                                    app.search_page.ui_status = app::SearchUiStatus::Error;
+                                    app.search.page.loading_more = false;
+                                    app.search.page.load_to_end = false;
+                                    app.search.page.count_pending = false;
+                                    app.search.page.total_count = None;
+                                    app.search.page.ui_status = app::SearchUiStatus::Error;
                                 }
                                 app::SearchTarget::Mailbox => {
-                                    if session_id != app.mailbox_search_session_id {
+                                    if session_id != app.search.mailbox_session_id {
                                         continue;
                                     }
                                     app.mailbox.envelopes = app.mailbox.all_envelopes.clone();
@@ -842,141 +842,142 @@ pub async fn run() -> anyhow::Result<()> {
                             session_id,
                             result: Ok(count),
                         } => {
-                            if session_id != app.search_page.session_id {
+                            if session_id != app.search.page.session_id {
                                 continue;
                             }
-                            app.search_page.total_count = Some(count);
-                            app.search_page.count_pending = false;
-                            if app.search_page.ui_status != app::SearchUiStatus::Error {
-                                app.search_page.ui_status = app::SearchUiStatus::Loaded;
+                            app.search.page.total_count = Some(count);
+                            app.search.page.count_pending = false;
+                            if app.search.page.ui_status != app::SearchUiStatus::Error {
+                                app.search.page.ui_status = app::SearchUiStatus::Loaded;
                             }
                         }
                         AsyncResult::SearchCount {
                             session_id,
                             result: Err(error),
                         } => {
-                            if session_id != app.search_page.session_id {
+                            if session_id != app.search.page.session_id {
                                 continue;
                             }
-                            app.search_page.count_pending = false;
-                            if app.search_page.results.is_empty()
-                                && matches!(app.search_page.ui_status, app::SearchUiStatus::Searching)
+                            app.search.page.count_pending = false;
+                            if app.search.page.results.is_empty()
+                                && matches!(app.search.page.ui_status, app::SearchUiStatus::Searching)
                             {
-                                app.search_page.ui_status = app::SearchUiStatus::Error;
+                                app.search.page.ui_status = app::SearchUiStatus::Error;
                             }
                             app.status_message = Some(format!("Search count failed: {error}"));
                         }
                         AsyncResult::Rules(Ok(rules)) => {
-                            app.rules_page.rules = rules;
-                            app.rules_page.selected_index = app
-                                .rules_page
+                            app.rules.page.rules = rules;
+                            app.rules.page.selected_index = app
+                                .rules
+                                .page
                                 .selected_index
-                                .min(app.rules_page.rules.len().saturating_sub(1));
+                                .min(app.rules.page.rules.len().saturating_sub(1));
                             app.refresh_selected_rule_panel();
                         }
                         AsyncResult::Rules(Err(e)) => {
-                            app.rules_page.status = Some(format!("Rules error: {e}"));
+                            app.rules.page.status = Some(format!("Rules error: {e}"));
                         }
                         AsyncResult::RuleDetail {
                             request_id,
                             result: Ok(rule),
                         } => {
-                            if request_id != app.rule_detail_request_id {
-                                tracing::trace!(request_id, current_id = app.rule_detail_request_id, "tui stale rule detail dropped");
+                            if request_id != app.rules.detail_request_id {
+                                tracing::trace!(request_id, current_id = app.rules.detail_request_id, "tui stale rule detail dropped");
                                 continue;
                             }
-                            app.rules_page.detail = Some(rule);
-                            app.rules_page.panel = app::RulesPanel::Details;
+                            app.rules.page.detail = Some(rule);
+                            app.rules.page.panel = app::RulesPanel::Details;
                         }
                         AsyncResult::RuleDetail {
                             request_id,
                             result: Err(e),
                         } => {
-                            if request_id != app.rule_detail_request_id {
-                                tracing::trace!(request_id, current_id = app.rule_detail_request_id, "tui stale rule detail dropped");
+                            if request_id != app.rules.detail_request_id {
+                                tracing::trace!(request_id, current_id = app.rules.detail_request_id, "tui stale rule detail dropped");
                                 continue;
                             }
-                            app.rules_page.status = Some(format!("Rule error: {e}"));
+                            app.rules.page.status = Some(format!("Rule error: {e}"));
                         }
                         AsyncResult::RuleHistory {
                             request_id,
                             result: Ok(entries),
                         } => {
-                            if request_id != app.rule_history_request_id {
-                                tracing::trace!(request_id, current_id = app.rule_history_request_id, "tui stale rule history dropped");
+                            if request_id != app.rules.history_request_id {
+                                tracing::trace!(request_id, current_id = app.rules.history_request_id, "tui stale rule history dropped");
                                 continue;
                             }
-                            app.rules_page.history = entries;
+                            app.rules.page.history = entries;
                         }
                         AsyncResult::RuleHistory {
                             request_id,
                             result: Err(e),
                         } => {
-                            if request_id != app.rule_history_request_id {
-                                tracing::trace!(request_id, current_id = app.rule_history_request_id, "tui stale rule history dropped");
+                            if request_id != app.rules.history_request_id {
+                                tracing::trace!(request_id, current_id = app.rules.history_request_id, "tui stale rule history dropped");
                                 continue;
                             }
-                            app.rules_page.status = Some(format!("History error: {e}"));
+                            app.rules.page.status = Some(format!("History error: {e}"));
                         }
                         AsyncResult::RuleDryRun(Ok(results)) => {
-                            app.rules_page.dry_run = results;
+                            app.rules.page.dry_run = results;
                         }
                         AsyncResult::RuleDryRun(Err(e)) => {
-                            app.rules_page.status = Some(format!("Dry-run error: {e}"));
+                            app.rules.page.status = Some(format!("Dry-run error: {e}"));
                         }
                         AsyncResult::RuleForm {
                             request_id,
                             result: Ok(form),
                         } => {
-                            if request_id != app.rule_form_request_id {
-                                tracing::trace!(request_id, current_id = app.rule_form_request_id, "tui stale rule form dropped");
+                            if request_id != app.rules.form_request_id {
+                                tracing::trace!(request_id, current_id = app.rules.form_request_id, "tui stale rule form dropped");
                                 continue;
                             }
-                            app.rules_page.form.visible = true;
-                            app.rules_page.form.existing_rule = form.id;
-                            app.rules_page.form.name = form.name;
-                            app.rules_page.form.condition = form.condition;
-                            app.rules_page.form.action = form.action;
-                            app.rules_page.form.priority = form.priority.to_string();
-                            app.rules_page.form.enabled = form.enabled;
-                            app.rules_page.form.active_field = 0;
+                            app.rules.page.form.visible = true;
+                            app.rules.page.form.existing_rule = form.id;
+                            app.rules.page.form.name = form.name;
+                            app.rules.page.form.condition = form.condition;
+                            app.rules.page.form.action = form.action;
+                            app.rules.page.form.priority = form.priority.to_string();
+                            app.rules.page.form.enabled = form.enabled;
+                            app.rules.page.form.active_field = 0;
                             app.sync_rule_form_editors();
-                            app.rules_page.panel = app::RulesPanel::Form;
+                            app.rules.page.panel = app::RulesPanel::Form;
                         }
                         AsyncResult::RuleForm {
                             request_id,
                             result: Err(e),
                         } => {
-                            if request_id != app.rule_form_request_id {
-                                tracing::trace!(request_id, current_id = app.rule_form_request_id, "tui stale rule form dropped");
+                            if request_id != app.rules.form_request_id {
+                                tracing::trace!(request_id, current_id = app.rules.form_request_id, "tui stale rule form dropped");
                                 continue;
                             }
-                            app.rules_page.status = Some(format!("Form error: {e}"));
+                            app.rules.page.status = Some(format!("Form error: {e}"));
                         }
                         AsyncResult::RuleDeleted(Ok(())) => {
-                            app.rules_page.status = Some("Rule deleted".into());
-                            app.rules_page.refresh_pending = true;
+                            app.rules.page.status = Some("Rule deleted".into());
+                            app.rules.page.refresh_pending = true;
                         }
                         AsyncResult::RuleDeleted(Err(e)) => {
-                            app.rules_page.status = Some(format!("Delete error: {e}"));
+                            app.rules.page.status = Some(format!("Delete error: {e}"));
                         }
                         AsyncResult::RuleUpsert(Ok(rule)) => {
-                            app.rules_page.detail = Some(rule.clone());
-                            app.rules_page.form.visible = false;
-                            app.rules_page.panel = app::RulesPanel::Details;
-                            app.rules_page.status = Some("Rule saved".into());
-                            app.rules_page.refresh_pending = true;
+                            app.rules.page.detail = Some(rule.clone());
+                            app.rules.page.form.visible = false;
+                            app.rules.page.panel = app::RulesPanel::Details;
+                            app.rules.page.status = Some("Rule saved".into());
+                            app.rules.page.refresh_pending = true;
                         }
                         AsyncResult::RuleUpsert(Err(e)) => {
-                            app.rules_page.status = Some(format!("Save error: {e}"));
+                            app.rules.page.status = Some(format!("Save error: {e}"));
                         }
                         AsyncResult::Diagnostics { request_id, result } => {
-                            if request_id != app.diagnostics_request_id {
-                                tracing::trace!(request_id, current_id = app.diagnostics_request_id, "tui stale diagnostics dropped");
+                            if request_id != app.diagnostics.request_id {
+                                tracing::trace!(request_id, current_id = app.diagnostics.request_id, "tui stale diagnostics dropped");
                                 continue;
                             }
-                            app.diagnostics_page.pending_requests =
-                                app.diagnostics_page.pending_requests.saturating_sub(1);
+                            app.diagnostics.page.pending_requests =
+                                app.diagnostics.page.pending_requests.saturating_sub(1);
                             match *result {
                                 Ok(response) => match response {
                                 Response::Ok {
@@ -1001,25 +1002,25 @@ pub async fn run() -> anyhow::Result<()> {
                                 Response::Ok {
                                     data: ResponseData::DoctorReport { report },
                                 } => {
-                                    app.diagnostics_page.doctor = Some(report);
+                                    app.diagnostics.page.doctor = Some(report);
                                 }
                                 Response::Ok {
                                     data: ResponseData::EventLogEntries { entries },
                                 } => {
-                                    app.diagnostics_page.events = entries;
+                                    app.diagnostics.page.events = entries;
                                 }
                                 Response::Ok {
                                     data: ResponseData::LogLines { lines },
                                 } => {
-                                    app.diagnostics_page.logs = lines;
+                                    app.diagnostics.page.logs = lines;
                                 }
                                 Response::Error { message } => {
-                                    app.diagnostics_page.status = Some(message);
+                                    app.diagnostics.page.status = Some(message);
                                 }
                                 _ => {}
                                 },
                                 Err(e) => {
-                                    app.diagnostics_page.status =
+                                    app.diagnostics.page.status =
                                         Some(format!("Diagnostics error: {e}"));
                                 }
                             }
@@ -1028,8 +1029,8 @@ pub async fn run() -> anyhow::Result<()> {
                             request_id,
                             result: Ok(snapshot),
                         } => {
-                            if request_id != app.status_request_id {
-                                tracing::trace!(request_id, current_id = app.status_request_id, "tui stale status dropped");
+                            if request_id != app.diagnostics.status_request_id {
+                                tracing::trace!(request_id, current_id = app.diagnostics.status_request_id, "tui stale status dropped");
                                 continue;
                             }
                             app.apply_status_snapshot(
@@ -1044,28 +1045,29 @@ pub async fn run() -> anyhow::Result<()> {
                             request_id,
                             result: Err(e),
                         } => {
-                            if request_id != app.status_request_id {
-                                tracing::trace!(request_id, current_id = app.status_request_id, "tui stale status dropped");
+                            if request_id != app.diagnostics.status_request_id {
+                                tracing::trace!(request_id, current_id = app.diagnostics.status_request_id, "tui stale status dropped");
                                 continue;
                             }
                             app.status_message = Some(format!("Status refresh failed: {e}"));
                         }
                         AsyncResult::Accounts(Ok(accounts)) => {
-                            app.accounts_page.accounts = accounts;
-                            app.accounts_page.selected_index = app
-                                .accounts_page
+                            app.accounts.page.accounts = accounts;
+                            app.accounts.page.selected_index = app
+                                .accounts
+                                .page
                                 .selected_index
-                                .min(app.accounts_page.accounts.len().saturating_sub(1));
-                            if app.accounts_page.accounts.is_empty() {
-                                app.accounts_page.onboarding_required = true;
+                                .min(app.accounts.page.accounts.len().saturating_sub(1));
+                            if app.accounts.page.accounts.is_empty() {
+                                app.accounts.page.onboarding_required = true;
                             } else {
-                                app.accounts_page.onboarding_required = false;
-                                app.accounts_page.onboarding_modal_open = false;
+                                app.accounts.page.onboarding_required = false;
+                                app.accounts.page.onboarding_modal_open = false;
                                 app.maybe_show_feature_onboarding();
                             }
                         }
                         AsyncResult::Accounts(Err(e)) => {
-                            app.accounts_page.status = Some(format!("Accounts error: {e}"));
+                            app.accounts.page.status = Some(format!("Accounts error: {e}"));
                         }
                         AsyncResult::Labels(Ok(labels)) => {
                             apply_labels_refresh(&mut app, labels);
@@ -1082,20 +1084,20 @@ pub async fn run() -> anyhow::Result<()> {
                                 Some(format!("Mailbox refresh failed: {e}"));
                         }
                         AsyncResult::AccountOperation(Ok(result)) => {
-                            let was_switch = app.pending_account_switch;
-                            app.pending_account_switch = false;
+                            let was_switch = app.accounts.pending_switch;
+                            app.accounts.pending_switch = false;
                             app.apply_account_operation_result(result);
                             if was_switch {
                                 app.handle_account_switch_complete();
                             }
                         }
                         AsyncResult::AccountOperation(Err(e)) => {
-                            app.pending_account_switch = false;
+                            app.accounts.pending_switch = false;
                             app.mailbox.mailbox_loading_message = None;
-                            app.accounts_page.operation_in_flight = false;
-                            app.accounts_page.throbber = Default::default();
-                            app.accounts_page.status = Some(format!("Account error: {e}"));
-                            app.error_modal = Some(app::ErrorModalState::new(
+                            app.accounts.page.operation_in_flight = false;
+                            app.accounts.page.throbber = Default::default();
+                            app.accounts.page.status = Some(format!("Account error: {e}"));
+                            app.modals.error = Some(app::ErrorModalState::new(
                                 "Account Operation Failed",
                                 format!("The account test or save request failed.\n\n{e}"),
                             ));
@@ -1104,7 +1106,7 @@ pub async fn run() -> anyhow::Result<()> {
                             submit_bug_report_write(&local_io, content);
                         }
                         AsyncResult::BugReport(Err(e)) => {
-                            app.diagnostics_page.status = Some(format!("Bug report error: {e}"));
+                            app.diagnostics.page.status = Some(format!("Bug report error: {e}"));
                         }
                         AsyncResult::AttachmentFile {
                             operation,
@@ -1357,7 +1359,7 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.mailbox.pending_labels_refresh = true;
             app.mailbox.pending_all_envelopes_refresh = true;
             app.mailbox.pending_subscriptions_refresh = true;
-            app.pending_status_refresh = true;
+            app.diagnostics.pending_status_refresh = true;
             if let Some(label_id) = app.mailbox.active_label.clone() {
                 app.mailbox.pending_label_fetch = Some(label_id);
             }
@@ -1381,12 +1383,12 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.restore_sidebar_selection(selected_sidebar);
         }
         DaemonEvent::SyncError { account_id, error } => {
-            app.error_modal = Some(app::ErrorModalState::new(
+            app.modals.error = Some(app::ErrorModalState::new(
                 "Sync Failed",
                 format!("Account: {account_id}\n\n{error}"),
             ));
             app.status_message = Some(format!("Sync error: {error}"));
-            app.pending_status_refresh = true;
+            app.diagnostics.pending_status_refresh = true;
         }
         _ => {}
     }
@@ -1396,14 +1398,14 @@ fn apply_all_envelopes_refresh(app: &mut App, envelopes: Vec<mxr_core::Envelope>
     let switched_accounts = app.mailbox.mailbox_loading_message.take().is_some();
     let selected_id = (app.mailbox.active_label.is_none()
         && app.mailbox.pending_active_label.is_none()
-        && !app.search_active
+        && !app.search.active
         && app.mailbox.mailbox_view == app::MailboxView::Messages)
         .then(|| app.selected_mail_row().map(|row| row.representative.id))
         .flatten();
     app.mailbox.all_envelopes = envelopes;
     if app.mailbox.active_label.is_none()
         && app.mailbox.pending_active_label.is_none()
-        && !app.search_active
+        && !app.search.active
     {
         app.mailbox.envelopes = app
             .mailbox
@@ -1685,7 +1687,8 @@ mod tests {
         handle_compose_editor_status(&mut app, &data, Ok(exit_status(0))).await;
 
         assert_eq!(
-            app.pending_send_confirm
+            app.compose
+                .pending_send_confirm
                 .as_ref()
                 .map(|pending| pending.mode),
             Some(PendingSendMode::SendOrSave)
@@ -1715,7 +1718,7 @@ mod tests {
         handle_compose_editor_status(&mut app, &data, Ok(exit_status(1))).await;
 
         assert_eq!(app.status_message.as_deref(), Some("Draft discarded"));
-        assert!(app.pending_send_confirm.is_none());
+        assert!(app.compose.pending_send_confirm.is_none());
         assert!(!temp.exists());
     }
 
@@ -1955,7 +1958,7 @@ mod tests {
         app.apply_runtime_config(&config);
 
         assert!(!app.mailbox.reader_mode);
-        assert_eq!(app.snooze_config.morning_hour, 7);
+        assert_eq!(app.modals.snooze_config.morning_hour, 7);
         assert_eq!(
             app.theme.selection_fg,
             crate::theme::Theme::light().selection_fg
@@ -1968,7 +1971,7 @@ mod tests {
 
         app.apply(Action::EditConfig);
 
-        assert!(app.pending_config_edit);
+        assert!(app.diagnostics.pending_config_edit);
         assert_eq!(
             app.status_message.as_deref(),
             Some("Opening config in editor...")
@@ -1981,7 +1984,7 @@ mod tests {
 
         app.apply(Action::OpenLogs);
 
-        assert!(app.pending_log_open);
+        assert!(app.diagnostics.pending_log_open);
         assert_eq!(
             app.status_message.as_deref(),
             Some("Opening log file in editor...")
@@ -2283,6 +2286,7 @@ mod tests {
         app.apply(Action::Unsubscribe);
 
         let pending = app
+            .modals
             .pending_unsubscribe_confirm
             .as_ref()
             .expect("unsubscribe modal should open");
@@ -2307,7 +2311,7 @@ mod tests {
 
         app.apply(Action::Unsubscribe);
 
-        assert!(app.pending_unsubscribe_confirm.is_none());
+        assert!(app.modals.pending_unsubscribe_confirm.is_none());
         assert_eq!(
             app.status_message.as_deref(),
             Some("No unsubscribe option found for this message")
@@ -2330,6 +2334,7 @@ mod tests {
         app.apply(Action::ConfirmUnsubscribeAndArchiveSender);
 
         let pending = app
+            .modals
             .pending_unsubscribe_action
             .as_ref()
             .expect("unsubscribe action should be queued");
@@ -2369,15 +2374,15 @@ mod tests {
     #[test]
     fn reopening_active_search_preserves_query() {
         let mut app = App::new();
-        app.search_active = true;
-        app.search_bar.query = "deploy".to_string();
-        app.search_bar.cursor_pos = 0;
+        app.search.active = true;
+        app.search.bar.query = "deploy".to_string();
+        app.search.bar.cursor_pos = 0;
 
         app.apply(Action::OpenMailboxFilter);
 
-        assert!(app.search_bar.active);
-        assert_eq!(app.search_bar.query, "deploy");
-        assert_eq!(app.search_bar.cursor_pos, "deploy".len());
+        assert!(app.search.bar.active);
+        assert_eq!(app.search.bar.query, "deploy");
+        assert_eq!(app.search.bar.cursor_pos, "deploy".len());
     }
 
     #[test]
@@ -2714,7 +2719,7 @@ mod tests {
 
         assert!(app.mailbox.pending_labels_refresh);
         assert!(app.mailbox.pending_all_envelopes_refresh);
-        assert!(app.pending_status_refresh);
+        assert!(app.diagnostics.pending_status_refresh);
         assert!(app.mailbox.pending_label_fetch.is_none());
         assert_eq!(app.status_message.as_deref(), Some("Synced 5 messages"));
     }
@@ -2755,7 +2760,7 @@ mod tests {
         let mut app = App::new();
         let envelopes = make_test_envelopes(4);
         app.mailbox.active_label = None;
-        app.search_active = false;
+        app.search.active = false;
 
         apply_all_envelopes_refresh(&mut app, envelopes.clone());
 
@@ -2924,7 +2929,7 @@ mod tests {
 
         app.apply(Action::MarkRead);
         assert!(app.pending_mutation_queue.is_empty());
-        match app.pending_bulk_confirm.as_ref() {
+        match app.modals.pending_bulk_confirm.as_ref() {
             Some(confirm) => match &confirm.request {
                 Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
                     assert!(*read);
@@ -2944,7 +2949,7 @@ mod tests {
 
         assert_eq!(app.pending_mutation_queue.len(), 1);
         assert_eq!(app.pending_mutation_count, 1);
-        assert!(app.pending_bulk_confirm.is_none());
+        assert!(app.modals.pending_bulk_confirm.is_none());
         assert!(app
             .mailbox
             .envelopes
@@ -3014,7 +3019,7 @@ mod tests {
             .collect();
 
         app.apply(Action::MarkReadAndArchive);
-        match app.pending_bulk_confirm.as_ref() {
+        match app.modals.pending_bulk_confirm.as_ref() {
             Some(confirm) => match &confirm.request {
                 Request::Mutation(MutationCommand::ReadAndArchive { message_ids }) => {
                     assert_eq!(message_ids.len(), 3);
@@ -3027,7 +3032,7 @@ mod tests {
 
         app.apply(Action::OpenSelected);
 
-        assert!(app.pending_bulk_confirm.is_none());
+        assert!(app.modals.pending_bulk_confirm.is_none());
         assert_eq!(app.pending_mutation_queue.len(), 1);
         assert_eq!(app.pending_mutation_count, 1);
         assert!(app.mailbox.envelopes.is_empty());
@@ -3046,18 +3051,19 @@ mod tests {
         app.refresh_mailbox_after_mutation_failure();
 
         assert_eq!(
-            app.error_modal.as_ref().map(|modal| modal.title.as_str()),
+            app.modals.error.as_ref().map(|modal| modal.title.as_str()),
             Some("Mutation Failed")
         );
         assert_eq!(
-            app.error_modal
+            app.modals
+                .error
                 .as_ref()
                 .map(|modal| modal.detail.contains("boom")),
             Some(true)
         );
         assert!(app.mailbox.pending_labels_refresh);
         assert!(app.mailbox.pending_all_envelopes_refresh);
-        assert!(app.pending_status_refresh);
+        assert!(app.diagnostics.pending_status_refresh);
         assert!(app.mailbox.pending_subscriptions_refresh);
     }
 
@@ -3206,8 +3212,8 @@ mod tests {
         let mut app = App::new();
         app.mailbox.envelopes = make_test_envelopes(5);
         app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
-        app.search_active = true;
-        app.search_bar.query = "deployment".to_string();
+        app.search.active = true;
+        app.search.bar.query = "deployment".to_string();
         let title = app.mail_list_title();
         assert!(
             title.contains("deployment"),
@@ -3450,7 +3456,7 @@ mod tests {
         );
         app.apply(Action::Reply);
         assert_eq!(
-            app.pending_compose,
+            app.compose.pending_compose,
             Some(super::app::ComposeAction::Reply {
                 message_id: app.mailbox.envelopes[1].id.clone(),
                 account_id: app.mailbox.envelopes[1].account_id.clone(),
@@ -3545,16 +3551,16 @@ mod tests {
         let mut app = App::new();
 
         app.apply(Action::Help);
-        assert!(app.help_modal_open);
-        assert!(app.help_query.is_empty());
-        assert_eq!(app.help_selected, 0);
+        assert!(app.modals.help_open);
+        assert!(app.modals.help_query.is_empty());
+        assert_eq!(app.modals.help_selected, 0);
 
-        app.help_query = "config".into();
-        app.help_selected = 3;
+        app.modals.help_query = "config".into();
+        app.modals.help_selected = 3;
         app.apply(Action::Help);
-        assert!(!app.help_modal_open);
-        assert!(app.help_query.is_empty());
-        assert_eq!(app.help_selected, 0);
+        assert!(!app.modals.help_open);
+        assert!(app.modals.help_query.is_empty());
+        assert_eq!(app.modals.help_selected, 0);
     }
 
     #[test]
@@ -3564,21 +3570,21 @@ mod tests {
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
         assert!(action.is_none());
-        assert_eq!(app.help_query, "g");
-        assert_eq!(app.help_selected, 0);
+        assert_eq!(app.modals.help_query, "g");
+        assert_eq!(app.modals.help_selected, 0);
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
         assert!(action.is_none());
-        assert_eq!(app.help_query, "gc");
+        assert_eq!(app.modals.help_query, "gc");
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
         assert!(action.is_none());
-        assert_eq!(app.help_query, "g");
+        assert_eq!(app.modals.help_query, "g");
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
         assert!(action.is_none());
-        assert!(app.help_query.is_empty());
-        assert_eq!(app.help_selected, 0);
+        assert!(app.modals.help_query.is_empty());
+        assert_eq!(app.modals.help_selected, 0);
     }
 
     #[test]
@@ -3588,29 +3594,29 @@ mod tests {
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));
         assert!(action.is_none());
-        assert_eq!(app.help_query, "o");
-        assert!(!app.onboarding.visible);
+        assert_eq!(app.modals.help_query, "o");
+        assert!(!app.modals.onboarding.visible);
     }
 
     #[test]
     fn account_form_validation_points_to_first_invalid_field() {
         let mut app = App::new();
         app.screen = Screen::Accounts;
-        app.accounts_page.form.visible = true;
-        app.accounts_page.form.mode = super::app::AccountFormMode::ImapSmtp;
-        app.accounts_page.form.key = "work".into();
-        app.accounts_page.form.email = "me@example.com".into();
-        app.accounts_page.form.imap_port = "993".into();
-        app.accounts_page.form.smtp_host = "smtp.example.com".into();
-        app.accounts_page.form.smtp_port = "587".into();
-        app.accounts_page.form.smtp_auth_required = false;
+        app.accounts.page.form.visible = true;
+        app.accounts.page.form.mode = super::app::AccountFormMode::ImapSmtp;
+        app.accounts.page.form.key = "work".into();
+        app.accounts.page.form.email = "me@example.com".into();
+        app.accounts.page.form.imap_port = "993".into();
+        app.accounts.page.form.smtp_host = "smtp.example.com".into();
+        app.accounts.page.form.smtp_port = "587".into();
+        app.accounts.page.form.smtp_auth_required = false;
 
         app.apply(Action::TestAccountForm);
 
-        assert_eq!(app.accounts_page.form.active_field, 4);
-        assert!(!app.accounts_page.operation_in_flight);
-        assert!(app.pending_account_test.is_none());
-        let result = app.accounts_page.form.last_result.as_ref().unwrap();
+        assert_eq!(app.accounts.page.form.active_field, 4);
+        assert!(!app.accounts.page.operation_in_flight);
+        assert!(app.accounts.pending_test.is_none());
+        let result = app.accounts.page.form.last_result.as_ref().unwrap();
         assert!(result.summary.contains("Account form has problems."));
         assert_eq!(
             result.sync.as_ref().unwrap().detail,
@@ -3622,14 +3628,14 @@ mod tests {
     fn smtp_only_form_test_allows_no_auth_and_marks_operation_pending() {
         let mut app = App::new();
         app.screen = Screen::Accounts;
-        app.accounts_page.form.visible = true;
-        app.accounts_page.form.mode = super::app::AccountFormMode::SmtpOnly;
-        app.accounts_page.form.key = "relay".into();
-        app.accounts_page.form.email = "relay@example.com".into();
-        app.accounts_page.form.smtp_host = "smtp.example.com".into();
-        app.accounts_page.form.smtp_port = "25".into();
-        app.accounts_page.form.smtp_auth_required = false;
-        app.accounts_page.form.last_result = Some(mxr_protocol::AccountOperationResult {
+        app.accounts.page.form.visible = true;
+        app.accounts.page.form.mode = super::app::AccountFormMode::SmtpOnly;
+        app.accounts.page.form.key = "relay".into();
+        app.accounts.page.form.email = "relay@example.com".into();
+        app.accounts.page.form.smtp_host = "smtp.example.com".into();
+        app.accounts.page.form.smtp_port = "25".into();
+        app.accounts.page.form.smtp_auth_required = false;
+        app.accounts.page.form.last_result = Some(mxr_protocol::AccountOperationResult {
             ok: false,
             summary: "stale".into(),
             save: None,
@@ -3640,9 +3646,9 @@ mod tests {
 
         app.apply(Action::TestAccountForm);
 
-        assert!(app.accounts_page.operation_in_flight);
-        assert!(app.accounts_page.form.last_result.is_none());
-        let pending = app.pending_account_test.take().unwrap();
+        assert!(app.accounts.page.operation_in_flight);
+        assert!(app.accounts.page.form.last_result.is_none());
+        let pending = app.accounts.pending_test.take().unwrap();
         match pending.send.unwrap() {
             mxr_protocol::AccountSendConfigData::Smtp {
                 auth_required,
@@ -3662,21 +3668,21 @@ mod tests {
     fn auth_required_form_generates_secret_refs_from_account_key() {
         let mut app = App::new();
         app.screen = Screen::Accounts;
-        app.accounts_page.form.visible = true;
-        app.accounts_page.form.is_new_account = true;
-        app.accounts_page.form.mode = super::app::AccountFormMode::ImapSmtp;
-        app.accounts_page.form.key = "work".into();
-        app.accounts_page.form.email = "me@example.com".into();
-        app.accounts_page.form.imap_host = "imap.example.com".into();
-        app.accounts_page.form.imap_port = "993".into();
-        app.accounts_page.form.imap_password = "imap-secret".into();
-        app.accounts_page.form.smtp_host = "smtp.example.com".into();
-        app.accounts_page.form.smtp_port = "587".into();
-        app.accounts_page.form.smtp_password = "smtp-secret".into();
+        app.accounts.page.form.visible = true;
+        app.accounts.page.form.is_new_account = true;
+        app.accounts.page.form.mode = super::app::AccountFormMode::ImapSmtp;
+        app.accounts.page.form.key = "work".into();
+        app.accounts.page.form.email = "me@example.com".into();
+        app.accounts.page.form.imap_host = "imap.example.com".into();
+        app.accounts.page.form.imap_port = "993".into();
+        app.accounts.page.form.imap_password = "imap-secret".into();
+        app.accounts.page.form.smtp_host = "smtp.example.com".into();
+        app.accounts.page.form.smtp_port = "587".into();
+        app.accounts.page.form.smtp_password = "smtp-secret".into();
 
         app.apply(Action::TestAccountForm);
 
-        let pending = app.pending_account_test.take().unwrap();
+        let pending = app.accounts.pending_test.take().unwrap();
         match pending.sync.unwrap() {
             mxr_protocol::AccountSyncConfigData::Imap { password_ref, .. } => {
                 assert_eq!(password_ref, "mxr/work-imap");
@@ -3711,7 +3717,7 @@ mod tests {
 
         app.apply_account_operation_result(result);
 
-        let modal = app.error_modal.as_ref().unwrap();
+        let modal = app.modals.error.as_ref().unwrap();
         assert_eq!(modal.title, "Account Test Failed");
         assert!(modal.detail.contains("NAMESPACE response"));
         assert!(modal.detail.contains("compatibility issue"));
@@ -3721,8 +3727,8 @@ mod tests {
     fn account_form_o_reopens_result_details_modal() {
         let mut app = App::new();
         app.screen = Screen::Accounts;
-        app.accounts_page.form.visible = true;
-        app.accounts_page.form.last_result = Some(mxr_protocol::AccountOperationResult {
+        app.accounts.page.form.visible = true;
+        app.accounts.page.form.last_result = Some(mxr_protocol::AccountOperationResult {
             ok: false,
             summary: "Account 'consulting' test failed.".into(),
             save: None,
@@ -3738,7 +3744,7 @@ mod tests {
 
         assert!(action.is_none());
         assert_eq!(
-            app.error_modal.as_ref().map(|modal| modal.title.as_str()),
+            app.modals.error.as_ref().map(|modal| modal.title.as_str()),
             Some("Account Test Failed")
         );
     }
@@ -3746,71 +3752,72 @@ mod tests {
     #[test]
     fn error_modal_supports_scrolling_keys() {
         let mut app = App::new();
-        app.error_modal = Some(super::app::ErrorModalState::new(
+        app.modals.error = Some(super::app::ErrorModalState::new(
             "Account Test Failed",
             "line1\nline2\nline3\nline4\nline5",
         ));
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE));
         assert!(action.is_none());
-        assert_eq!(app.error_modal.as_ref().unwrap().scroll_offset, 1);
+        assert_eq!(app.modals.error.as_ref().unwrap().scroll_offset, 1);
 
         let action = app.handle_key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
         assert!(action.is_none());
-        assert_eq!(app.error_modal.as_ref().unwrap().scroll_offset, 9);
+        assert_eq!(app.modals.error.as_ref().unwrap().scroll_offset, 9);
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE));
         assert!(action.is_none());
-        assert_eq!(app.error_modal.as_ref().unwrap().scroll_offset, 8);
+        assert_eq!(app.modals.error.as_ref().unwrap().scroll_offset, 8);
 
         let action = app.handle_key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE));
         assert!(action.is_none());
-        assert_eq!(app.error_modal.as_ref().unwrap().scroll_offset, 0);
+        assert_eq!(app.modals.error.as_ref().unwrap().scroll_offset, 0);
     }
 
     #[test]
     fn closing_new_account_form_preserves_draft_and_resume_restores_it() {
         let mut app = App::new();
         app.screen = Screen::Accounts;
-        app.accounts_page.form.visible = true;
-        app.accounts_page.form.is_new_account = true;
-        app.accounts_page.form.key = "draft".into();
-        app.accounts_page.form.email = "draft@example.com".into();
-        app.accounts_page.form.smtp_host = "smtp.example.com".into();
+        app.accounts.page.form.visible = true;
+        app.accounts.page.form.is_new_account = true;
+        app.accounts.page.form.key = "draft".into();
+        app.accounts.page.form.email = "draft@example.com".into();
+        app.accounts.page.form.smtp_host = "smtp.example.com".into();
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(action.is_none());
-        assert!(!app.accounts_page.form.visible);
+        assert!(!app.accounts.page.form.visible);
         assert_eq!(
-            app.accounts_page.new_account_draft.as_ref().unwrap().key,
+            app.accounts.page.new_account_draft.as_ref().unwrap().key,
             "draft"
         );
 
         app.apply(Action::OpenAccountFormNew);
-        assert!(app.accounts_page.resume_new_account_draft_prompt_open);
-        assert!(!app.accounts_page.form.visible);
+        assert!(app.accounts.page.resume_new_account_draft_prompt_open);
+        assert!(!app.accounts.page.form.visible);
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert!(action.is_none());
-        assert!(app.accounts_page.form.visible);
-        assert_eq!(app.accounts_page.form.key, "draft");
-        assert_eq!(app.accounts_page.form.email, "draft@example.com");
-        assert!(app.accounts_page.new_account_draft.is_none());
+        assert!(app.accounts.page.form.visible);
+        assert_eq!(app.accounts.page.form.key, "draft");
+        assert_eq!(app.accounts.page.form.email, "draft@example.com");
+        assert!(app.accounts.page.new_account_draft.is_none());
     }
 
     #[test]
     fn new_account_draft_prompt_can_start_fresh_form() {
         let mut app = App::new();
         app.screen = Screen::Accounts;
-        app.accounts_page.form.visible = true;
-        app.accounts_page.form.is_new_account = true;
-        app.accounts_page.form.key = "draft".into();
-        app.accounts_page.form.email = "draft@example.com".into();
+        app.accounts.page.form.visible = true;
+        app.accounts.page.form.is_new_account = true;
+        app.accounts.page.form.key = "draft".into();
+        app.accounts.page.form.email = "draft@example.com".into();
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         assert!(action.is_none());
         assert_eq!(
-            app.accounts_page
+            app.accounts
+                .page
                 .new_account_draft
                 .as_ref()
                 .map(|draft| draft.email.as_str()),
@@ -3818,32 +3825,32 @@ mod tests {
         );
 
         app.apply(Action::OpenAccountFormNew);
-        assert!(app.accounts_page.resume_new_account_draft_prompt_open);
+        assert!(app.accounts.page.resume_new_account_draft_prompt_open);
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
         assert!(action.is_none());
-        assert!(app.accounts_page.form.visible);
-        assert!(app.accounts_page.form.is_new_account);
-        assert!(app.accounts_page.form.key.is_empty());
-        assert!(app.accounts_page.new_account_draft.is_none());
-        assert!(!app.accounts_page.resume_new_account_draft_prompt_open);
+        assert!(app.accounts.page.form.visible);
+        assert!(app.accounts.page.form.is_new_account);
+        assert!(app.accounts.page.form.key.is_empty());
+        assert!(app.accounts.page.new_account_draft.is_none());
+        assert!(!app.accounts.page.resume_new_account_draft_prompt_open);
     }
 
     #[test]
     fn leaving_accounts_screen_preserves_new_account_draft() {
         let mut app = App::new();
         app.screen = Screen::Accounts;
-        app.accounts_page.form.visible = true;
-        app.accounts_page.form.is_new_account = true;
-        app.accounts_page.form.key = "draft".into();
-        app.accounts_page.form.email = "draft@example.com".into();
+        app.accounts.page.form.visible = true;
+        app.accounts.page.form.is_new_account = true;
+        app.accounts.page.form.key = "draft".into();
+        app.accounts.page.form.email = "draft@example.com".into();
 
         app.apply(Action::OpenMailboxScreen);
 
         assert_eq!(app.screen, Screen::Mailbox);
-        assert!(!app.accounts_page.form.visible);
+        assert!(!app.accounts.page.form.visible);
         assert_eq!(
-            app.accounts_page.new_account_draft.as_ref().unwrap().email,
+            app.accounts.page.new_account_draft.as_ref().unwrap().email,
             "draft@example.com"
         );
     }
@@ -3853,7 +3860,7 @@ mod tests {
         let mut app = App::new();
         app.apply(Action::OpenSearchScreen);
         assert_eq!(app.screen, Screen::Search);
-        assert!(app.search_page.editing);
+        assert!(app.search.page.editing);
     }
 
     #[test]
@@ -3868,60 +3875,61 @@ mod tests {
         app.mailbox.all_envelopes = envelopes;
 
         app.apply(Action::OpenSearchScreen);
-        app.search_page.query.clear();
-        app.search_page.results = app.mailbox.all_envelopes.clone();
+        app.search.page.query.clear();
+        app.search.page.results = app.mailbox.all_envelopes.clone();
 
         for ch in "crate".chars() {
             let action = app.handle_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
             assert!(action.is_none());
         }
 
-        assert_eq!(app.search_page.query, "crate");
-        assert!(app.search_page.results.is_empty());
-        assert!(!app.search_page.loading_more);
-        assert!(!app.search_page.count_pending);
+        assert_eq!(app.search.page.query, "crate");
+        assert!(app.search.page.results.is_empty());
+        assert!(!app.search.page.loading_more);
+        assert!(!app.search.page.count_pending);
         assert_eq!(
-            app.search_page.ui_status,
+            app.search.page.ui_status,
             crate::app::SearchUiStatus::Debouncing
         );
         assert_eq!(
-            app.pending_search_debounce,
+            app.search.pending_debounce,
             Some(crate::app::PendingSearchDebounce {
                 query: "crate".into(),
                 mode: mxr_core::SearchMode::Lexical,
-                session_id: app.search_page.session_id,
+                session_id: app.search.page.session_id,
                 due_at: app
-                    .pending_search_debounce
+                    .search
+                    .pending_debounce
                     .as_ref()
                     .map(|pending| pending.due_at)
                     .expect("debounce timer should be set"),
             })
         );
-        assert!(app.pending_search.is_none());
-        assert!(app.pending_search_count.is_none());
+        assert!(app.search.pending.is_none());
+        assert!(app.search.pending_count.is_none());
     }
 
     #[test]
     fn open_search_screen_preserves_existing_search_session() {
         let mut app = App::new();
         let results = make_test_envelopes(2);
-        app.search_bar.query = "stale overlay".into();
-        app.search_page.query = "deploy".into();
-        app.search_page.results = results.clone();
-        app.search_page.session_active = true;
-        app.search_page.selected_index = 1;
-        app.search_page.result_selected = true;
-        app.search_page.active_pane = SearchPane::Preview;
+        app.search.bar.query = "stale overlay".into();
+        app.search.page.query = "deploy".into();
+        app.search.page.results = results.clone();
+        app.search.page.session_active = true;
+        app.search.page.selected_index = 1;
+        app.search.page.result_selected = true;
+        app.search.page.active_pane = SearchPane::Preview;
         app.mailbox.viewing_envelope = Some(results[1].clone());
 
         app.apply(Action::OpenRulesScreen);
         app.apply(Action::OpenSearchScreen);
 
         assert_eq!(app.screen, Screen::Search);
-        assert_eq!(app.search_page.query, "deploy");
-        assert_eq!(app.search_page.results.len(), 2);
-        assert_eq!(app.search_page.selected_index, 1);
-        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
+        assert_eq!(app.search.page.query, "deploy");
+        assert_eq!(app.search.page.results.len(), 2);
+        assert_eq!(app.search.page.selected_index, 1);
+        assert_eq!(app.search.page.active_pane, SearchPane::Preview);
         assert_eq!(
             app.mailbox
                 .viewing_envelope
@@ -3929,7 +3937,7 @@ mod tests {
                 .map(|env| env.id.clone()),
             Some(results[1].id.clone())
         );
-        assert!(app.pending_search.is_none());
+        assert!(app.search.pending.is_none());
     }
 
     #[test]
@@ -3940,7 +3948,7 @@ mod tests {
         assert_eq!(action, Some(Action::OpenGlobalSearch));
         app.apply(action.expect("slash should map to search"));
         assert_eq!(app.screen, Screen::Search);
-        assert!(app.search_page.editing);
+        assert!(app.search.page.editing);
 
         app.apply(Action::OpenMailboxScreen);
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
@@ -3951,42 +3959,42 @@ mod tests {
     fn search_results_accept_gg_and_g_navigation() {
         let mut app = App::new();
         app.apply(Action::OpenSearchScreen);
-        app.search_page.editing = false;
-        app.search_page.results = make_test_envelopes(3);
-        app.search_page.selected_index = 2;
+        app.search.page.editing = false;
+        app.search.page.results = make_test_envelopes(3);
+        app.search.page.selected_index = 2;
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
         assert!(action.is_none());
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE));
         assert_eq!(action, Some(Action::JumpTop));
         app.apply(action.unwrap());
-        assert_eq!(app.search_page.selected_index, 0);
+        assert_eq!(app.search.page.selected_index, 0);
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT));
         assert_eq!(action, Some(Action::JumpBottom));
         app.apply(action.unwrap());
-        assert_eq!(app.search_page.selected_index, 2);
+        assert_eq!(app.search.page.selected_index, 2);
     }
 
     #[test]
     fn open_search_screen_without_session_clears_stale_preview_and_query() {
         let mut app = App::new();
         let envelope = make_test_envelopes(1).remove(0);
-        app.search_bar.query = "mailbox quick filter".into();
+        app.search.bar.query = "mailbox quick filter".into();
         app.mailbox.viewing_envelope = Some(envelope.clone());
         app.mailbox.viewed_thread_messages = vec![envelope];
-        app.search_page.query = "stale".into();
-        app.search_page.session_active = false;
-        app.search_page.results.clear();
+        app.search.page.query = "stale".into();
+        app.search.page.session_active = false;
+        app.search.page.results.clear();
 
         app.apply(Action::OpenSearchScreen);
 
         assert_eq!(app.screen, Screen::Search);
-        assert!(app.search_page.editing);
-        assert!(app.search_page.query.is_empty());
+        assert!(app.search.page.editing);
+        assert!(app.search.page.query.is_empty());
         assert!(app.mailbox.viewing_envelope.is_none());
         assert!(app.mailbox.viewed_thread_messages.is_empty());
-        assert_eq!(app.search_page.ui_status, crate::app::SearchUiStatus::Idle);
+        assert_eq!(app.search.page.ui_status, crate::app::SearchUiStatus::Idle);
     }
 
     #[test]
@@ -3995,11 +4003,11 @@ mod tests {
 
         for screen in [Screen::Rules, Screen::Accounts, Screen::Diagnostics] {
             app.screen = screen;
-            app.label_picker.close();
+            app.modals.label_picker.close();
             let action = app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
             assert!(action.is_none(), "unexpected action on {screen:?}");
             assert!(
-                !app.label_picker.visible,
+                !app.modals.label_picker.visible,
                 "label picker opened on {screen:?}"
             );
         }
@@ -4009,24 +4017,24 @@ mod tests {
     fn rules_navigation_refreshes_selected_panel_request() {
         let mut app = App::new();
         app.screen = Screen::Rules;
-        app.rules_page.rules = vec![
+        app.rules.page.rules = vec![
             serde_json::json!({"id": "rule-1", "name": "One"}),
             serde_json::json!({"id": "rule-2", "name": "Two"}),
         ];
-        app.rules_page.panel = crate::app::RulesPanel::History;
+        app.rules.page.panel = crate::app::RulesPanel::History;
 
         assert!(app
             .handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE))
             .is_none());
-        assert_eq!(app.rules_page.selected_index, 1);
-        assert_eq!(app.pending_rule_history.as_deref(), Some("rule-2"));
+        assert_eq!(app.rules.page.selected_index, 1);
+        assert_eq!(app.rules.pending_history.as_deref(), Some("rule-2"));
 
-        app.rules_page.panel = crate::app::RulesPanel::DryRun;
+        app.rules.page.panel = crate::app::RulesPanel::DryRun;
         assert!(app
             .handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE))
             .is_none());
-        assert_eq!(app.rules_page.selected_index, 0);
-        assert_eq!(app.pending_rule_dry_run.as_deref(), Some("rule-1"));
+        assert_eq!(app.rules.page.selected_index, 0);
+        assert_eq!(app.rules.pending_dry_run.as_deref(), Some("rule-1"));
     }
 
     #[test]
@@ -4034,15 +4042,15 @@ mod tests {
         let mut app = App::new();
         let results = make_test_envelopes(2);
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = results.clone();
-        app.search_page.session_active = true;
-        app.search_page.selected_index = 1;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = results.clone();
+        app.search.page.session_active = true;
+        app.search.page.selected_index = 1;
 
         app.apply(Action::OpenSelected);
 
         assert_eq!(app.screen, Screen::Search);
-        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
+        assert_eq!(app.search.page.active_pane, SearchPane::Preview);
         assert_eq!(
             app.mailbox
                 .viewing_envelope
@@ -4057,9 +4065,9 @@ mod tests {
         let mut app = App::new();
         let results = make_test_envelopes(3);
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = results.clone();
-        app.search_page.session_active = true;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = results.clone();
+        app.search.page.session_active = true;
         app.mailbox.all_envelopes = results.clone();
 
         app.apply(Action::OpenSelected);
@@ -4074,7 +4082,7 @@ mod tests {
         assert!(app
             .handle_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE))
             .is_none());
-        assert_eq!(app.search_page.active_pane, SearchPane::Results);
+        assert_eq!(app.search.page.active_pane, SearchPane::Results);
         assert_eq!(
             app.mailbox
                 .viewing_envelope
@@ -4086,7 +4094,7 @@ mod tests {
         assert!(app
             .handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE))
             .is_none());
-        assert_eq!(app.search_page.selected_index, 1);
+        assert_eq!(app.search.page.selected_index, 1);
         assert_eq!(
             app.mailbox
                 .viewing_envelope
@@ -4101,18 +4109,18 @@ mod tests {
         let mut app = App::new();
         let results = make_test_envelopes(2);
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = results.clone();
-        app.search_page.session_active = true;
-        app.search_page.selected_index = 1;
-        app.search_page.active_pane = SearchPane::Results;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = results.clone();
+        app.search.page.session_active = true;
+        app.search.page.selected_index = 1;
+        app.search.page.active_pane = SearchPane::Results;
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
         assert_eq!(action, Some(Action::Star));
 
         app.apply(action.expect("star action should be available from search results"));
 
-        assert!(app.search_page.results[1]
+        assert!(app.search.page.results[1]
             .flags
             .contains(MessageFlags::STARRED));
         assert_eq!(app.pending_mutation_queue.len(), 1);
@@ -4153,9 +4161,9 @@ mod tests {
         let results = vec![older, newer.clone(), other];
         app.mailbox.mail_list_mode = MailListMode::Messages;
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = results.clone();
-        app.search_page.session_active = true;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = results.clone();
+        app.search.page.session_active = true;
         app.mailbox.all_envelopes = results;
 
         app.apply(Action::ToggleMailListMode);
@@ -4168,7 +4176,7 @@ mod tests {
 
         app.apply(Action::OpenSelected);
 
-        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
+        assert_eq!(app.search.page.active_pane, SearchPane::Preview);
         assert_eq!(
             app.mailbox
                 .viewing_envelope
@@ -4183,10 +4191,10 @@ mod tests {
         let mut app = App::new();
         let results = make_test_envelopes(3);
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = results.clone();
-        app.search_page.session_active = true;
-        app.search_page.selected_index = 1;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = results.clone();
+        app.search.page.session_active = true;
+        app.search.page.selected_index = 1;
         app.mailbox.all_envelopes = results.clone();
 
         app.apply(Action::OpenSelected);
@@ -4199,8 +4207,8 @@ mod tests {
             },
         );
 
-        assert_eq!(app.search_page.selected_index, 1);
-        assert!(app.search_page.result_selected);
+        assert_eq!(app.search.page.selected_index, 1);
+        assert!(app.search.page.result_selected);
         assert_eq!(
             app.mailbox
                 .viewing_envelope
@@ -4215,10 +4223,10 @@ mod tests {
         let mut app = App::new();
         let results = make_test_envelopes(3);
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = results.clone();
-        app.search_page.session_active = true;
-        app.search_page.selected_index = 1;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = results.clone();
+        app.search.page.session_active = true;
+        app.search.page.selected_index = 1;
         app.mailbox.all_envelopes = results.clone();
 
         app.apply(Action::OpenSelected);
@@ -4231,9 +4239,9 @@ mod tests {
             },
         );
 
-        assert_eq!(app.search_page.selected_index, 0);
-        assert!(!app.search_page.result_selected);
-        assert_eq!(app.search_page.active_pane, SearchPane::Results);
+        assert_eq!(app.search.page.selected_index, 0);
+        assert!(!app.search.page.result_selected);
+        assert_eq!(app.search.page.active_pane, SearchPane::Results);
         assert!(app.mailbox.viewing_envelope.is_none());
         assert!(app.mailbox.viewed_thread_messages.is_empty());
     }
@@ -4242,19 +4250,19 @@ mod tests {
     fn search_jump_bottom_loads_remaining_pages() {
         let mut app = App::new();
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = make_test_envelopes(3);
-        app.search_page.session_active = true;
-        app.search_page.has_more = true;
-        app.search_page.loading_more = false;
-        app.search_page.session_id = 9;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = make_test_envelopes(3);
+        app.search.page.session_active = true;
+        app.search.page.has_more = true;
+        app.search.page.loading_more = false;
+        app.search.page.session_id = 9;
 
         app.apply(Action::JumpBottom);
 
-        assert!(app.search_page.load_to_end);
-        assert!(app.search_page.loading_more);
+        assert!(app.search.page.load_to_end);
+        assert!(app.search.page.loading_more);
         assert_eq!(
-            app.pending_search,
+            app.search.pending,
             Some(PendingSearchRequest {
                 query: "deploy".into(),
                 mode: mxr_core::SearchMode::Lexical,
@@ -4272,27 +4280,27 @@ mod tests {
     fn search_jump_bottom_uses_search_results_viewport_height() {
         let mut app = App::new();
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = make_test_envelopes(15);
-        app.search_page.session_active = true;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = make_test_envelopes(15);
+        app.search.page.session_active = true;
 
         let _ = render_to_string(120, 20, |frame| app.draw(frame));
 
         app.apply(Action::JumpBottom);
 
         assert_eq!(app.visible_height, 10);
-        assert_eq!(app.search_page.selected_index, 14);
-        assert_eq!(app.search_page.scroll_offset, 5);
+        assert_eq!(app.search.page.selected_index, 14);
+        assert_eq!(app.search.page.scroll_offset, 5);
     }
 
     #[test]
     fn search_escape_routes_back_to_inbox() {
         let mut app = App::new();
         app.screen = Screen::Search;
-        app.search_page.session_active = true;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = make_test_envelopes(2);
-        app.search_page.active_pane = SearchPane::Results;
+        app.search.page.session_active = true;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = make_test_envelopes(2);
+        app.search.page.active_pane = SearchPane::Results;
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
@@ -4304,7 +4312,7 @@ mod tests {
         let mut app = App::new();
         app.apply(Action::OpenRulesScreen);
         assert_eq!(app.screen, Screen::Rules);
-        assert!(app.rules_page.refresh_pending);
+        assert!(app.rules.page.refresh_pending);
     }
 
     #[test]
@@ -4312,7 +4320,7 @@ mod tests {
         let mut app = App::new();
         app.apply(Action::OpenDiagnosticsScreen);
         assert_eq!(app.screen, Screen::Diagnostics);
-        assert!(app.diagnostics_page.refresh_pending);
+        assert!(app.diagnostics.page.refresh_pending);
     }
 
     #[test]
@@ -4320,7 +4328,7 @@ mod tests {
         let mut app = App::new();
         app.apply(Action::OpenAccountsScreen);
         assert_eq!(app.screen, Screen::Accounts);
-        assert!(app.accounts_page.refresh_pending);
+        assert!(app.accounts.page.refresh_pending);
     }
 
     #[test]
@@ -4330,9 +4338,9 @@ mod tests {
         app.apply(Action::OpenAccountFormNew);
 
         assert_eq!(app.screen, Screen::Accounts);
-        assert!(app.accounts_page.form.visible);
+        assert!(app.accounts.page.form.visible);
         assert_eq!(
-            app.accounts_page.form.mode,
+            app.accounts.page.form.mode,
             crate::app::AccountFormMode::Gmail
         );
     }
@@ -4344,8 +4352,8 @@ mod tests {
 
         // Onboarding modal shows on whatever page the user is on (mailbox by default)
         assert_eq!(app.screen, Screen::Mailbox);
-        assert!(app.accounts_page.onboarding_required);
-        assert!(app.accounts_page.onboarding_modal_open);
+        assert!(app.accounts.page.onboarding_required);
+        assert!(app.accounts.page.onboarding_modal_open);
     }
 
     #[test]
@@ -4356,8 +4364,8 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
         assert_eq!(app.screen, Screen::Accounts);
-        assert!(app.accounts_page.form.visible);
-        assert!(!app.accounts_page.onboarding_modal_open);
+        assert!(app.accounts.page.form.visible);
+        assert!(!app.accounts.page.onboarding_modal_open);
     }
 
     #[test]
@@ -4378,24 +4386,24 @@ mod tests {
         app.apply(Action::OpenMailboxScreen);
 
         assert_eq!(app.screen, Screen::Accounts);
-        assert!(app.accounts_page.onboarding_required);
+        assert!(app.accounts.page.onboarding_required);
     }
 
     #[test]
     fn account_form_h_and_l_switch_modes_from_any_field() {
         let mut app = App::new();
         app.apply(Action::OpenAccountFormNew);
-        app.accounts_page.form.active_field = 2;
+        app.accounts.page.form.active_field = 2;
 
         app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
         assert_eq!(
-            app.accounts_page.form.mode,
+            app.accounts.page.form.mode,
             crate::app::AccountFormMode::ImapSmtp
         );
 
         app.handle_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE));
         assert_eq!(
-            app.accounts_page.form.mode,
+            app.accounts.page.form.mode,
             crate::app::AccountFormMode::Gmail
         );
     }
@@ -4404,17 +4412,17 @@ mod tests {
     fn account_form_tab_on_mode_cycles_modes() {
         let mut app = App::new();
         app.apply(Action::OpenAccountFormNew);
-        app.accounts_page.form.active_field = 0;
+        app.accounts.page.form.active_field = 0;
 
         app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         assert_eq!(
-            app.accounts_page.form.mode,
+            app.accounts.page.form.mode,
             crate::app::AccountFormMode::ImapSmtp
         );
 
         app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
         assert_eq!(
-            app.accounts_page.form.mode,
+            app.accounts.page.form.mode,
             crate::app::AccountFormMode::Gmail
         );
     }
@@ -4423,16 +4431,16 @@ mod tests {
     fn account_form_mode_switch_with_input_requires_confirmation() {
         let mut app = App::new();
         app.apply(Action::OpenAccountFormNew);
-        app.accounts_page.form.key = "work".into();
+        app.accounts.page.form.key = "work".into();
 
         app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
 
         assert_eq!(
-            app.accounts_page.form.mode,
+            app.accounts.page.form.mode,
             crate::app::AccountFormMode::Gmail
         );
         assert_eq!(
-            app.accounts_page.form.pending_mode_switch,
+            app.accounts.page.form.pending_mode_switch,
             Some(crate::app::AccountFormMode::ImapSmtp)
         );
     }
@@ -4441,32 +4449,32 @@ mod tests {
     fn account_form_mode_switch_confirmation_applies_mode_change() {
         let mut app = App::new();
         app.apply(Action::OpenAccountFormNew);
-        app.accounts_page.form.key = "work".into();
+        app.accounts.page.form.key = "work".into();
 
         app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
         assert_eq!(
-            app.accounts_page.form.mode,
+            app.accounts.page.form.mode,
             crate::app::AccountFormMode::ImapSmtp
         );
-        assert!(app.accounts_page.form.pending_mode_switch.is_none());
+        assert!(app.accounts.page.form.pending_mode_switch.is_none());
     }
 
     #[test]
     fn account_form_mode_switch_confirmation_cancel_keeps_mode() {
         let mut app = App::new();
         app.apply(Action::OpenAccountFormNew);
-        app.accounts_page.form.key = "work".into();
+        app.accounts.page.form.key = "work".into();
 
         app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE));
         app.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
 
         assert_eq!(
-            app.accounts_page.form.mode,
+            app.accounts.page.form.mode,
             crate::app::AccountFormMode::Gmail
         );
-        assert!(app.accounts_page.form.pending_mode_switch.is_none());
+        assert!(app.accounts.page.form.pending_mode_switch.is_none());
     }
 
     #[test]
@@ -4637,19 +4645,19 @@ mod tests {
     fn opening_search_result_keeps_search_workspace_open() {
         let mut app = App::new();
         app.screen = Screen::Search;
-        app.search_page.results = make_test_envelopes(2);
-        app.search_page.selected_index = 1;
+        app.search.page.results = make_test_envelopes(2);
+        app.search.page.selected_index = 1;
 
         app.apply(Action::OpenSelected);
 
         assert_eq!(app.screen, Screen::Search);
-        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
+        assert_eq!(app.search.page.active_pane, SearchPane::Preview);
         assert_eq!(
             app.mailbox
                 .viewing_envelope
                 .as_ref()
                 .map(|env| env.id.clone()),
-            Some(app.search_page.results[1].id.clone())
+            Some(app.search.page.results[1].id.clone())
         );
     }
 
@@ -4872,9 +4880,9 @@ mod tests {
         results[0].has_attachments = true;
         let env = results[0].clone();
         app.screen = Screen::Search;
-        app.search_page.results = results;
-        app.search_page.session_active = true;
-        app.search_page.active_pane = SearchPane::Preview;
+        app.search.page.results = results;
+        app.search.page.session_active = true;
+        app.search.page.active_pane = SearchPane::Preview;
         app.mailbox.viewed_thread_messages = vec![env.clone()];
         app.mailbox.viewing_envelope = Some(env.clone());
         app.mailbox.body_cache.insert(
@@ -4919,9 +4927,9 @@ mod tests {
         let results = make_test_envelopes(1);
         let env = results[0].clone();
         app.screen = Screen::Search;
-        app.search_page.results = results;
-        app.search_page.session_active = true;
-        app.search_page.active_pane = SearchPane::Preview;
+        app.search.page.results = results;
+        app.search.page.session_active = true;
+        app.search.page.active_pane = SearchPane::Preview;
         app.mailbox.viewed_thread_messages = vec![env.clone()];
         app.mailbox.viewing_envelope = Some(env);
 
@@ -4936,9 +4944,9 @@ mod tests {
         let results = make_test_envelopes(1);
         let env = results[0].clone();
         app.screen = Screen::Search;
-        app.search_page.results = results;
-        app.search_page.session_active = true;
-        app.search_page.active_pane = SearchPane::Preview;
+        app.search.page.results = results;
+        app.search.page.session_active = true;
+        app.search.page.active_pane = SearchPane::Preview;
         app.mailbox.viewed_thread_messages = vec![env.clone()];
         app.mailbox.viewing_envelope = Some(env);
 
@@ -4953,9 +4961,9 @@ mod tests {
         let results = make_test_envelopes(1);
         let env = results[0].clone();
         app.screen = Screen::Search;
-        app.search_page.results = results;
-        app.search_page.session_active = true;
-        app.search_page.active_pane = SearchPane::Preview;
+        app.search.page.results = results;
+        app.search.page.session_active = true;
+        app.search.page.active_pane = SearchPane::Preview;
         app.mailbox.viewed_thread_messages = vec![env.clone()];
         app.mailbox.viewing_envelope = Some(env);
 
@@ -4972,19 +4980,19 @@ mod tests {
         let results = make_test_envelopes(2);
         let env = results[0].clone();
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = results;
-        app.search_page.session_active = true;
-        app.search_page.active_pane = SearchPane::Results;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = results;
+        app.search.page.session_active = true;
+        app.search.page.active_pane = SearchPane::Results;
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('F'), KeyModifiers::NONE));
         assert_eq!(action, Some(Action::ToggleFullscreen));
 
         app.apply(Action::ToggleFullscreen);
 
-        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
-        assert!(app.search_page.result_selected);
-        assert!(app.search_page.preview_fullscreen);
+        assert_eq!(app.search.page.active_pane, SearchPane::Preview);
+        assert!(app.search.page.result_selected);
+        assert!(app.search.page.preview_fullscreen);
         assert_eq!(
             app.mailbox
                 .viewing_envelope
@@ -5004,19 +5012,19 @@ mod tests {
         let results = make_test_envelopes(1);
         let env = results[0].clone();
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = results;
-        app.search_page.session_active = true;
-        app.search_page.active_pane = SearchPane::Preview;
-        app.search_page.result_selected = true;
-        app.search_page.preview_fullscreen = true;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = results;
+        app.search.page.session_active = true;
+        app.search.page.active_pane = SearchPane::Preview;
+        app.search.page.result_selected = true;
+        app.search.page.preview_fullscreen = true;
         app.mailbox.viewed_thread_messages = vec![env.clone()];
         app.mailbox.viewing_envelope = Some(env);
 
         app.apply(Action::ToggleFullscreen);
 
-        assert!(!app.search_page.preview_fullscreen);
-        assert_eq!(app.search_page.active_pane, SearchPane::Preview);
+        assert!(!app.search.page.preview_fullscreen);
+        assert_eq!(app.search.page.active_pane, SearchPane::Preview);
         assert_eq!(app.status_message.as_deref(), Some("Showing split view"));
     }
 
@@ -5026,12 +5034,12 @@ mod tests {
         let results = make_test_envelopes(1);
         let env = results[0].clone();
         app.screen = Screen::Search;
-        app.search_page.query = "deploy".into();
-        app.search_page.results = results;
-        app.search_page.session_active = true;
-        app.search_page.active_pane = SearchPane::Preview;
-        app.search_page.result_selected = true;
-        app.search_page.preview_fullscreen = true;
+        app.search.page.query = "deploy".into();
+        app.search.page.results = results;
+        app.search.page.session_active = true;
+        app.search.page.active_pane = SearchPane::Preview;
+        app.search.page.result_selected = true;
+        app.search.page.preview_fullscreen = true;
         app.mailbox.viewed_thread_messages = vec![env.clone()];
         app.mailbox.viewing_envelope = Some(env);
         app.mailbox.body_view_state = BodyViewState::Ready {
@@ -5053,9 +5061,9 @@ mod tests {
         let results = make_test_envelopes(2);
         let env = results[0].clone();
         app.screen = Screen::Search;
-        app.search_page.results = results;
-        app.search_page.session_active = true;
-        app.search_page.active_pane = SearchPane::Preview;
+        app.search.page.results = results;
+        app.search.page.session_active = true;
+        app.search.page.active_pane = SearchPane::Preview;
         app.mailbox.viewed_thread_messages = vec![env.clone()];
         app.mailbox.viewing_envelope = Some(env.clone());
 
@@ -5064,7 +5072,7 @@ mod tests {
 
         app.apply(Action::ToggleSelect);
 
-        assert_eq!(app.search_page.selected_index, 0);
+        assert_eq!(app.search.page.selected_index, 0);
         assert_eq!(
             app.mailbox
                 .viewing_envelope
@@ -5103,7 +5111,7 @@ mod tests {
     #[test]
     fn send_key_is_ignored_for_unchanged_draft_confirmation() {
         let mut app = App::new();
-        app.pending_send_confirm = Some(PendingSend {
+        app.compose.pending_send_confirm = Some(PendingSend {
             account_id: AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: "a@example.com".into(),
@@ -5123,7 +5131,8 @@ mod tests {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
 
         assert_eq!(
-            app.pending_send_confirm
+            app.compose
+                .pending_send_confirm
                 .as_ref()
                 .map(|pending| pending.mode),
             Some(PendingSendMode::Unchanged)
@@ -5138,7 +5147,7 @@ mod tests {
         let other_account_id = AccountId::new();
         app.mailbox.envelopes = make_test_envelopes(1);
         app.mailbox.envelopes[0].account_id = other_account_id;
-        app.pending_send_confirm = Some(PendingSend {
+        app.compose.pending_send_confirm = Some(PendingSend {
             account_id: pending_account_id.clone(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: "a@example.com".into(),
@@ -5171,17 +5180,17 @@ mod tests {
         app.mailbox.all_envelopes = make_test_envelopes(1);
         app.apply(Action::Compose);
 
-        assert!(app.compose_picker.visible);
+        assert!(app.compose.compose_picker.visible);
         assert_eq!(
-            app.compose_picker.mode,
+            app.compose.compose_picker.mode,
             crate::ui::compose_picker::ComposePickerMode::To
         );
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-        assert!(app.compose_picker.visible);
+        assert!(app.compose.compose_picker.visible);
         assert_eq!(
-            app.compose_picker.mode,
+            app.compose.compose_picker.mode,
             crate::ui::compose_picker::ComposePickerMode::Subject
         );
     }
@@ -5196,13 +5205,13 @@ mod tests {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
         assert_eq!(
-            app.pending_compose,
+            app.compose.pending_compose,
             Some(super::app::ComposeAction::New {
                 to: String::new(),
                 subject: String::new(),
             })
         );
-        assert!(!app.compose_picker.visible);
+        assert!(!app.compose.compose_picker.visible);
     }
 
     #[test]
@@ -5213,9 +5222,9 @@ mod tests {
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
-        assert!(!app.compose_picker.visible);
-        assert!(app.pending_compose.is_none());
-        assert!(app.compose_picker.pending_to.is_empty());
+        assert!(!app.compose.compose_picker.visible);
+        assert!(app.compose.pending_compose.is_none());
+        assert!(app.compose.compose_picker.pending_to.is_empty());
     }
 
     #[test]
@@ -5227,9 +5236,9 @@ mod tests {
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
-        assert!(!app.compose_picker.visible);
-        assert!(app.pending_compose.is_none());
-        assert!(app.compose_picker.pending_to.is_empty());
+        assert!(!app.compose.compose_picker.visible);
+        assert!(app.compose.pending_compose.is_none());
+        assert!(app.compose.compose_picker.pending_to.is_empty());
     }
 
     #[tokio::test]
@@ -5260,7 +5269,7 @@ mod tests {
     #[test]
     fn send_key_is_ignored_for_missing_recipient_draft_confirmation() {
         let mut app = App::new();
-        app.pending_send_confirm = Some(PendingSend {
+        app.compose.pending_send_confirm = Some(PendingSend {
             account_id: AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: String::new(),
@@ -5280,7 +5289,8 @@ mod tests {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
 
         assert_eq!(
-            app.pending_send_confirm
+            app.compose
+                .pending_send_confirm
                 .as_ref()
                 .map(|pending| pending.mode),
             Some(PendingSendMode::DraftOnlyNoRecipients)
@@ -5292,7 +5302,7 @@ mod tests {
     fn save_key_saves_missing_recipient_draft_to_server() {
         let mut app = App::new();
         app.mailbox.all_envelopes = make_test_envelopes(1);
-        app.pending_send_confirm = Some(PendingSend {
+        app.compose.pending_send_confirm = Some(PendingSend {
             account_id: AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: String::new(),
@@ -5311,7 +5321,7 @@ mod tests {
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
 
-        assert!(app.pending_send_confirm.is_none());
+        assert!(app.compose.pending_send_confirm.is_none());
         assert!(matches!(
             app.pending_mutation_queue.first(),
             Some((Request::SaveDraftToServer { .. }, _))
@@ -5329,7 +5339,7 @@ mod tests {
 
         let mut app = App::new();
         let account_id = AccountId::new();
-        app.pending_send_confirm = Some(PendingSend {
+        app.compose.pending_send_confirm = Some(PendingSend {
             account_id: account_id.clone(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: String::new(),
@@ -5348,9 +5358,9 @@ mod tests {
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
 
-        assert!(app.pending_send_confirm.is_none());
+        assert!(app.compose.pending_send_confirm.is_none());
         assert_eq!(
-            app.pending_compose,
+            app.compose.pending_compose,
             Some(super::app::ComposeAction::EditDraft {
                 path: temp.clone(),
                 account_id,
@@ -5370,7 +5380,7 @@ mod tests {
         std::fs::write(&temp, "draft").unwrap();
 
         let mut app = App::new();
-        app.pending_send_confirm = Some(PendingSend {
+        app.compose.pending_send_confirm = Some(PendingSend {
             account_id: AccountId::new(),
             fm: mxr_compose::frontmatter::ComposeFrontmatter {
                 to: String::new(),
@@ -5389,9 +5399,9 @@ mod tests {
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
-        assert!(app.pending_send_confirm.is_none());
+        assert!(app.compose.pending_send_confirm.is_none());
         assert!(temp.exists());
-        assert_eq!(app.pending_draft_cleanup, vec![temp.clone()]);
+        assert_eq!(app.compose.pending_draft_cleanup, vec![temp.clone()]);
         assert_eq!(app.status_message.as_deref(), Some("Discarded"));
 
         let _ = std::fs::remove_file(temp);
@@ -5493,7 +5503,7 @@ mod tests {
 
         assert!(action.is_none());
         assert_eq!(
-            app.diagnostics_page.selected_pane,
+            app.diagnostics.page.selected_pane,
             crate::app::DiagnosticsPaneKind::Data
         );
     }
@@ -5502,26 +5512,26 @@ mod tests {
     fn diagnostics_enter_toggles_fullscreen_for_selected_pane() {
         let mut app = App::new();
         app.screen = Screen::Diagnostics;
-        app.diagnostics_page.selected_pane = crate::app::DiagnosticsPaneKind::Logs;
+        app.diagnostics.page.selected_pane = crate::app::DiagnosticsPaneKind::Logs;
 
         assert!(app
             .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .is_none());
         assert_eq!(
-            app.diagnostics_page.fullscreen_pane,
+            app.diagnostics.page.fullscreen_pane,
             Some(crate::app::DiagnosticsPaneKind::Logs)
         );
         assert!(app
             .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .is_none());
-        assert_eq!(app.diagnostics_page.fullscreen_pane, None);
+        assert_eq!(app.diagnostics.page.fullscreen_pane, None);
     }
 
     #[test]
     fn diagnostics_d_opens_selected_pane_details() {
         let mut app = App::new();
         app.screen = Screen::Diagnostics;
-        app.diagnostics_page.selected_pane = crate::app::DiagnosticsPaneKind::Events;
+        app.diagnostics.page.selected_pane = crate::app::DiagnosticsPaneKind::Events;
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
 
@@ -5558,7 +5568,7 @@ mod tests {
         app.apply(Action::Archive);
 
         assert!(app.pending_mutation_queue.is_empty());
-        match app.pending_bulk_confirm.as_ref() {
+        match app.modals.pending_bulk_confirm.as_ref() {
             Some(confirm) => match &confirm.request {
                 Request::Mutation(MutationCommand::Archive { message_ids }) => {
                     assert_eq!(message_ids.len(), 3);
@@ -5584,7 +5594,7 @@ mod tests {
 
         app.apply(Action::OpenSelected);
 
-        assert!(app.pending_bulk_confirm.is_none());
+        assert!(app.modals.pending_bulk_confirm.is_none());
         assert_eq!(app.pending_mutation_queue.len(), 1);
         assert!(app.mailbox.selected_set.is_empty());
     }
@@ -5647,10 +5657,10 @@ mod tests {
         app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
 
         app.apply(Action::Snooze);
-        assert!(app.snooze_panel.visible);
+        assert!(app.modals.snooze_panel.visible);
 
         app.apply(Action::Snooze);
-        assert!(!app.snooze_panel.visible);
+        assert!(!app.modals.snooze_panel.visible);
         assert_eq!(app.pending_mutation_queue.len(), 1);
         match &app.pending_mutation_queue[0].0 {
             Request::Snooze {
@@ -6096,7 +6106,7 @@ mod tests {
         assert_eq!(app.mailbox.active_pane, ActivePane::MailList);
         assert!(app.mailbox.envelopes.is_empty());
         assert!(app.mailbox.all_envelopes.is_empty());
-        assert!(app.search_page.results.is_empty());
+        assert!(app.search.page.results.is_empty());
         assert!(app.mailbox.subscriptions_page.entries.is_empty());
         assert!(app.mailbox.selected_set.is_empty());
         assert!(app.mailbox.active_label.is_none());
@@ -6105,7 +6115,7 @@ mod tests {
         assert!(app.mailbox.pending_labels_refresh);
         assert!(app.mailbox.pending_all_envelopes_refresh);
         assert!(app.mailbox.pending_subscriptions_refresh);
-        assert!(app.pending_status_refresh);
+        assert!(app.diagnostics.pending_status_refresh);
         assert_eq!(
             app.mailbox.mailbox_loading_message.as_deref(),
             Some("Loading selected account...")

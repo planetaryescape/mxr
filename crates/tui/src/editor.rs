@@ -23,8 +23,8 @@ pub(crate) fn edit_tui_config(app: &mut App) -> Result<String, MxrError> {
 
     let reloaded = load_config().map_err(|error| MxrError::Ipc(error.to_string()))?;
     app.apply_runtime_config(&reloaded);
-    app.accounts_page.refresh_pending = true;
-    app.pending_status_refresh = true;
+    app.accounts.page.refresh_pending = true;
+    app.diagnostics.pending_status_refresh = true;
 
     Ok("Config reloaded. Restart daemon for account/provider changes.".into())
 }

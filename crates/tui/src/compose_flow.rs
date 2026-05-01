@@ -202,7 +202,7 @@ pub(crate) async fn handle_compose_editor_status(
     match status {
         Ok(s) if s.success() => match pending_send_from_edited_draft(data).await {
             Ok(Some(pending)) => {
-                app.pending_send_confirm = Some(pending);
+                app.compose.pending_send_confirm = Some(pending);
             }
             Ok(None) => {}
             Err(message) => {

@@ -62,10 +62,10 @@ impl App {
             hint_bar_area,
             ui::hint_bar::HintBarState {
                 ui_context,
-                search_active: self.search_bar.active,
-                help_modal_open: self.help_modal_open,
+                search_active: self.search.bar.active,
+                help_modal_open: self.modals.help_open,
                 selected_count: self.mailbox.selected_set.len(),
-                bulk_confirm_open: self.pending_bulk_confirm.is_some(),
+                bulk_confirm_open: self.modals.pending_bulk_confirm.is_some(),
                 sync_status: self.last_sync_status.clone(),
                 _marker: std::marker::PhantomData,
             },
@@ -210,7 +210,7 @@ impl App {
                 ui::search_page::draw(
                     frame,
                     content_area,
-                    &self.search_page,
+                    &self.search.page,
                     &rows,
                     &self.mailbox.selected_set,
                     self.search_list_mode(),
@@ -224,35 +224,35 @@ impl App {
                 ui::rules_page::draw(
                     frame,
                     content_area,
-                    &self.rules_page,
-                    &self.rule_condition_editor,
-                    &self.rule_action_editor,
+                    &self.rules.page,
+                    &self.rules.condition_editor,
+                    &self.rules.action_editor,
                     theme,
                 );
             }
             Screen::Diagnostics => {
-                ui::diagnostics_page::draw(frame, content_area, &self.diagnostics_page, theme);
+                ui::diagnostics_page::draw(frame, content_area, &self.diagnostics.page, theme);
             }
             Screen::Accounts => {
-                ui::accounts_page::draw(frame, content_area, &self.accounts_page, theme);
+                ui::accounts_page::draw(frame, content_area, &self.accounts.page, theme);
             }
         }
 
         let status_bar = self.status_bar_state();
         ui::status_bar::draw(frame, bottom_bar_area, &status_bar, theme);
 
-        if self.search_bar.active {
-            ui::search_bar::draw(frame, area, &self.search_bar, theme);
+        if self.search.bar.active {
+            ui::search_bar::draw(frame, area, &self.search.bar, theme);
         }
 
         // Command palette overlay
-        ui::command_palette::draw(frame, area, &self.command_palette, theme);
+        ui::command_palette::draw(frame, area, &self.command_palette.palette, theme);
 
         // Label picker overlay
-        ui::label_picker::draw(frame, area, &self.label_picker, theme);
+        ui::label_picker::draw(frame, area, &self.modals.label_picker, theme);
 
         // Compose picker overlay
-        ui::compose_picker::draw(frame, area, &self.compose_picker, theme);
+        ui::compose_picker::draw(frame, area, &self.compose.compose_picker, theme);
 
         // Attachment overlay
         ui::attachment_modal::draw(frame, area, &self.mailbox.attachment_panel, theme);
@@ -261,22 +261,38 @@ impl App {
         ui::url_modal::draw(frame, area, self.mailbox.url_modal.as_ref(), theme);
 
         // Snooze overlay
-        ui::snooze_modal::draw(frame, area, &self.snooze_panel, &self.snooze_config, theme);
+        ui::snooze_modal::draw(
+            frame,
+            area,
+            &self.modals.snooze_panel,
+            &self.modals.snooze_config,
+            theme,
+        );
 
         // Send confirmation overlay
-        ui::send_confirm_modal::draw(frame, area, self.pending_send_confirm.as_ref(), theme);
+        ui::send_confirm_modal::draw(
+            frame,
+            area,
+            self.compose.pending_send_confirm.as_ref(),
+            theme,
+        );
 
         // Bulk confirmation overlay
-        ui::bulk_confirm_modal::draw(frame, area, self.pending_bulk_confirm.as_ref(), theme);
+        ui::bulk_confirm_modal::draw(
+            frame,
+            area,
+            self.modals.pending_bulk_confirm.as_ref(),
+            theme,
+        );
 
         // Error overlay
-        ui::error_modal::draw(frame, area, self.error_modal.as_ref(), theme);
+        ui::error_modal::draw(frame, area, self.modals.error.as_ref(), theme);
 
         // Unsubscribe confirmation overlay
         ui::unsubscribe_modal::draw(
             frame,
             area,
-            self.pending_unsubscribe_confirm.as_ref(),
+            self.modals.pending_unsubscribe_confirm.as_ref(),
             theme,
         );
 
@@ -285,21 +301,21 @@ impl App {
             frame,
             area,
             ui::help_modal::HelpModalState {
-                open: self.help_modal_open,
+                open: self.modals.help_open,
                 ui_context,
                 selected_count: self.mailbox.selected_set.len(),
-                scroll_offset: self.help_scroll_offset,
-                query: &self.help_query,
-                selected: self.help_selected,
+                scroll_offset: self.modals.help_scroll_offset,
+                query: &self.modals.help_query,
+                selected: self.modals.help_selected,
                 _marker: std::marker::PhantomData,
             },
             theme,
         );
 
-        ui::onboarding_modal::draw(frame, area, &self.onboarding, theme);
+        ui::onboarding_modal::draw(frame, area, &self.modals.onboarding, theme);
 
         // Account setup onboarding (shown on any page when no accounts configured)
-        if self.accounts_page.onboarding_modal_open {
+        if self.accounts.page.onboarding_modal_open {
             ui::accounts_page::draw_account_setup_onboarding(frame, area, theme);
         }
     }

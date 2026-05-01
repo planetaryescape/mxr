@@ -167,7 +167,7 @@ pub(crate) fn submit_pending_work(
     if app.pending_local_state_save {
         app.pending_local_state_save = false;
         let state = local_state::TuiLocalState {
-            onboarding_seen: app.onboarding.seen,
+            onboarding_seen: app.modals.onboarding.seen,
         };
         let _ = submit_task(local_io, async move {
             AsyncResult::LocalStateSaved(
@@ -225,11 +225,11 @@ pub(crate) fn handle_result(app: &mut App, result: AsyncResult) -> Option<AsyncR
             None
         }
         AsyncResult::BugReportSaved(Ok(path)) => {
-            app.diagnostics_page.status = Some(format!("Bug report saved to {}", path.display()));
+            app.diagnostics.page.status = Some(format!("Bug report saved to {}", path.display()));
             None
         }
         AsyncResult::BugReportSaved(Err(error)) => {
-            app.diagnostics_page.status = Some(format!("Bug report write failed: {error}"));
+            app.diagnostics.page.status = Some(format!("Bug report write failed: {error}"));
             None
         }
         AsyncResult::BrowserOpened(Ok(path)) => {
@@ -282,11 +282,11 @@ mod tests {
         std::fs::write(&temp, "draft").expect("write temp draft");
 
         let mut app = App::new();
-        app.pending_send_confirm = Some(test_pending_send(temp.clone()));
+        app.compose.pending_send_confirm = Some(test_pending_send(temp.clone()));
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
 
-        assert!(app.pending_send_confirm.is_none());
+        assert!(app.compose.pending_send_confirm.is_none());
         assert!(
             temp.exists(),
             "draft stays on disk until local I/O worker runs"
@@ -327,7 +327,7 @@ mod tests {
         assert!(handle_result(&mut app, result).is_none());
         assert!(saved_path.exists(), "bug report should be written to disk");
         assert_eq!(
-            app.diagnostics_page.status.as_deref(),
+            app.diagnostics.page.status.as_deref(),
             Some(expected_status.as_str())
         );
 

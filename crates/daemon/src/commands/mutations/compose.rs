@@ -1,6 +1,9 @@
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
+use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
+use crate::output::{jsonl, resolve_format};
+use mxr_core::{AccountId, Address, Draft, DraftId, ReplyHeaders};
 use mxr_protocol::*;
 use std::path::PathBuf;
 
@@ -15,9 +18,11 @@ pub struct ComposeOptions {
     pub body_stdin: bool,
     pub attach: Vec<PathBuf>,
     pub from: Option<String>,
+    pub yes: bool,
     pub dry_run: bool,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn resolve_compose_from_address(explicit_from: Option<String>) -> String {
     if let Some(from) = explicit_from {
         return from;
@@ -37,50 +42,95 @@ pub(super) fn resolve_compose_from_address(explicit_from: Option<String>) -> Str
 }
 
 pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
-    let from_addr = resolve_compose_from_address(options.from);
+    let mut client = IpcClient::connect().await?;
+    let account = resolve_compose_account(&mut client, options.from.as_deref()).await?;
+    let stdin_or_body = read_body_input(options.body, options.body_stdin)?;
+
+    let (frontmatter, body, draft_file) = if let Some(body) = stdin_or_body {
+        (
+            mxr_compose::frontmatter::ComposeFrontmatter {
+                to: options.to.unwrap_or_default(),
+                cc: options.cc.unwrap_or_default(),
+                bcc: options.bcc.unwrap_or_default(),
+                subject: options.subject.unwrap_or_default(),
+                from: account.email.clone(),
+                in_reply_to: None,
+                references: Vec::new(),
+                attach: attachment_strings(&options.attach),
+            },
+            body,
+            None,
+        )
+    } else if options.dry_run {
+        (
+            mxr_compose::frontmatter::ComposeFrontmatter {
+                to: options.to.unwrap_or_default(),
+                cc: options.cc.unwrap_or_default(),
+                bcc: options.bcc.unwrap_or_default(),
+                subject: options.subject.unwrap_or_default(),
+                from: account.email.clone(),
+                in_reply_to: None,
+                references: Vec::new(),
+                attach: attachment_strings(&options.attach),
+            },
+            String::new(),
+            None,
+        )
+    } else {
+        let (path, cursor_line) = mxr_compose::create_draft_file(
+            mxr_compose::ComposeKind::New {
+                to: options.to.unwrap_or_default(),
+                subject: options.subject.unwrap_or_default(),
+            },
+            &account.email,
+        )?;
+        rewrite_compose_frontmatter(
+            &path,
+            options.cc,
+            options.bcc,
+            attachment_strings(&options.attach),
+        )?;
+        let editor = mxr_compose::editor::resolve_editor(None);
+        mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
+        let content = std::fs::read_to_string(&path)?;
+        let (frontmatter, body) = mxr_compose::frontmatter::parse_compose_file(&content)?;
+        (frontmatter, body, Some(path))
+    };
+
+    let draft = draft_from_frontmatter(account.account_id, &frontmatter, body)?;
+    validate_compose_draft(&frontmatter, &draft.body_markdown, options.yes)?;
 
     if options.dry_run {
-        println!("Would open $EDITOR to compose new email from {from_addr}");
+        print_draft_preview(&draft, options.yes);
         return Ok(());
     }
 
-    let (path, cursor_line) = mxr_compose::create_draft_file(
-        mxr_compose::ComposeKind::New {
-            to: options.to.clone().unwrap_or_default(),
-            subject: options.subject.clone().unwrap_or_default(),
-        },
-        &from_addr,
-    )?;
-
-    // If inline body provided, append it to the draft file
-    if let Some(b) = &options.body {
-        let content = std::fs::read_to_string(&path)?;
-        std::fs::write(&path, format!("{content}{b}"))?;
-    } else if options.body_stdin {
-        use std::io::Read;
-        let mut stdin_body = String::new();
-        std::io::stdin().read_to_string(&mut stdin_body)?;
-        let content = std::fs::read_to_string(&path)?;
-        std::fs::write(&path, format!("{content}{stdin_body}"))?;
-    }
-
-    // Pre-fill frontmatter fields if provided via CLI args
-    if options.cc.is_some() || options.bcc.is_some() || !options.attach.is_empty() {
-        let content = std::fs::read_to_string(&path)?;
-        let mut updated = content;
-        if let Some(cc_val) = &options.cc {
-            updated = updated.replacen("cc: \"\"", &format!("cc: \"{cc_val}\""), 1);
+    if options.yes {
+        expect_ack(
+            client
+                .request(Request::SendDraft {
+                    draft: draft.clone(),
+                })
+                .await?,
+        )?;
+        if let Some(path) = draft_file {
+            let _ = mxr_compose::delete_draft_file(&path);
         }
-        if let Some(bcc_val) = &options.bcc {
-            updated = updated.replacen("bcc: \"\"", &format!("bcc: \"{bcc_val}\""), 1);
+        println!("Sent draft {}", draft.id);
+    } else {
+        expect_ack(
+            client
+                .request(Request::SaveDraft {
+                    draft: draft.clone(),
+                })
+                .await?,
+        )?;
+        if let Some(path) = draft_file {
+            let _ = mxr_compose::delete_draft_file(&path);
         }
-        std::fs::write(&path, updated)?;
+        println!("Draft saved: {}", draft.id);
+        println!("Send with: mxr send {}", draft.id);
     }
-
-    let editor = mxr_compose::editor::resolve_editor(None);
-    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
-
-    println!("Draft saved to {}", path.display());
     Ok(())
 }
 
@@ -265,40 +315,264 @@ pub async fn forward(
     Ok(())
 }
 
-pub async fn drafts() -> anyhow::Result<()> {
+pub async fn drafts(format: Option<OutputFormat>) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let resp = client.request(Request::ListDrafts).await?;
     match resp {
         Response::Ok {
             data: ResponseData::Drafts { drafts },
-        } => {
-            if drafts.is_empty() {
-                println!("No drafts");
-            } else {
-                for d in &drafts {
-                    println!("  {} — {}", d.id, d.subject);
+        } => match resolve_format(format) {
+            OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&drafts)?),
+            OutputFormat::Jsonl => println!("{}", jsonl(&drafts)?),
+            OutputFormat::Csv => {
+                let mut writer = csv::Writer::from_writer(Vec::new());
+                writer.write_record(["draft_id", "account_id", "subject", "updated_at"])?;
+                for draft in &drafts {
+                    writer.write_record(vec![
+                        draft.id.as_str(),
+                        draft.account_id.as_str(),
+                        draft.subject.clone(),
+                        draft.updated_at.to_rfc3339(),
+                    ])?;
+                }
+                println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+            }
+            OutputFormat::Ids => {
+                for draft in &drafts {
+                    println!("{}", draft.id);
                 }
             }
-        }
+            OutputFormat::Table => {
+                if drafts.is_empty() {
+                    println!("No drafts");
+                } else {
+                    for d in &drafts {
+                        println!("  {} — {}", d.id, d.subject);
+                    }
+                }
+            }
+        },
         Response::Error { message } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
 }
 
-pub async fn send_draft(_draft_id: String) -> anyhow::Result<()> {
-    println!("SendDraft via CLI is handled by compose flow (compose -> edit -> auto-send)");
-    println!("Use `mxr compose` to create and send an email in one step.");
+pub async fn send_draft(draft_id: String) -> anyhow::Result<()> {
+    let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
+    let mut client = IpcClient::connect().await?;
+    let resp = client
+        .request(Request::SendStoredDraft {
+            draft_id: draft_id.clone(),
+        })
+        .await?;
+    expect_ack(resp)?;
+    println!("Sent draft {}", draft_id);
     Ok(())
+}
+
+async fn resolve_compose_account(
+    client: &mut IpcClient,
+    explicit_from: Option<&str>,
+) -> anyhow::Result<AccountSummaryData> {
+    let resp = client.request(Request::ListAccounts).await?;
+    let accounts = crate::commands::expect_response(resp, |response| match response {
+        Response::Ok {
+            data: ResponseData::Accounts { accounts },
+        } => Some(accounts),
+        _ => None,
+    })?;
+    select_compose_account(&accounts, explicit_from)
+}
+
+fn select_compose_account(
+    accounts: &[AccountSummaryData],
+    explicit_from: Option<&str>,
+) -> anyhow::Result<AccountSummaryData> {
+    let send_capable = accounts
+        .iter()
+        .filter(|account| account.enabled && account.send_kind.is_some())
+        .collect::<Vec<_>>();
+
+    if let Some(value) = explicit_from
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let value_lower = value.to_ascii_lowercase();
+        let matches = send_capable
+            .iter()
+            .filter(|account| {
+                account.email.eq_ignore_ascii_case(value)
+                    || account.name.eq_ignore_ascii_case(value)
+                    || account
+                        .key
+                        .as_deref()
+                        .is_some_and(|key| key.eq_ignore_ascii_case(value))
+                    || account
+                        .account_id
+                        .to_string()
+                        .eq_ignore_ascii_case(&value_lower)
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        return match matches.as_slice() {
+            [account] => Ok((*account).clone()),
+            [] => anyhow::bail!("No send-capable account matches `{value}`"),
+            _ => anyhow::bail!("Multiple send-capable accounts match `{value}`"),
+        };
+    }
+
+    send_capable
+        .iter()
+        .find(|account| account.is_default)
+        .copied()
+        .or_else(|| send_capable.first().copied())
+        .map(|account| (*account).clone())
+        .ok_or_else(|| anyhow::anyhow!("No send-capable account configured"))
+}
+
+fn read_body_input(body: Option<String>, body_stdin: bool) -> anyhow::Result<Option<String>> {
+    if let Some(body) = body {
+        return Ok(Some(body));
+    }
+    if body_stdin {
+        use std::io::Read;
+        let mut stdin_body = String::new();
+        std::io::stdin().read_to_string(&mut stdin_body)?;
+        return Ok(Some(stdin_body));
+    }
+    Ok(None)
+}
+
+fn rewrite_compose_frontmatter(
+    path: &std::path::Path,
+    cc: Option<String>,
+    bcc: Option<String>,
+    attach: Vec<String>,
+) -> anyhow::Result<()> {
+    if cc.is_none() && bcc.is_none() && attach.is_empty() {
+        return Ok(());
+    }
+    let content = std::fs::read_to_string(path)?;
+    let (mut frontmatter, body) = mxr_compose::frontmatter::parse_compose_file(&content)?;
+    if let Some(cc) = cc {
+        frontmatter.cc = cc;
+    }
+    if let Some(bcc) = bcc {
+        frontmatter.bcc = bcc;
+    }
+    if !attach.is_empty() {
+        frontmatter.attach = attach;
+    }
+    let updated = mxr_compose::frontmatter::render_compose_file(&frontmatter, &body, None)?;
+    std::fs::write(path, updated)?;
+    Ok(())
+}
+
+fn attachment_strings(paths: &[PathBuf]) -> Vec<String> {
+    paths
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect()
+}
+
+fn draft_from_frontmatter(
+    account_id: AccountId,
+    frontmatter: &mxr_compose::frontmatter::ComposeFrontmatter,
+    body: String,
+) -> anyhow::Result<Draft> {
+    let now = chrono::Utc::now();
+    let reply_headers = frontmatter
+        .in_reply_to
+        .as_ref()
+        .map(|in_reply_to| ReplyHeaders {
+            in_reply_to: in_reply_to.clone(),
+            references: frontmatter.references.clone(),
+        });
+    Ok(Draft {
+        id: DraftId::new(),
+        account_id,
+        reply_headers,
+        to: parse_addresses(&frontmatter.to),
+        cc: parse_addresses(&frontmatter.cc),
+        bcc: parse_addresses(&frontmatter.bcc),
+        subject: frontmatter.subject.clone(),
+        body_markdown: body,
+        attachments: frontmatter.attach.iter().map(PathBuf::from).collect(),
+        created_at: now,
+        updated_at: now,
+    })
+}
+
+fn parse_addresses(raw: &str) -> Vec<Address> {
+    mxr_mail_parse::parse_address_list(raw)
+}
+
+fn validate_compose_draft(
+    frontmatter: &mxr_compose::frontmatter::ComposeFrontmatter,
+    body: &str,
+    sending: bool,
+) -> anyhow::Result<()> {
+    let issues = if sending {
+        mxr_compose::validate_draft(frontmatter, body)
+    } else {
+        mxr_compose::validate_draft_for_save(frontmatter, body)
+    };
+    for issue in &issues {
+        eprintln!("{issue}");
+    }
+    if issues.iter().any(mxr_compose::ComposeValidation::is_error) {
+        anyhow::bail!("Draft validation failed");
+    }
+    mxr_compose::attachments::resolve_attachment_paths(
+        &frontmatter
+            .attach
+            .iter()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(())
+}
+
+fn expect_ack(resp: Response) -> anyhow::Result<()> {
+    crate::commands::expect_response(resp, |response| match response {
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => Some(()),
+        _ => None,
+    })
+}
+
+fn print_draft_preview(draft: &Draft, sending: bool) {
+    let action = if sending { "send" } else { "save draft" };
+    println!("Would {action}:");
+    println!("  id: {}", draft.id);
+    println!("  to: {}", format_addresses(&draft.to));
+    println!("  cc: {}", format_addresses(&draft.cc));
+    println!("  bcc: {}", format_addresses(&draft.bcc));
+    println!("  subject: {}", draft.subject);
+    println!("  attachments: {}", draft.attachments.len());
+}
+
+fn format_addresses(addresses: &[Address]) -> String {
+    addresses
+        .iter()
+        .map(|address| match address.name.as_deref() {
+            Some(name) if !name.is_empty() => format!("{name} <{}>", address.email),
+            _ => address.email.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_compose_from_address;
+    use super::*;
     use crate::commands::mutations::helpers::{
         render_selection_preview_lines, requires_confirmation, MutationSelection,
     };
     use mxr_core::types::Envelope;
+    use mxr_protocol::{AccountEditModeData, AccountSourceData, AccountSummaryData};
 
     #[test]
     fn compose_from_prefers_explicit_value() {
@@ -318,6 +592,75 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_home);
 
         assert_eq!(resolved, "you@example.com");
+    }
+
+    fn account(
+        key: &str,
+        email: &str,
+        is_default: bool,
+        send_kind: Option<&str>,
+    ) -> AccountSummaryData {
+        AccountSummaryData {
+            account_id: mxr_core::AccountId::from_provider_id("test", email),
+            key: Some(key.into()),
+            name: key.into(),
+            email: email.into(),
+            provider_kind: send_kind.unwrap_or("imap").into(),
+            sync_kind: Some("imap".into()),
+            send_kind: send_kind.map(str::to_string),
+            enabled: true,
+            is_default,
+            source: AccountSourceData::Config,
+            editable: AccountEditModeData::Full,
+            sync: None,
+            send: None,
+        }
+    }
+
+    #[test]
+    fn compose_account_selection_uses_default_send_account() {
+        let accounts = vec![
+            account("personal", "me@example.com", false, Some("smtp")),
+            account("work", "work@example.com", true, Some("gmail")),
+        ];
+
+        let selected = select_compose_account(&accounts, None).unwrap();
+
+        assert_eq!(selected.email, "work@example.com");
+    }
+
+    #[test]
+    fn compose_account_selection_rejects_sync_only_accounts() {
+        let accounts = vec![account("work", "work@example.com", true, None)];
+
+        let error = select_compose_account(&accounts, None).unwrap_err();
+
+        assert!(error.to_string().contains("No send-capable account"));
+    }
+
+    #[test]
+    fn draft_from_frontmatter_parses_recipients_and_reply_headers() {
+        let frontmatter = mxr_compose::frontmatter::ComposeFrontmatter {
+            to: "\"Last, First\" <first@example.com>, second@example.com".into(),
+            cc: String::new(),
+            bcc: "hidden@example.com".into(),
+            subject: "Hello".into(),
+            from: "me@example.com".into(),
+            in_reply_to: Some("<reply@example.com>".into()),
+            references: vec!["<root@example.com>".into()],
+            attach: Vec::new(),
+        };
+
+        let draft = draft_from_frontmatter(mxr_core::AccountId::new(), &frontmatter, "body".into())
+            .unwrap();
+
+        assert_eq!(draft.to.len(), 2);
+        assert_eq!(draft.to[0].name.as_deref(), Some("Last, First"));
+        assert_eq!(draft.bcc[0].email, "hidden@example.com");
+        assert_eq!(
+            draft.reply_headers.unwrap().in_reply_to,
+            "<reply@example.com>"
+        );
     }
 
     fn test_envelope(subject: &str) -> Envelope {

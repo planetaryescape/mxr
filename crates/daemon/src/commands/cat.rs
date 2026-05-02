@@ -1,7 +1,7 @@
 use crate::cli::{BodyViewArg, OutputFormat};
 use crate::commands::expect_response;
 use crate::ipc_client::IpcClient;
-use crate::output::resolve_format;
+use crate::output::{jsonl, resolve_format};
 use mxr_core::MessageId;
 use mxr_protocol::*;
 
@@ -77,6 +77,9 @@ pub async fn run(
             OutputFormat::Json => {
                 println!("{}", serde_json::to_string_pretty(&assets)?);
             }
+            OutputFormat::Jsonl => {
+                println!("{}", jsonl(&assets)?);
+            }
             _ => {
                 for asset in &assets {
                     let path = asset
@@ -111,6 +114,20 @@ pub async fn run(
                 _ => None,
             })?;
             println!("{}", serde_json::to_string_pretty(&body)?);
+        }
+        OutputFormat::Jsonl => {
+            let resp = client
+                .request(Request::GetBody {
+                    message_id: mid.clone(),
+                })
+                .await?;
+            let body = expect_response(resp, |r| match r {
+                Response::Ok {
+                    data: ResponseData::Body { body },
+                } => Some(body),
+                _ => None,
+            })?;
+            println!("{}", serde_json::to_string(&body)?);
         }
         _ => {
             let selected_view = view.unwrap_or_else(|| {

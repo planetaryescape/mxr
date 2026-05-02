@@ -4,7 +4,8 @@ expression: stdout
 ---
 List drafts
 
-Usage: mxr drafts
+Usage: mxr drafts [OPTIONS]
 
 Options:
-  -h, --help  Print help
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

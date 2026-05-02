@@ -237,6 +237,24 @@ mod tests {
                 },
                 IpcCategory::MxrPlatform,
             ),
+            (
+                Request::DisableAccountConfig { key: "work".into() },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                Request::RemoveAccountConfig {
+                    key: "work".into(),
+                    purge_local_data: false,
+                    dry_run: true,
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                Request::RepairAccountConfig {
+                    account: sample_account_config(),
+                },
+                IpcCategory::MxrPlatform,
+            ),
             (Request::ListRules, IpcCategory::MxrPlatform),
             (
                 Request::GetRule {
@@ -439,6 +457,24 @@ mod tests {
             (
                 Request::SendDraft {
                     draft: sample_draft(),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                Request::SaveDraft {
+                    draft: sample_draft(),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                Request::SendStoredDraft {
+                    draft_id: DraftId::new(),
+                },
+                IpcCategory::CoreMail,
+            ),
+            (
+                Request::DeleteDraft {
+                    draft_id: DraftId::new(),
                 },
                 IpcCategory::CoreMail,
             ),

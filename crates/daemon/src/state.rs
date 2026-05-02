@@ -265,17 +265,20 @@ impl AppState {
                     password_ref,
                     auth_required,
                     use_tls,
-                }) => Some(Arc::new(mxr_provider_imap::ImapProvider::new(
-                    account_id.clone(),
-                    mxr_provider_imap::config::ImapConfig::new(
+                }) => {
+                    let config = crate::provider_credentials::imap_config_with_credentials(
                         host.clone(),
                         *port,
                         username.clone(),
                         password_ref.clone(),
                         *auth_required,
                         *use_tls,
-                    ),
-                )) as Arc<dyn MailSyncProvider>),
+                    )?;
+                    Some(Arc::new(mxr_provider_imap::ImapProvider::new(
+                        account_id.clone(),
+                        config,
+                    )) as Arc<dyn MailSyncProvider>)
+                }
                 None => None,
             };
 
@@ -310,16 +313,16 @@ impl AppState {
                 use_tls,
             }) = &acct_config.send
             {
-                let send_provider = Arc::new(mxr_provider_smtp::SmtpSendProvider::new(
-                    mxr_provider_smtp::config::SmtpConfig::new(
-                        host.clone(),
-                        *port,
-                        username.clone(),
-                        password_ref.clone(),
-                        *auth_required,
-                        *use_tls,
-                    ),
-                )) as Arc<dyn MailSendProvider>;
+                let config = crate::provider_credentials::smtp_config_with_credentials(
+                    host.clone(),
+                    *port,
+                    username.clone(),
+                    password_ref.clone(),
+                    *auth_required,
+                    *use_tls,
+                )?;
+                let send_provider = Arc::new(mxr_provider_smtp::SmtpSendProvider::new(config))
+                    as Arc<dyn MailSendProvider>;
                 if requested_default == Some(key.as_str()) || default_send_provider.is_none() {
                     default_send_provider = Some(send_provider.clone());
                 }
@@ -872,6 +875,7 @@ host = "imap.example.com"
 port = 993
 username = "me@example.com"
 password_ref = "keyring:test-imap"
+auth_required = false
 use_tls = true
 
 [accounts.personal.send]
@@ -880,6 +884,7 @@ host = "smtp.example.com"
 port = 587
 username = "me@example.com"
 password_ref = "keyring:test-smtp"
+auth_required = false
 use_tls = true
 
 [accounts.work]
@@ -892,6 +897,7 @@ host = "imap.corp.com"
 port = 993
 username = "me@corp.com"
 password_ref = "keyring:test-work-imap"
+auth_required = false
 use_tls = true
 "#
         ))

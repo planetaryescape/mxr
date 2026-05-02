@@ -32,9 +32,10 @@ fn default_password_cache() -> Arc<OnceCell<String>> {
 }
 
 fn default_password_reader() -> PasswordReader {
-    Arc::new(|password_ref, username| {
-        mxr_keychain::get_password(password_ref, username)
-            .map_err(|e| SmtpError::Keyring(e.to_string()))
+    Arc::new(|password_ref, _username| {
+        Err(SmtpError::Keyring(format!(
+            "credential resolver not configured for {password_ref}"
+        )))
     })
 }
 
@@ -59,17 +60,21 @@ impl SmtpConfig {
         }
     }
 
-    /// Retrieve the SMTP password from the system keyring.
+    pub fn with_password(mut self, password: String) -> Self {
+        self.password_reader = Arc::new(move |_, _| Ok(password.clone()));
+        self
+    }
+
+    pub fn with_password_reader(mut self, password_reader: PasswordReader) -> Self {
+        self.password_reader = password_reader;
+        self
+    }
+
+    /// Retrieve the SMTP password through the daemon-provided credential resolver.
     pub fn resolve_password(&self) -> Result<String, SmtpError> {
         self.password_cache
             .get_or_try_init(|| (self.password_reader)(&self.password_ref, &self.username))
             .cloned()
-    }
-
-    #[cfg(test)]
-    fn with_password_reader_for_tests(mut self, password_reader: PasswordReader) -> Self {
-        self.password_reader = password_reader;
-        self
     }
 }
 
@@ -124,7 +129,7 @@ mod tests {
             true,
             true,
         )
-        .with_password_reader_for_tests(Arc::new(move |_, _| {
+        .with_password_reader(Arc::new(move |_, _| {
             reader_count.fetch_add(1, Ordering::SeqCst);
             Ok("app-password".to_string())
         }));
@@ -146,7 +151,7 @@ mod tests {
             true,
             true,
         )
-        .with_password_reader_for_tests(Arc::new(move |_, _| {
+        .with_password_reader(Arc::new(move |_, _| {
             reader_count.fetch_add(1, Ordering::SeqCst);
             Ok("app-password".to_string())
         }));
@@ -169,7 +174,7 @@ mod tests {
             true,
             true,
         )
-        .with_password_reader_for_tests(Arc::new(move |_, _| {
+        .with_password_reader(Arc::new(move |_, _| {
             let attempt = reader_count.fetch_add(1, Ordering::SeqCst);
             if attempt == 0 {
                 Err(SmtpError::Keyring("denied".to_string()))
@@ -198,7 +203,7 @@ mod tests {
                 true,
                 true,
             )
-            .with_password_reader_for_tests(Arc::new(move |_, _| {
+            .with_password_reader(Arc::new(move |_, _| {
                 reader_count.fetch_add(1, Ordering::SeqCst);
                 std::thread::sleep(Duration::from_millis(25));
                 Ok("app-password".to_string())

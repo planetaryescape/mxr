@@ -47,7 +47,7 @@ pub fn gmail_message_to_envelope(
         .collect();
     let parsed_headers = parse_headers_from_pairs(&header_pairs, internal_date)
         .map_err(|err| ParseError::Headers(err.to_string()))?;
-    let body_data = extract_body_data(msg);
+    let body_data = extract_body_data(msg, account_id);
 
     let label_ids = msg.label_ids.as_deref().unwrap_or(&[]);
     let flags = labels_to_flags(label_ids);
@@ -62,10 +62,10 @@ pub fn gmail_message_to_envelope(
     };
 
     Ok(Envelope {
-        id: MessageId::from_provider_id("gmail", &msg.id),
+        id: MessageId::from_scoped_provider_id(account_id, "gmail", &msg.id),
         account_id: account_id.clone(),
         provider_id: msg.id.clone(),
-        thread_id: ThreadId::from_provider_id("gmail", &msg.thread_id),
+        thread_id: ThreadId::from_scoped_provider_id(account_id, "gmail", &msg.thread_id),
         message_id_header: parsed_headers.message_id_header,
         in_reply_to: parsed_headers.in_reply_to,
         references: parsed_headers.references,
@@ -196,7 +196,8 @@ struct ExtractedBodyData {
 
 /// Extract text_plain and text_html from a GmailMessage payload.
 pub fn extract_body(msg: &GmailMessage) -> (Option<String>, Option<String>, Vec<AttachmentMeta>) {
-    let body_data = extract_body_data(msg);
+    let account_id = AccountId::from_provider_id("gmail", "legacy");
+    let body_data = extract_body_data(msg, &account_id);
     (
         body_data.text_plain,
         body_data.text_html,
@@ -204,10 +205,10 @@ pub fn extract_body(msg: &GmailMessage) -> (Option<String>, Option<String>, Vec<
     )
 }
 
-fn extract_body_data(msg: &GmailMessage) -> ExtractedBodyData {
+fn extract_body_data(msg: &GmailMessage, account_id: &AccountId) -> ExtractedBodyData {
     let mut data = ExtractedBodyData::default();
     if let Some(ref payload) = msg.payload {
-        walk_parts(payload, &msg.id, "0", &mut data);
+        walk_parts(payload, &msg.id, account_id, "0", &mut data);
     }
     data
 }
@@ -215,6 +216,7 @@ fn extract_body_data(msg: &GmailMessage) -> ExtractedBodyData {
 fn walk_parts(
     payload: &GmailPayload,
     provider_msg_id: &str,
+    account_id: &AccountId,
     part_path: &str,
     body_data: &mut ExtractedBodyData,
 ) {
@@ -241,11 +243,12 @@ fn walk_parts(
 
     if is_attachment_part(payload, mime, disposition) {
         body_data.attachments.push(AttachmentMeta {
-            id: AttachmentId::from_provider_id(
+            id: AttachmentId::from_scoped_provider_id(
+                account_id,
                 "gmail",
                 &format!("{provider_msg_id}:{provider_id}"),
             ),
-            message_id: MessageId::from_provider_id("gmail", provider_msg_id),
+            message_id: MessageId::from_scoped_provider_id(account_id, "gmail", provider_msg_id),
             filename: filename
                 .map(|value| (*value).clone())
                 .unwrap_or_else(|| format!("attachment-{part_path}")),
@@ -291,6 +294,7 @@ fn walk_parts(
             walk_parts(
                 part,
                 provider_msg_id,
+                account_id,
                 &format!("{part_path}.{index}"),
                 body_data,
             );
@@ -298,7 +302,7 @@ fn walk_parts(
     }
 }
 
-pub fn extract_message_body(msg: &GmailMessage) -> MessageBody {
+pub fn extract_message_body_for_account(msg: &GmailMessage, account_id: &AccountId) -> MessageBody {
     let header_pairs: Vec<(String, String)> = msg
         .payload
         .as_ref()
@@ -311,7 +315,7 @@ pub fn extract_message_body(msg: &GmailMessage) -> MessageBody {
         })
         .unwrap_or_default();
     let parsed_headers = parse_headers_from_pairs(&header_pairs, Some(Utc::now())).ok();
-    let body_data = extract_body_data(msg);
+    let body_data = extract_body_data(msg, account_id);
     let mut metadata = parsed_headers
         .map(|parsed| parsed.metadata)
         .unwrap_or_default();
@@ -320,13 +324,18 @@ pub fn extract_message_body(msg: &GmailMessage) -> MessageBody {
     metadata.text_plain_source = body_data.text_plain.as_ref().map(|_| BodyPartSource::Exact);
     metadata.text_html_source = body_data.text_html.as_ref().map(|_| BodyPartSource::Exact);
     MessageBody {
-        message_id: MessageId::from_provider_id("gmail", &msg.id),
+        message_id: MessageId::from_scoped_provider_id(account_id, "gmail", &msg.id),
         text_plain: body_data.text_plain,
         text_html: body_data.text_html,
         attachments: body_data.attachments,
         fetched_at: Utc::now(),
         metadata,
     }
+}
+
+pub fn extract_message_body(msg: &GmailMessage) -> MessageBody {
+    let account_id = AccountId::from_provider_id("gmail", "legacy");
+    extract_message_body_for_account(msg, &account_id)
 }
 
 fn is_attachment_part(
@@ -558,11 +567,29 @@ mod tests {
         // UNREAD present → not read
         assert!(!env.flags.contains(MessageFlags::READ));
         // Deterministic IDs
-        assert_eq!(env.id, MessageId::from_provider_id("gmail", "msg-001"));
+        assert_eq!(
+            env.id,
+            MessageId::from_scoped_provider_id(&account_id, "gmail", "msg-001")
+        );
         assert_eq!(
             env.thread_id,
-            ThreadId::from_provider_id("gmail", "thread-001")
+            ThreadId::from_scoped_provider_id(&account_id, "gmail", "thread-001")
         );
+    }
+
+    #[test]
+    fn same_gmail_provider_id_is_distinct_across_accounts() {
+        let msg = make_test_message();
+        let first_account = AccountId::from_provider_id("gmail", "first@example.com");
+        let second_account = AccountId::from_provider_id("gmail", "second@example.com");
+
+        let first = gmail_message_to_envelope(&msg, &first_account).unwrap();
+        let second = gmail_message_to_envelope(&msg, &second_account).unwrap();
+
+        assert_eq!(first.provider_id, second.provider_id);
+        assert_ne!(first.account_id, second.account_id);
+        assert_ne!(first.id, second.id);
+        assert_ne!(first.thread_id, second.thread_id);
     }
 
     #[test]

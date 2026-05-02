@@ -342,15 +342,15 @@ jobs:
       # Build with cross for Linux targets (handles cross-compilation toolchains)
       - name: Install cross
         if: matrix.os == 'ubuntu-latest'
-        run: cargo install cross
+        run: cargo install cross --locked
 
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: cross build --release --target ${{ matrix.target }} --all-features
+        run: cross build --release --locked --target ${{ matrix.target }} --all-features
 
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
-        run: cargo build --release --target ${{ matrix.target }} --all-features
+        run: cargo build --release --locked --target ${{ matrix.target }} --all-features
 
       - name: Package
         run: |
@@ -739,4 +739,4 @@ The docs site deploys on every push to main (for content updates), but also on r
 
 **Chosen**: Name binary release assets following the cargo-binstall naming convention.
 
-**Why**: Zero extra work. If the GitHub Release assets are named `{name}-v{version}-{target}.tar.gz` (which ours are), cargo-binstall can install pre-built binaries automatically. This gives users a fast install path (`cargo binstall mxr`) without the 5+ minute compile time of `cargo install mxr`, and it requires no infrastructure beyond what we already build.
+**Why**: Zero extra work. If the GitHub Release assets are named `{name}-v{version}-{target}.tar.gz` (which ours are), cargo-binstall can install pre-built binaries automatically. This gives users a fast install path (`cargo binstall mxr`) without the 5+ minute source build, and it requires no infrastructure beyond what we already build.

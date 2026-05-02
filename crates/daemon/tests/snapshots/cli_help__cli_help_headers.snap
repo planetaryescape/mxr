@@ -4,10 +4,11 @@ expression: stdout
 ---
 Show message headers
 
-Usage: mxr headers <MESSAGE_ID>
+Usage: mxr headers [OPTIONS] <MESSAGE_ID>
 
 Arguments:
   <MESSAGE_ID>  
 
 Options:
-  -h, --help  Print help
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

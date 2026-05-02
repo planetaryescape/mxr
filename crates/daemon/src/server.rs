@@ -495,6 +495,7 @@ fn live_daemon_pid() -> Option<u32> {
 fn fallback_live_daemon_pid_without_pid_file() -> Option<u32> {
     let current_exe = std::env::current_exe().ok()?;
     let current_name = current_exe.file_name()?.to_str()?;
+    let current_instance = mxr_config::app_instance_name();
     let output = std::process::Command::new("ps")
         .args(["-Ao", "pid=,command="])
         .output()
@@ -524,7 +525,12 @@ fn fallback_live_daemon_pid_without_pid_file() -> Option<u32> {
         let Some(arg1) = parts.next() else {
             continue;
         };
-        if parts.next().is_some() || arg1 != "daemon" {
+        if arg1 != "daemon" {
+            continue;
+        }
+
+        let args = parts.collect::<Vec<_>>();
+        if args != ["--instance", current_instance.as_str()] {
             continue;
         }
 
@@ -841,6 +847,8 @@ async fn spawn_daemon_process(sock_path: &std::path::Path, prefix: &str) -> anyh
     let exe = std::env::current_exe()?;
     std::process::Command::new(exe)
         .arg("daemon")
+        .arg("--instance")
+        .arg(mxr_config::app_instance_name())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

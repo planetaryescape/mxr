@@ -64,7 +64,7 @@ jobs:
               while IFS= read -r path; do
                 [[ -z "${path}" ]] && continue
                 case "${path}" in
-                  Cargo.toml|Cargo.lock|deny.toml|rust-toolchain*|build.rs|crates/*|src/*|tests/*|benches/*|examples/*|.sqlx/*|scripts/test_quality_audit.sh)
+                  Cargo.toml|Cargo.lock|deny.toml|rust-toolchain*|build.rs|crates/*|src/*|tests/*|benches/*|examples/*|.sqlx/*|scripts/test_quality_audit.sh|scripts/check_architecture_boundaries.sh)
                     rust=true
                     ;;
                   site/*)
@@ -104,6 +104,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-targets
+
+  architecture:
+    name: Architecture Boundaries
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.expensive == 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - run: scripts/check_architecture_boundaries.sh
 
   fmt:
     name: Format
@@ -276,15 +285,15 @@ jobs:
       - run: cargo doc --workspace --no-deps
 
   msrv:
-    name: MSRV (1.75)
+    name: MSRV (1.88)
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.expensive == 'true'
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.75
+      - uses: dtolnay/rust-toolchain@1.88
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace
+      - run: cargo check --workspace --locked
 
   install-check:
     name: Install Smoke Test

@@ -29,6 +29,15 @@ pub async fn run(thread_id: String, format: Option<OutputFormat>) -> anyhow::Res
                 }))?
             );
         }
+        OutputFormat::Jsonl => {
+            println!(
+                "{}",
+                serde_json::to_string(&serde_json::json!({
+                    "thread": thread,
+                    "messages": messages,
+                }))?
+            );
+        }
         _ => {
             println!(
                 "Thread: {} ({} messages)",

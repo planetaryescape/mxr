@@ -7,6 +7,6 @@ Unread summary for status bars
 Usage: mxr notify [OPTIONS]
 
 Options:
-      --format <FORMAT>  [possible values: table, json, csv, ids]
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
       --watch            
   -h, --help             Print help

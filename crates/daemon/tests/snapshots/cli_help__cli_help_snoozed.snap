@@ -4,7 +4,8 @@ expression: stdout
 ---
 List snoozed messages
 
-Usage: mxr snoozed
+Usage: mxr snoozed [OPTIONS]
 
 Options:
-  -h, --help  Print help
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

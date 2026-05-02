@@ -1,6 +1,6 @@
 use crate::cli::{OutputFormat, SearchModeArg, SearchSortArg};
 use crate::ipc_client::IpcClient;
-use crate::output::resolve_format;
+use crate::output::{jsonl, resolve_format};
 use mxr_core::types::{Envelope, MessageFlags, SortOrder};
 use mxr_protocol::{Request, Response, ResponseData, SearchExplain};
 
@@ -60,24 +60,25 @@ pub async fn run(
         }
     }
 
+    let json_items: Vec<serde_json::Value> = envelopes
+        .iter()
+        .map(|(env, score)| {
+            serde_json::json!({
+                "message_id": env.id.as_str(),
+                "from": format!("{} <{}>",
+                    env.from.name.as_deref().unwrap_or(""),
+                    env.from.email),
+                "subject": env.subject,
+                "date": env.date.to_rfc3339(),
+                "read": env.flags.contains(MessageFlags::READ),
+                "starred": env.flags.contains(MessageFlags::STARRED),
+                "score": score,
+            })
+        })
+        .collect();
+
     match fmt {
         OutputFormat::Json => {
-            let json_items: Vec<serde_json::Value> = envelopes
-                .iter()
-                .map(|(env, score)| {
-                    serde_json::json!({
-                        "message_id": env.id.as_str(),
-                        "from": format!("{} <{}>",
-                            env.from.name.as_deref().unwrap_or(""),
-                            env.from.email),
-                        "subject": env.subject,
-                        "date": env.date.to_rfc3339(),
-                        "read": env.flags.contains(MessageFlags::READ),
-                        "starred": env.flags.contains(MessageFlags::STARRED),
-                        "score": score,
-                    })
-                })
-                .collect();
             if explain {
                 println!(
                     "{}",
@@ -90,13 +91,50 @@ pub async fn run(
                 println!("{}", serde_json::to_string_pretty(&json_items)?);
             }
         }
+        OutputFormat::Jsonl => {
+            println!("{}", jsonl(&json_items)?);
+            if let Some(explain_payload) = explain_payload.as_ref() {
+                eprintln!("{}", serde_json::to_string(explain_payload)?);
+            }
+        }
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "message_id",
+                "from",
+                "subject",
+                "date",
+                "read",
+                "starred",
+                "score",
+            ])?;
+            for (env, score) in &envelopes {
+                writer.write_record(vec![
+                    env.id.as_str(),
+                    format!(
+                        "{} <{}>",
+                        env.from.name.as_deref().unwrap_or(""),
+                        env.from.email
+                    ),
+                    env.subject.clone(),
+                    env.date.to_rfc3339(),
+                    env.flags.contains(MessageFlags::READ).to_string(),
+                    env.flags.contains(MessageFlags::STARRED).to_string(),
+                    score.to_string(),
+                ])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+            if let Some(explain_payload) = explain_payload.as_ref() {
+                eprintln!("{}", serde_json::to_string(explain_payload)?);
+            }
+        }
         OutputFormat::Ids => {
             for (env, _) in &envelopes {
                 println!("{}", env.id.as_str());
             }
             render_explain(explain_payload.as_ref());
         }
-        _ => {
+        OutputFormat::Table => {
             if envelopes.is_empty() {
                 println!("No results found.");
             } else {

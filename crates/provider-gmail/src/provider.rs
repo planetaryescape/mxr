@@ -10,7 +10,7 @@ use tracing::{debug, warn};
 
 use crate::client::{GmailApi, GmailClient, MessageFormat};
 use crate::error::GmailError;
-use crate::parse::{extract_message_body, gmail_message_to_envelope};
+use crate::parse::{extract_message_body_for_account, gmail_message_to_envelope};
 use crate::send;
 use mxr_core::types::SyncedMessage;
 
@@ -136,7 +136,7 @@ impl GmailProvider {
         let color = gl.color.as_ref().and_then(|c| c.background_color.clone());
 
         Label {
-            id: LabelId::from_provider_id("gmail", &gl.id),
+            id: LabelId::from_scoped_provider_id(&self.account_id, "gmail", &gl.id),
             account_id: self.account_id.clone(),
             name: gl.name,
             kind,
@@ -479,7 +479,7 @@ fn parse_synced_message(
 
     match gmail_message_to_envelope(&message, &account_id) {
         Ok(envelope) => {
-            let body = extract_message_body(&message);
+            let body = extract_message_body_for_account(&message, &account_id);
             Some(SyncedMessage { envelope, body })
         }
         Err(error) => {

@@ -1,7 +1,7 @@
 # mxr
 
 [![CI](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml/badge.svg)](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml)
-[![MSRV](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://github.com/planetaryescape/mxr/blob/main/Cargo.toml)
+[![MSRV](https://img.shields.io/badge/rust-1.88%2B-blue.svg)](https://github.com/planetaryescape/mxr/blob/main/Cargo.toml)
 
 **Local-first email infrastructure.**
 
@@ -17,7 +17,7 @@ brew tap planetaryescape/mxr
 brew install mxr
 
 # Cargo (release tag)
-cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.51 --locked mxr
+cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.52 --locked mxr
 ```
 
 Pre-built release tarballs are also available for:

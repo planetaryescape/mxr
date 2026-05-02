@@ -24,6 +24,7 @@ mod tests {
             toml::from_str(&serialized).expect("deserialize default config");
         assert_eq!(deserialized.general.sync_interval, 60);
         assert_eq!(deserialized.general.hook_timeout, 30);
+        assert_eq!(deserialized.general.safety_policy, SafetyPolicy::Full);
         assert_eq!(deserialized.search.max_results, 200);
         assert_eq!(
             deserialized.search.default_mode,
@@ -110,6 +111,7 @@ subject_max_width = 80
         assert_eq!(config.general.editor.as_deref(), Some("nvim"));
         assert_eq!(config.general.sync_interval, 120);
         assert_eq!(config.general.hook_timeout, 45);
+        assert_eq!(config.general.safety_policy, SafetyPolicy::Full);
         assert_eq!(config.accounts.len(), 1);
 
         let personal = &config.accounts["personal"];
@@ -144,6 +146,7 @@ editor = "emacs"
         // Rest should be defaults
         assert_eq!(config.general.sync_interval, 60);
         assert_eq!(config.general.hook_timeout, 30);
+        assert_eq!(config.general.safety_policy, SafetyPolicy::Full);
         assert!(config.render.reader_mode);
         assert_eq!(config.search.max_results, 200);
         assert_eq!(config.search.default_mode, mxr_core::SearchMode::Lexical);
@@ -168,6 +171,21 @@ editor = "emacs"
         .expect("load config");
 
         assert_eq!(config.general.sync_interval, 30);
+    }
+
+    #[test]
+    fn env_override_safety_policy() {
+        let tmp = TempDir::new().expect("create temp dir");
+        let config_path = tmp.path().join("config.toml");
+        std::fs::write(&config_path, "[general]\nsafety_policy = \"full\"\n")
+            .expect("write config");
+
+        let config = temp_env::with_var("MXR_SAFETY_POLICY", Some("draft-only"), || {
+            load_config_from_path(&config_path)
+        })
+        .expect("load config");
+
+        assert_eq!(config.general.safety_policy, SafetyPolicy::DraftOnly);
     }
 
     #[test]
@@ -245,6 +263,7 @@ editor = "emacs"
                 ("MXR_SYNC_INTERVAL", None::<&str>),
                 ("MXR_DEFAULT_ACCOUNT", None::<&str>),
                 ("MXR_ATTACHMENT_DIR", None::<&str>),
+                ("MXR_SAFETY_POLICY", None::<&str>),
                 ("MXR_CONFIG_DIR", None::<&str>),
                 ("MXR_DATA_DIR", None::<&str>),
                 ("MXR_SOCKET_PATH", None::<&str>),

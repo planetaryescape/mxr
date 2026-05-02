@@ -8,5 +8,5 @@ Usage: mxr events [OPTIONS]
 
 Options:
       --type <EVENT_TYPE>  
-      --format <FORMAT>    [possible values: table, json, csv, ids]
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
   -h, --help               Print help

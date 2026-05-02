@@ -22,7 +22,7 @@ pub fn map_folder_to_label(
     };
 
     Label {
-        id: LabelId::from_provider_id("imap", &name),
+        id: LabelId::from_scoped_provider_id(account_id, "imap", &name),
         account_id: account_id.clone(),
         name,
         kind,
@@ -78,6 +78,19 @@ mod tests {
         let label = map_folder_to_label("Projects/Work", None, &aid);
         assert_eq!(label.name, "Projects/Work");
         assert_eq!(label.kind, LabelKind::Folder);
+    }
+
+    #[test]
+    fn same_imap_folder_is_distinct_across_accounts() {
+        let first_account = AccountId::from_provider_id("imap", "first@example.com");
+        let second_account = AccountId::from_provider_id("imap", "second@example.com");
+
+        let first = map_folder_to_label("INBOX", Some("\\Inbox"), &first_account);
+        let second = map_folder_to_label("INBOX", Some("\\Inbox"), &second_account);
+
+        assert_eq!(first.provider_id, second.provider_id);
+        assert_ne!(first.account_id, second.account_id);
+        assert_ne!(first.id, second.id);
     }
 
     #[test]

@@ -13,7 +13,7 @@ impl super::Store {
         let row = sqlx::query(
             r#"SELECT message_id, text_plain, text_html, fetched_at, metadata_json FROM bodies WHERE message_id = ?"#,
         )
-        .bind(mid)
+        .bind(&mid)
         .fetch_optional(self.reader())
         .await?;
         trace_lookup("body.get_body", started_at, row.is_some());
@@ -78,13 +78,18 @@ impl super::Store {
         sqlx::query(
             "INSERT OR REPLACE INTO bodies (message_id, text_plain, text_html, fetched_at, metadata_json) VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(mid)
+        .bind(&mid)
         .bind(&body.text_plain)
         .bind(&body.text_html)
         .bind(fetched_at)
         .bind(metadata_json)
         .execute(self.writer())
         .await?;
+
+        sqlx::query("DELETE FROM attachments WHERE message_id = ?")
+            .bind(&mid)
+            .execute(self.writer())
+            .await?;
 
         for att in &body.attachments {
             let att_id = att.id.as_str();
@@ -133,5 +138,81 @@ fn decode_attachment_disposition(value: &str) -> Result<AttachmentDisposition, s
         other => Err(sqlx::Error::Protocol(format!(
             "invalid attachment disposition: {other}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::super::Store;
+    use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
+    use mxr_core::{
+        AttachmentDisposition, AttachmentId, AttachmentMeta, MessageBody, MessageMetadata,
+    };
+
+    fn attachment(message_id: mxr_core::MessageId, provider_id: &str) -> AttachmentMeta {
+        AttachmentMeta {
+            id: AttachmentId::from_provider_id("test", provider_id),
+            message_id,
+            filename: format!("{provider_id}.txt"),
+            mime_type: "text/plain".into(),
+            disposition: AttachmentDisposition::Attachment,
+            content_id: None,
+            content_location: None,
+            size_bytes: 10,
+            local_path: None,
+            provider_id: provider_id.into(),
+        }
+    }
+
+    fn body(message_id: mxr_core::MessageId, attachments: Vec<AttachmentMeta>) -> MessageBody {
+        MessageBody {
+            message_id,
+            text_plain: Some("body".into()),
+            text_html: None,
+            attachments,
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn body_refresh_removes_attachments_no_longer_returned_by_provider() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        store.upsert_envelope(&envelope).await.unwrap();
+
+        store
+            .insert_body(&body(
+                envelope.id.clone(),
+                vec![
+                    attachment(envelope.id.clone(), "first"),
+                    attachment(envelope.id.clone(), "removed"),
+                ],
+            ))
+            .await
+            .unwrap();
+
+        store
+            .insert_body(&body(
+                envelope.id.clone(),
+                vec![attachment(envelope.id.clone(), "first")],
+            ))
+            .await
+            .unwrap();
+
+        let refreshed = store.get_body(&envelope.id).await.unwrap().unwrap();
+        let provider_ids = refreshed
+            .attachments
+            .iter()
+            .map(|attachment| attachment.provider_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(provider_ids, vec!["first"]);
     }
 }

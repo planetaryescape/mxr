@@ -80,7 +80,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.4.51"
+version = "0.4.52"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.88"
@@ -172,6 +172,7 @@ bytes = "1"
 # CLI
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
+csv = "1.3"
 
 # Futures
 futures = "0.3"
@@ -231,6 +232,7 @@ mxr-config = { workspace = true }
 mxr-core = { workspace = true }
 mxr-export = { workspace = true }
 mxr-keychain = { workspace = true }
+mxr-mail-parse = { workspace = true }
 mxr-protocol = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-provider-gmail = { workspace = true }
@@ -259,6 +261,7 @@ clap = { workspace = true }
 clap_complete = { workspace = true }
 comrak = { workspace = true, default-features = false, features = ["shortcodes"] }
 crossterm = { workspace = true, features = ["event-stream"] }
+csv = { workspace = true }
 dirs = { workspace = true }
 futures = { workspace = true }
 glob-match = { workspace = true }

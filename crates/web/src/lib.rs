@@ -3365,17 +3365,28 @@ mod tests {
 
     #[test]
     fn group_envelopes_keeps_web_specific_date_buckets_out_of_ipc() {
+        let today_noon = Local
+            .from_local_datetime(
+                &Local::now()
+                    .date_naive()
+                    .and_hms_opt(12, 0, 0)
+                    .expect("valid local noon"),
+            )
+            .single()
+            .expect("local noon is unambiguous")
+            .with_timezone(&Utc);
+
         let mut same_day_a = sample_envelope();
         same_day_a.subject = "alpha".into();
-        same_day_a.date = Utc::now();
+        same_day_a.date = today_noon;
 
         let mut same_day_b = sample_envelope();
         same_day_b.subject = "beta".into();
-        same_day_b.date = Utc::now() - chrono::Duration::hours(1);
+        same_day_b.date = today_noon - chrono::Duration::hours(1);
 
         let mut older = sample_envelope();
         older.subject = "gamma".into();
-        older.date = Utc::now() - chrono::Duration::days(3);
+        older.date = today_noon - chrono::Duration::days(3);
 
         let groups = group_envelopes(vec![same_day_a, same_day_b, older]);
 

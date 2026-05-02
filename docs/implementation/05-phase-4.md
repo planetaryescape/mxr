@@ -1281,15 +1281,15 @@ jobs:
       # Build with cross for Linux targets (handles cross-compilation toolchains)
       - name: Install cross
         if: matrix.os == 'ubuntu-latest'
-        run: cargo install cross
+        run: cargo install cross --locked
 
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: cross build --release --target ${{ matrix.target }} --all-features
+        run: cross build --release --locked --target ${{ matrix.target }} --all-features
 
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
-        run: cargo build --release --target ${{ matrix.target }} --all-features
+        run: cargo build --release --locked --target ${{ matrix.target }} --all-features
 
       - name: Package
         run: |
@@ -1770,7 +1770,7 @@ Zero extra work. If GitHub Release assets follow the naming pattern `{name}-v{ve
 cargo binstall mxr
 ```
 
-This gives users a fast install path without the 5+ minute compile time of `cargo install mxr`, and requires no infrastructure beyond what the release workflow already builds.
+This gives users a fast install path without the 5+ minute source build, and requires no infrastructure beyond what the release workflow already builds.
 
 ### 4.4 AUR Package
 

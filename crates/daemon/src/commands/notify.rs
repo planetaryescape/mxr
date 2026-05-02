@@ -19,6 +19,9 @@ pub fn render_notify(unread: u32, format: OutputFormat) -> anyhow::Result<String
         OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
             "unread": unread,
         }))?,
+        OutputFormat::Jsonl => serde_json::to_string(&serde_json::json!({
+            "unread": unread,
+        }))?,
         _ => unread.to_string(),
     })
 }

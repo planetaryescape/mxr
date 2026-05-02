@@ -2,7 +2,7 @@
 
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
-use crate::output::resolve_format;
+use crate::output::{jsonl, resolve_format};
 use mxr_protocol::{EventLogEntry, Request, Response, ResponseData};
 
 fn render_table(entries: &[EventLogEntry]) {
@@ -54,6 +54,7 @@ pub async fn run(
     })?;
     match fmt {
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&entries)?),
+        OutputFormat::Jsonl => println!("{}", jsonl(&entries)?),
         _ => render_table(&entries),
     }
 

@@ -5,6 +5,7 @@ pub mod handler;
 pub mod ipc_client;
 pub(crate) mod loops;
 pub mod output;
+pub(crate) mod provider_credentials;
 pub mod reindex;
 pub mod server;
 pub mod snooze;
@@ -23,7 +24,13 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     }
     let cli = Cli::parse_from(&args);
 
-    let is_foreground = matches!(cli.command, Some(Command::Daemon { foreground: true }));
+    let is_foreground = matches!(
+        cli.command,
+        Some(Command::Daemon {
+            foreground: true,
+            ..
+        })
+    );
     init_tracing(is_foreground)?;
 
     match cli.command {
@@ -169,9 +176,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::export::run(thread_id, search, format, output).await?;
         }
-        Some(Command::Headers { message_id }) => {
+        Some(Command::Headers { message_id, format }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::headers::run(message_id).await?;
+            commands::headers::run(message_id, format).await?;
         }
         Some(Command::Saved { action, format }) => {
             crate::server::ensure_daemon_running().await?;
@@ -243,7 +250,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             yes,
             dry_run,
         }) => {
-            let _ = yes;
+            crate::server::ensure_daemon_running().await?;
             commands::mutations::compose(commands::mutations::ComposeOptions {
                 to,
                 cc,
@@ -253,6 +260,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 body_stdin,
                 attach,
                 from,
+                yes,
                 dry_run,
             })
             .await?;
@@ -288,9 +296,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::forward(message_id, to, body, body_stdin, yes, dry_run).await?;
         }
-        Some(Command::Drafts) => {
+        Some(Command::Drafts { format }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::drafts().await?;
+            commands::mutations::drafts(format).await?;
         }
         Some(Command::Send { draft_id }) => {
             crate::server::ensure_daemon_running().await?;
@@ -412,9 +420,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::unsnooze(message_id, all).await?;
         }
-        Some(Command::Snoozed) => {
+        Some(Command::Snoozed { format }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::snoozed().await?;
+            commands::mutations::snoozed(format).await?;
         }
         Some(Command::Unsubscribe {
             message_id,

@@ -175,4 +175,9 @@ fn apply_env_overrides(config: &mut MxrConfig) {
     if let Ok(val) = std::env::var("MXR_ATTACHMENT_DIR") {
         config.general.attachment_dir = PathBuf::from(val);
     }
+    if let Ok(val) = std::env::var("MXR_SAFETY_POLICY") {
+        if let Some(policy) = crate::types::SafetyPolicy::parse_env(&val) {
+            config.general.safety_policy = policy;
+        }
+    }
 }

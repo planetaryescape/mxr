@@ -211,7 +211,7 @@ impl MailSyncProvider for FakeProvider {
 
     async fn create_label(&self, name: &str, color: Option<&str>) -> Result<Label, MxrError> {
         let label = Label {
-            id: LabelId::from_provider_id("fake", name),
+            id: LabelId::from_scoped_provider_id(&self.account_id, "fake", name),
             account_id: self.account_id.clone(),
             name: name.to_string(),
             kind: LabelKind::User,
@@ -234,7 +234,7 @@ impl MailSyncProvider for FakeProvider {
             .iter_mut()
             .find(|label| label.provider_id == provider_label_id)
             .ok_or_else(|| MxrError::NotFound(format!("label {provider_label_id}")))?;
-        label.id = LabelId::from_provider_id("fake", new_name);
+        label.id = LabelId::from_scoped_provider_id(&self.account_id, "fake", new_name);
         label.name = new_name.to_string();
         label.provider_id = new_name.to_string();
         Ok(label.clone())

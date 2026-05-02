@@ -34,6 +34,15 @@ macro_rules! typed_id {
                 let input = format!("{provider}:{id}");
                 Self(Uuid::new_v5(&MXR_NAMESPACE, input.as_bytes()))
             }
+
+            pub fn from_scoped_provider_id(
+                account_id: &AccountId,
+                provider: &str,
+                id: &str,
+            ) -> Self {
+                let input = format!("{account_id}:{provider}:{id}");
+                Self(Uuid::new_v5(&MXR_NAMESPACE, input.as_bytes()))
+            }
         }
 
         impl fmt::Display for $name {

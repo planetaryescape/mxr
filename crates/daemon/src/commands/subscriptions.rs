@@ -2,7 +2,7 @@
 
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
-use crate::output::resolve_format;
+use crate::output::{jsonl, resolve_format};
 use mxr_core::types::SubscriptionSummary;
 use mxr_protocol::{Request, Response, ResponseData};
 
@@ -64,6 +64,7 @@ pub async fn run(limit: u32, format: Option<OutputFormat>) -> anyhow::Result<()>
     })?;
     match fmt {
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&subscriptions)?),
+        OutputFormat::Jsonl => println!("{}", jsonl(&subscriptions)?),
         _ => render_table(&subscriptions),
     }
 

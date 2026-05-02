@@ -37,6 +37,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                 data: ResponseData::SemanticStatus { snapshot },
             } => match fmt {
                 OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&snapshot)?),
+                OutputFormat::Jsonl => println!("{}", serde_json::to_string(&snapshot)?),
                 _ => {
                     println!(
                         "enabled={} active_profile={}",
@@ -382,6 +383,9 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
     match format {
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(report)?);
+        }
+        OutputFormat::Jsonl => {
+            println!("{}", serde_json::to_string(report)?);
         }
         _ => {
             println!("Health:       {}", report.health_class.as_str());

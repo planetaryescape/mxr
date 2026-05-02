@@ -8,6 +8,7 @@ impl Default for GeneralConfig {
             sync_interval: 60,
             hook_timeout: 30,
             attachment_dir: crate::resolve::data_dir().join("attachments"),
+            safety_policy: SafetyPolicy::Full,
         }
     }
 }

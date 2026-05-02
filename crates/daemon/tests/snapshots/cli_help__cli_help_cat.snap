@@ -14,5 +14,5 @@ Options:
       --assets           
       --raw              
       --html             
-      --format <FORMAT>  [possible values: table, json, csv, ids]
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
   -h, --help             Print help

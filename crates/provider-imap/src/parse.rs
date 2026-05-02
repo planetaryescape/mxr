@@ -76,7 +76,7 @@ pub fn imap_fetch_to_synced_message(
         .ok_or_else(|| ImapProviderError::Parse("Missing body data in FETCH response".into()))?;
 
     let provider_id = format_provider_id(mailbox, msg.uid);
-    let message_id = MessageId::from_provider_id("imap", &provider_id);
+    let message_id = MessageId::from_scoped_provider_id(account_id, "imap", &provider_id);
 
     let parsed = mail_parser::MessageParser::default().parse(raw);
 
@@ -560,6 +560,28 @@ mod tests {
         assert!(sm.envelope.flags.contains(MessageFlags::READ));
         assert_eq!(sm.envelope.size_bytes, 2048);
         assert!(sm.body.text_plain.unwrap().contains("Hello world"));
+    }
+
+    #[test]
+    fn same_imap_mailbox_uid_in_different_accounts_gets_distinct_local_ids() {
+        let first_account = AccountId::from_provider_id("imap", "first@example.com");
+        let second_account = AccountId::from_provider_id("imap", "second@example.com");
+        let raw = b"From: Alice <alice@example.com>\r\nTo: bob@example.com\r\nSubject: Shared UID\r\nContent-Type: text/plain\r\n\r\nHello world";
+        let msg = FetchedMessage {
+            uid: 42,
+            flags: vec!["\\Seen".to_string()],
+            envelope: None,
+            body: Some(raw.to_vec()),
+            header: None,
+            size: None,
+        };
+
+        let first = imap_fetch_to_synced_message(&msg, "INBOX", &first_account).unwrap();
+        let second = imap_fetch_to_synced_message(&msg, "INBOX", &second_account).unwrap();
+
+        assert_eq!(first.envelope.provider_id, "INBOX:42");
+        assert_eq!(second.envelope.provider_id, "INBOX:42");
+        assert_ne!(first.envelope.id, second.envelope.id);
     }
 
     #[test]

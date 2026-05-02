@@ -33,6 +33,29 @@ pub struct GeneralConfig {
     pub sync_interval: u64,
     pub hook_timeout: u64,
     pub attachment_dir: PathBuf,
+    pub safety_policy: SafetyPolicy,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SafetyPolicy {
+    #[default]
+    Full,
+    Restricted,
+    DraftOnly,
+    ReadOnly,
+}
+
+impl SafetyPolicy {
+    pub fn parse_env(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "full" => Some(Self::Full),
+            "restricted" => Some(Self::Restricted),
+            "draft-only" | "draft_only" => Some(Self::DraftOnly),
+            "read-only" | "read_only" => Some(Self::ReadOnly),
+            _ => None,
+        }
+    }
 }
 
 /// Configuration for a single email account.

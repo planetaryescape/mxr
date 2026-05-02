@@ -5,7 +5,9 @@ mod helpers;
 pub use attachments::{attachments_download, attachments_list, attachments_open};
 pub use compose::{compose, drafts, forward, reply, reply_all, send_draft, ComposeOptions};
 
+use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
+use crate::output::{jsonl, resolve_format};
 use helpers::{
     confirm_action, parse_message_id, parse_snooze_until, print_selection_preview,
     requires_confirmation, resolve_mutation_selection, run_simple_mutation, MutationRunOptions,
@@ -436,32 +438,54 @@ pub async fn unsnooze(message_id: Option<String>, all: bool) -> anyhow::Result<(
     Ok(())
 }
 
-pub async fn snoozed() -> anyhow::Result<()> {
+pub async fn snoozed(format: Option<OutputFormat>) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let resp = client.request(Request::ListSnoozed).await?;
     match resp {
         Response::Ok {
             data: ResponseData::SnoozedMessages { snoozed },
-        } => {
-            if snoozed.is_empty() {
-                println!("No snoozed messages");
-            } else {
-                println!(
-                    "{:<38} {:<25} {:<25}",
-                    "MESSAGE ID", "SNOOZED AT", "WAKE AT"
-                );
-                println!("{}", "-".repeat(88));
+        } => match resolve_format(format) {
+            OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&snoozed)?),
+            OutputFormat::Jsonl => println!("{}", jsonl(&snoozed)?),
+            OutputFormat::Csv => {
+                let mut writer = csv::Writer::from_writer(Vec::new());
+                writer.write_record(["message_id", "account_id", "snoozed_at", "wake_at"])?;
                 for s in &snoozed {
-                    println!(
-                        "{:<38} {:<25} {:<25}",
+                    writer.write_record([
                         s.message_id.as_str(),
+                        s.account_id.as_str(),
                         s.snoozed_at.to_rfc3339(),
                         s.wake_at.to_rfc3339(),
-                    );
+                    ])?;
                 }
-                println!("\n{} snoozed message(s)", snoozed.len());
+                println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
             }
-        }
+            OutputFormat::Ids => {
+                for s in &snoozed {
+                    println!("{}", s.message_id);
+                }
+            }
+            OutputFormat::Table => {
+                if snoozed.is_empty() {
+                    println!("No snoozed messages");
+                } else {
+                    println!(
+                        "{:<38} {:<25} {:<25}",
+                        "MESSAGE ID", "SNOOZED AT", "WAKE AT"
+                    );
+                    println!("{}", "-".repeat(88));
+                    for s in &snoozed {
+                        println!(
+                            "{:<38} {:<25} {:<25}",
+                            s.message_id.as_str(),
+                            s.snoozed_at.to_rfc3339(),
+                            s.wake_at.to_rfc3339(),
+                        );
+                    }
+                    println!("\n{} snoozed message(s)", snoozed.len());
+                }
+            }
+        },
         Response::Error { message } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }

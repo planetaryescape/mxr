@@ -2,7 +2,7 @@
 
 use crate::cli::{OutputFormat, RulesAction};
 use crate::ipc_client::IpcClient;
-use crate::output::resolve_format;
+use crate::output::{jsonl, resolve_format};
 use mxr_protocol::*;
 use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, RuleId, StringMatch};
 use mxr_search::ast::{FilterKind, QueryField, QueryNode, SizeOp};
@@ -160,6 +160,7 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
 fn render_rules(rules: &[serde_json::Value], format: OutputFormat) -> anyhow::Result<String> {
     Ok(match format {
         OutputFormat::Json => serde_json::to_string_pretty(rules)?,
+        OutputFormat::Jsonl => jsonl(rules)?,
         _ => {
             if rules.is_empty() {
                 "No rules".to_string()

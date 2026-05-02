@@ -2,13 +2,14 @@
 
 use crate::cli::{LabelsAction, OutputFormat};
 use crate::ipc_client::IpcClient;
-use crate::output::resolve_format;
+use crate::output::{jsonl, resolve_format};
 use mxr_core::types::Label;
 use mxr_protocol::*;
 
 fn render_labels(labels: &[Label], format: OutputFormat) -> anyhow::Result<String> {
     Ok(match format {
         OutputFormat::Json => serde_json::to_string_pretty(labels)?,
+        OutputFormat::Jsonl => jsonl(labels)?,
         OutputFormat::Csv => {
             let mut out = String::from("name,kind,unread_count,total_count\n");
             for label in labels {

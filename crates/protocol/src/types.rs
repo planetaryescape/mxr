@@ -102,6 +102,17 @@ pub enum Request {
     TestAccountConfig {
         account: AccountConfigData,
     },
+    DisableAccountConfig {
+        key: String,
+    },
+    RemoveAccountConfig {
+        key: String,
+        purge_local_data: bool,
+        dry_run: bool,
+    },
+    RepairAccountConfig {
+        account: AccountConfigData,
+    },
     ListRules,
     GetRule {
         rule: String,
@@ -230,6 +241,15 @@ pub enum Request {
     SendDraft {
         draft: Draft,
     },
+    SaveDraft {
+        draft: Draft,
+    },
+    SendStoredDraft {
+        draft_id: DraftId,
+    },
+    DeleteDraft {
+        draft_id: DraftId,
+    },
     /// Save draft to the mail server (e.g. Gmail Drafts folder).
     SaveDraftToServer {
         draft: Draft,
@@ -281,6 +301,9 @@ impl Request {
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }
             | Self::SendDraft { .. }
+            | Self::SaveDraft { .. }
+            | Self::SendStoredDraft { .. }
+            | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
             | Self::ExportThread { .. }
@@ -291,6 +314,9 @@ impl Request {
             | Self::UpsertAccountConfig { .. }
             | Self::SetDefaultAccount { .. }
             | Self::TestAccountConfig { .. }
+            | Self::DisableAccountConfig { .. }
+            | Self::RemoveAccountConfig { .. }
+            | Self::RepairAccountConfig { .. }
             | Self::ListRules
             | Self::GetRule { .. }
             | Self::GetRuleForm { .. }

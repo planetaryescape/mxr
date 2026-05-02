@@ -37,22 +37,21 @@ impl SyncEngine {
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?;
 
-        if !synced.envelope.label_provider_ids.is_empty() {
-            let label_ids = self
-                .store
+        let label_ids = if synced.envelope.label_provider_ids.is_empty() {
+            Vec::new()
+        } else {
+            self.store
                 .find_labels_by_provider_ids(
                     &synced.envelope.account_id,
                     &synced.envelope.label_provider_ids,
                 )
                 .await
-                .map_err(|e| MxrError::Store(e.to_string()))?;
-            if !label_ids.is_empty() {
-                self.store
-                    .set_message_labels(&synced.envelope.id, &label_ids)
-                    .await
-                    .map_err(|e| MxrError::Store(e.to_string()))?;
-            }
-        }
+                .map_err(|e| MxrError::Store(e.to_string()))?
+        };
+        self.store
+            .set_message_labels(&synced.envelope.id, &label_ids)
+            .await
+            .map_err(|e| MxrError::Store(e.to_string()))?;
 
         self.search
             .apply_batch(SearchUpdateBatch {
@@ -185,22 +184,21 @@ impl SyncEngine {
                     .insert_body(&normalized_body)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
-                if !synced.envelope.label_provider_ids.is_empty() {
-                    let label_ids = self
-                        .store
+                let label_ids = if synced.envelope.label_provider_ids.is_empty() {
+                    Vec::new()
+                } else {
+                    self.store
                         .find_labels_by_provider_ids(
                             account_id,
                             &synced.envelope.label_provider_ids,
                         )
                         .await
-                        .map_err(|e| MxrError::Store(e.to_string()))?;
-                    if !label_ids.is_empty() {
-                        self.store
-                            .set_message_labels(&synced.envelope.id, &label_ids)
-                            .await
-                            .map_err(|e| MxrError::Store(e.to_string()))?;
-                    }
-                }
+                        .map_err(|e| MxrError::Store(e.to_string()))?
+                };
+                self.store
+                    .set_message_labels(&synced.envelope.id, &label_ids)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?;
                 lexical_batch.entries.push(SearchIndexEntry {
                     envelope: synced.envelope.clone(),
                     body: Some(normalized_body),
@@ -227,35 +225,48 @@ impl SyncEngine {
 
             // Apply label changes from delta sync (previously dead code)
             for change in &batch.label_changes {
-                if let Ok(Some(message_id)) = self
+                if let Some(message_id) = self
                     .store
                     .get_message_id_by_provider_id(account_id, &change.provider_message_id)
                     .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?
                 {
                     if !change.added_labels.is_empty() {
-                        if let Ok(add_ids) = self
+                        let add_ids = self
                             .store
                             .find_labels_by_provider_ids(account_id, &change.added_labels)
                             .await
-                        {
-                            for lid in &add_ids {
-                                let _ = self.store.add_message_label(&message_id, lid).await;
-                            }
+                            .map_err(|e| MxrError::Store(e.to_string()))?;
+                        for lid in &add_ids {
+                            self.store
+                                .add_message_label(&message_id, lid)
+                                .await
+                                .map_err(|e| MxrError::Store(e.to_string()))?;
                         }
                     }
                     if !change.removed_labels.is_empty() {
-                        if let Ok(rm_ids) = self
+                        let rm_ids = self
                             .store
                             .find_labels_by_provider_ids(account_id, &change.removed_labels)
                             .await
-                        {
-                            for lid in &rm_ids {
-                                let _ = self.store.remove_message_label(&message_id, lid).await;
-                            }
+                            .map_err(|e| MxrError::Store(e.to_string()))?;
+                        for lid in &rm_ids {
+                            self.store
+                                .remove_message_label(&message_id, lid)
+                                .await
+                                .map_err(|e| MxrError::Store(e.to_string()))?;
                         }
                     }
 
-                    if let Ok(Some(envelope)) = self.store.get_envelope(&message_id).await {
+                    self.apply_system_label_flag_change(&message_id, change)
+                        .await?;
+
+                    if let Some(envelope) = self
+                        .store
+                        .get_envelope(&message_id)
+                        .await
+                        .map_err(|e| MxrError::Store(e.to_string()))?
+                    {
                         let body = self
                             .store
                             .get_body(&message_id)
@@ -328,6 +339,46 @@ impl SyncEngine {
                 upserted_message_ids,
             });
         }
+    }
+
+    async fn apply_system_label_flag_change(
+        &self,
+        message_id: &MessageId,
+        change: &LabelChange,
+    ) -> Result<(), MxrError> {
+        for label in &change.added_labels {
+            match label.as_str() {
+                "UNREAD" => self
+                    .store
+                    .set_read(message_id, false)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?,
+                "STARRED" => self
+                    .store
+                    .set_starred(message_id, true)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?,
+                _ => {}
+            }
+        }
+
+        for label in &change.removed_labels {
+            match label.as_str() {
+                "UNREAD" => self
+                    .store
+                    .set_read(message_id, true)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?,
+                "STARRED" => self
+                    .store
+                    .set_starred(message_id, false)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?,
+                _ => {}
+            }
+        }
+
+        Ok(())
     }
 
     async fn rethread_account(&self, account_id: &AccountId) -> Result<(), MxrError> {

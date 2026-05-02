@@ -24,21 +24,23 @@ struct StatusRender<'a> {
 }
 
 fn render_status(view: StatusRender<'_>, format: OutputFormat) -> anyhow::Result<String> {
+    let data = serde_json::json!({
+        "uptime_secs": view.uptime_secs,
+        "accounts": view.accounts,
+        "total_messages": view.total_messages,
+        "daemon_pid": view.daemon_pid,
+        "sync_statuses": view.sync_statuses,
+        "daemon_version": view.daemon_version,
+        "daemon_build_id": view.daemon_build_id,
+        "protocol_version": view.protocol_version,
+        "repair_required": view.repair_required,
+        "semantic_runtime": view.semantic_runtime,
+        "restart_required": view.restart_required,
+        "health_class": view.health_class,
+    });
     Ok(match format {
-        OutputFormat::Json => serde_json::to_string_pretty(&serde_json::json!({
-            "uptime_secs": view.uptime_secs,
-            "accounts": view.accounts,
-            "total_messages": view.total_messages,
-            "daemon_pid": view.daemon_pid,
-            "sync_statuses": view.sync_statuses,
-            "daemon_version": view.daemon_version,
-            "daemon_build_id": view.daemon_build_id,
-            "protocol_version": view.protocol_version,
-            "repair_required": view.repair_required,
-            "semantic_runtime": view.semantic_runtime,
-            "restart_required": view.restart_required,
-            "health_class": view.health_class,
-        }))?,
+        OutputFormat::Json => serde_json::to_string_pretty(&data)?,
+        OutputFormat::Jsonl => serde_json::to_string(&data)?,
         _ => {
             let mut lines = vec![
                 format!("Health: {}", view.health_class.as_str()),
@@ -159,7 +161,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
         }
 
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        if fmt != OutputFormat::Json {
+        if !matches!(fmt, OutputFormat::Json | OutputFormat::Jsonl) {
             println!();
         }
     }

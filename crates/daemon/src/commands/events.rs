@@ -24,7 +24,7 @@ pub fn event_matches_type(event: &DaemonEvent, event_type: Option<&str>) -> bool
 
 pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result<String> {
     Ok(match format {
-        OutputFormat::Json => serde_json::to_string(event)?,
+        OutputFormat::Json | OutputFormat::Jsonl => serde_json::to_string(event)?,
         _ => match event {
             DaemonEvent::SyncCompleted {
                 account_id,

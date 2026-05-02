@@ -1,6 +1,6 @@
 use crate::cli::{OutputFormat, SavedAction};
 use crate::ipc_client::IpcClient;
-use crate::output::resolve_format;
+use crate::output::{jsonl, resolve_format};
 use mxr_protocol::*;
 
 pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> anyhow::Result<()> {
@@ -17,6 +17,9 @@ pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> a
                 } => match fmt {
                     OutputFormat::Json => {
                         println!("{}", serde_json::to_string_pretty(&searches)?);
+                    }
+                    OutputFormat::Jsonl => {
+                        println!("{}", jsonl(&searches)?);
                     }
                     _ => {
                         if searches.is_empty() {
@@ -77,6 +80,9 @@ pub async fn run(action: Option<SavedAction>, format: Option<OutputFormat>) -> a
                 } => match fmt {
                     OutputFormat::Json => {
                         println!("{}", serde_json::to_string_pretty(&results)?);
+                    }
+                    OutputFormat::Jsonl => {
+                        println!("{}", jsonl(&results)?);
                     }
                     _ => {
                         println!("{} results", results.len());

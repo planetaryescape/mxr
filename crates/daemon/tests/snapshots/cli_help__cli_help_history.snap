@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 13
 expression: stdout
 ---
 Show persisted event history
@@ -11,5 +10,5 @@ Options:
       --category <CATEGORY>  
       --level <LEVEL>        
       --limit <LIMIT>        [default: 50]
-      --format <FORMAT>      [possible values: table, json, csv, ids]
+      --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
   -h, --help                 Print help

@@ -380,6 +380,24 @@ pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
     Ok(ResponseData::Drafts { drafts })
 }
 
+pub(super) async fn save_draft(state: &AppState, draft: &Draft) -> HandlerResult {
+    state
+        .store
+        .insert_draft(draft)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Ack)
+}
+
+pub(super) async fn delete_draft(state: &AppState, draft_id: &mxr_core::DraftId) -> HandlerResult {
+    state
+        .store
+        .delete_draft(draft_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Ack)
+}
+
 pub(super) async fn prepare_reply(
     state: &AppState,
     message_id: &mxr_core::MessageId,
@@ -480,6 +498,25 @@ pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult
             .unwrap_or_else(|| "user@example.com".to_string()),
     };
     sender.send(draft, &from).await.map_err(|e| e.to_string())?;
+    Ok(ResponseData::Ack)
+}
+
+pub(super) async fn send_stored_draft(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+) -> HandlerResult {
+    let draft = state
+        .store
+        .get_draft(draft_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
+    send_draft(state, &draft).await?;
+    state
+        .store
+        .delete_draft(draft_id)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(ResponseData::Ack)
 }
 

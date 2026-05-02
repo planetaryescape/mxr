@@ -26,6 +26,9 @@ pub enum Command {
         /// Run in foreground (for debugging / systemd)
         #[arg(long)]
         foreground: bool,
+        /// Hidden instance marker used by daemon autostart to identify the child process.
+        #[arg(long, hide = true)]
+        instance: Option<String>,
     },
     /// Restart the daemon with the current binary
     Restart,
@@ -87,7 +90,11 @@ pub enum Command {
         output: Option<PathBuf>,
     },
     /// Show message headers
-    Headers { message_id: String },
+    Headers {
+        message_id: String,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Manage saved searches
     Saved {
         #[command(subcommand)]
@@ -346,7 +353,10 @@ pub enum Command {
         dry_run: bool,
     },
     /// List drafts
-    Drafts,
+    Drafts {
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Send a draft by ID
     Send {
         /// Draft ID to send
@@ -503,7 +513,10 @@ pub enum Command {
         all: bool,
     },
     /// List snoozed messages
-    Snoozed,
+    Snoozed {
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
 
     // --- Phase 2: Unsubscribe ---
     /// Unsubscribe from a mailing list
@@ -565,6 +578,7 @@ pub enum BodyViewArg {
 pub enum OutputFormat {
     Table,
     Json,
+    Jsonl,
     Csv,
     Ids,
 }

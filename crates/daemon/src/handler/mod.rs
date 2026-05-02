@@ -21,6 +21,7 @@ mod runtime;
 mod status_helpers;
 
 use crate::state::AppState;
+use mxr_config::SafetyPolicy;
 use mxr_core::provider::MailSyncProvider;
 #[cfg(test)]
 use mxr_core::types::UnsubscribeMethod;
@@ -76,6 +77,12 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         .unwrap_or_else(|| "-".to_string());
     let account_key = request_account_key(req).unwrap_or("-");
     tracing::debug!(request, account_id, account_key, "handling request");
+
+    if let Err(message) = enforce_safety_policy(state.config_snapshot().general.safety_policy, req)
+    {
+        tracing::warn!(request, account_id, account_key, error = %message, "request rejected by safety policy");
+        return Response::Error { message };
+    }
 
     let result = match req {
         Request::ListEnvelopes {
@@ -142,6 +149,13 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::TestAccountConfig { account } => {
             accounts::test_account(state, account.clone()).await
         }
+        Request::DisableAccountConfig { key } => accounts::disable_account(state, key).await,
+        Request::RemoveAccountConfig {
+            key,
+            purge_local_data,
+            dry_run,
+        } => accounts::remove_account(state, key, *purge_local_data, *dry_run).await,
+        Request::RepairAccountConfig { account } => accounts::repair_account(account.clone()).await,
         Request::ListRules => rules::list_rules(state).await,
         Request::GetRule { rule } => rules::get_rule(state, rule).await,
         Request::GetRuleForm { rule } => rules::get_rule_form(state, rule).await,
@@ -264,6 +278,11 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             mutations::prepare_forward(state, message_id).await
         }
         Request::SendDraft { draft } => mutations::send_draft(state, draft).await,
+        Request::SaveDraft { draft } => mutations::save_draft(state, draft).await,
+        Request::SendStoredDraft { draft_id } => {
+            mutations::send_stored_draft(state, draft_id).await
+        }
+        Request::DeleteDraft { draft_id } => mutations::delete_draft(state, draft_id).await,
         Request::SaveDraftToServer { draft } => mutations::save_draft_to_server(state, draft).await,
         Request::Unsubscribe { message_id } => mutations::unsubscribe(state, message_id).await,
         Request::SetFlags { message_id, flags } => {
@@ -297,6 +316,76 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
     }
 }
 
+fn enforce_safety_policy(policy: SafetyPolicy, req: &Request) -> Result<(), String> {
+    match policy {
+        SafetyPolicy::Full => Ok(()),
+        SafetyPolicy::ReadOnly if request_is_read_only(req) => Ok(()),
+        SafetyPolicy::DraftOnly | SafetyPolicy::Restricted
+            if request_is_read_only(req) || request_is_draft_only(req) =>
+        {
+            Ok(())
+        }
+        SafetyPolicy::ReadOnly => Err(format!(
+            "Request `{}` rejected by read-only safety policy",
+            request_kind(req)
+        )),
+        SafetyPolicy::DraftOnly => Err(format!(
+            "Request `{}` rejected by draft-only safety policy",
+            request_kind(req)
+        )),
+        SafetyPolicy::Restricted => Err(format!(
+            "Request `{}` rejected by restricted safety policy",
+            request_kind(req)
+        )),
+    }
+}
+
+fn request_is_draft_only(req: &Request) -> bool {
+    matches!(req, Request::SaveDraft { .. } | Request::DeleteDraft { .. })
+}
+
+fn request_is_read_only(req: &Request) -> bool {
+    matches!(
+        req,
+        Request::ListEnvelopes { .. }
+            | Request::ListEnvelopesByIds { .. }
+            | Request::GetEnvelope { .. }
+            | Request::GetBody { .. }
+            | Request::GetHtmlImageAssets { .. }
+            | Request::DownloadAttachment { .. }
+            | Request::OpenAttachment { .. }
+            | Request::ListBodies { .. }
+            | Request::GetThread { .. }
+            | Request::ListLabels { .. }
+            | Request::ListAccounts
+            | Request::ListAccountsConfig
+            | Request::ListRules
+            | Request::GetRule { .. }
+            | Request::GetRuleForm { .. }
+            | Request::DryRunRules { .. }
+            | Request::ListSavedSearches
+            | Request::ListSubscriptions { .. }
+            | Request::RunSavedSearch { .. }
+            | Request::ListEvents { .. }
+            | Request::GetLogs { .. }
+            | Request::GetDoctorReport
+            | Request::GenerateBugReport { .. }
+            | Request::Search { .. }
+            | Request::GetSyncStatus { .. }
+            | Request::Count { .. }
+            | Request::GetHeaders { .. }
+            | Request::ListRuleHistory { .. }
+            | Request::ListSnoozed
+            | Request::ListDrafts
+            | Request::PrepareReply { .. }
+            | Request::PrepareForward { .. }
+            | Request::ExportThread { .. }
+            | Request::ExportSearch { .. }
+            | Request::GetStatus
+            | Request::Ping
+    )
+}
+
 fn request_kind(req: &Request) -> &'static str {
     match req {
         Request::ListEnvelopes { .. } => "list_envelopes",
@@ -319,6 +408,9 @@ fn request_kind(req: &Request) -> &'static str {
         Request::UpsertAccountConfig { .. } => "upsert_account_config",
         Request::SetDefaultAccount { .. } => "set_default_account",
         Request::TestAccountConfig { .. } => "test_account_config",
+        Request::DisableAccountConfig { .. } => "disable_account_config",
+        Request::RemoveAccountConfig { .. } => "remove_account_config",
+        Request::RepairAccountConfig { .. } => "repair_account_config",
         Request::GetRule { .. } => "get_rule",
         Request::GetRuleForm { .. } => "get_rule_form",
         Request::UpsertRule { .. } => "upsert_rule",
@@ -354,6 +446,9 @@ fn request_kind(req: &Request) -> &'static str {
         Request::PrepareReply { .. } => "prepare_reply",
         Request::PrepareForward { .. } => "prepare_forward",
         Request::SendDraft { .. } => "send_draft",
+        Request::SaveDraft { .. } => "save_draft",
+        Request::SendStoredDraft { .. } => "send_stored_draft",
+        Request::DeleteDraft { .. } => "delete_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
         Request::ListDrafts => "list_drafts",
         Request::ExportThread { .. } => "export_thread",
@@ -387,9 +482,10 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::ListSubscriptions { account_id, .. }
         | Request::SyncNow { account_id } => account_id.as_ref(),
         Request::GetSyncStatus { account_id } => Some(account_id),
-        Request::SendDraft { draft } | Request::SaveDraftToServer { draft } => {
-            Some(&draft.account_id)
-        }
+        Request::SendDraft { draft }
+        | Request::SaveDraft { draft }
+        | Request::SaveDraftToServer { draft } => Some(&draft.account_id),
+        Request::SendStoredDraft { .. } | Request::DeleteDraft { .. } => None,
         _ => None,
     }
 }
@@ -400,6 +496,9 @@ fn request_account_key(req: &Request) -> Option<&str> {
         | Request::UpsertAccountConfig { account }
         | Request::TestAccountConfig { account } => Some(account.key.as_str()),
         Request::SetDefaultAccount { key } => Some(key.as_str()),
+        Request::DisableAccountConfig { key } => Some(key.as_str()),
+        Request::RemoveAccountConfig { key, .. } => Some(key.as_str()),
+        Request::RepairAccountConfig { account } => Some(account.key.as_str()),
         _ => None,
     }
 }
@@ -1233,6 +1332,276 @@ async fn set_default_account(state: &Arc<AppState>, key: &str) -> Result<String,
     Ok(format!("Default account set to '{}'.", key))
 }
 
+async fn remove_account_config(
+    state: &Arc<AppState>,
+    key: &str,
+    purge_local_data: bool,
+    dry_run: bool,
+) -> AccountOperationResult {
+    let config = match mxr_config::load_config() {
+        Ok(config) => config,
+        Err(error) => {
+            return account_operation_result(
+                false,
+                format!("Failed to remove account '{key}'."),
+                Some(account_step(false, error.to_string())),
+                None,
+                None,
+                None,
+            )
+        }
+    };
+    let Some(account) = config.accounts.get(key).cloned() else {
+        return account_operation_result(
+            false,
+            format!("Account '{key}' not found."),
+            Some(account_step(false, format!("Account '{key}' not found."))),
+            None,
+            None,
+            None,
+        );
+    };
+
+    let account_id = config_account_id(key, &account);
+    let message_ids = match state.store.list_message_ids_by_account(&account_id).await {
+        Ok(message_ids) => message_ids,
+        Err(error) => {
+            return account_operation_result(
+                false,
+                format!("Failed to inspect cached mail for account '{key}'."),
+                Some(account_step(false, error.to_string())),
+                None,
+                None,
+                None,
+            )
+        }
+    };
+    let cached_message_count = message_ids.len();
+    let cache_action = if purge_local_data { "purge" } else { "detach" };
+
+    if dry_run {
+        return account_operation_result(
+            true,
+            format!(
+                "Would remove account '{key}' from config and {cache_action} {cached_message_count} cached message(s)."
+            ),
+            Some(account_step(true, "Dry run only; no changes made.".into())),
+            None,
+            None,
+            None,
+        );
+    }
+
+    let save_result = (|| -> Result<(), String> {
+        let mut config = config;
+        config.accounts.remove(key);
+        refresh_default_account(&mut config);
+        mxr_config::save_config(&config).map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    if let Err(error) = save_result {
+        return account_operation_result(
+            false,
+            format!("Failed to remove account '{key}'."),
+            Some(account_step(false, error)),
+            None,
+            None,
+            None,
+        );
+    }
+
+    let local_result = if purge_local_data {
+        match state
+            .search
+            .apply_batch(mxr_search::SearchUpdateBatch {
+                entries: Vec::new(),
+                removed_message_ids: message_ids,
+            })
+            .await
+            .map_err(|e| e.to_string())
+        {
+            Ok(()) => state
+                .store
+                .delete_account(&account_id)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string()),
+            Err(error) => Err(error),
+        }
+    } else {
+        state
+            .store
+            .set_account_enabled(&account_id, false)
+            .await
+            .map_err(|e| e.to_string())
+    };
+    if let Err(error) = local_result {
+        return account_operation_result(
+            false,
+            format!("Removed account '{key}' from config but failed to update cached mail."),
+            Some(account_step(false, error)),
+            None,
+            None,
+            None,
+        );
+    }
+
+    match state.reload_accounts_from_disk().await {
+        Ok(()) => account_operation_result(
+            true,
+            if purge_local_data {
+                format!(
+                    "Removed account '{key}' and purged {cached_message_count} cached message(s)."
+                )
+            } else {
+                format!("Removed account '{key}' from config; cached mail detached.")
+            },
+            Some(account_step(
+                true,
+                "Config saved and daemon runtime reloaded.".into(),
+            )),
+            None,
+            None,
+            None,
+        ),
+        Err(error) => account_operation_result(
+            false,
+            format!("Removed account '{key}' but failed to reload runtime."),
+            Some(account_step(false, error)),
+            None,
+            None,
+            None,
+        ),
+    }
+}
+
+async fn disable_account_config(state: &Arc<AppState>, key: &str) -> AccountOperationResult {
+    let mut config = match mxr_config::load_config() {
+        Ok(config) => config,
+        Err(error) => {
+            return account_operation_result(
+                false,
+                format!("Failed to disable account '{key}'."),
+                Some(account_step(false, error.to_string())),
+                None,
+                None,
+                None,
+            )
+        }
+    };
+    let Some(account) = config.accounts.get_mut(key) else {
+        return account_operation_result(
+            false,
+            format!("Account '{key}' not found."),
+            Some(account_step(false, format!("Account '{key}' not found."))),
+            None,
+            None,
+            None,
+        );
+    };
+
+    account.enabled = false;
+    let account_id = config_account_id(key, account);
+    refresh_default_account(&mut config);
+    if let Err(error) = mxr_config::save_config(&config) {
+        return account_operation_result(
+            false,
+            format!("Failed to disable account '{key}'."),
+            Some(account_step(false, error.to_string())),
+            None,
+            None,
+            None,
+        );
+    }
+    if let Err(error) = state.store.set_account_enabled(&account_id, false).await {
+        return account_operation_result(
+            false,
+            format!("Disabled account '{key}' in config but failed to update cached mail."),
+            Some(account_step(false, error.to_string())),
+            None,
+            None,
+            None,
+        );
+    }
+
+    match state.reload_accounts_from_disk().await {
+        Ok(()) => account_operation_result(
+            true,
+            format!("Disabled account '{key}'."),
+            Some(account_step(
+                true,
+                "Config saved and daemon runtime reloaded.".into(),
+            )),
+            None,
+            None,
+            None,
+        ),
+        Err(error) => account_operation_result(
+            false,
+            format!("Disabled account '{key}' but failed to reload runtime."),
+            Some(account_step(false, error)),
+            None,
+            None,
+            None,
+        ),
+    }
+}
+
+fn repair_account_config(account: AccountConfigData) -> AccountOperationResult {
+    match repair_account_passwords(&account) {
+        Ok(count) => account_operation_result(
+            true,
+            format!("Repaired keychain credentials for '{}'.", account.key),
+            Some(account_step(
+                true,
+                format!("Stored {count} password-backed credential(s)."),
+            )),
+            None,
+            None,
+            None,
+        ),
+        Err(error) => {
+            let detail = error.to_string();
+            let summary = if detail.contains("no password-backed") {
+                format!(
+                    "Account '{}' has no password-backed credentials to repair.",
+                    account.key
+                )
+            } else {
+                format!("Failed to repair credentials for '{}'.", account.key)
+            };
+            account_operation_result(
+                false,
+                summary,
+                Some(account_step(false, detail)),
+                None,
+                None,
+                None,
+            )
+        }
+    }
+}
+
+fn refresh_default_account(config: &mut mxr_config::MxrConfig) {
+    let current_default_is_enabled = config
+        .general
+        .default_account
+        .as_ref()
+        .and_then(|key| config.accounts.get(key))
+        .map(|account| account.enabled)
+        .unwrap_or(false);
+    if current_default_is_enabled {
+        return;
+    }
+
+    config.general.default_account = config
+        .accounts
+        .iter()
+        .filter(|(_, account)| account.enabled)
+        .map(|(key, _)| key.clone())
+        .min();
+}
+
 async fn authorize_account_config(
     account: AccountConfigData,
     reauthorize: bool,
@@ -1401,23 +1770,31 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                 use_tls,
                 ..
             } => {
-                let provider = mxr_provider_imap::ImapProvider::new(
-                    mxr_core::AccountId::from_provider_id("imap", &account.email),
-                    mxr_provider_imap::config::ImapConfig::new(
-                        host,
-                        port,
-                        username,
-                        password_ref,
-                        auth_required,
-                        use_tls,
-                    ),
-                );
-                match provider.sync_labels().await {
-                    Ok(folders) => {
-                        sync = Some(account_step(
-                            true,
-                            format!("IMAP sync ok: {} folders", folders.len()),
-                        ));
+                match crate::provider_credentials::imap_config_with_credentials(
+                    host,
+                    port,
+                    username,
+                    password_ref,
+                    auth_required,
+                    use_tls,
+                ) {
+                    Ok(config) => {
+                        let provider = mxr_provider_imap::ImapProvider::new(
+                            mxr_core::AccountId::from_provider_id("imap", &account.email),
+                            config,
+                        );
+                        match provider.sync_labels().await {
+                            Ok(folders) => {
+                                sync = Some(account_step(
+                                    true,
+                                    format!("IMAP sync ok: {} folders", folders.len()),
+                                ));
+                            }
+                            Err(error) => {
+                                ok = false;
+                                sync = Some(account_step(false, error.to_string()));
+                            }
+                        }
                     }
                     Err(error) => {
                         ok = false;
@@ -1441,16 +1818,29 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
             use_tls,
             ..
         }) => {
-            let provider = mxr_provider_smtp::SmtpSendProvider::new(
-                mxr_provider_smtp::config::SmtpConfig::new(
-                    host,
-                    port,
-                    username,
-                    password_ref,
-                    auth_required,
-                    use_tls,
-                ),
-            );
+            let config = match crate::provider_credentials::smtp_config_with_credentials(
+                host,
+                port,
+                username,
+                password_ref,
+                auth_required,
+                use_tls,
+            ) {
+                Ok(config) => config,
+                Err(error) => {
+                    ok = false;
+                    send = Some(account_step(false, error.to_string()));
+                    return account_operation_result(
+                        ok,
+                        format!("Account '{}' test failed.", account.key),
+                        None,
+                        auth,
+                        sync,
+                        send,
+                    );
+                }
+            };
+            let provider = mxr_provider_smtp::SmtpSendProvider::new(config);
             match provider.test_connection().await {
                 Ok(()) => {
                     send = Some(account_step(true, "SMTP send ok".into()));
@@ -1755,6 +2145,62 @@ fn persist_account_passwords(account: &AccountConfigData) -> anyhow::Result<()> 
     }
 
     Ok(())
+}
+
+fn repair_account_passwords(account: &AccountConfigData) -> anyhow::Result<usize> {
+    let mut repaired = 0usize;
+    let mut repairable = 0usize;
+
+    if let Some(AccountSyncConfigData::Imap {
+        auth_required,
+        username,
+        password_ref,
+        password,
+        ..
+    }) = &account.sync
+    {
+        if *auth_required {
+            repairable += 1;
+            let password = password
+                .as_deref()
+                .filter(|password| !password.is_empty())
+                .ok_or_else(|| {
+                    anyhow::anyhow!("IMAP password is required to repair this account.")
+                })?;
+            persist_account_password("IMAP", true, username, password_ref, password)?;
+            repaired += 1;
+        }
+    }
+
+    if let Some(AccountSendConfigData::Smtp {
+        auth_required,
+        username,
+        password_ref,
+        password,
+        ..
+    }) = &account.send
+    {
+        if *auth_required {
+            repairable += 1;
+            let password = password
+                .as_deref()
+                .filter(|password| !password.is_empty())
+                .ok_or_else(|| {
+                    anyhow::anyhow!("SMTP password is required to repair this account.")
+                })?;
+            persist_account_password("SMTP", true, username, password_ref, password)?;
+            repaired += 1;
+        }
+    }
+
+    if repairable == 0 {
+        anyhow::bail!(
+            "Account '{}' has no password-backed IMAP/SMTP credentials to repair",
+            account.key
+        );
+    }
+
+    Ok(repaired)
 }
 
 fn persist_account_password(
@@ -4825,6 +5271,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn draft_only_safety_policy_blocks_send_but_allows_local_draft() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let mut config = state.config_snapshot();
+        config.general.safety_policy = mxr_config::SafetyPolicy::DraftOnly;
+        state.set_config_for_test(config).await;
+
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: state.default_account_id(),
+            reply_headers: None,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "test@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Draft-only policy".to_string(),
+            body_markdown: "Test body".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let send = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::SendDraft {
+                draft: draft.clone(),
+            }),
+        };
+        match handle_request(&state, &send).await.payload {
+            IpcPayload::Response(Response::Error { message }) => {
+                assert!(message.contains("draft-only safety policy"));
+            }
+            other => panic!("Expected safety policy error, got {:?}", other),
+        }
+
+        let save = IpcMessage {
+            id: 2,
+            payload: IpcPayload::Request(Request::SaveDraft { draft }),
+        };
+        match handle_request(&state, &save).await.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("Expected SaveDraft Ack, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_only_safety_policy_blocks_mutations_but_allows_search() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let mut config = state.config_snapshot();
+        config.general.safety_policy = mxr_config::SafetyPolicy::ReadOnly;
+        state.set_config_for_test(config).await;
+
+        let mutation = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Star {
+                message_ids: vec![mxr_core::MessageId::new()],
+                starred: true,
+            })),
+        };
+        match handle_request(&state, &mutation).await.payload {
+            IpcPayload::Response(Response::Error { message }) => {
+                assert!(message.contains("read-only safety policy"));
+            }
+            other => panic!("Expected safety policy error, got {:?}", other),
+        }
+
+        let search = IpcMessage {
+            id: 2,
+            payload: IpcPayload::Request(Request::Search {
+                query: "hello".into(),
+                limit: 10,
+                offset: 0,
+                mode: None,
+                sort: None,
+                explain: false,
+            }),
+        };
+        match handle_request(&state, &search).await.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::SearchResults { .. },
+            }) => {}
+            other => panic!("Expected SearchResults, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
     async fn dispatch_send_draft_preserves_keychain_repair_error() {
         let account_id = mxr_core::AccountId::new();
         let account = crate::test_fixtures::test_account_with_id(account_id.clone());
@@ -5137,6 +5672,68 @@ mod tests {
             }
             other => panic!("Expected Drafts, got {:?}", other),
         }
+    }
+
+    #[tokio::test]
+    async fn dispatch_save_and_send_stored_draft() {
+        let account_id = mxr_core::AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+        let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+                .await
+                .unwrap(),
+        );
+
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id,
+            reply_headers: None,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "test@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Stored draft".to_string(),
+            body_markdown: "Test body".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let save_msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::SaveDraft {
+                draft: draft.clone(),
+            }),
+        };
+        let save_resp = handle_request(&state, &save_msg).await;
+        assert!(matches!(
+            save_resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+
+        let send_msg = IpcMessage {
+            id: 2,
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+            }),
+        };
+        let send_resp = handle_request(&state, &send_msg).await;
+        assert!(matches!(
+            send_resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+
+        assert_eq!(fake.sent_drafts().len(), 1);
+        assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());
     }
 
     #[tokio::test]

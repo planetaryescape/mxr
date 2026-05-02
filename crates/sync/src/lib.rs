@@ -452,6 +452,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delta_sync_applies_gmail_system_label_flags() {
+        let store = Arc::new(Store::in_memory().await.unwrap());
+        let search = in_memory_search();
+        let engine = SyncEngine::new(store.clone(), search.clone());
+
+        let account_id = AccountId::new();
+        store
+            .insert_account(&test_account(account_id.clone()))
+            .await
+            .unwrap();
+
+        let inbox = make_test_label(&account_id, "Inbox", "INBOX");
+        let unread = make_test_label(&account_id, "Unread", "UNREAD");
+        let starred = make_test_label(&account_id, "Starred", "STARRED");
+        let labels = vec![inbox, unread.clone(), starred.clone()];
+
+        let mut msg = make_test_envelope(
+            &account_id,
+            "prov-msg-flags",
+            vec!["INBOX".to_string(), "UNREAD".to_string()],
+        );
+        msg.flags.remove(MessageFlags::READ);
+        let msg_provider_id = msg.provider_id.clone();
+
+        let provider = DeltaLabelProvider::new(
+            account_id.clone(),
+            vec![msg],
+            labels,
+            vec![LabelChange {
+                provider_message_id: msg_provider_id.clone(),
+                added_labels: vec!["STARRED".to_string()],
+                removed_labels: vec!["UNREAD".to_string()],
+            }],
+        );
+
+        engine.sync_account(&provider).await.unwrap();
+        let msg_id = store
+            .get_message_id_by_provider_id(&account_id, &msg_provider_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        engine.sync_account(&provider).await.unwrap();
+
+        let updated = store.get_envelope(&msg_id).await.unwrap().unwrap();
+        assert!(
+            updated.flags.contains(MessageFlags::READ),
+            "removing UNREAD should mark the message read"
+        );
+        assert!(
+            updated.flags.contains(MessageFlags::STARRED),
+            "adding STARRED should set the starred flag"
+        );
+    }
+
+    #[tokio::test]
     async fn sync_rethreads_messages_when_provider_lacks_native_thread_ids() {
         let store = Arc::new(Store::in_memory().await.unwrap());
         let search = in_memory_search();

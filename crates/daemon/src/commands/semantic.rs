@@ -52,6 +52,9 @@ pub async fn run(
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(&snapshot)?);
         }
+        OutputFormat::Jsonl => {
+            println!("{}", serde_json::to_string(&snapshot)?);
+        }
         _ => {
             println!(
                 "enabled={} active_profile={}",

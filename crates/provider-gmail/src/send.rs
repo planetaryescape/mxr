@@ -234,6 +234,7 @@ mod tests {
         draft.reply_headers = Some(ReplyHeaders {
             in_reply_to: "<parent@example.com>".into(),
             references: vec!["<root@example.com>".into()],
+            thread_id: None,
         });
         let msg = String::from_utf8(build_rfc2822(&draft, &from()).unwrap()).unwrap();
         assert!(msg.contains("In-Reply-To: <parent@example.com>\r\n"));
@@ -296,6 +297,7 @@ mod tests {
         draft.reply_headers = Some(ReplyHeaders {
             in_reply_to: "<parent@example.com>".into(),
             references: vec!["<root@example.com>".into()],
+            thread_id: None,
         });
         draft.bcc = vec![Address {
             name: None,
@@ -321,6 +323,7 @@ mod tests {
         draft.reply_headers = Some(ReplyHeaders {
             in_reply_to: "<parent@example.com>".into(),
             references: vec!["<root@example.com>".into()],
+            thread_id: None,
         });
         draft.bcc = vec![Address {
             name: None,

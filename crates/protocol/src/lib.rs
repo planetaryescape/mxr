@@ -807,6 +807,7 @@ mod tests {
             (
                 ResponseData::ReplyContext {
                     context: ReplyContext {
+                        account_id: AccountId::new(),
                         in_reply_to: "id".into(),
                         references: Vec::new(),
                         reply_to: "a@example.com".into(),
@@ -814,6 +815,7 @@ mod tests {
                         subject: "Re: x".into(),
                         from: "a@example.com".into(),
                         thread_context: "ctx".into(),
+                        thread_id: None,
                     },
                 },
                 IpcCategory::CoreMail,
@@ -821,6 +823,7 @@ mod tests {
             (
                 ResponseData::ForwardContext {
                     context: ForwardContext {
+                        account_id: AccountId::new(),
                         subject: "Fwd: x".into(),
                         from: "a@example.com".into(),
                         forwarded_content: "body".into(),

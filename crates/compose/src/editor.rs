@@ -15,23 +15,35 @@ pub fn resolve_editor(config_editor: Option<&str>) -> String {
 }
 
 /// Spawn the editor and wait for it to exit.
+/// `editor` may be a bare program (`vim`) or a shell command (`code --wait`,
+/// `flatpak run org.gnome.gedit`); we split on whitespace honoring quotes.
 /// For vim/neovim, positions cursor at the given line number.
 pub async fn spawn_editor(
     editor: &str,
     file_path: &Path,
     cursor_line: Option<usize>,
 ) -> Result<bool, ComposeError> {
-    let mut cmd = Command::new(editor);
+    let parts = shell_words::split(editor)
+        .map_err(|e| ComposeError::EditorFailed(format!("invalid $EDITOR `{editor}`: {e}")))?;
+    let (program, prefix_args) = parts
+        .split_first()
+        .ok_or_else(|| ComposeError::EditorFailed("$EDITOR is empty".into()))?;
 
-    // Position cursor for vim/neovim/vi
+    let program_lower = program.to_lowercase();
+    let mut cmd = Command::new(program);
+    for arg in prefix_args {
+        cmd.arg(arg);
+    }
+
     if let Some(line) = cursor_line {
-        let editor_lower = editor.to_lowercase();
-        if editor_lower.contains("vim") || editor_lower == "vi" || editor_lower.contains("nvim") {
+        if program_lower.contains("vim")
+            || program_lower == "vi"
+            || program_lower.contains("nvim")
+        {
             cmd.arg(format!("+{line}"));
-        } else if editor_lower.contains("hx") || editor_lower.contains("helix") {
-            let path_str = format!("{}:{line}", file_path.display());
-            let status = Command::new(editor)
-                .arg(&path_str)
+        } else if program_lower.contains("hx") || program_lower.contains("helix") {
+            cmd.arg(format!("{}:{line}", file_path.display()));
+            let status = cmd
                 .status()
                 .await
                 .map_err(|e| ComposeError::EditorFailed(e.to_string()))?;
@@ -78,5 +90,22 @@ mod tests {
             });
 
         assert_eq!(result, "nano");
+    }
+
+    #[tokio::test]
+    async fn spawn_editor_handles_shell_command_string() {
+        // `true file` exits 0; we just want to prove command-string parsing succeeds.
+        let path = std::env::temp_dir().join("mxr-editor-shell-string.tmp");
+        std::fs::write(&path, "x").unwrap();
+        let ok = spawn_editor("/usr/bin/true file", &path, None).await.unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(ok);
+    }
+
+    #[tokio::test]
+    async fn spawn_editor_rejects_empty_editor() {
+        let path = std::env::temp_dir().join("mxr-editor-empty.tmp");
+        let err = spawn_editor("", &path, None).await.unwrap_err();
+        assert!(err.to_string().contains("$EDITOR is empty"));
     }
 }

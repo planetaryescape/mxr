@@ -46,36 +46,20 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     let account = resolve_compose_account(&mut client, options.from.as_deref()).await?;
     let stdin_or_body = read_body_input(options.body, options.body_stdin)?;
 
+    let make_inline_frontmatter = || mxr_compose::frontmatter::ComposeFrontmatter {
+        to: options.to.clone().unwrap_or_default(),
+        cc: options.cc.clone().unwrap_or_default(),
+        bcc: options.bcc.clone().unwrap_or_default(),
+        subject: options.subject.clone().unwrap_or_default(),
+        from: account.email.clone(),
+        attach: attachment_strings(&options.attach),
+        ..Default::default()
+    };
+
     let (frontmatter, body, draft_file) = if let Some(body) = stdin_or_body {
-        (
-            mxr_compose::frontmatter::ComposeFrontmatter {
-                to: options.to.unwrap_or_default(),
-                cc: options.cc.unwrap_or_default(),
-                bcc: options.bcc.unwrap_or_default(),
-                subject: options.subject.unwrap_or_default(),
-                from: account.email.clone(),
-                in_reply_to: None,
-                references: Vec::new(),
-                attach: attachment_strings(&options.attach),
-            },
-            body,
-            None,
-        )
+        (make_inline_frontmatter(), body, None)
     } else if options.dry_run {
-        (
-            mxr_compose::frontmatter::ComposeFrontmatter {
-                to: options.to.unwrap_or_default(),
-                cc: options.cc.unwrap_or_default(),
-                bcc: options.bcc.unwrap_or_default(),
-                subject: options.subject.unwrap_or_default(),
-                from: account.email.clone(),
-                in_reply_to: None,
-                references: Vec::new(),
-                attach: attachment_strings(&options.attach),
-            },
-            String::new(),
-            None,
-        )
+        (make_inline_frontmatter(), String::new(), None)
     } else {
         let (path, cursor_line) = mxr_compose::create_draft_file(
             mxr_compose::ComposeKind::New {
@@ -138,68 +122,29 @@ pub async fn reply(
     message_id: String,
     body: Option<String>,
     body_stdin: bool,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
-    let id = parse_message_id(&message_id)?;
-    let mut client = IpcClient::connect().await?;
-
-    let resp = client
-        .request(Request::PrepareReply {
-            message_id: id,
-            reply_all: false,
-        })
-        .await?;
-
-    let ctx = match resp {
-        Response::Ok {
-            data: ResponseData::ReplyContext { context },
-        } => context,
-        Response::Error { message } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response"),
-    };
-
-    if dry_run {
-        println!("Would open $EDITOR to reply to {message_id}");
-        return Ok(());
-    }
-
-    let (path, cursor_line) = mxr_compose::create_draft_file(
-        mxr_compose::ComposeKind::Reply {
-            in_reply_to: ctx.in_reply_to,
-            references: ctx.references,
-            to: ctx.reply_to,
-            cc: String::new(),
-            subject: ctx.subject,
-            thread_context: ctx.thread_context,
-        },
-        &ctx.from,
-    )?;
-
-    if let Some(b) = &body {
-        let content = std::fs::read_to_string(&path)?;
-        std::fs::write(&path, format!("{content}{b}"))?;
-    } else if body_stdin {
-        use std::io::Read;
-        let mut stdin_body = String::new();
-        std::io::stdin().read_to_string(&mut stdin_body)?;
-        let content = std::fs::read_to_string(&path)?;
-        std::fs::write(&path, format!("{content}{stdin_body}"))?;
-    }
-
-    let editor = mxr_compose::editor::resolve_editor(None);
-    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
-
-    println!("Draft saved to {}", path.display());
-    Ok(())
+    reply_inner(message_id, body, body_stdin, yes, dry_run, false).await
 }
 
 pub async fn reply_all(
     message_id: String,
     body: Option<String>,
     body_stdin: bool,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
+) -> anyhow::Result<()> {
+    reply_inner(message_id, body, body_stdin, yes, dry_run, true).await
+}
+
+async fn reply_inner(
+    message_id: String,
+    body: Option<String>,
+    body_stdin: bool,
+    yes: bool,
+    dry_run: bool,
+    reply_all: bool,
 ) -> anyhow::Result<()> {
     let id = parse_message_id(&message_id)?;
     let mut client = IpcClient::connect().await?;
@@ -207,10 +152,9 @@ pub async fn reply_all(
     let resp = client
         .request(Request::PrepareReply {
             message_id: id,
-            reply_all: true,
+            reply_all,
         })
         .await?;
-
     let ctx = match resp {
         Response::Ok {
             data: ResponseData::ReplyContext { context },
@@ -219,39 +163,28 @@ pub async fn reply_all(
         _ => anyhow::bail!("Unexpected response"),
     };
 
-    if dry_run {
-        println!("Would open $EDITOR to reply-all to {message_id}");
-        return Ok(());
-    }
+    let kind = mxr_compose::ComposeKind::Reply {
+        in_reply_to: ctx.in_reply_to.clone(),
+        references: ctx.references.clone(),
+        thread_id: ctx.thread_id.clone(),
+        to: ctx.reply_to.clone(),
+        cc: if reply_all { ctx.cc.clone() } else { String::new() },
+        subject: ctx.subject.clone(),
+        thread_context: ctx.thread_context.clone(),
+    };
 
-    let (path, cursor_line) = mxr_compose::create_draft_file(
-        mxr_compose::ComposeKind::Reply {
-            in_reply_to: ctx.in_reply_to,
-            references: ctx.references,
-            to: ctx.reply_to,
-            cc: ctx.cc,
-            subject: ctx.subject,
-            thread_context: ctx.thread_context,
-        },
+    let stdin_or_body = read_body_input(body, body_stdin)?;
+    let (frontmatter, body_text, draft_file) = build_compose_draft(
+        &mut client,
+        kind,
         &ctx.from,
-    )?;
+        stdin_or_body,
+        dry_run,
+    )
+    .await?;
 
-    if let Some(b) = &body {
-        let content = std::fs::read_to_string(&path)?;
-        std::fs::write(&path, format!("{content}{b}"))?;
-    } else if body_stdin {
-        use std::io::Read;
-        let mut stdin_body = String::new();
-        std::io::stdin().read_to_string(&mut stdin_body)?;
-        let content = std::fs::read_to_string(&path)?;
-        std::fs::write(&path, format!("{content}{stdin_body}"))?;
-    }
-
-    let editor = mxr_compose::editor::resolve_editor(None);
-    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
-
-    println!("Draft saved to {}", path.display());
-    Ok(())
+    finalize_compose(&mut client, ctx.account_id, frontmatter, body_text, draft_file, yes, dry_run)
+        .await
 }
 
 pub async fn forward(
@@ -259,7 +192,7 @@ pub async fn forward(
     to: Option<String>,
     body: Option<String>,
     body_stdin: bool,
-    _yes: bool,
+    yes: bool,
     dry_run: bool,
 ) -> anyhow::Result<()> {
     let id = parse_message_id(&message_id)?;
@@ -268,7 +201,6 @@ pub async fn forward(
     let resp = client
         .request(Request::PrepareForward { message_id: id })
         .await?;
-
     let ctx = match resp {
         Response::Ok {
             data: ResponseData::ForwardContext { context },
@@ -277,41 +209,103 @@ pub async fn forward(
         _ => anyhow::bail!("Unexpected response"),
     };
 
+    let kind = mxr_compose::ComposeKind::Forward {
+        subject: ctx.subject.clone(),
+        original_context: ctx.forwarded_content.clone(),
+    };
+
+    let stdin_or_body = read_body_input(body, body_stdin)?;
+    let (mut frontmatter, body_text, draft_file) = build_compose_draft(
+        &mut client,
+        kind,
+        &ctx.from,
+        stdin_or_body,
+        dry_run,
+    )
+    .await?;
+
+    if let Some(to_val) = to {
+        if !to_val.trim().is_empty() {
+            frontmatter.to = to_val;
+        }
+    }
+
+    finalize_compose(&mut client, ctx.account_id, frontmatter, body_text, draft_file, yes, dry_run)
+        .await
+}
+
+async fn build_compose_draft(
+    _client: &mut IpcClient,
+    kind: mxr_compose::ComposeKind,
+    from_email: &str,
+    stdin_or_body: Option<String>,
+    dry_run: bool,
+) -> anyhow::Result<(
+    mxr_compose::frontmatter::ComposeFrontmatter,
+    String,
+    Option<PathBuf>,
+)> {
+    if let Some(body) = stdin_or_body {
+        let frontmatter = mxr_compose::seed_frontmatter(kind, from_email)?;
+        return Ok((frontmatter, body, None));
+    }
+
     if dry_run {
-        println!("Would open $EDITOR to forward {message_id}");
+        let frontmatter = mxr_compose::seed_frontmatter(kind, from_email)?;
+        return Ok((frontmatter, String::new(), None));
+    }
+
+    let (path, cursor_line) = mxr_compose::create_draft_file(kind, from_email)?;
+    let editor = mxr_compose::editor::resolve_editor(None);
+    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
+    let content = std::fs::read_to_string(&path)?;
+    let (frontmatter, body) = mxr_compose::frontmatter::parse_compose_file(&content)?;
+    Ok((frontmatter, body, Some(path)))
+}
+
+async fn finalize_compose(
+    client: &mut IpcClient,
+    account_id: AccountId,
+    frontmatter: mxr_compose::frontmatter::ComposeFrontmatter,
+    body: String,
+    draft_file: Option<PathBuf>,
+    yes: bool,
+    dry_run: bool,
+) -> anyhow::Result<()> {
+    let draft = draft_from_frontmatter(account_id, &frontmatter, body)?;
+    validate_compose_draft(&frontmatter, &draft.body_markdown, yes)?;
+
+    if dry_run {
+        print_draft_preview(&draft, yes);
         return Ok(());
     }
 
-    let (path, cursor_line) = mxr_compose::create_draft_file(
-        mxr_compose::ComposeKind::Forward {
-            subject: ctx.subject,
-            original_context: ctx.forwarded_content,
-        },
-        &ctx.from,
-    )?;
-
-    // Pre-fill "to" if provided
-    if let Some(to_val) = &to {
-        let content = std::fs::read_to_string(&path)?;
-        let updated = content.replacen("to: \"\"", &format!("to: \"{to_val}\""), 1);
-        std::fs::write(&path, updated)?;
+    if yes {
+        expect_ack(
+            client
+                .request(Request::SendDraft {
+                    draft: draft.clone(),
+                })
+                .await?,
+        )?;
+        if let Some(path) = draft_file {
+            let _ = mxr_compose::delete_draft_file(&path);
+        }
+        println!("Sent draft {}", draft.id);
+    } else {
+        expect_ack(
+            client
+                .request(Request::SaveDraft {
+                    draft: draft.clone(),
+                })
+                .await?,
+        )?;
+        if let Some(path) = draft_file {
+            let _ = mxr_compose::delete_draft_file(&path);
+        }
+        println!("Draft saved: {}", draft.id);
+        println!("Send with: mxr send {}", draft.id);
     }
-
-    if let Some(b) = &body {
-        let content = std::fs::read_to_string(&path)?;
-        std::fs::write(&path, format!("{content}{b}"))?;
-    } else if body_stdin {
-        use std::io::Read;
-        let mut stdin_body = String::new();
-        std::io::stdin().read_to_string(&mut stdin_body)?;
-        let content = std::fs::read_to_string(&path)?;
-        std::fs::write(&path, format!("{content}{stdin_body}"))?;
-    }
-
-    let editor = mxr_compose::editor::resolve_editor(None);
-    mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
-
-    println!("Draft saved to {}", path.display());
     Ok(())
 }
 
@@ -488,6 +482,7 @@ fn draft_from_frontmatter(
         .map(|in_reply_to| ReplyHeaders {
             in_reply_to: in_reply_to.clone(),
             references: frontmatter.references.clone(),
+            thread_id: frontmatter.thread_id.clone(),
         });
     Ok(Draft {
         id: DraftId::new(),
@@ -648,6 +643,7 @@ mod tests {
             from: "me@example.com".into(),
             in_reply_to: Some("<reply@example.com>".into()),
             references: vec!["<root@example.com>".into()],
+            thread_id: None,
             attach: Vec::new(),
         };
 

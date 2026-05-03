@@ -157,7 +157,8 @@ async fn apply_mutation_to_envelope(
                 .modify_labels(provider_id, &[], &["INBOX".to_string()])
                 .await
                 .map_err(|e| e.to_string())?;
-            reconcile_label_mutation(state, provider, message_id, &[], &["INBOX".to_string()]).await
+            reconcile_label_mutation(state, provider, message_id, &[], &["INBOX".to_string()])
+                .await?;
         }
         MutationCommand::ReadAndArchive { .. } => {
             provider
@@ -173,15 +174,37 @@ async fn apply_mutation_to_envelope(
                 .modify_labels(provider_id, &[], &["INBOX".to_string()])
                 .await
                 .map_err(|e| e.to_string())?;
-            reconcile_label_mutation(state, provider, message_id, &[], &["INBOX".to_string()]).await
+            reconcile_label_mutation(state, provider, message_id, &[], &["INBOX".to_string()])
+                .await?;
         }
         MutationCommand::Trash { .. } => {
-            provider.trash(provider_id).await.map_err(|e| e.to_string())
+            provider.trash(provider_id).await.map_err(|e| e.to_string())?;
+            // Trash is provider-specific (Gmail relabels, IMAP moves+expunges).
+            // Mirror the common case locally: drop INBOX, add TRASH if labels-capable;
+            // otherwise let reconcile_label_mutation re-sync from the provider.
+            reconcile_label_mutation(
+                state,
+                provider,
+                message_id,
+                &["TRASH".to_string()],
+                &["INBOX".to_string()],
+            )
+            .await?;
         }
-        MutationCommand::Spam { .. } => provider
-            .modify_labels(provider_id, &["SPAM".to_string()], &["INBOX".to_string()])
-            .await
-            .map_err(|e| e.to_string()),
+        MutationCommand::Spam { .. } => {
+            provider
+                .modify_labels(provider_id, &["SPAM".to_string()], &["INBOX".to_string()])
+                .await
+                .map_err(|e| e.to_string())?;
+            reconcile_label_mutation(
+                state,
+                provider,
+                message_id,
+                &["SPAM".to_string()],
+                &["INBOX".to_string()],
+            )
+            .await?;
+        }
         MutationCommand::Star { starred, .. } => {
             provider
                 .set_starred(provider_id, *starred)
@@ -191,7 +214,7 @@ async fn apply_mutation_to_envelope(
                 .store
                 .set_starred(message_id, *starred)
                 .await
-                .map_err(|e| e.to_string())
+                .map_err(|e| e.to_string())?;
         }
         MutationCommand::SetRead { read, .. } => {
             provider
@@ -202,7 +225,7 @@ async fn apply_mutation_to_envelope(
                 .store
                 .set_read(message_id, *read)
                 .await
-                .map_err(|e| e.to_string())
+                .map_err(|e| e.to_string())?;
         }
         MutationCommand::ModifyLabels { add, remove, .. } => {
             let labels = state
@@ -217,7 +240,7 @@ async fn apply_mutation_to_envelope(
                 .await
                 .map_err(|e| e.to_string())?;
             reconcile_label_mutation(state, provider, message_id, &resolved_add, &resolved_remove)
-                .await
+                .await?;
         }
         MutationCommand::Move { target_label, .. } => {
             let labels = state
@@ -238,9 +261,42 @@ async fn apply_mutation_to_envelope(
                 &resolved_target,
                 &["INBOX".to_string()],
             )
-            .await
+            .await?;
         }
     }
+    // Single point of search-index reconciliation: refresh the indexed envelope so
+    // queries (`mxr search ...`) see the new flags/labels immediately.
+    reindex_message_in_search(state, message_id).await
+}
+
+async fn reindex_message_in_search(
+    state: &AppState,
+    message_id: &mxr_core::MessageId,
+) -> Result<(), String> {
+    let envelope = state
+        .store
+        .get_envelope(message_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(envelope) = envelope else {
+        // Message was removed locally (e.g. IMAP delete); drop from index.
+        return state
+            .search
+            .apply_batch(mxr_search::SearchUpdateBatch {
+                entries: Vec::new(),
+                removed_message_ids: vec![message_id.clone()],
+            })
+            .await
+            .map_err(|e| e.to_string());
+    };
+    state
+        .search
+        .apply_batch(mxr_search::SearchUpdateBatch {
+            entries: vec![mxr_search::SearchIndexEntry { envelope, body: None }],
+            removed_message_ids: Vec::new(),
+        })
+        .await
+        .map_err(|e| e.to_string())
 }
 
 fn mutation_log_entry(cmd: &MutationCommand, envelope: &Envelope) -> (String, Option<String>) {
@@ -424,11 +480,26 @@ pub(super) async fn prepare_reply(
         Err(_) => String::new(),
     };
 
+    let self_address = from.to_ascii_lowercase();
+    // Envelope does not yet capture the Reply-To: header — using From: as the reply target
+    // covers the common case. Capturing Reply-To: properly is a post-v1 envelope schema change.
+    let reply_to = envelope.from.email.clone();
+
     let cc = if reply_all {
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        seen.insert(reply_to.to_ascii_lowercase());
+        if !self_address.is_empty() {
+            seen.insert(self_address.clone());
+        }
         envelope
-            .cc
+            .to
             .iter()
-            .map(|address| address.email.as_str())
+            .chain(envelope.cc.iter())
+            .map(|address| address.email.clone())
+            .filter(|email| {
+                let key = email.to_ascii_lowercase();
+                seen.insert(key)
+            })
             .collect::<Vec<_>>()
             .join(", ")
     } else {
@@ -437,13 +508,17 @@ pub(super) async fn prepare_reply(
 
     Ok(ResponseData::ReplyContext {
         context: ReplyContext {
+            account_id: envelope.account_id.clone(),
             in_reply_to: envelope.message_id_header.clone().unwrap_or_default(),
             references: build_reply_references(&envelope),
-            reply_to: envelope.from.email.clone(),
+            reply_to,
             cc,
             subject: envelope.subject.clone(),
             from,
             thread_context,
+            // Provider-native thread hint is sourced from a future Envelope.provider_thread_id
+            // field; today In-Reply-To/References headers do the heavy lifting for threading.
+            thread_id: None,
         },
     })
 }
@@ -475,6 +550,7 @@ pub(super) async fn prepare_forward(
 
     Ok(ResponseData::ForwardContext {
         context: ForwardContext {
+            account_id: envelope.account_id.clone(),
             subject: envelope.subject.clone(),
             from,
             forwarded_content,

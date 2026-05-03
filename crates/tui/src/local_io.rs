@@ -264,6 +264,7 @@ mod tests {
                 from: "me@example.com".into(),
                 in_reply_to: None,
                 references: vec![],
+                thread_id: None,
                 attach: vec![],
             },
             body: "Body".into(),

@@ -169,6 +169,10 @@ pub struct ReplyHeaders {
     pub in_reply_to: String,
     #[serde(default)]
     pub references: Vec<String>,
+    /// Provider-native thread hint. Gmail uses this to keep replies in-thread;
+    /// IMAP relies on the In-Reply-To/References headers and ignores it.
+    #[serde(default)]
+    pub thread_id: Option<String>,
 }
 
 // -- MessageMetadata ---------------------------------------------------------

@@ -230,6 +230,7 @@ fn account_sync_kind(account: &mxr_protocol::AccountConfigData) -> &'static str 
     match account.sync {
         Some(mxr_protocol::AccountSyncConfigData::Gmail { .. }) => "gmail",
         Some(mxr_protocol::AccountSyncConfigData::Imap { .. }) => "imap",
+        Some(mxr_protocol::AccountSyncConfigData::Fake) => "fake",
         None => "none",
     }
 }
@@ -238,6 +239,7 @@ fn account_send_kind(account: &mxr_protocol::AccountConfigData) -> &'static str 
     match account.send {
         Some(mxr_protocol::AccountSendConfigData::Gmail) => "gmail",
         Some(mxr_protocol::AccountSendConfigData::Smtp { .. }) => "smtp",
+        Some(mxr_protocol::AccountSendConfigData::Fake) => "fake",
         None => "none",
     }
 }
@@ -826,6 +828,7 @@ async fn update_compose_session(
         from: request.from,
         in_reply_to: extract_in_reply_to(&content)?,
         references: extract_references(&content)?,
+        thread_id: extract_thread_id(&content)?,
         attach: request.attach,
     };
     let rendered = render_compose_file(&updated, &body, context.as_deref())
@@ -1696,6 +1699,7 @@ async fn create_compose_session(
                 ComposeKind::Reply {
                     in_reply_to: context.in_reply_to,
                     references: context.references,
+                    thread_id: context.thread_id,
                     to: context.reply_to,
                     cc: context.cc,
                     subject: context.subject,
@@ -1832,6 +1836,12 @@ fn extract_references(content: &str) -> Result<Vec<String>, BridgeError> {
     Ok(frontmatter.references)
 }
 
+fn extract_thread_id(content: &str) -> Result<Option<String>, BridgeError> {
+    let (frontmatter, _) =
+        parse_compose_file(content).map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    Ok(frontmatter.thread_id)
+}
+
 async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<Draft, BridgeError> {
     let raw_content = read_compose_file(Path::new(draft_path)).await?;
     let (frontmatter, body) =
@@ -1856,6 +1866,7 @@ async fn compose_draft_from_file(draft_path: &str, account_id: &str) -> Result<D
             .map(|in_reply_to| ReplyHeaders {
                 in_reply_to: in_reply_to.clone(),
                 references: frontmatter.references.clone(),
+                thread_id: frontmatter.thread_id.clone(),
             }),
         to: parse_address_list(&frontmatter.to),
         cc: parse_address_list(&frontmatter.cc),
@@ -1899,6 +1910,10 @@ async fn restore_saved_draft_session(
             .as_ref()
             .map(|headers| headers.references.clone())
             .unwrap_or_default(),
+        thread_id: draft
+            .reply_headers
+            .as_ref()
+            .and_then(|headers| headers.thread_id.clone()),
         attach: draft
             .attachments
             .iter()
@@ -3712,6 +3727,7 @@ mod tests {
                 } if message_id == expected_message_id => Some(Response::Ok {
                     data: ResponseData::ReplyContext {
                         context: mxr_protocol::ReplyContext {
+                            account_id: mxr_core::AccountId::new(),
                             in_reply_to: "<msg-1@example.com>".into(),
                             references: vec!["<root@example.com>".into()],
                             reply_to: "sender@example.com".into(),
@@ -3719,6 +3735,7 @@ mod tests {
                             subject: "Mailroom".into(),
                             from: "sender@example.com".into(),
                             thread_context: "Original thread context".into(),
+                            thread_id: None,
                         },
                     },
                 }),

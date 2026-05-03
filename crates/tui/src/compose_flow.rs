@@ -50,6 +50,7 @@ pub(crate) async fn handle_compose_action(
                 } => mxr_compose::ComposeKind::Reply {
                     in_reply_to: context.in_reply_to,
                     references: context.references,
+                    thread_id: context.thread_id,
                     to: context.reply_to,
                     cc: context.cc,
                     subject: context.subject,
@@ -79,6 +80,7 @@ pub(crate) async fn handle_compose_action(
                 } => mxr_compose::ComposeKind::Reply {
                     in_reply_to: context.in_reply_to,
                     references: context.references,
+                    thread_id: context.thread_id,
                     to: context.reply_to,
                     cc: context.cc,
                     subject: context.subject,

@@ -133,8 +133,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             })
             .await?;
         }
-        Some(Command::Accounts { action }) => {
-            commands::accounts::run(action).await?;
+        Some(Command::Accounts { action, format }) => {
+            commands::accounts::run(action, format).await?;
         }
 
         Some(Command::Search {
@@ -148,9 +148,13 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::search::run(query, format, limit, mode, sort, explain).await?;
         }
-        Some(Command::Count { query, mode }) => {
+        Some(Command::Count {
+            query,
+            mode,
+            format,
+        }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::count::run(query, mode).await?;
+            commands::count::run(query, mode, format).await?;
         }
         Some(Command::Cat {
             message_id,
@@ -195,10 +199,19 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         Some(Command::Sync {
             account,
             status,
-            history,
+            wait,
+            wait_timeout_secs,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::sync_cmd::run(account, status, history).await?;
+            commands::sync_cmd::run(
+                account,
+                status,
+                wait,
+                wait_timeout_secs,
+                format,
+            )
+            .await?;
         }
         Some(Command::Status { format, watch }) => {
             crate::server::ensure_daemon_running().await?;

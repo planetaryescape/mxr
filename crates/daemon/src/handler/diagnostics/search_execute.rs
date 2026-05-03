@@ -397,7 +397,7 @@ pub(super) async fn filter_dense_hits(
     Ok(results)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "semantic-local"))]
 mod tests {
     use super::*;
     use crate::state::AppState;

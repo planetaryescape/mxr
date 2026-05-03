@@ -21,6 +21,7 @@ lettre = { workspace = true }
 mime_guess = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
+shell-words = { workspace = true }
 serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

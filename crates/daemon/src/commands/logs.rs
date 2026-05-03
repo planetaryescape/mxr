@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
+use chrono::{DateTime, Utc};
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::Path;
 use std::time::{Duration, SystemTime};
@@ -45,7 +46,7 @@ fn purge_events(retention_days: u32) -> anyhow::Result<u64> {
 pub fn run(
     no_follow: bool,
     level: Option<String>,
-    _since: Option<String>,
+    since: Option<String>,
     purge: bool,
 ) -> anyhow::Result<()> {
     let data_dir = mxr_config::data_dir();
@@ -67,6 +68,11 @@ pub fn run(
         return Ok(());
     }
 
+    let since_cutoff = match since.as_deref() {
+        Some(value) => Some(parse_since(value)?),
+        None => None,
+    };
+
     if !log_path.exists() {
         println!("No log file found at {}", log_path.display());
         return Ok(());
@@ -77,10 +83,8 @@ pub fn run(
 
     for line in reader.lines() {
         let line = line?;
-        if let Some(ref lvl) = level {
-            if !line.to_lowercase().contains(&lvl.to_lowercase()) {
-                continue;
-            }
+        if !line_passes(&line, level.as_deref(), since_cutoff) {
+            continue;
         }
         println!("{}", line);
     }
@@ -100,10 +104,8 @@ pub fn run(
                 let reader = BufReader::new(file);
                 for line in reader.lines() {
                     let line = line?;
-                    if let Some(ref lvl) = level {
-                        if !line.to_lowercase().contains(&lvl.to_lowercase()) {
-                            continue;
-                        }
+                    if !line_passes(&line, level.as_deref(), since_cutoff) {
+                        continue;
                     }
                     println!("{}", line);
                 }
@@ -115,6 +117,57 @@ pub fn run(
     }
 
     Ok(())
+}
+
+fn line_passes(line: &str, level: Option<&str>, since: Option<DateTime<Utc>>) -> bool {
+    if let Some(lvl) = level {
+        if !line.to_lowercase().contains(&lvl.to_lowercase()) {
+            return false;
+        }
+    }
+    if let Some(cutoff) = since {
+        if let Some(ts) = parse_log_line_timestamp(line) {
+            if ts < cutoff {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Accept either an RFC 3339 timestamp (e.g. `2026-05-03T12:00:00Z`) or a
+/// short relative form like `10m`, `2h`, `3d`.
+fn parse_since(value: &str) -> anyhow::Result<DateTime<Utc>> {
+    let trimmed = value.trim();
+    if let Ok(ts) = DateTime::parse_from_rfc3339(trimmed) {
+        return Ok(ts.with_timezone(&Utc));
+    }
+    if let Some(duration) = parse_relative_duration(trimmed) {
+        return Ok(Utc::now() - duration);
+    }
+    anyhow::bail!(
+        "Could not parse `--since {value}`. Use RFC 3339 (2026-05-03T12:00:00Z) or a relative duration like `10m`, `2h`, `1d`."
+    )
+}
+
+fn parse_relative_duration(value: &str) -> Option<chrono::Duration> {
+    let (num, unit) = value.split_at(value.find(|c: char| !c.is_ascii_digit())?);
+    let amount: i64 = num.parse().ok()?;
+    match unit {
+        "s" | "sec" | "secs" => Some(chrono::Duration::seconds(amount)),
+        "m" | "min" | "mins" => Some(chrono::Duration::minutes(amount)),
+        "h" | "hr" | "hrs" => Some(chrono::Duration::hours(amount)),
+        "d" | "day" | "days" => Some(chrono::Duration::days(amount)),
+        _ => None,
+    }
+}
+
+fn parse_log_line_timestamp(line: &str) -> Option<DateTime<Utc>> {
+    // tracing-subscriber emits an RFC 3339 timestamp at the start of each line.
+    let candidate = line.split_whitespace().next()?;
+    DateTime::parse_from_rfc3339(candidate)
+        .ok()
+        .map(|ts| ts.with_timezone(&Utc))
 }
 
 #[cfg(test)]

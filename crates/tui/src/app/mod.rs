@@ -461,6 +461,8 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 form.imap_password_ref = password_ref;
                 form.imap_auth_required = auth_required;
             }
+            // Test-only provider; do not surface in account-edit forms.
+            mxr_protocol::AccountSyncConfigData::Fake => {}
         }
     } else {
         form.mode = AccountFormMode::SmtpOnly;
@@ -486,7 +488,7 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 form.gmail_token_ref = format!("mxr/{}-gmail", form.key);
             }
         }
-        None => {}
+        Some(mxr_protocol::AccountSendConfigData::Fake) | None => {}
     }
 
     form

@@ -595,6 +595,9 @@ mod tests {
     use mxr_core::types::SortOrder;
     use std::sync::Arc;
 
+    // Semantic chunk persistence runs on the semantic worker, which only spins up
+    // with the `semantic-local` feature; without it the chunk poll never resolves.
+    #[cfg(feature = "semantic-local")]
     #[tokio::test]
     async fn sync_now_persists_semantic_chunks_without_embeddings_when_semantic_is_disabled() {
         let state = Arc::new(AppState::in_memory().await.unwrap());

@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 13
 expression: stdout
 ---
 Count matching messages
@@ -11,5 +10,6 @@ Arguments:
   <QUERY>  
 
 Options:
-      --mode <MODE>  [possible values: lexical, hybrid, semantic]
-  -h, --help         Print help
+      --mode <MODE>      [possible values: lexical, hybrid, semantic]
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

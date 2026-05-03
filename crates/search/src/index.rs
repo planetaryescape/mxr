@@ -120,6 +120,12 @@ impl SearchIndex {
     }
 
     pub fn index_envelope(&mut self, envelope: &Envelope) -> Result<(), MxrError> {
+        // Re-indexing is upsert-by-message-id; without delete_term we would leave
+        // stale documents in Tantivy and `mxr search` would return duplicates
+        // after every mutation that triggers a re-index.
+        let term = tantivy::Term::from_field_text(self.schema.message_id, &envelope.id.as_str());
+        self.writer.delete_term(term);
+
         let s = &self.schema;
         let mut doc = TantivyDocument::new();
         doc.add_text(s.message_id, envelope.id.as_str());

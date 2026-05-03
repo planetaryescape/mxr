@@ -1,7 +1,12 @@
+use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
+use crate::output::{jsonl, resolve_format};
 use mxr_config::{load_config, AccountConfig, MxrConfig, SendProviderConfig, SyncProviderConfig};
 use mxr_core::id::AccountId;
-use mxr_protocol::{Request, Response, ResponseData, IPC_PROTOCOL_VERSION};
+use mxr_protocol::{
+    AccountSyncStatus, Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
+};
+use std::time::{Duration, Instant};
 
 fn render_sync_status(sync_statuses: &[mxr_protocol::AccountSyncStatus], protocol_version: u32) {
     if sync_statuses.is_empty() {
@@ -47,8 +52,10 @@ fn account_id_from_config(account: &AccountConfig) -> AccountId {
     let provider = match (&account.sync, &account.send) {
         (Some(SyncProviderConfig::Gmail { .. }), _) => "gmail",
         (Some(SyncProviderConfig::Imap { .. }), _) => "imap",
+        (Some(SyncProviderConfig::Fake), _) => "fake",
         (None, Some(SendProviderConfig::Gmail)) => "gmail",
         (None, Some(SendProviderConfig::Smtp { .. })) => "smtp",
+        (None, Some(SendProviderConfig::Fake)) => "fake",
         (None, None) => "account",
     };
     AccountId::from_provider_id(provider, &account.email)
@@ -96,56 +103,107 @@ fn build_sync_request(account_id: Option<AccountId>) -> Request {
     Request::SyncNow { account_id }
 }
 
-pub async fn run(account: Option<String>, status: bool, _history: bool) -> anyhow::Result<()> {
+pub async fn run(
+    account: Option<String>,
+    status: bool,
+    wait: bool,
+    wait_timeout_secs: u64,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account_id = resolve_account_id(account.as_deref())?;
 
     if status {
-        let resp = client
-            .request(build_status_request(account_id.as_ref()))
-            .await?;
-        match (account_id, resp) {
-            (
-                Some(_),
-                Response::Ok {
-                    data: ResponseData::SyncStatus { sync },
-                },
-            ) => render_sync_status(&[sync], IPC_PROTOCOL_VERSION),
-            (
-                None,
-                Response::Ok {
-                    data:
-                        ResponseData::Status {
-                            sync_statuses,
-                            protocol_version,
-                            ..
-                        },
-                },
-            ) => {
-                render_sync_status(&sync_statuses, protocol_version);
-                if protocol_version < IPC_PROTOCOL_VERSION {
-                    println!(
-                        "\nNote: daemon protocol {} is older than client protocol {}. Restart the daemon after upgrading.",
-                        protocol_version, IPC_PROTOCOL_VERSION
-                    );
-                }
+        let statuses = fetch_sync_statuses(&mut client, account_id.as_ref()).await?;
+        render_status(&statuses, format);
+        return Ok(());
+    }
+
+    let resp = client
+        .request(build_sync_request(account_id.clone()))
+        .await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => match resolve_format(format.clone()) {
+            OutputFormat::Json | OutputFormat::Jsonl => {
+                println!("{}", serde_json::to_string(&serde_json::json!({
+                    "status": "triggered",
+                    "account_id": account_id.as_ref().map(|id| id.to_string()),
+                }))?);
             }
-            (_, Response::Error { message }) => anyhow::bail!("{}", message),
-            _ => anyhow::bail!("Unexpected response"),
-        }
-    } else {
-        let resp = client.request(build_sync_request(account_id)).await?;
-        match resp {
-            Response::Ok {
-                data: ResponseData::Ack,
-            } => {
-                println!("Sync triggered");
-            }
-            Response::Error { message } => anyhow::bail!("{}", message),
-            _ => anyhow::bail!("Unexpected response"),
-        }
+            _ => println!("Sync triggered"),
+        },
+        Response::Error { message } => anyhow::bail!("{}", message),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+
+    if wait {
+        wait_for_sync_quiescence(
+            &mut client,
+            account_id.as_ref(),
+            Duration::from_secs(wait_timeout_secs),
+        )
+        .await?;
     }
     Ok(())
+}
+
+async fn fetch_sync_statuses(
+    client: &mut IpcClient,
+    account_id: Option<&AccountId>,
+) -> anyhow::Result<Vec<AccountSyncStatus>> {
+    let resp = client.request(build_status_request(account_id)).await?;
+    match (account_id, resp) {
+        (
+            Some(_),
+            Response::Ok {
+                data: ResponseData::SyncStatus { sync },
+            },
+        ) => Ok(vec![sync]),
+        (
+            None,
+            Response::Ok {
+                data: ResponseData::Status { sync_statuses, .. },
+            },
+        ) => Ok(sync_statuses),
+        (_, Response::Error { message }) => anyhow::bail!("{}", message),
+        _ => anyhow::bail!("Unexpected response from daemon"),
+    }
+}
+
+fn render_status(statuses: &[AccountSyncStatus], format: Option<OutputFormat>) {
+    match resolve_format(format) {
+        OutputFormat::Json => {
+            let _ = serde_json::to_string_pretty(&statuses).map(|out| println!("{out}"));
+        }
+        OutputFormat::Jsonl => {
+            let _ = jsonl(statuses).map(|out| println!("{out}"));
+        }
+        _ => render_sync_status(statuses, IPC_PROTOCOL_VERSION),
+    }
+}
+
+async fn wait_for_sync_quiescence(
+    client: &mut IpcClient,
+    account_id: Option<&AccountId>,
+    timeout: Duration,
+) -> anyhow::Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let statuses = fetch_sync_statuses(client, account_id).await?;
+        let any_in_progress = statuses.iter().any(|status| status.sync_in_progress);
+        if !any_in_progress {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            anyhow::bail!(
+                "timed out after {}s waiting for sync to quiesce",
+                timeout.as_secs()
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 #[cfg(test)]

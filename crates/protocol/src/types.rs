@@ -383,6 +383,7 @@ pub enum MutationCommand {
 /// Reply context returned by PrepareReply.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReplyContext {
+    pub account_id: AccountId,
     pub in_reply_to: String,
     pub references: Vec<String>,
     pub reply_to: String,
@@ -390,11 +391,15 @@ pub struct ReplyContext {
     pub subject: String,
     pub from: String,
     pub thread_context: String,
+    /// Provider-native thread hint (e.g. Gmail thread id). None for IMAP.
+    #[serde(default)]
+    pub thread_id: Option<String>,
 }
 
 /// Forward context returned by PrepareForward.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForwardContext {
+    pub account_id: AccountId,
     pub subject: String,
     pub from: String,
     pub forwarded_content: String,
@@ -896,6 +901,8 @@ pub enum AccountSyncConfigData {
         auth_required: bool,
         use_tls: bool,
     },
+    /// In-memory provider used for CLI smoke tests. Not for production use.
+    Fake,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -928,6 +935,8 @@ pub enum AccountSendConfigData {
         auth_required: bool,
         use_tls: bool,
     },
+    /// In-memory send provider for tests. Not for production use.
+    Fake,
 }
 
 fn default_auth_required() -> bool {

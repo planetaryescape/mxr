@@ -20,6 +20,8 @@ pub enum ComposeKind {
     Reply {
         in_reply_to: String,
         references: Vec<String>,
+        /// Provider-native thread hint (e.g. Gmail thread id).
+        thread_id: Option<String>,
         to: String,
         cc: String,
         subject: String,
@@ -38,6 +40,14 @@ pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usiz
     let (path, cursor_line, content) = build_draft_file(kind, from)?;
     std::fs::write(&path, &content)?;
     Ok((path, cursor_line))
+}
+
+/// Build the seed frontmatter for a compose kind without touching the filesystem.
+/// Use this when the caller wants to skip $EDITOR (inline body, dry-run, etc.).
+pub fn seed_frontmatter(kind: ComposeKind, from: &str) -> Result<ComposeFrontmatter, ComposeError> {
+    let (_path, _cursor, content) = build_draft_file(kind, from)?;
+    let (frontmatter, _body) = frontmatter::parse_compose_file(&content)?;
+    Ok(frontmatter)
 }
 
 pub async fn create_draft_file_async(
@@ -92,19 +102,16 @@ fn build_draft_file(
         ComposeKind::New { to, subject } => {
             let fm = ComposeFrontmatter {
                 to,
-                cc: String::new(),
-                bcc: String::new(),
                 subject,
                 from: from.to_string(),
-                in_reply_to: None,
-                references: Vec::new(),
-                attach: Vec::new(),
+                ..Default::default()
             };
             (fm, String::new(), None)
         }
         ComposeKind::Reply {
             in_reply_to,
             references,
+            thread_id,
             to,
             cc,
             subject,
@@ -113,12 +120,12 @@ fn build_draft_file(
             let fm = ComposeFrontmatter {
                 to,
                 cc,
-                bcc: String::new(),
                 subject: format!("Re: {subject}"),
                 from: from.to_string(),
                 in_reply_to: Some(in_reply_to),
                 references,
-                attach: Vec::new(),
+                thread_id,
+                ..Default::default()
             };
             (fm, String::new(), Some(thread_context))
         }
@@ -127,14 +134,9 @@ fn build_draft_file(
             original_context,
         } => {
             let fm = ComposeFrontmatter {
-                to: String::new(),
-                cc: String::new(),
-                bcc: String::new(),
                 subject: format!("Fwd: {subject}"),
                 from: from.to_string(),
-                in_reply_to: None,
-                references: Vec::new(),
-                attach: Vec::new(),
+                ..Default::default()
             };
             let body = "---------- Forwarded message ----------".to_string();
             (fm, body, Some(original_context))
@@ -280,6 +282,7 @@ mod tests {
             ComposeKind::Reply {
                 in_reply_to: "<msg-123@example.com>".into(),
                 references: vec!["<root@example.com>".into(), "<msg-123@example.com>".into()],
+                thread_id: None,
                 to: "alice@example.com".into(),
                 cc: "bob@example.com".into(),
                 subject: "Deployment plan".into(),
@@ -326,6 +329,7 @@ mod tests {
             from: "me@example.com".into(),
             in_reply_to: None,
             references: Vec::new(),
+            thread_id: None,
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "body");
@@ -345,6 +349,7 @@ mod tests {
             from: "me@example.com".into(),
             in_reply_to: None,
             references: Vec::new(),
+            thread_id: None,
             attach: Vec::new(),
         };
         let issues = validate_draft_for_save(&fm, "body");
@@ -361,6 +366,7 @@ mod tests {
             from: "me@example.com".into(),
             in_reply_to: None,
             references: Vec::new(),
+            thread_id: None,
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "body");
@@ -380,6 +386,7 @@ mod tests {
             from: "me@example.com".into(),
             in_reply_to: None,
             references: Vec::new(),
+            thread_id: None,
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "body");
@@ -415,6 +422,7 @@ mod tests {
             from: "me@example.com".into(),
             in_reply_to: None,
             references: Vec::new(),
+            thread_id: None,
             attach: Vec::new(),
         };
         let issues = validate_draft(&fm, "Hello there!");
@@ -431,6 +439,7 @@ mod tests {
             from: "me@example.com".into(),
             in_reply_to: None,
             references: Vec::new(),
+            thread_id: None,
             attach: Vec::new(),
         };
         let issues = validate_draft_for_save(&fm, "Hello there!");
@@ -447,6 +456,7 @@ mod tests {
             from: "me@example.com".into(),
             in_reply_to: None,
             references: Vec::new(),
+            thread_id: None,
             attach: Vec::new(),
         };
         let issues = validate_draft_for_save(&fm, "Hello there!");

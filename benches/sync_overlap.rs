@@ -222,6 +222,10 @@ impl ImapSession for BenchImapSession {
         Ok(self.mailboxes.get(&mailbox).cloned().unwrap_or_default())
     }
 
+    async fn uid_search(&mut self, _query: &str) -> mxr_provider_imap::session::Result<Vec<u32>> {
+        Ok(Vec::new())
+    }
+
     async fn uid_store(
         &mut self,
         _uid_set: &str,

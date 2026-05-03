@@ -1802,12 +1802,18 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                     }
                 }
             }
+            AccountSyncConfigData::Fake => {
+                sync = Some(account_step(true, "Fake sync provider (test-only)".into()));
+            }
         }
     }
 
     match account.send {
         Some(AccountSendConfigData::Gmail) => {
             send = Some(account_step(true, "Gmail send configured.".into()));
+        }
+        Some(AccountSendConfigData::Fake) => {
+            send = Some(account_step(true, "Fake send provider (test-only)".into()));
         }
         Some(AccountSendConfigData::Smtp {
             host,
@@ -1964,6 +1970,7 @@ fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfi
             auth_required,
             use_tls,
         },
+        mxr_config::SyncProviderConfig::Fake => AccountSyncConfigData::Fake,
     }
 }
 
@@ -1981,6 +1988,7 @@ fn config_sync_kind_label(sync: &mxr_config::SyncProviderConfig) -> String {
     match sync {
         mxr_config::SyncProviderConfig::Gmail { .. } => "gmail".into(),
         mxr_config::SyncProviderConfig::Imap { .. } => "imap".into(),
+        mxr_config::SyncProviderConfig::Fake => "fake".into(),
     }
 }
 
@@ -1988,6 +1996,7 @@ fn config_send_kind_label(send: &mxr_config::SendProviderConfig) -> String {
     match send {
         mxr_config::SendProviderConfig::Gmail => "gmail".into(),
         mxr_config::SendProviderConfig::Smtp { .. } => "smtp".into(),
+        mxr_config::SendProviderConfig::Fake => "fake".into(),
     }
 }
 
@@ -2028,6 +2037,7 @@ fn send_config_to_data(send: mxr_config::SendProviderConfig) -> AccountSendConfi
             auth_required,
             use_tls,
         },
+        mxr_config::SendProviderConfig::Fake => AccountSendConfigData::Fake,
     }
 }
 
@@ -2065,6 +2075,7 @@ fn sync_data_to_config(
             auth_required,
             use_tls,
         }),
+        AccountSyncConfigData::Fake => Ok(mxr_config::SyncProviderConfig::Fake),
     }
 }
 
@@ -2073,6 +2084,7 @@ fn send_data_to_config(
 ) -> Result<mxr_config::SendProviderConfig, String> {
     match data {
         AccountSendConfigData::Gmail => Ok(mxr_config::SendProviderConfig::Gmail),
+        AccountSendConfigData::Fake => Ok(mxr_config::SendProviderConfig::Fake),
         AccountSendConfigData::Smtp {
             host,
             port,
@@ -2098,11 +2110,13 @@ fn persist_account_passwords(account: &AccountConfigData) -> anyhow::Result<()> 
         sync_kind = %match account.sync {
             Some(AccountSyncConfigData::Gmail { .. }) => "gmail",
             Some(AccountSyncConfigData::Imap { .. }) => "imap",
+            Some(AccountSyncConfigData::Fake) => "fake",
             None => "none",
         },
         send_kind = %match account.send {
             Some(AccountSendConfigData::Gmail) => "gmail",
             Some(AccountSendConfigData::Smtp { .. }) => "smtp",
+            Some(AccountSendConfigData::Fake) => "fake",
             None => "none",
         },
         has_inline_imap_password = matches!(
@@ -3704,6 +3718,9 @@ mod tests {
         }
     }
 
+    // Requires the local semantic embedder to populate explain.semantic_query;
+    // gate to the semantic-local lane so the fast lane stays green.
+    #[cfg(feature = "semantic-local")]
     #[tokio::test]
     async fn dispatch_structured_search_in_semantic_mode_explains_fallback() {
         let state = Arc::new(AppState::in_memory().await.unwrap());
@@ -3747,6 +3764,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "semantic-local")]
     #[tokio::test]
     async fn dispatch_fielded_semantic_query_explains_disabled_fallback() {
         let state = Arc::new(AppState::in_memory().await.unwrap());

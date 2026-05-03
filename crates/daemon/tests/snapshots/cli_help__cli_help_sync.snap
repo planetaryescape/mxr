@@ -7,7 +7,15 @@ Trigger or query sync
 Usage: mxr sync [OPTIONS]
 
 Options:
-      --account <ACCOUNT>  
-      --status             
-      --history            
-  -h, --help               Print help
+      --account <ACCOUNT>
+          
+      --status
+          
+      --wait
+          Wait for the triggered sync to finish before returning. Useful in scripts and CLI smoke tests
+      --wait-timeout-secs <WAIT_TIMEOUT_SECS>
+          Maximum seconds to wait when --wait is set. Default 60 [default: 60]
+      --format <FORMAT>
+          Output format. Honored by `--status`; ignored by trigger mode today [possible values: table, json, jsonl, csv, ids]
+  -h, --help
+          Print help

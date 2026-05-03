@@ -68,6 +68,7 @@ fn account_sync_kind_label(sync: &AccountSyncConfigData) -> String {
     match sync {
         AccountSyncConfigData::Gmail { .. } => "gmail".to_string(),
         AccountSyncConfigData::Imap { .. } => "imap".to_string(),
+        AccountSyncConfigData::Fake => "fake".to_string(),
     }
 }
 
@@ -75,5 +76,6 @@ fn account_send_kind_label(send: &AccountSendConfigData) -> String {
     match send {
         AccountSendConfigData::Gmail => "gmail".to_string(),
         AccountSendConfigData::Smtp { .. } => "smtp".to_string(),
+        AccountSendConfigData::Fake => "fake".to_string(),
     }
 }

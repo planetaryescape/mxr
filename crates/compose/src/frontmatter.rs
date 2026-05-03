@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// YAML frontmatter for compose files.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ComposeFrontmatter {
     pub to: String,
     #[serde(default)]
@@ -20,6 +20,13 @@ pub struct ComposeFrontmatter {
     pub in_reply_to: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub references: Vec<String>,
+    /// Provider-native thread hint (e.g. Gmail thread id). Used so replies stay in-thread.
+    #[serde(
+        default,
+        rename = "thread-id",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub thread_id: Option<String>,
     #[serde(default)]
     pub attach: Vec<String>,
 }
@@ -138,6 +145,7 @@ mod tests {
             from: "me@example.com".into(),
             in_reply_to: None,
             references: Vec::new(),
+            thread_id: None,
             attach: Vec::new(),
         };
         let rendered = render_compose_file(&fm, "Hello!", None).unwrap();
@@ -157,6 +165,7 @@ mod tests {
             from: "me@example.com".into(),
             in_reply_to: Some("<msg-123@example.com>".into()),
             references: vec!["<root@example.com>".into(), "<msg-123@example.com>".into()],
+            thread_id: None,
             attach: Vec::new(),
         };
         let context = "From: alice@example.com\nDate: 2026-03-15\n\nOriginal message.";
@@ -190,6 +199,7 @@ mod tests {
                 from: format!("{from_local}@example.com"),
                 in_reply_to: None,
                 references: Vec::new(),
+                thread_id: None,
                 attach: Vec::new(),
             };
 

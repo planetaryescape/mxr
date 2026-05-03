@@ -1,13 +1,17 @@
-use crate::cli::AccountsAction;
+use crate::cli::{AccountsAction, OutputFormat};
 use crate::ipc_client::IpcClient;
+use crate::output::{jsonl, resolve_format};
 use mxr_protocol::{
     AccountConfigData, AccountOperationResult, AccountSendConfigData, AccountSyncConfigData,
     GmailCredentialSourceData, Request, Response, ResponseData,
 };
 
-pub async fn run(action: Option<AccountsAction>) -> anyhow::Result<()> {
+pub async fn run(
+    action: Option<AccountsAction>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     match action {
-        None => list_accounts().await?,
+        None => list_accounts(format).await?,
         Some(AccountsAction::Add { provider }) => match provider.as_str() {
             "gmail" => add_gmail().await?,
             "imap" => add_imap(true).await?,
@@ -41,26 +45,81 @@ async fn client() -> anyhow::Result<IpcClient> {
     IpcClient::connect().await
 }
 
-async fn list_accounts() -> anyhow::Result<()> {
+async fn list_accounts(format: Option<OutputFormat>) -> anyhow::Result<()> {
     let accounts = account_configs().await?;
-    if accounts.is_empty() {
-        println!("No accounts configured.");
-        println!("Run: mxr accounts add gmail|imap|smtp|imap-smtp");
-        return Ok(());
-    }
+    let summaries: Vec<AccountSummaryRow> =
+        accounts.iter().map(AccountSummaryRow::from).collect();
 
-    for acct in &accounts {
-        println!(
-            "  {} - {} <{}> [sync: {}, send: {}, {}]",
-            acct.key,
-            acct.name,
-            acct.email,
-            describe_sync_data(acct.sync.as_ref()),
-            describe_send_data(acct.send.as_ref()),
-            if acct.enabled { "enabled" } else { "disabled" }
-        );
+    match resolve_format(format) {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&summaries)?);
+        }
+        OutputFormat::Jsonl => {
+            println!("{}", jsonl(&summaries)?);
+        }
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["key", "name", "email", "sync", "send", "enabled"])?;
+            for row in &summaries {
+                writer.write_record([
+                    row.key.as_str(),
+                    row.name.as_str(),
+                    row.email.as_str(),
+                    row.sync,
+                    row.send,
+                    if row.enabled { "true" } else { "false" },
+                ])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for row in &summaries {
+                println!("{}", row.key);
+            }
+        }
+        OutputFormat::Table => {
+            if summaries.is_empty() {
+                println!("No accounts configured.");
+                println!("Run: mxr accounts add gmail|imap|smtp|imap-smtp");
+                return Ok(());
+            }
+            for row in &summaries {
+                println!(
+                    "  {} - {} <{}> [sync: {}, send: {}, {}]",
+                    row.key,
+                    row.name,
+                    row.email,
+                    row.sync,
+                    row.send,
+                    if row.enabled { "enabled" } else { "disabled" }
+                );
+            }
+        }
     }
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct AccountSummaryRow {
+    key: String,
+    name: String,
+    email: String,
+    sync: &'static str,
+    send: &'static str,
+    enabled: bool,
+}
+
+impl From<&AccountConfigData> for AccountSummaryRow {
+    fn from(account: &AccountConfigData) -> Self {
+        Self {
+            key: account.key.clone(),
+            name: account.name.clone(),
+            email: account.email.clone(),
+            sync: describe_sync_data(account.sync.as_ref()),
+            send: describe_send_data(account.send.as_ref()),
+            enabled: account.enabled,
+        }
+    }
 }
 
 async fn show_account(name: &str) -> anyhow::Result<()> {
@@ -376,6 +435,7 @@ fn describe_sync_data(sync: Option<&AccountSyncConfigData>) -> &'static str {
     match sync {
         Some(AccountSyncConfigData::Gmail { .. }) => "gmail",
         Some(AccountSyncConfigData::Imap { .. }) => "imap",
+        Some(AccountSyncConfigData::Fake) => "fake",
         None => "none",
     }
 }
@@ -384,6 +444,7 @@ fn describe_send_data(send: Option<&AccountSendConfigData>) -> &'static str {
     match send {
         Some(AccountSendConfigData::Gmail) => "gmail",
         Some(AccountSendConfigData::Smtp { .. }) => "smtp",
+        Some(AccountSendConfigData::Fake) => "fake",
         None => "none",
     }
 }

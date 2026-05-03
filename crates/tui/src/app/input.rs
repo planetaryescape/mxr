@@ -306,6 +306,7 @@ impl App {
                             mxr_core::types::ReplyHeaders {
                                 in_reply_to: in_reply_to.clone(),
                                 references: pending.fm.references.clone(),
+                                thread_id: pending.fm.thread_id.clone(),
                             }
                         });
                         let now = chrono::Utc::now();
@@ -348,6 +349,7 @@ impl App {
                             mxr_core::types::ReplyHeaders {
                                 in_reply_to: in_reply_to.clone(),
                                 references: pending.fm.references.clone(),
+                                thread_id: pending.fm.thread_id.clone(),
                             }
                         });
                         let now = chrono::Utc::now();

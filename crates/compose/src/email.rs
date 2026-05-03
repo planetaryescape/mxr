@@ -16,6 +16,7 @@ mod tests {
             reply_headers: Some(ReplyHeaders {
                 in_reply_to: "<parent@example.com>".into(),
                 references: vec!["<root@example.com>".into()],
+                thread_id: None,
             }),
             to: vec![Address {
                 name: Some("Alice".into()),

@@ -32,11 +32,31 @@ pub enum LabelsAction {
         name: String,
         #[arg(long)]
         color: Option<String>,
+        /// Show what would change without creating the label.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Delete a label
-    Delete { name: String },
+    Delete {
+        name: String,
+        /// Show what would change without deleting the label.
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip the interactive confirmation prompt.
+        #[arg(long)]
+        yes: bool,
+    },
     /// Rename a label
-    Rename { old: String, new: String },
+    Rename {
+        old: String,
+        new: String,
+        /// Show what would change without renaming the label.
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip the interactive confirmation prompt.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -100,6 +120,11 @@ pub enum RulesAction {
 
 #[derive(Subcommand)]
 pub enum ConfigAction {
+    /// Print the resolved config (default).
+    Show {
+        #[arg(long, value_enum)]
+        format: Option<crate::cli::OutputFormat>,
+    },
     /// Show config file path
     Path,
     /// Open config in $EDITOR

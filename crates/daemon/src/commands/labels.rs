@@ -69,7 +69,21 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
-        Some(LabelsAction::Create { name, color }) => {
+        Some(LabelsAction::Create {
+            name,
+            color,
+            dry_run,
+        }) => {
+            if dry_run {
+                println!(
+                    "Would create label \"{name}\"{}",
+                    color
+                        .as_deref()
+                        .map(|c| format!(" with color {c}"))
+                        .unwrap_or_default()
+                );
+                return Ok(());
+            }
             let resp = client
                 .request(Request::CreateLabel {
                     name,
@@ -87,7 +101,17 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
-        Some(LabelsAction::Delete { name }) => {
+        Some(LabelsAction::Delete { name, dry_run, yes }) => {
+            if dry_run {
+                println!("Would delete label \"{name}\"");
+                return Ok(());
+            }
+            if !yes && !confirm_destructive(&format!(
+                "Delete label \"{name}\"? Messages keep their other labels. [y/N] "
+            ))? {
+                println!("Aborted.");
+                return Ok(());
+            }
             let resp = client
                 .request(Request::DeleteLabel {
                     name,
@@ -102,7 +126,22 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
-        Some(LabelsAction::Rename { old, new }) => {
+        Some(LabelsAction::Rename {
+            old,
+            new,
+            dry_run,
+            yes,
+        }) => {
+            if dry_run {
+                println!("Would rename label \"{old}\" -> \"{new}\"");
+                return Ok(());
+            }
+            if !yes && !confirm_destructive(&format!(
+                "Rename label \"{old}\" -> \"{new}\"? [y/N] "
+            ))? {
+                println!("Aborted.");
+                return Ok(());
+            }
             let resp = client
                 .request(Request::RenameLabel {
                     old,
@@ -121,6 +160,22 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
     }
 
     Ok(())
+}
+
+fn confirm_destructive(prompt: &str) -> anyhow::Result<bool> {
+    use std::io::{self, IsTerminal, Write};
+    if !io::stdin().is_terminal() {
+        // Refuse to silently proceed when there is no human to confirm.
+        anyhow::bail!(
+            "destructive action requires confirmation; pass --yes to proceed non-interactively"
+        );
+    }
+    print!("{prompt}");
+    io::stdout().flush()?;
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    let trimmed = answer.trim().to_ascii_lowercase();
+    Ok(trimmed == "y" || trimmed == "yes")
 }
 
 #[cfg(test)]

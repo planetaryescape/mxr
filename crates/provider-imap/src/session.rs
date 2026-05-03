@@ -27,6 +27,9 @@ pub trait ImapSession: Send {
         known_uids: &str,
     ) -> Result<QresyncInfo>;
     async fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<FetchedMessage>>;
+    /// `UID SEARCH <query>`. Used (with `ALL`) for the QRESYNC/CONDSTORE-less
+    /// delta path so we can detect server-side deletions by diffing UIDs.
+    async fn uid_search(&mut self, query: &str) -> Result<Vec<u32>>;
     async fn uid_store(&mut self, uid_set: &str, flags: &str) -> Result<()>;
     async fn uid_copy(&mut self, uid_set: &str, mailbox: &str) -> Result<()>;
     async fn uid_move(&mut self, uid_set: &str, mailbox: &str) -> Result<()>;
@@ -377,6 +380,15 @@ impl ImapSession for RealImapSession {
         Ok(messages)
     }
 
+    async fn uid_search(&mut self, query: &str) -> Result<Vec<u32>> {
+        let uids = self
+            .session
+            .uid_search(query)
+            .await
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        Ok(uids.into_iter().collect())
+    }
+
     async fn uid_store(&mut self, uid_set: &str, flags: &str) -> Result<()> {
         use futures::TryStreamExt;
         let stream = self
@@ -552,6 +564,9 @@ pub mod mock {
 
     pub(crate) struct MockSessionState {
         pub(crate) fetch_queues_by_mailbox: HashMap<String, VecDeque<Vec<FetchedMessage>>>,
+        /// Per-mailbox UID set returned by `UID SEARCH ALL`. None means an empty
+        /// set; tests opt in by inserting via `MockImapSessionFactory`.
+        pub(crate) uid_search_results: HashMap<String, Vec<u32>>,
     }
 
     pub struct MockImapSession {
@@ -667,6 +682,26 @@ pub mod mock {
                 .unwrap_or_default())
         }
 
+        async fn uid_search(&mut self, query: &str) -> Result<Vec<u32>> {
+            self.log
+                .lock()
+                .unwrap()
+                .commands
+                .push(format!("UID SEARCH {query}"));
+            let mailbox = self
+                .selected_mailbox
+                .clone()
+                .unwrap_or_else(|| "INBOX".to_string());
+            Ok(self
+                .state
+                .lock()
+                .unwrap()
+                .uid_search_results
+                .get(&mailbox)
+                .cloned()
+                .unwrap_or_default())
+        }
+
         async fn uid_store(&mut self, uid_set: &str, flags: &str) -> Result<()> {
             self.log
                 .lock()
@@ -776,6 +811,7 @@ pub mod mock {
                 log: Arc::new(Mutex::new(CommandLog::default())),
                 state: Arc::new(Mutex::new(MockSessionState {
                     fetch_queues_by_mailbox,
+                    uid_search_results: HashMap::new(),
                 })),
             }
         }
@@ -792,6 +828,17 @@ pub mod mock {
 
         pub fn with_qresync(mut self, response: QresyncInfo) -> Self {
             self.qresync_response = Some(response);
+            self
+        }
+
+        /// Inject the UID set returned by `UID SEARCH ALL` for a mailbox.
+        /// Used by tests that exercise the QRESYNC/CONDSTORE-less delete-detection path.
+        pub fn with_uid_search(self, mailbox: &str, uids: Vec<u32>) -> Self {
+            self.state
+                .lock()
+                .unwrap()
+                .uid_search_results
+                .insert(mailbox.to_string(), uids);
             self
         }
 
@@ -866,6 +913,7 @@ mod tests {
     use super::mock::*;
     use super::*;
     use crate::types::*;
+    use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
     fn mock_state(
@@ -874,6 +922,7 @@ mod tests {
     ) -> Arc<Mutex<MockSessionState>> {
         Arc::new(Mutex::new(MockSessionState {
             fetch_queues_by_mailbox: build_fetch_queues(&fetch_responses, &folders),
+            uid_search_results: HashMap::new(),
         }))
     }
 

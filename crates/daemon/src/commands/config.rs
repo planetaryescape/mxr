@@ -1,7 +1,19 @@
-use crate::cli::ConfigAction;
+use crate::cli::{ConfigAction, OutputFormat};
+use crate::output::resolve_format;
 
 pub fn run(action: Option<ConfigAction>) -> anyhow::Result<()> {
-    match action.unwrap_or(ConfigAction::Edit) {
+    match action.unwrap_or(ConfigAction::Show { format: None }) {
+        ConfigAction::Show { format } => {
+            let config = mxr_config::load_config().unwrap_or_default();
+            match resolve_format(format) {
+                OutputFormat::Json | OutputFormat::Jsonl => {
+                    println!("{}", serde_json::to_string_pretty(&config)?);
+                }
+                _ => {
+                    println!("{}", toml::to_string_pretty(&config)?);
+                }
+            }
+        }
         ConfigAction::Path => {
             println!("{}", mxr_config::config_file_path().display());
         }

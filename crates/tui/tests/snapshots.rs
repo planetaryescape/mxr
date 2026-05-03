@@ -236,6 +236,7 @@ fn send_confirm_snapshot() {
             from: "me@example.com".into(),
             in_reply_to: None,
             references: vec![],
+            thread_id: None,
             attach: vec![],
         },
         body: "Hello".into(),

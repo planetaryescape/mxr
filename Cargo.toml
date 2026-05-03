@@ -42,8 +42,14 @@ path = "crates/daemon/tests/daemon_lifecycle.rs"
 name = "reset_cli"
 path = "crates/daemon/tests/reset_cli.rs"
 
+[[test]]
+name = "cli_journey"
+path = "crates/daemon/tests/cli_journey.rs"
+
 [features]
-default = ["semantic-local"]
+# Default profile is intentionally minimal so CLI iteration is fast (~1m vs ~6m).
+# Activate the full local-semantic stack with `--features semantic-local`.
+default = []
 semantic-local = ["local"]
 local = ["mxr-semantic/local"]
 
@@ -122,6 +128,7 @@ mxr-tui = { path = "crates/tui", version = "0.4.33" }
 mxr-web = { path = "crates/web", version = "0.4.33" }
 
 glob-match = "0.2"
+shell-words = "1.1"
 which = "7"
 
 # IMAP (fork with ENABLE/NAMESPACE support, published as mxr-async-imap)

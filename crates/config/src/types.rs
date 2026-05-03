@@ -89,6 +89,9 @@ pub enum SyncProviderConfig {
         auth_required: bool,
         use_tls: bool,
     },
+    /// In-memory provider used for CLI smoke tests.
+    /// Generates fixture mail on startup. Not for production use.
+    Fake,
 }
 
 /// Send provider configuration (tagged enum).
@@ -105,6 +108,8 @@ pub enum SendProviderConfig {
         auth_required: bool,
         use_tls: bool,
     },
+    /// Records sent drafts in memory; used with the fake sync provider for tests.
+    Fake,
 }
 
 fn default_auth_required() -> bool {

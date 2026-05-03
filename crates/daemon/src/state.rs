@@ -279,6 +279,22 @@ impl AppState {
                         config,
                     )) as Arc<dyn MailSyncProvider>)
                 }
+                Some(mxr_config::SyncProviderConfig::Fake) => {
+                    let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+                    if matches!(
+                        acct_config.send,
+                        Some(mxr_config::SendProviderConfig::Fake)
+                    ) {
+                        let send_provider: Arc<dyn MailSendProvider> = fake.clone();
+                        send_providers.insert(account_id.clone(), send_provider.clone());
+                        if requested_default == Some(key.as_str())
+                            || default_send_provider.is_none()
+                        {
+                            default_send_provider = Some(send_provider);
+                        }
+                    }
+                    Some(fake as Arc<dyn MailSyncProvider>)
+                }
                 None => None,
             };
 
@@ -327,6 +343,17 @@ impl AppState {
                     default_send_provider = Some(send_provider.clone());
                 }
                 send_providers.insert(account_id.clone(), send_provider);
+            }
+
+            if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Fake))
+                && !send_providers.contains_key(&account_id)
+            {
+                let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()))
+                    as Arc<dyn MailSendProvider>;
+                if requested_default == Some(key.as_str()) || default_send_provider.is_none() {
+                    default_send_provider = Some(fake.clone());
+                }
+                send_providers.insert(account_id.clone(), fake);
             }
         }
 
@@ -834,6 +861,7 @@ fn sync_provider_kind(sync: Option<&mxr_config::SyncProviderConfig>) -> Option<P
     match sync {
         Some(mxr_config::SyncProviderConfig::Gmail { .. }) => Some(ProviderKind::Gmail),
         Some(mxr_config::SyncProviderConfig::Imap { .. }) => Some(ProviderKind::Imap),
+        Some(mxr_config::SyncProviderConfig::Fake) => Some(ProviderKind::Fake),
         None => None,
     }
 }
@@ -842,6 +870,7 @@ fn send_provider_kind(send: Option<&mxr_config::SendProviderConfig>) -> Option<P
     match send {
         Some(mxr_config::SendProviderConfig::Gmail) => Some(ProviderKind::Gmail),
         Some(mxr_config::SendProviderConfig::Smtp { .. }) => Some(ProviderKind::Smtp),
+        Some(mxr_config::SendProviderConfig::Fake) => Some(ProviderKind::Fake),
         None => None,
     }
 }

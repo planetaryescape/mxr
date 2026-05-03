@@ -120,6 +120,7 @@ fn parse_reply_headers(raw: Option<String>) -> Option<ReplyHeaders> {
             Some(ReplyHeaders {
                 in_reply_to: raw,
                 references: Vec::new(),
+                thread_id: None,
             })
         }
     })

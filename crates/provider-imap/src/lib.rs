@@ -227,22 +227,28 @@ impl ImapProvider {
         uid: &str,
         capabilities: &ImapCapabilities,
     ) -> mxr_core::provider::Result<()> {
+        // Bare EXPUNGE deletes EVERY \Deleted message in the mailbox, not just
+        // the one we marked. Refuse to delete unless the server advertises
+        // UIDPLUS (RFC 4315) so we can target a specific UID. Callers should
+        // route deletes through `move_selected_message` when MOVE is available.
+        if !capabilities.uidplus {
+            return Err(mxr_core::MxrError::Provider(
+                "IMAP delete refused: server does not advertise UIDPLUS (RFC 4315). \
+                 Bare EXPUNGE would delete every \\Deleted message in the mailbox. \
+                 Configure a Trash folder so mxr can MOVE instead, or use a server \
+                 that supports UIDPLUS."
+                    .into(),
+            ));
+        }
+
         session
             .uid_store(uid, "+FLAGS (\\Deleted)")
             .await
             .map_err(mxr_core::error::MxrError::from)?;
-
-        if capabilities.uidplus {
-            session
-                .uid_expunge(uid)
-                .await
-                .map_err(mxr_core::error::MxrError::from)?;
-        } else {
-            session
-                .expunge()
-                .await
-                .map_err(mxr_core::error::MxrError::from)?;
-        }
+        session
+            .uid_expunge(uid)
+            .await
+            .map_err(mxr_core::error::MxrError::from)?;
 
         Ok(())
     }
@@ -574,7 +580,10 @@ impl ImapProvider {
             highest_modseq: mailbox_info.highest_modseq,
         };
 
-        if !qresync_used && capabilities.condstore && mailbox_info.highest_modseq.is_some() {
+        let condstore_used = !qresync_used
+            && capabilities.condstore
+            && mailbox_info.highest_modseq.is_some();
+        if condstore_used {
             if let Some(old_mailbox) = old_mailbox.as_ref() {
                 if mailbox_info.uid_validity == old_mailbox.uid_validity
                     && old_mailbox
@@ -595,6 +604,36 @@ impl ImapProvider {
                         &mut synced,
                     )
                     .await?;
+                }
+            }
+        }
+
+        // UID-diff fallback: when the server advertises neither QRESYNC nor
+        // CONDSTORE we cannot rely on VANISHED or CHANGEDSINCE to detect
+        // deletions. Issue `UID SEARCH ALL` and diff against the UIDs we
+        // believed lived in this mailbox last sync (1..old.uid_next-1).
+        if !qresync_used
+            && !condstore_used
+            && mailbox_info.uid_validity
+                == old_mailbox
+                    .as_ref()
+                    .map(|c| c.uid_validity)
+                    .unwrap_or(mailbox_info.uid_validity)
+        {
+            if let Some(old) = old_mailbox.as_ref() {
+                if old.uid_next > 1 {
+                    let server_uids: HashSet<u32> = session
+                        .uid_search("ALL")
+                        .await
+                        .map_err(mxr_core::error::MxrError::from)?
+                        .into_iter()
+                        .collect();
+                    for uid in 1..old.uid_next {
+                        if !server_uids.contains(&uid) {
+                            deleted_provider_ids
+                                .push(folders::format_provider_id(&folder.name, uid));
+                        }
+                    }
                 }
             }
         }
@@ -1256,6 +1295,10 @@ mod tests {
                 .unwrap_or_default())
         }
 
+        async fn uid_search(&mut self, _query: &str) -> crate::session::Result<Vec<u32>> {
+            Ok(Vec::new())
+        }
+
         async fn uid_store(&mut self, _uid_set: &str, _flags: &str) -> crate::session::Result<()> {
             Ok(())
         }
@@ -1377,8 +1420,16 @@ mod tests {
             vec![
                 folder_info("INBOX", Some("\\Inbox")),
                 folder_info("Archive", Some("\\Archive")),
+                folder_info("Trash", Some("\\Trash")),
             ],
-        );
+        )
+        // Conformance asserts trash succeeds; servers without UIDPLUS now refuse,
+        // so advertise UIDPLUS (and MOVE for the COPY-then-delete fast path).
+        .with_capabilities(ImapCapabilities {
+            uidplus: true,
+            move_ext: true,
+            ..Default::default()
+        });
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
         mxr_provider_fake::conformance::run_sync_conformance(&provider).await;
@@ -1700,6 +1751,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delta_sync_uid_diff_fallback_detects_deletes_without_qresync_or_condstore() {
+        // Server only knows UIDs 1, 3, 4 — UID 2 was deleted server-side since
+        // last sync (which thought uid_next was 5, so it knew about 1..=4).
+        let factory = MockImapSessionFactory::new(
+            MailboxInfo {
+                uid_validity: 1,
+                uid_next: 5,
+                exists: 3,
+                highest_modseq: None,
+            },
+            // No FLAGS+BODY fetch since uid_next did not advance.
+            vec![],
+            vec![],
+        )
+        .with_uid_search("INBOX", vec![1, 3, 4]);
+        let log = factory.log.clone();
+
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
+
+        let cursor = SyncCursor::Imap {
+            uid_validity: 1,
+            uid_next: 5,
+            mailboxes: vec![ImapMailboxCursor {
+                mailbox: "INBOX".into(),
+                uid_validity: 1,
+                uid_next: 5,
+                highest_modseq: None,
+            }],
+            capabilities: None,
+        };
+
+        let batch = provider.sync_messages(&cursor).await.unwrap();
+
+        assert_eq!(batch.deleted_provider_ids, vec!["INBOX:2"]);
+        assert!(batch.upserted.is_empty());
+
+        let commands = log.lock().unwrap().commands.clone();
+        assert!(
+            commands.iter().any(|cmd| cmd == "UID SEARCH ALL"),
+            "expected UID SEARCH ALL fallback; commands={commands:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn delta_sync_enables_qresync_and_tracks_vanished_messages() {
         let factory = MockImapSessionFactory::new(
             MailboxInfo {
@@ -1877,20 +1973,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn trash_copies_and_deletes() {
+    async fn trash_refuses_when_uidplus_and_move_unavailable() {
         let factory = MockImapSessionFactory::new(mailbox_info(1, 2, 1), vec![], vec![]);
         let log = factory.log.clone();
 
         let provider =
             ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
-        provider.trash("INBOX:42").await.unwrap();
+        let err = provider
+            .trash("INBOX:42")
+            .await
+            .expect_err("trash without UIDPLUS or MOVE must fail");
+        let message = err.to_string();
+        assert!(
+            message.contains("UIDPLUS"),
+            "error should mention UIDPLUS requirement: {message}"
+        );
 
         let commands = log.lock().unwrap().commands.clone();
-        assert!(commands.contains(&"SELECT INBOX".to_string()));
-        assert!(commands.contains(&"UID COPY 42 Trash".to_string()));
-        assert!(commands.contains(&"UID STORE 42 +FLAGS (\\Deleted)".to_string()));
-        assert!(commands.contains(&"EXPUNGE".to_string()));
+        assert!(
+            !commands.contains(&"EXPUNGE".to_string()),
+            "must never issue bare EXPUNGE: {commands:?}"
+        );
     }
 
     #[tokio::test]

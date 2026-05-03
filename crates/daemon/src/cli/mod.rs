@@ -51,6 +51,8 @@ pub enum Command {
         query: String,
         #[arg(long, value_enum)]
         mode: Option<SearchModeArg>,
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
     },
     /// Display a message
     Cat {
@@ -122,8 +124,16 @@ pub enum Command {
         account: Option<String>,
         #[arg(long)]
         status: bool,
+        /// Wait for the triggered sync to finish before returning.
+        /// Useful in scripts and CLI smoke tests.
         #[arg(long)]
-        history: bool,
+        wait: bool,
+        /// Maximum seconds to wait when --wait is set. Default 60.
+        #[arg(long, default_value_t = 60)]
+        wait_timeout_secs: u64,
+        /// Output format. Honored by `--status`; ignored by trigger mode today.
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
     },
     /// Show daemon status
     Status {
@@ -229,6 +239,9 @@ pub enum Command {
     Accounts {
         #[command(subcommand)]
         action: Option<AccountsAction>,
+        /// Output format for `accounts` (the no-subcommand listing).
+        #[arg(long, value_enum, global = true)]
+        format: Option<OutputFormat>,
     },
     /// Run diagnostics
     Doctor {
@@ -627,6 +640,7 @@ mod tests {
                     Some(LabelsAction::Create {
                         name,
                         color: Some(color),
+                        ..
                     }),
                 ..
             }) => {
@@ -642,7 +656,7 @@ mod tests {
         let cli = Cli::parse_from(["mxr", "labels", "rename", "Old", "New"]);
         match cli.command {
             Some(Command::Labels {
-                action: Some(LabelsAction::Rename { old, new }),
+                action: Some(LabelsAction::Rename { old, new, .. }),
                 ..
             }) => {
                 assert_eq!(old, "Old");
@@ -775,6 +789,7 @@ mod tests {
         match cli.command {
             Some(Command::Accounts {
                 action: Some(AccountsAction::Disable { name }),
+                ..
             }) => assert_eq!(name, "consulting"),
             other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
         }
@@ -800,6 +815,7 @@ mod tests {
                         yes,
                         purge_local_data,
                     }),
+                ..
             }) => {
                 assert_eq!(name, "consulting");
                 assert!(dry_run);

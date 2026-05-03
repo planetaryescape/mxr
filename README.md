@@ -17,13 +17,13 @@ brew tap planetaryescape/mxr
 brew install mxr
 
 # Cargo (release tag)
-cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.52 --locked mxr
+cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.53 --locked mxr
 ```
 
 Pre-built release tarballs are also available for:
 
 - macOS Apple Silicon
-- macOS Intel
+- macOS Intel (without the optional local semantic backend)
 - Linux x86_64
 
 [Download the latest release](https://github.com/planetaryescape/mxr/releases/latest)

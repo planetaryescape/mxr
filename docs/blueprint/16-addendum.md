@@ -700,6 +700,56 @@ use_tls = true
 
 ---
 
+## A010: CLI v1 ship gate
+
+**Affects**: 06-compose.md, 09-cli.md, 03-providers.md, 15-decision-log.md
+
+**What was missing**: The blueprint promised "every TUI action has a CLI equivalent" (D026) and "Pipeable JSON is mandatory," but the alpha CLI shipped with several commands that violated those promises. This addendum records the v1 gate decisions.
+
+**The rule** — CLI v1 requires:
+
+1. **Compose journeys end-to-end.** `mxr compose | reply | reply-all | forward` accept inline `--body` (and `--body-stdin`) and skip `$EDITOR` when given. With `--yes` they send via the daemon's `SendDraft`; without it they save via `SaveDraft` and print the draft id. Reply contexts (PrepareReply / PrepareForward) carry the originating `account_id` and a provider-native `thread_id` hint so the CLI can build a Draft without an extra IPC roundtrip. (D080)
+
+2. **Mutations are local-truth coherent.** Every mutation handler (`archive`, `read-and-archive`, `trash`, `spam`, `star`, `read`, `label`, `move`) reconciles labels in SQLite (`reconcile_label_mutation`) and re-indexes the affected message in Tantivy after provider success. Search results immediately reflect the new state. Reply-all dedupes the configured account address from To/Cc and includes the original recipients. (D081)
+
+3. **`$EDITOR` accepts shell command strings** like `code --wait` or `flatpak run org.gnome.gedit`. We split with `shell-words` and treat the first token as the program; the rest are arguments. An empty `$EDITOR` errors clearly. (D082)
+
+4. **IMAP delete refuses without UIDPLUS.** Bare `EXPUNGE` (RFC 3501) deletes every `\Deleted` message in the mailbox, not just the targeted one. mxr now refuses to expunge unless the server advertises UIDPLUS (RFC 4315). When MOVE is available we route deletes through `UID MOVE` to the configured Trash folder. (D083)
+
+5. **IMAP delta sync detects deletes without QRESYNC.** When neither QRESYNC (RFC 7162) nor CONDSTORE is available, the delta path issues `UID SEARCH ALL` and diffs against the cached UID range to surface server-side deletions. UIDVALIDITY resets still trigger a full mailbox resync. (D084)
+
+6. **`--format json` is uniform.** `accounts`, `sync` (trigger + `--status`), `count`, `config show`, `logs`, plus mutation results all emit stable JSON via the existing `OutputFormat` enum. `mxr config` defaults to printing the resolved config (TOML or JSON); `mxr config edit` opens `$EDITOR`. (D085)
+
+7. **No silently-ignored flags.** `mxr sync --history` is removed (the dedicated `mxr history` subcommand is canonical). `mxr logs --since` is wired to RFC 3339 timestamps and short relative durations (`10m`, `2h`, `1d`). (D086)
+
+8. **Label CRUD is dry-runnable and confirmation-gated.** `mxr labels create|delete|rename` accept `--dry-run`; delete and rename require `--yes` (or an interactive `y/N` prompt) so that scripts cannot accidentally erase user labels. (D087)
+
+9. **Provider-fake is selectable from config.** `[accounts.foo.sync] type = "fake"` and `[accounts.foo.send] type = "fake"` route the daemon to `mxr-provider-fake`. This is the seam used by the binary-level CLI smoke test (`crates/daemon/tests/cli_journey.rs`). (D088)
+
+10. **Default Cargo features exclude semantic-local.** The root `mxr` crate's default feature set is now empty; `--features semantic-local` opts in. CI runs both lanes (`Test (fast / no semantic)` and `Test (semantic-local)`). This drops first-time CLI test compile from ~6 min to ~1 min. (D089)
+
+### Decision records
+
+- **D080**: Reply / forward / compose go through `SaveDraft`/`SendDraft`; `--yes` sends, default saves a daemon draft and prints its id.
+- **D081**: All mutation paths reindex Tantivy after provider success; trash/spam additionally call `reconcile_label_mutation` so label counts and message_labels stay coherent.
+- **D082**: `$EDITOR` accepts a shell command string parsed with `shell-words`; vim-style `+N` cursor positioning still applies when the first token matches `vim`/`nvim`/`vi`.
+- **D083**: IMAP delete refuses without UIDPLUS; bare `EXPUNGE` is never issued.
+- **D084**: IMAP delta sync falls back to `UID SEARCH ALL` + UID-range diff for deletion detection when neither QRESYNC nor CONDSTORE is advertised.
+- **D085**: `OutputFormat` is mandatory across read/list/status/mutation surfaces; `mxr config` defaults to `show` (resolved config), with `edit` as an explicit subcommand.
+- **D086**: Silently-ignored CLI flags are removed; `--since` is wired.
+- **D087**: Label create/delete/rename support `--dry-run` and require `--yes` for destructive operations.
+- **D088**: `SyncProviderConfig::Fake` and `SendProviderConfig::Fake` are recognised by the daemon and bind to `mxr-provider-fake`.
+- **D089**: `semantic-local` is no longer a default feature; CI runs a fast lane plus a full-feature lane. Notmuch-style `--format-version=N` versioning is intentionally deferred to post-v1.
+
+### Out of scope for v1 (post-v1 follow-ups)
+
+- Notmuch-style `--format-version=N` exit codes 20/21 for JSON contract versioning.
+- IMAP `IDLE` wiring (capability is detected and stored but not yet used as a push channel).
+- Capturing `Reply-To:` on `Envelope` so `prepare_reply` can prefer it over `From:` (today reply target falls back to `From:` always).
+- Surfacing the Gmail provider thread id end-to-end so `Draft.reply_headers.thread_id` is populated automatically (today it is None until a future Envelope schema change adds `provider_thread_id`).
+
+---
+
 ## End of addendum
 
-Any future refinements should be appended below as A010, A011, etc. following the same format.
+Any future refinements should be appended below as A011, A012, etc. following the same format.

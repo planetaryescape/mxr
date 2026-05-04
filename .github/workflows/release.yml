@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  # Manual trigger so a release can be re-run on its own tag when the initial
+  # tag-push event was suppressed (e.g. release-please-action creates the tag
+  # via the default GITHUB_TOKEN, which by design does not fire downstream
+  # workflows). Pass the existing tag (e.g. `v0.4.55`) as the ref.
+  workflow_dispatch:
 
 permissions:
   contents: write

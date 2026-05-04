@@ -486,19 +486,15 @@ impl AppState {
                     })
                 });
                 let smtp_host = match tenant {
-                    mxr_provider_outlook::OutlookTenant::Personal => {
-                        "smtp-mail.outlook.com"
-                    }
+                    mxr_provider_outlook::OutlookTenant::Personal => "smtp-mail.outlook.com",
                     mxr_provider_outlook::OutlookTenant::Work => "smtp.office365.com",
                 };
-                let send_provider = Arc::new(
-                    mxr_provider_outlook::OutlookSmtpSendProvider::new(
-                        smtp_host.to_string(),
-                        587,
-                        acct_config.email.clone(),
-                        token_fn,
-                    ),
-                ) as Arc<dyn MailSendProvider>;
+                let send_provider = Arc::new(mxr_provider_outlook::OutlookSmtpSendProvider::new(
+                    smtp_host.to_string(),
+                    587,
+                    acct_config.email.clone(),
+                    token_fn,
+                )) as Arc<dyn MailSendProvider>;
                 if requested_default == Some(key.as_str()) || default_send_provider.is_none() {
                     default_send_provider = Some(send_provider.clone());
                 }
@@ -1065,8 +1061,8 @@ fn build_outlook_sync_provider(
         email.to_string(),
         token_fn,
     );
-    Ok(Some(Arc::new(
-        mxr_provider_imap::ImapProvider::with_session_factory(
+    Ok(Some(
+        Arc::new(mxr_provider_imap::ImapProvider::with_session_factory(
             account_id.clone(),
             mxr_provider_imap::config::ImapConfig::new(
                 "outlook.office365.com".to_string(),
@@ -1077,8 +1073,8 @@ fn build_outlook_sync_provider(
                 true,
             ),
             Box::new(factory),
-        ),
-    ) as Arc<dyn MailSyncProvider>))
+        )) as Arc<dyn MailSyncProvider>,
+    ))
 }
 
 fn sync_provider_kind(sync: Option<&mxr_config::SyncProviderConfig>) -> Option<ProviderKind> {
@@ -1088,9 +1084,7 @@ fn sync_provider_kind(sync: Option<&mxr_config::SyncProviderConfig>) -> Option<P
         Some(mxr_config::SyncProviderConfig::OutlookPersonal { .. }) => {
             Some(ProviderKind::OutlookPersonal)
         }
-        Some(mxr_config::SyncProviderConfig::OutlookWork { .. }) => {
-            Some(ProviderKind::OutlookWork)
-        }
+        Some(mxr_config::SyncProviderConfig::OutlookWork { .. }) => Some(ProviderKind::OutlookWork),
         Some(mxr_config::SyncProviderConfig::Fake) => Some(ProviderKind::Fake),
         None => None,
     }
@@ -1103,9 +1097,7 @@ fn send_provider_kind(send: Option<&mxr_config::SendProviderConfig>) -> Option<P
         Some(mxr_config::SendProviderConfig::OutlookPersonal { .. }) => {
             Some(ProviderKind::OutlookPersonal)
         }
-        Some(mxr_config::SendProviderConfig::OutlookWork { .. }) => {
-            Some(ProviderKind::OutlookWork)
-        }
+        Some(mxr_config::SendProviderConfig::OutlookWork { .. }) => Some(ProviderKind::OutlookWork),
         Some(mxr_config::SendProviderConfig::Fake) => Some(ProviderKind::Fake),
         None => None,
     }

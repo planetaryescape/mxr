@@ -1,19 +1,18 @@
-use mxr_outbound::email::build_message;
-use mxr_core::error::MxrError;
-use mxr_core::provider::MailSendProvider;
-use mxr_core::types::{Address, Draft, SendReceipt};
 use async_trait::async_trait;
 use futures::future::BoxFuture;
+#[cfg(not(test))]
+use lettre::AsyncTransport;
 use lettre::{
     transport::smtp::authentication::{Credentials, Mechanism},
     AsyncSmtpTransport, Tokio1Executor,
 };
-#[cfg(not(test))]
-use lettre::AsyncTransport;
+use mxr_core::error::MxrError;
+use mxr_core::provider::MailSendProvider;
+use mxr_core::types::{Address, Draft, SendReceipt};
+use mxr_outbound::email::build_message;
 use std::sync::Arc;
 
-type TokenFn =
-    Arc<dyn Fn() -> BoxFuture<'static, anyhow::Result<String>> + Send + Sync>;
+type TokenFn = Arc<dyn Fn() -> BoxFuture<'static, anyhow::Result<String>> + Send + Sync>;
 
 /// SMTP send provider using XOAUTH2 for Microsoft Outlook/Exchange.
 pub struct OutlookSmtpSendProvider {

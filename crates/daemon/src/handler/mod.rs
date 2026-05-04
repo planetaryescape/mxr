@@ -1723,13 +1723,25 @@ async fn authorize_account_config(
     if let Some(tenant) = outlook_tenant {
         let (client_id, token_ref) = match &account.sync {
             Some(
-                AccountSyncConfigData::OutlookPersonal { client_id, token_ref }
-                | AccountSyncConfigData::OutlookWork { client_id, token_ref },
+                AccountSyncConfigData::OutlookPersonal {
+                    client_id,
+                    token_ref,
+                }
+                | AccountSyncConfigData::OutlookWork {
+                    client_id,
+                    token_ref,
+                },
             ) => (client_id.clone(), token_ref.clone()),
             _ => match &account.send {
                 Some(
-                    AccountSendConfigData::OutlookPersonal { client_id, token_ref }
-                    | AccountSendConfigData::OutlookWork { client_id, token_ref },
+                    AccountSendConfigData::OutlookPersonal {
+                        client_id,
+                        token_ref,
+                    }
+                    | AccountSendConfigData::OutlookWork {
+                        client_id,
+                        token_ref,
+                    },
                 ) => (client_id.clone(), token_ref.clone()),
                 _ => unreachable!(),
             },
@@ -1744,7 +1756,8 @@ async fn authorize_account_config(
                 None,
                 Some(account_step(
                     false,
-                    "No bundled client ID and none provided. Add client_id to account config.".into(),
+                    "No bundled client ID and none provided. Add client_id to account config."
+                        .into(),
                 )),
                 None,
                 None,
@@ -1787,7 +1800,10 @@ async fn authorize_account_config(
             url = %device_code_url,
             "Outlook device code flow started — user must enter code in browser"
         );
-        return match auth.poll_for_token(&device_resp.device_code, device_resp.interval).await {
+        return match auth
+            .poll_for_token(&device_resp.device_code, device_resp.interval)
+            .await
+        {
             Ok(tokens) => {
                 if let Err(e) = auth.save_tokens(&tokens) {
                     account_operation_result(
@@ -2018,16 +2034,22 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                     }
                 }
             }
-            AccountSyncConfigData::OutlookPersonal { client_id, token_ref }
-            | AccountSyncConfigData::OutlookWork { client_id, token_ref } => {
+            AccountSyncConfigData::OutlookPersonal {
+                client_id,
+                token_ref,
+            }
+            | AccountSyncConfigData::OutlookWork {
+                client_id,
+                token_ref,
+            } => {
                 let tenant = match &account.sync {
                     Some(AccountSyncConfigData::OutlookWork { .. }) => {
                         mxr_provider_outlook::OutlookTenant::Work
                     }
                     _ => mxr_provider_outlook::OutlookTenant::Personal,
                 };
-                let cid = client_id
-                    .or_else(|| mxr_provider_outlook::BUNDLED_CLIENT_ID.map(String::from));
+                let cid =
+                    client_id.or_else(|| mxr_provider_outlook::BUNDLED_CLIENT_ID.map(String::from));
                 match cid {
                     None => {
                         ok = false;
@@ -2042,10 +2064,8 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                         );
                         let email = account.email.clone();
                         let token_fn: std::sync::Arc<
-                            dyn Fn() -> futures::future::BoxFuture<
-                                'static,
-                                anyhow::Result<String>,
-                            > + Send
+                            dyn Fn() -> futures::future::BoxFuture<'static, anyhow::Result<String>>
+                                + Send
                                 + Sync,
                         > = std::sync::Arc::new(move || {
                             let a = auth_inst.clone();
@@ -2100,22 +2120,38 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
         }
         Some(
             send_cfg @ (AccountSendConfigData::OutlookPersonal { .. }
-                | AccountSendConfigData::OutlookWork { .. }),
+            | AccountSendConfigData::OutlookWork { .. }),
         ) => {
             let (token_ref, send_client_id, tenant) = match send_cfg {
-                AccountSendConfigData::OutlookPersonal { token_ref, client_id } => {
-                    (token_ref, client_id, mxr_provider_outlook::OutlookTenant::Personal)
-                }
-                AccountSendConfigData::OutlookWork { token_ref, client_id } => {
-                    (token_ref, client_id, mxr_provider_outlook::OutlookTenant::Work)
-                }
+                AccountSendConfigData::OutlookPersonal {
+                    token_ref,
+                    client_id,
+                } => (
+                    token_ref,
+                    client_id,
+                    mxr_provider_outlook::OutlookTenant::Personal,
+                ),
+                AccountSendConfigData::OutlookWork {
+                    token_ref,
+                    client_id,
+                } => (
+                    token_ref,
+                    client_id,
+                    mxr_provider_outlook::OutlookTenant::Work,
+                ),
                 _ => unreachable!(),
             };
             let cid = send_client_id
                 .or_else(|| match &account.sync {
                     Some(
-                        AccountSyncConfigData::OutlookPersonal { client_id: Some(id), .. }
-                        | AccountSyncConfigData::OutlookWork { client_id: Some(id), .. },
+                        AccountSyncConfigData::OutlookPersonal {
+                            client_id: Some(id),
+                            ..
+                        }
+                        | AccountSyncConfigData::OutlookWork {
+                            client_id: Some(id),
+                            ..
+                        },
                     ) => Some(id.clone()),
                     _ => None,
                 })
@@ -2129,9 +2165,9 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                     ));
                 }
                 Some(cid) => {
-                    let auth_inst = std::sync::Arc::new(
-                        mxr_provider_outlook::OutlookAuth::new(cid, token_ref, tenant),
-                    );
+                    let auth_inst = std::sync::Arc::new(mxr_provider_outlook::OutlookAuth::new(
+                        cid, token_ref, tenant,
+                    ));
                     let email = account.email.clone();
                     let token_fn: std::sync::Arc<
                         dyn Fn() -> futures::future::BoxFuture<'static, anyhow::Result<String>>
@@ -2330,11 +2366,17 @@ fn sync_config_to_data(sync: mxr_config::SyncProviderConfig) -> AccountSyncConfi
         mxr_config::SyncProviderConfig::OutlookPersonal {
             client_id,
             token_ref,
-        } => AccountSyncConfigData::OutlookPersonal { client_id, token_ref },
+        } => AccountSyncConfigData::OutlookPersonal {
+            client_id,
+            token_ref,
+        },
         mxr_config::SyncProviderConfig::OutlookWork {
             client_id,
             token_ref,
-        } => AccountSyncConfigData::OutlookWork { client_id, token_ref },
+        } => AccountSyncConfigData::OutlookWork {
+            client_id,
+            token_ref,
+        },
         mxr_config::SyncProviderConfig::Fake => AccountSyncConfigData::Fake,
     }
 }
@@ -2392,12 +2434,20 @@ fn provider_kind_label(kind: &mxr_core::ProviderKind) -> &'static str {
 fn send_config_to_data(send: mxr_config::SendProviderConfig) -> AccountSendConfigData {
     match send {
         mxr_config::SendProviderConfig::Gmail => AccountSendConfigData::Gmail,
-        mxr_config::SendProviderConfig::OutlookPersonal { client_id, token_ref } => {
-            AccountSendConfigData::OutlookPersonal { client_id, token_ref }
-        }
-        mxr_config::SendProviderConfig::OutlookWork { client_id, token_ref } => {
-            AccountSendConfigData::OutlookWork { client_id, token_ref }
-        }
+        mxr_config::SendProviderConfig::OutlookPersonal {
+            client_id,
+            token_ref,
+        } => AccountSendConfigData::OutlookPersonal {
+            client_id,
+            token_ref,
+        },
+        mxr_config::SendProviderConfig::OutlookWork {
+            client_id,
+            token_ref,
+        } => AccountSendConfigData::OutlookWork {
+            client_id,
+            token_ref,
+        },
         mxr_config::SendProviderConfig::Smtp {
             host,
             port,
@@ -2452,12 +2502,20 @@ fn sync_data_to_config(
             auth_required,
             use_tls,
         }),
-        AccountSyncConfigData::OutlookPersonal { client_id, token_ref } => {
-            Ok(mxr_config::SyncProviderConfig::OutlookPersonal { client_id, token_ref })
-        }
-        AccountSyncConfigData::OutlookWork { client_id, token_ref } => {
-            Ok(mxr_config::SyncProviderConfig::OutlookWork { client_id, token_ref })
-        }
+        AccountSyncConfigData::OutlookPersonal {
+            client_id,
+            token_ref,
+        } => Ok(mxr_config::SyncProviderConfig::OutlookPersonal {
+            client_id,
+            token_ref,
+        }),
+        AccountSyncConfigData::OutlookWork {
+            client_id,
+            token_ref,
+        } => Ok(mxr_config::SyncProviderConfig::OutlookWork {
+            client_id,
+            token_ref,
+        }),
         AccountSyncConfigData::Fake => Ok(mxr_config::SyncProviderConfig::Fake),
     }
 }
@@ -2467,12 +2525,20 @@ fn send_data_to_config(
 ) -> Result<mxr_config::SendProviderConfig, String> {
     match data {
         AccountSendConfigData::Gmail => Ok(mxr_config::SendProviderConfig::Gmail),
-        AccountSendConfigData::OutlookPersonal { client_id, token_ref } => {
-            Ok(mxr_config::SendProviderConfig::OutlookPersonal { client_id, token_ref })
-        }
-        AccountSendConfigData::OutlookWork { client_id, token_ref } => {
-            Ok(mxr_config::SendProviderConfig::OutlookWork { client_id, token_ref })
-        }
+        AccountSendConfigData::OutlookPersonal {
+            client_id,
+            token_ref,
+        } => Ok(mxr_config::SendProviderConfig::OutlookPersonal {
+            client_id,
+            token_ref,
+        }),
+        AccountSendConfigData::OutlookWork {
+            client_id,
+            token_ref,
+        } => Ok(mxr_config::SendProviderConfig::OutlookWork {
+            client_id,
+            token_ref,
+        }),
         AccountSendConfigData::Fake => Ok(mxr_config::SendProviderConfig::Fake),
         AccountSendConfigData::Smtp {
             host,

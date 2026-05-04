@@ -665,28 +665,6 @@ async fn remove_account(
     run_account_operation(remove_account_request(name, purge_local_data, false)).await
 }
 
-fn describe_sync(sync: Option<&mxr_config::SyncProviderConfig>) -> &'static str {
-    match sync {
-        Some(mxr_config::SyncProviderConfig::Gmail { .. }) => "gmail",
-        Some(mxr_config::SyncProviderConfig::Imap { .. }) => "imap",
-        Some(mxr_config::SyncProviderConfig::OutlookPersonal { .. }) => "outlook",
-        Some(mxr_config::SyncProviderConfig::OutlookWork { .. }) => "outlook-work",
-        Some(mxr_config::SyncProviderConfig::Fake) => "fake",
-        None => "none",
-    }
-}
-
-fn describe_send(send: Option<&mxr_config::SendProviderConfig>) -> &'static str {
-    match send {
-        Some(mxr_config::SendProviderConfig::Gmail) => "gmail",
-        Some(mxr_config::SendProviderConfig::Smtp { .. }) => "smtp",
-        Some(mxr_config::SendProviderConfig::OutlookPersonal { .. }) => "outlook",
-        Some(mxr_config::SendProviderConfig::OutlookWork { .. }) => "outlook-work",
-        Some(mxr_config::SendProviderConfig::Fake) => "fake",
-        None => "none",
-    }
-}
-
 async fn add_outlook() -> anyhow::Result<()> {
     add_outlook_inner(mxr_provider_outlook::OutlookTenant::Personal).await
 }
@@ -695,9 +673,7 @@ async fn add_outlook_work() -> anyhow::Result<()> {
     add_outlook_inner(mxr_provider_outlook::OutlookTenant::Work).await
 }
 
-async fn add_outlook_inner(
-    tenant: mxr_provider_outlook::OutlookTenant,
-) -> anyhow::Result<()> {
+async fn add_outlook_inner(tenant: mxr_provider_outlook::OutlookTenant) -> anyhow::Result<()> {
     let label = match tenant {
         mxr_provider_outlook::OutlookTenant::Personal => "Outlook (Personal)",
         mxr_provider_outlook::OutlookTenant::Work => "Outlook (Work)",
@@ -724,11 +700,7 @@ async fn add_outlook_inner(
     let email = prompt("Microsoft email address: ")?;
 
     let token_ref = format!("mxr/{account_name}-outlook");
-    let auth = mxr_provider_outlook::OutlookAuth::new(
-        client_id.clone(),
-        token_ref.clone(),
-        tenant,
-    );
+    let auth = mxr_provider_outlook::OutlookAuth::new(client_id.clone(), token_ref.clone(), tenant);
 
     println!("\nStarting Microsoft device code authorization...");
     let device_resp = auth.start_device_flow().await?;
@@ -795,12 +767,6 @@ async fn add_outlook_inner(
     println!("Account '{}' saved.", account_name);
     Ok(())
 }
-
-fn store_password(service: &str, username: &str, password: &str) -> anyhow::Result<()> {
-    mxr_keychain::set_password(service, username, password)?;
-    Ok(())
-}
-
 
 async fn repair_account(name: &str) -> anyhow::Result<()> {
     let mut account = find_account_config(name).await?;

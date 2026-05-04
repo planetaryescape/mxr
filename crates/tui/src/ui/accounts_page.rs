@@ -198,10 +198,16 @@ fn draw_form(
     theme: &crate::theme::Theme,
 ) {
     let form = &state.form;
-    let titles = ["Gmail", "IMAP + SMTP", "SMTP only", "Outlook", "Outlook (Work)"]
-        .into_iter()
-        .map(Line::from)
-        .collect::<Vec<_>>();
+    let titles = [
+        "Gmail",
+        "IMAP + SMTP",
+        "SMTP only",
+        "Outlook",
+        "Outlook (Work)",
+    ]
+    .into_iter()
+    .map(Line::from)
+    .collect::<Vec<_>>();
     let selected = match form.mode {
         AccountFormMode::Gmail => 0,
         AccountFormMode::ImapSmtp => 1,
@@ -258,20 +264,20 @@ fn draw_form(
     body_lines.push(Line::from(""));
     let auth_ready = match form.mode {
         AccountFormMode::Gmail => form.gmail_authorized,
-        AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => {
-            form.outlook_authorized
-        }
+        AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => form.outlook_authorized,
         _ => false,
     };
     if matches!(
         form.mode,
-        AccountFormMode::Gmail
-            | AccountFormMode::OutlookPersonal
-            | AccountFormMode::OutlookWork
+        AccountFormMode::Gmail | AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork
     ) {
         body_lines.push(Line::from(format!(
             "Auth state: {}",
-            if auth_ready { "ready" } else { "not authorized" }
+            if auth_ready {
+                "ready"
+            } else {
+                "not authorized"
+            }
         )));
     }
     body_lines.push(Line::from(""));

@@ -9,11 +9,11 @@ pub mod types;
 
 use async_trait::async_trait;
 use config::ImapConfig;
-pub use session::XOAuth2ImapSessionFactory;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use mxr_core::id::AccountId;
 use mxr_core::provider::MailSyncProvider;
 use mxr_core::types::*;
+pub use session::XOAuth2ImapSessionFactory;
 use session::{ImapSessionFactory, RealImapSessionFactory};
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};

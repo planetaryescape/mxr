@@ -11,8 +11,10 @@ use security_framework_sys::base::errSecItemNotFound;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum KeychainErrorKind {
+    #[cfg(target_os = "macos")]
     NotFound,
     Access,
+    #[cfg(target_os = "macos")]
     InvalidData,
 }
 
@@ -31,6 +33,7 @@ impl KeychainError {
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn invalid_data(message: impl Into<String>) -> Self {
         Self {
             kind: KeychainErrorKind::InvalidData,
@@ -38,6 +41,7 @@ impl KeychainError {
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn not_found(message: impl Into<String>) -> Self {
         Self {
             kind: KeychainErrorKind::NotFound,
@@ -45,6 +49,7 @@ impl KeychainError {
         }
     }
 
+    #[cfg(target_os = "macos")]
     fn is_not_found(&self) -> bool {
         self.kind == KeychainErrorKind::NotFound
     }

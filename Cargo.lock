@@ -4012,7 +4012,6 @@ dependencies = [
  "mail-parser",
  "mxr-async-imap",
  "mxr-core",
- "mxr-keychain",
  "mxr-mail-parse",
  "mxr-provider-fake",
  "mxr-test-support",

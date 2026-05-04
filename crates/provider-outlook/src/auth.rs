@@ -18,12 +18,8 @@ pub enum OutlookTenant {
 impl OutlookTenant {
     fn device_code_url(&self) -> &'static str {
         match self {
-            Self::Personal => {
-                "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode"
-            }
-            Self::Work => {
-                "https://login.microsoftonline.com/organizations/oauth2/v2.0/devicecode"
-            }
+            Self::Personal => "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode",
+            Self::Work => "https://login.microsoftonline.com/organizations/oauth2/v2.0/devicecode",
         }
     }
 
@@ -144,10 +140,7 @@ impl OutlookAuth {
         let client = reqwest::Client::new();
         let response = client
             .post(self.tenant.device_code_url())
-            .form(&[
-                ("client_id", self.client_id.as_str()),
-                ("scope", SCOPES),
-            ])
+            .form(&[("client_id", self.client_id.as_str()), ("scope", SCOPES)])
             .send()
             .await?;
 
@@ -190,12 +183,12 @@ impl OutlookAuth {
 
             match resp.error.as_deref() {
                 None => {
-                    let access_token = resp
-                        .access_token
-                        .ok_or_else(|| OutlookError::OAuth2("no access_token in response".into()))?;
-                    let refresh_token = resp
-                        .refresh_token
-                        .ok_or_else(|| OutlookError::OAuth2("no refresh_token in response".into()))?;
+                    let access_token = resp.access_token.ok_or_else(|| {
+                        OutlookError::OAuth2("no access_token in response".into())
+                    })?;
+                    let refresh_token = resp.refresh_token.ok_or_else(|| {
+                        OutlookError::OAuth2("no refresh_token in response".into())
+                    })?;
                     let expires_in = resp.expires_in.unwrap_or(3600);
                     let expires_at = chrono::Utc::now().timestamp() + expires_in as i64;
                     return Ok(OutlookTokens {
@@ -271,9 +264,7 @@ impl OutlookAuth {
     /// Returns a valid access token, refreshing if near expiry.
     /// Saves refreshed tokens back to disk.
     pub async fn get_valid_access_token(&self) -> Result<String, OutlookError> {
-        let tokens = self
-            .load_tokens()?
-            .ok_or(OutlookError::TokenExpired)?;
+        let tokens = self.load_tokens()?.ok_or(OutlookError::TokenExpired)?;
 
         if tokens.is_near_expiry() {
             let refreshed = self.refresh_access_token(&tokens).await?;

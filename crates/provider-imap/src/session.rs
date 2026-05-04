@@ -84,8 +84,7 @@ impl async_imap::Authenticator for XOAuth2Authenticator {
     }
 }
 
-type TokenFn =
-    Arc<dyn Fn() -> BoxFuture<'static, anyhow::Result<String>> + Send + Sync>;
+type TokenFn = Arc<dyn Fn() -> BoxFuture<'static, anyhow::Result<String>> + Send + Sync>;
 
 /// IMAP session factory that authenticates using XOAUTH2.
 /// Accepts any async token-fetching callback, decoupled from the OAuth2 provider.
@@ -139,9 +138,7 @@ impl XOAuth2ImapSessionFactory {
         let greeting = client
             .read_response()
             .await
-            .ok_or_else(|| {
-                ImapProviderError::Connection("no greeting from server".into())
-            })?
+            .ok_or_else(|| ImapProviderError::Connection("no greeting from server".into()))?
             .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
 
         // If the server sent PREAUTH, the session is already authenticated.

@@ -123,11 +123,13 @@ impl App {
             AccountFormMode::Gmail => Some(mxr_protocol::AccountSendConfigData::Gmail),
             AccountFormMode::OutlookPersonal => {
                 Some(mxr_protocol::AccountSendConfigData::OutlookPersonal {
+                    client_id: None,
                     token_ref: outlook_token_ref,
                 })
             }
             AccountFormMode::OutlookWork => {
                 Some(mxr_protocol::AccountSendConfigData::OutlookWork {
+                    client_id: None,
                     token_ref: outlook_token_ref,
                 })
             }
@@ -329,6 +331,8 @@ impl App {
                 auth,
                 sync,
                 send,
+                device_code_url: None,
+                device_code_user_code: None,
             },
             first_invalid.unwrap_or(0),
         ))

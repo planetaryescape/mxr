@@ -659,12 +659,19 @@ async fn remove_account(
             false,
         )? {
             anyhow::bail!("Aborted");
+        }
+    }
+
+    run_account_operation(remove_account_request(name, purge_local_data, false)).await
+}
+
 fn describe_sync(sync: Option<&mxr_config::SyncProviderConfig>) -> &'static str {
     match sync {
         Some(mxr_config::SyncProviderConfig::Gmail { .. }) => "gmail",
         Some(mxr_config::SyncProviderConfig::Imap { .. }) => "imap",
         Some(mxr_config::SyncProviderConfig::OutlookPersonal { .. }) => "outlook",
         Some(mxr_config::SyncProviderConfig::OutlookWork { .. }) => "outlook-work",
+        Some(mxr_config::SyncProviderConfig::Fake) => "fake",
         None => "none",
     }
 }
@@ -675,6 +682,7 @@ fn describe_send(send: Option<&mxr_config::SendProviderConfig>) -> &'static str 
         Some(mxr_config::SendProviderConfig::Smtp { .. }) => "smtp",
         Some(mxr_config::SendProviderConfig::OutlookPersonal { .. }) => "outlook",
         Some(mxr_config::SendProviderConfig::OutlookWork { .. }) => "outlook-work",
+        Some(mxr_config::SendProviderConfig::Fake) => "fake",
         None => "none",
     }
 }
@@ -711,7 +719,7 @@ async fn add_outlook_inner(
     };
 
     let account_name = prompt("\nAccount name (e.g. personal, work): ")?;
-    ensure_account_available(&account_name)?;
+    ensure_account_available(&account_name).await?;
     let display_name = prompt_default("Display name", &account_name)?;
     let email = prompt("Microsoft email address: ")?;
 
@@ -750,43 +758,41 @@ async fn add_outlook_inner(
     println!("Authorization successful!\n");
 
     let client_id_stored = Some(client_id);
-    let (sync_config, send_config) = match auth.tenant_kind() {
+    let (sync, send) = match auth.tenant_kind() {
         mxr_provider_outlook::OutlookTenant::Work => (
-            mxr_config::SyncProviderConfig::OutlookWork {
+            Some(AccountSyncConfigData::OutlookWork {
                 client_id: client_id_stored,
                 token_ref: token_ref.clone(),
-            },
-            mxr_config::SendProviderConfig::OutlookWork {
+            }),
+            Some(AccountSendConfigData::OutlookWork {
                 client_id: None,
-                token_ref: token_ref.clone(),
-            },
+                token_ref,
+            }),
         ),
         mxr_provider_outlook::OutlookTenant::Personal => (
-            mxr_config::SyncProviderConfig::OutlookPersonal {
+            Some(AccountSyncConfigData::OutlookPersonal {
                 client_id: client_id_stored,
                 token_ref: token_ref.clone(),
-            },
-            mxr_config::SendProviderConfig::OutlookPersonal {
+            }),
+            Some(AccountSendConfigData::OutlookPersonal {
                 client_id: None,
-                token_ref: token_ref.clone(),
-            },
+                token_ref,
+            }),
         ),
     };
 
-    upsert_account(
-        account_name.clone(),
-        mxr_config::AccountConfig {
-            name: display_name,
-            email,
-            sync: Some(sync_config),
-            send: Some(send_config),
-        },
-    )?;
+    let account = AccountConfigData {
+        key: account_name.clone(),
+        name: display_name,
+        email,
+        enabled: true,
+        sync,
+        send,
+        is_default: false,
+    };
 
-    println!(
-        "Account '{}' saved. Restart daemon to load it.",
-        account_name
-    );
+    run_account_operation(Request::UpsertAccountConfig { account }).await?;
+    println!("Account '{}' saved.", account_name);
     Ok(())
 }
 
@@ -795,31 +801,6 @@ fn store_password(service: &str, username: &str, password: &str) -> anyhow::Resu
     Ok(())
 }
 
-fn repair_account_passwords(name: &str) -> anyhow::Result<()> {
-    let config = mxr_config::load_config().unwrap_or_default();
-    let account = config
-        .accounts
-        .get(name)
-        .ok_or_else(|| anyhow::anyhow!("Account '{}' not found", name))?;
-
-    let mut repaired_any = false;
-
-    if let Some(mxr_config::SyncProviderConfig::Imap {
-        username,
-        password_ref,
-        auth_required,
-        ..
-    }) = &account.sync
-    {
-        if *auth_required {
-            let password = prompt_secret(&format!("IMAP password for {}: ", username))?;
-            store_password(password_ref, username, &password)?;
-            repaired_any = true;
-        }
-    }
-
-    run_account_operation(remove_account_request(name, purge_local_data, false)).await
-}
 
 async fn repair_account(name: &str) -> anyhow::Result<()> {
     let mut account = find_account_config(name).await?;
@@ -876,6 +857,8 @@ fn describe_sync_data(sync: Option<&AccountSyncConfigData>) -> &'static str {
     match sync {
         Some(AccountSyncConfigData::Gmail { .. }) => "gmail",
         Some(AccountSyncConfigData::Imap { .. }) => "imap",
+        Some(AccountSyncConfigData::OutlookPersonal { .. }) => "outlook",
+        Some(AccountSyncConfigData::OutlookWork { .. }) => "outlook-work",
         Some(AccountSyncConfigData::Fake) => "fake",
         None => "none",
     }
@@ -885,6 +868,8 @@ fn describe_send_data(send: Option<&AccountSendConfigData>) -> &'static str {
     match send {
         Some(AccountSendConfigData::Gmail) => "gmail",
         Some(AccountSendConfigData::Smtp { .. }) => "smtp",
+        Some(AccountSendConfigData::OutlookPersonal { .. }) => "outlook",
+        Some(AccountSendConfigData::OutlookWork { .. }) => "outlook-work",
         Some(AccountSendConfigData::Fake) => "fake",
         None => "none",
     }

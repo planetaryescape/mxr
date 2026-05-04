@@ -95,6 +95,7 @@ impl MailSendProvider for OutlookSmtpSendProvider {
         Ok(SendReceipt {
             provider_message_id: None,
             sent_at: chrono::Utc::now(),
+            rfc2822_message_id: String::new(),
         })
     }
 }

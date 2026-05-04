@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.62](https://github.com/planetaryescape/mxr/compare/v0.4.61...v0.4.62) (2026-05-04)
+
+
+### Bug Fixes
+
+* default to SQLX_OFFLINE=true via build.rs in published crates so `cargo install --locked mxr` builds without a database
+
 ## [0.4.61](https://github.com/planetaryescape/mxr/compare/v0.4.60...v0.4.61) (2026-05-04)
 
 

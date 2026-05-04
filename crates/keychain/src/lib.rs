@@ -211,14 +211,12 @@ pub fn set_password(service: &str, account: &str, password: &str) -> Result<(), 
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
-    #[cfg(target_os = "macos")]
     use security_framework::passwords::delete_generic_password;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn macos_reads_password_without_extra_write() {
         let ops = MacosKeychainOps {
@@ -231,7 +229,6 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn macos_reports_interactive_item_as_repairable() {
         let ops = MacosKeychainOps {
@@ -244,7 +241,6 @@ mod tests {
             .contains("Re-save that account password once with `mxr accounts repair`"));
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn macos_reports_not_found_cleanly() {
         let ops = MacosKeychainOps {
@@ -258,7 +254,6 @@ mod tests {
         );
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
     #[ignore = "uses the real macOS keychain"]
     fn macos_real_keychain_round_trip() {

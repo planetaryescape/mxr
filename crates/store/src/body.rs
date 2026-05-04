@@ -86,6 +86,17 @@ impl super::Store {
         .execute(self.writer())
         .await?;
 
+        // Promote List-Id from body metadata to the indexed `messages.list_id`
+        // column. Cheap upsert; runs once per body and is overwritten if the
+        // sender's headers change. Powers `mxr unsub --rank` grouping.
+        if let Some(list_id) = body.metadata.list_id.as_ref() {
+            sqlx::query("UPDATE messages SET list_id = ? WHERE id = ?")
+                .bind(list_id)
+                .bind(&mid)
+                .execute(self.writer())
+                .await?;
+        }
+
         sqlx::query("DELETE FROM attachments WHERE message_id = ?")
             .bind(&mid)
             .execute(self.writer())

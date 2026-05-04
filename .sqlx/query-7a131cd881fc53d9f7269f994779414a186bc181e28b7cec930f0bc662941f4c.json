@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO messages\n             (id, account_id, provider_id, thread_id, message_id_header, in_reply_to,\n              reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,\n              subject, date, flags, snippet, has_attachments, size_bytes,\n              unsubscribe_method, direction)\n             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n             ON CONFLICT(id) DO UPDATE SET\n                provider_id = excluded.provider_id,\n                thread_id = excluded.thread_id,\n                message_id_header = excluded.message_id_header,\n                in_reply_to = excluded.in_reply_to,\n                reference_headers = excluded.reference_headers,\n                from_name = excluded.from_name,\n                from_email = excluded.from_email,\n                to_addrs = excluded.to_addrs,\n                cc_addrs = excluded.cc_addrs,\n                bcc_addrs = excluded.bcc_addrs,\n                subject = excluded.subject,\n                date = excluded.date,\n                flags = excluded.flags,\n                snippet = excluded.snippet,\n                has_attachments = excluded.has_attachments,\n                size_bytes = excluded.size_bytes,\n                unsubscribe_method = excluded.unsubscribe_method,\n                direction = CASE\n                    WHEN excluded.direction = 'unknown' THEN messages.direction\n                    ELSE excluded.direction\n                END",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 20
+    },
+    "nullable": []
+  },
+  "hash": "7a131cd881fc53d9f7269f994779414a186bc181e28b7cec930f0bc662941f4c"
+}

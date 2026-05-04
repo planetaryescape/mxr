@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM account_addresses WHERE account_id = ? AND email = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "db85fade533d94d6c9cc7700124b7d7c7e64b2cd7825adb133c3bdb36b64a5ce"
+}

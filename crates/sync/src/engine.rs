@@ -13,24 +13,85 @@ pub struct SyncOutcome {
     pub upserted_message_ids: Vec<MessageId>,
 }
 
+/// No-op lookup used when the engine is constructed without an explicit
+/// address source. Reports `is_loaded=false` so direction stays `Unknown`
+/// rather than being misclassified as inbound.
+struct NoopAddressLookup;
+impl AccountAddressLookup for NoopAddressLookup {
+    fn is_account_address(&self, _email: &str) -> bool {
+        false
+    }
+    fn is_loaded(&self) -> bool {
+        false
+    }
+}
+
 pub struct SyncEngine {
     store: Arc<Store>,
     search: SearchServiceHandle,
+    address_lookup: Arc<dyn AccountAddressLookup>,
 }
 
 impl SyncEngine {
     pub fn new(store: Arc<Store>, search: SearchServiceHandle) -> Self {
-        Self { store, search }
+        Self::with_address_lookup(store, search, Arc::new(NoopAddressLookup))
+    }
+
+    /// Construct a sync engine that classifies direction using the provided
+    /// address lookup. Daemon code should use this constructor and supply
+    /// an `InMemoryAccountAddressLookup` populated from the store.
+    pub fn with_address_lookup(
+        store: Arc<Store>,
+        search: SearchServiceHandle,
+        address_lookup: Arc<dyn AccountAddressLookup>,
+    ) -> Self {
+        Self {
+            store,
+            search,
+            address_lookup,
+        }
+    }
+
+    /// Returns the direction for a sender email based on the configured
+    /// address lookup. Falls back to `Unknown` when the lookup hasn't been
+    /// loaded yet — the doctor `--rebuild-analytics` command reclassifies.
+    fn classify_direction(&self, from_email: &str) -> MessageDirection {
+        if !self.address_lookup.is_loaded() {
+            return MessageDirection::Unknown;
+        }
+        if self.address_lookup.is_account_address(from_email) {
+            MessageDirection::Outbound
+        } else {
+            MessageDirection::Inbound
+        }
     }
 
     pub async fn persist_synced_message(&self, synced: &SyncedMessage) -> Result<(), MxrError> {
         let mut body = synced.body.clone();
         body.ensure_best_effort_readable();
 
+        let direction = self.classify_direction(&synced.envelope.from.email);
         self.store
-            .upsert_envelope(&synced.envelope)
+            .upsert_envelope_with_direction(&synced.envelope, direction)
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?;
+
+        // Slice 9: forward-populate `reply_pairs`. If the parent isn't in the
+        // store yet (out-of-order delivery), park the reply for the
+        // reconciler to pick up later.
+        if synced.envelope.in_reply_to.is_some() {
+            let resolved = self
+                .store
+                .try_create_reply_pair(&synced.envelope, direction)
+                .await
+                .map_err(|e| MxrError::Store(e.to_string()))?;
+            if !resolved {
+                self.store
+                    .enqueue_reply_pair_pending(&synced.envelope)
+                    .await
+                    .map_err(|e| MxrError::Store(e.to_string()))?;
+            }
+        }
 
         self.store
             .insert_body(&body)
@@ -49,7 +110,7 @@ impl SyncEngine {
                 .map_err(|e| MxrError::Store(e.to_string()))?
         };
         self.store
-            .set_message_labels(&synced.envelope.id, &label_ids)
+            .set_message_labels(&synced.envelope.id, &label_ids, EventSource::Sync)
             .await
             .map_err(|e| MxrError::Store(e.to_string()))?;
 
@@ -176,10 +237,24 @@ impl SyncEngine {
                 let mut normalized_body = synced.body.clone();
                 normalized_body.ensure_best_effort_readable();
 
+                let direction = self.classify_direction(&synced.envelope.from.email);
                 self.store
-                    .upsert_envelope(&synced.envelope)
+                    .upsert_envelope_with_direction(&synced.envelope, direction)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
+                if synced.envelope.in_reply_to.is_some() {
+                    let resolved = self
+                        .store
+                        .try_create_reply_pair(&synced.envelope, direction)
+                        .await
+                        .map_err(|e| MxrError::Store(e.to_string()))?;
+                    if !resolved {
+                        self.store
+                            .enqueue_reply_pair_pending(&synced.envelope)
+                            .await
+                            .map_err(|e| MxrError::Store(e.to_string()))?;
+                    }
+                }
                 self.store
                     .insert_body(&normalized_body)
                     .await
@@ -196,7 +271,7 @@ impl SyncEngine {
                         .map_err(|e| MxrError::Store(e.to_string()))?
                 };
                 self.store
-                    .set_message_labels(&synced.envelope.id, &label_ids)
+                    .set_message_labels(&synced.envelope.id, &label_ids, EventSource::Sync)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?;
                 lexical_batch.entries.push(SearchIndexEntry {
@@ -239,7 +314,7 @@ impl SyncEngine {
                             .map_err(|e| MxrError::Store(e.to_string()))?;
                         for lid in &add_ids {
                             self.store
-                                .add_message_label(&message_id, lid)
+                                .add_message_label(&message_id, lid, EventSource::Sync)
                                 .await
                                 .map_err(|e| MxrError::Store(e.to_string()))?;
                         }
@@ -252,7 +327,7 @@ impl SyncEngine {
                             .map_err(|e| MxrError::Store(e.to_string()))?;
                         for lid in &rm_ids {
                             self.store
-                                .remove_message_label(&message_id, lid)
+                                .remove_message_label(&message_id, lid, EventSource::Sync)
                                 .await
                                 .map_err(|e| MxrError::Store(e.to_string()))?;
                         }
@@ -350,12 +425,12 @@ impl SyncEngine {
             match label.as_str() {
                 "UNREAD" => self
                     .store
-                    .set_read(message_id, false)
+                    .set_read(message_id, false, EventSource::Sync)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?,
                 "STARRED" => self
                     .store
-                    .set_starred(message_id, true)
+                    .set_starred(message_id, true, EventSource::Sync)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?,
                 _ => {}
@@ -366,12 +441,12 @@ impl SyncEngine {
             match label.as_str() {
                 "UNREAD" => self
                     .store
-                    .set_read(message_id, true)
+                    .set_read(message_id, true, EventSource::Sync)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?,
                 "STARRED" => self
                     .store
-                    .set_starred(message_id, false)
+                    .set_starred(message_id, false, EventSource::Sync)
                     .await
                     .map_err(|e| MxrError::Store(e.to_string()))?,
                 _ => {}

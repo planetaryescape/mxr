@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                account_id  as \"account_id!\",\n                email       as \"email!\",\n                is_primary  as \"is_primary!: bool\"\n               FROM account_addresses\n               WHERE account_id = ?\n               ORDER BY is_primary DESC, email ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "email!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_primary!: bool",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "27a089c431567dfda9642a5489241179d176b27d9b3846192860b53b70ceb506"
+}

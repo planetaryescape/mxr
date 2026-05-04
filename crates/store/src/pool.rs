@@ -148,6 +148,55 @@ CREATE INDEX IF NOT EXISTS idx_semantic_embeddings_profile_id
         )
         .execute(&self.writer)
         .await?;
+        sqlx::raw_sql(include_str!("../migrations/006_message_events.sql"))
+            .execute(&self.writer)
+            .await?;
+        self.add_column_if_missing(
+            "messages",
+            "direction",
+            "ALTER TABLE messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'unknown' \
+             CHECK (direction IN ('inbound', 'outbound', 'unknown'))",
+        )
+        .await?;
+        self.add_column_if_missing(
+            "messages",
+            "list_id",
+            "ALTER TABLE messages ADD COLUMN list_id TEXT",
+        )
+        .await?;
+        self.add_column_if_missing(
+            "messages",
+            "body_word_count",
+            "ALTER TABLE messages ADD COLUMN body_word_count INTEGER",
+        )
+        .await?;
+        self.add_column_if_missing(
+            "messages",
+            "body_quoted_lines",
+            "ALTER TABLE messages ADD COLUMN body_quoted_lines INTEGER",
+        )
+        .await?;
+        sqlx::raw_sql(
+            "CREATE INDEX IF NOT EXISTS idx_messages_account_direction_date \
+             ON messages(account_id, direction, date DESC); \
+             CREATE INDEX IF NOT EXISTS idx_messages_list_id \
+             ON messages(list_id) WHERE list_id IS NOT NULL; \
+             CREATE INDEX IF NOT EXISTS idx_messages_from_date \
+             ON messages(from_email, date DESC); \
+             CREATE INDEX IF NOT EXISTS idx_attachments_mime \
+             ON attachments(mime_type)",
+        )
+        .execute(&self.writer)
+        .await?;
+        sqlx::raw_sql(include_str!("../migrations/008_account_addresses.sql"))
+            .execute(&self.writer)
+            .await?;
+        sqlx::raw_sql(include_str!("../migrations/009_reply_pairs.sql"))
+            .execute(&self.writer)
+            .await?;
+        sqlx::raw_sql(include_str!("../migrations/010_contacts.sql"))
+            .execute(&self.writer)
+            .await?;
         self.validate_schema().await?;
         Ok(())
     }
@@ -233,6 +282,75 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
             "backend",
             "model_revision",
             "dimensions",
+        ],
+    ),
+    (
+        "message_events",
+        &[
+            "id",
+            "message_id",
+            "account_id",
+            "event_type",
+            "source",
+            "label_id",
+            "occurred_at",
+            "metadata_json",
+        ],
+    ),
+    (
+        "messages",
+        &[
+            "direction",
+            "list_id",
+            "body_word_count",
+            "body_quoted_lines",
+        ],
+    ),
+    (
+        "account_addresses",
+        &["account_id", "email", "is_primary"],
+    ),
+    (
+        "reply_pairs",
+        &[
+            "reply_message_id",
+            "parent_message_id",
+            "account_id",
+            "counterparty_email",
+            "direction",
+            "parent_received_at",
+            "replied_at",
+            "latency_seconds",
+            "business_hours_latency_seconds",
+            "created_at",
+        ],
+    ),
+    (
+        "reply_pair_pending",
+        &[
+            "reply_message_id",
+            "in_reply_to_header",
+            "account_id",
+            "created_at",
+        ],
+    ),
+    (
+        "contacts",
+        &[
+            "account_id",
+            "email",
+            "display_name",
+            "first_seen_at",
+            "last_seen_at",
+            "last_inbound_at",
+            "last_outbound_at",
+            "total_inbound",
+            "total_outbound",
+            "replied_count",
+            "cadence_days_p50",
+            "is_list_sender",
+            "list_id",
+            "refreshed_at",
         ],
     ),
 ];

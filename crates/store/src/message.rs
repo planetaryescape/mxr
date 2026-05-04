@@ -9,7 +9,28 @@ pub(crate) fn future_date_cutoff_timestamp() -> i64 {
 }
 
 impl super::Store {
+    /// Upsert an envelope without a direction hint. The `direction` column
+    /// stays at its current value on conflict, or defaults to 'unknown' on
+    /// insert. Sync paths that know the account's owned addresses should call
+    /// `upsert_envelope_with_direction` instead so direction lands correctly
+    /// the first time.
     pub async fn upsert_envelope(&self, envelope: &Envelope) -> Result<(), sqlx::Error> {
+        self.upsert_envelope_with_direction(envelope, MessageDirection::Unknown)
+            .await
+    }
+
+    /// Upsert an envelope with an explicit direction.
+    ///
+    /// On insert, the column is written to `direction.as_db_str()`. On
+    /// conflict, the column updates ONLY when the incoming value is a
+    /// non-Unknown classification — preserving Slice 8's invariant that a
+    /// concrete inbound/outbound classification, once recorded, is sticky.
+    /// (Re-syncs that pass `Unknown` shouldn't downgrade a known direction.)
+    pub async fn upsert_envelope_with_direction(
+        &self,
+        envelope: &Envelope,
+        direction: MessageDirection,
+    ) -> Result<(), sqlx::Error> {
         let id = envelope.id.as_str();
         let account_id = envelope.account_id.as_str();
         let thread_id = envelope.thread_id.as_str();
@@ -23,13 +44,15 @@ impl super::Store {
         let unsub = encode_json(&envelope.unsubscribe)?;
         let has_attachments = envelope.has_attachments;
         let size_bytes = envelope.size_bytes as i64;
+        let direction_str = direction.as_db_str();
 
         sqlx::query!(
             "INSERT INTO messages
              (id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
               reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
-              subject, date, flags, snippet, has_attachments, size_bytes, unsubscribe_method)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              subject, date, flags, snippet, has_attachments, size_bytes,
+              unsubscribe_method, direction)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                 provider_id = excluded.provider_id,
                 thread_id = excluded.thread_id,
@@ -47,7 +70,11 @@ impl super::Store {
                 snippet = excluded.snippet,
                 has_attachments = excluded.has_attachments,
                 size_bytes = excluded.size_bytes,
-                unsubscribe_method = excluded.unsubscribe_method",
+                unsubscribe_method = excluded.unsubscribe_method,
+                direction = CASE
+                    WHEN excluded.direction = 'unknown' THEN messages.direction
+                    ELSE excluded.direction
+                END",
             id,
             account_id,
             envelope.provider_id,
@@ -67,6 +94,7 @@ impl super::Store {
             has_attachments,
             size_bytes,
             unsub,
+            direction_str,
         )
         .execute(self.writer())
         .await?;
@@ -519,10 +547,17 @@ impl super::Store {
         Ok(result.rows_affected())
     }
 
+    /// Bulk-replace the label set for a message.
+    ///
+    /// This is the reconciliation path used by sync to mirror remote state;
+    /// it does not emit per-label `message_events` rows. Callers that need
+    /// per-label attribution must compute the diff and use
+    /// `add_message_label` / `remove_message_label`.
     pub async fn set_message_labels(
         &self,
         message_id: &MessageId,
         label_ids: &[LabelId],
+        _source: EventSource,
     ) -> Result<(), sqlx::Error> {
         let mid = message_id.as_str();
         sqlx::query!("DELETE FROM message_labels WHERE message_id = ?", mid)
@@ -681,10 +716,16 @@ impl super::Store {
         Ok(row.cnt as u32)
     }
 
+    /// Bulk-overwrite all flags. The high-level setters (`set_read`,
+    /// `set_starred`, `move_to_trash`) are preferred — they emit typed
+    /// `message_events` rows. This method intentionally does not emit
+    /// events: callers that need attribution should compute the diff and
+    /// route through the specific setters.
     pub async fn update_flags(
         &self,
         message_id: &MessageId,
         flags: MessageFlags,
+        _source: EventSource,
     ) -> Result<(), sqlx::Error> {
         let mid = message_id.as_str();
         let flags_val = flags.bits() as i64;
@@ -695,56 +736,107 @@ impl super::Store {
     }
 
     /// Set the read flag on a message.
-    pub async fn set_read(&self, message_id: &MessageId, read: bool) -> Result<(), sqlx::Error> {
+    ///
+    /// Detects the (was X) -> (is Y) transition. When Y differs from X the row
+    /// is updated AND a `message_events` row is appended attributing the
+    /// change to `source`. No-op repeats are silent (no UPDATE, no event).
+    pub async fn set_read(
+        &self,
+        message_id: &MessageId,
+        read: bool,
+        source: EventSource,
+    ) -> Result<(), sqlx::Error> {
         let mid = message_id.as_str();
         let row = sqlx::query!(
-            r#"SELECT flags as "flags!" FROM messages WHERE id = ?"#,
+            r#"SELECT account_id as "account_id!", flags as "flags!" FROM messages WHERE id = ?"#,
             mid,
         )
         .fetch_optional(self.reader())
         .await?;
 
-        if let Some(r) = row {
-            let mut flags = MessageFlags::from_bits_truncate(r.flags as u32);
-            if read {
-                flags.insert(MessageFlags::READ);
-            } else {
-                flags.remove(MessageFlags::READ);
-            }
-            let flags_val = flags.bits() as i64;
-            sqlx::query!("UPDATE messages SET flags = ? WHERE id = ?", flags_val, mid)
-                .execute(self.writer())
-                .await?;
+        let Some(r) = row else { return Ok(()) };
+        let mut flags = MessageFlags::from_bits_truncate(r.flags as u32);
+        let was_read = flags.contains(MessageFlags::READ);
+        if was_read == read {
+            return Ok(());
         }
+
+        if read {
+            flags.insert(MessageFlags::READ);
+        } else {
+            flags.remove(MessageFlags::READ);
+        }
+        let flags_val = flags.bits() as i64;
+        sqlx::query!("UPDATE messages SET flags = ? WHERE id = ?", flags_val, mid)
+            .execute(self.writer())
+            .await?;
+
+        let event = MessageEvent {
+            message_id: message_id.clone(),
+            account_id: crate::decode_id(&r.account_id)?,
+            event_type: if read {
+                MessageEventType::Read
+            } else {
+                MessageEventType::Unread
+            },
+            source,
+            label_id: None,
+            occurred_at: chrono::Utc::now().timestamp(),
+            metadata_json: None,
+        };
+        self.insert_message_event(&event).await?;
         Ok(())
     }
 
     /// Set the starred flag on a message.
+    ///
+    /// Emits `Starred` / `Unstarred` to `message_events` on actual transition
+    /// only; no-op repeats are silent.
     pub async fn set_starred(
         &self,
         message_id: &MessageId,
         starred: bool,
+        source: EventSource,
     ) -> Result<(), sqlx::Error> {
         let mid = message_id.as_str();
         let row = sqlx::query!(
-            r#"SELECT flags as "flags!" FROM messages WHERE id = ?"#,
+            r#"SELECT account_id as "account_id!", flags as "flags!" FROM messages WHERE id = ?"#,
             mid,
         )
         .fetch_optional(self.reader())
         .await?;
 
-        if let Some(r) = row {
-            let mut flags = MessageFlags::from_bits_truncate(r.flags as u32);
-            if starred {
-                flags.insert(MessageFlags::STARRED);
-            } else {
-                flags.remove(MessageFlags::STARRED);
-            }
-            let flags_val = flags.bits() as i64;
-            sqlx::query!("UPDATE messages SET flags = ? WHERE id = ?", flags_val, mid)
-                .execute(self.writer())
-                .await?;
+        let Some(r) = row else { return Ok(()) };
+        let mut flags = MessageFlags::from_bits_truncate(r.flags as u32);
+        let was_starred = flags.contains(MessageFlags::STARRED);
+        if was_starred == starred {
+            return Ok(());
         }
+
+        if starred {
+            flags.insert(MessageFlags::STARRED);
+        } else {
+            flags.remove(MessageFlags::STARRED);
+        }
+        let flags_val = flags.bits() as i64;
+        sqlx::query!("UPDATE messages SET flags = ? WHERE id = ?", flags_val, mid)
+            .execute(self.writer())
+            .await?;
+
+        let event = MessageEvent {
+            message_id: message_id.clone(),
+            account_id: crate::decode_id(&r.account_id)?,
+            event_type: if starred {
+                MessageEventType::Starred
+            } else {
+                MessageEventType::Unstarred
+            },
+            source,
+            label_id: None,
+            occurred_at: chrono::Utc::now().timestamp(),
+            metadata_json: None,
+        };
+        self.insert_message_event(&event).await?;
         Ok(())
     }
 
@@ -779,38 +871,90 @@ impl super::Store {
     }
 
     /// Add a label to a message.
+    ///
+    /// Idempotent — duplicate adds are silent (no `Labeled` event emitted).
     pub async fn add_message_label(
         &self,
         message_id: &MessageId,
         label_id: &LabelId,
+        source: EventSource,
     ) -> Result<(), sqlx::Error> {
         let mid = message_id.as_str();
         let lid = label_id.as_str();
-        sqlx::query!(
+        let result = sqlx::query!(
             "INSERT OR IGNORE INTO message_labels (message_id, label_id) VALUES (?, ?)",
             mid,
             lid,
         )
         .execute(self.writer())
         .await?;
+
+        if result.rows_affected() == 0 {
+            return Ok(());
+        }
+
+        let account_row = sqlx::query!(
+            r#"SELECT account_id as "account_id!" FROM messages WHERE id = ?"#,
+            mid,
+        )
+        .fetch_optional(self.reader())
+        .await?;
+        let Some(ar) = account_row else { return Ok(()) };
+
+        let event = MessageEvent {
+            message_id: message_id.clone(),
+            account_id: crate::decode_id(&ar.account_id)?,
+            event_type: MessageEventType::Labeled,
+            source,
+            label_id: Some(label_id.clone()),
+            occurred_at: chrono::Utc::now().timestamp(),
+            metadata_json: None,
+        };
+        self.insert_message_event(&event).await?;
         Ok(())
     }
 
     /// Remove a label from a message.
+    ///
+    /// Idempotent — removing an absent label is silent (no `Unlabeled` event).
     pub async fn remove_message_label(
         &self,
         message_id: &MessageId,
         label_id: &LabelId,
+        source: EventSource,
     ) -> Result<(), sqlx::Error> {
         let mid = message_id.as_str();
         let lid = label_id.as_str();
-        sqlx::query!(
+        let result = sqlx::query!(
             "DELETE FROM message_labels WHERE message_id = ? AND label_id = ?",
             mid,
             lid,
         )
         .execute(self.writer())
         .await?;
+
+        if result.rows_affected() == 0 {
+            return Ok(());
+        }
+
+        let account_row = sqlx::query!(
+            r#"SELECT account_id as "account_id!" FROM messages WHERE id = ?"#,
+            mid,
+        )
+        .fetch_optional(self.reader())
+        .await?;
+        let Some(ar) = account_row else { return Ok(()) };
+
+        let event = MessageEvent {
+            message_id: message_id.clone(),
+            account_id: crate::decode_id(&ar.account_id)?,
+            event_type: MessageEventType::Unlabeled,
+            source,
+            label_id: Some(label_id.clone()),
+            occurred_at: chrono::Utc::now().timestamp(),
+            metadata_json: None,
+        };
+        self.insert_message_event(&event).await?;
         Ok(())
     }
 
@@ -823,23 +967,44 @@ impl super::Store {
     }
 
     /// Mark a message as trashed (update flags).
-    pub async fn move_to_trash(&self, message_id: &MessageId) -> Result<(), sqlx::Error> {
+    ///
+    /// Emits `Trashed` to `message_events` only when the TRASH bit was clear;
+    /// re-trashing an already-trashed message is silent.
+    pub async fn move_to_trash(
+        &self,
+        message_id: &MessageId,
+        source: EventSource,
+    ) -> Result<(), sqlx::Error> {
         let mid = message_id.as_str();
         let row = sqlx::query!(
-            r#"SELECT flags as "flags!" FROM messages WHERE id = ?"#,
+            r#"SELECT account_id as "account_id!", flags as "flags!" FROM messages WHERE id = ?"#,
             mid,
         )
         .fetch_optional(self.reader())
         .await?;
 
-        if let Some(r) = row {
-            let mut flags = MessageFlags::from_bits_truncate(r.flags as u32);
-            flags.insert(MessageFlags::TRASH);
-            let flags_val = flags.bits() as i64;
-            sqlx::query!("UPDATE messages SET flags = ? WHERE id = ?", flags_val, mid)
-                .execute(self.writer())
-                .await?;
+        let Some(r) = row else { return Ok(()) };
+        let mut flags = MessageFlags::from_bits_truncate(r.flags as u32);
+        if flags.contains(MessageFlags::TRASH) {
+            return Ok(());
         }
+
+        flags.insert(MessageFlags::TRASH);
+        let flags_val = flags.bits() as i64;
+        sqlx::query!("UPDATE messages SET flags = ? WHERE id = ?", flags_val, mid)
+            .execute(self.writer())
+            .await?;
+
+        let event = MessageEvent {
+            message_id: message_id.clone(),
+            account_id: crate::decode_id(&r.account_id)?,
+            event_type: MessageEventType::Trashed,
+            source,
+            label_id: None,
+            occurred_at: chrono::Utc::now().timestamp(),
+            metadata_json: None,
+        };
+        self.insert_message_event(&event).await?;
         Ok(())
     }
 
@@ -870,6 +1035,8 @@ impl super::Store {
         let none_unsubscribe = encode_json(&UnsubscribeMethod::None)?;
         let trash_flag = MessageFlags::TRASH.bits() as i64;
         let spam_flag = MessageFlags::SPAM.bits() as i64;
+        let read_flag = MessageFlags::READ.bits() as i64;
+        let archived_flag = MessageFlags::ARCHIVED.bits() as i64;
         let cutoff = future_date_cutoff_timestamp();
         let lim = limit as i64;
         let account_id_str = account_id.map(|id| id.to_string());
@@ -893,6 +1060,15 @@ impl super::Store {
                     COUNT(*) OVER (
                         PARTITION BY account_id, LOWER(from_email)
                     ) AS message_count,
+                    SUM(CASE WHEN (flags & ?) = ? THEN 1 ELSE 0 END) OVER (
+                        PARTITION BY account_id, LOWER(from_email)
+                    ) AS opened_count,
+                    SUM(CASE
+                            WHEN (flags & ?) = ? AND (flags & ?) = 0 THEN 1
+                            ELSE 0
+                        END) OVER (
+                        PARTITION BY account_id, LOWER(from_email)
+                    ) AS archived_unread_count,
                     ROW_NUMBER() OVER (
                         PARTITION BY account_id, LOWER(from_email)
                         ORDER BY CASE WHEN date > ? THEN 0 ELSE date END DESC, id DESC
@@ -919,12 +1095,19 @@ impl super::Store {
                 has_attachments,
                 size_bytes,
                 unsubscribe_method,
-                message_count
+                message_count,
+                opened_count,
+                archived_unread_count
             FROM ranked
             WHERE rn = 1
             ORDER BY CASE WHEN date > ? THEN 0 ELSE date END DESC, id DESC
             LIMIT ?"#,
         )
+        .bind(read_flag)        // opened: (flags & READ) = READ
+        .bind(read_flag)
+        .bind(archived_flag)    // archived_unread: (flags & ARCHIVED) = ARCHIVED AND (flags & READ) = 0
+        .bind(archived_flag)
+        .bind(read_flag)
         .bind(cutoff)
         .bind(none_unsubscribe)
         .bind(trash_flag)
@@ -960,6 +1143,9 @@ impl super::Store {
                         .map(decode_json::<UnsubscribeMethod>)
                         .transpose()?
                         .unwrap_or(UnsubscribeMethod::None),
+                    opened_count: row.get::<i64, _>("opened_count") as u32,
+                    replied_count: 0, // Slice 9 will fill this from reply_pairs.
+                    archived_unread_count: row.get::<i64, _>("archived_unread_count") as u32,
                 })
             })
             .collect()

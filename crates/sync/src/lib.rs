@@ -1353,8 +1353,14 @@ mod tests {
         let initial_flags = envelopes[0].flags;
 
         // Set starred
-        store.set_starred(msg_id, true).await.unwrap();
-        store.set_read(msg_id, true).await.unwrap();
+        store
+            .set_starred(msg_id, true, mxr_core::EventSource::User)
+            .await
+            .unwrap();
+        store
+            .set_read(msg_id, true, mxr_core::EventSource::User)
+            .await
+            .unwrap();
 
         let updated = store.get_envelope(msg_id).await.unwrap().unwrap();
         assert!(
@@ -1367,7 +1373,10 @@ mod tests {
         );
 
         // Clear starred, keep read
-        store.set_starred(msg_id, false).await.unwrap();
+        store
+            .set_starred(msg_id, false, mxr_core::EventSource::User)
+            .await
+            .unwrap();
         let updated2 = store.get_envelope(msg_id).await.unwrap().unwrap();
         assert!(
             !updated2.flags.contains(MessageFlags::STARRED),
@@ -1415,7 +1424,7 @@ mod tests {
         store.upsert_envelope(&envelopes[0]).await.unwrap();
         // Re-set labels (same as sync engine does)
         store
-            .set_message_labels(msg_id, &junction_before)
+            .set_message_labels(msg_id, &junction_before, mxr_core::EventSource::Sync)
             .await
             .unwrap();
 

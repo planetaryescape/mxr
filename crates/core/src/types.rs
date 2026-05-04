@@ -65,6 +65,113 @@ pub struct BackendRef {
     pub config_key: String,
 }
 
+/// One owned email address per account. Direction inference compares
+/// `messages.from_email` against this set to decide inbound vs outbound.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccountAddress {
+    pub account_id: AccountId,
+    pub email: String,
+    pub is_primary: bool,
+}
+
+/// Inbound vs outbound classification for a message. Computed at sync time
+/// from `from_email` against the account's owned addresses — `MessageFlags::SENT`
+/// is provider-unreliable (Gmail label-based, IMAP fuzzy mailbox-name-based).
+///
+/// Named `MessageDirection` rather than `Direction` to avoid colliding with
+/// ratatui's `Direction` in clients that glob-import this module.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageDirection {
+    Inbound,
+    Outbound,
+    /// Pre-Slice-8 rows or messages synced before the address table was
+    /// populated. `mxr doctor --rebuild-analytics` reclassifies these.
+    Unknown,
+}
+
+impl MessageDirection {
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            Self::Inbound => "inbound",
+            Self::Outbound => "outbound",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn from_db_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "inbound" => Self::Inbound,
+            "outbound" => Self::Outbound,
+            "unknown" => Self::Unknown,
+            _ => return None,
+        })
+    }
+}
+
+/// Lookup interface used by sync engine to classify direction. Concrete
+/// impl lives in the daemon (cache backed by `account_addresses`); test
+/// code uses a stub.
+pub trait AccountAddressLookup: Send + Sync {
+    /// Returns true when `email` (case-insensitive) belongs to one of the
+    /// account_addresses rows known to this lookup.
+    fn is_account_address(&self, email: &str) -> bool;
+
+    /// Returns false until `replace` has been called at least once with a
+    /// non-empty set. While this returns false, sync writes `Direction::Unknown`
+    /// rather than misclassifying every message as inbound.
+    fn is_loaded(&self) -> bool;
+}
+
+/// Default in-memory implementation. Daemon owns an `Arc<Self>`, calls
+/// `replace` after every successful mutation through `account_addresses`,
+/// and passes a clone into `SyncEngine`.
+#[derive(Default)]
+pub struct InMemoryAccountAddressLookup {
+    inner: std::sync::RwLock<std::collections::HashSet<String>>,
+    loaded: std::sync::atomic::AtomicBool,
+}
+
+impl InMemoryAccountAddressLookup {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Replace the entire address set. Lower-cases on insert so lookups are
+    /// case-insensitive without per-call allocation on the hot path.
+    pub fn replace(&self, addresses: impl IntoIterator<Item = String>) {
+        let normalized: std::collections::HashSet<String> = addresses
+            .into_iter()
+            .map(|s| s.to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let mut guard = self
+            .inner
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *guard = normalized;
+        self.loaded
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl AccountAddressLookup for InMemoryAccountAddressLookup {
+    fn is_account_address(&self, email: &str) -> bool {
+        if !self.is_loaded() {
+            return false;
+        }
+        let guard = self
+            .inner
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.contains(&email.to_lowercase())
+    }
+
+    fn is_loaded(&self) -> bool {
+        self.loaded.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProviderKind {
     Gmail,
@@ -108,6 +215,280 @@ bitflags! {
         const ARCHIVED = 0b0100_0000;
         const ANSWERED = 0b1000_0000;
     }
+}
+
+// -- EventSource --------------------------------------------------------------
+
+/// Origin attribution for message-state mutations. Threaded through every
+/// store mutation so analytics can distinguish user actions from rule-driven,
+/// sync-driven, or reconciler-driven changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventSource {
+    /// User action via CLI, TUI, or web client.
+    User,
+    /// Mutation applied by the deterministic rule engine.
+    RuleEngine,
+    /// Mutation applied because remote sync observed a state change.
+    Sync,
+    /// Background reconciler (reply-pair backfill, contacts refresh, etc.).
+    Reconciler,
+    /// Doctor or maintenance command.
+    Doctor,
+    /// External-system trigger (webhooks, future automations).
+    External,
+}
+
+impl EventSource {
+    /// Stable string used in the `message_events.source` column.
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::RuleEngine => "rule_engine",
+            Self::Sync => "sync",
+            Self::Reconciler => "reconciler",
+            Self::Doctor => "doctor",
+            Self::External => "external",
+        }
+    }
+
+    pub fn from_db_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "user" => Self::User,
+            "rule_engine" => Self::RuleEngine,
+            "sync" => Self::Sync,
+            "reconciler" => Self::Reconciler,
+            "doctor" => Self::Doctor,
+            "external" => Self::External,
+            _ => return None,
+        })
+    }
+}
+
+// -- MessageEventType --------------------------------------------------------
+
+/// Per-message state-transition events. Persisted to `message_events` so
+/// analytics can answer time-bounded questions ("how long until I archived
+/// it?", "what fraction of inbound messages from sender X get replied to?")
+/// that the snapshot in `messages.flags` cannot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageEventType {
+    Read,
+    Unread,
+    Starred,
+    Unstarred,
+    Archived,
+    Unarchived,
+    Trashed,
+    Untrashed,
+    Labeled,
+    Unlabeled,
+    Moved,
+    Received,
+    Sent,
+    Replied,
+    Forwarded,
+    Snoozed,
+    Unsnoozed,
+    Unsubscribed,
+}
+
+impl MessageEventType {
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Unread => "unread",
+            Self::Starred => "starred",
+            Self::Unstarred => "unstarred",
+            Self::Archived => "archived",
+            Self::Unarchived => "unarchived",
+            Self::Trashed => "trashed",
+            Self::Untrashed => "untrashed",
+            Self::Labeled => "labeled",
+            Self::Unlabeled => "unlabeled",
+            Self::Moved => "moved",
+            Self::Received => "received",
+            Self::Sent => "sent",
+            Self::Replied => "replied",
+            Self::Forwarded => "forwarded",
+            Self::Snoozed => "snoozed",
+            Self::Unsnoozed => "unsnoozed",
+            Self::Unsubscribed => "unsubscribed",
+        }
+    }
+
+    pub fn from_db_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "read" => Self::Read,
+            "unread" => Self::Unread,
+            "starred" => Self::Starred,
+            "unstarred" => Self::Unstarred,
+            "archived" => Self::Archived,
+            "unarchived" => Self::Unarchived,
+            "trashed" => Self::Trashed,
+            "untrashed" => Self::Untrashed,
+            "labeled" => Self::Labeled,
+            "unlabeled" => Self::Unlabeled,
+            "moved" => Self::Moved,
+            "received" => Self::Received,
+            "sent" => Self::Sent,
+            "replied" => Self::Replied,
+            "forwarded" => Self::Forwarded,
+            "snoozed" => Self::Snoozed,
+            "unsnoozed" => Self::Unsnoozed,
+            "unsubscribed" => Self::Unsubscribed,
+            _ => return None,
+        })
+    }
+}
+
+// -- ResponseTime ------------------------------------------------------------
+
+/// Aggregate response-time summary for `mxr response-time`. p50/p90 in
+/// seconds; business-hours percentiles are `None` until the reconciler has
+/// backfilled the relevant rows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResponseTimeSummary {
+    pub direction: ResponseTimeDirection,
+    pub sample_count: u32,
+    pub clock_p50_seconds: u32,
+    pub clock_p90_seconds: u32,
+    pub business_hours_p50_seconds: Option<u32>,
+    pub business_hours_p90_seconds: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseTimeDirection {
+    /// I replied to inbound (`'i_replied'` rows in reply_pairs).
+    IReplied,
+    /// They replied to my outbound (`'they_replied'` rows).
+    TheyReplied,
+}
+
+impl ResponseTimeDirection {
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            Self::IReplied => "i_replied",
+            Self::TheyReplied => "they_replied",
+        }
+    }
+}
+
+// -- Contacts ----------------------------------------------------------------
+
+/// Materialized per-account contact row. Source of truth for `mxr contacts
+/// asymmetry` and `mxr contacts decay`. Refreshed periodically.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContactRow {
+    pub account_id: AccountId,
+    pub email: String,
+    pub display_name: Option<String>,
+    pub first_seen_at: DateTime<Utc>,
+    pub last_seen_at: DateTime<Utc>,
+    pub last_inbound_at: Option<DateTime<Utc>>,
+    pub last_outbound_at: Option<DateTime<Utc>>,
+    pub total_inbound: u32,
+    pub total_outbound: u32,
+    pub replied_count: u32,
+    pub cadence_days_p50: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContactAsymmetryRow {
+    pub email: String,
+    pub display_name: Option<String>,
+    pub total_inbound: u32,
+    pub total_outbound: u32,
+    /// `|inbound - outbound| / max(inbound, outbound)` in `[0, 1]`. 0 means
+    /// perfectly balanced; 1 means I never responded (or vice versa).
+    pub asymmetry: f64,
+    pub last_seen_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ContactDecayRow {
+    pub email: String,
+    pub display_name: Option<String>,
+    pub last_inbound_at: DateTime<Utc>,
+    pub last_outbound_at: Option<DateTime<Utc>>,
+    pub days_since_inbound: u32,
+    pub days_since_outbound: Option<u32>,
+}
+
+// -- StaleThreads ------------------------------------------------------------
+
+/// Single row of `mxr stale` output: a thread whose latest message points
+/// at one party and has been silent past the threshold.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StaleThreadRow {
+    pub thread_id: ThreadId,
+    pub latest_message_id: MessageId,
+    pub latest_subject: String,
+    pub counterparty_email: String,
+    pub latest_date: DateTime<Utc>,
+    pub days_stale: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StaleBallInCourt {
+    /// Latest message is inbound; ball is in MY court (I owe a reply).
+    Mine,
+    /// Latest message is outbound; ball is in THEIR court (they owe a reply).
+    Theirs,
+}
+
+impl StaleBallInCourt {
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            Self::Mine => "inbound",
+            Self::Theirs => "outbound",
+        }
+    }
+}
+
+// -- StorageBreakdown --------------------------------------------------------
+
+/// Single row of `mxr storage` output: how many bytes / how many items
+/// rolled up under a particular grouping key (sender, mimetype, label).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorageBucket {
+    pub key: String,
+    pub bytes: u64,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StorageGroupBy {
+    /// Group attachments by `mime_type`.
+    Mimetype,
+    /// Group messages by `from_email`. Includes the whole message size, not
+    /// just attachments — that's what actually consumes disk per sender.
+    Sender,
+    /// Group messages by label name (excludes messages with no labels).
+    Label,
+}
+
+// -- MessageEvent ------------------------------------------------------------
+
+/// A single per-message state-transition event. Ordered by `occurred_at` ASC
+/// when read back; analytics consumers should not assume monotonic IDs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessageEvent {
+    pub message_id: MessageId,
+    pub account_id: AccountId,
+    pub event_type: MessageEventType,
+    pub source: EventSource,
+    /// Set for `labeled` / `unlabeled` events; otherwise `None`.
+    pub label_id: Option<LabelId>,
+    /// Unix timestamp in seconds (UTC).
+    pub occurred_at: i64,
+    /// Free-form JSON for event-type-specific context (e.g. moved-from/to
+    /// label IDs). Kept opt-in to avoid bloat on the common transitions.
+    pub metadata_json: Option<String>,
 }
 
 // -- Envelope -----------------------------------------------------------------
@@ -607,6 +988,18 @@ pub struct SubscriptionSummary {
     pub latest_has_attachments: bool,
     pub latest_size_bytes: u64,
     pub unsubscribe: UnsubscribeMethod,
+    /// Number of messages from this sender that have been marked READ.
+    /// Combined with `message_count` gives the open-rate used by `unsub --rank`.
+    #[serde(default)]
+    pub opened_count: u32,
+    /// Number of messages where I replied. Placeholder zero until Slice 9
+    /// wires `reply_pairs`. Field exists so the JSON contract is stable.
+    #[serde(default)]
+    pub replied_count: u32,
+    /// Messages that landed in ARCHIVE without ever being read. Strong
+    /// "this is noise" signal for the unsubscribe ranker.
+    #[serde(default)]
+    pub archived_unread_count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

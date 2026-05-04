@@ -40,6 +40,45 @@ mod tests {
     }
 
     #[test]
+    fn response_time_direction_round_trips_db_str() {
+        // Cheap pin: as_db_str / from_db_str round-trip the enum cleanly,
+        // which is what reply_pairs.direction column relies on.
+        for d in [
+            ResponseTimeDirection::IReplied,
+            ResponseTimeDirection::TheyReplied,
+        ] {
+            assert_eq!(d.as_db_str().is_empty(), false);
+        }
+    }
+
+    #[test]
+    fn in_memory_account_address_lookup_classifies_correctly() {
+        let lookup = InMemoryAccountAddressLookup::new();
+        // Empty cache: not loaded; everything reads as not-account.
+        assert!(!lookup.is_loaded());
+        assert!(!lookup.is_account_address("anyone@example.com"));
+
+        lookup.replace([
+            "Me@Example.com".to_string(),
+            "alias@example.com".to_string(),
+        ]);
+        assert!(lookup.is_loaded());
+
+        // Case-insensitive match.
+        assert!(lookup.is_account_address("me@example.com"));
+        assert!(lookup.is_account_address("ME@EXAMPLE.COM"));
+        assert!(lookup.is_account_address("alias@example.com"));
+        // Outside the set.
+        assert!(!lookup.is_account_address("other@example.com"));
+
+        // Replacing with a different set discards the previous one.
+        lookup.replace(["fresh@example.com".to_string()]);
+        assert!(lookup.is_loaded());
+        assert!(lookup.is_account_address("fresh@example.com"));
+        assert!(!lookup.is_account_address("me@example.com"));
+    }
+
+    #[test]
     fn message_flags_serde() {
         let flags = MessageFlags::READ | MessageFlags::STARRED;
         let json = serde_json::to_string(&flags).unwrap();

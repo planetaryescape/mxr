@@ -96,8 +96,8 @@ mod tests {
         AccountId, DraftId, MessageId, SavedSearchId, SemanticChunkId, SemanticProfileId, ThreadId,
     };
     use mxr_core::types::{
-        Address, BackendRef, Draft, MessageBody, MessageFlags, ProviderKind, SearchMode,
-        SemanticChunkRecord, SemanticChunkSourceKind, SemanticEmbeddingRecord,
+        Address, BackendRef, Draft, EventSource, MessageBody, MessageFlags, ProviderKind,
+        SearchMode, SemanticChunkRecord, SemanticChunkSourceKind, SemanticEmbeddingRecord,
         SemanticEmbeddingStatus, SemanticProfile, SemanticProfileRecord, SemanticProfileStatus,
         Snoozed, SortOrder, UnsubscribeMethod,
     };
@@ -160,7 +160,11 @@ mod tests {
         };
         store.upsert_envelope(&envelope).await.unwrap();
         store
-            .set_message_labels(&message_id, std::slice::from_ref(&label.id))
+            .set_message_labels(
+                &message_id,
+                std::slice::from_ref(&label.id),
+                EventSource::User,
+            )
             .await
             .unwrap();
 

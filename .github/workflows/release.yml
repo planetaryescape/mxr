@@ -194,6 +194,68 @@ jobs:
 
   # Docs auto-deploy to Vercel on push (mxr-mail.vercel.app)
 
+  crates-io:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: [plan, github-release]
+    if: needs.plan.outputs.cli_changed == 'true' && needs.github-release.result == 'success'
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish workspace crates in dependency order
+        run: |
+          # Publish leaf crates first, then dependents, then the root binary.
+          # `--no-verify` skips a full build (the binary was already built and
+          # tested in earlier jobs). Tolerate `crate version already exists`
+          # so partial-release re-runs are idempotent.
+          publish() {
+            local crate="$1"
+            echo "::group::publish $crate"
+            if ! cargo publish -p "$crate" --no-verify; then
+              # Inspect the manifest version against crates.io to decide if
+              # the failure is "already published" (idempotent) or fatal.
+              local local_version
+              local_version=$(cargo metadata --no-deps --format-version 1 \
+                | python3 -c "import sys, json; m=json.load(sys.stdin); [print(p['version']) for p in m['packages'] if p['name']=='$crate']")
+              local published
+              published=$(curl -fsSL "https://crates.io/api/v1/crates/$crate/$local_version" \
+                | python3 -c "import sys, json; d=json.load(sys.stdin); print(d.get('version', {}).get('num', ''))" \
+                || echo "")
+              if [ "$published" = "$local_version" ]; then
+                echo "$crate@$local_version already published; idempotent skip"
+              else
+                echo "publish $crate@$local_version failed and not present on crates.io"
+                exit 1
+              fi
+            fi
+            sleep 30
+            echo "::endgroup::"
+          }
+          publish mxr-core
+          publish mxr-keychain
+          publish mxr-config
+          publish mxr-mail-parse
+          publish mxr-outbound
+          publish mxr-protocol
+          publish mxr-reader
+          publish mxr-rules
+          publish mxr-search
+          publish mxr-semantic
+          publish mxr-store
+          publish mxr-test-support
+          publish mxr-export
+          publish mxr-compose
+          publish mxr-provider-fake
+          publish mxr-provider-gmail
+          publish mxr-provider-imap
+          publish mxr-provider-smtp
+          publish mxr-sync
+          publish mxr-tui
+          publish mxr-web
+          publish mxr
+
   homebrew:
     name: Homebrew Formula
     runs-on: ubuntu-latest

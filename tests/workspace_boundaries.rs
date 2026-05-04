@@ -64,16 +64,18 @@ fn vendored_async_imap_is_not_a_workspace_member() {
 }
 
 #[test]
-fn root_package_is_not_publishable_and_uses_registry_async_imap() {
+fn root_package_is_publishable_and_uses_registry_async_imap() {
     let manifest = read_manifest("Cargo.toml");
     let package = manifest
         .get("package")
         .and_then(toml::Value::as_table)
         .unwrap();
-    assert_eq!(
+    // Root mxr is published to crates.io as of v0.5.0; an explicit
+    // `publish = false` would silently break the release pipeline.
+    assert_ne!(
         package.get("publish").and_then(toml::Value::as_bool),
         Some(false),
-        "root mxr package should be publish = false"
+        "root mxr package must be publishable for crates.io release flow"
     );
 
     let async_imap = manifest

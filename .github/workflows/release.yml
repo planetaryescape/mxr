@@ -238,30 +238,35 @@ jobs:
             sleep 30
             echo "::endgroup::"
           }
-          # Order matters: leaf crates first, then dependents. mxr-test-support
-          # is a dev-dep for several leaf-ish crates (mail-parse, reader, etc.)
-          # so it must be on crates.io before they try to build a release tarball.
+          # Strict topological order. Each crate's full dep set (regular +
+          # dev) must already be on crates.io when its tarball is uploaded.
+          # Layer 0 (no internal deps):
           publish mxr-core
           publish mxr-test-support
           publish mxr-keychain
+          # Layer 1 (depend on layer 0):
           publish mxr-config
           publish mxr-protocol
-          publish mxr-mail-parse
           publish mxr-outbound
-          publish mxr-reader
           publish mxr-rules
           publish mxr-store
           publish mxr-search
+          publish mxr-reader
+          publish mxr-mail-parse
+          publish mxr-provider-fake
+          # Layer 2 (depend on layer 0/1):
           publish mxr-semantic
           publish mxr-export
-          publish mxr-sync
           publish mxr-compose
-          publish mxr-provider-fake
-          publish mxr-provider-gmail
           publish mxr-provider-imap
           publish mxr-provider-smtp
+          publish mxr-sync
+          # Layer 3 (depend on provider-fake + lower layers):
+          publish mxr-provider-gmail
+          # Layer 4 (clients):
           publish mxr-tui
           publish mxr-web
+          # Root binary:
           publish mxr
 
   homebrew:

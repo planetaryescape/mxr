@@ -3,6 +3,27 @@ title: Gmail setup
 description: Connect a Gmail account to mxr.
 ---
 
+## Working over SSH or in a container?
+
+The OAuth flow opens a browser on the same machine the daemon is running on. If you're SSH'd into a server, that browser opens *on the server*, not your laptop, and the localhost callback won't reach you.
+
+mxr auto-detects this case (no TTY / no `DISPLAY` / `SSH_CONNECTION` set) and switches to the [Limited Input Device flow (RFC 8628)](https://datatracker.ietf.org/doc/html/rfc8628): it prints a code and a `https://www.google.com/device` URL; you open that URL in any browser and paste the code. To see the prompt, run the daemon in the foreground while you add the account:
+
+```bash
+# Terminal 1: keep this running
+mxr daemon --foreground
+
+# Terminal 2:
+mxr accounts add gmail --account-name personal --email you@gmail.com
+```
+
+The bundled Gmail OAuth client may be configured as a Desktop-app type, which Google does **not** allow for device flow. If you see `invalid_request: device_id` from Google, drop down to one of:
+
+- **Bring your own credentials** of OAuth client type *TV and Limited Input devices* (see [the create-your-own-credentials section below](#create-your-own-credentials)) — this gives you a stable BYOC client that supports device flow.
+- **IMAP + app password** — the simplest SSH-friendly path. `mxr accounts add imap --email you@gmail.com --imap-host imap.gmail.com --imap-username you@gmail.com --imap-password "$APP_PASSWORD" --smtp-host smtp.gmail.com --smtp-port 587 --smtp-username you@gmail.com --smtp-password "$APP_PASSWORD"`. Generate the app password at <https://myaccount.google.com/apppasswords> (requires 2FA).
+
+---
+
 mxr connects to Gmail through the Gmail API using OAuth. You have two options for credentials:
 
 1. **Bundled credentials** — mxr ships with a default OAuth client. You can use it to get started fast, but Google will show a scary "unverified app" warning during authorization because the app hasn't gone through Google's verification process (and likely never will — Google's verification requirements don't fit open-source desktop apps well).

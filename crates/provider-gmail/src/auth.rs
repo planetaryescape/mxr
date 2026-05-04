@@ -1,4 +1,5 @@
 use thiserror::Error;
+use yup_oauth2::DeviceFlowAuthenticator;
 use yup_oauth2::InstalledFlowAuthenticator;
 use yup_oauth2::InstalledFlowReturnMethod;
 
@@ -19,6 +20,44 @@ const GMAIL_SCOPES: &[&str] = &[
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.labels",
 ];
+
+/// OAuth grant flow.
+///
+/// `Installed` is the legacy localhost-redirect flow — convenient on a
+/// developer machine with a local browser, broken on SSH sessions and
+/// headless containers because the redirect target (`http://localhost:N`)
+/// isn't reachable from the user's actual browser.
+///
+/// `Device` is RFC 8628 Limited Input Device flow. The CLI prints a code +
+/// `https://www.google.com/device` URL; the user opens it in any browser,
+/// pastes the code, approves. Works anywhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthFlow {
+    Installed,
+    Device,
+}
+
+impl AuthFlow {
+    /// Auto-pick a flow based on the environment. If we're not on a TTY, or
+    /// there's no display server (`DISPLAY` / `WAYLAND_DISPLAY` unset on
+    /// non-macOS), the `Installed` flow's localhost redirect is unlikely to
+    /// reach a browser — fall back to `Device`. Otherwise prefer `Installed`
+    /// (one less click for local users).
+    pub fn auto_detect() -> Self {
+        use std::io::IsTerminal;
+        let no_tty = !std::io::stdin().is_terminal();
+        let no_display = cfg!(not(target_os = "macos"))
+            && std::env::var_os("DISPLAY").is_none()
+            && std::env::var_os("WAYLAND_DISPLAY").is_none();
+        let ssh_session =
+            std::env::var_os("SSH_CONNECTION").is_some() || std::env::var_os("SSH_TTY").is_some();
+        if no_tty || no_display || ssh_session {
+            AuthFlow::Device
+        } else {
+            AuthFlow::Installed
+        }
+    }
+}
 
 /// Bundled OAuth client credentials for mxr.
 /// Users can override these with their own in config.toml (BYOC).
@@ -140,6 +179,16 @@ impl GmailAuth {
     }
 
     pub async fn interactive_auth(&mut self) -> Result<(), AuthError> {
+        let flow = AuthFlow::auto_detect();
+        self.interactive_auth_with_flow(flow).await
+    }
+
+    /// Run the OAuth flow chosen by the caller. `AuthFlow::Installed` opens a
+    /// browser to a localhost callback (the legacy default; only works with a
+    /// local browser). `AuthFlow::Device` prints a code + URL the user opens
+    /// in any browser — works on SSH sessions, headless containers, or any
+    /// box without a browser.
+    pub async fn interactive_auth_with_flow(&mut self, flow: AuthFlow) -> Result<(), AuthError> {
         let secret = self.make_secret();
         let token_path = self.token_path();
 
@@ -147,32 +196,63 @@ impl GmailAuth {
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        let auth =
-            InstalledFlowAuthenticator::builder(secret, InstalledFlowReturnMethod::HTTPRedirect)
+        match flow {
+            AuthFlow::Installed => {
+                let auth = InstalledFlowAuthenticator::builder(
+                    secret,
+                    InstalledFlowReturnMethod::HTTPRedirect,
+                )
                 .persist_tokens_to_disk(token_path)
                 .build()
                 .await
                 .map_err(|e| AuthError::OAuth2(e.to_string()))?;
 
-        // Force token fetch for the interactive flow
-        let _token = auth
-            .token(GMAIL_SCOPES)
-            .await
-            .map_err(|e| AuthError::OAuth2(e.to_string()))?;
-
-        let auth = std::sync::Arc::new(auth);
-        self.token_fn = Some(Box::new(move || {
-            let auth = auth.clone();
-            Box::pin(async move {
-                let tok = auth
+                let _token = auth
                     .token(GMAIL_SCOPES)
                     .await
                     .map_err(|e| AuthError::OAuth2(e.to_string()))?;
-                tok.token()
-                    .map(|t| t.to_string())
-                    .ok_or(AuthError::TokenExpired)
-            })
-        }));
+
+                let auth = std::sync::Arc::new(auth);
+                self.token_fn = Some(Box::new(move || {
+                    let auth = auth.clone();
+                    Box::pin(async move {
+                        let tok = auth
+                            .token(GMAIL_SCOPES)
+                            .await
+                            .map_err(|e| AuthError::OAuth2(e.to_string()))?;
+                        tok.token()
+                            .map(|t| t.to_string())
+                            .ok_or(AuthError::TokenExpired)
+                    })
+                }));
+            }
+            AuthFlow::Device => {
+                let auth = DeviceFlowAuthenticator::builder(secret)
+                    .persist_tokens_to_disk(token_path)
+                    .build()
+                    .await
+                    .map_err(|e| AuthError::OAuth2(e.to_string()))?;
+
+                let _token = auth
+                    .token(GMAIL_SCOPES)
+                    .await
+                    .map_err(|e| AuthError::OAuth2(e.to_string()))?;
+
+                let auth = std::sync::Arc::new(auth);
+                self.token_fn = Some(Box::new(move || {
+                    let auth = auth.clone();
+                    Box::pin(async move {
+                        let tok = auth
+                            .token(GMAIL_SCOPES)
+                            .await
+                            .map_err(|e| AuthError::OAuth2(e.to_string()))?;
+                        tok.token()
+                            .map(|t| t.to_string())
+                            .ok_or(AuthError::TokenExpired)
+                    })
+                }));
+            }
+        }
 
         Ok(())
     }

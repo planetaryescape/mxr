@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.60](https://github.com/planetaryescape/mxr/compare/v0.4.59...v0.4.60) (2026-05-04)
+
+
+### Bug Fixes
+
+* publish mxr-test-support before its dependents in the crates.io publish loop
+
 ## [0.4.59](https://github.com/planetaryescape/mxr/compare/v0.4.58...v0.4.59) (2026-05-04)
 
 

@@ -1,0 +1,69 @@
+name: Yank crates.io versions
+
+# Manual cleanup tool. mxr is distributed via Homebrew + GitHub Releases +
+# `cargo install --git`, not crates.io. Earlier (v0.4.55–v0.4.63) we briefly
+# experimented with publishing the full 22-crate workspace; this workflow
+# yanks those broken / abandoned versions so users who reach for
+# `cargo install mxr` get a clear "this version is yanked" rather than a
+# silently broken install.
+#
+# Yanking is reversible (`cargo yank --undo`) and crates.io guarantees that
+# already-resolved Cargo.lock files keep working.
+#
+# Trigger from the Actions tab. CARGO_REGISTRY_TOKEN must be set in repo
+# secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: "Space-separated versions to yank (e.g. '0.4.61 0.4.62 0.4.63')"
+        required: true
+        default: "0.4.55 0.4.59 0.4.60 0.4.61 0.4.62 0.4.63"
+
+permissions:
+  contents: read
+
+jobs:
+  yank:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      VERSIONS: ${{ inputs.versions }}
+    steps:
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Yank requested versions across every mxr-* crate
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret is not set"
+            exit 1
+          fi
+
+          CRATES=(
+            mxr
+            mxr-core mxr-test-support mxr-keychain
+            mxr-config mxr-protocol mxr-outbound mxr-rules
+            mxr-store mxr-search mxr-reader mxr-mail-parse
+            mxr-provider-fake
+            mxr-semantic mxr-export mxr-compose
+            mxr-provider-imap mxr-provider-smtp mxr-sync
+            mxr-provider-gmail
+            mxr-tui mxr-web
+          )
+
+          for version in $VERSIONS; do
+            echo "::group::yank @$version"
+            for crate in "${CRATES[@]}"; do
+              # Tolerate "version not found" (the partial publishes never
+              # uploaded every crate). Don't tolerate other errors.
+              if cargo yank --version "$version" "$crate" 2>&1 | tee /tmp/yank.log; then
+                echo "yanked $crate@$version"
+              elif grep -qiE "could not find|not found|does not exist" /tmp/yank.log; then
+                echo "$crate@$version not on crates.io; skipping"
+              else
+                echo "::error::yank $crate@$version failed"
+                exit 1
+              fi
+            done
+            echo "::endgroup::"
+          done

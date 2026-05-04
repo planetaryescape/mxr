@@ -16,11 +16,8 @@ Today, the shipped surfaces are the CLI, TUI, daemon socket, and agent skill. A 
 brew tap planetaryescape/mxr
 brew install mxr
 
-# Cargo from crates.io (v0.5.0+)
-cargo install --locked mxr
-
 # Cargo from source at a specific tag
-cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.53 --locked mxr
+cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.63 --locked mxr
 ```
 
 Pre-built release tarballs are also available for:

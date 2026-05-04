@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Internal: local embeddings and dense retrieval for mxr"
+publish = false
 
 
 [lints]

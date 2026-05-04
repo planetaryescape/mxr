@@ -3642,6 +3642,8 @@ mod tests {
             auth: None,
             sync: None,
             send: None,
+            device_code_url: None,
+            device_code_user_code: None,
         });
 
         app.apply(Action::TestAccountForm);
@@ -3713,6 +3715,8 @@ mod tests {
                 ok: true,
                 detail: "SMTP send ok".into(),
             }),
+            device_code_url: None,
+            device_code_user_code: None,
         };
 
         app.apply_account_operation_result(result);
@@ -3738,6 +3742,8 @@ mod tests {
                 detail: "IMAP server returned a response mxr could not parse.".into(),
             }),
             send: None,
+            device_code_url: None,
+            device_code_user_code: None,
         });
 
         let action = app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE));

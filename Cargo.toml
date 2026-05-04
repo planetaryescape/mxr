@@ -68,6 +68,7 @@ members = [
     "crates/provider-fake",
     "crates/provider-gmail",
     "crates/provider-imap",
+    "crates/provider-outlook",
     "crates/provider-smtp",
     "crates/reader",
     "crates/rules",
@@ -116,6 +117,7 @@ mxr-protocol = { path = "crates/protocol", version = "0.4.54" }
 mxr-provider-fake = { path = "crates/provider-fake", version = "0.4.54" }
 mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.4.54" }
 mxr-provider-imap = { path = "crates/provider-imap", version = "0.4.54" }
+mxr-provider-outlook = { path = "crates/provider-outlook", version = "0.4.54" }
 mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.4.54" }
 mxr-reader = { path = "crates/reader", version = "0.4.54" }
 mxr-rules = { path = "crates/rules", version = "0.4.54" }
@@ -206,6 +208,7 @@ scraper = "0.24"
 data-url = "0.3"
 mime_guess = "2"
 mail-builder = "0.4.4"
+open = "5"
 
 # TUI extras
 nucleo = "0.5"
@@ -244,6 +247,7 @@ mxr-protocol = { workspace = true }
 mxr-provider-fake = { workspace = true }
 mxr-provider-gmail = { workspace = true }
 mxr-provider-imap = { workspace = true }
+mxr-provider-outlook = { workspace = true }
 mxr-provider-smtp = { workspace = true }
 mxr-reader = { workspace = true }
 mxr-rules = { workspace = true }
@@ -301,6 +305,7 @@ tracing-subscriber = { workspace = true }
 tui-textarea = { package = "tui-textarea-2", version = "0.10.2" }
 unicode-width = { workspace = true }
 url = { workspace = true }
+open = { workspace = true }
 uuid = { workspace = true }
 scraper = { workspace = true }
 data-url = { workspace = true }

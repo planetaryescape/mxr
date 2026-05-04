@@ -7,6 +7,7 @@ use mxr_protocol::{
     AccountConfigData, AccountOperationResult, AccountSendConfigData, AccountSummaryData,
     AccountSyncConfigData, GmailCredentialSourceData, Request, Response, ResponseData,
 };
+use mxr_provider_outlook::auth::BUNDLED_CLIENT_ID as OUTLOOK_BUNDLED_CLIENT_ID;
 
 pub async fn run(
     action: Option<AccountsAction>,
@@ -55,8 +56,10 @@ pub async fn run(
                 "gmail" => add_gmail(&args).await?,
                 "imap" | "imap-smtp" => add_imap(true, &args).await?,
                 "smtp" => add_smtp_only(&args).await?,
+                "outlook" => add_outlook().await?,
+                "outlook-work" => add_outlook_work().await?,
                 other => anyhow::bail!(
-                    "Unknown provider '{}'. Supported: gmail, imap, smtp, imap-smtp",
+                    "Unknown provider '{}'. Supported: gmail, imap, smtp, imap-smtp, outlook, outlook-work",
                     other
                 ),
             }
@@ -662,6 +665,143 @@ async fn remove_account(
     run_account_operation(remove_account_request(name, purge_local_data, false)).await
 }
 
+fn describe_sync(sync: Option<&mxr_config::SyncProviderConfig>) -> &'static str {
+    match sync {
+        Some(mxr_config::SyncProviderConfig::Gmail { .. }) => "gmail",
+        Some(mxr_config::SyncProviderConfig::Imap { .. }) => "imap",
+        Some(mxr_config::SyncProviderConfig::OutlookPersonal { .. }) => "outlook",
+        Some(mxr_config::SyncProviderConfig::OutlookWork { .. }) => "outlook-work",
+        Some(mxr_config::SyncProviderConfig::Fake) => "fake",
+        None => "none",
+    }
+}
+
+fn describe_send(send: Option<&mxr_config::SendProviderConfig>) -> &'static str {
+    match send {
+        Some(mxr_config::SendProviderConfig::Gmail) => "gmail",
+        Some(mxr_config::SendProviderConfig::Smtp { .. }) => "smtp",
+        Some(mxr_config::SendProviderConfig::OutlookPersonal { .. }) => "outlook",
+        Some(mxr_config::SendProviderConfig::OutlookWork { .. }) => "outlook-work",
+        Some(mxr_config::SendProviderConfig::Fake) => "fake",
+        None => "none",
+    }
+}
+
+async fn add_outlook() -> anyhow::Result<()> {
+    add_outlook_inner(mxr_provider_outlook::OutlookTenant::Personal).await
+}
+
+async fn add_outlook_work() -> anyhow::Result<()> {
+    add_outlook_inner(mxr_provider_outlook::OutlookTenant::Work).await
+}
+
+async fn add_outlook_inner(
+    tenant: mxr_provider_outlook::OutlookTenant,
+) -> anyhow::Result<()> {
+    let label = match tenant {
+        mxr_provider_outlook::OutlookTenant::Personal => "Outlook (Personal)",
+        mxr_provider_outlook::OutlookTenant::Work => "Outlook (Work)",
+    };
+    println!("Adding {label} account (OAuth2 + IMAP + SMTP)\n");
+
+    let client_id = match OUTLOOK_BUNDLED_CLIENT_ID {
+        Some(id) => {
+            println!("Using bundled Azure app credentials.");
+            id.to_string()
+        }
+        None => {
+            println!("No bundled Azure app client ID found.");
+            println!(
+                "Register a multi-tenant public client app at https://portal.azure.com and enter your client ID below."
+            );
+            prompt("Azure app client ID: ")?
+        }
+    };
+
+    let account_name = prompt("\nAccount name (e.g. personal, work): ")?;
+    ensure_account_available(&account_name).await?;
+    let display_name = prompt_default("Display name", &account_name)?;
+    let email = prompt("Microsoft email address: ")?;
+
+    let token_ref = format!("mxr/{account_name}-outlook");
+    let auth = mxr_provider_outlook::OutlookAuth::new(
+        client_id.clone(),
+        token_ref.clone(),
+        tenant,
+    );
+
+    println!("\nStarting Microsoft device code authorization...");
+    let device_resp = auth.start_device_flow().await?;
+
+    println!(
+        "\nGo to {} and enter: {}",
+        device_resp.verification_uri, device_resp.user_code
+    );
+    let open_url = device_resp
+        .verification_uri_complete
+        .as_deref()
+        .unwrap_or(&device_resp.verification_uri);
+    if open::that(open_url).is_ok() {
+        println!("(Browser opened automatically)");
+    } else {
+        println!("(Could not open browser — copy the URL above)");
+    }
+    println!(
+        "Waiting for authorization (expires in {} seconds)...\n",
+        device_resp.expires_in
+    );
+
+    let tokens = auth
+        .poll_for_token(&device_resp.device_code, device_resp.interval)
+        .await?;
+    auth.save_tokens(&tokens)?;
+    println!("Authorization successful!\n");
+
+    let client_id_stored = Some(client_id);
+    let (sync, send) = match auth.tenant_kind() {
+        mxr_provider_outlook::OutlookTenant::Work => (
+            Some(AccountSyncConfigData::OutlookWork {
+                client_id: client_id_stored,
+                token_ref: token_ref.clone(),
+            }),
+            Some(AccountSendConfigData::OutlookWork {
+                client_id: None,
+                token_ref,
+            }),
+        ),
+        mxr_provider_outlook::OutlookTenant::Personal => (
+            Some(AccountSyncConfigData::OutlookPersonal {
+                client_id: client_id_stored,
+                token_ref: token_ref.clone(),
+            }),
+            Some(AccountSendConfigData::OutlookPersonal {
+                client_id: None,
+                token_ref,
+            }),
+        ),
+    };
+
+    let account = AccountConfigData {
+        key: account_name.clone(),
+        name: display_name,
+        email,
+        enabled: true,
+        sync,
+        send,
+        is_default: false,
+    };
+
+    run_account_operation(Request::UpsertAccountConfig { account }).await?;
+    println!("Account '{}' saved.", account_name);
+    Ok(())
+}
+
+fn store_password(service: &str, username: &str, password: &str) -> anyhow::Result<()> {
+    mxr_keychain::set_password(service, username, password)?;
+    Ok(())
+}
+
+
 async fn repair_account(name: &str) -> anyhow::Result<()> {
     let mut account = find_account_config(name).await?;
 
@@ -717,6 +857,8 @@ fn describe_sync_data(sync: Option<&AccountSyncConfigData>) -> &'static str {
     match sync {
         Some(AccountSyncConfigData::Gmail { .. }) => "gmail",
         Some(AccountSyncConfigData::Imap { .. }) => "imap",
+        Some(AccountSyncConfigData::OutlookPersonal { .. }) => "outlook",
+        Some(AccountSyncConfigData::OutlookWork { .. }) => "outlook-work",
         Some(AccountSyncConfigData::Fake) => "fake",
         None => "none",
     }
@@ -726,6 +868,8 @@ fn describe_send_data(send: Option<&AccountSendConfigData>) -> &'static str {
     match send {
         Some(AccountSendConfigData::Gmail) => "gmail",
         Some(AccountSendConfigData::Smtp { .. }) => "smtp",
+        Some(AccountSendConfigData::OutlookPersonal { .. }) => "outlook",
+        Some(AccountSendConfigData::OutlookWork { .. }) => "outlook-work",
         Some(AccountSendConfigData::Fake) => "fake",
         None => "none",
     }

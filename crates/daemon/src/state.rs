@@ -339,6 +339,28 @@ impl AppState {
                         config,
                     )) as Arc<dyn MailSyncProvider>)
                 }
+                Some(mxr_config::SyncProviderConfig::OutlookPersonal {
+                    client_id,
+                    token_ref,
+                }) => build_outlook_sync_provider(
+                    client_id,
+                    token_ref,
+                    mxr_provider_outlook::OutlookTenant::Personal,
+                    &account_id,
+                    &acct_config.email,
+                    key,
+                )?,
+                Some(mxr_config::SyncProviderConfig::OutlookWork {
+                    client_id,
+                    token_ref,
+                }) => build_outlook_sync_provider(
+                    client_id,
+                    token_ref,
+                    mxr_provider_outlook::OutlookTenant::Work,
+                    &account_id,
+                    &acct_config.email,
+                    key,
+                )?,
                 Some(mxr_config::SyncProviderConfig::Fake) => {
                     let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
                     if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Fake)) {
@@ -396,6 +418,87 @@ impl AppState {
                 )?;
                 let send_provider = Arc::new(mxr_provider_smtp::SmtpSendProvider::new(config))
                     as Arc<dyn MailSendProvider>;
+                if requested_default == Some(key.as_str()) || default_send_provider.is_none() {
+                    default_send_provider = Some(send_provider.clone());
+                }
+                send_providers.insert(account_id.clone(), send_provider);
+            }
+
+            if let Some(
+                mxr_config::SendProviderConfig::OutlookPersonal { token_ref, .. }
+                | mxr_config::SendProviderConfig::OutlookWork { token_ref, .. },
+            ) = &acct_config.send
+            {
+                let tenant = match &acct_config.send {
+                    Some(mxr_config::SendProviderConfig::OutlookWork { .. }) => {
+                        mxr_provider_outlook::OutlookTenant::Work
+                    }
+                    _ => mxr_provider_outlook::OutlookTenant::Personal,
+                };
+                // Resolve client_id: sync config → send config → bundled constant.
+                let cid = match &acct_config.sync {
+                    Some(
+                        mxr_config::SyncProviderConfig::OutlookPersonal {
+                            client_id: Some(id),
+                            ..
+                        }
+                        | mxr_config::SyncProviderConfig::OutlookWork {
+                            client_id: Some(id),
+                            ..
+                        },
+                    ) => Some(id.clone()),
+                    _ => None,
+                }
+                .or_else(|| match &acct_config.send {
+                    Some(
+                        mxr_config::SendProviderConfig::OutlookPersonal {
+                            client_id: Some(id),
+                            ..
+                        }
+                        | mxr_config::SendProviderConfig::OutlookWork {
+                            client_id: Some(id),
+                            ..
+                        },
+                    ) => Some(id.clone()),
+                    _ => None,
+                })
+                .or_else(|| mxr_provider_outlook::BUNDLED_CLIENT_ID.map(String::from))
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Outlook send for '{key}' has no client_id and no bundled OUTLOOK_CLIENT_ID"
+                    )
+                })?;
+                let auth = std::sync::Arc::new(mxr_provider_outlook::OutlookAuth::new(
+                    cid,
+                    token_ref.clone(),
+                    tenant,
+                ));
+                let token_fn: std::sync::Arc<
+                    dyn Fn() -> futures::future::BoxFuture<'static, anyhow::Result<String>>
+                        + Send
+                        + Sync,
+                > = std::sync::Arc::new(move || {
+                    let auth = auth.clone();
+                    Box::pin(async move {
+                        auth.get_valid_access_token()
+                            .await
+                            .map_err(|e| anyhow::anyhow!(e))
+                    })
+                });
+                let smtp_host = match tenant {
+                    mxr_provider_outlook::OutlookTenant::Personal => {
+                        "smtp-mail.outlook.com"
+                    }
+                    mxr_provider_outlook::OutlookTenant::Work => "smtp.office365.com",
+                };
+                let send_provider = Arc::new(
+                    mxr_provider_outlook::OutlookSmtpSendProvider::new(
+                        smtp_host.to_string(),
+                        587,
+                        acct_config.email.clone(),
+                        token_fn,
+                    ),
+                ) as Arc<dyn MailSendProvider>;
                 if requested_default == Some(key.as_str()) || default_send_provider.is_none() {
                     default_send_provider = Some(send_provider.clone());
                 }
@@ -925,10 +1028,69 @@ fn search_error_requires_repair(message: &str) -> bool {
         || lower.contains("already an indexwriter working"))
 }
 
+fn build_outlook_sync_provider(
+    client_id: &Option<String>,
+    token_ref: &str,
+    tenant: mxr_provider_outlook::OutlookTenant,
+    account_id: &mxr_core::AccountId,
+    email: &str,
+    key: &str,
+) -> anyhow::Result<Option<Arc<dyn MailSyncProvider>>> {
+    let cid = client_id
+        .clone()
+        .or_else(|| mxr_provider_outlook::BUNDLED_CLIENT_ID.map(String::from))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Outlook account '{key}' has no client_id and no bundled OUTLOOK_CLIENT_ID was compiled in"
+            )
+        })?;
+    let auth = std::sync::Arc::new(mxr_provider_outlook::OutlookAuth::new(
+        cid,
+        token_ref.to_string(),
+        tenant,
+    ));
+    let token_fn: std::sync::Arc<
+        dyn Fn() -> futures::future::BoxFuture<'static, anyhow::Result<String>> + Send + Sync,
+    > = std::sync::Arc::new(move || {
+        let auth = auth.clone();
+        Box::pin(async move {
+            auth.get_valid_access_token()
+                .await
+                .map_err(|e| anyhow::anyhow!(e))
+        })
+    });
+    let factory = mxr_provider_imap::XOAuth2ImapSessionFactory::new(
+        "outlook.office365.com".to_string(),
+        993,
+        email.to_string(),
+        token_fn,
+    );
+    Ok(Some(Arc::new(
+        mxr_provider_imap::ImapProvider::with_session_factory(
+            account_id.clone(),
+            mxr_provider_imap::config::ImapConfig::new(
+                "outlook.office365.com".to_string(),
+                993,
+                email.to_string(),
+                String::new(),
+                true,
+                true,
+            ),
+            Box::new(factory),
+        ),
+    ) as Arc<dyn MailSyncProvider>))
+}
+
 fn sync_provider_kind(sync: Option<&mxr_config::SyncProviderConfig>) -> Option<ProviderKind> {
     match sync {
         Some(mxr_config::SyncProviderConfig::Gmail { .. }) => Some(ProviderKind::Gmail),
         Some(mxr_config::SyncProviderConfig::Imap { .. }) => Some(ProviderKind::Imap),
+        Some(mxr_config::SyncProviderConfig::OutlookPersonal { .. }) => {
+            Some(ProviderKind::OutlookPersonal)
+        }
+        Some(mxr_config::SyncProviderConfig::OutlookWork { .. }) => {
+            Some(ProviderKind::OutlookWork)
+        }
         Some(mxr_config::SyncProviderConfig::Fake) => Some(ProviderKind::Fake),
         None => None,
     }
@@ -938,6 +1100,12 @@ fn send_provider_kind(send: Option<&mxr_config::SendProviderConfig>) -> Option<P
     match send {
         Some(mxr_config::SendProviderConfig::Gmail) => Some(ProviderKind::Gmail),
         Some(mxr_config::SendProviderConfig::Smtp { .. }) => Some(ProviderKind::Smtp),
+        Some(mxr_config::SendProviderConfig::OutlookPersonal { .. }) => {
+            Some(ProviderKind::OutlookPersonal)
+        }
+        Some(mxr_config::SendProviderConfig::OutlookWork { .. }) => {
+            Some(ProviderKind::OutlookWork)
+        }
         Some(mxr_config::SendProviderConfig::Fake) => Some(ProviderKind::Fake),
         None => None,
     }
@@ -948,6 +1116,8 @@ fn provider_kind_name(kind: ProviderKind) -> &'static str {
         ProviderKind::Gmail => "gmail",
         ProviderKind::Imap => "imap",
         ProviderKind::Smtp => "smtp",
+        ProviderKind::OutlookPersonal => "outlook",
+        ProviderKind::OutlookWork => "outlook-work",
         ProviderKind::Fake => "fake",
     }
 }

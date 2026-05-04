@@ -461,6 +461,22 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
                 form.imap_password_ref = password_ref;
                 form.imap_auth_required = auth_required;
             }
+            mxr_protocol::AccountSyncConfigData::OutlookPersonal {
+                client_id,
+                token_ref,
+            } => {
+                form.mode = AccountFormMode::OutlookPersonal;
+                form.outlook_client_id = client_id.unwrap_or_default();
+                form.outlook_token_ref = token_ref;
+            }
+            mxr_protocol::AccountSyncConfigData::OutlookWork {
+                client_id,
+                token_ref,
+            } => {
+                form.mode = AccountFormMode::OutlookWork;
+                form.outlook_client_id = client_id.unwrap_or_default();
+                form.outlook_token_ref = token_ref;
+            }
             // Test-only provider; do not surface in account-edit forms.
             mxr_protocol::AccountSyncConfigData::Fake => {}
         }
@@ -469,6 +485,19 @@ fn account_form_from_config(account: mxr_protocol::AccountConfigData) -> Account
     }
 
     match account.send {
+        Some(
+            mxr_protocol::AccountSendConfigData::OutlookPersonal { token_ref, client_id }
+            | mxr_protocol::AccountSendConfigData::OutlookWork { token_ref, client_id },
+        ) => {
+            if form.outlook_token_ref.is_empty() {
+                form.outlook_token_ref = token_ref;
+            }
+            if form.outlook_client_id.is_empty() {
+                if let Some(cid) = client_id {
+                    form.outlook_client_id = cid;
+                }
+            }
+        }
         Some(mxr_protocol::AccountSendConfigData::Smtp {
             host,
             port,
@@ -531,6 +560,10 @@ fn account_form_field_value(form: &AccountFormState) -> Option<&str> {
         (AccountFormMode::SmtpOnly, 7) => None,
         (AccountFormMode::SmtpOnly, 8) => Some(form.smtp_password_ref.as_str()),
         (AccountFormMode::SmtpOnly, 9) => Some(form.smtp_password.as_str()),
+        (AccountFormMode::OutlookPersonal, 4) | (AccountFormMode::OutlookWork, 4) => {
+            Some(form.outlook_client_id.as_str())
+        }
+        (AccountFormMode::OutlookPersonal, 5) | (AccountFormMode::OutlookWork, 5) => None, // token_ref is read-only
         _ => None,
     }
 }
@@ -572,6 +605,9 @@ where
         (AccountFormMode::SmtpOnly, 6) => &mut form.smtp_username,
         (AccountFormMode::SmtpOnly, 8) => &mut form.smtp_password_ref,
         (AccountFormMode::SmtpOnly, 9) => &mut form.smtp_password,
+        (AccountFormMode::OutlookPersonal, 4) | (AccountFormMode::OutlookWork, 4) => {
+            &mut form.outlook_client_id
+        }
         _ => return,
     };
     update(field);

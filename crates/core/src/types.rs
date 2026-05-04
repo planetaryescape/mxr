@@ -176,6 +176,8 @@ pub enum ProviderKind {
     Gmail,
     Imap,
     Smtp,
+    OutlookPersonal,
+    OutlookWork,
     Fake,
 }
 

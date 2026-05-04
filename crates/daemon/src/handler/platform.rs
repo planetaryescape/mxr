@@ -1,7 +1,9 @@
 use super::{diagnostics_impl, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::AccountId;
-use mxr_core::types::{SearchMode, SemanticProfile};
+use mxr_core::types::{
+    ResponseTimeDirection, SearchMode, SemanticProfile, StaleBallInCourt, StorageGroupBy,
+};
 
 pub(super) async fn list_saved_searches(state: &AppState) -> HandlerResult {
     diagnostics_impl::list_saved_searches(state).await
@@ -13,6 +15,95 @@ pub(super) async fn list_subscriptions(
     limit: u32,
 ) -> HandlerResult {
     diagnostics_impl::list_subscriptions(state, account_id, limit).await
+}
+
+pub(super) async fn list_storage_breakdown(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    group_by: StorageGroupBy,
+    limit: u32,
+) -> HandlerResult {
+    diagnostics_impl::list_storage_breakdown(state, account_id, group_by, limit).await
+}
+
+pub(super) async fn list_stale_threads(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    perspective: StaleBallInCourt,
+    older_than_days: u32,
+    limit: u32,
+) -> HandlerResult {
+    diagnostics_impl::list_stale_threads(state, account_id, perspective, older_than_days, limit)
+        .await
+}
+
+pub(super) async fn list_contact_asymmetry(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    min_inbound: u32,
+    limit: u32,
+) -> HandlerResult {
+    diagnostics_impl::list_contact_asymmetry(state, account_id, min_inbound, limit).await
+}
+
+pub(super) async fn list_contact_decay(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    threshold_days: u32,
+    limit: u32,
+) -> HandlerResult {
+    diagnostics_impl::list_contact_decay(state, account_id, threshold_days, limit).await
+}
+
+pub(super) async fn refresh_contacts(state: &AppState) -> HandlerResult {
+    diagnostics_impl::refresh_contacts(state).await
+}
+
+pub(super) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
+    diagnostics_impl::rebuild_analytics(state).await
+}
+
+pub(super) async fn list_response_time(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    direction: ResponseTimeDirection,
+    counterparty: Option<&str>,
+    since_days: Option<u32>,
+) -> HandlerResult {
+    diagnostics_impl::list_response_time(state, account_id, direction, counterparty, since_days)
+        .await
+}
+
+pub(super) async fn list_account_addresses(
+    state: &AppState,
+    account_id: &AccountId,
+) -> HandlerResult {
+    diagnostics_impl::list_account_addresses(state, account_id).await
+}
+
+pub(super) async fn add_account_address(
+    state: &AppState,
+    account_id: &AccountId,
+    email: &str,
+    primary: bool,
+) -> HandlerResult {
+    diagnostics_impl::add_account_address(state, account_id, email, primary).await
+}
+
+pub(super) async fn remove_account_address(
+    state: &AppState,
+    account_id: &AccountId,
+    email: &str,
+) -> HandlerResult {
+    diagnostics_impl::remove_account_address(state, account_id, email).await
+}
+
+pub(super) async fn set_primary_account_address(
+    state: &AppState,
+    account_id: &AccountId,
+    email: &str,
+) -> HandlerResult {
+    diagnostics_impl::set_primary_account_address(state, account_id, email).await
 }
 
 pub(super) async fn semantic_status(state: &AppState) -> HandlerResult {

@@ -202,6 +202,198 @@ pub(crate) async fn list_subscriptions(
     Ok(ResponseData::Subscriptions { subscriptions })
 }
 
+pub(crate) async fn list_storage_breakdown(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    group_by: mxr_core::types::StorageGroupBy,
+    limit: u32,
+) -> HandlerResult {
+    let resolved = account_id
+        .cloned()
+        .or_else(|| state.default_account_id_opt());
+    let rows = state
+        .store
+        .storage_breakdown(resolved.as_ref(), group_by, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::StorageBreakdown { rows })
+}
+
+pub(crate) async fn list_stale_threads(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    perspective: mxr_core::types::StaleBallInCourt,
+    older_than_days: u32,
+    limit: u32,
+) -> HandlerResult {
+    let resolved = account_id
+        .cloned()
+        .or_else(|| state.default_account_id_opt());
+    let cutoff = chrono::Utc::now().timestamp()
+        - i64::from(older_than_days) * 86_400;
+    let rows = state
+        .store
+        .list_stale_threads(resolved.as_ref(), perspective, cutoff, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::StaleThreads { rows })
+}
+
+pub(crate) async fn list_contact_asymmetry(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    min_inbound: u32,
+    limit: u32,
+) -> HandlerResult {
+    let resolved = account_id
+        .cloned()
+        .or_else(|| state.default_account_id_opt());
+    let rows = state
+        .store
+        .list_contact_asymmetry(resolved.as_ref(), min_inbound, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::ContactAsymmetry { rows })
+}
+
+pub(crate) async fn list_contact_decay(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    threshold_days: u32,
+    limit: u32,
+) -> HandlerResult {
+    let resolved = account_id
+        .cloned()
+        .or_else(|| state.default_account_id_opt());
+    let rows = state
+        .store
+        .list_contact_decay(resolved.as_ref(), threshold_days, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::ContactDecay { rows })
+}
+
+pub(crate) async fn refresh_contacts(state: &AppState) -> HandlerResult {
+    let rows = state
+        .store
+        .refresh_contacts()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::RefreshedContacts { rows })
+}
+
+pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
+    use mxr_core::types::AccountAddressLookup;
+    // Refresh address cache so reclassification has the latest set.
+    state.refresh_account_addresses().await;
+    let lookup = state.account_addresses.clone();
+    let directions_reclassified = state
+        .store
+        .reclassify_unknown_directions(|email| lookup.is_account_address(email))
+        .await
+        .map_err(|e| e.to_string())?;
+    let list_ids_backfilled = state
+        .store
+        .backfill_message_list_ids()
+        .await
+        .map_err(|e| e.to_string())?;
+    let reply_pairs_resolved = state
+        .store
+        .reconcile_reply_pair_pending()
+        .await
+        .map_err(|e| e.to_string())?;
+    let business_hours_backfilled = state
+        .store
+        .backfill_business_hours_latency()
+        .await
+        .map_err(|e| e.to_string())?;
+    let contacts_rows = state
+        .store
+        .refresh_contacts()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::AnalyticsRebuildSummary {
+        directions_reclassified,
+        list_ids_backfilled,
+        reply_pairs_resolved,
+        business_hours_backfilled,
+        contacts_rows,
+    })
+}
+
+pub(crate) async fn list_response_time(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    direction: mxr_core::types::ResponseTimeDirection,
+    counterparty: Option<&str>,
+    since_days: Option<u32>,
+) -> HandlerResult {
+    let resolved = account_id
+        .cloned()
+        .or_else(|| state.default_account_id_opt());
+    let summary = state
+        .store
+        .list_response_time(resolved.as_ref(), direction, counterparty, since_days)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::ResponseTime { summary })
+}
+
+pub(crate) async fn list_account_addresses(
+    state: &AppState,
+    account_id: &AccountId,
+) -> HandlerResult {
+    let addresses = state
+        .store
+        .list_account_addresses(account_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::AccountAddresses { addresses })
+}
+
+pub(crate) async fn add_account_address(
+    state: &AppState,
+    account_id: &AccountId,
+    email: &str,
+    primary: bool,
+) -> HandlerResult {
+    state
+        .store
+        .add_account_address(account_id, email, primary)
+        .await
+        .map_err(|e| e.to_string())?;
+    state.refresh_account_addresses().await;
+    Ok(ResponseData::Ack)
+}
+
+pub(crate) async fn remove_account_address(
+    state: &AppState,
+    account_id: &AccountId,
+    email: &str,
+) -> HandlerResult {
+    state
+        .store
+        .remove_account_address(account_id, email)
+        .await
+        .map_err(|e| e.to_string())?;
+    state.refresh_account_addresses().await;
+    Ok(ResponseData::Ack)
+}
+
+pub(crate) async fn set_primary_account_address(
+    state: &AppState,
+    account_id: &AccountId,
+    email: &str,
+) -> HandlerResult {
+    state
+        .store
+        .set_primary_address(account_id, email)
+        .await
+        .map_err(|e| e.to_string())?;
+    state.refresh_account_addresses().await;
+    Ok(ResponseData::Ack)
+}
+
 pub(crate) async fn semantic_status(state: &AppState) -> HandlerResult {
     let snapshot = state
         .semantic

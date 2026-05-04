@@ -37,6 +37,8 @@ struct RuntimeTasks {
     semantic_worker: ParkingMutex<Option<JoinHandle<()>>>,
     sync_loops: ParkingMutex<HashMap<AccountId, JoinHandle<()>>>,
     snooze_loop: ParkingMutex<Option<JoinHandle<()>>>,
+    reply_pair_reconciler: ParkingMutex<Option<JoinHandle<()>>>,
+    contacts_refresher: ParkingMutex<Option<JoinHandle<()>>>,
     startup_maintenance: ParkingMutex<Option<JoinHandle<()>>>,
 }
 
@@ -59,6 +61,14 @@ impl RuntimeTasks {
 
     fn set_snooze_loop(&self, handle: JoinHandle<()>) {
         *self.snooze_loop.lock() = Some(handle);
+    }
+
+    fn set_reply_pair_reconciler(&self, handle: JoinHandle<()>) {
+        *self.reply_pair_reconciler.lock() = Some(handle);
+    }
+
+    fn set_contacts_refresher(&self, handle: JoinHandle<()>) {
+        *self.contacts_refresher.lock() = Some(handle);
     }
 
     fn set_startup_maintenance(&self, handle: JoinHandle<()>) {
@@ -86,6 +96,18 @@ impl RuntimeTasks {
                 handle,
             });
         }
+        if let Some(handle) = self.reply_pair_reconciler.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "reply_pair_reconciler".to_string(),
+                handle,
+            });
+        }
+        if let Some(handle) = self.contacts_refresher.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "contacts_refresher".to_string(),
+                handle,
+            });
+        }
         if let Some(handle) = self.startup_maintenance.lock().take() {
             handles.push(NamedTaskHandle {
                 name: "startup_maintenance".to_string(),
@@ -109,6 +131,10 @@ pub struct AppState {
     pub search: SearchServiceHandle,
     pub semantic: SemanticServiceHandle,
     pub sync_engine: Arc<SyncEngine>,
+    /// Account-owned address cache. SyncEngine consults this for direction
+    /// classification; handlers refresh it after every mutation through
+    /// `account_addresses`. See Slice 8 in the analytics plan.
+    pub account_addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
     runtime: RwLock<ProviderRuntime>,
     sync_loop_accounts: ParkingMutex<HashSet<AccountId>>,
     pub event_tx: broadcast::Sender<IpcMessage>,
@@ -140,7 +166,25 @@ impl AppState {
             config.search.semantic.clone(),
         ));
         runtime_tasks.set_semantic_worker(semantic_worker);
-        let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
+        let account_addresses =
+            Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new());
+        // Best-effort initial load. Empty result is fine — `is_loaded` stays
+        // false and direction classification falls back to Unknown until the
+        // first refresh after an account is configured.
+        match store.list_all_account_addresses().await {
+            Ok(addresses) if !addresses.is_empty() => {
+                account_addresses.replace(addresses.into_iter().map(|a| a.email));
+            }
+            Ok(_) => {}
+            Err(err) => {
+                tracing::warn!(error = %err, "failed initial account_addresses load");
+            }
+        }
+        let sync_engine = Arc::new(SyncEngine::with_address_lookup(
+            store.clone(),
+            search.clone(),
+            account_addresses.clone() as Arc<dyn mxr_core::types::AccountAddressLookup>,
+        ));
 
         let provider_setup = Self::create_providers_from_config(&config, &store).await?;
 
@@ -153,6 +197,7 @@ impl AppState {
             search,
             semantic,
             sync_engine,
+            account_addresses,
             runtime: RwLock::new(ProviderRuntime {
                 providers: provider_setup.providers,
                 send_providers: provider_setup.send_providers,
@@ -167,6 +212,22 @@ impl AppState {
             runtime_tasks,
             admin_blocking,
         })
+    }
+
+    /// Reload the account-address cache from the store. Called after every
+    /// successful mutation through `account_addresses` so direction inference
+    /// stays current. Errors are logged but not surfaced — the next sync will
+    /// see at worst a slightly stale cache.
+    pub async fn refresh_account_addresses(&self) {
+        match self.store.list_all_account_addresses().await {
+            Ok(addresses) => {
+                self.account_addresses
+                    .replace(addresses.into_iter().map(|a| a.email));
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "failed to refresh account_addresses cache");
+            }
+        }
     }
 
     async fn create_providers_from_config(
@@ -408,6 +469,14 @@ impl AppState {
     pub fn finish_sync_loop(&self, account_id: &AccountId) {
         self.sync_loop_accounts.lock().remove(account_id);
         self.runtime_tasks.finish_sync_loop(account_id);
+    }
+
+    pub fn register_reply_pair_reconciler(&self, handle: JoinHandle<()>) {
+        self.runtime_tasks.set_reply_pair_reconciler(handle);
+    }
+
+    pub fn register_contacts_refresher(&self, handle: JoinHandle<()>) {
+        self.runtime_tasks.set_contacts_refresher(handle);
     }
 
     pub fn register_snooze_loop(&self, handle: JoinHandle<()>) {
@@ -666,6 +735,7 @@ impl AppState {
             search,
             semantic,
             sync_engine,
+            account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             runtime: RwLock::new(ProviderRuntime {
                 providers,
                 send_providers,
@@ -706,6 +776,7 @@ impl AppState {
             search,
             semantic,
             sync_engine,
+            account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             runtime: RwLock::new(ProviderRuntime {
                 providers: HashMap::new(),
                 send_providers: HashMap::new(),
@@ -772,6 +843,7 @@ impl AppState {
                 search,
                 semantic,
                 sync_engine,
+            account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
                 runtime: RwLock::new(ProviderRuntime {
                     providers,
                     send_providers,

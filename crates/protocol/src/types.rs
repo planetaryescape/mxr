@@ -145,6 +145,51 @@ pub enum Request {
         account_id: Option<AccountId>,
         limit: u32,
     },
+    ListStorageBreakdown {
+        account_id: Option<AccountId>,
+        group_by: StorageGroupBy,
+        limit: u32,
+    },
+    ListStaleThreads {
+        account_id: Option<AccountId>,
+        perspective: StaleBallInCourt,
+        older_than_days: u32,
+        limit: u32,
+    },
+    ListContactAsymmetry {
+        account_id: Option<AccountId>,
+        min_inbound: u32,
+        limit: u32,
+    },
+    ListContactDecay {
+        account_id: Option<AccountId>,
+        threshold_days: u32,
+        limit: u32,
+    },
+    RefreshContacts,
+    RebuildAnalytics,
+    ListResponseTime {
+        account_id: Option<AccountId>,
+        direction: ResponseTimeDirection,
+        counterparty: Option<String>,
+        since_days: Option<u32>,
+    },
+    ListAccountAddresses {
+        account_id: AccountId,
+    },
+    AddAccountAddress {
+        account_id: AccountId,
+        email: String,
+        primary: bool,
+    },
+    RemoveAccountAddress {
+        account_id: AccountId,
+        email: String,
+    },
+    SetPrimaryAccountAddress {
+        account_id: AccountId,
+        email: String,
+    },
     GetSemanticStatus,
     EnableSemantic {
         enabled: bool,
@@ -326,6 +371,17 @@ impl Request {
             | Self::DryRunRules { .. }
             | Self::ListSavedSearches
             | Self::ListSubscriptions { .. }
+            | Self::ListStorageBreakdown { .. }
+            | Self::ListStaleThreads { .. }
+            | Self::ListContactAsymmetry { .. }
+            | Self::ListContactDecay { .. }
+            | Self::RefreshContacts
+            | Self::RebuildAnalytics
+            | Self::ListResponseTime { .. }
+            | Self::ListAccountAddresses { .. }
+            | Self::AddAccountAddress { .. }
+            | Self::RemoveAccountAddress { .. }
+            | Self::SetPrimaryAccountAddress { .. }
             | Self::GetSemanticStatus
             | Self::EnableSemantic { .. }
             | Self::InstallSemanticProfile { .. }
@@ -529,6 +585,34 @@ pub enum ResponseData {
     Subscriptions {
         subscriptions: Vec<mxr_core::types::SubscriptionSummary>,
     },
+    StorageBreakdown {
+        rows: Vec<StorageBucket>,
+    },
+    StaleThreads {
+        rows: Vec<StaleThreadRow>,
+    },
+    ContactAsymmetry {
+        rows: Vec<ContactAsymmetryRow>,
+    },
+    ContactDecay {
+        rows: Vec<ContactDecayRow>,
+    },
+    RefreshedContacts {
+        rows: u32,
+    },
+    AnalyticsRebuildSummary {
+        directions_reclassified: u32,
+        list_ids_backfilled: u32,
+        reply_pairs_resolved: u32,
+        business_hours_backfilled: u32,
+        contacts_rows: u32,
+    },
+    ResponseTime {
+        summary: ResponseTimeSummary,
+    },
+    AccountAddresses {
+        addresses: Vec<mxr_core::types::AccountAddress>,
+    },
     SemanticStatus {
         snapshot: SemanticStatusSnapshot,
     },
@@ -606,6 +690,14 @@ impl ResponseData {
             | Self::RuleDryRun { .. }
             | Self::SavedSearches { .. }
             | Self::Subscriptions { .. }
+            | Self::StorageBreakdown { .. }
+            | Self::StaleThreads { .. }
+            | Self::ContactAsymmetry { .. }
+            | Self::ContactDecay { .. }
+            | Self::RefreshedContacts { .. }
+            | Self::AnalyticsRebuildSummary { .. }
+            | Self::ResponseTime { .. }
+            | Self::AccountAddresses { .. }
             | Self::SemanticStatus { .. }
             | Self::SavedSearchData { .. } => IpcCategory::MxrPlatform,
             Self::EventLogEntries { .. }

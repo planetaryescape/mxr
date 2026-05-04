@@ -480,7 +480,7 @@ async fn execute_rule_action(
             {
                 state
                     .store
-                    .add_message_label(message_id, &found.id)
+                    .add_message_label(message_id, &found.id, mxr_core::EventSource::RuleEngine)
                     .await
                     .map_err(|e| e.to_string())?;
             }
@@ -496,7 +496,7 @@ async fn execute_rule_action(
             {
                 state
                     .store
-                    .remove_message_label(message_id, &found.id)
+                    .remove_message_label(message_id, &found.id, mxr_core::EventSource::RuleEngine)
                     .await
                     .map_err(|e| e.to_string())?;
             }
@@ -514,7 +514,7 @@ async fn execute_rule_action(
                 .map_err(|e| e.to_string())?;
             state
                 .store
-                .move_to_trash(message_id)
+                .move_to_trash(message_id, mxr_core::EventSource::RuleEngine)
                 .await
                 .map_err(|e| e.to_string())?;
         }
@@ -525,7 +525,7 @@ async fn execute_rule_action(
                 .map_err(|e| e.to_string())?;
             state
                 .store
-                .set_starred(message_id, true)
+                .set_starred(message_id, true, mxr_core::EventSource::RuleEngine)
                 .await
                 .map_err(|e| e.to_string())?;
         }
@@ -536,7 +536,7 @@ async fn execute_rule_action(
                 .map_err(|e| e.to_string())?;
             state
                 .store
-                .set_read(message_id, true)
+                .set_read(message_id, true, mxr_core::EventSource::RuleEngine)
                 .await
                 .map_err(|e| e.to_string())?;
         }
@@ -547,7 +547,7 @@ async fn execute_rule_action(
                 .map_err(|e| e.to_string())?;
             state
                 .store
-                .set_read(message_id, false)
+                .set_read(message_id, false, mxr_core::EventSource::RuleEngine)
                 .await
                 .map_err(|e| e.to_string())?;
         }
@@ -681,6 +681,63 @@ impl mxr_rules::MessageView for RuleMessage {
     }
     fn body_text(&self) -> Option<&str> {
         self.body_text.as_deref()
+    }
+}
+
+/// Periodic reconciler that resolves `reply_pair_pending` rows whose parent
+/// has since arrived. Mirrors the snooze loop's shape: 60-second tick,
+/// shutdown-aware, errors logged and swallowed (next tick retries).
+pub async fn reply_pair_reconciler_loop(
+    state: Arc<AppState>,
+    mut shutdown_rx: watch::Receiver<bool>,
+) {
+    let mut ticker = interval(Duration::from_secs(60));
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                    tracing::info!("Reply-pair reconciler exiting: shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
+        match state.store.reconcile_reply_pair_pending().await {
+            Ok(0) => {}
+            Ok(n) => {
+                tracing::debug!(resolved = n, "reply-pair reconciler migrated rows");
+            }
+            Err(e) => {
+                tracing::warn!("Reply-pair reconcile error: {e}");
+            }
+        }
+    }
+}
+
+/// Periodic refresh of the materialized `contacts` table. 5-minute cadence
+/// matches the plan; full-table aggregate is fine for typical mailboxes.
+/// Past ~100k messages, switch to incremental by `messages.id > last_seen_id`.
+pub async fn contacts_refresher_loop(
+    state: Arc<AppState>,
+    mut shutdown_rx: watch::Receiver<bool>,
+) {
+    let mut ticker = interval(Duration::from_secs(300));
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                    tracing::info!("Contacts refresher exiting: shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
+        match state.store.refresh_contacts().await {
+            Ok(n) => tracing::debug!(rows = n, "contacts refresher updated table"),
+            Err(e) => tracing::warn!("Contacts refresh error: {e}"),
+        }
     }
 }
 

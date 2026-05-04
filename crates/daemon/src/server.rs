@@ -79,6 +79,20 @@ pub async fn run_daemon() -> anyhow::Result<()> {
     });
     state.register_snooze_loop(snooze_handle);
 
+    let reconciler_state = state.clone();
+    let reconciler_handle = tokio::spawn(async move {
+        let shutdown_rx = reconciler_state.shutdown_receiver();
+        loops::reply_pair_reconciler_loop(reconciler_state, shutdown_rx).await;
+    });
+    state.register_reply_pair_reconciler(reconciler_handle);
+
+    let contacts_state = state.clone();
+    let contacts_handle = tokio::spawn(async move {
+        let shutdown_rx = contacts_state.shutdown_receiver();
+        loops::contacts_refresher_loop(contacts_state, shutdown_rx).await;
+    });
+    state.register_contacts_refresher(contacts_handle);
+
     let mut shutdown_rx = state.shutdown_receiver();
     let mut connections = JoinSet::new();
 

@@ -190,6 +190,69 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::ListSubscriptions { account_id, limit } => {
             platform::list_subscriptions(state, account_id.as_ref(), *limit).await
         }
+        Request::ListStorageBreakdown {
+            account_id,
+            group_by,
+            limit,
+        } => {
+            platform::list_storage_breakdown(state, account_id.as_ref(), *group_by, *limit).await
+        }
+        Request::ListStaleThreads {
+            account_id,
+            perspective,
+            older_than_days,
+            limit,
+        } => {
+            platform::list_stale_threads(
+                state,
+                account_id.as_ref(),
+                *perspective,
+                *older_than_days,
+                *limit,
+            )
+            .await
+        }
+        Request::ListContactAsymmetry {
+            account_id,
+            min_inbound,
+            limit,
+        } => platform::list_contact_asymmetry(state, account_id.as_ref(), *min_inbound, *limit).await,
+        Request::ListContactDecay {
+            account_id,
+            threshold_days,
+            limit,
+        } => platform::list_contact_decay(state, account_id.as_ref(), *threshold_days, *limit).await,
+        Request::RefreshContacts => platform::refresh_contacts(state).await,
+        Request::RebuildAnalytics => platform::rebuild_analytics(state).await,
+        Request::ListResponseTime {
+            account_id,
+            direction,
+            counterparty,
+            since_days,
+        } => {
+            platform::list_response_time(
+                state,
+                account_id.as_ref(),
+                *direction,
+                counterparty.as_deref(),
+                *since_days,
+            )
+            .await
+        }
+        Request::ListAccountAddresses { account_id } => {
+            platform::list_account_addresses(state, account_id).await
+        }
+        Request::AddAccountAddress {
+            account_id,
+            email,
+            primary,
+        } => platform::add_account_address(state, account_id, email, *primary).await,
+        Request::RemoveAccountAddress { account_id, email } => {
+            platform::remove_account_address(state, account_id, email).await
+        }
+        Request::SetPrimaryAccountAddress { account_id, email } => {
+            platform::set_primary_account_address(state, account_id, email).await
+        }
         Request::GetSemanticStatus => platform::semantic_status(state).await,
         Request::EnableSemantic { enabled } => platform::enable_semantic(state, *enabled).await,
         Request::InstallSemanticProfile { profile } => {
@@ -365,6 +428,17 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::DryRunRules { .. }
             | Request::ListSavedSearches
             | Request::ListSubscriptions { .. }
+            | Request::ListStorageBreakdown { .. }
+            | Request::ListStaleThreads { .. }
+            | Request::ListContactAsymmetry { .. }
+            | Request::ListContactDecay { .. }
+            | Request::RefreshContacts
+            | Request::RebuildAnalytics
+            | Request::ListResponseTime { .. }
+            | Request::ListAccountAddresses { .. }
+            | Request::AddAccountAddress { .. }
+            | Request::RemoveAccountAddress { .. }
+            | Request::SetPrimaryAccountAddress { .. }
             | Request::RunSavedSearch { .. }
             | Request::ListEvents { .. }
             | Request::GetLogs { .. }
@@ -430,6 +504,17 @@ fn request_kind(req: &Request) -> &'static str {
         Request::GetHeaders { .. } => "get_headers",
         Request::ListSavedSearches => "list_saved_searches",
         Request::ListSubscriptions { .. } => "list_subscriptions",
+        Request::ListStorageBreakdown { .. } => "list_storage_breakdown",
+        Request::ListStaleThreads { .. } => "list_stale_threads",
+        Request::ListContactAsymmetry { .. } => "list_contact_asymmetry",
+        Request::ListContactDecay { .. } => "list_contact_decay",
+        Request::RefreshContacts => "refresh_contacts",
+        Request::RebuildAnalytics => "rebuild_analytics",
+        Request::ListResponseTime { .. } => "list_response_time",
+        Request::ListAccountAddresses { .. } => "list_account_addresses",
+        Request::AddAccountAddress { .. } => "add_account_address",
+        Request::RemoveAccountAddress { .. } => "remove_account_address",
+        Request::SetPrimaryAccountAddress { .. } => "set_primary_account_address",
         Request::GetSemanticStatus => "get_semantic_status",
         Request::EnableSemantic { .. } => "enable_semantic",
         Request::InstallSemanticProfile { .. } => "install_semantic_profile",
@@ -480,7 +565,16 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::CreateLabel { account_id, .. }
         | Request::RenameLabel { account_id, .. }
         | Request::ListSubscriptions { account_id, .. }
+        | Request::ListStorageBreakdown { account_id, .. }
+        | Request::ListStaleThreads { account_id, .. }
+        | Request::ListContactAsymmetry { account_id, .. }
+        | Request::ListContactDecay { account_id, .. }
+        | Request::ListResponseTime { account_id, .. }
         | Request::SyncNow { account_id } => account_id.as_ref(),
+        Request::ListAccountAddresses { account_id }
+        | Request::AddAccountAddress { account_id, .. }
+        | Request::RemoveAccountAddress { account_id, .. }
+        | Request::SetPrimaryAccountAddress { account_id, .. } => Some(account_id),
         Request::GetSyncStatus { account_id } => Some(account_id),
         Request::SendDraft { draft }
         | Request::SaveDraft { draft }
@@ -653,7 +747,7 @@ async fn persist_local_label_changes(
 
     state
         .store
-        .set_message_labels(message_id, &label_ids)
+        .set_message_labels(message_id, &label_ids, mxr_core::EventSource::User)
         .await?;
     state
         .store
@@ -5156,7 +5250,11 @@ mod tests {
             other => panic!("Expected Label response, got {:?}", other),
         };
 
-        state.store.add_message_label(&id, &label.id).await.unwrap();
+        state
+            .store
+            .add_message_label(&id, &label.id, mxr_core::EventSource::User)
+            .await
+            .unwrap();
 
         let msg = IpcMessage {
             id: 2,
@@ -5202,7 +5300,11 @@ mod tests {
             other => panic!("Expected Label response, got {:?}", other),
         };
 
-        state.store.add_message_label(&id, &label.id).await.unwrap();
+        state
+            .store
+            .add_message_label(&id, &label.id, mxr_core::EventSource::User)
+            .await
+            .unwrap();
 
         let msg = IpcMessage {
             id: 2,

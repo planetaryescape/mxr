@@ -167,7 +167,7 @@ async fn apply_mutation_to_envelope(
                 .map_err(|e| e.to_string())?;
             state
                 .store
-                .set_read(message_id, true)
+                .set_read(message_id, true, mxr_core::EventSource::User)
                 .await
                 .map_err(|e| e.to_string())?;
             provider
@@ -212,7 +212,7 @@ async fn apply_mutation_to_envelope(
                 .map_err(|e| e.to_string())?;
             state
                 .store
-                .set_starred(message_id, *starred)
+                .set_starred(message_id, *starred, mxr_core::EventSource::User)
                 .await
                 .map_err(|e| e.to_string())?;
         }
@@ -223,7 +223,7 @@ async fn apply_mutation_to_envelope(
                 .map_err(|e| e.to_string())?;
             state
                 .store
-                .set_read(message_id, *read)
+                .set_read(message_id, *read, mxr_core::EventSource::User)
                 .await
                 .map_err(|e| e.to_string())?;
         }
@@ -735,7 +735,7 @@ pub(super) async fn set_flags(
 ) -> HandlerResult {
     state
         .store
-        .update_flags(message_id, flags)
+        .update_flags(message_id, flags, mxr_core::EventSource::User)
         .await
         .map_err(|e| e.to_string())?;
     Ok(ResponseData::Ack)

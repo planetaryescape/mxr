@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.59](https://github.com/planetaryescape/mxr/compare/v0.4.58...v0.4.59) (2026-05-04)
+
+
+### Bug Fixes
+
+* add description metadata to internal crates so crates.io publish accepts them
+
 ## [0.4.58](https://github.com/planetaryescape/mxr/compare/v0.4.57...v0.4.58) (2026-05-04)
 
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR REPLACE INTO reply_pairs (\n                reply_message_id, parent_message_id, account_id,\n                counterparty_email, direction,\n                parent_received_at, replied_at, latency_seconds,\n                business_hours_latency_seconds, created_at\n             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "9fb6038125ad93e921bb5a825cba892904c9e3579cca741bb8fe24488aa57820"
+}

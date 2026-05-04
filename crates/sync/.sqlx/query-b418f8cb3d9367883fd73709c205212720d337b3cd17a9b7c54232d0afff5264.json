@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO labels (id, account_id, name, kind, color, provider_id, unread_count, total_count)\n             VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n             ON CONFLICT(id) DO UPDATE SET\n                name = excluded.name,\n                kind = excluded.kind,\n                color = excluded.color,\n                provider_id = excluded.provider_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "b418f8cb3d9367883fd73709c205212720d337b3cd17a9b7c54232d0afff5264"
+}

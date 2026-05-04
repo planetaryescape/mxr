@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM reply_pair_pending WHERE reply_message_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "915c1bfbeb5c0cc4cacac5ea06021e94d15e98b3da698d88e3e0a035b6aa888d"
+}

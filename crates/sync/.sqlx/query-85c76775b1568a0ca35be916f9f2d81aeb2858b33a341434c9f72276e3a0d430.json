@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT message_id_header FROM drafts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "message_id_header",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "85c76775b1568a0ca35be916f9f2d81aeb2858b33a341434c9f72276e3a0d430"
+}

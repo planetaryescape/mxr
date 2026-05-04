@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO sync_log (account_id, started_at, status) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "a9aec62e3523abb147c09575a2128fa32403ea87635f0dc6c870ffd5e7aec49d"
+}

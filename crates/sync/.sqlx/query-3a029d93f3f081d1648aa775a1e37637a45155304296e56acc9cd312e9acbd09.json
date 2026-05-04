@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE reply_pairs SET business_hours_latency_seconds = ?\n                 WHERE reply_message_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3a029d93f3f081d1648aa775a1e37637a45155304296e56acc9cd312e9acbd09"
+}

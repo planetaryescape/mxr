@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO account_addresses (account_id, email, is_primary)\n             VALUES (?, ?, ?)\n             ON CONFLICT(account_id, email) DO UPDATE SET is_primary = excluded.is_primary",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "5d7d7e1cba6407fee0ca8089570e3f148c9f1e78e69adbd2406cd49167bf1a5a"
+}

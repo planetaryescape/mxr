@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO message_labels (message_id, label_id) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "777db9e8cfdd04885f09c2df5217f940fc11a0e3cd501b75fcbdd23b68e5a419"
+}

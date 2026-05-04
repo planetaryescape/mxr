@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                message_id  as \"message_id!\",\n                account_id  as \"account_id!\",\n                event_type  as \"event_type!\",\n                source      as \"source!\",\n                label_id,\n                occurred_at as \"occurred_at!: i64\",\n                metadata_json\n            FROM message_events\n            WHERE message_id = ?\n            ORDER BY occurred_at ASC, id ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "message_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "event_type!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "source!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "label_id",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "occurred_at!: i64",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "metadata_json",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "8f2ee24735c58b2bfbc7454304b3b576982befb7a976dbe8e7adc201935a1f3e"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT sync_cursor FROM accounts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "sync_cursor",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "5f392094c8d7efeef70589ca0f2ff6e62d26c98da6a98c55752ae07ae50eac53"
+}

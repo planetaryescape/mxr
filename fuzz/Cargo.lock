@@ -1059,7 +1059,7 @@ checksum = "2195bf6aa996a481483b29d62a7663eed3fe39600c460e323f8ff41e90bdd89b"
 
 [[package]]
 name = "mxr-compose"
-version = "0.4.54"
+version = "0.4.62"
 dependencies = [
  "chrono",
  "comrak",
@@ -1081,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-core"
-version = "0.4.54"
+version = "0.4.62"
 dependencies = [
  "async-trait",
  "bitflags",
@@ -1106,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-mail-parse"
-version = "0.4.54"
+version = "0.4.62"
 dependencies = [
  "chrono",
  "mail-parser",
@@ -1118,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-outbound"
-version = "0.4.54"
+version = "0.4.62"
 dependencies = [
  "comrak",
  "dirs",
@@ -1132,7 +1132,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-protocol"
-version = "0.4.54"
+version = "0.4.62"
 dependencies = [
  "bytes",
  "chrono",
@@ -1144,7 +1144,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-search"
-version = "0.4.54"
+version = "0.4.62"
 dependencies = [
  "chrono",
  "mxr-core",

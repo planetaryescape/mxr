@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO account_addresses (account_id, email, is_primary)\n                 VALUES (?, ?, 1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f1b4fb7580caba6e8b9b4e5bb519e4ba3cda8454f1b1de1c52405eda9bad663f"
+}

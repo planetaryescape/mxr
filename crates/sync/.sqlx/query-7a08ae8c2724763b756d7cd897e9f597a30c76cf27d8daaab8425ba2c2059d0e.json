@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO reply_pair_pending\n                (reply_message_id, in_reply_to_header, account_id, created_at)\n             VALUES (?, ?, ?, ?)\n             ON CONFLICT(reply_message_id) DO UPDATE SET\n                in_reply_to_header = excluded.in_reply_to_header,\n                created_at = excluded.created_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "7a08ae8c2724763b756d7cd897e9f597a30c76cf27d8daaab8425ba2c2059d0e"
+}

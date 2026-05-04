@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT status as \"status!\" FROM drafts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "status!",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "61b8afe71c40710e252675dd49bdba552bf2c13bffabd7bd2a0c77d0ee45f8de"
+}

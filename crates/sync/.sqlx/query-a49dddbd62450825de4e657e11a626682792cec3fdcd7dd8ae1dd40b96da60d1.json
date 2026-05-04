@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                pending.reply_message_id  as \"reply_message_id!\",\n                pending.in_reply_to_header as \"in_reply_to_header!\",\n                reply.id                  as \"reply_id!\",\n                reply.account_id          as \"reply_account_id!\",\n                reply.date                as \"reply_date!\",\n                reply.in_reply_to         as \"reply_in_reply_to\",\n                reply.from_email          as \"reply_from_email!\",\n                reply.direction           as \"reply_direction!\"\n               FROM reply_pair_pending pending\n               JOIN messages reply ON reply.id = pending.reply_message_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "reply_message_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "in_reply_to_header!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "reply_id!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "reply_account_id!",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "reply_date!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "reply_in_reply_to",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "reply_from_email!",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "reply_direction!",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "a49dddbd62450825de4e657e11a626682792cec3fdcd7dd8ae1dd40b96da60d1"
+}

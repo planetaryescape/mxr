@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE account_addresses SET is_primary = 0 WHERE account_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "d1335ecbddd577654ba0c6a5562b8c9404eaf86eb58d0aa97a7ff5c736c3c560"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM message_labels WHERE message_id = ? AND label_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "ff0dddc4d372e2442af15f7c79d5dc9ae445b0e0138543e62cb5b7963bb05c7a"
+}

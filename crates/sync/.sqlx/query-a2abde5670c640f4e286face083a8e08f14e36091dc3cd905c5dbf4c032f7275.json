@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!\", account_id as \"account_id!\", started_at as \"started_at!\",\n                      finished_at, status as \"status!\", messages_synced as \"messages_synced!\",\n                      error_message\n               FROM sync_log WHERE account_id = ? ORDER BY started_at DESC LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "started_at!",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "finished_at",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "status!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "messages_synced!",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "error_message",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "a2abde5670c640f4e286face083a8e08f14e36091dc3cd905c5dbf4c032f7275"
+}

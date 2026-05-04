@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE labels SET unread_count = ?, total_count = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "fa895d599f4d165eda9ca32548da4faae93a6d6bf43be0d11b635fc373dac615"
+}

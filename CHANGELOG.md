@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.57](https://github.com/planetaryescape/mxr/compare/v0.4.56...v0.4.57) (2026-05-04)
+
+
+### Bug Fixes
+
+* sync Cargo.lock to workspace version so `cargo build --locked` succeeds in release CI
+
 ## [0.4.56](https://github.com/planetaryescape/mxr/compare/v0.4.55...v0.4.56) (2026-05-04)
 
 

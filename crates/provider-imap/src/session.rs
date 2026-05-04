@@ -110,6 +110,17 @@ impl XOAuth2ImapSessionFactory {
 #[async_trait]
 impl ImapSessionFactory for XOAuth2ImapSessionFactory {
     async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            self.create_session_inner(),
+        )
+        .await
+        .map_err(|_| ImapProviderError::Connection("XOAUTH2 session setup timed out".into()))?
+    }
+}
+
+impl XOAuth2ImapSessionFactory {
+    async fn create_session_inner(&self) -> Result<Box<dyn ImapSession>> {
         let access_token = (self.token_fn)()
             .await
             .map_err(|e| ImapProviderError::Auth(format!("token fetch failed: {e}")))?;

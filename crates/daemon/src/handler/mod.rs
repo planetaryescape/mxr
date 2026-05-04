@@ -1752,17 +1752,15 @@ async fn authorize_account_config(
         }
         let auth = mxr_provider_outlook::OutlookAuth::new(cid, token_ref, tenant);
         if !reauthorize {
-            if let Ok(Some(tokens)) = auth.load_tokens() {
-                if !tokens.is_near_expiry() {
-                    return account_operation_result(
-                        true,
-                        "Outlook authorization ready.".into(),
-                        None,
-                        Some(account_step(true, "Existing OAuth token loaded.".into())),
-                        None,
-                        None,
-                    );
-                }
+            if auth.get_valid_access_token().await.is_ok() {
+                return account_operation_result(
+                    true,
+                    "Outlook authorization ready.".into(),
+                    None,
+                    Some(account_step(true, "Existing OAuth token valid.".into())),
+                    None,
+                    None,
+                );
             }
         }
         let device_resp = match auth.start_device_flow().await {
@@ -2114,13 +2112,20 @@ async fn test_account_config(account: AccountConfigData) -> AccountOperationResu
                 _ => unreachable!(),
             };
             let cid = send_client_id
+                .or_else(|| match &account.sync {
+                    Some(
+                        AccountSyncConfigData::OutlookPersonal { client_id: Some(id), .. }
+                        | AccountSyncConfigData::OutlookWork { client_id: Some(id), .. },
+                    ) => Some(id.clone()),
+                    _ => None,
+                })
                 .or_else(|| mxr_provider_outlook::BUNDLED_CLIENT_ID.map(String::from));
             match cid {
                 None => {
                     ok = false;
                     send = Some(account_step(
                         false,
-                        "No bundled OUTLOOK_CLIENT_ID for Outlook send".into(),
+                        "No client_id and no bundled OUTLOOK_CLIENT_ID for Outlook send".into(),
                     ));
                 }
                 Some(cid) => {

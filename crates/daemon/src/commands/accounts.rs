@@ -749,11 +749,7 @@ async fn add_outlook_inner(
     auth.save_tokens(&tokens)?;
     println!("Authorization successful!\n");
 
-    let client_id_stored = if OUTLOOK_BUNDLED_CLIENT_ID.is_some() {
-        None
-    } else {
-        Some(client_id)
-    };
+    let client_id_stored = Some(client_id);
     let (sync_config, send_config) = match auth.tenant_kind() {
         mxr_provider_outlook::OutlookTenant::Work => (
             mxr_config::SyncProviderConfig::OutlookWork {

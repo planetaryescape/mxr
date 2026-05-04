@@ -435,7 +435,7 @@ impl AppState {
                     }
                     _ => mxr_provider_outlook::OutlookTenant::Personal,
                 };
-                // Resolve client_id from sync config (shared token) or fall back to bundled.
+                // Resolve client_id: sync config → send config → bundled constant.
                 let cid = match &acct_config.sync {
                     Some(
                         mxr_config::SyncProviderConfig::OutlookPersonal {
@@ -446,15 +446,28 @@ impl AppState {
                             client_id: Some(id),
                             ..
                         },
-                    ) => id.clone(),
-                    _ => mxr_provider_outlook::BUNDLED_CLIENT_ID
-                        .map(String::from)
-                        .ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "Outlook send for '{key}' has no client_id and no bundled OUTLOOK_CLIENT_ID"
-                            )
-                        })?,
-                };
+                    ) => Some(id.clone()),
+                    _ => None,
+                }
+                .or_else(|| match &acct_config.send {
+                    Some(
+                        mxr_config::SendProviderConfig::OutlookPersonal {
+                            client_id: Some(id),
+                            ..
+                        }
+                        | mxr_config::SendProviderConfig::OutlookWork {
+                            client_id: Some(id),
+                            ..
+                        },
+                    ) => Some(id.clone()),
+                    _ => None,
+                })
+                .or_else(|| mxr_provider_outlook::BUNDLED_CLIENT_ID.map(String::from))
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Outlook send for '{key}' has no client_id and no bundled OUTLOOK_CLIENT_ID"
+                    )
+                })?;
                 let auth = std::sync::Arc::new(mxr_provider_outlook::OutlookAuth::new(
                     cid,
                     token_ref.clone(),

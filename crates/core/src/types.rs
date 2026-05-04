@@ -150,8 +150,7 @@ impl InMemoryAccountAddressLookup {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = normalized;
-        self.loaded
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.loaded.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -817,6 +816,34 @@ pub struct Draft {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DraftStatus {
+    #[default]
+    Draft,
+    Sending,
+    Sent,
+}
+
+impl DraftStatus {
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            DraftStatus::Draft => "draft",
+            DraftStatus::Sending => "sending",
+            DraftStatus::Sent => "sent",
+        }
+    }
+
+    pub fn from_db_str(s: &str) -> Option<Self> {
+        match s {
+            "draft" => Some(DraftStatus::Draft),
+            "sending" => Some(DraftStatus::Sending),
+            "sent" => Some(DraftStatus::Sent),
+            _ => None,
+        }
+    }
+}
+
 // -- SavedSearch --------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1139,4 +1166,9 @@ pub struct SyncCapabilities {
 pub struct SendReceipt {
     pub provider_message_id: Option<String>,
     pub sent_at: DateTime<Utc>,
+    /// RFC 5322 Message-ID header rendered into the outgoing message. Used by
+    /// the daemon to anchor the synthetic local Sent envelope, and by IMAP
+    /// dedupe on subsequent sync.
+    #[serde(default)]
+    pub rfc2822_message_id: String,
 }

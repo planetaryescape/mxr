@@ -3,7 +3,10 @@ use super::{
     restore_snoozed_message, HandlerResult,
 };
 use crate::state::AppState;
-use mxr_core::types::{Address, Draft, Envelope, UnsubscribeMethod};
+use mxr_core::types::{
+    Address, Draft, DraftStatus, Envelope, MessageBody, MessageFlags, MessageMetadata, SendReceipt,
+    UnsubscribeMethod,
+};
 use mxr_protocol::{
     AccountMutationResultData, ForwardContext, MutationCommand, MutationResultData, ReplyContext,
     ResponseData,
@@ -178,7 +181,10 @@ async fn apply_mutation_to_envelope(
                 .await?;
         }
         MutationCommand::Trash { .. } => {
-            provider.trash(provider_id).await.map_err(|e| e.to_string())?;
+            provider
+                .trash(provider_id)
+                .await
+                .map_err(|e| e.to_string())?;
             // Trash is provider-specific (Gmail relabels, IMAP moves+expunges).
             // Mirror the common case locally: drop INBOX, add TRASH if labels-capable;
             // otherwise let reconcile_label_mutation re-sync from the provider.
@@ -292,7 +298,10 @@ async fn reindex_message_in_search(
     state
         .search
         .apply_batch(mxr_search::SearchUpdateBatch {
-            entries: vec![mxr_search::SearchIndexEntry { envelope, body: None }],
+            entries: vec![mxr_search::SearchIndexEntry {
+                envelope,
+                body: None,
+            }],
             removed_message_ids: Vec::new(),
         })
         .await
@@ -558,22 +567,33 @@ pub(super) async fn prepare_forward(
     })
 }
 
-pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult {
-    let sender = state.send_provider_for_account(&draft.account_id)?;
+async fn resolve_from_address(state: &AppState, draft: &Draft) -> Address {
     let account = state
         .store
         .get_account(&draft.account_id)
         .await
         .ok()
         .flatten();
-    let from = Address {
+    Address {
         name: account.as_ref().map(|account| account.name.clone()),
         email: account
             .as_ref()
             .map(|account| account.email.clone())
             .unwrap_or_else(|| "user@example.com".to_string()),
-    };
-    sender.send(draft, &from).await.map_err(|e| e.to_string())?;
+    }
+}
+
+pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult {
+    let sender = state.send_provider_for_account(&draft.account_id)?;
+    let from = resolve_from_address(state, draft).await;
+    let receipt = sender.send(draft, &from).await.map_err(|e| e.to_string())?;
+    // Ingest synthetic Sent envelope so the message is searchable as `is:sent`
+    // immediately, without waiting for the next sync. Failures here are
+    // non-fatal: the send already succeeded on the wire and we surface the
+    // local-ingest error to the caller via tracing.
+    if let Err(e) = ingest_sent_message(state, draft, &from, &receipt).await {
+        tracing::warn!(error = %e, "ingest_sent_message failed after send_draft");
+    }
     Ok(ResponseData::Ack)
 }
 
@@ -587,13 +607,193 @@ pub(super) async fn send_stored_draft(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Draft not found: {draft_id}"))?;
-    send_draft(state, &draft).await?;
-    state
+
+    // Compare-and-set: only the unique `Draft` -> `Sending` transition is
+    // allowed to invoke the provider. A draft already in `Sending` (likely a
+    // crashed prior attempt) or `Sent` (already delivered) refuses.
+    let advanced = state
         .store
-        .delete_draft(draft_id)
+        .cas_draft_status(draft_id, DraftStatus::Draft, DraftStatus::Sending)
         .await
         .map_err(|e| e.to_string())?;
+    if !advanced {
+        let current = state
+            .store
+            .get_draft_status(draft_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .unwrap_or(DraftStatus::Draft);
+        return Err(match current {
+            DraftStatus::Sent => "draft already sent".to_string(),
+            DraftStatus::Sending => {
+                "draft is already being sent (resolve via `mxr drafts resolve`)".to_string()
+            }
+            DraftStatus::Draft => "draft state mismatch; retry".to_string(),
+        });
+    }
+
+    let sender = match state.send_provider_for_account(&draft.account_id) {
+        Ok(s) => s,
+        Err(e) => {
+            // Revert; the daemon never invoked the provider.
+            let _ = state
+                .store
+                .update_draft_status(draft_id, DraftStatus::Draft)
+                .await;
+            return Err(e);
+        }
+    };
+    let from = resolve_from_address(state, &draft).await;
+
+    let receipt = match sender.send(&draft, &from).await {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = state
+                .store
+                .update_draft_status(draft_id, DraftStatus::Draft)
+                .await;
+            return Err(e.to_string());
+        }
+    };
+
+    // Persist the Message-ID we used; helps IMAP-side dedupe on next sync.
+    let _ = state
+        .store
+        .set_draft_message_id_header(draft_id, &receipt.rfc2822_message_id)
+        .await;
+
+    if let Err(e) = ingest_sent_message(state, &draft, &from, &receipt).await {
+        // Local ingest failed. Send already happened on the wire; we move the
+        // draft to `Sent` (idempotent, prevents resend) but bubble the error so
+        // the user can re-sync.
+        let _ = state
+            .store
+            .update_draft_status(draft_id, DraftStatus::Sent)
+            .await;
+        return Err(format!("send succeeded but local ingest failed: {e}"));
+    }
+
+    let _ = state
+        .store
+        .update_draft_status(draft_id, DraftStatus::Sent)
+        .await;
+    let _ = state.store.delete_draft(draft_id).await;
     Ok(ResponseData::Ack)
+}
+
+/// Insert a synthetic envelope + body into the local store immediately after a
+/// successful provider send so the message is searchable as `is:sent` without
+/// waiting for the next sync. Keyed by `provider_message_id` (Gmail) or the
+/// rendered Message-ID header (SMTP) so the next sync's `upsert_envelope` is
+/// idempotent for Gmail (same UUID v5) — see `MessageId::from_scoped_provider_id`.
+async fn ingest_sent_message(
+    state: &AppState,
+    draft: &Draft,
+    from: &Address,
+    receipt: &SendReceipt,
+) -> Result<(), String> {
+    let (provider_namespace, provider_id_value) =
+        if let Some(gmail_id) = receipt.provider_message_id.as_deref() {
+            ("gmail", gmail_id.to_string())
+        } else {
+            ("smtp-local", receipt.rfc2822_message_id.clone())
+        };
+    let message_id = mxr_core::MessageId::from_scoped_provider_id(
+        &draft.account_id,
+        provider_namespace,
+        &provider_id_value,
+    );
+
+    let snippet: String = draft
+        .body_markdown
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(200)
+        .collect();
+
+    let envelope = Envelope {
+        id: message_id.clone(),
+        account_id: draft.account_id.clone(),
+        provider_id: provider_id_value,
+        thread_id: mxr_core::ThreadId::new(),
+        message_id_header: Some(receipt.rfc2822_message_id.clone()),
+        in_reply_to: draft.reply_headers.as_ref().map(|h| h.in_reply_to.clone()),
+        references: draft
+            .reply_headers
+            .as_ref()
+            .map(|h| h.references.clone())
+            .unwrap_or_default(),
+        from: from.clone(),
+        to: draft.to.clone(),
+        cc: draft.cc.clone(),
+        bcc: draft.bcc.clone(),
+        subject: draft.subject.clone(),
+        date: receipt.sent_at,
+        flags: MessageFlags::SENT | MessageFlags::READ,
+        snippet: snippet.clone(),
+        has_attachments: !draft.attachments.is_empty(),
+        size_bytes: draft.body_markdown.len() as u64,
+        unsubscribe: UnsubscribeMethod::None,
+        label_provider_ids: if provider_namespace == "gmail" {
+            vec!["SENT".to_string()]
+        } else {
+            Vec::new()
+        },
+    };
+
+    state
+        .store
+        .upsert_envelope(&envelope)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let body = MessageBody {
+        message_id: message_id.clone(),
+        text_plain: Some(draft.body_markdown.clone()),
+        text_html: None,
+        attachments: Vec::new(),
+        fetched_at: receipt.sent_at,
+        metadata: MessageMetadata::default(),
+    };
+    state
+        .store
+        .insert_body(&body)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Apply Gmail SENT label if the account already knows about it (it will,
+    // post-first-sync). Missing label is non-fatal: `is:sent` queries match on
+    // MessageFlags::SENT regardless of the labels junction.
+    if provider_namespace == "gmail" {
+        if let Ok(Some(sent_label)) = state
+            .store
+            .find_label_by_provider_id(&draft.account_id, "SENT")
+            .await
+        {
+            let _ = state
+                .store
+                .set_message_labels(
+                    &message_id,
+                    std::slice::from_ref(&sent_label.id),
+                    mxr_core::EventSource::User,
+                )
+                .await;
+        }
+    }
+
+    state
+        .search
+        .apply_batch(mxr_search::SearchUpdateBatch {
+            entries: vec![mxr_search::SearchIndexEntry {
+                envelope,
+                body: Some(body),
+            }],
+            removed_message_ids: Vec::new(),
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> HandlerResult {

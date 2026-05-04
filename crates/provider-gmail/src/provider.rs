@@ -694,7 +694,8 @@ impl MailSendProvider for GmailProvider {
     }
 
     async fn send(&self, draft: &Draft, from: &Address) -> mxr_core::provider::Result<SendReceipt> {
-        let rfc2822 = send::build_rfc2822_async(draft, from)
+        let rfc2822_message_id = mxr_outbound::email::generate_message_id(from);
+        let rfc2822 = send::build_rfc2822_async_with_id(draft, from, &rfc2822_message_id)
             .await
             .map_err(|e| MxrError::Provider(e.to_string()))?;
         let encoded = send::encode_for_gmail(&rfc2822);
@@ -710,6 +711,7 @@ impl MailSendProvider for GmailProvider {
         Ok(SendReceipt {
             provider_message_id: message_id,
             sent_at: chrono::Utc::now(),
+            rfc2822_message_id,
         })
     }
 

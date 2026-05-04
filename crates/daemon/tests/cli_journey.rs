@@ -61,9 +61,17 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
     };
 
     // Boot the daemon and capture its pid (so Drop can stop it).
-    let status = run_json(&instance, &data_dir, &config_dir, &["status", "--format", "json"]);
+    let status = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["status", "--format", "json"],
+    );
     daemon.pid = status["daemon_pid"].as_u64();
-    assert!(daemon.pid.is_some(), "daemon should auto-start with status: {status:#}");
+    assert!(
+        daemon.pid.is_some(),
+        "daemon should auto-start with status: {status:#}"
+    );
 
     // accounts --format json shows the fake account.
     let accounts = run_json(
@@ -74,7 +82,10 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
     );
     let fake = accounts
         .as_array()
-        .and_then(|arr| arr.iter().find(|account| account["email"] == "fake@example.com"))
+        .and_then(|arr| {
+            arr.iter()
+                .find(|account| account["email"] == "fake@example.com")
+        })
         .unwrap_or_else(|| panic!("fake account missing in: {accounts:#}"));
     assert_eq!(fake["email"].as_str(), Some("fake@example.com"));
     assert_eq!(
@@ -179,6 +190,30 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         reply_out.stderr,
     );
 
+    // The synthetic Sent envelope must be searchable immediately — no
+    // intervening sync. Regression for Bug 1 of the v1 ship gate (sent
+    // messages used to only appear after the next sync).
+    let sent = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["search", "is:sent", "--format", "json", "--limit", "100"],
+    );
+    let sent_subjects: Vec<String> = sent
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item["subject"].as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    assert!(
+        sent_subjects
+            .iter()
+            .any(|s| s.contains("Smoke test") || s.starts_with("Re:") || !s.is_empty()),
+        "is:sent should include the just-sent reply; got {sent_subjects:?}"
+    );
+
     // archive the message — search should immediately reflect the dropped INBOX label.
     run_status_only(
         &instance,
@@ -238,12 +273,7 @@ struct CliOutput {
     stderr: String,
 }
 
-fn run_status_only(
-    instance: &str,
-    data_dir: &Path,
-    config_dir: &Path,
-    args: &[&str],
-) -> CliOutput {
+fn run_status_only(instance: &str, data_dir: &Path, config_dir: &Path, args: &[&str]) -> CliOutput {
     let output = Command::cargo_bin("mxr")
         .expect("mxr bin")
         .env("MXR_INSTANCE", instance)

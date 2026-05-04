@@ -197,6 +197,28 @@ CREATE INDEX IF NOT EXISTS idx_semantic_embeddings_profile_id
         sqlx::raw_sql(include_str!("../migrations/010_contacts.sql"))
             .execute(&self.writer)
             .await?;
+        self.add_column_if_missing(
+            "drafts",
+            "status",
+            "ALTER TABLE drafts ADD COLUMN status TEXT NOT NULL DEFAULT 'draft' \
+             CHECK (status IN ('draft', 'sending', 'sent'))",
+        )
+        .await?;
+        self.add_column_if_missing(
+            "drafts",
+            "status_updated_at",
+            "ALTER TABLE drafts ADD COLUMN status_updated_at INTEGER",
+        )
+        .await?;
+        self.add_column_if_missing(
+            "drafts",
+            "message_id_header",
+            "ALTER TABLE drafts ADD COLUMN message_id_header TEXT",
+        )
+        .await?;
+        sqlx::raw_sql("CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(account_id, status)")
+            .execute(&self.writer)
+            .await?;
         self.validate_schema().await?;
         Ok(())
     }
@@ -306,10 +328,7 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
             "body_quoted_lines",
         ],
     ),
-    (
-        "account_addresses",
-        &["account_id", "email", "is_primary"],
-    ),
+    ("account_addresses", &["account_id", "email", "is_primary"]),
     (
         "reply_pairs",
         &[

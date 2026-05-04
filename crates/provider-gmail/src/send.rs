@@ -7,7 +7,7 @@ use mxr_outbound::attachments::{
     load_attachment_paths_async, load_attachment_paths_sync, LoadedAttachment,
 };
 use mxr_outbound::email::{
-    build_message, build_message_with_attachments, format_message_for_gmail,
+    build_message, build_message_with_attachments, build_message_with_id, format_message_for_gmail,
 };
 use mxr_outbound::render::render_markdown;
 use std::path::PathBuf;
@@ -30,6 +30,17 @@ pub async fn build_rfc2822_async(draft: &Draft, from: &Address) -> Result<Vec<u8
         elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
         "gmail message build completed"
     );
+    Ok(format_message_for_gmail(&message))
+}
+
+pub async fn build_rfc2822_async_with_id(
+    draft: &Draft,
+    from: &Address,
+    message_id: &str,
+) -> Result<Vec<u8>, GmailSendError> {
+    let attachments = load_attachments_async(&draft.attachments).await?;
+    let message = build_message_with_id(draft, from, true, &attachments, message_id)
+        .map_err(|err| GmailSendError::Build(err.to_string()))?;
     Ok(format_message_for_gmail(&message))
 }
 

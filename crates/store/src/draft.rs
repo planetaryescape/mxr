@@ -109,6 +109,96 @@ impl super::Store {
             .await?;
         Ok(())
     }
+
+    /// Read the current send-pipeline status for a draft.
+    pub async fn get_draft_status(&self, id: &DraftId) -> Result<Option<DraftStatus>, sqlx::Error> {
+        let id_str = id.as_str();
+        let row = sqlx::query!(
+            r#"SELECT status as "status!" FROM drafts WHERE id = ?"#,
+            id_str,
+        )
+        .fetch_optional(self.reader())
+        .await?;
+        Ok(row.and_then(|r| DraftStatus::from_db_str(&r.status)))
+    }
+
+    /// Read the persisted RFC 5322 Message-ID header for a draft, if any.
+    pub async fn get_draft_message_id_header(
+        &self,
+        id: &DraftId,
+    ) -> Result<Option<String>, sqlx::Error> {
+        let id_str = id.as_str();
+        let row = sqlx::query!(
+            r#"SELECT message_id_header FROM drafts WHERE id = ?"#,
+            id_str,
+        )
+        .fetch_optional(self.reader())
+        .await?;
+        Ok(row.and_then(|r| r.message_id_header))
+    }
+
+    /// Persist the RFC 5322 Message-ID header on the draft. Idempotent.
+    pub async fn set_draft_message_id_header(
+        &self,
+        id: &DraftId,
+        header: &str,
+    ) -> Result<(), sqlx::Error> {
+        let id_str = id.as_str();
+        sqlx::query!(
+            "UPDATE drafts SET message_id_header = ? WHERE id = ?",
+            header,
+            id_str,
+        )
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
+
+    /// Atomically transition a draft's status from `expected` to `new`.
+    /// Returns Ok(true) if the transition happened; Ok(false) if the row's
+    /// current status didn't match (or the draft is missing).
+    pub async fn cas_draft_status(
+        &self,
+        id: &DraftId,
+        expected: DraftStatus,
+        new: DraftStatus,
+    ) -> Result<bool, sqlx::Error> {
+        let id_str = id.as_str();
+        let expected_str = expected.as_db_str();
+        let new_str = new.as_db_str();
+        let now = chrono::Utc::now().timestamp();
+        let result = sqlx::query!(
+            "UPDATE drafts SET status = ?, status_updated_at = ? WHERE id = ? AND status = ?",
+            new_str,
+            now,
+            id_str,
+            expected_str,
+        )
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    /// Unconditionally update a draft's status. Used by error-recovery paths
+    /// that need to revert `Sending` → `Draft` after a send failure.
+    pub async fn update_draft_status(
+        &self,
+        id: &DraftId,
+        status: DraftStatus,
+    ) -> Result<(), sqlx::Error> {
+        let id_str = id.as_str();
+        let status_str = status.as_db_str();
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query!(
+            "UPDATE drafts SET status = ?, status_updated_at = ? WHERE id = ?",
+            status_str,
+            now,
+            id_str,
+        )
+        .execute(self.writer())
+        .await?;
+        Ok(())
+    }
 }
 
 fn parse_reply_headers(raw: Option<String>) -> Option<ReplyHeaders> {

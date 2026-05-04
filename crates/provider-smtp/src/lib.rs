@@ -13,7 +13,6 @@ use mxr_core::types::{Address, Draft, SendReceipt};
 use mxr_outbound::attachments::{load_attachment_paths_async, LoadedAttachment};
 #[cfg(test)]
 use mxr_outbound::email::build_message;
-use mxr_outbound::email::build_message_with_attachments;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -106,8 +105,15 @@ impl MailSendProvider for SmtpSendProvider {
     async fn send(&self, draft: &Draft, from: &Address) -> Result<SendReceipt, MxrError> {
         let attachments = load_attachments(&draft.attachments).await?;
         let started_at = Instant::now();
-        let message = build_message_with_attachments(draft, from, false, &attachments)
-            .map_err(|e| MxrError::Provider(format!("Failed to build message: {e}")))?;
+        let rfc2822_message_id = mxr_outbound::email::generate_message_id(from);
+        let message = mxr_outbound::email::build_message_with_id(
+            draft,
+            from,
+            false,
+            &attachments,
+            &rfc2822_message_id,
+        )
+        .map_err(|e| MxrError::Provider(format!("Failed to build message: {e}")))?;
         tracing::trace!(
             attachment_count = attachments.len(),
             elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0,
@@ -138,6 +144,7 @@ impl MailSendProvider for SmtpSendProvider {
         Ok(SendReceipt {
             provider_message_id: None,
             sent_at: chrono::Utc::now(),
+            rfc2822_message_id,
         })
     }
 }

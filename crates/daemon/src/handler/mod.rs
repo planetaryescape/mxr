@@ -194,9 +194,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             account_id,
             group_by,
             limit,
-        } => {
-            platform::list_storage_breakdown(state, account_id.as_ref(), *group_by, *limit).await
-        }
+        } => platform::list_storage_breakdown(state, account_id.as_ref(), *group_by, *limit).await,
         Request::ListStaleThreads {
             account_id,
             perspective,
@@ -216,12 +214,16 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             account_id,
             min_inbound,
             limit,
-        } => platform::list_contact_asymmetry(state, account_id.as_ref(), *min_inbound, *limit).await,
+        } => {
+            platform::list_contact_asymmetry(state, account_id.as_ref(), *min_inbound, *limit).await
+        }
         Request::ListContactDecay {
             account_id,
             threshold_days,
             limit,
-        } => platform::list_contact_decay(state, account_id.as_ref(), *threshold_days, *limit).await,
+        } => {
+            platform::list_contact_decay(state, account_id.as_ref(), *threshold_days, *limit).await
+        }
         Request::RefreshContacts => platform::refresh_contacts(state).await,
         Request::RebuildAnalytics => platform::rebuild_analytics(state).await,
         Request::ListResponseTime {
@@ -5845,12 +5847,16 @@ mod tests {
             }),
         };
         let send_resp = handle_request(&state, &send_msg).await;
-        assert!(matches!(
-            send_resp.payload,
-            IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack
-            })
-        ));
+        assert!(
+            matches!(
+                send_resp.payload,
+                IpcPayload::Response(Response::Ok {
+                    data: ResponseData::Ack
+                })
+            ),
+            "send_stored_draft should return Ack, got {:?}",
+            send_resp.payload
+        );
 
         assert_eq!(fake.sent_drafts().len(), 1);
         assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());

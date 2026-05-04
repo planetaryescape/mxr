@@ -3,6 +3,19 @@ use crate::render::render_markdown;
 use lettre::message::{header::ContentType, Attachment, Mailbox, Message, MultiPart, SinglePart};
 use mxr_core::types::{Address, Draft};
 
+/// Generate a stable RFC 5322 Message-ID header for an outgoing message.
+/// Daemon callers persist this on the draft before send so retries / failure
+/// recovery can reuse it for IMAP dedupe.
+pub fn generate_message_id(from: &Address) -> String {
+    let domain = from
+        .email
+        .split_once('@')
+        .map(|(_, d)| d)
+        .filter(|d| !d.is_empty())
+        .unwrap_or("localhost");
+    format!("<{}@{}>", uuid::Uuid::now_v7(), domain)
+}
+
 pub fn build_message(
     draft: &Draft,
     from: &Address,
@@ -18,22 +31,23 @@ pub fn build_message_with_attachments(
     keep_bcc: bool,
     attachments: &[LoadedAttachment],
 ) -> Result<Message, EmailBuildError> {
+    let message_id = generate_message_id(from);
+    build_message_with_id(draft, from, keep_bcc, attachments, &message_id)
+}
+
+pub fn build_message_with_id(
+    draft: &Draft,
+    from: &Address,
+    keep_bcc: bool,
+    attachments: &[LoadedAttachment],
+    message_id: &str,
+) -> Result<Message, EmailBuildError> {
     let from_mailbox = to_mailbox(from)?;
-    let message_id_domain = from
-        .email
-        .split_once('@')
-        .map(|(_, domain)| domain)
-        .filter(|domain| !domain.is_empty())
-        .unwrap_or("localhost");
 
     let mut builder = Message::builder()
         .from(from_mailbox)
         .subject(&draft.subject)
-        .message_id(Some(format!(
-            "<{}@{}>",
-            uuid::Uuid::now_v7(),
-            message_id_domain
-        )));
+        .message_id(Some(message_id.to_string()));
 
     if keep_bcc {
         builder = builder.keep_bcc();

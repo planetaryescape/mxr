@@ -280,11 +280,19 @@ impl MailSendProvider for FakeProvider {
         "fake"
     }
 
-    async fn send(&self, draft: &Draft, _from: &Address) -> Result<SendReceipt, MxrError> {
+    async fn send(&self, draft: &Draft, from: &Address) -> Result<SendReceipt, MxrError> {
         self.sent_guard().push(draft.clone());
+        let domain = from
+            .email
+            .split_once('@')
+            .map(|(_, d)| d)
+            .filter(|d| !d.is_empty())
+            .unwrap_or("localhost");
+        let rfc2822_message_id = format!("<{}@{}>", uuid::Uuid::now_v7(), domain);
         Ok(SendReceipt {
             provider_message_id: Some(format!("fake-sent-{}", uuid::Uuid::now_v7())),
             sent_at: chrono::Utc::now(),
+            rfc2822_message_id,
         })
     }
 

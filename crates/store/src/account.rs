@@ -172,9 +172,7 @@ impl super::Store {
     /// Snapshot of every owned address across every account. Used by
     /// `AppState::refresh_account_addresses` to populate the in-memory cache
     /// the sync engine consults during direction inference.
-    pub async fn list_all_account_addresses(
-        &self,
-    ) -> Result<Vec<AccountAddress>, sqlx::Error> {
+    pub async fn list_all_account_addresses(&self) -> Result<Vec<AccountAddress>, sqlx::Error> {
         let started_at = std::time::Instant::now();
         let rows = sqlx::query!(
             r#"SELECT

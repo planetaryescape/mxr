@@ -38,7 +38,10 @@ fn render_table(subscriptions: &[SubscriptionSummary], rank: bool) {
                 method,
             );
         }
-        println!("\n{} senders ranked by open-rate (low first)", subscriptions.len());
+        println!(
+            "\n{} senders ranked by open-rate (low first)",
+            subscriptions.len()
+        );
         return;
     }
 

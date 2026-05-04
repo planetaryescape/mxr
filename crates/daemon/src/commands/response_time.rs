@@ -87,9 +87,7 @@ pub async fn run(
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&summary)?),
         OutputFormat::Jsonl => println!("{}", jsonl(&[summary])?),
         OutputFormat::Csv => {
-            println!(
-                "direction,sample_count,clock_p50,clock_p90,business_p50,business_p90"
-            );
+            println!("direction,sample_count,clock_p50,clock_p90,business_p50,business_p90");
             println!(
                 "{},{},{},{},{},{}",
                 summary.direction.as_db_str(),

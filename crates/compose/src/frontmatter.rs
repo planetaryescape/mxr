@@ -21,11 +21,7 @@ pub struct ComposeFrontmatter {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub references: Vec<String>,
     /// Provider-native thread hint (e.g. Gmail thread id). Used so replies stay in-thread.
-    #[serde(
-        default,
-        rename = "thread-id",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(default, rename = "thread-id", skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
     #[serde(default)]
     pub attach: Vec<String>,

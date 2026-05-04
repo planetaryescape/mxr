@@ -166,8 +166,7 @@ impl AppState {
             config.search.semantic.clone(),
         ));
         runtime_tasks.set_semantic_worker(semantic_worker);
-        let account_addresses =
-            Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new());
+        let account_addresses = Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new());
         // Best-effort initial load. Empty result is fine — `is_loaded` stays
         // false and direction classification falls back to Unknown until the
         // first refresh after an account is configured.
@@ -342,10 +341,7 @@ impl AppState {
                 }
                 Some(mxr_config::SyncProviderConfig::Fake) => {
                     let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
-                    if matches!(
-                        acct_config.send,
-                        Some(mxr_config::SendProviderConfig::Fake)
-                    ) {
+                    if matches!(acct_config.send, Some(mxr_config::SendProviderConfig::Fake)) {
                         let send_provider: Arc<dyn MailSendProvider> = fake.clone();
                         send_providers.insert(account_id.clone(), send_provider.clone());
                         if requested_default == Some(key.as_str())
@@ -843,7 +839,7 @@ impl AppState {
                 search,
                 semantic,
                 sync_engine,
-            account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
+                account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
                 runtime: RwLock::new(ProviderRuntime {
                     providers,
                     send_providers,

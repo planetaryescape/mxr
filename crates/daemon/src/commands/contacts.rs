@@ -94,10 +94,7 @@ fn render_asymmetry_table(rows: &[ContactAsymmetryRow]) {
         println!("No contacts above the inbound threshold.");
         return;
     }
-    println!(
-        "{:<40} {:>5} {:>5} {:>7}",
-        "EMAIL", "IN", "OUT", "GAP"
-    );
+    println!("{:<40} {:>5} {:>5} {:>7}", "EMAIL", "IN", "OUT", "GAP");
     println!("{}", "-".repeat(60));
     for row in rows {
         let email: String = row.email.chars().take(40).collect();
@@ -141,7 +138,9 @@ async fn decay(
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&rows)?),
         OutputFormat::Jsonl => println!("{}", jsonl(&rows)?),
         OutputFormat::Csv => {
-            println!("email,days_since_inbound,days_since_outbound,last_inbound_at,last_outbound_at");
+            println!(
+                "email,days_since_inbound,days_since_outbound,last_inbound_at,last_outbound_at"
+            );
             for row in &rows {
                 let email = row.email.replace('"', "\"\"");
                 let outbound = row
@@ -186,9 +185,7 @@ fn render_decay_table(rows: &[ContactDecayRow]) {
             .unwrap_or_else(|| "-".into());
         println!(
             "{:<40} {:>9}d {:>10}",
-            email,
-            row.days_since_inbound,
-            outbound,
+            email, row.days_since_inbound, outbound,
         );
     }
     println!("\n{} contacts going cold", rows.len());

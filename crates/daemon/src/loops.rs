@@ -718,10 +718,7 @@ pub async fn reply_pair_reconciler_loop(
 /// Periodic refresh of the materialized `contacts` table. 5-minute cadence
 /// matches the plan; full-table aggregate is fine for typical mailboxes.
 /// Past ~100k messages, switch to incremental by `messages.id > last_seen_id`.
-pub async fn contacts_refresher_loop(
-    state: Arc<AppState>,
-    mut shutdown_rx: watch::Receiver<bool>,
-) {
+pub async fn contacts_refresher_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
     let mut ticker = interval(Duration::from_secs(300));
     loop {
         tokio::select! {

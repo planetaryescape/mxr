@@ -6,10 +6,7 @@ use std::time::Instant;
 impl super::Store {
     /// Append a state-transition event for a message. Callers must have
     /// already detected a real transition; this method writes unconditionally.
-    pub async fn insert_message_event(
-        &self,
-        event: &MessageEvent,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn insert_message_event(&self, event: &MessageEvent) -> Result<(), sqlx::Error> {
         let message_id = event.message_id.as_str();
         let account_id = event.account_id.as_str();
         let event_type = event.event_type.as_db_str();
@@ -72,9 +69,7 @@ impl super::Store {
                 )
             })?;
             let source = EventSource::from_db_str(&r.source).ok_or_else(|| {
-                sqlx::Error::Decode(
-                    format!("unknown message_events.source: {}", r.source).into(),
-                )
+                sqlx::Error::Decode(format!("unknown message_events.source: {}", r.source).into())
             })?;
             events.push(MessageEvent {
                 message_id: decode_id(&r.message_id)?,

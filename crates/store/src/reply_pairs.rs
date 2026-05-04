@@ -116,10 +116,7 @@ impl super::Store {
         Ok(updated)
     }
 
-    pub async fn enqueue_reply_pair_pending(
-        &self,
-        reply: &Envelope,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn enqueue_reply_pair_pending(&self, reply: &Envelope) -> Result<(), sqlx::Error> {
         let in_reply_to = match reply.in_reply_to.as_deref() {
             Some(s) if !s.is_empty() => s.to_string(),
             _ => return Ok(()),

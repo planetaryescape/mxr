@@ -91,9 +91,8 @@ impl super::Store {
         let account_filter: Option<String> = account_id.map(|a| a.as_str());
         let direction_str = direction.as_db_str();
         let counterparty_filter = counterparty.map(|c| c.to_lowercase());
-        let since_cutoff: Option<i64> = since_days.map(|d| {
-            chrono::Utc::now().timestamp() - i64::from(d) * 86_400
-        });
+        let since_cutoff: Option<i64> =
+            since_days.map(|d| chrono::Utc::now().timestamp() - i64::from(d) * 86_400);
 
         let rows: Vec<(i64, Option<i64>)> = sqlx::query_as(
             r#"SELECT latency_seconds, business_hours_latency_seconds
@@ -112,8 +111,7 @@ impl super::Store {
         trace_query("analytics.response_time", started_at, rows.len());
 
         let mut clock: Vec<i64> = rows.iter().map(|(c, _)| *c).collect();
-        let mut business: Vec<i64> =
-            rows.iter().filter_map(|(_, b)| *b).collect();
+        let mut business: Vec<i64> = rows.iter().filter_map(|(_, b)| *b).collect();
         clock.sort_unstable();
         business.sort_unstable();
         Ok(ResponseTimeSummary {
@@ -188,10 +186,9 @@ impl super::Store {
             .map(|(id, thread_id, subject, date, from_email, to_addrs)| {
                 let counterparty = match perspective {
                     StaleBallInCourt::Mine => from_email,
-                    StaleBallInCourt::Theirs => super::reply_pairs::first_recipient_email(
-                        &to_addrs,
-                    )
-                    .unwrap_or_default(),
+                    StaleBallInCourt::Theirs => {
+                        super::reply_pairs::first_recipient_email(&to_addrs).unwrap_or_default()
+                    }
                 };
                 let days_stale = ((now - date).max(0) / 86_400) as u32;
                 Ok(StaleThreadRow {

@@ -229,8 +229,7 @@ pub(crate) async fn list_stale_threads(
     let resolved = account_id
         .cloned()
         .or_else(|| state.default_account_id_opt());
-    let cutoff = chrono::Utc::now().timestamp()
-        - i64::from(older_than_days) * 86_400;
+    let cutoff = chrono::Utc::now().timestamp() - i64::from(older_than_days) * 86_400;
     let rows = state
         .store
         .list_stale_threads(resolved.as_ref(), perspective, cutoff, limit)

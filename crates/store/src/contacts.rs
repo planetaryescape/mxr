@@ -110,20 +110,22 @@ impl super::Store {
         trace_query("contacts.list_asymmetry", started_at, rows.len());
 
         rows.into_iter()
-            .map(|(email, display_name, total_inbound, total_outbound, last_seen_at)| {
-                let inbound = total_inbound.max(0) as u32;
-                let outbound = total_outbound.max(0) as u32;
-                let denom = inbound.max(outbound).max(1) as f64;
-                let asymmetry = (inbound as f64 - outbound as f64).abs() / denom;
-                Ok(ContactAsymmetryRow {
-                    email,
-                    display_name,
-                    total_inbound: inbound,
-                    total_outbound: outbound,
-                    asymmetry,
-                    last_seen_at: decode_timestamp(last_seen_at)?,
-                })
-            })
+            .map(
+                |(email, display_name, total_inbound, total_outbound, last_seen_at)| {
+                    let inbound = total_inbound.max(0) as u32;
+                    let outbound = total_outbound.max(0) as u32;
+                    let denom = inbound.max(outbound).max(1) as f64;
+                    let asymmetry = (inbound as f64 - outbound as f64).abs() / denom;
+                    Ok(ContactAsymmetryRow {
+                        email,
+                        display_name,
+                        total_inbound: inbound,
+                        total_outbound: outbound,
+                        asymmetry,
+                        last_seen_at: decode_timestamp(last_seen_at)?,
+                    })
+                },
+            )
             .collect()
     }
 
@@ -170,8 +172,8 @@ impl super::Store {
                 let last_inbound = decode_timestamp(last_inbound_at)?;
                 let last_outbound = decode_optional_timestamp(last_outbound_at)?;
                 let days_since_inbound = ((now_unix - last_inbound_at).max(0) / 86_400) as u32;
-                let days_since_outbound = last_outbound_at
-                    .map(|t| ((now_unix - t).max(0) / 86_400) as u32);
+                let days_since_outbound =
+                    last_outbound_at.map(|t| ((now_unix - t).max(0) / 86_400) as u32);
                 Ok(ContactDecayRow {
                     email,
                     display_name,

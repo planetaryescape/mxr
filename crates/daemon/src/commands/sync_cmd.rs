@@ -3,9 +3,7 @@ use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_config::{load_config, AccountConfig, MxrConfig, SendProviderConfig, SyncProviderConfig};
 use mxr_core::id::AccountId;
-use mxr_protocol::{
-    AccountSyncStatus, Request, Response, ResponseData, IPC_PROTOCOL_VERSION,
-};
+use mxr_protocol::{AccountSyncStatus, Request, Response, ResponseData, IPC_PROTOCOL_VERSION};
 use std::time::{Duration, Instant};
 
 fn render_sync_status(sync_statuses: &[mxr_protocol::AccountSyncStatus], protocol_version: u32) {
@@ -127,10 +125,13 @@ pub async fn run(
             data: ResponseData::Ack,
         } => match resolve_format(format.clone()) {
             OutputFormat::Json | OutputFormat::Jsonl => {
-                println!("{}", serde_json::to_string(&serde_json::json!({
-                    "status": "triggered",
-                    "account_id": account_id.as_ref().map(|id| id.to_string()),
-                }))?);
+                println!(
+                    "{}",
+                    serde_json::to_string(&serde_json::json!({
+                        "status": "triggered",
+                        "account_id": account_id.as_ref().map(|id| id.to_string()),
+                    }))?
+                );
             }
             _ => println!("Sync triggered"),
         },

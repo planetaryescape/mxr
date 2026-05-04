@@ -580,9 +580,8 @@ impl ImapProvider {
             highest_modseq: mailbox_info.highest_modseq,
         };
 
-        let condstore_used = !qresync_used
-            && capabilities.condstore
-            && mailbox_info.highest_modseq.is_some();
+        let condstore_used =
+            !qresync_used && capabilities.condstore && mailbox_info.highest_modseq.is_some();
         if condstore_used {
             if let Some(old_mailbox) = old_mailbox.as_ref() {
                 if mailbox_info.uid_validity == old_mailbox.uid_validity

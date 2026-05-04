@@ -36,9 +36,7 @@ pub async fn spawn_editor(
     }
 
     if let Some(line) = cursor_line {
-        if program_lower.contains("vim")
-            || program_lower == "vi"
-            || program_lower.contains("nvim")
+        if program_lower.contains("vim") || program_lower == "vi" || program_lower.contains("nvim")
         {
             cmd.arg(format!("+{line}"));
         } else if program_lower.contains("hx") || program_lower.contains("helix") {
@@ -97,7 +95,9 @@ mod tests {
         // `true file` exits 0; we just want to prove command-string parsing succeeds.
         let path = std::env::temp_dir().join("mxr-editor-shell-string.tmp");
         std::fs::write(&path, "x").unwrap();
-        let ok = spawn_editor("/usr/bin/true file", &path, None).await.unwrap();
+        let ok = spawn_editor("/usr/bin/true file", &path, None)
+            .await
+            .unwrap();
         let _ = std::fs::remove_file(&path);
         assert!(ok);
     }

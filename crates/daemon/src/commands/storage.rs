@@ -51,7 +51,12 @@ fn render_table(group_by: StorageGroupBy, rows: &[StorageBucket]) {
     }
     let total_bytes: u64 = rows.iter().map(|r| r.bytes).sum();
     let total_count: u32 = rows.iter().map(|r| r.count).sum();
-    println!("\n{} buckets — {} across {} items", rows.len(), human_bytes(total_bytes), total_count);
+    println!(
+        "\n{} buckets — {} across {} items",
+        rows.len(),
+        human_bytes(total_bytes),
+        total_count
+    );
 }
 
 pub async fn run(

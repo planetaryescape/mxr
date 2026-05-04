@@ -106,9 +106,11 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 println!("Would delete label \"{name}\"");
                 return Ok(());
             }
-            if !yes && !confirm_destructive(&format!(
-                "Delete label \"{name}\"? Messages keep their other labels. [y/N] "
-            ))? {
+            if !yes
+                && !confirm_destructive(&format!(
+                    "Delete label \"{name}\"? Messages keep their other labels. [y/N] "
+                ))?
+            {
                 println!("Aborted.");
                 return Ok(());
             }
@@ -136,9 +138,9 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 println!("Would rename label \"{old}\" -> \"{new}\"");
                 return Ok(());
             }
-            if !yes && !confirm_destructive(&format!(
-                "Rename label \"{old}\" -> \"{new}\"? [y/N] "
-            ))? {
+            if !yes
+                && !confirm_destructive(&format!("Rename label \"{old}\" -> \"{new}\"? [y/N] "))?
+            {
                 println!("Aborted.");
                 return Ok(());
             }

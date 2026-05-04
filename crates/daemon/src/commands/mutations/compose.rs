@@ -168,23 +168,29 @@ async fn reply_inner(
         references: ctx.references.clone(),
         thread_id: ctx.thread_id.clone(),
         to: ctx.reply_to.clone(),
-        cc: if reply_all { ctx.cc.clone() } else { String::new() },
+        cc: if reply_all {
+            ctx.cc.clone()
+        } else {
+            String::new()
+        },
         subject: ctx.subject.clone(),
         thread_context: ctx.thread_context.clone(),
     };
 
     let stdin_or_body = read_body_input(body, body_stdin)?;
-    let (frontmatter, body_text, draft_file) = build_compose_draft(
+    let (frontmatter, body_text, draft_file) =
+        build_compose_draft(&mut client, kind, &ctx.from, stdin_or_body, dry_run).await?;
+
+    finalize_compose(
         &mut client,
-        kind,
-        &ctx.from,
-        stdin_or_body,
+        ctx.account_id,
+        frontmatter,
+        body_text,
+        draft_file,
+        yes,
         dry_run,
     )
-    .await?;
-
-    finalize_compose(&mut client, ctx.account_id, frontmatter, body_text, draft_file, yes, dry_run)
-        .await
+    .await
 }
 
 pub async fn forward(
@@ -215,14 +221,8 @@ pub async fn forward(
     };
 
     let stdin_or_body = read_body_input(body, body_stdin)?;
-    let (mut frontmatter, body_text, draft_file) = build_compose_draft(
-        &mut client,
-        kind,
-        &ctx.from,
-        stdin_or_body,
-        dry_run,
-    )
-    .await?;
+    let (mut frontmatter, body_text, draft_file) =
+        build_compose_draft(&mut client, kind, &ctx.from, stdin_or_body, dry_run).await?;
 
     if let Some(to_val) = to {
         if !to_val.trim().is_empty() {
@@ -230,8 +230,16 @@ pub async fn forward(
         }
     }
 
-    finalize_compose(&mut client, ctx.account_id, frontmatter, body_text, draft_file, yes, dry_run)
-        .await
+    finalize_compose(
+        &mut client,
+        ctx.account_id,
+        frontmatter,
+        body_text,
+        draft_file,
+        yes,
+        dry_run,
+    )
+    .await
 }
 
 async fn build_compose_draft(

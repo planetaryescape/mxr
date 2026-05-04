@@ -30,13 +30,14 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
         let mut client = IpcClient::connect().await?;
         match client.request(Request::RebuildAnalytics).await? {
             Response::Ok {
-                data: ResponseData::AnalyticsRebuildSummary {
-                    directions_reclassified,
-                    list_ids_backfilled,
-                    reply_pairs_resolved,
-                    business_hours_backfilled,
-                    contacts_rows,
-                },
+                data:
+                    ResponseData::AnalyticsRebuildSummary {
+                        directions_reclassified,
+                        list_ids_backfilled,
+                        reply_pairs_resolved,
+                        business_hours_backfilled,
+                        contacts_rows,
+                    },
             } => match fmt {
                 OutputFormat::Json | OutputFormat::Jsonl => {
                     let value = serde_json::json!({

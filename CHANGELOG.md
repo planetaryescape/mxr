@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.58](https://github.com/planetaryescape/mxr/compare/v0.4.57...v0.4.58) (2026-05-04)
+
+
+### Bug Fixes
+
+* build artifacts for release-prepare commits even when the diff is version-only
+
 ## [0.4.57](https://github.com/planetaryescape/mxr/compare/v0.4.56...v0.4.57) (2026-05-04)
 
 

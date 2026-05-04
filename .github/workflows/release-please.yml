@@ -45,5 +45,12 @@ jobs:
       - id: release
         uses: googleapis/release-please-action@v4
         with:
+          # GitHub deliberately does NOT trigger downstream workflows from tags
+          # created with the default GITHUB_TOKEN (security: prevents loops).
+          # When RELEASE_PLEASE_TOKEN (a PAT with contents:write + workflows
+          # scope) is configured, the tag push fires release.yml and binaries
+          # ship without manual intervention. Falls back to GITHUB_TOKEN so the
+          # workflow stays functional even before the secret is set up.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           manifest-file: .release-please-manifest.json
           config-file: release-please-config.json

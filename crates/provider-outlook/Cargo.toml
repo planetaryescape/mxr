@@ -11,7 +11,7 @@ publish = false
 workspace = true
 
 [dependencies]
-mxr-compose = { workspace = true }
+mxr-outbound = { workspace = true }
 mxr-core = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }

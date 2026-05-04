@@ -3853,9 +3853,6 @@ dependencies = [
  "temp-env",
  "tempfile",
  "thiserror 2.0.18",
- "temp-env",
- "tempfile",
- "thiserror 2.0.18",
  "tokio",
  "url",
  "uuid",
@@ -3863,7 +3860,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-config"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "chrono",
  "dirs",
@@ -3878,7 +3875,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-core"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "async-trait",
  "bitflags 2.11.0",
@@ -3893,7 +3890,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-export"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "chrono",
  "insta",
@@ -3907,7 +3904,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-keychain"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "keyring",
  "security-framework 3.7.0",
@@ -3918,7 +3915,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-mail-parse"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "chrono",
  "insta",
@@ -3933,7 +3930,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-outbound"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "comrak",
  "dirs",
@@ -3947,7 +3944,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-protocol"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "bytes",
  "chrono",
@@ -3961,7 +3958,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-fake"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3972,7 +3969,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-gmail"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4003,7 +4000,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-imap"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "anyhow",
  "async-native-tls",
@@ -4019,6 +4016,7 @@ dependencies = [
  "mxr-mail-parse",
  "mxr-provider-fake",
  "mxr-test-support",
+ "once_cell",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -4028,7 +4026,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-outlook"
-version = "0.4.48"
+version = "0.4.63"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4036,179 +4034,13 @@ dependencies = [
  "dirs",
  "futures",
  "lettre",
- "mxr-compose",
  "mxr-core",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "mxr-config"
-version = "0.4.63"
-dependencies = [
- "chrono",
- "dirs",
- "mxr-core",
- "serde",
- "temp-env",
- "tempfile",
- "thiserror 2.0.18",
- "toml",
- "tracing",
-]
-
-[[package]]
-name = "mxr-core"
-version = "0.4.63"
-dependencies = [
- "async-trait",
- "bitflags 2.11.0",
- "chrono",
- "proptest",
- "serde",
- "serde_bytes",
- "serde_json",
- "thiserror 2.0.18",
- "uuid",
-]
-
-[[package]]
-name = "mxr-export"
-version = "0.4.63"
-dependencies = [
- "chrono",
- "insta",
- "mxr-core",
- "mxr-reader",
- "mxr-test-support",
- "pretty_assertions",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "mxr-keychain"
-version = "0.4.63"
-dependencies = [
- "keyring",
- "security-framework 3.7.0",
- "security-framework-sys",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
-name = "mxr-mail-parse"
-version = "0.4.63"
-dependencies = [
- "chrono",
- "insta",
- "mail-parser",
- "mxr-core",
- "mxr-test-support",
- "regex",
- "serde_json",
- "thiserror 2.0.18",
- "url",
-]
-
-[[package]]
-name = "mxr-outbound"
-version = "0.4.63"
-dependencies = [
- "comrak",
- "dirs",
- "futures",
- "lettre",
- "mxr-core",
- "thiserror 2.0.18",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "mxr-protocol"
-version = "0.4.63"
-dependencies = [
- "bytes",
- "chrono",
- "mxr-core",
- "proptest",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "mxr-provider-fake"
-version = "0.4.63"
-dependencies = [
- "async-trait",
- "chrono",
- "mxr-core",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "mxr-provider-gmail"
-version = "0.4.63"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "dirs",
- "futures",
- "insta",
- "keyring",
- "mail-builder",
- "mail-parser",
- "mxr-core",
- "mxr-mail-parse",
  "mxr-outbound",
- "mxr-provider-fake",
- "mxr-test-support",
  "reqwest",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
- "tracing",
- "url",
- "wiremock",
- "yup-oauth2",
-]
-
-[[package]]
-name = "mxr-provider-imap"
-version = "0.4.63"
-dependencies = [
- "async-native-tls",
- "async-std",
- "async-trait",
- "chrono",
- "futures",
- "insta",
- "mail-parser",
- "mxr-async-imap",
- "mxr-core",
- "mxr-mail-parse",
- "mxr-provider-fake",
- "mxr-test-support",
- "once_cell",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -4320,129 +4152,6 @@ dependencies = [
 [[package]]
 name = "mxr-sync"
 version = "0.4.63"
-dependencies = [
- "async-trait",
- "chrono",
- "mxr-core",
- "mxr-provider-fake",
- "mxr-search",
- "mxr-store",
- "pretty_assertions",
- "sqlx",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "mxr-provider-smtp"
-version = "0.4.48"
-dependencies = [
- "async-trait",
- "chrono",
- "lettre",
- "mxr-core",
- "mxr-keychain",
- "mxr-outbound",
- "mxr-provider-fake",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "mxr-reader"
-version = "0.4.48"
-dependencies = [
- "data-url",
- "html2text",
- "insta",
- "mail-parser",
- "mxr-test-support",
- "once_cell",
- "regex",
- "scraper",
- "serde_json",
- "tracing",
- "url",
- "which",
-]
-
-[[package]]
-name = "mxr-rules"
-version = "0.4.48"
-dependencies = [
- "chrono",
- "glob-match",
- "mxr-core",
- "regex",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
- "which",
-]
-
-[[package]]
-name = "mxr-search"
-version = "0.4.48"
-dependencies = [
- "chrono",
- "mxr-core",
- "proptest",
- "serde",
- "tantivy",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "mxr-semantic"
-version = "0.4.48"
-dependencies = [
- "anyhow",
- "calamine",
- "chrono",
- "fastembed",
- "hnsw_rs",
- "mxr-config",
- "mxr-core",
- "mxr-reader",
- "mxr-store",
- "rayon",
- "sha2",
- "tempfile",
- "tokio",
- "tracing",
- "undoc",
- "unpdf",
- "zip 2.4.2",
-]
-
-[[package]]
-name = "mxr-store"
-version = "0.4.48"
-dependencies = [
- "chrono",
- "mxr-core",
- "serde",
- "serde_json",
- "sqlx",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "mxr-sync"
-version = "0.4.48"
 dependencies = [
  "async-trait",
  "chrono",

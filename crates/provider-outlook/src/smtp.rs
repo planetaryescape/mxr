@@ -1,4 +1,4 @@
-use mxr_compose::email::build_message;
+use mxr_outbound::email::build_message;
 use mxr_core::error::MxrError;
 use mxr_core::provider::MailSendProvider;
 use mxr_core::types::{Address, Draft, SendReceipt};

@@ -246,6 +246,10 @@ pub enum Command {
         since: Option<String>,
         #[arg(long)]
         purge: bool,
+        /// Output format. `json`/`jsonl` emit one JSON object per line with
+        /// `{ timestamp, level, message }` fields parsed from the log line.
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
     },
     /// Destroy local mxr runtime state after stopping the daemon. Preserves config.toml and credentials by default. Use --including-config to also delete config.toml. Destructive; use --dry-run to preview.
     Reset {

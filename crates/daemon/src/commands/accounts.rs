@@ -14,16 +14,53 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     match action {
         None => list_accounts(format).await?,
-        Some(AccountsAction::Add { provider }) => match provider.as_str() {
-            "gmail" => add_gmail().await?,
-            "imap" => add_imap(true).await?,
-            "imap-smtp" => add_imap(true).await?,
-            "smtp" => add_smtp_only().await?,
-            other => anyhow::bail!(
-                "Unknown provider '{}'. Supported: gmail, imap, smtp, imap-smtp",
-                other
-            ),
-        },
+        Some(AccountsAction::Add {
+            provider,
+            account_name,
+            email,
+            display_name,
+            gmail_bundled,
+            gmail_client_id,
+            gmail_client_secret,
+            imap_host,
+            imap_port,
+            imap_no_auth,
+            imap_username,
+            imap_password,
+            smtp_host,
+            smtp_port,
+            smtp_no_auth,
+            smtp_username,
+            smtp_password,
+        }) => {
+            let args = AddArgs {
+                account_name,
+                email,
+                display_name,
+                gmail_bundled,
+                gmail_client_id,
+                gmail_client_secret,
+                imap_host,
+                imap_port,
+                imap_no_auth,
+                imap_username,
+                imap_password,
+                smtp_host,
+                smtp_port,
+                smtp_no_auth,
+                smtp_username,
+                smtp_password,
+            };
+            match provider.as_str() {
+                "gmail" => add_gmail(&args).await?,
+                "imap" | "imap-smtp" => add_imap(true, &args).await?,
+                "smtp" => add_smtp_only(&args).await?,
+                other => anyhow::bail!(
+                    "Unknown provider '{}'. Supported: gmail, imap, smtp, imap-smtp",
+                    other
+                ),
+            }
+        }
         Some(AccountsAction::Show { name }) => show_account(&name).await?,
         Some(AccountsAction::Test { name }) => test_account(&name).await?,
         Some(AccountsAction::Repair { name }) => repair_account(&name).await?,
@@ -51,9 +88,7 @@ async fn addresses_dispatch(op: AddressesOp, format: Option<OutputFormat>) -> an
             email,
             primary,
         } => add_address(account.as_deref(), &email, primary).await,
-        AddressesOp::Remove { account, email } => {
-            remove_address(account.as_deref(), &email).await
-        }
+        AddressesOp::Remove { account, email } => remove_address(account.as_deref(), &email).await,
         AddressesOp::SetPrimary { account, email } => {
             set_primary_address(account.as_deref(), &email).await
         }
@@ -71,20 +106,18 @@ async fn resolve_account_id(name: Option<&str>) -> anyhow::Result<AccountId> {
     };
 
     let chosen: Option<AccountSummaryData> = match name {
-        Some(needle) => summaries.into_iter().find(|s| {
-            s.key.as_deref() == Some(needle) || s.name == needle || s.email == needle
-        }),
+        Some(needle) => summaries
+            .into_iter()
+            .find(|s| s.key.as_deref() == Some(needle) || s.name == needle || s.email == needle),
         None => summaries.into_iter().find(|s| s.is_default),
     };
 
-    chosen
-        .map(|s| s.account_id)
-        .ok_or_else(|| match name {
-            Some(n) => anyhow::anyhow!("Account '{n}' not found"),
-            None => anyhow::anyhow!(
-                "No default account configured. Pass --account=<name> or set a default."
-            ),
-        })
+    chosen.map(|s| s.account_id).ok_or_else(|| match name {
+        Some(n) => anyhow::anyhow!("Account '{n}' not found"),
+        None => anyhow::anyhow!(
+            "No default account configured. Pass --account=<name> or set a default."
+        ),
+    })
 }
 
 async fn list_addresses(
@@ -141,11 +174,7 @@ fn render_addresses(
     Ok(())
 }
 
-async fn add_address(
-    account_name: Option<&str>,
-    email: &str,
-    primary: bool,
-) -> anyhow::Result<()> {
+async fn add_address(account_name: Option<&str>, email: &str, primary: bool) -> anyhow::Result<()> {
     let account_id = resolve_account_id(account_name).await?;
     let mut client = client().await?;
     match client
@@ -207,8 +236,7 @@ async fn client() -> anyhow::Result<IpcClient> {
 
 async fn list_accounts(format: Option<OutputFormat>) -> anyhow::Result<()> {
     let accounts = account_configs().await?;
-    let summaries: Vec<AccountSummaryRow> =
-        accounts.iter().map(AccountSummaryRow::from).collect();
+    let summaries: Vec<AccountSummaryRow> = accounts.iter().map(AccountSummaryRow::from).collect();
 
     match resolve_format(format) {
         OutputFormat::Json => {
@@ -350,25 +378,85 @@ fn render_account_operation(result: AccountOperationResult) -> anyhow::Result<()
     }
 }
 
-async fn add_gmail() -> anyhow::Result<()> {
+/// Optional inputs for `mxr accounts add`. When `Some`, skip the corresponding
+/// interactive prompt; when `None`, fall back to the wizard. Hardened so
+/// scripts can drive the flow without a TTY.
+pub(super) struct AddArgs {
+    pub account_name: Option<String>,
+    pub email: Option<String>,
+    pub display_name: Option<String>,
+    pub gmail_bundled: Option<bool>,
+    pub gmail_client_id: Option<String>,
+    pub gmail_client_secret: Option<String>,
+    pub imap_host: Option<String>,
+    pub imap_port: u16,
+    pub imap_no_auth: bool,
+    pub imap_username: Option<String>,
+    pub imap_password: Option<String>,
+    pub smtp_host: Option<String>,
+    pub smtp_port: u16,
+    pub smtp_no_auth: bool,
+    pub smtp_username: Option<String>,
+    pub smtp_password: Option<String>,
+}
+
+fn or_prompt(value: Option<String>, msg: &str) -> anyhow::Result<String> {
+    if let Some(v) = value {
+        return Ok(v);
+    }
+    prompt(msg)
+}
+
+fn or_prompt_default(value: Option<String>, msg: &str, default: &str) -> anyhow::Result<String> {
+    if let Some(v) = value {
+        return Ok(v);
+    }
+    prompt_default(msg, default)
+}
+
+fn or_prompt_secret(value: Option<String>, env_var: &str, msg: &str) -> anyhow::Result<String> {
+    if let Some(v) = value {
+        return Ok(v);
+    }
+    if let Ok(v) = std::env::var(env_var) {
+        if !v.is_empty() {
+            return Ok(v);
+        }
+    }
+    prompt_secret(msg)
+}
+
+async fn add_gmail(args: &AddArgs) -> anyhow::Result<()> {
     println!("Adding Gmail account\n");
 
-    let (credential_source, client_id, client_secret) =
-        if prompt_bool("Use bundled OAuth credentials", true)? {
-            (
-                mxr_config::GmailCredentialSource::Bundled,
-                String::new(),
-                None,
-            )
-        } else {
+    let bundled = match args.gmail_bundled {
+        Some(b) => b,
+        None => prompt_bool("Use bundled OAuth credentials", true)?,
+    };
+    let (credential_source, client_id, client_secret) = if bundled {
+        (
+            mxr_config::GmailCredentialSource::Bundled,
+            String::new(),
+            None,
+        )
+    } else {
+        if args.gmail_client_id.is_none() {
             println!("See: https://console.cloud.google.com/apis/library/gmail.googleapis.com\n");
-            let id = prompt("Client ID: ")?;
-            let secret = prompt("Client Secret: ")?;
-            (mxr_config::GmailCredentialSource::Custom, id, Some(secret))
-        };
+        }
+        let id = or_prompt(args.gmail_client_id.clone(), "Client ID: ")?;
+        let secret = or_prompt_secret(
+            args.gmail_client_secret.clone(),
+            "MXR_GMAIL_CLIENT_SECRET",
+            "Client Secret: ",
+        )?;
+        (mxr_config::GmailCredentialSource::Custom, id, Some(secret))
+    };
 
-    let account_name = prompt("\nAccount name (e.g. personal, work): ")?;
-    let email = prompt("Gmail address: ")?;
+    let account_name = or_prompt(
+        args.account_name.clone(),
+        "\nAccount name (e.g. personal, work): ",
+    )?;
+    let email = or_prompt(args.email.clone(), "Gmail address: ")?;
     ensure_account_available(&account_name).await?;
     let token_ref = format!("mxr/{account_name}-gmail");
 
@@ -409,19 +497,30 @@ async fn add_gmail() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn add_imap(include_smtp: bool) -> anyhow::Result<()> {
+async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
     println!("Adding IMAP account\n");
-    let account_name = prompt("Account name: ")?;
+    let account_name = or_prompt(args.account_name.clone(), "Account name: ")?;
     ensure_account_available(&account_name).await?;
-    let display_name = prompt_default("Display name", &account_name)?;
-    let email = prompt("Email address: ")?;
+    let display_name = or_prompt_default(args.display_name.clone(), "Display name", &account_name)?;
+    let email = or_prompt(args.email.clone(), "Email address: ")?;
 
-    let imap_host = prompt("IMAP host: ")?;
-    let imap_port = prompt_default("IMAP port", "993")?.parse::<u16>()?;
-    let imap_auth_required = prompt_bool("IMAP requires authentication", true)?;
+    let imap_host = or_prompt(args.imap_host.clone(), "IMAP host: ")?;
+    let imap_port_default = args.imap_port.to_string();
+    let imap_port = or_prompt_default(None, "IMAP port", &imap_port_default)?.parse::<u16>()?;
+    let imap_auth_required = if args.imap_no_auth {
+        false
+    } else if args.imap_username.is_some() || args.imap_password.is_some() {
+        true
+    } else {
+        prompt_bool("IMAP requires authentication", true)?
+    };
     let (imap_username, imap_password_ref, imap_password) = if imap_auth_required {
-        let imap_username = prompt_default("IMAP username", &email)?;
-        let imap_password = prompt_secret("IMAP password: ")?;
+        let imap_username = or_prompt_default(args.imap_username.clone(), "IMAP username", &email)?;
+        let imap_password = or_prompt_secret(
+            args.imap_password.clone(),
+            "MXR_IMAP_PASSWORD",
+            "IMAP password: ",
+        )?;
         let imap_password_ref = format!("mxr/{account_name}-imap");
         (imap_username, imap_password_ref, Some(imap_password))
     } else {
@@ -429,12 +528,24 @@ async fn add_imap(include_smtp: bool) -> anyhow::Result<()> {
     };
 
     let send = if include_smtp {
-        let smtp_host = prompt("SMTP host: ")?;
-        let smtp_port = prompt_default("SMTP port", "587")?.parse::<u16>()?;
-        let smtp_auth_required = prompt_bool("SMTP requires authentication", true)?;
+        let smtp_host = or_prompt(args.smtp_host.clone(), "SMTP host: ")?;
+        let smtp_port_default = args.smtp_port.to_string();
+        let smtp_port = or_prompt_default(None, "SMTP port", &smtp_port_default)?.parse::<u16>()?;
+        let smtp_auth_required = if args.smtp_no_auth {
+            false
+        } else if args.smtp_username.is_some() || args.smtp_password.is_some() {
+            true
+        } else {
+            prompt_bool("SMTP requires authentication", true)?
+        };
         let (smtp_username, smtp_password_ref, smtp_password) = if smtp_auth_required {
-            let smtp_username = prompt_default("SMTP username", &email)?;
-            let smtp_password = prompt_secret("SMTP password: ")?;
+            let smtp_username =
+                or_prompt_default(args.smtp_username.clone(), "SMTP username", &email)?;
+            let smtp_password = or_prompt_secret(
+                args.smtp_password.clone(),
+                "MXR_SMTP_PASSWORD",
+                "SMTP password: ",
+            )?;
             let smtp_password_ref = format!("mxr/{account_name}-smtp");
             (smtp_username, smtp_password_ref, Some(smtp_password))
         } else {
@@ -476,18 +587,29 @@ async fn add_imap(include_smtp: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn add_smtp_only() -> anyhow::Result<()> {
+async fn add_smtp_only(args: &AddArgs) -> anyhow::Result<()> {
     println!("Adding SMTP-only account\n");
-    let account_name = prompt("Account name: ")?;
+    let account_name = or_prompt(args.account_name.clone(), "Account name: ")?;
     ensure_account_available(&account_name).await?;
-    let display_name = prompt_default("Display name", &account_name)?;
-    let email = prompt("Email address: ")?;
-    let smtp_host = prompt("SMTP host: ")?;
-    let smtp_port = prompt_default("SMTP port", "587")?.parse::<u16>()?;
-    let smtp_auth_required = prompt_bool("SMTP requires authentication", true)?;
+    let display_name = or_prompt_default(args.display_name.clone(), "Display name", &account_name)?;
+    let email = or_prompt(args.email.clone(), "Email address: ")?;
+    let smtp_host = or_prompt(args.smtp_host.clone(), "SMTP host: ")?;
+    let smtp_port_default = args.smtp_port.to_string();
+    let smtp_port = or_prompt_default(None, "SMTP port", &smtp_port_default)?.parse::<u16>()?;
+    let smtp_auth_required = if args.smtp_no_auth {
+        false
+    } else if args.smtp_username.is_some() || args.smtp_password.is_some() {
+        true
+    } else {
+        prompt_bool("SMTP requires authentication", true)?
+    };
     let (smtp_username, smtp_password_ref, smtp_password) = if smtp_auth_required {
-        let smtp_username = prompt_default("SMTP username", &email)?;
-        let smtp_password = prompt_secret("SMTP password: ")?;
+        let smtp_username = or_prompt_default(args.smtp_username.clone(), "SMTP username", &email)?;
+        let smtp_password = or_prompt_secret(
+            args.smtp_password.clone(),
+            "MXR_SMTP_PASSWORD",
+            "SMTP password: ",
+        )?;
         let smtp_password_ref = format!("mxr/{account_name}-smtp");
         (smtp_username, smtp_password_ref, Some(smtp_password))
     } else {

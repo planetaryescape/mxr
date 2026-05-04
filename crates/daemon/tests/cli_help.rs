@@ -42,6 +42,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_burn", &["burn", "--help"]),
         ("cli_help_bug_report", &["bug-report", "--help"]),
         ("cli_help_accounts", &["accounts", "--help"]),
+        ("cli_help_accounts_add", &["accounts", "add", "--help"]),
         ("cli_help_doctor", &["doctor", "--help"]),
         ("cli_help_labels", &["labels", "--help"]),
         ("cli_help_rules", &["rules", "--help"]),
@@ -76,7 +77,7 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_response_time", &["response-time", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 54);
+    assert_eq!(cases.len(), 55);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

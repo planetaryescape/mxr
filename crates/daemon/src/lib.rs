@@ -81,8 +81,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             level,
             since,
             purge,
+            format,
         }) => {
-            commands::logs::run(no_follow, level, since, purge)?;
+            commands::logs::run(no_follow, level, since, purge, format)?;
         }
         Some(Command::Reset {
             hard,
@@ -236,8 +237,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::response_time::run(theirs, counterparty, since_days, account, format)
-                .await?;
+            commands::response_time::run(theirs, counterparty, since_days, account, format).await?;
         }
         Some(Command::Sync {
             account,
@@ -247,14 +247,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::sync_cmd::run(
-                account,
-                status,
-                wait,
-                wait_timeout_secs,
-                format,
-            )
-            .await?;
+            commands::sync_cmd::run(account, status, wait, wait_timeout_secs, format).await?;
         }
         Some(Command::Status { format, watch }) => {
             crate::server::ensure_daemon_running().await?;

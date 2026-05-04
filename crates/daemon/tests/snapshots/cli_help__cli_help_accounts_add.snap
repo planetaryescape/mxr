@@ -1,0 +1,72 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Add an account.
+
+Without flags, runs an interactive wizard. Pass any subset of the optional flags below to drive the flow non-interactively (scripts / CI). Passwords may also be sourced from `MXR_IMAP_PASSWORD`, `MXR_SMTP_PASSWORD`, or `MXR_GMAIL_CLIENT_SECRET` when stdin is not a TTY.
+
+Usage: mxr accounts add [OPTIONS] <PROVIDER>
+
+Arguments:
+  <PROVIDER>
+          Provider type: `gmail`, `imap`, `imap-smtp`, or `smtp`
+
+Options:
+      --account-name <ACCOUNT_NAME>
+          Account key (the short identifier used by other commands)
+
+      --email <EMAIL>
+          Email address for the account
+
+      --display-name <DISPLAY_NAME>
+          Display name shown in From: headers; defaults to account name
+
+      --gmail-bundled <GMAIL_BUNDLED>
+          Use the bundled OAuth client (true) or supply your own (false)
+          
+          [possible values: true, false]
+
+      --gmail-client-id <GMAIL_CLIENT_ID>
+          Custom Gmail OAuth client ID (only when `--gmail-bundled=false`)
+
+      --gmail-client-secret <GMAIL_CLIENT_SECRET>
+          Custom Gmail OAuth client secret
+
+      --imap-host <IMAP_HOST>
+          
+
+      --format <FORMAT>
+          Output format for `accounts` (the no-subcommand listing)
+          
+          [possible values: table, json, jsonl, csv, ids]
+
+      --imap-port <IMAP_PORT>
+          [default: 993]
+
+      --imap-no-auth
+          IMAP requires authentication. Default true
+
+      --imap-username <IMAP_USERNAME>
+          
+
+      --imap-password <IMAP_PASSWORD>
+          IMAP password (or set `MXR_IMAP_PASSWORD`)
+
+      --smtp-host <SMTP_HOST>
+          
+
+      --smtp-port <SMTP_PORT>
+          [default: 587]
+
+      --smtp-no-auth
+          
+
+      --smtp-username <SMTP_USERNAME>
+          
+
+      --smtp-password <SMTP_PASSWORD>
+          SMTP password (or set `MXR_SMTP_PASSWORD`)
+
+  -h, --help
+          Print help (see a summary with '-h')

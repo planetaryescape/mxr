@@ -7,8 +7,9 @@ View daemon logs
 Usage: mxr logs [OPTIONS]
 
 Options:
-      --no-follow      
-      --level <LEVEL>  
-      --since <SINCE>  
-      --purge          
-  -h, --help           Print help
+      --no-follow        
+      --level <LEVEL>    
+      --since <SINCE>    
+      --purge            
+      --format <FORMAT>  Output format. `json`/`jsonl` emit one JSON object per line with `{ timestamp, level, message }` fields parsed from the log line [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

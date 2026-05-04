@@ -3,8 +3,61 @@ use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub enum AccountsAction {
-    /// Add an account
-    Add { provider: String },
+    /// Add an account.
+    ///
+    /// Without flags, runs an interactive wizard. Pass any subset of the
+    /// optional flags below to drive the flow non-interactively (scripts /
+    /// CI). Passwords may also be sourced from `MXR_IMAP_PASSWORD`,
+    /// `MXR_SMTP_PASSWORD`, or `MXR_GMAIL_CLIENT_SECRET` when stdin is not a
+    /// TTY.
+    Add {
+        /// Provider type: `gmail`, `imap`, `imap-smtp`, or `smtp`.
+        provider: String,
+        /// Account key (the short identifier used by other commands).
+        #[arg(long)]
+        account_name: Option<String>,
+        /// Email address for the account.
+        #[arg(long)]
+        email: Option<String>,
+        /// Display name shown in From: headers; defaults to account name.
+        #[arg(long)]
+        display_name: Option<String>,
+        // Gmail-specific.
+        /// Use the bundled OAuth client (true) or supply your own (false).
+        #[arg(long)]
+        gmail_bundled: Option<bool>,
+        /// Custom Gmail OAuth client ID (only when `--gmail-bundled=false`).
+        #[arg(long)]
+        gmail_client_id: Option<String>,
+        /// Custom Gmail OAuth client secret.
+        #[arg(long)]
+        gmail_client_secret: Option<String>,
+        // IMAP-specific.
+        #[arg(long)]
+        imap_host: Option<String>,
+        #[arg(long, default_value_t = 993)]
+        imap_port: u16,
+        /// IMAP requires authentication. Default true.
+        #[arg(long)]
+        imap_no_auth: bool,
+        #[arg(long)]
+        imap_username: Option<String>,
+        /// IMAP password (or set `MXR_IMAP_PASSWORD`).
+        #[arg(long)]
+        imap_password: Option<String>,
+        // SMTP-specific.
+        #[arg(long)]
+        smtp_host: Option<String>,
+        #[arg(long, default_value_t = 587)]
+        smtp_port: u16,
+        #[arg(long)]
+        smtp_no_auth: bool,
+        #[arg(long)]
+        smtp_username: Option<String>,
+        /// SMTP password (or set `MXR_SMTP_PASSWORD`).
+        #[arg(long)]
+        smtp_password: Option<String>,
+    },
     /// Show account details
     Show { name: String },
     /// Test account connectivity

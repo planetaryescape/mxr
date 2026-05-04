@@ -1,6 +1,8 @@
 #![cfg_attr(test, allow(clippy::panic, clippy::unwrap_used))]
 
+use crate::cli::OutputFormat;
 use chrono::{DateTime, Utc};
+use serde_json::json;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::Path;
 use std::time::{Duration, SystemTime};
@@ -48,10 +50,12 @@ pub fn run(
     level: Option<String>,
     since: Option<String>,
     purge: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let data_dir = mxr_config::data_dir();
     let log_dir = data_dir.join("logs");
     let log_path = log_dir.join("mxr.log");
+    let json_mode = matches!(format, Some(OutputFormat::Json) | Some(OutputFormat::Jsonl));
 
     if purge {
         let config = mxr_config::load_config().unwrap_or_default();
@@ -59,12 +63,22 @@ pub fn run(
         let cutoff = SystemTime::now() - Duration::from_secs(retention_days as u64 * 24 * 60 * 60);
         let removed_files = purge_old_log_files(&log_dir, cutoff)?;
         let removed_events = purge_events(retention_days)?;
-        println!(
-            "Purged {} log file(s) and {} event log entr{}",
-            removed_files,
-            removed_events,
-            if removed_events == 1 { "y" } else { "ies" }
-        );
+        if json_mode {
+            println!(
+                "{}",
+                json!({
+                    "purged_log_files": removed_files,
+                    "purged_event_rows": removed_events,
+                })
+            );
+        } else {
+            println!(
+                "Purged {} log file(s) and {} event log entr{}",
+                removed_files,
+                removed_events,
+                if removed_events == 1 { "y" } else { "ies" }
+            );
+        }
         return Ok(());
     }
 
@@ -74,7 +88,14 @@ pub fn run(
     };
 
     if !log_path.exists() {
-        println!("No log file found at {}", log_path.display());
+        if json_mode {
+            println!(
+                "{}",
+                json!({"warning": "no log file", "path": log_path.display().to_string()})
+            );
+        } else {
+            println!("No log file found at {}", log_path.display());
+        }
         return Ok(());
     }
 
@@ -86,11 +107,13 @@ pub fn run(
         if !line_passes(&line, level.as_deref(), since_cutoff) {
             continue;
         }
-        println!("{}", line);
+        emit_line(&line, json_mode);
     }
 
     if !no_follow {
-        println!("--- Following {} (Ctrl-C to stop) ---", log_path.display());
+        if !json_mode {
+            println!("--- Following {} (Ctrl-C to stop) ---", log_path.display());
+        }
         let mut pos = std::fs::metadata(&log_path)?.len();
         loop {
             std::thread::sleep(Duration::from_millis(500));
@@ -107,7 +130,7 @@ pub fn run(
                     if !line_passes(&line, level.as_deref(), since_cutoff) {
                         continue;
                     }
-                    println!("{}", line);
+                    emit_line(&line, json_mode);
                 }
                 pos = current_len;
             } else if current_len < pos {
@@ -117,6 +140,26 @@ pub fn run(
     }
 
     Ok(())
+}
+
+fn emit_line(line: &str, json_mode: bool) {
+    if !json_mode {
+        println!("{line}");
+        return;
+    }
+    let mut parts = line.splitn(3, ' ');
+    let timestamp = parts.next().unwrap_or("");
+    let level = parts.next().unwrap_or("").trim();
+    let message = parts.next().unwrap_or("");
+    println!(
+        "{}",
+        json!({
+            "timestamp": timestamp,
+            "level": level,
+            "message": message,
+            "raw": line,
+        })
+    );
 }
 
 fn line_passes(line: &str, level: Option<&str>, since: Option<DateTime<Utc>>) -> bool {

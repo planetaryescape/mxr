@@ -18,7 +18,7 @@
       ],
       "extra-files": [
         { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.package.version" },
-        "apps/desktop/package.json"
+        { "type": "json", "path": "apps/desktop/package.json", "jsonpath": "$.version" }
       ]
     }
   },

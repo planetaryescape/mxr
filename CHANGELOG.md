@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.61](https://github.com/planetaryescape/mxr/compare/v0.4.60...v0.4.61) (2026-05-04)
+
+
+### Bug Fixes
+
+* topologically sort crates.io publish loop so dev-deps land before consumers
+
 ## [0.4.60](https://github.com/planetaryescape/mxr/compare/v0.4.59...v0.4.60) (2026-05-04)
 
 

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+description = "Internal: TOML config + XDG paths for mxr"
 
 
 [lints]

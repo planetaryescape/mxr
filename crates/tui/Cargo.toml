@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+description = "Internal: ratatui-based TUI client for mxr"
 
 
 [[example]]

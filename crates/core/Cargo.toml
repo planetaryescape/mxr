@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+description = "Internal: provider-agnostic types, traits, and IDs for the mxr email client"
 
 
 [lints]

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+description = "Internal: SQLite persistence layer for mxr"
 
 
 [lints]

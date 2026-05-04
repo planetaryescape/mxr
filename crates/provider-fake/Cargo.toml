@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+description = "Internal: in-memory fake provider used by mxr's tests"
 
 
 [lints]

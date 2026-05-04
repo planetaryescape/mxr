@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+description = "Internal: IPC contract types between mxr's daemon and clients"
 
 
 [lints]

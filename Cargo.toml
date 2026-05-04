@@ -7,6 +7,11 @@ repository.workspace = true
 homepage.workspace = true
 description = "A programmable, agent-native email client. One CLI across all your providers."
 readme = "README.md"
+# Distribution is via prebuilt binaries (Homebrew tap, GitHub Releases) and
+# `cargo install --git`. We deliberately do NOT publish to crates.io: the
+# internal `mxr-*` workspace crates are organizational seams, not library
+# APIs. See AGENTS.md.
+publish = false
 include = [
     "Cargo.toml",
     "Cargo.lock",

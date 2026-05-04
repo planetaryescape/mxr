@@ -62,12 +62,15 @@ For SMTP+IMAP accounts: the synthetic Sent envelope is keyed differently from wh
 
 ## `cargo install --locked mxr` says "package not found"
 
-Until v0.5.0 lands on crates.io, install via Homebrew or build from source:
+mxr is intentionally not published to crates.io — the workspace's
+internal `mxr-*` crates are organizational seams, not library APIs, and
+publishing 22 crates per release was a poor fit for what mxr ships.
+Install via Homebrew (recommended) or `cargo install --git`:
 
 ```bash
 brew install planetaryescape/mxr/mxr
 # or
-cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.54 --locked mxr
+cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.63 --locked mxr
 ```
 
 ## Search returns nothing for a query that should match

@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Internal: deterministic rules engine for mxr"
+publish = false
 
 
 [lints]

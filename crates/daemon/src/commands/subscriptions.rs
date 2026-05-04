@@ -14,9 +14,31 @@ fn display_name(subscription: &SubscriptionSummary) -> &str {
         .unwrap_or(subscription.sender_email.as_str())
 }
 
-fn render_table(subscriptions: &[SubscriptionSummary]) {
+fn render_table(subscriptions: &[SubscriptionSummary], rank: bool) {
     if subscriptions.is_empty() {
         println!("No subscriptions found.");
+        return;
+    }
+
+    if rank {
+        println!(
+            "{:<32} {:<34} {:>6} {:>6} {:>10} {:<10}",
+            "SENDER", "EMAIL", "COUNT", "OPENED", "ARCH/UNRD", "METHOD"
+        );
+        println!("{}", "-".repeat(102));
+        for subscription in subscriptions {
+            let method = method_label(&subscription.unsubscribe);
+            println!(
+                "{:<32} {:<34} {:>6} {:>6} {:>10} {:<10}",
+                display_name(subscription),
+                subscription.sender_email,
+                subscription.message_count,
+                subscription.opened_count,
+                subscription.archived_unread_count,
+                method,
+            );
+        }
+        println!("\n{} senders ranked by open-rate (low first)", subscriptions.len());
         return;
     }
 
@@ -27,13 +49,7 @@ fn render_table(subscriptions: &[SubscriptionSummary]) {
     println!("{}", "-".repeat(122));
     for subscription in subscriptions {
         let subject: String = subscription.latest_subject.chars().take(32).collect();
-        let method = match &subscription.unsubscribe {
-            mxr_core::types::UnsubscribeMethod::OneClick { .. } => "one-click",
-            mxr_core::types::UnsubscribeMethod::HttpLink { .. } => "link",
-            mxr_core::types::UnsubscribeMethod::Mailto { .. } => "mailto",
-            mxr_core::types::UnsubscribeMethod::BodyLink { .. } => "body-link",
-            mxr_core::types::UnsubscribeMethod::None => "-",
-        };
+        let method = method_label(&subscription.unsubscribe);
         println!(
             "{:<32} {:<34} {:>6} {:<10} {:<32}",
             display_name(subscription),
@@ -46,7 +62,27 @@ fn render_table(subscriptions: &[SubscriptionSummary]) {
     println!("\n{} senders", subscriptions.len());
 }
 
-pub async fn run(limit: u32, format: Option<OutputFormat>) -> anyhow::Result<()> {
+fn method_label(method: &mxr_core::types::UnsubscribeMethod) -> &'static str {
+    match method {
+        mxr_core::types::UnsubscribeMethod::OneClick { .. } => "one-click",
+        mxr_core::types::UnsubscribeMethod::HttpLink { .. } => "link",
+        mxr_core::types::UnsubscribeMethod::Mailto { .. } => "mailto",
+        mxr_core::types::UnsubscribeMethod::BodyLink { .. } => "body-link",
+        mxr_core::types::UnsubscribeMethod::None => "-",
+    }
+}
+
+/// Open-rate as a fraction in `[0, 1]`. Senders with no messages are pinned at 1.0
+/// so they fall to the bottom of the rank rather than dominating it.
+fn open_rate(s: &SubscriptionSummary) -> f64 {
+    if s.message_count == 0 {
+        1.0
+    } else {
+        f64::from(s.opened_count) / f64::from(s.message_count)
+    }
+}
+
+pub async fn run(limit: u32, rank: bool, format: Option<OutputFormat>) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let resp = client
         .request(Request::ListSubscriptions {
@@ -56,16 +92,27 @@ pub async fn run(limit: u32, format: Option<OutputFormat>) -> anyhow::Result<()>
         .await?;
 
     let fmt = resolve_format(format);
-    let subscriptions = crate::commands::expect_response(resp, |r| match r {
+    let mut subscriptions = crate::commands::expect_response(resp, |r| match r {
         Response::Ok {
             data: ResponseData::Subscriptions { subscriptions },
         } => Some(subscriptions),
         _ => None,
     })?;
+
+    if rank {
+        // Lowest open-rate first; ties broken by larger archived_unread first.
+        subscriptions.sort_by(|a, b| {
+            open_rate(a)
+                .partial_cmp(&open_rate(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(b.archived_unread_count.cmp(&a.archived_unread_count))
+        });
+    }
+
     match fmt {
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&subscriptions)?),
         OutputFormat::Jsonl => println!("{}", jsonl(&subscriptions)?),
-        _ => render_table(&subscriptions),
+        _ => render_table(&subscriptions, rank),
     }
 
     Ok(())
@@ -96,12 +143,45 @@ mod tests {
             unsubscribe: UnsubscribeMethod::HttpLink {
                 url: "https://example.com/unsub".into(),
             },
+            opened_count: 8,
+            replied_count: 0,
+            archived_unread_count: 2,
         }
     }
 
     #[test]
     fn table_render_handles_empty() {
-        render_table(&[]);
+        render_table(&[], false);
+        render_table(&[], true);
+    }
+
+    #[test]
+    fn rank_ordering_puts_low_open_rate_first() {
+        // Senders ordered by open-rate ASC; tie-break by archived_unread DESC.
+        let high_rate = SubscriptionSummary {
+            opened_count: 9,
+            archived_unread_count: 0,
+            ..sample_subscription()
+        };
+        let mut low_rate = sample_subscription();
+        low_rate.sender_email = "low@list.example.com".into();
+        low_rate.opened_count = 1;
+        low_rate.archived_unread_count = 5;
+        let mut very_low = sample_subscription();
+        very_low.sender_email = "verylow@list.example.com".into();
+        very_low.opened_count = 0;
+        very_low.archived_unread_count = 3;
+
+        let mut subs = vec![high_rate.clone(), low_rate.clone(), very_low.clone()];
+        subs.sort_by(|a, b| {
+            open_rate(a)
+                .partial_cmp(&open_rate(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(b.archived_unread_count.cmp(&a.archived_unread_count))
+        });
+        assert_eq!(subs[0].sender_email, very_low.sender_email);
+        assert_eq!(subs[1].sender_email, low_rate.sender_email);
+        assert_eq!(subs[2].sender_email, high_rate.sender_email);
     }
 
     #[test]

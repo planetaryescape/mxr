@@ -2772,6 +2772,9 @@ mod tests {
             latest_has_attachments: false,
             latest_size_bytes: 256,
             unsubscribe: UnsubscribeMethod::None,
+            opened_count: 0,
+            replied_count: 0,
+            archived_unread_count: 0,
         }
     }
 

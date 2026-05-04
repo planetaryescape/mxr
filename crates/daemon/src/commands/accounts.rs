@@ -1,9 +1,11 @@
-use crate::cli::{AccountsAction, OutputFormat};
+use crate::cli::{AccountsAction, AddressesOp, OutputFormat};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
+use mxr_core::id::AccountId;
+use mxr_core::types::AccountAddress;
 use mxr_protocol::{
-    AccountConfigData, AccountOperationResult, AccountSendConfigData, AccountSyncConfigData,
-    GmailCredentialSourceData, Request, Response, ResponseData,
+    AccountConfigData, AccountOperationResult, AccountSendConfigData, AccountSummaryData,
+    AccountSyncConfigData, GmailCredentialSourceData, Request, Response, ResponseData,
 };
 
 pub async fn run(
@@ -36,8 +38,166 @@ pub async fn run(
         }) => {
             remove_account(&name, dry_run, yes, purge_local_data).await?;
         }
+        Some(AccountsAction::Addresses { op }) => addresses_dispatch(op, format).await?,
     }
     Ok(())
+}
+
+async fn addresses_dispatch(op: AddressesOp, format: Option<OutputFormat>) -> anyhow::Result<()> {
+    match op {
+        AddressesOp::List { account } => list_addresses(account.as_deref(), format).await,
+        AddressesOp::Add {
+            account,
+            email,
+            primary,
+        } => add_address(account.as_deref(), &email, primary).await,
+        AddressesOp::Remove { account, email } => {
+            remove_address(account.as_deref(), &email).await
+        }
+        AddressesOp::SetPrimary { account, email } => {
+            set_primary_address(account.as_deref(), &email).await
+        }
+    }
+}
+
+async fn resolve_account_id(name: Option<&str>) -> anyhow::Result<AccountId> {
+    let mut client = client().await?;
+    let summaries = match client.request(Request::ListAccounts).await? {
+        Response::Ok {
+            data: ResponseData::Accounts { accounts },
+        } => accounts,
+        Response::Error { message } => anyhow::bail!(message),
+        other => anyhow::bail!("Unexpected accounts response: {other:?}"),
+    };
+
+    let chosen: Option<AccountSummaryData> = match name {
+        Some(needle) => summaries.into_iter().find(|s| {
+            s.key.as_deref() == Some(needle) || s.name == needle || s.email == needle
+        }),
+        None => summaries.into_iter().find(|s| s.is_default),
+    };
+
+    chosen
+        .map(|s| s.account_id)
+        .ok_or_else(|| match name {
+            Some(n) => anyhow::anyhow!("Account '{n}' not found"),
+            None => anyhow::anyhow!(
+                "No default account configured. Pass --account=<name> or set a default."
+            ),
+        })
+}
+
+async fn list_addresses(
+    account_name: Option<&str>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let account_id = resolve_account_id(account_name).await?;
+    let mut client = client().await?;
+    let addresses = match client
+        .request(Request::ListAccountAddresses { account_id })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::AccountAddresses { addresses },
+        } => addresses,
+        Response::Error { message } => anyhow::bail!(message),
+        other => anyhow::bail!("Unexpected addresses response: {other:?}"),
+    };
+    render_addresses(&addresses, format)
+}
+
+fn render_addresses(
+    addresses: &[AccountAddress],
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    match resolve_format(format) {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(addresses)?),
+        OutputFormat::Jsonl => println!("{}", jsonl(addresses)?),
+        OutputFormat::Csv => {
+            println!("email,is_primary");
+            for a in addresses {
+                let email = a.email.replace('"', "\"\"");
+                println!("\"{email}\",{}", a.is_primary);
+            }
+        }
+        OutputFormat::Ids => {
+            for a in addresses {
+                println!("{}", a.email);
+            }
+        }
+        OutputFormat::Table => {
+            if addresses.is_empty() {
+                println!("No addresses configured.");
+                return Ok(());
+            }
+            println!("{:<48} {}", "EMAIL", "PRIMARY");
+            println!("{}", "-".repeat(58));
+            for a in addresses {
+                let email: String = a.email.chars().take(48).collect();
+                println!("{:<48} {}", email, if a.is_primary { "yes" } else { "no" });
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn add_address(
+    account_name: Option<&str>,
+    email: &str,
+    primary: bool,
+) -> anyhow::Result<()> {
+    let account_id = resolve_account_id(account_name).await?;
+    let mut client = client().await?;
+    match client
+        .request(Request::AddAccountAddress {
+            account_id,
+            email: email.to_string(),
+            primary,
+        })
+        .await?
+    {
+        Response::Ok { .. } => {
+            println!("Added {email}{}.", if primary { " (primary)" } else { "" });
+            Ok(())
+        }
+        Response::Error { message } => anyhow::bail!(message),
+    }
+}
+
+async fn remove_address(account_name: Option<&str>, email: &str) -> anyhow::Result<()> {
+    let account_id = resolve_account_id(account_name).await?;
+    let mut client = client().await?;
+    match client
+        .request(Request::RemoveAccountAddress {
+            account_id,
+            email: email.to_string(),
+        })
+        .await?
+    {
+        Response::Ok { .. } => {
+            println!("Removed {email}.");
+            Ok(())
+        }
+        Response::Error { message } => anyhow::bail!(message),
+    }
+}
+
+async fn set_primary_address(account_name: Option<&str>, email: &str) -> anyhow::Result<()> {
+    let account_id = resolve_account_id(account_name).await?;
+    let mut client = client().await?;
+    match client
+        .request(Request::SetPrimaryAccountAddress {
+            account_id,
+            email: email.to_string(),
+        })
+        .await?
+    {
+        Response::Ok { .. } => {
+            println!("Promoted {email} to primary.");
+            Ok(())
+        }
+        Response::Error { message } => anyhow::bail!(message),
+    }
 }
 
 async fn client() -> anyhow::Result<IpcClient> {

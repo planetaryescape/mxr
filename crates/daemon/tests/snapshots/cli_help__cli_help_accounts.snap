@@ -7,13 +7,14 @@ Manage accounts
 Usage: mxr accounts [OPTIONS] [COMMAND]
 
 Commands:
-  add      Add an account
-  show     Show account details
-  test     Test account connectivity
-  repair   Re-save account passwords into the protected keychain store
-  disable  Disable an account without deleting local cached mail
-  remove   Remove an account from config; cached mail is kept unless purged
-  help     Print this message or the help of the given subcommand(s)
+  add        Add an account
+  show       Show account details
+  test       Test account connectivity
+  repair     Re-save account passwords into the protected keychain store
+  disable    Disable an account without deleting local cached mail
+  remove     Remove an account from config; cached mail is kept unless purged
+  addresses  Manage owned addresses (aliases) for an account. Direction inference uses these to classify inbound vs outbound mail
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
       --format <FORMAT>  Output format for `accounts` (the no-subcommand listing) [possible values: table, json, jsonl, csv, ids]

@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Surface relationship analytics from the materialized contacts table
+
+Usage: mxr contacts [OPTIONS] <COMMAND>
+
+Commands:
+  asymmetry  Rank contacts by reply imbalance (|inbound - outbound| / max)
+  decay      List contacts where the most recent inbound is older than the outbound by more than --threshold-days days. Surfaces "going cold" relationships
+  refresh    Force a full refresh of the materialized `contacts` table
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

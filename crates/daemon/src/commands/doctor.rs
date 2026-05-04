@@ -18,11 +18,64 @@ pub struct DoctorRunOptions {
     pub verbose: bool,
     pub index_stats: bool,
     pub store_stats: bool,
+    pub rebuild_analytics: bool,
+    pub refresh_contacts: bool,
     pub format: Option<OutputFormat>,
 }
 
 pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
     let fmt = resolve_format(options.format);
+
+    if options.rebuild_analytics {
+        let mut client = IpcClient::connect().await?;
+        match client.request(Request::RebuildAnalytics).await? {
+            Response::Ok {
+                data: ResponseData::AnalyticsRebuildSummary {
+                    directions_reclassified,
+                    list_ids_backfilled,
+                    reply_pairs_resolved,
+                    business_hours_backfilled,
+                    contacts_rows,
+                },
+            } => match fmt {
+                OutputFormat::Json | OutputFormat::Jsonl => {
+                    let value = serde_json::json!({
+                        "directions_reclassified": directions_reclassified,
+                        "list_ids_backfilled": list_ids_backfilled,
+                        "reply_pairs_resolved": reply_pairs_resolved,
+                        "business_hours_backfilled": business_hours_backfilled,
+                        "contacts_rows": contacts_rows,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&value)?);
+                }
+                _ => {
+                    println!("Analytics rebuild complete:");
+                    println!("  directions reclassified  : {directions_reclassified}");
+                    println!("  list_ids backfilled      : {list_ids_backfilled}");
+                    println!("  reply pairs resolved     : {reply_pairs_resolved}");
+                    println!("  business-hours backfilled: {business_hours_backfilled}");
+                    println!("  contacts rows refreshed  : {contacts_rows}");
+                }
+            },
+            Response::Error { message } => anyhow::bail!("{message}"),
+            other => anyhow::bail!("Unexpected response: {other:?}"),
+        }
+        return Ok(());
+    }
+
+    if options.refresh_contacts {
+        let mut client = IpcClient::connect().await?;
+        match client.request(Request::RefreshContacts).await? {
+            Response::Ok {
+                data: ResponseData::RefreshedContacts { rows },
+            } => {
+                println!("Refreshed {rows} contact rows.");
+            }
+            Response::Error { message } => anyhow::bail!("{message}"),
+            other => anyhow::bail!("Unexpected response: {other:?}"),
+        }
+        return Ok(());
+    }
 
     if options.semantic_status || options.reindex_semantic {
         let mut client = IpcClient::connect().await?;

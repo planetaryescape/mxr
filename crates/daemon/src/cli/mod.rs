@@ -115,6 +115,66 @@ pub enum Command {
     Subscriptions {
         #[arg(long, default_value = "200")]
         limit: u32,
+        /// Rank by newsletter ROI: lowest open-rate first, ties broken by
+        /// archived-unread descending. Highlights the lists most worth dropping.
+        #[arg(long)]
+        rank: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Roll up disk consumption by sender, mimetype, or label.
+    Storage {
+        /// Group by which dimension. One of: sender, mimetype, label.
+        #[arg(long, value_enum, default_value_t = StorageGroupByArg::Sender)]
+        by: StorageGroupByArg,
+        /// Maximum buckets to return.
+        #[arg(long, default_value = "50")]
+        limit: u32,
+        /// Restrict to a single account by id.
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Surface relationship analytics from the materialized contacts table.
+    Contacts {
+        #[command(subcommand)]
+        action: ContactsAction,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Reply-latency percentiles (clock + business-hours) per direction.
+    ResponseTime {
+        /// Measure their reply time to my outbound (`they_replied`). Default
+        /// is mine: how long I take to reply to inbound messages.
+        #[arg(long)]
+        theirs: bool,
+        /// Restrict to a single counterparty by email.
+        #[arg(long)]
+        counterparty: Option<String>,
+        /// Restrict to reply pairs from the last N days.
+        #[arg(long)]
+        since_days: Option<u32>,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// List stale threads waiting for a reply (mine = my turn, theirs = theirs).
+    Stale {
+        /// Latest message in thread is inbound (I owe a reply). Default if neither flag set.
+        #[arg(long, conflicts_with = "theirs")]
+        mine: bool,
+        /// Latest message in thread is outbound (they owe a reply).
+        #[arg(long, conflicts_with = "mine")]
+        theirs: bool,
+        /// Threshold in days; threads with more recent activity are excluded.
+        #[arg(long, default_value = "14")]
+        older_than_days: u32,
+        #[arg(long, default_value = "100")]
+        limit: u32,
+        #[arg(long)]
+        account: Option<String>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -259,6 +319,13 @@ pub enum Command {
         index_stats: bool,
         #[arg(long)]
         store_stats: bool,
+        /// Reclassify Unknown directions, backfill list_ids, resolve reply
+        /// pair pending, refresh contacts, fill business-hours latency. Idempotent.
+        #[arg(long)]
+        rebuild_analytics: bool,
+        /// Force a full refresh of the materialized contacts table.
+        #[arg(long)]
+        refresh_contacts: bool,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -594,6 +661,24 @@ pub enum OutputFormat {
     Jsonl,
     Csv,
     Ids,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lowercase")]
+pub enum StorageGroupByArg {
+    Sender,
+    Mimetype,
+    Label,
+}
+
+impl From<StorageGroupByArg> for mxr_core::types::StorageGroupBy {
+    fn from(value: StorageGroupByArg) -> Self {
+        match value {
+            StorageGroupByArg::Sender => Self::Sender,
+            StorageGroupByArg::Mimetype => Self::Mimetype,
+            StorageGroupByArg::Label => Self::Label,
+        }
+    }
 }
 
 pub fn unsupported_command_guidance(args: &[String]) -> Option<String> {

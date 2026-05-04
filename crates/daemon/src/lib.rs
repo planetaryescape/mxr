@@ -58,6 +58,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             verbose,
             index_stats,
             store_stats,
+            rebuild_analytics,
+            refresh_contacts,
             format,
         }) => {
             commands::doctor::run(commands::doctor::DoctorRunOptions {
@@ -68,6 +70,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 verbose,
                 index_stats,
                 store_stats,
+                rebuild_analytics,
+                refresh_contacts,
                 format,
             })
             .await?;
@@ -192,9 +196,48 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::semantic::run(action, format).await?;
         }
-        Some(Command::Subscriptions { limit, format }) => {
+        Some(Command::Subscriptions {
+            limit,
+            rank,
+            format,
+        }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::subscriptions::run(limit, format).await?;
+            commands::subscriptions::run(limit, rank, format).await?;
+        }
+        Some(Command::Storage {
+            by,
+            limit,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::storage::run(by, limit, account, format).await?;
+        }
+        Some(Command::Stale {
+            mine,
+            theirs,
+            older_than_days,
+            limit,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::stale::run(mine, theirs, older_than_days, limit, account, format).await?;
+        }
+        Some(Command::Contacts { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::contacts::run(action, format).await?;
+        }
+        Some(Command::ResponseTime {
+            theirs,
+            counterparty,
+            since_days,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::response_time::run(theirs, counterparty, since_days, account, format)
+                .await?;
         }
         Some(Command::Sync {
             account,

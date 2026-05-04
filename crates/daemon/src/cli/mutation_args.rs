@@ -23,6 +23,71 @@ pub enum AccountsAction {
         #[arg(long)]
         purge_local_data: bool,
     },
+    /// Manage owned addresses (aliases) for an account. Direction inference
+    /// uses these to classify inbound vs outbound mail.
+    Addresses {
+        #[command(subcommand)]
+        op: AddressesOp,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ContactsAction {
+    /// Rank contacts by reply imbalance (|inbound - outbound| / max).
+    Asymmetry {
+        /// Filter out contacts with fewer than this many inbound messages.
+        #[arg(long, default_value = "3")]
+        min_inbound: u32,
+        #[arg(long, default_value = "50")]
+        limit: u32,
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// List contacts where the most recent inbound is older than the
+    /// outbound by more than --threshold-days days. Surfaces "going cold"
+    /// relationships.
+    Decay {
+        #[arg(long, default_value = "30")]
+        threshold_days: u32,
+        #[arg(long, default_value = "50")]
+        limit: u32,
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Force a full refresh of the materialized `contacts` table.
+    Refresh,
+}
+
+#[derive(Subcommand)]
+pub enum AddressesOp {
+    /// List addresses owned by an account.
+    List {
+        /// Account name or id. Defaults to the configured default account.
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Add an address as an alias on an account.
+    Add {
+        /// Account name or id. Defaults to the configured default account.
+        #[arg(long)]
+        account: Option<String>,
+        email: String,
+        /// Mark as primary; demotes the previous primary atomically.
+        #[arg(long)]
+        primary: bool,
+    },
+    /// Remove an alias from an account.
+    Remove {
+        #[arg(long)]
+        account: Option<String>,
+        email: String,
+    },
+    /// Promote an existing alias to primary (demoting the previous primary).
+    SetPrimary {
+        #[arg(long)]
+        account: Option<String>,
+        email: String,
+    },
 }
 
 #[derive(Subcommand)]

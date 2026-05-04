@@ -1,0 +1,23 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List stale threads waiting for a reply (mine = my turn, theirs = theirs)
+
+Usage: mxr stale [OPTIONS]
+
+Options:
+      --mine
+          Latest message in thread is inbound (I owe a reply). Default if neither flag set
+      --theirs
+          Latest message in thread is outbound (they owe a reply)
+      --older-than-days <OLDER_THAN_DAYS>
+          Threshold in days; threads with more recent activity are excluded [default: 14]
+      --limit <LIMIT>
+          [default: 100]
+      --account <ACCOUNT>
+          
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+  -h, --help
+          Print help

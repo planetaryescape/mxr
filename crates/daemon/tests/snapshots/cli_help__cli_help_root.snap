@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 13
 expression: stdout
 ---
 Terminal email client
@@ -18,6 +19,10 @@ Commands:
   saved          Manage saved searches
   semantic       Manage semantic search profiles and indexing
   subscriptions  List senders with unsubscribe support
+  storage        Roll up disk consumption by sender, mimetype, or label
+  contacts       Surface relationship analytics from the materialized contacts table
+  response-time  Reply-latency percentiles (clock + business-hours) per direction
+  stale          List stale threads waiting for a reply (mine = my turn, theirs = theirs)
   sync           Trigger or query sync
   status         Show daemon status
   web            Start a local HTTP/WebSocket bridge over daemon IPC

@@ -505,11 +505,7 @@ mod tests {
         let env = test_envelope(&account.id);
         store.upsert_envelope(&env).await.unwrap();
         store
-            .set_message_labels(
-                &env.id,
-                std::slice::from_ref(&label.id),
-                EventSource::User,
-            )
+            .set_message_labels(&env.id, std::slice::from_ref(&label.id), EventSource::User)
             .await
             .unwrap();
 
@@ -864,11 +860,7 @@ mod tests {
             }
             store.upsert_envelope(&env).await.unwrap();
             store
-                .set_message_labels(
-                    &env.id,
-                    std::slice::from_ref(&label.id),
-                    EventSource::User,
-                )
+                .set_message_labels(&env.id, std::slice::from_ref(&label.id), EventSource::User)
                 .await
                 .unwrap();
         }
@@ -937,6 +929,172 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn label_mutations_do_not_leak_between_accounts() {
+        // v1 ship-gate: confirm a junction-table mutation on account A's
+        // message doesn't accidentally touch account B's labels. The data
+        // model is isolated by message_id (which is account-scoped via
+        // UUIDv5), but a regression here would be silent and subtle.
+        let store = Store::in_memory().await.unwrap();
+        let account_a = test_account();
+        store.insert_account(&account_a).await.unwrap();
+        let mut account_b = test_account();
+        account_b.id = AccountId::new();
+        account_b.email = "b@example.com".to_string();
+        account_b.name = "B".to_string();
+        store.insert_account(&account_b).await.unwrap();
+
+        let label_a = Label {
+            id: LabelId::from_provider_id("imap", &format!("A-{}", account_a.id.as_str())),
+            account_id: account_a.id.clone(),
+            name: "WorkA".to_string(),
+            kind: LabelKind::User,
+            color: None,
+            provider_id: "WorkA".to_string(),
+            unread_count: 0,
+            total_count: 0,
+        };
+        let label_b = Label {
+            id: LabelId::from_provider_id("imap", &format!("B-{}", account_b.id.as_str())),
+            account_id: account_b.id.clone(),
+            name: "WorkB".to_string(),
+            kind: LabelKind::User,
+            color: None,
+            provider_id: "WorkB".to_string(),
+            unread_count: 0,
+            total_count: 0,
+        };
+        store.upsert_label(&label_a).await.unwrap();
+        store.upsert_label(&label_b).await.unwrap();
+
+        let env_a = test_envelope(&account_a.id);
+        store.upsert_envelope(&env_a).await.unwrap();
+        let mut env_b = test_envelope(&account_b.id);
+        env_b.id = mxr_core::MessageId::from_scoped_provider_id(&account_b.id, "imap", "msg-b");
+        env_b.provider_id = "msg-b".to_string();
+        store.upsert_envelope(&env_b).await.unwrap();
+
+        store
+            .set_message_labels(
+                &env_a.id,
+                std::slice::from_ref(&label_a.id),
+                EventSource::User,
+            )
+            .await
+            .unwrap();
+        store
+            .set_message_labels(
+                &env_b.id,
+                std::slice::from_ref(&label_b.id),
+                EventSource::User,
+            )
+            .await
+            .unwrap();
+
+        let by_a = store
+            .list_envelopes_by_label(&label_a.id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(by_a.len(), 1);
+        assert_eq!(by_a[0].account_id, account_a.id);
+
+        let by_b = store
+            .list_envelopes_by_label(&label_b.id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(by_b.len(), 1);
+        assert_eq!(by_b[0].account_id, account_b.id);
+
+        // Removing all labels from account A's message must not affect
+        // account B's labels or messages.
+        store
+            .set_message_labels(&env_a.id, &[], EventSource::User)
+            .await
+            .unwrap();
+        let by_a_after = store
+            .list_envelopes_by_label(&label_a.id, 100, 0)
+            .await
+            .unwrap();
+        assert!(by_a_after.is_empty());
+        let by_b_after = store
+            .list_envelopes_by_label(&label_b.id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(by_b_after.len(), 1, "account B unaffected");
+    }
+
+    #[tokio::test]
+    async fn set_message_labels_is_atomic_under_constraint_violation() {
+        // Regression: a mid-loop INSERT failure used to delete every existing
+        // junction row before bailing, leaving the message with zero labels and
+        // permanent corruption. The DELETE+INSERT must roll back as one tx.
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let label_a = Label {
+            id: LabelId::from_provider_id("imap", "A"),
+            account_id: account.id.clone(),
+            name: "A".to_string(),
+            kind: LabelKind::User,
+            color: None,
+            provider_id: "A".to_string(),
+            unread_count: 0,
+            total_count: 0,
+        };
+        let label_b = Label {
+            id: LabelId::from_provider_id("imap", "B"),
+            account_id: account.id.clone(),
+            name: "B".to_string(),
+            kind: LabelKind::User,
+            color: None,
+            provider_id: "B".to_string(),
+            unread_count: 0,
+            total_count: 0,
+        };
+        store.upsert_label(&label_a).await.unwrap();
+        store.upsert_label(&label_b).await.unwrap();
+
+        let env = test_envelope(&account.id);
+        store.upsert_envelope(&env).await.unwrap();
+        store
+            .set_message_labels(
+                &env.id,
+                &[label_a.id.clone(), label_b.id.clone()],
+                EventSource::User,
+            )
+            .await
+            .unwrap();
+
+        // Duplicate label_id in the input list triggers PRIMARY KEY violation on
+        // the second INSERT. Without the wrapping transaction, the prior DELETE
+        // would have already wiped [A, B] and we'd be stuck with one of them
+        // (or none). The transaction must roll back the DELETE.
+        let result = store
+            .set_message_labels(
+                &env.id,
+                &[label_a.id.clone(), label_a.id.clone()],
+                EventSource::User,
+            )
+            .await;
+        assert!(
+            result.is_err(),
+            "set_message_labels with duplicate label_ids should fail (got {:?})",
+            result
+        );
+
+        let by_a = store
+            .list_envelopes_by_label(&label_a.id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(by_a.len(), 1, "label A should still be associated");
+        let by_b = store
+            .list_envelopes_by_label(&label_b.id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(by_b.len(), 1, "label B must survive the failed mutation");
     }
 
     #[tokio::test]
@@ -1502,12 +1660,19 @@ mod tests {
                 .fetch_all(store.reader())
                 .await
                 .unwrap();
-        let by_id: std::collections::HashMap<String, String> =
-            directions.into_iter().collect();
-        assert_eq!(by_id.get(&from_me.id.as_str()).map(String::as_str), Some("outbound"));
-        assert_eq!(by_id.get(&from_other.id.as_str()).map(String::as_str), Some("inbound"));
+        let by_id: std::collections::HashMap<String, String> = directions.into_iter().collect();
         assert_eq!(
-            by_id.get(&already_classified.id.as_str()).map(String::as_str),
+            by_id.get(&from_me.id.as_str()).map(String::as_str),
+            Some("outbound")
+        );
+        assert_eq!(
+            by_id.get(&from_other.id.as_str()).map(String::as_str),
+            Some("inbound")
+        );
+        assert_eq!(
+            by_id
+                .get(&already_classified.id.as_str())
+                .map(String::as_str),
             Some("inbound")
         );
     }
@@ -1564,9 +1729,8 @@ mod tests {
         store.insert_account(&account).await.unwrap();
 
         // Anchor parents/replies on Monday in business hours.
-        let monday: chrono::DateTime<chrono::Utc> = chrono::Utc
-            .with_ymd_and_hms(2026, 5, 4, 10, 0, 0)
-            .unwrap();
+        let monday: chrono::DateTime<chrono::Utc> =
+            chrono::Utc.with_ymd_and_hms(2026, 5, 4, 10, 0, 0).unwrap();
         for (i, latency_h) in [1i64, 2, 3].iter().enumerate() {
             let mut parent = TestEnvelopeBuilder::new()
                 .account_id(account.id.clone())
@@ -1680,21 +1844,58 @@ mod tests {
         }
 
         // alice: 10 inbound, 1 outbound (high asymmetry)
-        seed(&store, &account.id, "alice", MessageDirection::Inbound, 10, now).await;
-        seed(&store, &account.id, "alice", MessageDirection::Outbound, 1, now).await;
+        seed(
+            &store,
+            &account.id,
+            "alice",
+            MessageDirection::Inbound,
+            10,
+            now,
+        )
+        .await;
+        seed(
+            &store,
+            &account.id,
+            "alice",
+            MessageDirection::Outbound,
+            1,
+            now,
+        )
+        .await;
         // bob: 5 inbound, 5 outbound (balanced)
-        seed(&store, &account.id, "bob", MessageDirection::Inbound, 5, now).await;
-        seed(&store, &account.id, "bob", MessageDirection::Outbound, 5, now).await;
+        seed(
+            &store,
+            &account.id,
+            "bob",
+            MessageDirection::Inbound,
+            5,
+            now,
+        )
+        .await;
+        seed(
+            &store,
+            &account.id,
+            "bob",
+            MessageDirection::Outbound,
+            5,
+            now,
+        )
+        .await;
         // carol: 0 inbound, 8 outbound (extreme asymmetry, but min_inbound filter)
-        seed(&store, &account.id, "carol", MessageDirection::Outbound, 8, now).await;
+        seed(
+            &store,
+            &account.id,
+            "carol",
+            MessageDirection::Outbound,
+            8,
+            now,
+        )
+        .await;
 
         store.refresh_contacts().await.unwrap();
 
         // min_inbound = 1: carol filtered out, alice + bob remain.
-        let asym = store
-            .list_contact_asymmetry(None, 1, 50)
-            .await
-            .unwrap();
+        let asym = store.list_contact_asymmetry(None, 1, 50).await.unwrap();
         let by_email: std::collections::HashMap<_, _> =
             asym.iter().map(|r| (r.email.clone(), r)).collect();
         let alice = by_email.get("alice@example.com").unwrap();

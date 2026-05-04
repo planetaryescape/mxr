@@ -560,22 +560,24 @@ impl super::Store {
         _source: EventSource,
     ) -> Result<(), sqlx::Error> {
         let mid = message_id.as_str();
+        let mut tx = self.writer().begin().await?;
+
         sqlx::query!("DELETE FROM message_labels WHERE message_id = ?", mid)
-            .execute(self.writer())
+            .execute(&mut *tx)
             .await?;
 
         for label_id in label_ids {
-            let mid = message_id.as_str();
             let lid = label_id.as_str();
             sqlx::query!(
                 "INSERT INTO message_labels (message_id, label_id) VALUES (?, ?)",
                 mid,
                 lid,
             )
-            .execute(self.writer())
+            .execute(&mut *tx)
             .await?;
         }
 
+        tx.commit().await?;
         Ok(())
     }
 
@@ -1103,9 +1105,9 @@ impl super::Store {
             ORDER BY CASE WHEN date > ? THEN 0 ELSE date END DESC, id DESC
             LIMIT ?"#,
         )
-        .bind(read_flag)        // opened: (flags & READ) = READ
+        .bind(read_flag) // opened: (flags & READ) = READ
         .bind(read_flag)
-        .bind(archived_flag)    // archived_unread: (flags & ARCHIVED) = ARCHIVED AND (flags & READ) = 0
+        .bind(archived_flag) // archived_unread: (flags & ARCHIVED) = ARCHIVED AND (flags & READ) = 0
         .bind(archived_flag)
         .bind(read_flag)
         .bind(cutoff)

@@ -13,6 +13,7 @@ include = [
     "README.md",
     "LICENSE-MIT",
     "LICENSE-APACHE",
+    "build.rs",
     ".sqlx/**",
     "crates/**",
 ]

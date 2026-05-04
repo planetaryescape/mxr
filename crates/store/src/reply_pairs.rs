@@ -1,4 +1,4 @@
-use chrono::{Datelike, Duration, NaiveTime, TimeZone, Timelike, Utc, Weekday};
+use chrono::{Datelike, Duration, NaiveTime, TimeZone, Utc, Weekday};
 use mxr_core::id::*;
 use mxr_core::types::*;
 

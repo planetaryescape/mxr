@@ -218,6 +218,7 @@ fn action_name(action: &Action) -> Option<&'static str> {
         Action::InstallSemanticProfile(_) => Some("install_semantic_profile"),
         Action::OpenAccountFormNew => Some("open_account_form_new"),
         Action::TestAccountForm => Some("test_account_form"),
+        Action::RepairAccount => Some("repair_account"),
         Action::SetDefaultAccount => Some("set_default_account"),
         Action::Noop => Some("noop"),
         Action::OpenMessageView

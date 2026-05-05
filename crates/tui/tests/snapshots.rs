@@ -419,6 +419,7 @@ fn accounts_page_snapshot() {
             frame,
             Rect::new(0, 0, 100, 20),
             &state,
+            &[],
             &mxr_tui::theme::Theme::default(),
         );
     });
@@ -524,6 +525,7 @@ fn accounts_form_gmail_snapshot() {
             frame,
             Rect::new(0, 0, 100, 20),
             &state,
+            &[],
             &mxr_tui::theme::Theme::default(),
         );
     });
@@ -553,6 +555,7 @@ fn accounts_form_gmail_editing_snapshot() {
             frame,
             Rect::new(0, 0, 100, 20),
             &state,
+            &[],
             &mxr_tui::theme::Theme::default(),
         );
     });
@@ -572,6 +575,7 @@ fn accounts_page_onboarding_snapshot() {
             frame,
             Rect::new(0, 0, 100, 20),
             &state,
+            &[],
             &mxr_tui::theme::Theme::default(),
         );
     });

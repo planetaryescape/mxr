@@ -5,6 +5,32 @@ impl App {
         self.selected_account().and_then(account_summary_to_config)
     }
 
+    /// Phase 2.3: returns the account-level sync health captured by the
+    /// most recent `GetDoctorReport` / `GetStatus` snapshot. Used by the
+    /// accounts page renderer to mark unhealthy rows and by the input
+    /// handler to context-route the `r` keybinding to repair vs.
+    /// refresh. Health data flows in via `apply_status_snapshot`, so
+    /// the TUI doesn't need an extra IPC call.
+    pub fn account_sync_status(
+        &self,
+        account: &mxr_protocol::AccountSummaryData,
+    ) -> Option<&mxr_protocol::AccountSyncStatus> {
+        self.diagnostics
+            .page
+            .sync_statuses
+            .iter()
+            .find(|status| status.account_id == account.account_id)
+    }
+
+    /// True when the daemon's sync watch reports the account in a
+    /// failure state (auth issue, repeated failures, etc.). Returns
+    /// false for unknown accounts so a freshly added account doesn't
+    /// flicker through "unhealthy" before its first sync.
+    pub fn account_unhealthy(&self, account: &mxr_protocol::AccountSummaryData) -> bool {
+        self.account_sync_status(account)
+            .is_some_and(|status| !status.healthy)
+    }
+
     pub(super) fn account_form_field_count(&self) -> usize {
         match self.accounts.page.form.mode {
             AccountFormMode::Gmail => {

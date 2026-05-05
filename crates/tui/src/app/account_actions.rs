@@ -72,6 +72,20 @@ impl App {
                 self.accounts.pending_authorize = Some((account, true));
                 self.accounts.page.status = Some("Authorizing Gmail account...".into());
             }
+            Action::RepairAccount => {
+                let Some(account) = self.selected_account_config() else {
+                    self.accounts.page.status = Some(
+                        "Select a config-backed account to repair (runtime-only accounts cannot be repaired here).".into(),
+                    );
+                    return;
+                };
+                self.accounts.page.last_result = None;
+                self.accounts.page.form.last_result = None;
+                self.accounts.page.operation_in_flight = true;
+                self.accounts.page.throbber = ThrobberState::default();
+                self.accounts.pending_repair = Some(account);
+                self.accounts.page.status = Some("Repairing account...".into());
+            }
             Action::SetDefaultAccount => {
                 if let Some(key) = self
                     .selected_account()

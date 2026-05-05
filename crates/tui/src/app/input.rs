@@ -1128,7 +1128,23 @@ impl App {
                 None
             }
             (KeyCode::Char('n'), _) => Some(Action::OpenAccountFormNew),
-            (KeyCode::Char('r'), _) => Some(Action::RefreshAccounts),
+            (KeyCode::Char('r'), _) => {
+                // Phase 2.3: when the selected account is reporting an
+                // unhealthy sync, `r` repairs it instead of refreshing
+                // the list. Refresh stays available via `R` (Shift) so
+                // the original behavior never disappears.
+                let unhealthy = self
+                    .selected_account()
+                    .is_some_and(|account| self.account_unhealthy(account));
+                if unhealthy {
+                    Some(Action::RepairAccount)
+                } else {
+                    Some(Action::RefreshAccounts)
+                }
+            }
+            (KeyCode::Char('R'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::RefreshAccounts)
+            }
             (KeyCode::Char('t'), _) => Some(Action::TestAccountForm),
             (KeyCode::Char('O'), modifiers)
                 if plain_or_shift(modifiers)

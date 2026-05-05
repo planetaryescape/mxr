@@ -112,6 +112,10 @@ pub struct AccountsState {
     pub pending_test: Option<mxr_protocol::AccountConfigData>,
     pub pending_authorize: Option<(mxr_protocol::AccountConfigData, bool)>,
     pub pending_set_default: Option<String>,
+    /// Phase 2.3: pending account-repair dispatch. Mirrors the
+    /// `pending_save`/`pending_test` pattern; the dispatcher takes
+    /// it on the next tick and fires `Request::RepairAccountConfig`.
+    pub pending_repair: Option<mxr_protocol::AccountConfigData>,
     /// True when the set-default was triggered from sidebar account switching
     /// (vs the Accounts tab). Used to trigger full state reset on completion.
     pub pending_switch: bool,

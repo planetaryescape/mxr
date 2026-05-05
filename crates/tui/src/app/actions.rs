@@ -82,6 +82,7 @@ impl App {
             | Action::SaveAccountForm
             | Action::TestAccountForm
             | Action::ReauthorizeAccountForm
+            | Action::RepairAccount
             | Action::SetDefaultAccount
             | Action::SwitchAccount(_) => self.apply_account_action(action),
             Action::OpenMailboxScreen

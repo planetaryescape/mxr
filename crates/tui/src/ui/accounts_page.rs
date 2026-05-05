@@ -3,7 +3,13 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
 
-pub fn draw(frame: &mut Frame, area: Rect, state: &AccountsPageState, theme: &crate::theme::Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AccountsPageState,
+    sync_statuses: &[mxr_protocol::AccountSyncStatus],
+    theme: &crate::theme::Theme,
+) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
@@ -39,7 +45,13 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AccountsPageState, theme: &cr
             .flatten()
             .collect::<Vec<_>>()
             .join(" | ");
-            ListItem::new(Line::from(vec![
+            // Phase 2.3: surface an unhealthy indicator inline so users
+            // can spot a broken account without opening Diagnostics.
+            let unhealthy = sync_statuses
+                .iter()
+                .find(|s| s.account_id == account.account_id)
+                .filter(|s| !s.healthy);
+            let mut spans = vec![
                 Span::styled(
                     account.name.clone(),
                     Style::default().fg(theme.text_primary).bold(),
@@ -48,7 +60,14 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AccountsPageState, theme: &cr
                     format!("  [{}]", badges),
                     Style::default().fg(theme.text_secondary),
                 ),
-            ]))
+            ];
+            if unhealthy.is_some() {
+                spans.push(Span::styled(
+                    "  [unhealthy]",
+                    Style::default().fg(theme.error).bold(),
+                ));
+            }
+            ListItem::new(Line::from(spans))
         })
         .collect::<Vec<_>>();
     let list = List::new(items)
@@ -170,8 +189,21 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &AccountsPageState, theme: &cr
     } else if let Some(status) = &state.status {
         footer_lines.push(Line::from(status.clone()));
     }
+    let selected_unhealthy = state
+        .accounts
+        .get(state.selected_index)
+        .and_then(|account| {
+            sync_statuses
+                .iter()
+                .find(|s| s.account_id == account.account_id)
+                .filter(|s| !s.healthy)
+        })
+        .is_some();
     let mut footer_hint = if state.accounts.is_empty() {
         "n:new account  c:edit config  Esc:mailbox".to_string()
+    } else if selected_unhealthy {
+        "j/k:select  Enter:edit  n:new  t:test  d:default  c:config  r:repair  R:refresh"
+            .to_string()
     } else {
         "j/k:select  Enter:edit  n:new  t:test  d:default  c:config  r:refresh".to_string()
     };
@@ -793,7 +825,112 @@ fn centered_rect(percent_x: u16, percent_y: u16, rect: Rect) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::{account_field_help_text, server_result_hint};
+    use super::{account_field_help_text, draw, server_result_hint};
+    use crate::app::AccountsPageState;
+    use mxr_test_support::render_to_string;
+    use ratatui::layout::Rect;
+
+    fn fake_account(name: &str) -> mxr_protocol::AccountSummaryData {
+        mxr_protocol::AccountSummaryData {
+            account_id: mxr_core::AccountId::new(),
+            key: Some("user".into()),
+            name: name.into(),
+            email: format!("{name}@example.com"),
+            provider_kind: "imap".into(),
+            sync_kind: Some("imap".into()),
+            send_kind: Some("smtp".into()),
+            enabled: true,
+            is_default: false,
+            source: mxr_protocol::AccountSourceData::Config,
+            editable: mxr_protocol::AccountEditModeData::Full,
+            sync: None,
+            send: None,
+        }
+    }
+
+    fn fake_status(
+        account: &mxr_protocol::AccountSummaryData,
+        healthy: bool,
+    ) -> mxr_protocol::AccountSyncStatus {
+        mxr_protocol::AccountSyncStatus {
+            account_id: account.account_id.clone(),
+            account_name: account.name.clone(),
+            last_attempt_at: None,
+            last_success_at: None,
+            last_error: if healthy {
+                None
+            } else {
+                Some("auth failed".into())
+            },
+            failure_class: if healthy {
+                None
+            } else {
+                Some("auth".into())
+            },
+            consecutive_failures: if healthy { 0 } else { 3 },
+            backoff_until: None,
+            sync_in_progress: false,
+            current_cursor_summary: None,
+            last_synced_count: 0,
+            healthy,
+        }
+    }
+
+    /// Phase 2.3 / Behavior 1: an account whose sync status reports
+    /// `healthy=false` renders an "[unhealthy: r repairs]" inline
+    /// indicator that the user can spot at a glance. Catches "no
+    /// indicator at all" regressions.
+    #[test]
+    fn unhealthy_account_renders_repair_indicator() {
+        let account = fake_account("Work");
+        let status = fake_status(&account, false);
+        let mut state = AccountsPageState::default();
+        state.accounts = vec![account];
+
+        let rendered = render_to_string(120, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 120, 24),
+                &state,
+                std::slice::from_ref(&status),
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(
+            rendered.contains("[unhealthy]"),
+            "rendered output must include the unhealthy indicator; got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("r:repair"),
+            "footer hint must replace `r:refresh` with `r:repair` when an unhealthy account is selected; got:\n{rendered}"
+        );
+    }
+
+    /// Phase 2.3: a healthy account does NOT render the indicator —
+    /// otherwise users would see false-positive alarms on every
+    /// account.
+    #[test]
+    fn healthy_account_does_not_render_repair_indicator() {
+        let account = fake_account("Work");
+        let status = fake_status(&account, true);
+        let mut state = AccountsPageState::default();
+        state.accounts = vec![account];
+
+        let rendered = render_to_string(120, 24, |frame| {
+            draw(
+                frame,
+                Rect::new(0, 0, 120, 24),
+                &state,
+                std::slice::from_ref(&status),
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(
+            !rendered.contains("[unhealthy"),
+            "healthy account must not render the unhealthy indicator; got:\n{rendered}"
+        );
+    }
+
 
     #[test]
     fn account_key_help_explains_internal_id_and_refs() {

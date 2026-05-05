@@ -234,7 +234,13 @@ impl App {
                 ui::diagnostics_page::draw(frame, content_area, &self.diagnostics.page, theme);
             }
             Screen::Accounts => {
-                ui::accounts_page::draw(frame, content_area, &self.accounts.page, theme);
+                ui::accounts_page::draw(
+                    frame,
+                    content_area,
+                    &self.accounts.page,
+                    &self.diagnostics.page.sync_statuses,
+                    theme,
+                );
             }
         }
 

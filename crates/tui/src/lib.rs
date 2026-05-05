@@ -696,6 +696,16 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some(account) = app.accounts.pending_repair.take() {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let result =
+                    request_account_operation(&bg, Request::RepairAccountConfig { account })
+                        .await;
+                AsyncResult::AccountOperation(result)
+            });
+        }
+
         if app.diagnostics.pending_bug_report {
             app.diagnostics.pending_bug_report = false;
             let bg = bg.clone();
@@ -6716,6 +6726,138 @@ mod tests {
             }
             other => panic!("expected InstallSemanticProfile, got {other:?}"),
         }
+    }
+
+    /// Phase 2.3 / Behavior 1: when the diagnostics snapshot reports
+    /// an account as unhealthy, `account_unhealthy` returns true.
+    /// This is the contract the renderer relies on for the
+    /// "[unhealthy: r repairs]" indicator.
+    #[test]
+    fn account_unhealthy_reflects_diagnostics_sync_status() {
+        let mut app = App::new();
+        let account_id = mxr_core::AccountId::new();
+        let summary = mxr_protocol::AccountSummaryData {
+            account_id: account_id.clone(),
+            key: Some("user".into()),
+            name: "User".into(),
+            email: "user@example.com".into(),
+            provider_kind: "imap".into(),
+            sync_kind: Some("imap".into()),
+            send_kind: Some("smtp".into()),
+            enabled: true,
+            is_default: false,
+            source: mxr_protocol::AccountSourceData::Config,
+            editable: mxr_protocol::AccountEditModeData::Full,
+            sync: None,
+            send: None,
+        };
+
+        // No status yet → freshly added accounts don't flicker through
+        // the unhealthy state.
+        assert!(!app.account_unhealthy(&summary));
+
+        app.diagnostics.page.sync_statuses = vec![mxr_protocol::AccountSyncStatus {
+            account_id: account_id.clone(),
+            account_name: "User".into(),
+            last_attempt_at: None,
+            last_success_at: None,
+            last_error: Some("auth failed".into()),
+            failure_class: Some("auth".into()),
+            consecutive_failures: 3,
+            backoff_until: None,
+            sync_in_progress: false,
+            current_cursor_summary: None,
+            last_synced_count: 0,
+            healthy: false,
+        }];
+        assert!(
+            app.account_unhealthy(&summary),
+            "account flagged as unhealthy by sync status"
+        );
+
+        // Toggle back: a recovered account is no longer unhealthy.
+        app.diagnostics.page.sync_statuses[0].healthy = true;
+        assert!(!app.account_unhealthy(&summary));
+    }
+
+    /// Phase 2.3 / Behavior 2: dispatching `RepairAccount` with a
+    /// config-backed selected account queues a `pending_repair` for
+    /// the dispatcher and shows an in-flight status. Runtime-only
+    /// accounts are rejected with a status hint.
+    #[test]
+    fn repair_account_action_queues_pending_repair_for_config_account() {
+        use crate::action::Action;
+        let mut app = App::new();
+        // Insert a config-backed account so selected_account_config
+        // produces a real AccountConfigData.
+        app.accounts.page.accounts = vec![mxr_protocol::AccountSummaryData {
+            account_id: mxr_core::AccountId::new(),
+            key: Some("user".into()),
+            name: "User".into(),
+            email: "user@example.com".into(),
+            provider_kind: "imap".into(),
+            sync_kind: Some("imap".into()),
+            send_kind: Some("smtp".into()),
+            enabled: true,
+            is_default: true,
+            source: mxr_protocol::AccountSourceData::Config,
+            editable: mxr_protocol::AccountEditModeData::Full,
+            sync: Some(mxr_protocol::AccountSyncConfigData::Imap {
+                host: "imap.example.com".into(),
+                port: 993,
+                username: "user@example.com".into(),
+                password_ref: "mxr/user".into(),
+                password: None,
+                auth_required: true,
+                use_tls: true,
+            }),
+            send: Some(mxr_protocol::AccountSendConfigData::Smtp {
+                host: "smtp.example.com".into(),
+                port: 587,
+                username: "user@example.com".into(),
+                password_ref: "mxr/user".into(),
+                password: None,
+                auth_required: true,
+                use_tls: true,
+            }),
+        }];
+        app.accounts.page.selected_index = 0;
+
+        app.apply(Action::RepairAccount);
+
+        let pending = app
+            .accounts
+            .pending_repair
+            .as_ref()
+            .expect("RepairAccount must populate pending_repair");
+        assert_eq!(pending.key, "user");
+        assert!(app.accounts.page.operation_in_flight);
+        assert_eq!(
+            app.accounts.page.status.as_deref(),
+            Some("Repairing account...")
+        );
+    }
+
+    /// Phase 2.3: Action::RepairAccount on an empty list (no selected
+    /// account) is a no-op with a status hint, not a panic. Catches
+    /// "selected_index OOB" regressions.
+    #[test]
+    fn repair_account_action_with_no_selection_sets_status_only() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.apply(Action::RepairAccount);
+        assert!(app.accounts.pending_repair.is_none());
+        assert!(!app.accounts.page.operation_in_flight);
+        assert!(
+            app.accounts
+                .page
+                .status
+                .as_deref()
+                .unwrap_or("")
+                .to_lowercase()
+                .contains("repair"),
+            "should hint about runtime-only / no-selection"
+        );
     }
 
     /// Phase 2.1 stage B / Behavior 3 (cancel path): pressing `n`/Esc

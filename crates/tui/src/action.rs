@@ -77,6 +77,7 @@ pub enum Action {
     SaveAccountForm,
     TestAccountForm,
     ReauthorizeAccountForm,
+    RepairAccount,
     SetDefaultAccount,
     GenerateBugReport,
     EditConfig,
@@ -257,6 +258,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SaveAccountForm
                 | TestAccountForm
                 | ReauthorizeAccountForm
+                | RepairAccount
                 | SetDefaultAccount
         ),
         RulesList | RulesForm => matches!(
@@ -339,6 +341,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | SaveAccountForm
                 | TestAccountForm
                 | ReauthorizeAccountForm
+                | RepairAccount
                 | SetDefaultAccount
                 | EnableSemantic
                 | DisableSemantic

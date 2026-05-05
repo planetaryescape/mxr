@@ -172,6 +172,7 @@ fn action_name(action: &Action) -> Option<&'static str> {
         Action::MarkReadAndArchive => Some("mark_read_archive"),
         Action::Trash => Some("trash"),
         Action::Spam => Some("spam"),
+        Action::UndoLastMutation => Some("undo_last_mutation"),
         Action::Star => Some("star"),
         Action::MarkRead => Some("mark_read"),
         Action::MarkUnread => Some("mark_unread"),

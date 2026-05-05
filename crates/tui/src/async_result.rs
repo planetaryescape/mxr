@@ -97,6 +97,9 @@ pub(crate) enum AsyncResult {
     /// the user sees (HTML asset fetch, body parse, attachment fetch,
     /// search streaming).
     ReportedError(app::UserError),
+    /// Captured by the dispatch site when a mutation response carries a
+    /// `mutation_id`. Drives the "u to undo" status-bar affordance.
+    UndoCaptured(app::PendingUndo),
 }
 
 pub(crate) struct ComposeReadyData {

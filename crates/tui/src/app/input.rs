@@ -83,6 +83,7 @@ impl App {
             (KeyCode::Char('m'), KeyModifiers::NONE) => Some(Action::MarkReadAndArchive),
             (KeyCode::Char('#'), _) => Some(Action::Trash),
             (KeyCode::Char('!'), _) => Some(Action::Spam),
+            (KeyCode::Char('u'), KeyModifiers::NONE) => Some(Action::UndoLastMutation),
             (KeyCode::Char('s'), KeyModifiers::NONE) => Some(Action::Star),
             (KeyCode::Char('I'), modifiers) if plain_or_shift(modifiers) => Some(Action::MarkRead),
             (KeyCode::Char('U'), modifiers) if plain_or_shift(modifiers) => {

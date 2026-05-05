@@ -119,6 +119,21 @@ pub enum ConnectionState {
 /// succeeded if the daemon were healthy.
 const CONNECTION_STALE_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// Client-side undo window. Matches the daemon's 60s expiry so the TUI
+/// stops offering an undo affordance the daemon would refuse.
+const UNDO_HINT_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Captured handle for a recent undoable mutation. The TUI uses this to
+/// show "Archived 5 — u to undo" in the status bar and to dispatch
+/// `Request::UndoMutation` when the user presses `u`.
+#[derive(Debug, Clone)]
+pub struct PendingUndo {
+    pub mutation_id: String,
+    pub verb_past: String,
+    pub count: u32,
+    pub applied_at: std::time::Instant,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SidebarGroup {
     SystemLabels,
@@ -154,6 +169,9 @@ pub struct App {
     /// Set by the input handler when the user presses "retry now" while the
     /// connection-error modal is open. The IPC worker drains and clears it.
     pub pending_connection_retry: bool,
+    /// Recent undoable mutation, if any. Cleared by `tick_pending_undo`
+    /// once the daemon-side window expires.
+    pub pending_undo: Option<PendingUndo>,
     recorder: ActionRecorder,
     input: InputHandler,
 }
@@ -227,6 +245,7 @@ impl App {
             pending_mutation_queue: Vec::new(),
             connection_state: ConnectionState::Connecting,
             pending_connection_retry: false,
+            pending_undo: None,
             recorder: ActionRecorder::new(1000),
             input: InputHandler::new(),
         }
@@ -364,6 +383,47 @@ impl App {
             return None;
         }
         Some(entry.message.clone())
+    }
+
+    /// Record a recent undoable mutation so the status bar can prompt
+    /// "Archived 15 — u to undo" and the input handler can resolve `u`
+    /// to a specific `mutation_id`. Replaces any prior handle (the
+    /// most recent one wins; the daemon stops offering older ones).
+    pub fn set_pending_undo(&mut self, undo: PendingUndo) {
+        self.pending_undo = Some(undo);
+    }
+
+    /// Drop the pending undo handle once it's expired client-side. The
+    /// daemon would refuse the request anyway, so don't even try.
+    pub fn tick_pending_undo(&mut self, now: std::time::Instant) {
+        if let Some(undo) = &self.pending_undo {
+            if now.saturating_duration_since(undo.applied_at) >= UNDO_HINT_TTL {
+                self.pending_undo = None;
+            }
+        }
+    }
+
+    /// Status-bar text for the active undo affordance, e.g.
+    /// `"Archived 15 — u to undo"`. Returns `None` when no fresh
+    /// pending undo exists; pairs with the override chain in
+    /// `body_helpers::status_bar_state`.
+    pub fn pending_undo_label(&self, now: std::time::Instant) -> Option<String> {
+        let undo = self.pending_undo.as_ref()?;
+        if now.saturating_duration_since(undo.applied_at) >= UNDO_HINT_TTL {
+            return None;
+        }
+        Some(format!(
+            "{} {} — u to undo",
+            undo.verb_past, undo.count
+        ))
+    }
+
+    /// Take the active undo handle, returning the `mutation_id` to
+    /// dispatch in `Request::UndoMutation`. Clears the local handle
+    /// regardless of the daemon's response — preserves the "u undoes
+    /// the most recent" semantics even if the daemon errors.
+    pub fn take_pending_undo(&mut self) -> Option<PendingUndo> {
+        self.pending_undo.take()
     }
 }
 

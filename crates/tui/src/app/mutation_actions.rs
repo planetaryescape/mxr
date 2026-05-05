@@ -75,6 +75,24 @@ impl App {
                     );
                 }
             }
+            Action::UndoLastMutation => {
+                if let Some(undo) = self.take_pending_undo() {
+                    self.queue_mutation(
+                        Request::UndoMutation {
+                            mutation_id: undo.mutation_id,
+                        },
+                        // RefreshList re-fetches the active label so the
+                        // restored message reappears in the visible list.
+                        // Status reads "Undoing..." until the daemon
+                        // acknowledges and completes the refresh.
+                        MutationEffect::RefreshList,
+                        format!("Undoing {} {}...", undo.verb_past.to_lowercase(), undo.count),
+                    );
+                } else {
+                    self.status_message =
+                        Some("Nothing to undo (window expired or no recent mutation)".into());
+                }
+            }
             Action::Star => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {

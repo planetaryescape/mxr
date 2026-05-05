@@ -129,6 +129,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "mark_read_archive" => Some(Action::MarkReadAndArchive),
         "trash" => Some(Action::Trash),
         "spam" => Some(Action::Spam),
+        "undo_last_mutation" => Some(Action::UndoLastMutation),
         "star" => Some(Action::Star),
         "mark_read" => Some(Action::MarkRead),
         "mark_unread" => Some(Action::MarkUnread),

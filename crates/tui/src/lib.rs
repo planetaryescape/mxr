@@ -713,7 +713,9 @@ pub async fn run() -> anyhow::Result<()> {
         // Drain pending mutations
         for (req, effect) in app.pending_mutation_queue.drain(..) {
             let bg = bg.clone();
+            let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
+                let verb = mutation_verb_past(&req);
                 let resp = ipc_call(&bg, req).await;
                 let result = match resp {
                     Ok(Response::Ok {
@@ -724,7 +726,19 @@ pub async fn run() -> anyhow::Result<()> {
                     }) => Ok(effect),
                     Ok(Response::Ok {
                         data: ResponseData::MutationResult { result },
-                    }) if result.succeeded > 0 => Ok(effect),
+                    }) if result.succeeded > 0 => {
+                        if let Some(mutation_id) = result.mutation_id.clone() {
+                            let _ = result_tx_inner.send(AsyncResult::UndoCaptured(
+                                app::PendingUndo {
+                                    mutation_id,
+                                    verb_past: verb.into(),
+                                    count: result.succeeded,
+                                    applied_at: std::time::Instant::now(),
+                                },
+                            ));
+                        }
+                        Ok(effect)
+                    }
                     Ok(Response::Ok {
                         data: ResponseData::MutationResult { result },
                     }) => Err(MxrError::Ipc(format!(
@@ -1283,6 +1297,9 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ReportedError(entry) => {
                             app.push_reported_error(entry);
                         }
+                        AsyncResult::UndoCaptured(undo) => {
+                            app.set_pending_undo(undo);
+                        }
                         other => {
                             let Some(other) = handle_local_io_result(&mut app, other) else {
                                 continue;
@@ -1296,7 +1313,9 @@ pub async fn run() -> anyhow::Result<()> {
             }
             _ = tokio::time::sleep(timeout) => {
                 app.tick();
-                app.tick_connection_state(std::time::Instant::now());
+                let now = std::time::Instant::now();
+                app.tick_connection_state(now);
+                app.tick_pending_undo(now);
             }
         }
 
@@ -1307,6 +1326,26 @@ pub async fn run() -> anyhow::Result<()> {
 
     ratatui::restore();
     Ok(())
+}
+
+/// Past-tense verb for the status bar text "X 15 — u to undo". Defaults
+/// to "Done" for non-`Mutation` requests so the status bar still reads
+/// sensibly even when an unexpected response carries a mutation_id.
+fn mutation_verb_past(req: &Request) -> &'static str {
+    use mxr_protocol::MutationCommand;
+    if let Request::Mutation(cmd) = req {
+        match cmd {
+            MutationCommand::Archive { .. } => "Archived",
+            MutationCommand::ReadAndArchive { .. } => "Marked read & archived",
+            MutationCommand::Trash { .. } => "Trashed",
+            MutationCommand::Spam { .. } => "Marked as spam",
+            MutationCommand::SetRead { read: true, .. } => "Marked read",
+            MutationCommand::SetRead { read: false, .. } => "Marked unread",
+            _ => "Done",
+        }
+    } else {
+        "Done"
+    }
 }
 
 fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
@@ -6255,6 +6294,60 @@ mod tests {
             app.current_user_warn(since + std::time::Duration::from_secs(6)),
             None,
             "warn must clear by 6s"
+        );
+    }
+
+    /// Phase 1.4 / Behavior 6: setting a pending-undo handle exposes
+    /// the human-readable label "Archived N — u to undo" while the
+    /// window is fresh, and `take_pending_undo` returns the same id
+    /// the input handler will dispatch.
+    #[test]
+    fn pending_undo_label_renders_within_window_then_clears() {
+        use crate::app::PendingUndo;
+        let mut app = App::new();
+        let t0 = std::time::Instant::now();
+        app.set_pending_undo(PendingUndo {
+            mutation_id: "01HVTEST".into(),
+            verb_past: "Archived".into(),
+            count: 15,
+            applied_at: t0,
+        });
+
+        // Fresh: label is shown.
+        let label = app
+            .pending_undo_label(t0 + std::time::Duration::from_secs(5))
+            .expect("label must be present within window");
+        assert_eq!(label, "Archived 15 — u to undo");
+
+        // Past 60s: label gone (and tick clears the handle).
+        assert!(
+            app.pending_undo_label(t0 + std::time::Duration::from_secs(61))
+                .is_none(),
+            "label must clear after the 60s window"
+        );
+        app.tick_pending_undo(t0 + std::time::Duration::from_secs(61));
+        assert!(app.pending_undo.is_none(), "tick must drop expired handle");
+    }
+
+    /// Phase 1.4: take_pending_undo returns and clears so the next `u`
+    /// press can't accidentally double-undo. The daemon also refuses
+    /// replays, but client-side clearing is the primary guard.
+    #[test]
+    fn take_pending_undo_returns_and_clears() {
+        use crate::app::PendingUndo;
+        let mut app = App::new();
+        app.set_pending_undo(PendingUndo {
+            mutation_id: "M1".into(),
+            verb_past: "Trashed".into(),
+            count: 1,
+            applied_at: std::time::Instant::now(),
+        });
+
+        let taken = app.take_pending_undo().expect("must yield handle");
+        assert_eq!(taken.mutation_id, "M1");
+        assert!(
+            app.pending_undo.is_none(),
+            "second `u` must not see a handle"
         );
     }
 

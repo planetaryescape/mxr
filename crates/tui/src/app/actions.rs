@@ -155,6 +155,7 @@ impl App {
             | Action::Star
             | Action::MarkRead
             | Action::MarkUnread
+            | Action::UndoLastMutation
             | Action::ApplyLabel
             | Action::MoveToLabel
             | Action::Unsubscribe

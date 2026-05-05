@@ -88,6 +88,10 @@ pub enum Action {
     Star,
     MarkRead,
     MarkUnread,
+    /// Reverse the most recent destructive mutation if its undo window
+    /// is still open. Bound to `u` in the mailbox; falls through to a
+    /// status-bar warning when there's nothing to undo.
+    UndoLastMutation,
     ApplyLabel,
     MoveToLabel,
     Unsubscribe,

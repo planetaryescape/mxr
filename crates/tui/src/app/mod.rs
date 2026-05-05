@@ -45,7 +45,7 @@ use throbber_widgets_tui::ThrobberState;
 use tui_textarea::TextArea;
 
 pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
-use state::PendingPreviewRead;
+use state::{PendingPreviewRead, SavedSearchFormState};
 pub use state::*;
 
 const PREVIEW_MARK_READ_DELAY: Duration = Duration::from_secs(5);
@@ -425,6 +425,87 @@ impl App {
     pub fn take_pending_undo(&mut self) -> Option<PendingUndo> {
         self.pending_undo.take()
     }
+
+    /// Open a fresh saved-search form (no prefill).
+    pub fn open_saved_search_form_new(&mut self) {
+        self.modals.saved_search_form = Some(SavedSearchFormState::for_new());
+    }
+
+    /// Open the saved-search form prefilled for edit. Save will produce
+    /// a Delete (for the old name) followed by a Create.
+    pub fn open_saved_search_form_for_edit(
+        &mut self,
+        name: String,
+        query: String,
+        search_mode: mxr_core::types::SearchMode,
+    ) {
+        self.modals.saved_search_form =
+            Some(SavedSearchFormState::for_edit(name, query, search_mode));
+    }
+
+    /// Close the saved-search form without dispatching anything.
+    pub fn close_saved_search_form(&mut self) {
+        self.modals.saved_search_form = None;
+    }
+
+    /// Validate the form and produce a single Create request for the
+    /// new-saved-search path. Returns `None` if validation fails;
+    /// the form stays open with `validation_error` populated so the
+    /// caller can surface it. Use `take_saved_search_form_requests`
+    /// for the edit path.
+    pub fn take_saved_search_form_request(&mut self) -> Option<mxr_protocol::Request> {
+        let form = self.modals.saved_search_form.as_mut()?;
+        if form.existing_name.is_some() {
+            // Edit path is delete+create — caller used the wrong helper.
+            form.validation_error =
+                Some("internal error: edit form requires take_saved_search_form_requests".into());
+            return None;
+        }
+        if let Some(error) = saved_search_form_validation_error(form) {
+            form.validation_error = Some(error);
+            return None;
+        }
+        let request = mxr_protocol::Request::CreateSavedSearch {
+            name: form.name.clone(),
+            query: form.query.clone(),
+            search_mode: form.search_mode,
+        };
+        self.modals.saved_search_form = None;
+        Some(request)
+    }
+
+    /// Validate the form and produce delete+create requests for the
+    /// edit path (or just create for the new path). Returns `None` if
+    /// validation fails. Form is closed on success.
+    pub fn take_saved_search_form_requests(&mut self) -> Option<Vec<mxr_protocol::Request>> {
+        let form = self.modals.saved_search_form.as_mut()?;
+        if let Some(error) = saved_search_form_validation_error(form) {
+            form.validation_error = Some(error);
+            return None;
+        }
+        let mut requests = Vec::with_capacity(2);
+        if let Some(old_name) = form.existing_name.clone() {
+            requests.push(mxr_protocol::Request::DeleteSavedSearch { name: old_name });
+        }
+        requests.push(mxr_protocol::Request::CreateSavedSearch {
+            name: form.name.clone(),
+            query: form.query.clone(),
+            search_mode: form.search_mode,
+        });
+        self.modals.saved_search_form = None;
+        Some(requests)
+    }
+}
+
+fn saved_search_form_validation_error(form: &SavedSearchFormState) -> Option<String> {
+    let trimmed_name = form.name.trim();
+    if trimmed_name.is_empty() {
+        return Some("Saved search name is required".into());
+    }
+    if form.query.trim().is_empty() {
+        return Some("Saved search query is required".into());
+    }
+    None
 }
 
 fn apply_provider_label_changes(

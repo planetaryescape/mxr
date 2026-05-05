@@ -62,6 +62,69 @@ pub struct ModalsState {
     /// Ring buffer of user-visible warns and errors. Bounded so error
     /// storms don't leak memory; oldest entries are dropped.
     pub error_log: VecDeque<UserError>,
+    /// Modal state for creating or editing a saved search. Visible
+    /// when `Some`. When `existing_name` is set the save action
+    /// does delete-then-create so the daemon's UNIQUE-name constraint
+    /// doesn't reject the update.
+    pub saved_search_form: Option<SavedSearchFormState>,
+}
+
+/// Modal form for creating (or editing via delete+create) a saved
+/// search. Mirrors the shape of `RuleFormState` but kept distinct so
+/// the rule-form's tui-textarea editors aren't carried into a much
+/// simpler two-line form.
+#[derive(Debug, Clone)]
+pub struct SavedSearchFormState {
+    /// `Some(old_name)` when editing — save first deletes the old row.
+    pub existing_name: Option<String>,
+    pub name: String,
+    pub query: String,
+    /// `lexical` / `semantic` / `hybrid` etc., serialised as the daemon
+    /// expects. Stored as the protocol enum so we don't need to
+    /// reparse on submit.
+    pub search_mode: mxr_core::types::SearchMode,
+    pub active_field: SavedSearchFormField,
+    /// Surfaced to the user when validation rejects a submit (empty
+    /// name etc.). Cleared on the next successful interaction.
+    pub validation_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SavedSearchFormField {
+    #[default]
+    Name,
+    Query,
+    Mode,
+}
+
+impl Default for SavedSearchFormState {
+    fn default() -> Self {
+        Self {
+            existing_name: None,
+            name: String::new(),
+            query: String::new(),
+            search_mode: mxr_core::types::SearchMode::Lexical,
+            active_field: SavedSearchFormField::Name,
+            validation_error: None,
+        }
+    }
+}
+
+impl SavedSearchFormState {
+    pub fn for_new() -> Self {
+        Self::default()
+    }
+
+    pub fn for_edit(name: String, query: String, search_mode: mxr_core::types::SearchMode) -> Self {
+        Self {
+            existing_name: Some(name.clone()),
+            name,
+            query,
+            search_mode,
+            active_field: SavedSearchFormField::Name,
+            validation_error: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

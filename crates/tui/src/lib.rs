@@ -6297,6 +6297,129 @@ mod tests {
         );
     }
 
+    /// Phase 2.1 / Behavior 1: opening a fresh saved-search form has
+    /// empty fields and lexical mode, and submitting valid name+query
+    /// produces a `Request::CreateSavedSearch` ready to dispatch.
+    #[test]
+    fn saved_search_form_for_new_submits_create_request() {
+        let mut app = App::new();
+        app.open_saved_search_form_new();
+
+        let form = app
+            .modals
+            .saved_search_form
+            .as_mut()
+            .expect("form must open");
+        form.name = "Work overdue".into();
+        form.query = "label:work older_than:7d".into();
+
+        let request = app
+            .take_saved_search_form_request()
+            .expect("valid form must yield a request");
+        match request {
+            mxr_protocol::Request::CreateSavedSearch {
+                name,
+                query,
+                search_mode,
+            } => {
+                assert_eq!(name, "Work overdue");
+                assert_eq!(query, "label:work older_than:7d");
+                assert!(matches!(
+                    search_mode,
+                    mxr_core::types::SearchMode::Lexical
+                ));
+            }
+            other => panic!("expected CreateSavedSearch, got {other:?}"),
+        }
+        assert!(
+            app.modals.saved_search_form.is_none(),
+            "form must close after a successful submit"
+        );
+    }
+
+    /// Phase 2.1 / Behavior 2: an empty name surfaces a validation
+    /// error and does NOT yield a request — catches "form silently
+    /// drops malformed input" regressions.
+    #[test]
+    fn saved_search_form_empty_name_rejects_with_validation_error() {
+        let mut app = App::new();
+        app.open_saved_search_form_new();
+
+        let form = app
+            .modals
+            .saved_search_form
+            .as_mut()
+            .expect("form must open");
+        form.name = String::new();
+        form.query = "label:inbox".into();
+
+        let request = app.take_saved_search_form_request();
+        assert!(
+            request.is_none(),
+            "empty name must not produce a request; got {request:?}"
+        );
+
+        let form = app
+            .modals
+            .saved_search_form
+            .as_ref()
+            .expect("form must remain open after validation failure");
+        assert!(
+            form.validation_error
+                .as_deref()
+                .unwrap_or_default()
+                .to_lowercase()
+                .contains("name"),
+            "validation error must mention the empty name; got {:?}",
+            form.validation_error
+        );
+    }
+
+    /// Phase 2.1 / Behavior 4: opening for edit prefills the form and
+    /// records the existing name. On submit the daemon receives both
+    /// a Delete (for the old name) and a Create (for the possibly-new
+    /// name) so name renames don't collide with the unique constraint.
+    #[test]
+    fn saved_search_form_for_edit_yields_delete_then_create() {
+        let mut app = App::new();
+        app.open_saved_search_form_for_edit(
+            "Old name".into(),
+            "label:work".into(),
+            mxr_core::types::SearchMode::Lexical,
+        );
+
+        let form = app
+            .modals
+            .saved_search_form
+            .as_mut()
+            .expect("form must open");
+        // Preserves old name as the source for the delete step.
+        assert_eq!(form.existing_name.as_deref(), Some("Old name"));
+        // Prefilled with the current name so the user can rename.
+        assert_eq!(form.name, "Old name");
+        form.name = "New name".into();
+
+        let requests = app
+            .take_saved_search_form_requests()
+            .expect("edit must yield delete+create requests");
+        assert_eq!(requests.len(), 2);
+        match &requests[0] {
+            mxr_protocol::Request::DeleteSavedSearch { name } => {
+                assert_eq!(name, "Old name", "first request must delete the old name");
+            }
+            other => panic!("expected DeleteSavedSearch first, got {other:?}"),
+        }
+        match &requests[1] {
+            mxr_protocol::Request::CreateSavedSearch { name, .. } => {
+                assert_eq!(
+                    name, "New name",
+                    "second request must create under the new name"
+                );
+            }
+            other => panic!("expected CreateSavedSearch second, got {other:?}"),
+        }
+    }
+
     /// Phase 1.4 / Behavior 6: setting a pending-undo handle exposes
     /// the human-readable label "Archived N — u to undo" while the
     /// window is fresh, and `take_pending_undo` returns the same id

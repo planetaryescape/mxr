@@ -205,6 +205,195 @@ mxr unsub --rank --format json | jq '.[] | select(.opened_count == 0)'
 mxr contacts decay --format csv > decay.csv
 ```
 
+## Workflows
+
+Knowing the commands is half of it. Here are the situations these
+analytics actually solve — described as the feeling first, the query
+second, the action third.
+
+### Friday cleanup — clear the week's reply backlog
+
+*The feeling*: It's Friday afternoon and you suspect you've ghosted
+someone this week. You don't want to scroll the inbox; you want the
+list.
+
+```bash
+mxr stale --mine --older-than-days 5 --within-days 30
+```
+
+Pick three to five rows. Reply, or send "I'll get to this Monday" —
+whichever is honest. The narrow window stops it from surfacing
+genuinely-old threads you've already mentally filed.
+
+### Newsletter prune — kill what doesn't earn its keep
+
+*The feeling*: You're getting too much mail and "I should clean up my
+subscriptions" has been on your todo list for six months.
+
+```bash
+mxr unsub --rank --format json \
+  | jq -r '.[] | select(.opened_count == 0 and .message_count >= 5) | .sender_email'
+```
+
+Senders with five or more messages and zero opens are noise, full stop.
+Run `mxr unsubscribe` on each, or pipe into a bulk-archive rule. If a
+sender survives this filter, you genuinely engage with it.
+
+### Disk reclamation — find the gigabyte hog
+
+*The feeling*: macOS just told you you're out of disk and Mail.app's
+1.5 GB cache isn't the actual problem.
+
+```bash
+mxr storage --by sender --limit 20
+mxr storage --by mimetype --limit 20
+```
+
+The top sender by bytes is almost always one big-attachment newsletter
+or a former coworker who shared video files. The top mimetype tells
+you what kind of bulk action helps (`application/pdf` → archive old
+contracts; `video/*` → just delete). Combine with `mxr search
+"from:<sender> has:attachment"` to action a target list.
+
+### Cold-friend audit — the "I should text them" list, from data
+
+*The feeling*: There's someone you used to talk to weekly and you
+haven't replied to their last email in two months. You can't remember
+who.
+
+```bash
+mxr contacts decay --threshold-days 60 --max-lookback-days 730
+```
+
+Last inbound 60+ days ago, you owe an outbound, and they were active
+in the last two years. Top of the list is usually a person, not a
+service. Send a real reply this week.
+
+### Am I getting slower? — month-over-year response time
+
+*The feeling*: Someone said "you used to be more responsive" and you
+want to know if it's true.
+
+```bash
+mxr response-time --working-hours --since-days 30
+mxr response-time --working-hours --since-days 365
+```
+
+If `business_hours_p90` for the last 30 days is meaningfully higher
+than the year-long baseline, you're a bottleneck on something
+specific. Either set expectations explicitly (auto-replies, "I batch
+email at noon") or set up a `mxr rules` filter to demote low-priority
+inbound.
+
+### Asymmetric relationships — fix the one-sided ones
+
+*The feeling*: There's a vague sense you're letting people down, but no
+specific list.
+
+```bash
+mxr contacts asymmetry --min-inbound 5 --format json \
+  | jq '.[] | select(.asymmetry > 0.7 and .total_inbound >= 10)'
+```
+
+People who emailed you ten or more times and got a reply less than 30%
+of the time. Three options per row: reply now (with an apology if
+appropriate), reset expectations explicitly ("I'll only reply when X"),
+or stop pretending you'll engage and move them to a folder.
+
+### Per-counterparty SLA — boss vs. client
+
+*The feeling*: You want to know how fast you reply to your manager
+specifically, or how fast a slow client tends to reply to your
+proposals.
+
+```bash
+# How long do I take to reply to my manager?
+mxr response-time --counterparty manager@company.com --working-hours --since-days 90
+
+# How fast does this client respond to my outbound?
+mxr response-time --counterparty client@example.com --theirs --since-days 90
+```
+
+Useful before a 1:1 ("I'm averaging two hours; let me explain why
+Wednesdays are different") or before chasing a stalled deal ("their
+median response is four days, the proposal went out three days ago,
+chill").
+
+### Pre-vacation closeout — three artifacts in 30 seconds
+
+*The feeling*: You're going OOO on Monday and the "I might be
+forgetting something" feeling won't quit.
+
+```bash
+mxr stale --mine --older-than-days 7 --format ids > /tmp/oo-loose-ends.txt
+mxr contacts asymmetry --min-inbound 10 --format json > /tmp/oo-asymmetric.json
+mxr response-time --since-days 30 --format json > /tmp/oo-baseline.json
+```
+
+The first file is your "reply or hand off before Friday EOD" list. The
+second is for the OOO message ("if you've been waiting on me, please
+hold until next Wednesday"). The third sets the bar your replacement
+or your future self will be measured against.
+
+### Year-in-review — without the year-in-review email
+
+*The feeling*: It's December and you want a real picture of the year,
+not the one your inbox app's marketing team made.
+
+```bash
+mxr response-time --since-days 365 --working-hours
+mxr response-time --since-days 365 --theirs --working-hours
+mxr contacts asymmetry --min-inbound 20 --format json | jq '.[0:20]'
+mxr storage --by sender --limit 20 --since-days 365
+```
+
+Four numbers and two lists. Compare against last year by running the
+same commands with `--since-days 730 | tail -365` style windows. The
+question to answer: am I better at this than I was twelve months ago?
+
+## Power tools
+
+### Pipe ids into bulk mutations
+
+`--format ids` is intentional. It's the input format for every mxr
+mutation:
+
+```bash
+# Archive everything stale older than a year but newer than two.
+mxr stale --mine --older-than-days 365 --within-days 730 --format ids \
+  | xargs -n1 mxr archive
+
+# Trash all zero-open list senders' mail in one shot.
+mxr unsub --rank --format json \
+  | jq -r '.[] | select(.opened_count == 0) | .sender_email' \
+  | while read sender; do
+      mxr search "from:$sender" --format ids | xargs -n1 mxr trash
+    done
+```
+
+### Saved searches as durable lenses
+
+If a `mxr stale` invocation becomes part of your weekly rhythm, save
+it. The CLI is the definitive surface, but saved searches live in the
+TUI sidebar and stay one keypress away:
+
+```bash
+mxr saved create "owe-replies" "is:inbound -in:replied newer_than:14d older_than:7d"
+```
+
+### Run analytics in scripts
+
+Every command exits zero on success and writes machine-readable output
+to stdout when `--format json` or `--jsonl` is set. They compose into
+shell pipelines, scripts, agents, and editor integrations the same way
+`grep` does. There is no separate "automation API" — the CLI *is* the
+API.
+
+```bash
+# A weekly cron that emails you your inbox health report.
+0 9 * * 1 mxr stale --mine --format json | mailx -s "weekly inbox audit" you@example.com
+```
+
 ## Behavior on existing data
 
 | Field | Filled by |

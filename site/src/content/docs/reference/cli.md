@@ -210,6 +210,42 @@ Notes:
 - sync may prepare semantic chunks even while semantic retrieval is disabled
 - OCR is not used for semantic indexing
 
+## Analytics
+
+```bash
+mxr storage --by sender
+mxr storage --by mimetype
+mxr storage --by label
+
+mxr subscriptions --rank          # alias: mxr unsub --rank
+mxr subscriptions --rank --format json
+
+mxr stale --mine                  # threads where I owe a reply (14d–365d window)
+mxr stale --theirs                # threads where they owe a reply
+mxr stale --mine --older-than-days 7 --within-days 90
+
+mxr contacts asymmetry --min-inbound 3
+mxr contacts decay --threshold-days 30
+mxr contacts decay --threshold-days 90 --max-lookback-days 1095
+mxr contacts refresh
+
+mxr response-time
+mxr response-time --theirs
+mxr response-time --counterparty alice@example.com --since-days 90
+
+mxr accounts addresses list
+mxr accounts addresses add me@example.com --primary
+mxr accounts addresses add alias@example.com
+mxr accounts addresses set-primary alias@example.com
+mxr accounts addresses remove old@example.com
+
+mxr doctor --rebuild-analytics    # one-shot rebuild after schema changes
+mxr doctor --refresh-contacts     # contacts table only
+```
+
+See the [Analytics guide](/guides/analytics/) for what each command means
+and how to bootstrap a fresh install.
+
 ## Observability
 
 ```bash

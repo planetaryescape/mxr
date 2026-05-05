@@ -37,6 +37,7 @@ export default defineConfig({
             { label: 'Labels and Saved Searches', slug: 'guides/labels-and-saved-searches' },
             { label: 'Rules', slug: 'guides/rules' },
             { label: 'Accounts', slug: 'guides/accounts' },
+            { label: 'Analytics', slug: 'guides/analytics' },
             { label: 'Observability', slug: 'guides/observability' },
             { label: 'Adapter Development', slug: 'guides/adapter-development' },
             { label: 'AI Agent Skill', slug: 'guides/agent-skill' },

@@ -2,7 +2,7 @@
   "name": "mxr-desktop",
   "productName": "mxr",
   "private": true,
-  "version": "0.4.63",
+  "version": "0.4.64",
   "type": "module",
   "main": "dist-electron/main/index.js",
   "scripts": {

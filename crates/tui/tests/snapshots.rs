@@ -105,6 +105,7 @@ fn message_view_snapshot() {
         bulk_selected: false,
         has_unsubscribe: true,
         signature_expanded: false,
+            assets_loading: false,
     };
 
     let mut html_images = std::collections::HashMap::new();
@@ -341,6 +342,7 @@ fn search_page_snapshot() {
         bulk_selected: false,
         has_unsubscribe: true,
         signature_expanded: false,
+            assets_loading: false,
     }];
 
     let mut html_images = std::collections::HashMap::new();

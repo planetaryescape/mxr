@@ -6879,6 +6879,102 @@ mod tests {
         }
     }
 
+    /// Phase 3.4 / Behavior 1: toggling between HTML and plain-text
+    /// views preserves the message scroll offset. Catches a regression
+    /// where `ToggleHtmlView` would naively reset to 0 after the
+    /// body_view_state mode change, dumping the user back at the top
+    /// of long emails every time they switched.
+    #[test]
+    fn html_view_toggle_preserves_message_scroll_offset() {
+        use crate::action::Action;
+        use crate::app::BodyViewState;
+        let mut app = App::new();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
+        app.mailbox.body_cache.insert(
+            env.id.clone(),
+            MessageBody {
+                message_id: env.id.clone(),
+                text_plain: Some("Long body line 1\nLong body line 2\nLong body line 3".into()),
+                text_html: Some("<p>Long body</p>".into()),
+                attachments: vec![],
+                fetched_at: chrono::Utc::now(),
+                metadata: MessageMetadata {
+                    text_plain_source: Some(BodyPartSource::Exact),
+                    text_html_source: Some(BodyPartSource::Exact),
+                    ..Default::default()
+                },
+            },
+        );
+        app.apply(Action::OpenSelected);
+        assert!(matches!(app.mailbox.body_view_state, BodyViewState::Ready { .. }));
+
+        // User scrolls down before toggling.
+        app.mailbox.message_scroll_offset = 7;
+        app.apply(Action::ToggleHtmlView);
+        assert_eq!(
+            app.mailbox.message_scroll_offset, 7,
+            "scroll must be preserved across HTML toggle"
+        );
+        app.apply(Action::ToggleHtmlView);
+        assert_eq!(
+            app.mailbox.message_scroll_offset, 7,
+            "scroll must be preserved on round-trip"
+        );
+    }
+
+    /// Phase 3.4 / Behavior 2: labels surface "External content blocked"
+    /// instead of the old "remote images blocked" so users actually
+    /// notice the placeholder. Locks the user-visible string.
+    #[test]
+    fn body_status_labels_replace_remote_blocked_with_clear_external_content_string() {
+        use crate::app::{
+            body_status_labels_with_loading, BodySource, BodyViewMetadata, BodyViewMode,
+        };
+        let metadata = BodyViewMetadata {
+            mode: BodyViewMode::Html,
+            remote_content_available: true,
+            remote_content_enabled: false,
+            ..Default::default()
+        };
+        let labels = body_status_labels_with_loading(&metadata, &BodySource::Html, false, false);
+        assert!(
+            labels
+                .iter()
+                .any(|l| l.contains("External content blocked")),
+            "expected `External content blocked` in {labels:?}"
+        );
+        assert!(
+            !labels.iter().any(|l| l == "remote images blocked"),
+            "old label should be gone: {labels:?}"
+        );
+    }
+
+    /// Phase 3.4 / Behavior 3: when remote content is enabled and
+    /// assets are still being fetched, the labels include
+    /// "Loading external assets…" so the user sees a hint while the
+    /// async fetch resolves.
+    #[test]
+    fn body_status_labels_show_loading_chip_when_assets_pending() {
+        use crate::app::{
+            body_status_labels_with_loading, BodySource, BodyViewMetadata, BodyViewMode,
+        };
+        let metadata = BodyViewMetadata {
+            mode: BodyViewMode::Html,
+            remote_content_available: true,
+            remote_content_enabled: true,
+            ..Default::default()
+        };
+        let labels = body_status_labels_with_loading(&metadata, &BodySource::Html, false, true);
+        assert!(
+            labels
+                .iter()
+                .any(|l| l.contains("Loading external assets")),
+            "expected loading label in {labels:?}"
+        );
+    }
+
     /// Phase 2.4 / Behavior 1: a rule form filled with a `shell:command`
     /// action submits a `Request::UpsertRuleForm` whose `action`
     /// string round-trips losslessly to the daemon-side parser. Locks

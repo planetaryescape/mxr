@@ -549,6 +549,19 @@ pub(crate) fn body_status_labels(
     source: &BodySource,
     show_reader_stats: bool,
 ) -> Vec<String> {
+    body_status_labels_with_loading(metadata, source, show_reader_stats, false)
+}
+
+/// Phase 3.4: extended chip set that surfaces in-flight remote asset
+/// loading. The async fetch path can take a few hundred ms when the
+/// network is slow; without this chip the rendered HTML view sits
+/// silently while the user wonders if anything is happening.
+pub(crate) fn body_status_labels_with_loading(
+    metadata: &BodyViewMetadata,
+    source: &BodySource,
+    show_reader_stats: bool,
+    assets_loading: bool,
+) -> Vec<String> {
     let mut chips = vec![primary_body_label(metadata, source).to_string()];
 
     if metadata.reader_applied {
@@ -568,9 +581,13 @@ pub(crate) fn body_status_labels(
     }
     if metadata.mode == BodyViewMode::Html && metadata.remote_content_available {
         chips.push(if metadata.remote_content_enabled {
-            "remote images shown".into()
+            if assets_loading {
+                "Loading external assets…".into()
+            } else {
+                "remote images shown".into()
+            }
         } else {
-            "remote images blocked".into()
+            "External content blocked — press M to allow once".into()
         });
     }
     if show_reader_stats {

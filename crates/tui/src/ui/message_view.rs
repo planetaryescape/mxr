@@ -1,6 +1,6 @@
 use crate::app::{
-    body_status_labels, unsubscribe_banner_label, ActivePane, AttachmentSummary, BodySource,
-    BodyViewMetadata, BodyViewMode, BodyViewState,
+    body_status_labels_with_loading, unsubscribe_banner_label, ActivePane, AttachmentSummary,
+    BodySource, BodyViewMetadata, BodyViewMode, BodyViewState,
 };
 use crate::terminal_images::{HtmlImageEntry, HtmlImageRenderState};
 use crate::theme::Theme;
@@ -22,6 +22,10 @@ pub struct ThreadMessageBlock {
     pub bulk_selected: bool,
     pub has_unsubscribe: bool,
     pub signature_expanded: bool,
+    /// Phase 3.4: true while remote HTML assets for this message are
+    /// being fetched. Drives the "Loading external assets…" chip in
+    /// `body_metadata_lines`.
+    pub assets_loading: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -185,7 +189,12 @@ pub fn draw(
                 source,
                 metadata,
             } => {
-                text_lines.extend(body_metadata_lines(metadata, source, theme));
+                text_lines.extend(body_metadata_lines(
+                    metadata,
+                    source,
+                    theme,
+                    message.assets_loading,
+                ));
                 if metadata.mode == BodyViewMode::Html && *source == BodySource::Html {
                     blocks.push(RenderBlock::Text(text_lines));
                     blocks.extend(render_html_blocks(
@@ -307,6 +316,7 @@ mod tests {
             bulk_selected: true,
             has_unsubscribe: false,
             signature_expanded: false,
+            assets_loading: false,
         };
 
         let snapshot = render_to_string(70, 18, |frame| {
@@ -347,6 +357,7 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            assets_loading: false,
         };
 
         let rendered = render_to_string(80, 18, |frame| {
@@ -396,6 +407,7 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: false,
             signature_expanded: false,
+            assets_loading: false,
         };
 
         let rendered = render_to_string(120, 30, |frame| {
@@ -415,7 +427,9 @@ mod tests {
         assert!(rendered.contains("Badge"));
         assert!(rendered.contains("Hero"));
         assert!(rendered.contains("original html"));
-        assert!(rendered.contains("remote images blocked"));
+        // Phase 3.4: chip label changed from "remote images blocked"
+        // to a clearer "External content blocked" with affordance hint.
+        assert!(rendered.contains("External content blocked"));
     }
 
     #[test]
@@ -438,6 +452,7 @@ mod tests {
             bulk_selected: false,
             has_unsubscribe: true,
             signature_expanded: false,
+            assets_loading: false,
         };
 
         let rendered = render_to_string(100, 18, |frame| {
@@ -461,8 +476,9 @@ fn body_metadata_lines(
     metadata: &BodyViewMetadata,
     source: &BodySource,
     theme: &Theme,
+    assets_loading: bool,
 ) -> Vec<Line<'static>> {
-    let labels = body_status_labels(metadata, source, true);
+    let labels = body_status_labels_with_loading(metadata, source, true, assets_loading);
     let label_count = labels.len();
     let chips: Vec<Span<'static>> = labels
         .into_iter()

@@ -251,6 +251,225 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
     );
 }
 
+/// Behavior 1+2 (Phase 1.1): after `mxr compose --yes` the synthetic Sent
+/// envelope is in the local store and Tantivy returns it for an exact-subject
+/// query — no manual sync, no vacuous OR assertions.
+///
+/// The subject is unique per run, so the assertion can demand exactly one match
+/// without coupling to fixture content.
+#[test]
+fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
+    let _guard = cli_journey_guard();
+    let temp = TempDir::new().expect("temp dir");
+    let instance = unique_instance_name();
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let socket_path = instance_socket_path(&instance);
+    let pid_path = data_dir.join("daemon.pid");
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    write_fake_config(&config_dir);
+
+    let mut daemon = DaemonGuard {
+        socket_path: socket_path.clone(),
+        pid_path,
+        pid: None,
+    };
+
+    // Boot the daemon.
+    let status = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["status", "--format", "json"],
+    );
+    daemon.pid = status["daemon_pid"].as_u64();
+    assert!(
+        daemon.pid.is_some(),
+        "daemon should auto-start with status: {status:#}"
+    );
+
+    // Initial sync so the fake account exists in store with a Sent label
+    // (matters for Gmail-style label application; harmless otherwise).
+    run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["sync", "--wait", "--wait-timeout-secs", "30"],
+    );
+
+    // Compose with a unique subject so the assertion can demand an exact match
+    // rather than the existing vacuous "or s.is_empty()" pattern.
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("now")
+        .as_nanos();
+    let unique_subject = format!("mxr-compose-test-{}-{stamp}", std::process::id());
+    let body = format!("Body for {unique_subject}");
+
+    let send_out = run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "compose",
+            "--to",
+            "alice@example.com",
+            "--subject",
+            &unique_subject,
+            "--body",
+            &body,
+            "--yes",
+        ],
+    );
+    assert!(
+        send_out.stdout.contains("Sent draft"),
+        "compose --yes should report sent draft, got stdout={:?} stderr={:?}",
+        send_out.stdout,
+        send_out.stderr,
+    );
+
+    // Tantivy must return exactly one match for the unique subject — no
+    // intervening sync. If ingest_sent_message stops upserting, or stops
+    // applying the search batch, this fails.
+    let results = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["search", &unique_subject, "--format", "json", "--limit", "10"],
+    );
+    let arr = results
+        .as_array()
+        .unwrap_or_else(|| panic!("expected JSON array from search; got: {results:#}"));
+    let matching: Vec<&Value> = arr
+        .iter()
+        .filter(|item| item["subject"].as_str() == Some(unique_subject.as_str()))
+        .collect();
+    assert_eq!(
+        matching.len(),
+        1,
+        "exactly one match for unique subject {unique_subject:?}; got results={results:#}"
+    );
+
+    // The same envelope must surface under `is:sent`. Catches a regression
+    // where SENT flag or label fails to be set on the synthetic envelope.
+    let sent = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["search", "is:sent", "--format", "json", "--limit", "100"],
+    );
+    let sent_subjects: Vec<&str> = sent
+        .as_array()
+        .map(|a| a.iter().filter_map(|i| i["subject"].as_str()).collect())
+        .unwrap_or_default();
+    assert!(
+        sent_subjects.iter().any(|s| *s == unique_subject),
+        "is:sent must contain freshly composed subject {unique_subject:?}; got {sent_subjects:?}"
+    );
+}
+
+/// Behavior 3 (Phase 1.1): the daemon's `SendDraft` response carries the IDs
+/// minted during synthetic Sent ingestion. The CLI surfaces the
+/// `local_message_id` so callers can navigate to or reference the just-sent
+/// message; we round-trip it against `mxr search` to prove it's the same ID
+/// the store and Tantivy know about (not a stub).
+#[test]
+fn cli_journey_compose_send_response_carries_message_id_matching_search() {
+    let _guard = cli_journey_guard();
+    let temp = TempDir::new().expect("temp dir");
+    let instance = unique_instance_name();
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let socket_path = instance_socket_path(&instance);
+    let pid_path = data_dir.join("daemon.pid");
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    write_fake_config(&config_dir);
+
+    let mut daemon = DaemonGuard {
+        socket_path: socket_path.clone(),
+        pid_path,
+        pid: None,
+    };
+
+    let status = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["status", "--format", "json"],
+    );
+    daemon.pid = status["daemon_pid"].as_u64();
+    assert!(daemon.pid.is_some(), "daemon should auto-start");
+
+    run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["sync", "--wait", "--wait-timeout-secs", "30"],
+    );
+
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("now")
+        .as_nanos();
+    let unique_subject = format!("mxr-receipt-test-{}-{stamp}", std::process::id());
+
+    let send_out = run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "compose",
+            "--to",
+            "carol@example.com",
+            "--subject",
+            &unique_subject,
+            "--body",
+            "receipt round-trip body",
+            "--yes",
+        ],
+    );
+
+    // Extract the printed local message id from CLI stdout. If the daemon
+    // still returns Ack (Behavior 3 not implemented), this line is absent
+    // and the test fails immediately.
+    let printed_id = send_out
+        .stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("Local message id: ").map(str::to_string))
+        .unwrap_or_else(|| {
+            panic!(
+                "compose --yes must print `Local message id: <id>`; stdout={:?}",
+                send_out.stdout
+            )
+        });
+    assert!(
+        !printed_id.trim().is_empty(),
+        "printed local message id must be non-empty"
+    );
+
+    // Round-trip: search by the unique subject and verify the same id is
+    // returned. Catches regressions where the daemon emits a placeholder id
+    // unrelated to what the store/Tantivy record.
+    let results = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["search", &unique_subject, "--format", "json", "--limit", "10"],
+    );
+    let searched_id = results
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|item| item["message_id"].as_str())
+        .unwrap_or_else(|| panic!("search must return one result; got: {results:#}"));
+    assert_eq!(
+        searched_id.trim(),
+        printed_id.trim(),
+        "printed local_message_id must equal the message_id stored & indexed"
+    );
+}
+
 fn write_fake_config(config_dir: &Path) {
     let toml = r#"[general]
 default_account = "fake"

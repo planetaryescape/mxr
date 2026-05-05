@@ -720,6 +720,9 @@ pub async fn run() -> anyhow::Result<()> {
                         data: ResponseData::Ack,
                     }) => Ok(effect),
                     Ok(Response::Ok {
+                        data: ResponseData::SendReceipt { .. },
+                    }) => Ok(effect),
+                    Ok(Response::Ok {
                         data: ResponseData::MutationResult { result },
                     }) if result.succeeded > 0 => Ok(effect),
                     Ok(Response::Ok {
@@ -1232,59 +1235,7 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::MutationResult(Ok(effect)) => {
                             app.finish_pending_mutation();
                             let show_completion_status = app.pending_mutation_count == 0;
-                            match effect {
-                                app::MutationEffect::RemoveFromList(id) => {
-                                    app.apply_removed_message_ids(std::slice::from_ref(&id));
-                                    if show_completion_status {
-                                        app.status_message = Some("Done".into());
-                                    }
-                                    app.mailbox.pending_subscriptions_refresh = true;
-                                }
-                                app::MutationEffect::RemoveFromListMany(ids) => {
-                                    app.apply_removed_message_ids(&ids);
-                                    if show_completion_status {
-                                        app.status_message = Some("Done".into());
-                                    }
-                                    app.mailbox.pending_subscriptions_refresh = true;
-                                }
-                                app::MutationEffect::UpdateFlags { message_id, flags } => {
-                                    app.apply_local_flags(&message_id, flags);
-                                    if show_completion_status {
-                                        app.status_message = Some("Done".into());
-                                    }
-                                }
-                                app::MutationEffect::UpdateFlagsMany { updates } => {
-                                    app.apply_local_flags_many(&updates);
-                                    if show_completion_status {
-                                        app.status_message = Some("Done".into());
-                                    }
-                                }
-                                app::MutationEffect::RefreshList => {
-                                    if let Some(label_id) = app.mailbox.active_label.clone() {
-                                        app.mailbox.pending_label_fetch = Some(label_id);
-                                    }
-                                    app.mailbox.pending_subscriptions_refresh = true;
-                                    if show_completion_status {
-                                        app.status_message = Some("Synced".into());
-                                    }
-                                }
-                                app::MutationEffect::ModifyLabels {
-                                    message_ids,
-                                    add,
-                                    remove,
-                                    status,
-                                } => {
-                                    app.apply_local_label_refs(&message_ids, &add, &remove);
-                                    if show_completion_status {
-                                        app.status_message = Some(status);
-                                    }
-                                }
-                                app::MutationEffect::StatusOnly(msg) => {
-                                    if show_completion_status {
-                                        app.status_message = Some(msg);
-                                    }
-                                }
-                            }
+                            app.apply_mutation_completion(effect, show_completion_status);
                         }
                         AsyncResult::MutationResult(Err(e)) => {
                             app.finish_pending_mutation();
@@ -1326,6 +1277,9 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::Subscriptions(Err(e)) => {
                             app.status_message = Some(format!("Subscriptions error: {e}"));
                         }
+                        AsyncResult::ConnectionState(state) => {
+                            app.set_connection_state(state);
+                        }
                         other => {
                             let Some(other) = handle_local_io_result(&mut app, other) else {
                                 continue;
@@ -1339,6 +1293,7 @@ pub async fn run() -> anyhow::Result<()> {
             }
             _ = tokio::time::sleep(timeout) => {
                 app.tick();
+                app.tick_connection_state(std::time::Instant::now());
             }
         }
 
@@ -6146,5 +6101,203 @@ mod tests {
         assert!(app.mailbox.mailbox_loading_message.is_none());
         assert_eq!(app.status_message.as_deref(), Some("Account switched"));
         assert_eq!(app.mailbox.all_envelopes.len(), envelopes.len());
+    }
+
+    /// Phase 1.1 / Behavior 4: when the user sends from the Sent view,
+    /// applying the completion of a SendDraft mutation refreshes the active
+    /// label so the new message appears without a manual sync. The status
+    /// message reads "Sent!" — not "Synced" — because the user just sent.
+    #[test]
+    fn sent_success_effect_refreshes_active_label_and_sets_status() {
+        let mut app = App::new();
+        let label_id = LabelId::new();
+        app.mailbox.active_label = Some(label_id.clone());
+        // Simulate a single in-flight mutation so completion logic shows status.
+        app.pending_mutation_count = 1;
+
+        app.apply_mutation_completion(
+            MutationEffect::SentSuccess {
+                status: "Sent!".into(),
+            },
+            true,
+        );
+
+        assert_eq!(
+            app.mailbox.pending_label_fetch,
+            Some(label_id),
+            "active label must be queued for refetch so the Sent view shows the new message"
+        );
+        assert!(
+            app.mailbox.pending_subscriptions_refresh,
+            "subscriptions must refresh after a successful send"
+        );
+        assert_eq!(app.status_message.as_deref(), Some("Sent!"));
+    }
+
+    /// Phase 1.1 / Behavior 4: with no active label (e.g. on the accounts
+    /// screen), applying SentSuccess still updates the status message but
+    /// does not enqueue a label fetch. Catches regressions that would
+    /// either crash on the None case or leak a stale label fetch.
+    #[test]
+    fn sent_success_effect_with_no_active_label_only_updates_status() {
+        let mut app = App::new();
+        app.mailbox.active_label = None;
+
+        app.apply_mutation_completion(
+            MutationEffect::SentSuccess {
+                status: "Sent!".into(),
+            },
+            true,
+        );
+
+        assert_eq!(app.mailbox.pending_label_fetch, None);
+        assert_eq!(app.status_message.as_deref(), Some("Sent!"));
+    }
+
+    /// Phase 1.2 / Behavior 4: connection_state_label exposes a non-empty
+    /// human-readable string when the connection is not healthy, which the
+    /// status bar prepends. Catches "silent hang" regressions — a missing
+    /// or empty label would put the user back to staring at a frozen UI.
+    #[test]
+    fn connection_state_label_surfaces_reconnecting_state() {
+        use crate::app::ConnectionState;
+        let mut app = App::new();
+        app.set_connection_state(ConnectionState::Reconnecting {
+            since: std::time::Instant::now(),
+            reason: "connection refused".into(),
+        });
+
+        let label = app.connection_state_label();
+        let label = label.expect("label must be Some when not Connected");
+        let lower = label.to_lowercase();
+        assert!(
+            lower.contains("reconnect") || lower.contains("daemon"),
+            "label must mention the disconnected state; got {label:?}"
+        );
+    }
+
+    /// Phase 1.2 / Behavior 4: when Connected, the label is None so the
+    /// status bar shows the regular mailbox info, not a stale connection
+    /// notice.
+    #[test]
+    fn connection_state_label_is_none_when_connected() {
+        use crate::app::ConnectionState;
+        let mut app = App::new();
+        app.set_connection_state(ConnectionState::Connected);
+        assert!(app.connection_state_label().is_none());
+    }
+
+    /// Phase 1.2 / Behavior 1+3: ConnectionState defaults to Connecting on
+    /// app construction, and transitioning to Connected clears any prior
+    /// "daemon not responding" error modal.
+    #[test]
+    fn connection_state_starts_connecting() {
+        use crate::app::ConnectionState;
+        let app = App::new();
+        assert!(matches!(app.connection_state, ConnectionState::Connecting));
+    }
+
+    #[test]
+    fn transition_to_connected_clears_daemon_error_modal() {
+        use crate::app::ConnectionState;
+        use crate::app::ErrorModalState;
+        let mut app = App::new();
+        app.set_connection_state(ConnectionState::Reconnecting {
+            since: std::time::Instant::now(),
+            reason: "connection refused".into(),
+        });
+        // Simulate the modal that would have been opened after 5s.
+        app.modals.error = Some(ErrorModalState::new("Daemon not responding", "..."));
+
+        app.set_connection_state(ConnectionState::Connected);
+
+        assert!(
+            matches!(app.connection_state, ConnectionState::Connected),
+            "state must transition to Connected"
+        );
+        assert!(
+            app.modals.error.is_none(),
+            "the daemon-not-responding modal must close on reconnection"
+        );
+    }
+
+    /// Phase 1.2 / Behavior 2: after 5s of Reconnecting, an error modal
+    /// opens explaining the daemon is not responding. Catches "silent hang"
+    /// regressions (the original v1 ship blocker).
+    #[test]
+    fn tick_connection_state_opens_modal_after_5s_reconnecting() {
+        use crate::app::ConnectionState;
+        let mut app = App::new();
+        let t0 = std::time::Instant::now();
+        app.set_connection_state(ConnectionState::Reconnecting {
+            since: t0,
+            reason: "connection refused".into(),
+        });
+
+        // 4s in — under the threshold; modal must not have opened yet.
+        app.tick_connection_state(t0 + std::time::Duration::from_secs(4));
+        assert!(
+            app.modals.error.is_none(),
+            "modal must not open before 5s"
+        );
+
+        // 6s in — over the threshold; modal must be open with non-empty detail.
+        app.tick_connection_state(t0 + std::time::Duration::from_secs(6));
+        let modal = app
+            .modals
+            .error
+            .as_ref()
+            .expect("modal must open after 5s");
+        assert!(
+            modal.title.to_lowercase().contains("daemon"),
+            "modal title must mention the daemon; got {:?}",
+            modal.title
+        );
+        assert!(
+            !modal.detail.trim().is_empty(),
+            "modal detail must be non-empty"
+        );
+    }
+
+    /// Phase 1.2 / Behavior 2: tick is a no-op when connection is healthy.
+    /// Regression for "modal pops up randomly while connected".
+    #[test]
+    fn tick_connection_state_no_op_when_connected() {
+        use crate::app::ConnectionState;
+        let mut app = App::new();
+        app.set_connection_state(ConnectionState::Connected);
+        app.tick_connection_state(std::time::Instant::now() + std::time::Duration::from_secs(60));
+        assert!(app.modals.error.is_none());
+    }
+
+    /// Phase 1.1 / Behavior 4: when SendDraft is part of a larger batch
+    /// (other mutations still in flight), the per-effect status is
+    /// suppressed — matches the existing `show_completion_status` gating
+    /// for archive/trash mutations. Regression for "every mutation in
+    /// the batch overwriting the status".
+    #[test]
+    fn sent_success_effect_suppresses_status_when_more_in_flight() {
+        let mut app = App::new();
+        let label_id = LabelId::new();
+        app.mailbox.active_label = Some(label_id.clone());
+        app.status_message = Some("In progress".into());
+
+        app.apply_mutation_completion(
+            MutationEffect::SentSuccess {
+                status: "Sent!".into(),
+            },
+            false, // not last in the batch
+        );
+
+        assert_eq!(
+            app.status_message.as_deref(),
+            Some("In progress"),
+            "status must not change while other mutations are in flight"
+        );
+        assert_eq!(
+            app.mailbox.pending_label_fetch,
+            Some(label_id),
+            "label fetch must still be queued even when status is suppressed"
+        );
     }
 }

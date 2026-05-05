@@ -659,6 +659,15 @@ pub enum ResponseData {
     },
     Pong,
     Ack,
+    /// Returned by `Request::SendDraft` and `Request::SendStoredDraft` on
+    /// success. Carries the IDs minted during synthetic Sent ingestion so
+    /// callers can navigate to or reference the just-sent message without
+    /// waiting for the next sync.
+    SendReceipt {
+        local_message_id: MessageId,
+        provider_message_id: Option<String>,
+        rfc2822_message_id: String,
+    },
 }
 
 impl ResponseData {
@@ -682,7 +691,8 @@ impl ResponseData {
             | Self::Drafts { .. }
             | Self::SnoozedMessages { .. }
             | Self::ExportResult { .. }
-            | Self::MutationResult { .. } => IpcCategory::CoreMail,
+            | Self::MutationResult { .. }
+            | Self::SendReceipt { .. } => IpcCategory::CoreMail,
             Self::Rules { .. }
             | Self::RuleData { .. }
             | Self::Accounts { .. }

@@ -591,10 +591,24 @@ pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult
     // immediately, without waiting for the next sync. Failures here are
     // non-fatal: the send already succeeded on the wire and we surface the
     // local-ingest error to the caller via tracing.
-    if let Err(e) = ingest_sent_message(state, draft, &from, &receipt).await {
-        tracing::warn!(error = %e, "ingest_sent_message failed after send_draft");
-    }
-    Ok(ResponseData::Ack)
+    let local_message_id = match ingest_sent_message(state, draft, &from, &receipt).await {
+        Ok(id) => Some(id),
+        Err(e) => {
+            tracing::warn!(error = %e, "ingest_sent_message failed after send_draft");
+            None
+        }
+    };
+    Ok(ResponseData::SendReceipt {
+        local_message_id: local_message_id.unwrap_or_else(|| {
+            mxr_core::MessageId::from_scoped_provider_id(
+                &draft.account_id,
+                "send-receipt",
+                &receipt.rfc2822_message_id,
+            )
+        }),
+        provider_message_id: receipt.provider_message_id,
+        rfc2822_message_id: receipt.rfc2822_message_id,
+    })
 }
 
 pub(super) async fn send_stored_draft(
@@ -662,23 +676,30 @@ pub(super) async fn send_stored_draft(
         .set_draft_message_id_header(draft_id, &receipt.rfc2822_message_id)
         .await;
 
-    if let Err(e) = ingest_sent_message(state, &draft, &from, &receipt).await {
-        // Local ingest failed. Send already happened on the wire; we move the
-        // draft to `Sent` (idempotent, prevents resend) but bubble the error so
-        // the user can re-sync.
-        let _ = state
-            .store
-            .update_draft_status(draft_id, DraftStatus::Sent)
-            .await;
-        return Err(format!("send succeeded but local ingest failed: {e}"));
-    }
+    let local_message_id = match ingest_sent_message(state, &draft, &from, &receipt).await {
+        Ok(id) => id,
+        Err(e) => {
+            // Local ingest failed. Send already happened on the wire; we move
+            // the draft to `Sent` (idempotent, prevents resend) but bubble the
+            // error so the user can re-sync.
+            let _ = state
+                .store
+                .update_draft_status(draft_id, DraftStatus::Sent)
+                .await;
+            return Err(format!("send succeeded but local ingest failed: {e}"));
+        }
+    };
 
     let _ = state
         .store
         .update_draft_status(draft_id, DraftStatus::Sent)
         .await;
     let _ = state.store.delete_draft(draft_id).await;
-    Ok(ResponseData::Ack)
+    Ok(ResponseData::SendReceipt {
+        local_message_id,
+        provider_message_id: receipt.provider_message_id,
+        rfc2822_message_id: receipt.rfc2822_message_id,
+    })
 }
 
 /// Insert a synthetic envelope + body into the local store immediately after a
@@ -691,7 +712,7 @@ async fn ingest_sent_message(
     draft: &Draft,
     from: &Address,
     receipt: &SendReceipt,
-) -> Result<(), String> {
+) -> Result<mxr_core::MessageId, String> {
     let (provider_namespace, provider_id_value) =
         if let Some(gmail_id) = receipt.provider_message_id.as_deref() {
             ("gmail", gmail_id.to_string())
@@ -793,7 +814,7 @@ async fn ingest_sent_message(
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(())
+    Ok(message_id)
 }
 
 pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> HandlerResult {

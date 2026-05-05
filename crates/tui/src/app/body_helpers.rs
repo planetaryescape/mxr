@@ -42,7 +42,9 @@ impl App {
                 starred_count,
                 body_status: body_status.clone(),
                 sync_status: self.last_sync_status.clone(),
-                status_message: self.status_message.clone(),
+                status_message: self
+                    .connection_state_label()
+                    .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
             };
@@ -65,7 +67,9 @@ impl App {
                 starred_count,
                 body_status: body_status.clone(),
                 sync_status: self.last_sync_status.clone(),
-                status_message: self.status_message.clone(),
+                status_message: self
+                    .connection_state_label()
+                    .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
             };
@@ -79,7 +83,9 @@ impl App {
                 starred_count,
                 body_status: body_status.clone(),
                 sync_status: self.last_sync_status.clone(),
-                status_message: self.status_message.clone(),
+                status_message: self
+                    .connection_state_label()
+                    .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
             };

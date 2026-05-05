@@ -82,6 +82,12 @@ pub enum MutationEffect {
     },
     RefreshList,
     StatusOnly(String),
+    /// Successful SendDraft. Refreshes the active label so a Sent-view user
+    /// sees the just-sent message immediately (no manual sync), and shows
+    /// `status` in the status bar.
+    SentSuccess {
+        status: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +98,26 @@ pub enum Screen {
     Diagnostics,
     Accounts,
 }
+
+/// Health of the IPC connection to the daemon. Drives the status bar and the
+/// "daemon not responding" modal — replaces the old behaviour where a failed
+/// initial connect silently exited the IPC worker and left the UI hung at
+/// "connecting".
+#[derive(Debug, Clone)]
+pub enum ConnectionState {
+    Connecting,
+    Connected,
+    Reconnecting {
+        since: std::time::Instant,
+        reason: String,
+    },
+}
+
+/// Wall-clock window before a `Reconnecting` state escalates to an error
+/// modal. Five seconds matches the existing `START_DAEMON_TIMEOUT` so
+/// users see feedback right after the auto-restart attempt would have
+/// succeeded if the daemon were healthy.
+const CONNECTION_STALE_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(5);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SidebarGroup {
@@ -124,6 +150,10 @@ pub struct App {
     pub pending_mutation_count: usize,
     pub pending_mutation_status: Option<String>,
     pub pending_mutation_queue: Vec<(Request, MutationEffect)>,
+    pub connection_state: ConnectionState,
+    /// Set by the input handler when the user presses "retry now" while the
+    /// connection-error modal is open. The IPC worker drains and clears it.
+    pub pending_connection_retry: bool,
     recorder: ActionRecorder,
     input: InputHandler,
 }
@@ -195,8 +225,73 @@ impl App {
             pending_mutation_count: 0,
             pending_mutation_status: None,
             pending_mutation_queue: Vec::new(),
+            connection_state: ConnectionState::Connecting,
+            pending_connection_retry: false,
             recorder: ActionRecorder::new(1000),
             input: InputHandler::new(),
+        }
+    }
+
+    /// Update the IPC connection health and propagate side effects:
+    /// - On `Connected`, close any existing "daemon not responding" error
+    ///   modal so the user isn't left with a stale dialog after recovery.
+    /// - On `Reconnecting` or `Connecting`, leave the modal alone — the
+    ///   tick-based opener decides when to surface it.
+    pub fn set_connection_state(&mut self, state: ConnectionState) {
+        if matches!(state, ConnectionState::Connected) {
+            // Only close error modals that were opened by the connection
+            // watchdog. Heuristic: title mentions "daemon".
+            if self
+                .modals
+                .error
+                .as_ref()
+                .is_some_and(|err| err.title.to_lowercase().contains("daemon"))
+            {
+                self.modals.error = None;
+            }
+        }
+        self.connection_state = state;
+    }
+
+    /// Called from the main event loop on every tick. If the connection has
+    /// been `Reconnecting` for more than `CONNECTION_STALE_THRESHOLD`,
+    /// surface an error modal explaining the daemon is not responding.
+    /// Idempotent — re-opening an already-open modal is fine.
+    pub fn tick_connection_state(&mut self, now: std::time::Instant) {
+        if let ConnectionState::Reconnecting { since, reason } = &self.connection_state {
+            if now.saturating_duration_since(*since) >= CONNECTION_STALE_THRESHOLD {
+                let already_open = self
+                    .modals
+                    .error
+                    .as_ref()
+                    .is_some_and(|err| err.title.to_lowercase().contains("daemon"));
+                if !already_open {
+                    self.modals.error = Some(crate::app::ErrorModalState::new(
+                        "Daemon not responding",
+                        format!(
+                            "The mxr daemon is not responding ({reason}). Press `r` to retry, or `q` to quit."
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Mark a "retry now" request from the user. The IPC worker drains and
+    /// clears this flag on the next iteration.
+    pub fn request_connection_retry(&mut self) {
+        self.pending_connection_retry = true;
+    }
+
+    /// Human-readable summary of the IPC connection state for the status bar.
+    /// Returns `None` when `Connected` so the bar shows normal mailbox info.
+    pub fn connection_state_label(&self) -> Option<String> {
+        match &self.connection_state {
+            ConnectionState::Connected => None,
+            ConnectionState::Connecting => Some("Connecting to daemon...".into()),
+            ConnectionState::Reconnecting { reason, .. } => {
+                Some(format!("Reconnecting to daemon ({reason})..."))
+            }
         }
     }
 }

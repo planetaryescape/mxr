@@ -90,7 +90,87 @@ impl App {
             } => {
                 self.apply_local_label_refs(message_ids, add, remove);
             }
-            MutationEffect::RefreshList | MutationEffect::StatusOnly(_) => {}
+            MutationEffect::RefreshList
+            | MutationEffect::StatusOnly(_)
+            | MutationEffect::SentSuccess { .. } => {}
+        }
+    }
+
+    /// Apply the completion of a mutation to UI state.
+    ///
+    /// Called from the main event loop after the daemon's `MutationResult`
+    /// arrives. `show_completion_status` is true only when this is the last
+    /// in-flight mutation — matches the existing main-loop gating semantics
+    /// so a batch of archives doesn't overwrite the status mid-flight.
+    pub fn apply_mutation_completion(
+        &mut self,
+        effect: MutationEffect,
+        show_completion_status: bool,
+    ) {
+        match effect {
+            MutationEffect::RemoveFromList(id) => {
+                self.apply_removed_message_ids(std::slice::from_ref(&id));
+                if show_completion_status {
+                    self.status_message = Some("Done".into());
+                }
+                self.mailbox.pending_subscriptions_refresh = true;
+            }
+            MutationEffect::RemoveFromListMany(ids) => {
+                self.apply_removed_message_ids(&ids);
+                if show_completion_status {
+                    self.status_message = Some("Done".into());
+                }
+                self.mailbox.pending_subscriptions_refresh = true;
+            }
+            MutationEffect::UpdateFlags { message_id, flags } => {
+                self.apply_local_flags(&message_id, flags);
+                if show_completion_status {
+                    self.status_message = Some("Done".into());
+                }
+            }
+            MutationEffect::UpdateFlagsMany { updates } => {
+                self.apply_local_flags_many(&updates);
+                if show_completion_status {
+                    self.status_message = Some("Done".into());
+                }
+            }
+            MutationEffect::RefreshList => {
+                if let Some(label_id) = self.mailbox.active_label.clone() {
+                    self.mailbox.pending_label_fetch = Some(label_id);
+                }
+                self.mailbox.pending_subscriptions_refresh = true;
+                if show_completion_status {
+                    self.status_message = Some("Synced".into());
+                }
+            }
+            MutationEffect::ModifyLabels {
+                message_ids,
+                add,
+                remove,
+                status,
+            } => {
+                self.apply_local_label_refs(&message_ids, &add, &remove);
+                if show_completion_status {
+                    self.status_message = Some(status);
+                }
+            }
+            MutationEffect::StatusOnly(msg) => {
+                if show_completion_status {
+                    self.status_message = Some(msg);
+                }
+            }
+            MutationEffect::SentSuccess { status } => {
+                // Refresh the active label so a Sent-view user sees the new
+                // message immediately. Subscriptions also refresh because
+                // some sends affect mailing-list-derived counts.
+                if let Some(label_id) = self.mailbox.active_label.clone() {
+                    self.mailbox.pending_label_fetch = Some(label_id);
+                }
+                self.mailbox.pending_subscriptions_refresh = true;
+                if show_completion_status {
+                    self.status_message = Some(status);
+                }
+            }
         }
     }
 

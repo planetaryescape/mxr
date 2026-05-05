@@ -1,3 +1,4 @@
+use crate::app::ConnectionState;
 use crate::async_result::AsyncResult;
 use crate::client::Client;
 use mxr_core::MxrError;
@@ -24,9 +25,40 @@ pub(crate) fn spawn_ipc_worker(
     tokio::spawn(async move {
         // Create event channel — Client forwards daemon events here
         let (event_tx, mut event_rx) = mpsc::unbounded_channel::<DaemonEvent>();
-        let mut client = match connect_ipc_client(&socket_path, event_tx.clone()).await {
-            Ok(client) => client,
-            Err(_) => return,
+
+        let _ = result_tx.send(AsyncResult::ConnectionState(ConnectionState::Connecting));
+
+        // Initial connect with retry. The previous behavior was to silently
+        // exit the worker on first connect failure, leaving the UI hung at
+        // "connecting" forever. Now we retry forever, emit state transitions
+        // for the UI to render, and reply Err to any pending requests so the
+        // main loop's mutation queue doesn't stall.
+        let mut client = loop {
+            match connect_ipc_client(&socket_path, event_tx.clone()).await {
+                Ok(client) => {
+                    let _ = result_tx
+                        .send(AsyncResult::ConnectionState(ConnectionState::Connected));
+                    break client;
+                }
+                Err(error) => {
+                    let _ =
+                        result_tx.send(AsyncResult::ConnectionState(ConnectionState::Reconnecting {
+                            since: std::time::Instant::now(),
+                            reason: error.to_string(),
+                        }));
+                    // Drain any queued requests with an error so the main
+                    // loop doesn't sit indefinitely waiting on oneshot replies.
+                    while let Ok(req) = rx.try_recv() {
+                        let _ = req
+                            .reply
+                            .send(Err(MxrError::Ipc("daemon not connected".into())));
+                    }
+                    sleep(Duration::from_secs(2)).await;
+                    if rx.is_closed() {
+                        return;
+                    }
+                }
+            }
         };
 
         loop {

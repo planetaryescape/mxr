@@ -89,6 +89,9 @@ pub(crate) enum AsyncResult {
     },
     LocalStateSaved(Result<(), String>),
     DaemonEvent(DaemonEvent),
+    /// Emitted by the IPC worker when the daemon connection state changes.
+    /// Replaces the old "silent return on initial connect failure" behavior.
+    ConnectionState(app::ConnectionState),
 }
 
 pub(crate) struct ComposeReadyData {

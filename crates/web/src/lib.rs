@@ -903,7 +903,7 @@ async fn send_compose_session(
     )
     .await
     {
-        Ok(ResponseData::Ack) => {
+        Ok(ResponseData::Ack) | Ok(ResponseData::SendReceipt { .. }) => {
             tracing::info!(
                 request_id,
                 endpoint = "compose/send",

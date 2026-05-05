@@ -330,7 +330,9 @@ impl App {
                         };
                         self.queue_mutation(
                             Request::SendDraft { draft },
-                            MutationEffect::StatusOnly("Sent!".into()),
+                            MutationEffect::SentSuccess {
+                                status: "Sent!".into(),
+                            },
                             "Sending...".into(),
                         );
                         self.schedule_draft_cleanup(pending.draft_path);

@@ -90,7 +90,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     }
 
     if options.yes {
-        expect_ack(
+        let receipt = expect_send_receipt(
             client
                 .request(Request::SendDraft {
                     draft: draft.clone(),
@@ -101,6 +101,9 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
             let _ = mxr_compose::delete_draft_file(&path);
         }
         println!("Sent draft {}", draft.id);
+        if let Some(info) = receipt.as_ref() {
+            println!("Local message id: {}", info.local_message_id);
+        }
     } else {
         expect_ack(
             client
@@ -289,7 +292,7 @@ async fn finalize_compose(
     }
 
     if yes {
-        expect_ack(
+        let receipt = expect_send_receipt(
             client
                 .request(Request::SendDraft {
                     draft: draft.clone(),
@@ -300,6 +303,9 @@ async fn finalize_compose(
             let _ = mxr_compose::delete_draft_file(&path);
         }
         println!("Sent draft {}", draft.id);
+        if let Some(info) = receipt.as_ref() {
+            println!("Local message id: {}", info.local_message_id);
+        }
     } else {
         expect_ack(
             client
@@ -368,8 +374,11 @@ pub async fn send_draft(draft_id: String) -> anyhow::Result<()> {
             draft_id: draft_id.clone(),
         })
         .await?;
-    expect_ack(resp)?;
+    let receipt = expect_send_receipt(resp)?;
     println!("Sent draft {}", draft_id);
+    if let Some(info) = receipt.as_ref() {
+        println!("Local message id: {}", info.local_message_id);
+    }
     Ok(())
 }
 
@@ -542,8 +551,45 @@ fn expect_ack(resp: Response) -> anyhow::Result<()> {
         Response::Ok {
             data: ResponseData::Ack,
         } => Some(()),
+        // SendReceipt is also an "ack-shaped" success for callers that don't
+        // need the message id (e.g. SaveDraft, where receipt is None anyway).
+        Response::Ok {
+            data: ResponseData::SendReceipt { .. },
+        } => Some(()),
         _ => None,
     })
+}
+
+/// Decode a daemon response from `Request::SendDraft` / `SendStoredDraft`.
+/// Returns the message ids minted during synthetic Sent ingestion.
+/// Falls back to `None` for older daemons that still return `Ack`.
+fn expect_send_receipt(resp: Response) -> anyhow::Result<Option<SendReceiptInfo>> {
+    crate::commands::expect_response(resp, |response| match response {
+        Response::Ok {
+            data:
+                ResponseData::SendReceipt {
+                    local_message_id,
+                    provider_message_id,
+                    rfc2822_message_id,
+                },
+        } => Some(Some(SendReceiptInfo {
+            local_message_id,
+            provider_message_id,
+            rfc2822_message_id,
+        })),
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => Some(None),
+        _ => None,
+    })
+}
+
+struct SendReceiptInfo {
+    local_message_id: mxr_core::MessageId,
+    #[allow(dead_code)]
+    provider_message_id: Option<String>,
+    #[allow(dead_code)]
+    rfc2822_message_id: String,
 }
 
 fn print_draft_preview(draft: &Draft, sending: bool) {

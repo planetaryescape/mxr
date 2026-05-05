@@ -67,6 +67,10 @@ pub enum Action {
     OpenSavedSearchFormEdit,
     SaveSavedSearchForm,
     DeleteSavedSearch,
+    EnableSemantic,
+    DisableSemantic,
+    ReindexSemantic,
+    InstallSemanticProfile(mxr_core::types::SemanticProfile),
     RefreshDiagnostics,
     RefreshAccounts,
     OpenAccountFormNew,
@@ -230,6 +234,10 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ShowOnboarding
                 | Help
                 | QuitView
+                | EnableSemantic
+                | DisableSemantic
+                | ReindexSemantic
+                | InstallSemanticProfile(_)
         ),
         SearchResults | SearchPreview => !matches!(
             action,
@@ -279,6 +287,10 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ShowOnboarding
                 | Help
                 | QuitView
+                | EnableSemantic
+                | DisableSemantic
+                | ReindexSemantic
+                | InstallSemanticProfile(_)
         ),
         Diagnostics => matches!(
             action,
@@ -294,6 +306,10 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenTab3
                 | OpenTab4
                 | OpenTab5
+                | EnableSemantic
+                | DisableSemantic
+                | ReindexSemantic
+                | InstallSemanticProfile(_)
                 | RefreshDiagnostics
                 | GenerateBugReport
                 | OpenDiagnosticsPaneDetails
@@ -324,6 +340,10 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | TestAccountForm
                 | ReauthorizeAccountForm
                 | SetDefaultAccount
+                | EnableSemantic
+                | DisableSemantic
+                | ReindexSemantic
+                | InstallSemanticProfile(_)
                 | SyncNow
                 | EditConfig
                 | OpenLogs

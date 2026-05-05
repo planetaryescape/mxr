@@ -143,6 +143,10 @@ impl App {
             | Action::OpenSavedSearchFormEdit
             | Action::SaveSavedSearchForm
             | Action::DeleteSavedSearch => self.apply_saved_search_action(action),
+            Action::EnableSemantic
+            | Action::DisableSemantic
+            | Action::ReindexSemantic
+            | Action::InstallSemanticProfile(_) => self.apply_semantic_action(action),
             Action::RefreshDiagnostics
             | Action::GenerateBugReport
             | Action::EditConfig

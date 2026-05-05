@@ -77,6 +77,10 @@ pub struct ModalsState {
     /// `Some(name)` while a delete confirmation is open. Pressing
     /// `y`/`Enter` dispatches the delete; `n`/`Esc` cancels.
     pub pending_saved_search_delete_confirm: Option<String>,
+    /// Queue of semantic-runtime IPC requests waiting to be dispatched.
+    /// Populated by palette actions (Enable/Disable/Reindex/Install
+    /// Profile); drained one-at-a-time by the lib.rs dispatcher.
+    pub pending_semantic_dispatch: Vec<Request>,
 }
 
 /// Modal form for creating (or editing via delete+create) a saved

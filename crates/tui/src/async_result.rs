@@ -106,6 +106,11 @@ pub(crate) enum AsyncResult {
     SavedSearchMutation(Result<(), MxrError>),
     /// Refreshed sidebar list after a saved-search create/delete.
     SavedSearchListRefreshed(Result<Vec<mxr_core::types::SavedSearch>, MxrError>),
+    /// One semantic-runtime operation response (Enable / Disable /
+    /// Reindex / InstallProfile). Errors route through `report_error`
+    /// so a missing `semantic-local` feature is visible to the user
+    /// rather than silently swallowed.
+    SemanticOperationResult(Result<(), MxrError>),
 }
 
 pub(crate) struct ComposeReadyData {

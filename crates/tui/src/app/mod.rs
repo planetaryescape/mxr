@@ -19,6 +19,7 @@ mod rule_actions;
 mod runtime_helpers;
 mod saved_search_actions;
 mod screen_actions;
+mod semantic_actions;
 mod screen_helpers;
 mod search_actions;
 mod search_helpers;

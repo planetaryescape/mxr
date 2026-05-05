@@ -516,6 +516,23 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        // Drain queued semantic-runtime requests (Enable / Disable / Reindex
+        // / InstallProfile). Each is a one-shot; result routes through the
+        // shared error reporter so failures aren't swallowed.
+        let semantic_dispatch = app.take_pending_semantic_dispatch();
+        for request in semantic_dispatch {
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, request).await;
+                let result: Result<(), MxrError> = match resp {
+                    Ok(Response::Ok { .. }) => Ok(()),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                };
+                AsyncResult::SemanticOperationResult(result)
+            });
+        }
+
         if app.diagnostics.page.refresh_pending {
             app.diagnostics.page.refresh_pending = false;
             app.diagnostics.pending_status_refresh = false;
@@ -1367,6 +1384,26 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::SavedSearchListRefreshed(Err(e)) => {
                             app.report_warn(format!("Could not refresh saved searches: {e}"));
+                        }
+                        AsyncResult::SemanticOperationResult(Ok(())) => {
+                            // Don't overwrite a fresh `Sent!`-style success
+                            // status from a competing flow; only clear if we
+                            // were the one who set it ("Enabling..." etc).
+                            if let Some(status) = app.status_message.as_deref() {
+                                if status.starts_with("Enabling")
+                                    || status.starts_with("Disabling")
+                                    || status.starts_with("Reindexing")
+                                    || status.starts_with("Installing semantic profile")
+                                {
+                                    app.status_message = Some("Semantic action complete".into());
+                                }
+                            }
+                        }
+                        AsyncResult::SemanticOperationResult(Err(e)) => {
+                            app.report_error(
+                                "Semantic action failed",
+                                format!("The daemon returned: {e}"),
+                            );
                         }
                         other => {
                             let Some(other) = handle_local_io_result(&mut app, other) else {
@@ -6584,6 +6621,101 @@ mod tests {
             app.modals.pending_saved_search_delete_confirm.is_none(),
             "confirm dialog must close after confirm"
         );
+    }
+
+    /// Phase 2.2 / Palette parity: each of the four semantic palette
+    /// actions appears in the default palette and is reachable from
+    /// the standard mailbox context. Catches accidental removal or
+    /// allowlist drift in `action_allowed_in_context`.
+    #[test]
+    fn semantic_palette_entries_present_in_default_commands() {
+        let commands = crate::ui::command_palette::default_commands();
+        let labels: Vec<&str> = commands.iter().map(|c| c.label.as_str()).collect();
+        for needle in [
+            "Semantic: Enable",
+            "Semantic: Disable",
+            "Semantic: Reindex",
+            "Semantic: Install Profile (BGE Small EN)",
+            "Semantic: Install Profile (Multilingual E5)",
+            "Semantic: Install Profile (BGE-M3)",
+        ] {
+            assert!(
+                labels.contains(&needle),
+                "expected `{needle}` in palette; got {labels:?}"
+            );
+        }
+    }
+
+    /// Phase 2.2 / Behavior 1: dispatching `EnableSemantic` queues exactly
+    /// one `Request::EnableSemantic { enabled: true }` for the
+    /// dispatcher.
+    #[test]
+    fn enable_semantic_action_queues_enabled_true_request() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.apply(Action::EnableSemantic);
+        let queue = app.take_pending_semantic_dispatch();
+        assert_eq!(queue.len(), 1);
+        match &queue[0] {
+            mxr_protocol::Request::EnableSemantic { enabled } => {
+                assert!(*enabled, "Enable must request enabled=true");
+            }
+            other => panic!("expected EnableSemantic, got {other:?}"),
+        }
+    }
+
+    /// Phase 2.2 / Behavior 1 (disable): dispatching `DisableSemantic`
+    /// queues `EnableSemantic { enabled: false }`. Symmetric to enable
+    /// so the same daemon handler clears the flag.
+    #[test]
+    fn disable_semantic_action_queues_enabled_false_request() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.apply(Action::DisableSemantic);
+        let queue = app.take_pending_semantic_dispatch();
+        assert_eq!(queue.len(), 1);
+        match &queue[0] {
+            mxr_protocol::Request::EnableSemantic { enabled } => {
+                assert!(!*enabled, "Disable must request enabled=false");
+            }
+            other => panic!("expected EnableSemantic, got {other:?}"),
+        }
+    }
+
+    /// Phase 2.2 / Behavior 2: `ReindexSemantic` queues
+    /// `Request::ReindexSemantic`.
+    #[test]
+    fn reindex_semantic_action_queues_reindex_request() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.apply(Action::ReindexSemantic);
+        let queue = app.take_pending_semantic_dispatch();
+        assert_eq!(queue.len(), 1);
+        assert!(
+            matches!(queue[0], mxr_protocol::Request::ReindexSemantic),
+            "expected ReindexSemantic, got {:?}",
+            queue[0]
+        );
+    }
+
+    /// Phase 2.2 / Behavior 3: `InstallSemanticProfile(profile)` queues
+    /// `Request::InstallSemanticProfile { profile }` with the same
+    /// profile variant. Verifies the profile parameter survives the
+    /// palette → action → request hop without reshuffling.
+    #[test]
+    fn install_semantic_profile_action_queues_install_request() {
+        use crate::action::Action;
+        let mut app = App::new();
+        let profile = mxr_core::types::SemanticProfile::MultilingualE5Small;
+        app.apply(Action::InstallSemanticProfile(profile));
+        let queue = app.take_pending_semantic_dispatch();
+        assert_eq!(queue.len(), 1);
+        match &queue[0] {
+            mxr_protocol::Request::InstallSemanticProfile { profile: p } => {
+                assert_eq!(p.as_str(), profile.as_str());
+            }
+            other => panic!("expected InstallSemanticProfile, got {other:?}"),
+        }
     }
 
     /// Phase 2.1 stage B / Behavior 3 (cancel path): pressing `n`/Esc

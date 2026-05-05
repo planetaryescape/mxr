@@ -479,6 +479,46 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Sync".into(),
         },
         PaletteCommand {
+            label: "Semantic: Enable".into(),
+            shortcut: "".into(),
+            action: Action::EnableSemantic,
+            category: "Semantic".into(),
+        },
+        PaletteCommand {
+            label: "Semantic: Disable".into(),
+            shortcut: "".into(),
+            action: Action::DisableSemantic,
+            category: "Semantic".into(),
+        },
+        PaletteCommand {
+            label: "Semantic: Reindex".into(),
+            shortcut: "".into(),
+            action: Action::ReindexSemantic,
+            category: "Semantic".into(),
+        },
+        PaletteCommand {
+            label: "Semantic: Install Profile (BGE Small EN)".into(),
+            shortcut: "".into(),
+            action: Action::InstallSemanticProfile(
+                mxr_core::types::SemanticProfile::BgeSmallEnV15,
+            ),
+            category: "Semantic".into(),
+        },
+        PaletteCommand {
+            label: "Semantic: Install Profile (Multilingual E5)".into(),
+            shortcut: "".into(),
+            action: Action::InstallSemanticProfile(
+                mxr_core::types::SemanticProfile::MultilingualE5Small,
+            ),
+            category: "Semantic".into(),
+        },
+        PaletteCommand {
+            label: "Semantic: Install Profile (BGE-M3)".into(),
+            shortcut: "".into(),
+            action: Action::InstallSemanticProfile(mxr_core::types::SemanticProfile::BgeM3),
+            category: "Semantic".into(),
+        },
+        PaletteCommand {
             label: "Help".into(),
             shortcut: "?".into(),
             action: Action::Help,

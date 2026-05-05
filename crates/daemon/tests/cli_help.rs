@@ -75,9 +75,10 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_stale", &["stale", "--help"]),
         ("cli_help_contacts", &["contacts", "--help"]),
         ("cli_help_response_time", &["response-time", "--help"]),
+        ("cli_help_wrapped", &["wrapped", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 55);
+    assert_eq!(cases.len(), 56);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

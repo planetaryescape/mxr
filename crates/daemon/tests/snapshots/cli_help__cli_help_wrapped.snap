@@ -1,0 +1,15 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Year-in-review summary: volume, time patterns, top contacts, reply discipline, storage, newsletters, superlatives. Like Spotify Wrapped but for your inbox
+
+Usage: mxr wrapped [OPTIONS]
+
+Options:
+      --ytd                      Year-to-date (default if no window flag given): Jan 1 → now
+      --year <YEAR>              Specific calendar year (Jan 1 → Dec 31 UTC)
+      --since-days <SINCE_DAYS>  Last N days. Useful for quarterly or ad-hoc reviews
+      --account <ACCOUNT>        
+      --format <FORMAT>          [possible values: table, json, jsonl, csv, ids]
+  -h, --help                     Print help

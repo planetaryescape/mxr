@@ -71,6 +71,54 @@ impl super::Store {
     }
 }
 
+impl super::Store {
+    /// Top-N single messages by `size_bytes`. Drives `mxr storage --by message`
+    /// — lets users find the one giant attachment that's eating their disk
+    /// rather than just the rolled-up bucket totals. Returns up to `limit`
+    /// rows ordered by size descending. Filters to in-window messages and
+    /// drops bogus epoch-0 dates so spam with a 1970 Date: header doesn't
+    /// claim the top spot.
+    pub async fn largest_messages(
+        &self,
+        account_id: Option<&AccountId>,
+        since_unix: Option<i64>,
+        limit: u32,
+    ) -> Result<Vec<LargestMessageRow>, sqlx::Error> {
+        let started_at = Instant::now();
+        let lim = limit as i64;
+        let account_filter: Option<String> = account_id.map(|a| a.as_str());
+        let since = since_unix.unwrap_or(0).max(EARLIEST_PLAUSIBLE_TS);
+
+        let rows: Vec<(String, String, String, i64, i64)> = sqlx::query_as(
+            r#"SELECT id, from_email, subject, size_bytes, date
+               FROM messages
+               WHERE (?1 IS NULL OR account_id = ?1)
+                 AND date >= ?2
+                 AND size_bytes > 0
+               ORDER BY size_bytes DESC
+               LIMIT ?3"#,
+        )
+        .bind(account_filter)
+        .bind(since)
+        .bind(lim)
+        .fetch_all(self.reader())
+        .await?;
+        trace_query("analytics.largest_messages", started_at, rows.len());
+
+        rows.into_iter()
+            .map(|(id, from_email, subject, size_bytes, date)| {
+                Ok(LargestMessageRow {
+                    message_id: decode_id(&id)?,
+                    from_email,
+                    subject,
+                    size_bytes: size_bytes.max(0) as u64,
+                    date: decode_timestamp(date)?,
+                })
+            })
+            .collect()
+    }
+}
+
 /// Linear-interpolation percentile on a sorted slice. Returns 0 for empty
 /// inputs; clamps `q` to [0, 1].
 fn percentile(sorted: &[i64], q: f64) -> u32 {

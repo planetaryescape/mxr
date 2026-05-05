@@ -144,6 +144,24 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Year-in-review summary: volume, time patterns, top contacts,
+    /// reply discipline, storage, newsletters, superlatives. Like Spotify
+    /// Wrapped but for your inbox.
+    Wrapped {
+        /// Year-to-date (default if no window flag given): Jan 1 → now.
+        #[arg(long, conflicts_with_all = ["year", "since_days"])]
+        ytd: bool,
+        /// Specific calendar year (Jan 1 → Dec 31 UTC).
+        #[arg(long, conflicts_with_all = ["ytd", "since_days"])]
+        year: Option<i32>,
+        /// Last N days. Useful for quarterly or ad-hoc reviews.
+        #[arg(long, conflicts_with_all = ["ytd", "year"])]
+        since_days: Option<u32>,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Reply-latency percentiles (clock + business-hours) per direction.
     ResponseTime {
         /// Measure their reply time to my outbound (`they_replied`). Default
@@ -679,14 +697,18 @@ pub enum StorageGroupByArg {
     Sender,
     Mimetype,
     Label,
+    /// Per-message ranking: returns the single biggest emails with their
+    /// IDs, so the output can drive `mxr search`/`mxr trash`/etc directly.
+    Message,
 }
 
-impl From<StorageGroupByArg> for mxr_core::types::StorageGroupBy {
-    fn from(value: StorageGroupByArg) -> Self {
-        match value {
-            StorageGroupByArg::Sender => Self::Sender,
-            StorageGroupByArg::Mimetype => Self::Mimetype,
-            StorageGroupByArg::Label => Self::Label,
+impl StorageGroupByArg {
+    pub fn as_core(self) -> Option<mxr_core::types::StorageGroupBy> {
+        match self {
+            Self::Sender => Some(mxr_core::types::StorageGroupBy::Sender),
+            Self::Mimetype => Some(mxr_core::types::StorageGroupBy::Mimetype),
+            Self::Label => Some(mxr_core::types::StorageGroupBy::Label),
+            Self::Message => None,
         }
     }
 }

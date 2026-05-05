@@ -4,7 +4,7 @@ use crate::cli::{OutputFormat, StorageGroupByArg};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::id::AccountId;
-use mxr_core::types::{StorageBucket, StorageGroupBy};
+use mxr_core::types::{LargestMessageRow, StorageBucket, StorageGroupBy};
 use mxr_protocol::{Request, Response, ResponseData};
 use std::str::FromStr;
 
@@ -65,7 +65,6 @@ pub async fn run(
     account: Option<String>,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    let group_by: StorageGroupBy = by.into();
     let account_id = account
         .as_deref()
         .map(AccountId::from_str)
@@ -73,41 +72,126 @@ pub async fn run(
         .map_err(|e| anyhow::anyhow!("invalid --account id: {e}"))?;
 
     let mut client = IpcClient::connect().await?;
-    let resp = client
-        .request(Request::ListStorageBreakdown {
-            account_id,
-            group_by,
-            limit,
-        })
-        .await?;
-
     let fmt = resolve_format(format);
-    let rows = crate::commands::expect_response(resp, |r| match r {
-        Response::Ok {
-            data: ResponseData::StorageBreakdown { rows },
-        } => Some(rows),
-        _ => None,
-    })?;
 
+    if let Some(group_by) = by.as_core() {
+        let resp = client
+            .request(Request::ListStorageBreakdown {
+                account_id,
+                group_by,
+                limit,
+            })
+            .await?;
+        let rows = crate::commands::expect_response(resp, |r| match r {
+            Response::Ok {
+                data: ResponseData::StorageBreakdown { rows },
+            } => Some(rows),
+            _ => None,
+        })?;
+        render_buckets(group_by, &rows, fmt)?;
+    } else {
+        // --by message: rank single messages by size_bytes.
+        let resp = client
+            .request(Request::ListLargestMessages {
+                account_id,
+                since_days: None,
+                limit,
+            })
+            .await?;
+        let rows = crate::commands::expect_response(resp, |r| match r {
+            Response::Ok {
+                data: ResponseData::LargestMessages { rows },
+            } => Some(rows),
+            _ => None,
+        })?;
+        render_largest_messages(&rows, fmt)?;
+    }
+
+    Ok(())
+}
+
+fn render_buckets(
+    group_by: StorageGroupBy,
+    rows: &[StorageBucket],
+    fmt: OutputFormat,
+) -> anyhow::Result<()> {
     match fmt {
-        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&rows)?),
-        OutputFormat::Jsonl => println!("{}", jsonl(&rows)?),
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(rows)?),
+        OutputFormat::Jsonl => println!("{}", jsonl(rows)?),
         OutputFormat::Csv => {
             println!("key,bytes,count");
-            for row in &rows {
+            for row in rows {
                 let key = row.key.replace('"', "\"\"");
                 println!("\"{key}\",{},{}", row.bytes, row.count);
             }
         }
         OutputFormat::Ids => {
-            for row in &rows {
+            for row in rows {
                 println!("{}", row.key);
             }
         }
-        OutputFormat::Table => render_table(group_by, &rows),
+        OutputFormat::Table => render_table(group_by, rows),
     }
-
     Ok(())
+}
+
+fn render_largest_messages(rows: &[LargestMessageRow], fmt: OutputFormat) -> anyhow::Result<()> {
+    match fmt {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(rows)?),
+        OutputFormat::Jsonl => println!("{}", jsonl(rows)?),
+        OutputFormat::Csv => {
+            println!("message_id,size_bytes,date,from_email,subject");
+            for row in rows {
+                let from = row.from_email.replace('"', "\"\"");
+                let subject = row.subject.replace('"', "\"\"");
+                println!(
+                    "{},{},{},\"{from}\",\"{subject}\"",
+                    row.message_id,
+                    row.size_bytes,
+                    row.date.to_rfc3339(),
+                );
+            }
+        }
+        OutputFormat::Ids => {
+            // The point of `--by message --format ids`: pipe the message IDs
+            // into `mxr trash` / `mxr archive` / `mxr cat` for direct action.
+            for row in rows {
+                println!("{}", row.message_id);
+            }
+        }
+        OutputFormat::Table => render_largest_messages_table(rows),
+    }
+    Ok(())
+}
+
+fn render_largest_messages_table(rows: &[LargestMessageRow]) {
+    if rows.is_empty() {
+        println!("No messages.");
+        return;
+    }
+    println!(
+        "{:>10} {:<10} {:<32} {:<48}",
+        "SIZE", "DATE", "FROM", "SUBJECT"
+    );
+    println!("{}", "-".repeat(102));
+    for row in rows {
+        let date = row.date.format("%Y-%m-%d");
+        let from: String = row.from_email.chars().take(32).collect();
+        let subject: String = row.subject.chars().take(48).collect();
+        println!(
+            "{:>10} {} {:<32} {:<48}",
+            human_bytes(row.size_bytes),
+            date,
+            from,
+            subject,
+        );
+    }
+    let total: u64 = rows.iter().map(|r| r.size_bytes).sum();
+    println!(
+        "\n{} messages — {} total. Pipe `--format ids` into `mxr trash` / `mxr archive` to act.",
+        rows.len(),
+        human_bytes(total),
+    );
 }
 
 #[cfg(test)]

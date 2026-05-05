@@ -249,6 +249,16 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::response_time::run(theirs, counterparty, since_days, account, format).await?;
         }
+        Some(Command::Wrapped {
+            ytd,
+            year,
+            since_days,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::wrapped::run(ytd, year, since_days, account, format).await?;
+        }
         Some(Command::Sync {
             account,
             status,

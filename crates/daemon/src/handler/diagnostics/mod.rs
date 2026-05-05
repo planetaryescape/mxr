@@ -219,6 +219,43 @@ pub(crate) async fn list_storage_breakdown(
     Ok(ResponseData::StorageBreakdown { rows })
 }
 
+pub(crate) async fn list_largest_messages(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    since_days: Option<u32>,
+    limit: u32,
+) -> HandlerResult {
+    let resolved = account_id
+        .cloned()
+        .or_else(|| state.default_account_id_opt());
+    let since_unix = since_days
+        .map(|d| chrono::Utc::now().timestamp() - i64::from(d) * 86_400);
+    let rows = state
+        .store
+        .largest_messages(resolved.as_ref(), since_unix, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::LargestMessages { rows })
+}
+
+pub(crate) async fn wrapped(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    since_unix: i64,
+    until_unix: i64,
+    label: &str,
+) -> HandlerResult {
+    let resolved = account_id
+        .cloned()
+        .or_else(|| state.default_account_id_opt());
+    let summary = state
+        .store
+        .wrapped_summary(resolved.as_ref(), since_unix, until_unix, label)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Wrapped { summary })
+}
+
 pub(crate) async fn list_stale_threads(
     state: &AppState,
     account_id: Option<&AccountId>,

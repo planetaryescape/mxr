@@ -150,6 +150,17 @@ pub enum Request {
         group_by: StorageGroupBy,
         limit: u32,
     },
+    ListLargestMessages {
+        account_id: Option<AccountId>,
+        since_days: Option<u32>,
+        limit: u32,
+    },
+    Wrapped {
+        account_id: Option<AccountId>,
+        since_unix: i64,
+        until_unix: i64,
+        label: String,
+    },
     ListStaleThreads {
         account_id: Option<AccountId>,
         perspective: StaleBallInCourt,
@@ -374,6 +385,8 @@ impl Request {
             | Self::ListSavedSearches
             | Self::ListSubscriptions { .. }
             | Self::ListStorageBreakdown { .. }
+            | Self::ListLargestMessages { .. }
+            | Self::Wrapped { .. }
             | Self::ListStaleThreads { .. }
             | Self::ListContactAsymmetry { .. }
             | Self::ListContactDecay { .. }
@@ -590,6 +603,12 @@ pub enum ResponseData {
     StorageBreakdown {
         rows: Vec<StorageBucket>,
     },
+    LargestMessages {
+        rows: Vec<LargestMessageRow>,
+    },
+    Wrapped {
+        summary: WrappedSummary,
+    },
     StaleThreads {
         rows: Vec<StaleThreadRow>,
     },
@@ -703,6 +722,8 @@ impl ResponseData {
             | Self::SavedSearches { .. }
             | Self::Subscriptions { .. }
             | Self::StorageBreakdown { .. }
+            | Self::LargestMessages { .. }
+            | Self::Wrapped { .. }
             | Self::StaleThreads { .. }
             | Self::ContactAsymmetry { .. }
             | Self::ContactDecay { .. }

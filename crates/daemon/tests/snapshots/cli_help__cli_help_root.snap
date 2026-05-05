@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 13
 expression: stdout
 ---
 Terminal email client
@@ -21,6 +20,7 @@ Commands:
   subscriptions  List senders with unsubscribe support
   storage        Roll up disk consumption by sender, mimetype, or label
   contacts       Surface relationship analytics from the materialized contacts table
+  wrapped        Year-in-review summary: volume, time patterns, top contacts, reply discipline, storage, newsletters, superlatives. Like Spotify Wrapped but for your inbox
   response-time  Reply-latency percentiles (clock + business-hours) per direction
   stale          List stale threads waiting for a reply (mine = my turn, theirs = theirs)
   sync           Trigger or query sync

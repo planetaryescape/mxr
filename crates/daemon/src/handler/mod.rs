@@ -195,6 +195,19 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             group_by,
             limit,
         } => platform::list_storage_breakdown(state, account_id.as_ref(), *group_by, *limit).await,
+        Request::ListLargestMessages {
+            account_id,
+            since_days,
+            limit,
+        } => platform::list_largest_messages(state, account_id.as_ref(), *since_days, *limit).await,
+        Request::Wrapped {
+            account_id,
+            since_unix,
+            until_unix,
+            label,
+        } => {
+            platform::wrapped(state, account_id.as_ref(), *since_unix, *until_unix, label).await
+        }
         Request::ListStaleThreads {
             account_id,
             perspective,
@@ -441,6 +454,8 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListSavedSearches
             | Request::ListSubscriptions { .. }
             | Request::ListStorageBreakdown { .. }
+            | Request::ListLargestMessages { .. }
+            | Request::Wrapped { .. }
             | Request::ListStaleThreads { .. }
             | Request::ListContactAsymmetry { .. }
             | Request::ListContactDecay { .. }
@@ -517,6 +532,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListSavedSearches => "list_saved_searches",
         Request::ListSubscriptions { .. } => "list_subscriptions",
         Request::ListStorageBreakdown { .. } => "list_storage_breakdown",
+        Request::ListLargestMessages { .. } => "list_largest_messages",
+        Request::Wrapped { .. } => "wrapped",
         Request::ListStaleThreads { .. } => "list_stale_threads",
         Request::ListContactAsymmetry { .. } => "list_contact_asymmetry",
         Request::ListContactDecay { .. } => "list_contact_decay",
@@ -578,6 +595,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::RenameLabel { account_id, .. }
         | Request::ListSubscriptions { account_id, .. }
         | Request::ListStorageBreakdown { account_id, .. }
+        | Request::ListLargestMessages { account_id, .. }
+        | Request::Wrapped { account_id, .. }
         | Request::ListStaleThreads { account_id, .. }
         | Request::ListContactAsymmetry { account_id, .. }
         | Request::ListContactDecay { account_id, .. }

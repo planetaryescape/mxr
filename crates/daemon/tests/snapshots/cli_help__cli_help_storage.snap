@@ -7,8 +7,27 @@ Roll up disk consumption by sender, mimetype, or label
 Usage: mxr storage [OPTIONS]
 
 Options:
-      --by <BY>            Group by which dimension. One of: sender, mimetype, label [default: sender] [possible values: sender, mimetype, label]
-      --limit <LIMIT>      Maximum buckets to return [default: 50]
-      --account <ACCOUNT>  Restrict to a single account by id
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
-  -h, --help               Print help
+      --by <BY>
+          Group by which dimension. One of: sender, mimetype, label
+
+          Possible values:
+          - sender
+          - mimetype
+          - label
+          - message:  Per-message ranking: returns the single biggest emails with their IDs, so the output can drive `mxr search`/`mxr trash`/etc directly
+          
+          [default: sender]
+
+      --limit <LIMIT>
+          Maximum buckets to return
+          
+          [default: 50]
+
+      --account <ACCOUNT>
+          Restrict to a single account by id
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

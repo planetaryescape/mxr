@@ -344,6 +344,147 @@ impl MessageEventType {
     }
 }
 
+// -- LargestMessages ---------------------------------------------------------
+
+/// Single message ranked by its envelope `size_bytes`. Powers
+/// `mxr storage --by message`: lets users find and act on the single
+/// biggest emails (the 250 MB attachment from a courier service, the
+/// massive zip a colleague sent in 2017) instead of just the bucket totals.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LargestMessageRow {
+    pub message_id: MessageId,
+    pub from_email: String,
+    pub subject: String,
+    pub size_bytes: u64,
+    pub date: DateTime<Utc>,
+}
+
+// -- Wrapped -----------------------------------------------------------------
+
+/// Year-in-review summary returned by `mxr wrapped`. Combines volume,
+/// time-pattern, contact, reply-discipline, storage, newsletter, and
+/// superlative sections so the CLI can render a single narrative panel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WrappedSummary {
+    pub window_start: DateTime<Utc>,
+    pub window_end: DateTime<Utc>,
+    pub label: String,
+    pub volume: WrappedVolume,
+    pub time_patterns: WrappedTimePatterns,
+    pub top_contacts: WrappedTopContacts,
+    pub reply_discipline: Option<WrappedReplyDiscipline>,
+    pub storage: WrappedStorage,
+    pub newsletters: WrappedNewsletters,
+    pub superlatives: WrappedSuperlatives,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrappedVolume {
+    pub inbound_count: u32,
+    pub outbound_count: u32,
+    pub thread_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrappedTimePatterns {
+    /// Day name and message count for the busiest day-of-week (Mon–Sun).
+    pub busiest_day_of_week: Option<String>,
+    pub busiest_day_of_week_count: u32,
+    /// Hour 0–23 (UTC) and message count for the busiest hour-of-day.
+    pub busiest_hour_utc: Option<u8>,
+    pub busiest_hour_count: u32,
+    /// The single calendar day with the most activity, and its count.
+    pub busiest_date: Option<DateTime<Utc>>,
+    pub busiest_date_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WrappedTopContacts {
+    /// Top 5 senders to me by inbound count.
+    pub most_emailed_to_me: Vec<WrappedContactRank>,
+    /// Top 5 recipients I emailed by outbound count.
+    pub most_emailed_by_me: Vec<WrappedContactRank>,
+    /// Top 3 most-asymmetric counterparties (inbound-heavy).
+    pub most_asymmetric: Vec<ContactAsymmetryRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrappedContactRank {
+    pub email: String,
+    pub display_name: Option<String>,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WrappedReplyDiscipline {
+    pub sample_count: u32,
+    pub clock_p50_seconds: u32,
+    pub clock_p90_seconds: u32,
+    pub business_hours_p50_seconds: Option<u32>,
+    pub business_hours_p90_seconds: Option<u32>,
+    /// Single fastest reply pair in the window.
+    pub fastest: Option<WrappedReplyExtreme>,
+    /// Single slowest reply pair in the window. Capped at 30 days to
+    /// exclude the pathological "I replied 8 years later" cases.
+    pub slowest: Option<WrappedReplyExtreme>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrappedReplyExtreme {
+    pub counterparty_email: String,
+    pub latency_seconds: u32,
+    pub replied_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrappedStorage {
+    pub total_bytes: u64,
+    pub top_mimetype: Option<WrappedStorageBucket>,
+    pub heaviest_message: Option<LargestMessageRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrappedStorageBucket {
+    pub key: String,
+    pub bytes: u64,
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WrappedNewsletters {
+    pub unique_lists: u32,
+    pub top_list: Option<WrappedTopList>,
+    /// 0.0–100.0; share of inbound messages that came via a list_id.
+    pub list_share_of_inbound_pct: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrappedTopList {
+    pub list_id: String,
+    pub message_count: u32,
+    pub opened_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrappedSuperlatives {
+    pub longest_thread: Option<WrappedLongestThread>,
+    pub most_ghosted: Option<WrappedMostGhosted>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrappedLongestThread {
+    pub thread_id: ThreadId,
+    pub subject: String,
+    pub message_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrappedMostGhosted {
+    pub email: String,
+    pub inbound_count: u32,
+    pub outbound_count: u32,
+}
+
 // -- ResponseTime ------------------------------------------------------------
 
 /// Aggregate response-time summary for `mxr response-time`. p50/p90 in

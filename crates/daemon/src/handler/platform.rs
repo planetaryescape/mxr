@@ -26,6 +26,25 @@ pub(super) async fn list_storage_breakdown(
     diagnostics_impl::list_storage_breakdown(state, account_id, group_by, limit).await
 }
 
+pub(super) async fn list_largest_messages(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    since_days: Option<u32>,
+    limit: u32,
+) -> HandlerResult {
+    diagnostics_impl::list_largest_messages(state, account_id, since_days, limit).await
+}
+
+pub(super) async fn wrapped(
+    state: &AppState,
+    account_id: Option<&AccountId>,
+    since_unix: i64,
+    until_unix: i64,
+    label: &str,
+) -> HandlerResult {
+    diagnostics_impl::wrapped(state, account_id, since_unix, until_unix, label).await
+}
+
 pub(super) async fn list_stale_threads(
     state: &AppState,
     account_id: Option<&AccountId>,

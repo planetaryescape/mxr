@@ -18,6 +18,7 @@ impl App {
             }
             AccountFormMode::ImapSmtp => 16,
             AccountFormMode::SmtpOnly => 10,
+            AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => 6,
         }
     }
 
@@ -65,6 +66,11 @@ impl App {
         } else {
             form.gmail_token_ref.trim().to_string()
         };
+        let outlook_token_ref = if form.outlook_token_ref.trim().is_empty() {
+            format!("mxr/{key}-outlook")
+        } else {
+            form.outlook_token_ref.trim().to_string()
+        };
         let sync = match form.mode {
             AccountFormMode::Gmail => Some(mxr_protocol::AccountSyncConfigData::Gmail {
                 credential_source: form.gmail_credential_source.clone(),
@@ -90,9 +96,43 @@ impl App {
                 use_tls: true,
             }),
             AccountFormMode::SmtpOnly => None,
+            AccountFormMode::OutlookPersonal => {
+                let client_id = if form.outlook_client_id.trim().is_empty() {
+                    None
+                } else {
+                    Some(form.outlook_client_id.trim().to_string())
+                };
+                Some(mxr_protocol::AccountSyncConfigData::OutlookPersonal {
+                    client_id,
+                    token_ref: outlook_token_ref.clone(),
+                })
+            }
+            AccountFormMode::OutlookWork => {
+                let client_id = if form.outlook_client_id.trim().is_empty() {
+                    None
+                } else {
+                    Some(form.outlook_client_id.trim().to_string())
+                };
+                Some(mxr_protocol::AccountSyncConfigData::OutlookWork {
+                    client_id,
+                    token_ref: outlook_token_ref.clone(),
+                })
+            }
         };
         let send = match form.mode {
             AccountFormMode::Gmail => Some(mxr_protocol::AccountSendConfigData::Gmail),
+            AccountFormMode::OutlookPersonal => {
+                Some(mxr_protocol::AccountSendConfigData::OutlookPersonal {
+                    client_id: None,
+                    token_ref: outlook_token_ref,
+                })
+            }
+            AccountFormMode::OutlookWork => {
+                Some(mxr_protocol::AccountSendConfigData::OutlookWork {
+                    client_id: None,
+                    token_ref: outlook_token_ref,
+                })
+            }
             AccountFormMode::ImapSmtp | AccountFormMode::SmtpOnly => {
                 Some(mxr_protocol::AccountSendConfigData::Smtp {
                     host: form.smtp_host.trim().to_string(),
@@ -241,6 +281,7 @@ impl App {
                     });
                 }
             }
+            AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => {}
             AccountFormMode::SmtpOnly => {
                 let mut send_issues = Vec::new();
                 if form.smtp_host.trim().is_empty() {
@@ -290,6 +331,8 @@ impl App {
                 auth,
                 sync,
                 send,
+                device_code_url: None,
+                device_code_user_code: None,
             },
             first_invalid.unwrap_or(0),
         ))
@@ -328,10 +371,14 @@ impl App {
         match (self.accounts.page.form.mode, forward) {
             (AccountFormMode::Gmail, true) => AccountFormMode::ImapSmtp,
             (AccountFormMode::ImapSmtp, true) => AccountFormMode::SmtpOnly,
-            (AccountFormMode::SmtpOnly, true) => AccountFormMode::Gmail,
-            (AccountFormMode::Gmail, false) => AccountFormMode::SmtpOnly,
+            (AccountFormMode::SmtpOnly, true) => AccountFormMode::OutlookPersonal,
+            (AccountFormMode::OutlookPersonal, true) => AccountFormMode::OutlookWork,
+            (AccountFormMode::OutlookWork, true) => AccountFormMode::Gmail,
+            (AccountFormMode::Gmail, false) => AccountFormMode::OutlookWork,
             (AccountFormMode::ImapSmtp, false) => AccountFormMode::Gmail,
             (AccountFormMode::SmtpOnly, false) => AccountFormMode::ImapSmtp,
+            (AccountFormMode::OutlookPersonal, false) => AccountFormMode::SmtpOnly,
+            (AccountFormMode::OutlookWork, false) => AccountFormMode::OutlookPersonal,
         }
     }
 
@@ -343,6 +390,7 @@ impl App {
             form.email.trim(),
             form.gmail_client_id.trim(),
             form.gmail_client_secret.trim(),
+            form.outlook_client_id.trim(),
             form.imap_host.trim(),
             form.imap_username.trim(),
             form.imap_password_ref.trim(),
@@ -425,14 +473,25 @@ impl App {
     }
 
     pub(super) fn refresh_account_form_derived_fields(&mut self) {
-        if matches!(self.accounts.page.form.mode, AccountFormMode::Gmail) {
-            let key = self.accounts.page.form.key.trim();
-            let token_ref = if key.is_empty() {
-                String::new()
-            } else {
-                format!("mxr/{key}-gmail")
-            };
-            self.accounts.page.form.gmail_token_ref = token_ref;
+        let key = self.accounts.page.form.key.trim().to_string();
+        match self.accounts.page.form.mode {
+            AccountFormMode::Gmail => {
+                let token_ref = if key.is_empty() {
+                    String::new()
+                } else {
+                    format!("mxr/{key}-gmail")
+                };
+                self.accounts.page.form.gmail_token_ref = token_ref;
+            }
+            AccountFormMode::OutlookPersonal | AccountFormMode::OutlookWork => {
+                let token_ref = if key.is_empty() {
+                    String::new()
+                } else {
+                    format!("mxr/{key}-outlook")
+                };
+                self.accounts.page.form.outlook_token_ref = token_ref;
+            }
+            _ => {}
         }
     }
 
@@ -487,11 +546,11 @@ impl App {
         self.accounts.page.status = Some(result.summary.clone());
         self.accounts.page.last_result = Some(result.clone());
         self.accounts.page.form.last_result = Some(result.clone());
-        self.accounts.page.form.gmail_authorized = result
-            .auth
-            .as_ref()
-            .map(|step| step.ok)
-            .unwrap_or(self.accounts.page.form.gmail_authorized);
+        let auth_ok = result.auth.as_ref().map(|step| step.ok);
+        self.accounts.page.form.gmail_authorized =
+            auth_ok.unwrap_or(self.accounts.page.form.gmail_authorized);
+        self.accounts.page.form.outlook_authorized =
+            auth_ok.unwrap_or(self.accounts.page.form.outlook_authorized);
         if result.save.as_ref().is_some_and(|step| step.ok) {
             self.accounts.page.new_account_draft = None;
             self.accounts.page.resume_new_account_draft_prompt_open = false;

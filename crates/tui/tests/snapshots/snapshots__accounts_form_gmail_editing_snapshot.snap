@@ -1,10 +1,9 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 553
 expression: snapshot
 ---
 "                                                              ┌ Account Mode ──────────────────────┐"
-"                                                              │ Gmail │ IMAP + SMTP │ SMTP only    │"
+"                                                              │ Gmail │ IMAP + SMTP │ SMTP only │ O│"
 "                                                              └────────────────────────────────────┘"
 "                                                              ┌ Account Form ──────────────────────┐"
 "                                                              │Mode              Gmail             │"
@@ -14,7 +13,7 @@ expression: snapshot
 "                                                              │Credential source Bundled           │"
 "                                                              │Token ref         mxr/work-gmail    │"
 "                                                              │                                    │"
-"                                                              │Auth state: not verified            │"
+"                                                              │Auth state: not authorized          │"
 "                                                              │                                    │"
 "                                                              │Tip: type to edit. Enter or Esc     │"
 "                                                              │finishes. Tab and Shift-Tab jump    │"

@@ -779,7 +779,7 @@ fn sane_search_sort_timestamp(timestamp: i64) -> i64 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "semantic-local"))]
 mod tests {
     use super::*;
     use crate::state::AppState;
@@ -788,7 +788,6 @@ mod tests {
 
     // Semantic chunk persistence runs on the semantic worker, which only spins up
     // with the `semantic-local` feature; without it the chunk poll never resolves.
-    #[cfg(feature = "semantic-local")]
     #[tokio::test]
     async fn sync_now_persists_semantic_chunks_without_embeddings_when_semantic_is_disabled() {
         let state = Arc::new(AppState::in_memory().await.unwrap());

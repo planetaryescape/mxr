@@ -993,6 +993,14 @@ pub enum AccountSyncConfigData {
         auth_required: bool,
         use_tls: bool,
     },
+    OutlookPersonal {
+        client_id: Option<String>,
+        token_ref: String,
+    },
+    OutlookWork {
+        client_id: Option<String>,
+        token_ref: String,
+    },
     /// In-memory provider used for CLI smoke tests. Not for production use.
     Fake,
 }
@@ -1011,12 +1019,26 @@ pub struct AccountOperationResult {
     pub auth: Option<AccountOperationStep>,
     pub sync: Option<AccountOperationStep>,
     pub send: Option<AccountOperationStep>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_code_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_code_user_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AccountSendConfigData {
     Gmail,
+    OutlookPersonal {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_id: Option<String>,
+        token_ref: String,
+    },
+    OutlookWork {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_id: Option<String>,
+        token_ref: String,
+    },
     Smtp {
         host: String,
         port: u16,

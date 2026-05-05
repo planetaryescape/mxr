@@ -13,6 +13,7 @@ use futures::stream::{self, StreamExt, TryStreamExt};
 use mxr_core::id::AccountId;
 use mxr_core::provider::MailSyncProvider;
 use mxr_core::types::*;
+pub use session::XOAuth2ImapSessionFactory;
 use session::{ImapSessionFactory, RealImapSessionFactory};
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};
@@ -50,8 +51,7 @@ impl ImapProvider {
         }
     }
 
-    /// Constructor for tests and benchmarks — inject a custom session factory.
-    #[doc(hidden)]
+    /// Constructor that accepts a custom session factory (e.g. XOAuth2ImapSessionFactory).
     pub fn with_session_factory(
         account_id: AccountId,
         _config: ImapConfig,

@@ -382,6 +382,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::archive(message_id, search, yes, dry_run).await?;
         }
+        Some(Command::Undo { mutation_id }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::mutations::undo(mutation_id).await?;
+        }
         Some(Command::ReadArchive {
             message_id,
             search,

@@ -470,6 +470,153 @@ fn cli_journey_compose_send_response_carries_message_id_matching_search() {
     );
 }
 
+/// Phase 1.4 / Behaviors 1+2+3+6: archive a message via the CLI, parse
+/// the printed `mxr undo <id>` hint, and run undo to verify the message
+/// is back in the inbox label index.
+#[test]
+fn cli_journey_archive_then_undo_restores_inbox() {
+    let _guard = cli_journey_guard();
+    let temp = TempDir::new().expect("temp dir");
+    let instance = unique_instance_name();
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let socket_path = instance_socket_path(&instance);
+    let pid_path = data_dir.join("daemon.pid");
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    write_fake_config(&config_dir);
+
+    let mut daemon = DaemonGuard {
+        socket_path: socket_path.clone(),
+        pid_path,
+        pid: None,
+    };
+
+    let status = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["status", "--format", "json"],
+    );
+    daemon.pid = status["daemon_pid"].as_u64();
+    assert!(daemon.pid.is_some(), "daemon should auto-start");
+
+    run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["sync", "--wait", "--wait-timeout-secs", "30"],
+    );
+
+    // Pick a single inbox-tagged message via search.
+    let inbox = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "search",
+            "label:inbox",
+            "--format",
+            "json",
+            "--limit",
+            "10",
+        ],
+    );
+    let target_id = inbox
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|item| item["message_id"].as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| panic!("fixture must yield at least one inbox message; got: {inbox:#}"));
+
+    // Archive it via the CLI. Capture stdout so we can extract the
+    // mutation_id printed by handle_mutation_response.
+    let archive = run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["archive", &target_id, "--yes"],
+    );
+    let mutation_id = archive
+        .stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("Undo with: mxr undo ").map(str::to_string))
+        .unwrap_or_else(|| {
+            panic!(
+                "archive --yes must print `Undo with: mxr undo <id>`; stdout={:?}",
+                archive.stdout
+            )
+        });
+
+    // Sanity: the message has left the inbox label index.
+    let inbox_after = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "search",
+            "label:inbox",
+            "--format",
+            "json",
+            "--limit",
+            "100",
+        ],
+    );
+    let in_inbox_after = inbox_after
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .any(|item| item["message_id"].as_str() == Some(target_id.as_str()))
+        })
+        .unwrap_or(false);
+    assert!(
+        !in_inbox_after,
+        "post-archive: {target_id} must not be in `label:inbox`"
+    );
+
+    // Undo via the CLI. Restores INBOX both locally and on the fake
+    // provider. The output is just "Undone".
+    let undone = run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["undo", mutation_id.trim()],
+    );
+    assert!(
+        undone.stdout.to_lowercase().contains("undone"),
+        "undo must print confirmation; got stdout={:?}",
+        undone.stdout
+    );
+
+    // Post-undo: message back in the inbox label index. Strong assertion
+    // — exact id match, not a fuzzy contains.
+    let inbox_post = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &[
+            "search",
+            "label:inbox",
+            "--format",
+            "json",
+            "--limit",
+            "100",
+        ],
+    );
+    let restored = inbox_post
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .any(|item| item["message_id"].as_str() == Some(target_id.as_str()))
+        })
+        .unwrap_or(false);
+    assert!(
+        restored,
+        "post-undo: {target_id} must reappear in `label:inbox`; got {:?}",
+        inbox_post
+    );
+}
+
 fn write_fake_config(config_dir: &Path) {
     let toml = r#"[general]
 default_account = "fake"

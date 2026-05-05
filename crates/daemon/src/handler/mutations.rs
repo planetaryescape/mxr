@@ -367,6 +367,13 @@ async fn restore_snapshot(
         }
     }
 
+    // Refresh the Tantivy index so `mxr search label:inbox` (and friends)
+    // see the restored state immediately. Mirror what
+    // `apply_mutation_to_envelope` does at the end of every mutation.
+    reindex_message_in_search(state, &snapshot.message_id)
+        .await
+        .map_err(SnapshotError::Other)?;
+
     Ok(())
 }
 

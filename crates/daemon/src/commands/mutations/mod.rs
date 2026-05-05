@@ -5,6 +5,25 @@ mod helpers;
 pub use attachments::{attachments_download, attachments_list, attachments_open};
 pub use compose::{compose, drafts, forward, reply, reply_all, send_draft, ComposeOptions};
 
+/// CLI surface for `mxr undo <mutation_id>`.
+///
+/// Sends `Request::UndoMutation` and prints the success message or the
+/// daemon's specific failure (NotFound / WindowExpired / Irreversible).
+pub async fn undo(mutation_id: String) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let resp = client.request(Request::UndoMutation { mutation_id }).await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => {
+            println!("Undone");
+            Ok(())
+        }
+        Response::Error { message } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+}
+
 use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};

@@ -227,6 +227,9 @@ pub(super) fn handle_mutation_response(
                     result.failed
                 );
             }
+            if let Some(mutation_id) = result.mutation_id.as_deref() {
+                println!("Undo with: mxr undo {mutation_id}");
+            }
         }
         Response::Error { message } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),

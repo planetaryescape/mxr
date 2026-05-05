@@ -252,22 +252,33 @@ fn draw_form(
     frame.render_widget(&condition_editor, editor_chunks[0]);
     frame.render_widget(&action_editor, editor_chunks[1]);
 
+    let mut example_lines = vec![
+        Line::from("Starter recipes"),
+        Line::from("from:github.com → add-label:GitHub"),
+        Line::from("label:newsletters → mark-read"),
+        Line::from("from:billing@ → shell:notify-send 'Bill'"),
+        Line::from(""),
+        Line::from("Need nested AND/OR? mxr rules add --json"),
+    ];
+    if let Some(error) = form.validation_error.as_deref() {
+        example_lines.insert(0, Line::from(""));
+        example_lines.insert(
+            0,
+            Line::from(Span::styled(
+                error.to_string(),
+                Style::default().fg(theme.error).bold(),
+            )),
+        );
+    }
     frame.render_widget(
-        Paragraph::new(vec![
-            Line::from("Starter recipes"),
-            Line::from("from:github.com"),
-            Line::from("action: add_label(\"GitHub\")"),
-            Line::from(""),
-            Line::from("label:newsletters"),
-            Line::from("action: mark_read(); archive()"),
-        ])
-        .block(
-            Block::default()
-                .title(" Examples ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.accent)),
-        )
-        .wrap(Wrap { trim: false }),
+        Paragraph::new(example_lines)
+            .block(
+                Block::default()
+                    .title(" Examples ")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme.accent)),
+            )
+            .wrap(Wrap { trim: false }),
         chunks[2],
     );
 }

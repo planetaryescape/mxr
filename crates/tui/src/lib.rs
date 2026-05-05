@@ -6728,6 +6728,98 @@ mod tests {
         }
     }
 
+    /// Phase 2.4 / Behavior 1: a rule form filled with a `shell:command`
+    /// action submits a `Request::UpsertRuleForm` whose `action`
+    /// string round-trips losslessly to the daemon-side parser. Locks
+    /// in the contract that the TUI doesn't need to learn the
+    /// `RuleAction::ShellHook` shape — the parser owns translation.
+    #[test]
+    fn rule_form_save_with_shell_hook_action_is_accepted() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.rules.page.form.visible = true;
+        app.rules.page.form.name = "Notify on bills".into();
+        app.rules.page.form.condition = "from:billing@example.com".into();
+        app.rules.page.form.action = "shell:notify-send 'Bill arrived'".into();
+        app.rules.page.form.priority = "100".into();
+        app.rules.page.form.enabled = true;
+        app.sync_rule_form_editors();
+
+        app.apply(Action::SaveRuleForm);
+
+        assert!(
+            app.rules.pending_form_save,
+            "valid shell-hook rule must enqueue a daemon save"
+        );
+        assert!(
+            app.rules.page.form.validation_error.is_none(),
+            "valid form must clear validation_error"
+        );
+    }
+
+    /// Phase 2.4 / Behavior 4: a rule form with `action="shell:"`
+    /// (empty command after the prefix) sets a visible
+    /// `validation_error` and does NOT enqueue a save. Daemons would
+    /// otherwise accept a `ShellHook { command: "" }` rule and fail
+    /// silently every time it tries to fire.
+    #[test]
+    fn rule_form_save_with_empty_shell_command_is_rejected() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.rules.page.form.visible = true;
+        app.rules.page.form.name = "Bad shell".into();
+        app.rules.page.form.condition = "from:any".into();
+        app.rules.page.form.action = "shell:   ".into(); // trim => empty
+        app.sync_rule_form_editors();
+
+        app.apply(Action::SaveRuleForm);
+
+        assert!(
+            !app.rules.pending_form_save,
+            "empty shell command must NOT enqueue a save"
+        );
+        let err = app
+            .rules
+            .page
+            .form
+            .validation_error
+            .as_deref()
+            .expect("validation_error must surface for empty shell command");
+        assert!(
+            err.to_lowercase().contains("shell"),
+            "validation_error should mention shell; got {err:?}"
+        );
+    }
+
+    /// Phase 2.4: blank action surfaces a validation_error pointing
+    /// users at the example syntax. Catches "form silently submits
+    /// nothing → daemon returns generic Unsupported action" UX.
+    #[test]
+    fn rule_form_save_with_blank_action_is_rejected_with_examples() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.rules.page.form.visible = true;
+        app.rules.page.form.name = "Empty action".into();
+        app.rules.page.form.condition = "from:any".into();
+        app.rules.page.form.action = "  ".into();
+        app.sync_rule_form_editors();
+
+        app.apply(Action::SaveRuleForm);
+
+        assert!(!app.rules.pending_form_save);
+        let err = app
+            .rules
+            .page
+            .form
+            .validation_error
+            .as_deref()
+            .expect("validation_error must surface for blank action");
+        assert!(
+            err.to_lowercase().contains("action"),
+            "error should mention `action`; got {err:?}"
+        );
+    }
+
     /// Phase 2.3 / Behavior 1: when the diagnostics snapshot reports
     /// an account as unhealthy, `account_unhealthy` returns true.
     /// This is the contract the renderer relies on for the

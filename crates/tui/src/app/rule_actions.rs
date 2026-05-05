@@ -61,10 +61,41 @@ impl App {
             }
             Action::SaveRuleForm => {
                 self.sync_rule_form_strings_from_editors();
+                if let Some(error) = rule_form_validation_error(&self.rules.page.form) {
+                    self.rules.page.form.validation_error = Some(error);
+                    return;
+                }
+                self.rules.page.form.validation_error = None;
                 self.rules.page.status = Some("Saving rule...".into());
                 self.rules.pending_form_save = true;
             }
             _ => unreachable!("action routed to wrong handler"),
         }
     }
+}
+
+/// Phase 2.4: client-side validation for rule form submits. Catches
+/// the cases the daemon would either silently accept (e.g. empty
+/// `shell:` command yielding a no-op rule) or reject far from the
+/// UX with a generic "Unsupported action" string.
+pub(crate) fn rule_form_validation_error(form: &RuleFormState) -> Option<String> {
+    if form.name.trim().is_empty() {
+        return Some("Rule name is required".into());
+    }
+    if form.condition.trim().is_empty() {
+        return Some("Condition is required".into());
+    }
+    let action = form.action.trim();
+    if action.is_empty() {
+        return Some(
+            "Action is required (e.g. archive, add-label:GitHub, shell:notify-send 'New mail')"
+                .into(),
+        );
+    }
+    if let Some(command) = action.strip_prefix("shell:") {
+        if command.trim().is_empty() {
+            return Some("Shell-hook command is required after `shell:`".into());
+        }
+    }
+    None
 }

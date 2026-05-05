@@ -16,6 +16,10 @@ pub struct RuleFormState {
     pub priority: String,
     pub enabled: bool,
     pub active_field: usize,
+    /// Phase 2.4: surfaced to the user when the rule form rejects a
+    /// submit (empty `shell:` command, blank action, etc). Cleared
+    /// on the next successful interaction.
+    pub validation_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]

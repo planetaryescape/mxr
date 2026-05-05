@@ -1984,7 +1984,11 @@ mod tests {
         seed_inbound(&store, &account.id, "carol", 30, now).await;
 
         store.refresh_contacts().await.unwrap();
-        let decay = store.list_contact_decay(None, 30, 50).await.unwrap();
+        // Wide max-lookback so the test isn't bounded by the fixture's age.
+        let decay = store
+            .list_contact_decay(None, 30, 365 * 100, 50)
+            .await
+            .unwrap();
         let emails: Vec<_> = decay.iter().map(|r| r.email.clone()).collect();
         assert_eq!(emails, vec!["alice@example.com"]);
         assert!(decay[0].days_since_inbound >= 59);
@@ -2067,9 +2071,11 @@ mod tests {
         )
         .await;
 
-        let cutoff = now.timestamp() - 14 * 86_400;
+        let older_than = now.timestamp() - 14 * 86_400;
+        // Wide within-window so the 30-day-ago fixtures aren't excluded.
+        let within = now.timestamp() - 365 * 86_400;
         let mine = store
-            .list_stale_threads(None, StaleBallInCourt::Mine, cutoff, 50)
+            .list_stale_threads(None, StaleBallInCourt::Mine, older_than, within, 50)
             .await
             .unwrap();
         let mine_threads: Vec<_> = mine.iter().map(|r| r.thread_id.clone()).collect();
@@ -2078,7 +2084,7 @@ mod tests {
         assert!(mine[0].days_stale >= 29);
 
         let theirs = store
-            .list_stale_threads(None, StaleBallInCourt::Theirs, cutoff, 50)
+            .list_stale_threads(None, StaleBallInCourt::Theirs, older_than, within, 50)
             .await
             .unwrap();
         let theirs_threads: Vec<_> = theirs.iter().map(|r| r.thread_id.clone()).collect();

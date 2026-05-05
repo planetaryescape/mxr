@@ -199,6 +199,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             account_id,
             perspective,
             older_than_days,
+            within_days,
             limit,
         } => {
             platform::list_stale_threads(
@@ -206,6 +207,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                 account_id.as_ref(),
                 *perspective,
                 *older_than_days,
+                *within_days,
                 *limit,
             )
             .await
@@ -220,9 +222,17 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::ListContactDecay {
             account_id,
             threshold_days,
+            max_lookback_days,
             limit,
         } => {
-            platform::list_contact_decay(state, account_id.as_ref(), *threshold_days, *limit).await
+            platform::list_contact_decay(
+                state,
+                account_id.as_ref(),
+                *threshold_days,
+                *max_lookback_days,
+                *limit,
+            )
+            .await
         }
         Request::RefreshContacts => platform::refresh_contacts(state).await,
         Request::RebuildAnalytics => platform::rebuild_analytics(state).await,
@@ -5749,9 +5759,9 @@ mod tests {
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Ack,
+                data: ResponseData::SendReceipt { .. },
             }) => {}
-            other => panic!("Expected Ack, got {:?}", other),
+            other => panic!("Expected SendReceipt, got {:?}", other),
         }
     }
 
@@ -6214,10 +6224,10 @@ mod tests {
             matches!(
                 send_resp.payload,
                 IpcPayload::Response(Response::Ok {
-                    data: ResponseData::Ack
+                    data: ResponseData::SendReceipt { .. }
                 })
             ),
-            "send_stored_draft should return Ack, got {:?}",
+            "send_stored_draft should return SendReceipt, got {:?}",
             send_resp.payload
         );
 

@@ -31,10 +31,18 @@ pub(super) async fn list_stale_threads(
     account_id: Option<&AccountId>,
     perspective: StaleBallInCourt,
     older_than_days: u32,
+    within_days: u32,
     limit: u32,
 ) -> HandlerResult {
-    diagnostics_impl::list_stale_threads(state, account_id, perspective, older_than_days, limit)
-        .await
+    diagnostics_impl::list_stale_threads(
+        state,
+        account_id,
+        perspective,
+        older_than_days,
+        within_days,
+        limit,
+    )
+    .await
 }
 
 pub(super) async fn list_contact_asymmetry(
@@ -50,9 +58,17 @@ pub(super) async fn list_contact_decay(
     state: &AppState,
     account_id: Option<&AccountId>,
     threshold_days: u32,
+    max_lookback_days: u32,
     limit: u32,
 ) -> HandlerResult {
-    diagnostics_impl::list_contact_decay(state, account_id, threshold_days, limit).await
+    diagnostics_impl::list_contact_decay(
+        state,
+        account_id,
+        threshold_days,
+        max_lookback_days,
+        limit,
+    )
+    .await
 }
 
 pub(super) async fn refresh_contacts(state: &AppState) -> HandlerResult {

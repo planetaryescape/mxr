@@ -33,6 +33,7 @@ pub async fn run(
     mine: bool,
     theirs: bool,
     older_than_days: u32,
+    within_days: u32,
     limit: u32,
     account: Option<String>,
     format: Option<OutputFormat>,
@@ -57,6 +58,7 @@ pub async fn run(
             account_id,
             perspective,
             older_than_days,
+            within_days,
             limit,
         })
         .await?;

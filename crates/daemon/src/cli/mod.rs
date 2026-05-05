@@ -112,6 +112,7 @@ pub enum Command {
         format: Option<OutputFormat>,
     },
     /// List senders with unsubscribe support
+    #[command(alias = "unsub")]
     Subscriptions {
         #[arg(long, default_value = "200")]
         limit: u32,
@@ -171,6 +172,11 @@ pub enum Command {
         /// Threshold in days; threads with more recent activity are excluded.
         #[arg(long, default_value = "14")]
         older_than_days: u32,
+        /// Upper bound: threads idle for longer than this are also excluded
+        /// (default ~1 year). Keeps the result actionable instead of
+        /// surfacing decade-old archives. Set high to widen the window.
+        #[arg(long, default_value = "365")]
+        within_days: u32,
         #[arg(long, default_value = "100")]
         limit: u32,
         #[arg(long)]

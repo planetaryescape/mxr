@@ -13,6 +13,8 @@ Options:
           Latest message in thread is outbound (they owe a reply)
       --older-than-days <OLDER_THAN_DAYS>
           Threshold in days; threads with more recent activity are excluded [default: 14]
+      --within-days <WITHIN_DAYS>
+          Upper bound: threads idle for longer than this are also excluded (default ~1 year). Keeps the result actionable instead of surfacing decade-old archives. Set high to widen the window [default: 365]
       --limit <LIMIT>
           [default: 100]
       --account <ACCOUNT>

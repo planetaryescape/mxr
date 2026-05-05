@@ -3,6 +3,10 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use std::time::Instant;
 
+/// Same floor as analytics::EARLIEST_PLAUSIBLE_TS — duplicated rather than
+/// pub(crate)'d to keep modules independent. 2000-01-01 UTC.
+const EARLIEST_PLAUSIBLE_TS: i64 = 946_684_800;
+
 impl super::Store {
     /// Full-table refresh of the `contacts` materialized table. Cheap on small
     /// mailboxes; the plan calls for an incremental fallback past ~100k
@@ -133,16 +137,23 @@ impl super::Store {
         &self,
         account_id: Option<&AccountId>,
         threshold_days: u32,
+        max_lookback_days: u32,
         limit: u32,
     ) -> Result<Vec<ContactDecayRow>, sqlx::Error> {
         let started_at = Instant::now();
         let lim = limit as i64;
         let now_unix = chrono::Utc::now().timestamp();
         let cutoff = now_unix - i64::from(threshold_days) * 86_400;
+        let max_lookback_unix = now_unix - i64::from(max_lookback_days) * 86_400;
+        // Floor at year 2000: messages with epoch-0 Date headers would otherwise
+        // dominate the result. Use whichever is later: the user-asked window or
+        // the hard floor.
+        let lookback_floor = max_lookback_unix.max(EARLIEST_PLAUSIBLE_TS);
         let account_filter: Option<String> = account_id.map(|a| a.as_str());
 
         // Decay = inbound is more recent than outbound by more than threshold.
         // Excludes the boundary (>, not >=) per Slice 13's spec.
+        // Hard floor on last_inbound_at filters out epoch-0 garbage.
         let rows: Vec<(String, Option<String>, i64, Option<i64>)> = sqlx::query_as(
             r#"SELECT
                 email,
@@ -153,16 +164,18 @@ impl super::Store {
               WHERE (?1 IS NULL OR account_id = ?1)
                 AND last_inbound_at IS NOT NULL
                 AND last_inbound_at < ?2
+                AND last_inbound_at >= ?4
                 AND (
                     last_outbound_at IS NULL
                     OR last_outbound_at < last_inbound_at
                 )
-              ORDER BY last_inbound_at ASC
+              ORDER BY last_inbound_at DESC
               LIMIT ?3"#,
         )
         .bind(account_filter)
         .bind(cutoff)
         .bind(lim)
+        .bind(lookback_floor)
         .fetch_all(self.reader())
         .await?;
         trace_query("contacts.list_decay", started_at, rows.len());

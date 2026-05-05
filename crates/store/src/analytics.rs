@@ -3,6 +3,13 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use std::time::Instant;
 
+/// Earliest plausible Unix timestamp for an email date — 2000-01-01 UTC.
+/// Messages with a `date` before this almost always have a corrupt or
+/// unparseable Date: header that fell back to epoch 0 at parse time, and
+/// they pollute time-based analytics. Hardcoded floor; nothing legitimate
+/// in this codebase ever lands earlier.
+const EARLIEST_PLAUSIBLE_TS: i64 = 946_684_800;
+
 /// Reclassify every `direction='unknown'` row using a closure that queries
 /// the account-address lookup. Returns the number of rows updated. Called
 /// by `mxr doctor --rebuild-analytics` (Slice 15).
@@ -140,13 +147,18 @@ impl super::Store {
         &self,
         account_id: Option<&AccountId>,
         perspective: StaleBallInCourt,
-        cutoff_unix: i64,
+        older_than_unix: i64,
+        within_unix: i64,
         limit: u32,
     ) -> Result<Vec<StaleThreadRow>, sqlx::Error> {
         let started_at = Instant::now();
         let lim = limit as i64;
         let account_filter: Option<String> = account_id.map(|a| a.as_str());
         let direction_str = perspective.as_db_str();
+        // Hard floor: drop messages with bogus Date: headers that fell back
+        // to epoch 0 at parse time. Without this, a 1970 spam message ranks
+        // as "the most stale thread ever" forever.
+        let date_floor = within_unix.max(EARLIEST_PLAUSIBLE_TS);
 
         let sql = "WITH thread_latest AS (
                 SELECT
@@ -163,20 +175,22 @@ impl super::Store {
                     ) AS rn
                 FROM messages
                 WHERE (?1 IS NULL OR account_id = ?1)
+                  AND date >= ?5
             )
             SELECT id, thread_id, subject, date, from_email, to_addrs
             FROM thread_latest
             WHERE rn = 1
               AND direction = ?2
               AND date < ?3
-            ORDER BY date ASC
+            ORDER BY date DESC
             LIMIT ?4";
 
         let rows: Vec<(String, String, String, i64, String, String)> = sqlx::query_as(sql)
             .bind(account_filter)
             .bind(direction_str)
-            .bind(cutoff_unix)
+            .bind(older_than_unix)
             .bind(lim)
+            .bind(date_floor)
             .fetch_all(self.reader())
             .await?;
         trace_query("analytics.list_stale_threads", started_at, rows.len());

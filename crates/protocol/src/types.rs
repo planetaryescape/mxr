@@ -154,6 +154,7 @@ pub enum Request {
         account_id: Option<AccountId>,
         perspective: StaleBallInCourt,
         older_than_days: u32,
+        within_days: u32,
         limit: u32,
     },
     ListContactAsymmetry {
@@ -164,6 +165,7 @@ pub enum Request {
     ListContactDecay {
         account_id: Option<AccountId>,
         threshold_days: u32,
+        max_lookback_days: u32,
         limit: u32,
     },
     RefreshContacts,

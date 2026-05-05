@@ -17,9 +17,10 @@ pub async fn run(action: ContactsAction, format: Option<OutputFormat>) -> anyhow
         } => asymmetry(min_inbound, limit, account, format).await,
         ContactsAction::Decay {
             threshold_days,
+            max_lookback_days,
             limit,
             account,
-        } => decay(threshold_days, limit, account, format).await,
+        } => decay(threshold_days, max_lookback_days, limit, account, format).await,
         ContactsAction::Refresh => refresh().await,
     }
 }
@@ -111,6 +112,7 @@ fn render_asymmetry_table(rows: &[ContactAsymmetryRow]) {
 
 async fn decay(
     threshold_days: u32,
+    max_lookback_days: u32,
     limit: u32,
     account: Option<String>,
     format: Option<OutputFormat>,
@@ -125,6 +127,7 @@ async fn decay(
         .request(Request::ListContactDecay {
             account_id,
             threshold_days,
+            max_lookback_days,
             limit,
         })
         .await?;

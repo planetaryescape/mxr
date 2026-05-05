@@ -102,6 +102,11 @@ pub enum ContactsAction {
     Decay {
         #[arg(long, default_value = "30")]
         threshold_days: u32,
+        /// Upper bound: ignore contacts whose last inbound is older than
+        /// this. Default ~3 years keeps focus on relationships you might
+        /// still rebuild; raise for a wider audit.
+        #[arg(long, default_value = "1095")]
+        max_lookback_days: u32,
         #[arg(long, default_value = "50")]
         limit: u32,
         #[arg(long)]

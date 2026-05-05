@@ -88,6 +88,52 @@ impl super::Store {
         Ok(true)
     }
 
+    /// One-shot backfill that scans every classified message with an
+    /// `in_reply_to` header and creates `reply_pairs` rows for those whose
+    /// parent already lives in the local store. Idempotent via
+    /// `INSERT OR IGNORE`; called by `mxr doctor --rebuild-analytics`.
+    /// Returns the number of new pairs.
+    pub async fn backfill_reply_pairs_from_messages(&self) -> Result<u32, sqlx::Error> {
+        let result = sqlx::query(
+            r#"INSERT OR IGNORE INTO reply_pairs (
+                    reply_message_id, parent_message_id, account_id,
+                    counterparty_email, direction,
+                    parent_received_at, replied_at, latency_seconds,
+                    business_hours_latency_seconds, created_at
+                )
+                SELECT
+                    reply.id,
+                    parent.id,
+                    reply.account_id,
+                    CASE
+                        WHEN reply.direction = 'outbound' THEN parent.from_email
+                        ELSE COALESCE(json_extract(parent.to_addrs, '$[0].email'), '')
+                    END,
+                    CASE
+                        WHEN reply.direction = 'outbound' THEN 'i_replied'
+                        ELSE 'they_replied'
+                    END,
+                    parent.date,
+                    reply.date,
+                    MAX(reply.date - parent.date, 0),
+                    NULL,
+                    strftime('%s', 'now')
+                FROM messages reply
+                JOIN messages parent
+                    ON parent.account_id = reply.account_id
+                    AND parent.message_id_header = reply.in_reply_to
+                WHERE reply.in_reply_to IS NOT NULL
+                    AND reply.in_reply_to != ''
+                    AND reply.direction IN ('inbound', 'outbound')
+                    AND parent.message_id_header IS NOT NULL
+                    AND parent.message_id_header != ''
+                    AND reply.id != parent.id"#,
+        )
+        .execute(self.writer())
+        .await?;
+        Ok(result.rows_affected() as u32)
+    }
+
     /// Park a reply for later resolution when the parent isn't available yet.
     /// Backfill `business_hours_latency_seconds` on rows where it's still null.
     /// Cheap idempotent UPDATE per row using the pure helper. Called by the

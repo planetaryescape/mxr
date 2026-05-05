@@ -224,15 +224,24 @@ pub(crate) async fn list_stale_threads(
     account_id: Option<&AccountId>,
     perspective: mxr_core::types::StaleBallInCourt,
     older_than_days: u32,
+    within_days: u32,
     limit: u32,
 ) -> HandlerResult {
     let resolved = account_id
         .cloned()
         .or_else(|| state.default_account_id_opt());
-    let cutoff = chrono::Utc::now().timestamp() - i64::from(older_than_days) * 86_400;
+    let now = chrono::Utc::now().timestamp();
+    let older_than_unix = now - i64::from(older_than_days) * 86_400;
+    let within_unix = now - i64::from(within_days) * 86_400;
     let rows = state
         .store
-        .list_stale_threads(resolved.as_ref(), perspective, cutoff, limit)
+        .list_stale_threads(
+            resolved.as_ref(),
+            perspective,
+            older_than_unix,
+            within_unix,
+            limit,
+        )
         .await
         .map_err(|e| e.to_string())?;
     Ok(ResponseData::StaleThreads { rows })
@@ -259,6 +268,7 @@ pub(crate) async fn list_contact_decay(
     state: &AppState,
     account_id: Option<&AccountId>,
     threshold_days: u32,
+    max_lookback_days: u32,
     limit: u32,
 ) -> HandlerResult {
     let resolved = account_id
@@ -266,7 +276,12 @@ pub(crate) async fn list_contact_decay(
         .or_else(|| state.default_account_id_opt());
     let rows = state
         .store
-        .list_contact_decay(resolved.as_ref(), threshold_days, limit)
+        .list_contact_decay(
+            resolved.as_ref(),
+            threshold_days,
+            max_lookback_days,
+            limit,
+        )
         .await
         .map_err(|e| e.to_string())?;
     Ok(ResponseData::ContactDecay { rows })
@@ -296,11 +311,20 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         .backfill_message_list_ids()
         .await
         .map_err(|e| e.to_string())?;
-    let reply_pairs_resolved = state
+    // First, backfill reply_pairs from already-stored messages — the sync
+    // hook only fires going forward, so existing data needs a one-time scan.
+    // Then resolve any pending rows whose parent has since arrived.
+    let backfilled = state
+        .store
+        .backfill_reply_pairs_from_messages()
+        .await
+        .map_err(|e| e.to_string())?;
+    let pending_resolved = state
         .store
         .reconcile_reply_pair_pending()
         .await
         .map_err(|e| e.to_string())?;
+    let reply_pairs_resolved = backfilled + pending_resolved;
     let business_hours_backfilled = state
         .store
         .backfill_business_hours_latency()

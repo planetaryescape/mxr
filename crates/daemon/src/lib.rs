@@ -218,12 +218,22 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             mine,
             theirs,
             older_than_days,
+            within_days,
             limit,
             account,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::stale::run(mine, theirs, older_than_days, limit, account, format).await?;
+            commands::stale::run(
+                mine,
+                theirs,
+                older_than_days,
+                within_days,
+                limit,
+                account,
+                format,
+            )
+            .await?;
         }
         Some(Command::Contacts { action, format }) => {
             crate::server::ensure_daemon_running().await?;

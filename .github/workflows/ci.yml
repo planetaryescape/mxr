@@ -64,7 +64,11 @@ jobs:
               while IFS= read -r path; do
                 [[ -z "${path}" ]] && continue
                 case "${path}" in
-                  Cargo.toml|Cargo.lock|deny.toml|rust-toolchain*|build.rs|crates/*|src/*|tests/*|benches/*|examples/*|.sqlx/*|scripts/test_quality_audit.sh|scripts/check_architecture_boundaries.sh)
+                  Cargo.toml|Cargo.lock|rust-toolchain*|build.rs|crates/*|src/*|.sqlx/*)
+                    rust=true
+                    desktop=true
+                    ;;
+                  deny.toml|tests/*|benches/*|examples/*|scripts/test_quality_audit.sh|scripts/check_architecture_boundaries.sh)
                     rust=true
                     ;;
                   site/*)
@@ -258,8 +262,9 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+      - run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config xvfb
       - run: npm ci
+      - run: npm run sync-version:check
       - run: npm test
       - run: npm run build
       - run: cargo build --release -p mxr
@@ -269,6 +274,7 @@ jobs:
           BUNDLED_MXR=$(find out -type f \( -path '*resources/bin/mxr' -o -path '*Resources/bin/mxr' \) ! -path '*resources/app/*' ! -path '*Resources/app/*' -print -quit)
           test -n "$BUNDLED_MXR"
           "$BUNDLED_MXR" status --format json | grep '"protocol_version"'
+      - run: xvfb-run -a npm run smoke:packaged -- --platform=linux --arch=x64
 
   build:
     name: Build

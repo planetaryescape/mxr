@@ -95,7 +95,11 @@ if relevant_diff "apps/desktop/package-lock.json" "${package_json_ignore}"; then
   desktop_source_changed=true
 fi
 
-desktop_changed="${desktop_source_changed}"
+if [[ "${cli_changed}" == true || "${desktop_source_changed}" == true ]]; then
+  desktop_changed=true
+else
+  desktop_changed=false
+fi
 
 has_artifacts=false
 if [[ "${cli_changed}" == true || "${desktop_changed}" == true ]]; then
@@ -107,7 +111,7 @@ fi
 # tag contains only version bumps (e.g. when an earlier failed release
 # already absorbed the feature changes). Force CLI artifacts in this case.
 head_subject="$(git log -1 --pretty=%s "${head_ref}" 2>/dev/null || echo "")"
-if [[ "${head_subject}" =~ ^release:\ prepare\ mxr\ [0-9]+\.[0-9]+\.[0-9]+ ]]; then
+if printf '%s\n' "${head_subject}" | grep -Eq '^release: prepare mxr [0-9]+\.[0-9]+\.[0-9]+($|[[:space:]])'; then
   cli_changed=true
   desktop_changed=true
   has_artifacts=true

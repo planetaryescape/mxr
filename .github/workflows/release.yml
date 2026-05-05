@@ -70,7 +70,7 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - uses: actions/setup-node@v6
-        if: needs.plan.outputs.desktop_source_changed == 'true'
+        if: needs.plan.outputs.desktop_changed == 'true'
         with:
           node-version: 24
           cache: npm
@@ -78,7 +78,7 @@ jobs:
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config fakeroot dpkg rpm xvfb
 
       - name: Install cross
         if: matrix.use_cross
@@ -114,38 +114,59 @@ jobs:
         run: shasum -a 256 "${{ env.ARCHIVE }}" > "${{ env.ARCHIVE }}.sha256"
 
       - name: Install desktop dependencies
-        if: needs.plan.outputs.desktop_source_changed == 'true'
+        if: needs.plan.outputs.desktop_changed == 'true'
         working-directory: apps/desktop
         run: npm ci
 
+      - name: Check desktop version sync
+        if: needs.plan.outputs.desktop_changed == 'true'
+        working-directory: apps/desktop
+        run: npm run sync-version:check
+
       - name: Package desktop
-        if: needs.plan.outputs.desktop_source_changed == 'true'
+        if: needs.plan.outputs.desktop_changed == 'true'
         working-directory: apps/desktop
         env:
           MXR_DESKTOP_BUNDLED_BINARY: ../../target/${{ matrix.target }}/release/mxr
         run: npm run make -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
 
       - name: Smoke packaged desktop bundle
-        if: needs.plan.outputs.desktop_source_changed == 'true'
+        if: needs.plan.outputs.desktop_changed == 'true'
         working-directory: apps/desktop
         run: |
           BUNDLED_MXR=$(find out -type f \( -path '*resources/bin/mxr' -o -path '*Resources/bin/mxr' \) ! -path '*resources/app/*' ! -path '*Resources/app/*' -print -quit)
           test -n "$BUNDLED_MXR"
           "$BUNDLED_MXR" status --format json | grep '"protocol_version"'
 
+      - name: Smoke packaged desktop app
+        if: needs.plan.outputs.desktop_changed == 'true'
+        working-directory: apps/desktop
+        run: |
+          if [ "${{ matrix.desktop_platform }}" = "linux" ]; then
+            xvfb-run -a npm run smoke:packaged -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
+          else
+            npm run smoke:packaged -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
+          fi
+
       - name: Collect desktop archive
-        if: needs.plan.outputs.desktop_source_changed == 'true'
+        if: needs.plan.outputs.desktop_changed == 'true'
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          DESKTOP_ARCHIVE="mxr-v${VERSION}-${{ matrix.desktop_archive }}"
-          DESKTOP_ZIP=$(find apps/desktop/out/make -name '*.zip' -print -quit)
-          test -n "${DESKTOP_ZIP}"
-          cp "${DESKTOP_ZIP}" "${DESKTOP_ARCHIVE}"
-          echo "DESKTOP_ARCHIVE=${DESKTOP_ARCHIVE}" >> "$GITHUB_ENV"
+          mkdir -p desktop-artifacts
+          find apps/desktop/out/make -type f \( -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' \) -print0 |
+            while IFS= read -r -d '' artifact; do
+              ext="${artifact##*.}"
+              cp "${artifact}" "desktop-artifacts/mxr-v${VERSION}-desktop-${{ matrix.desktop_platform }}-${{ matrix.desktop_arch }}.${ext}"
+            done
+          test "$(find desktop-artifacts -type f | wc -l | tr -d ' ')" -gt 0
 
       - name: Generate desktop SHA256 checksum
-        if: needs.plan.outputs.desktop_source_changed == 'true'
-        run: shasum -a 256 "${{ env.DESKTOP_ARCHIVE }}" > "${{ env.DESKTOP_ARCHIVE }}.sha256"
+        if: needs.plan.outputs.desktop_changed == 'true'
+        run: |
+          find desktop-artifacts -type f ! -name '*.sha256' -print0 |
+            while IFS= read -r -d '' artifact; do
+              shasum -a 256 "${artifact}" > "${artifact}.sha256"
+            done
 
       - uses: actions/upload-artifact@v7
         if: needs.plan.outputs.cli_changed == 'true'
@@ -156,12 +177,10 @@ jobs:
             ${{ env.ARCHIVE }}.sha256
 
       - uses: actions/upload-artifact@v7
-        if: needs.plan.outputs.desktop_source_changed == 'true'
+        if: needs.plan.outputs.desktop_changed == 'true'
         with:
           name: ${{ matrix.target }}-desktop
-          path: |
-            ${{ env.DESKTOP_ARCHIVE }}
-            ${{ env.DESKTOP_ARCHIVE }}.sha256
+          path: desktop-artifacts/*
 
   github-release:
     name: GitHub Release

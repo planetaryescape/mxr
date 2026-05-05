@@ -156,20 +156,67 @@ pub(crate) async fn resolve_compose_account(
     }
 }
 
+/// Phase 3.2: structured error from compose validation. Carries the
+/// full list of issues (and a category) so the caller can render
+/// each on its own line in an `ErrorModalState` instead of jamming
+/// them into a single status_message string the user can lose by
+/// pressing any key.
+#[derive(Debug, Clone)]
+pub(crate) struct ComposeValidationError {
+    pub kind: ComposeValidationKind,
+    pub issues: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ComposeValidationKind {
+    /// Filesystem / parser error. Single-issue case but kept structured
+    /// so the renderer doesn't need to special-case it.
+    System,
+    /// Per-field validation failures (missing To, missing subject, etc).
+    DraftIssues,
+}
+
+impl ComposeValidationError {
+    pub(crate) fn modal_title(&self) -> &'static str {
+        match self.kind {
+            ComposeValidationKind::System => "Compose Failed",
+            ComposeValidationKind::DraftIssues => "Draft Has Errors",
+        }
+    }
+
+    pub(crate) fn modal_detail(&self) -> String {
+        // One issue per line so the user can scan; ErrorModal's Paragraph
+        // renders newlines as separate lines.
+        self.issues
+            .iter()
+            .map(|issue| format!("• {issue}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
 pub(crate) async fn pending_send_from_edited_draft(
     data: &ComposeReadyData,
-) -> Result<Option<PendingSend>, String> {
+) -> Result<Option<PendingSend>, ComposeValidationError> {
     let content = mxr_compose::read_draft_file_async(&data.draft_path)
         .await
-        .map_err(|e| format!("Failed to read draft: {e}"))?;
+        .map_err(|e| ComposeValidationError {
+            kind: ComposeValidationKind::System,
+            issues: vec![format!("Failed to read draft: {e}")],
+        })?;
     let unchanged = content == data.initial_content;
 
-    let (fm, body) = mxr_compose::frontmatter::parse_compose_file(&content)
-        .map_err(|e| format!("Parse error: {e}"))?;
+    let (fm, body) =
+        mxr_compose::frontmatter::parse_compose_file(&content).map_err(|e| ComposeValidationError {
+            kind: ComposeValidationKind::System,
+            issues: vec![format!("Parse error: {e}")],
+        })?;
     let save_issues = mxr_compose::validate_draft_for_save(&fm, &body);
     if save_issues.iter().any(|issue| issue.is_error()) {
-        let msgs: Vec<String> = save_issues.iter().map(|issue| issue.to_string()).collect();
-        return Err(format!("Draft errors: {}", msgs.join("; ")));
+        return Err(ComposeValidationError {
+            kind: ComposeValidationKind::DraftIssues,
+            issues: save_issues.iter().map(|issue| issue.to_string()).collect(),
+        });
     }
 
     let send_issues = mxr_compose::validate_draft(&fm, &body);
@@ -183,8 +230,10 @@ pub(crate) async fn pending_send_from_edited_draft(
     {
         PendingSendMode::DraftOnlyNoRecipients
     } else {
-        let msgs: Vec<String> = send_issues.iter().map(|issue| issue.to_string()).collect();
-        return Err(format!("Draft errors: {}", msgs.join("; ")));
+        return Err(ComposeValidationError {
+            kind: ComposeValidationKind::DraftIssues,
+            issues: send_issues.iter().map(|issue| issue.to_string()).collect(),
+        });
     };
 
     Ok(Some(PendingSend {
@@ -207,8 +256,8 @@ pub(crate) async fn handle_compose_editor_status(
                 app.compose.pending_send_confirm = Some(pending);
             }
             Ok(None) => {}
-            Err(message) => {
-                app.status_message = Some(message);
+            Err(error) => {
+                app.report_error(error.modal_title(), error.modal_detail());
             }
         },
         Ok(_) => {
@@ -216,7 +265,54 @@ pub(crate) async fn handle_compose_editor_status(
             let _ = mxr_compose::delete_draft_file_async(&data.draft_path).await;
         }
         Err(error) => {
-            app.status_message = Some(format!("Failed to launch editor: {error}"));
+            app.report_error(
+                "Compose Failed",
+                format!("Failed to launch editor: {error}"),
+            );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ComposeValidationError, ComposeValidationKind};
+
+    /// Phase 3.2 / Behavior 3: multiple validation issues render as a
+    /// bullet list so users see all of them at once instead of just
+    /// the first jammed into a status_message string.
+    #[test]
+    fn multiple_issues_render_as_bullet_list() {
+        let error = ComposeValidationError {
+            kind: ComposeValidationKind::DraftIssues,
+            issues: vec![
+                "Missing To".into(),
+                "Subject is empty".into(),
+                "Body is blank".into(),
+            ],
+        };
+        let detail = error.modal_detail();
+        let lines: Vec<&str> = detail.lines().collect();
+        assert_eq!(lines.len(), 3, "one bullet per issue: {detail}");
+        assert!(lines.iter().all(|l| l.starts_with("• ")));
+        assert!(lines[0].contains("Missing To"));
+        assert!(lines[1].contains("Subject"));
+        assert!(lines[2].contains("Body"));
+    }
+
+    /// Phase 3.2: the modal title differs by kind so users can tell
+    /// system errors (filesystem / parser) apart from draft-content
+    /// problems.
+    #[test]
+    fn modal_title_differs_by_validation_kind() {
+        let system = ComposeValidationError {
+            kind: ComposeValidationKind::System,
+            issues: vec!["Failed to read draft".into()],
+        };
+        let draft = ComposeValidationError {
+            kind: ComposeValidationKind::DraftIssues,
+            issues: vec!["Missing To".into()],
+        };
+        assert_eq!(system.modal_title(), "Compose Failed");
+        assert_eq!(draft.modal_title(), "Draft Has Errors");
     }
 }

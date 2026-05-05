@@ -11,9 +11,13 @@ pub mod fixtures;
 use async_trait::async_trait;
 use mxr_core::id::*;
 use mxr_core::types::*;
-use mxr_core::{MailSendProvider, MailSyncProvider, MxrError, SendReceipt, SyncCapabilities};
+use mxr_core::{
+    IdleWatcher, MailSendProvider, MailSyncProvider, MxrError, SendReceipt, SyncCapabilities,
+};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
+use tokio::sync::Notify;
 
 pub struct FakeProvider {
     account_id: AccountId,
@@ -22,6 +26,10 @@ pub struct FakeProvider {
     labels: Mutex<Vec<Label>>,
     sent: Mutex<Vec<Draft>>,
     mutations: Mutex<Vec<Mutation>>,
+    /// Phase 3.1: when set, `idle_watch` returns a watcher that emits a
+    /// notification each time `idle_trigger.notify_one()` is called.
+    /// Tests use this to simulate server-pushed EXISTS / EXPUNGE events.
+    idle_trigger: Option<Arc<Notify>>,
 }
 
 #[derive(Debug, Clone)]
@@ -72,7 +80,16 @@ impl FakeProvider {
             labels: Mutex::new(labels),
             sent: Mutex::new(Vec::new()),
             mutations: Mutex::new(Vec::new()),
+            idle_trigger: None,
         }
+    }
+
+    /// Enable IDLE watching. Returns the Notify handle test code uses
+    /// to simulate server-pushed events.
+    pub fn enable_idle(&mut self) -> Arc<Notify> {
+        let notify = Arc::new(Notify::new());
+        self.idle_trigger = Some(notify.clone());
+        notify
     }
 
     pub fn sent_drafts(&self) -> Vec<Draft> {
@@ -270,6 +287,25 @@ impl MailSyncProvider for FakeProvider {
             provider_id: provider_message_id.to_string(),
             starred,
         });
+        Ok(())
+    }
+
+    async fn idle_watch(&self) -> Result<Option<Box<dyn IdleWatcher>>, MxrError> {
+        let Some(trigger) = self.idle_trigger.clone() else {
+            return Ok(None);
+        };
+        Ok(Some(Box::new(FakeIdleWatcher { trigger })))
+    }
+}
+
+struct FakeIdleWatcher {
+    trigger: Arc<Notify>,
+}
+
+#[async_trait]
+impl IdleWatcher for FakeIdleWatcher {
+    async fn next_event(&mut self) -> Result<(), MxrError> {
+        self.trigger.notified().await;
         Ok(())
     }
 }

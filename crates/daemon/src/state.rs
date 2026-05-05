@@ -9,7 +9,7 @@ use parking_lot::{Mutex as ParkingMutex, RwLock};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, watch, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{broadcast, watch, Notify, OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinHandle;
 
 pub(crate) struct ProviderSetup {
@@ -137,6 +137,16 @@ pub struct AppState {
     pub account_addresses: Arc<mxr_core::types::InMemoryAccountAddressLookup>,
     runtime: RwLock<ProviderRuntime>,
     sync_loop_accounts: ParkingMutex<HashSet<AccountId>>,
+    /// Phase 3.1: tracks which accounts already have an IDLE watcher
+    /// loop spawned. Mirrors `sync_loop_accounts` so a config reload
+    /// doesn't double-spawn watchers.
+    idle_loop_accounts: ParkingMutex<HashSet<AccountId>>,
+    /// Phase 3.1: per-account `Notify` the IDLE watcher signals when
+    /// the server pushes EXISTS / EXPUNGE / equivalent. The sync loop
+    /// races this against its periodic timer so a notification wakes
+    /// the next sync within a tick instead of waiting for the poll
+    /// interval.
+    idle_notifies: ParkingMutex<HashMap<AccountId, Arc<Notify>>>,
     pub event_tx: broadcast::Sender<IpcMessage>,
     pub start_time: Instant,
     config: RwLock<mxr_config::MxrConfig>,
@@ -204,6 +214,8 @@ impl AppState {
                 default_send_provider: provider_setup.default_send_provider,
             }),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
+            idle_loop_accounts: ParkingMutex::new(HashSet::new()),
+            idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
             start_time: Instant::now(),
             config: RwLock::new(config),
@@ -566,6 +578,30 @@ impl AppState {
         self.runtime_tasks.finish_sync_loop(account_id);
     }
 
+    /// Phase 3.1: returns the per-account `Notify` the IDLE watcher
+    /// signals to wake the sync loop. Created on first request; the
+    /// same handle is shared between watcher and sync loop.
+    pub fn idle_notify_for_account(&self, account_id: &AccountId) -> Arc<Notify> {
+        let mut guard = self.idle_notifies.lock();
+        guard
+            .entry(account_id.clone())
+            .or_insert_with(|| Arc::new(Notify::new()))
+            .clone()
+    }
+
+    /// Phase 3.1: try to claim the right to spawn an IDLE watcher loop
+    /// for `account_id`. Returns true on first call per account so the
+    /// caller knows it's safe to `tokio::spawn`. Subsequent calls
+    /// return false and the caller skips. Mirrors
+    /// `mark_sync_loop_spawned`.
+    pub fn mark_idle_loop_spawned(&self, account_id: &AccountId) -> bool {
+        self.idle_loop_accounts.lock().insert(account_id.clone())
+    }
+
+    pub fn finish_idle_loop(&self, account_id: &AccountId) {
+        self.idle_loop_accounts.lock().remove(account_id);
+    }
+
     pub fn register_reply_pair_reconciler(&self, handle: JoinHandle<()>) {
         self.runtime_tasks.set_reply_pair_reconciler(handle);
     }
@@ -838,6 +874,8 @@ impl AppState {
                 default_send_provider: send_provider,
             }),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
+            idle_loop_accounts: ParkingMutex::new(HashSet::new()),
+            idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
             start_time: Instant::now(),
             config: RwLock::new(config),
@@ -879,6 +917,8 @@ impl AppState {
                 default_send_provider: None,
             }),
             sync_loop_accounts: ParkingMutex::new(HashSet::new()),
+            idle_loop_accounts: ParkingMutex::new(HashSet::new()),
+            idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
             start_time: Instant::now(),
             config: RwLock::new(config),
@@ -946,6 +986,8 @@ impl AppState {
                     default_send_provider: send_provider,
                 }),
                 sync_loop_accounts: ParkingMutex::new(HashSet::new()),
+            idle_loop_accounts: ParkingMutex::new(HashSet::new()),
+            idle_notifies: ParkingMutex::new(HashMap::new()),
                 event_tx,
                 start_time: Instant::now(),
                 config: RwLock::new(config),

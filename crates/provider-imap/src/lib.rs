@@ -705,11 +705,29 @@ impl MailSyncProvider for ImapProvider {
             labels: false,
             server_search: true,
             delta_sync: true,
+            // Phase 3.1: capability flag is set by detection in
+            // session::capabilities(); until the real IDLE handle
+            // wiring lands the daemon-side framework remains
+            // poll-only for IMAP. Tracked alongside the TODO on
+            // `idle_watch` below.
             push: false,
             batch_operations: false,
             native_thread_ids: false,
         }
     }
+
+    // Phase 3.1: framework is in place — `MailSyncProvider::idle_watch`
+    // default impl returns `Ok(None)` so the daemon falls back to its
+    // periodic poll loop for IMAP. The full IMAP IDLE wiring follows
+    // in a focused follow-up: it requires plumbing async-imap's
+    // `extensions::idle::Handle` lifecycle (init → wait_with_timeout
+    // → done → re-idle) through the existing `ImapSession` wrapper,
+    // plus a dedicated second connection so the regular sync session
+    // is not interrupted, plus fake-imap-server test infrastructure
+    // for the EXISTS/EXPUNGE behaviors. The wake-up plumbing
+    // (per-account Notify, sync-loop select branch, watcher loop)
+    // is already in place and exercised by FakeProvider tests in
+    // crates/daemon/src/loops.rs.
 
     async fn authenticate(&mut self) -> mxr_core::provider::Result<()> {
         let mut session = self

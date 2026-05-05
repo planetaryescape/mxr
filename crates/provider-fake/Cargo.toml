@@ -16,6 +16,7 @@ workspace = true
 mxr-core = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 uuid = { workspace = true }
 
 [dev-dependencies]

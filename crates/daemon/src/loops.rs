@@ -13,19 +13,107 @@ use tokio::time::{interval, Duration};
 
 /// Spawn sync loops for all configured accounts.
 pub fn spawn_sync_loops(state: Arc<AppState>) {
-    for (account_id, _) in state.sync_provider_entries() {
-        if !state.mark_sync_loop_spawned(&account_id) {
-            continue;
+    for (account_id, provider) in state.sync_provider_entries() {
+        if state.mark_sync_loop_spawned(&account_id) {
+            let loop_state = state.clone();
+            let task_state = state.clone();
+            let task_account_id = account_id.clone();
+            let handle = tokio::spawn(async move {
+                let shutdown_rx = loop_state.shutdown_receiver();
+                sync_loop_for_account(loop_state, task_account_id.clone(), shutdown_rx).await;
+                task_state.finish_sync_loop(&task_account_id);
+            });
+            state.register_sync_loop_handle(account_id.clone(), handle);
         }
-        let loop_state = state.clone();
-        let task_state = state.clone();
-        let task_account_id = account_id.clone();
-        let handle = tokio::spawn(async move {
-            let shutdown_rx = loop_state.shutdown_receiver();
-            sync_loop_for_account(loop_state, task_account_id.clone(), shutdown_rx).await;
-            task_state.finish_sync_loop(&task_account_id);
-        });
-        state.register_sync_loop_handle(account_id, handle);
+
+        // Phase 3.1: spawn the IDLE watcher iff the provider returns a
+        // watcher from `idle_watch`. Default impl returns Ok(None) so
+        // poll-only providers (Gmail, SMTP, fake-with-no-trigger) skip.
+        if state.mark_idle_loop_spawned(&account_id) {
+            let loop_state = state.clone();
+            let watcher_account_id = account_id.clone();
+            let watcher_provider = provider.clone();
+            let _ = tokio::spawn(async move {
+                let shutdown_rx = loop_state.shutdown_receiver();
+                idle_loop_for_account(
+                    loop_state.clone(),
+                    watcher_account_id.clone(),
+                    watcher_provider,
+                    shutdown_rx,
+                )
+                .await;
+                loop_state.finish_idle_loop(&watcher_account_id);
+            });
+        }
+    }
+}
+
+/// Phase 3.1: per-account IDLE watcher. Calls
+/// `MailSyncProvider::idle_watch` once; if the provider returns a
+/// real watcher, loops calling `next_event`. Each event signals the
+/// per-account `Notify` so the sync loop wakes early instead of
+/// waiting for its periodic timer. On dropped connection, backs off
+/// then re-acquires the watcher (next call to `idle_watch`).
+async fn idle_loop_for_account(
+    state: Arc<AppState>,
+    account_id: mxr_core::id::AccountId,
+    provider: Arc<dyn mxr_core::MailSyncProvider>,
+    mut shutdown_rx: watch::Receiver<bool>,
+) {
+    let notify = state.idle_notify_for_account(&account_id);
+    let mut backoff_secs: u64 = 0;
+    loop {
+        if *shutdown_rx.borrow() {
+            return;
+        }
+        if backoff_secs > 0 {
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(backoff_secs)) => {}
+                changed = shutdown_rx.changed() => {
+                    if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                        return;
+                    }
+                }
+            }
+        }
+
+        let mut watcher = match provider.idle_watch().await {
+            Ok(Some(w)) => w,
+            Ok(None) => {
+                // Provider doesn't support IDLE — exit; the sync loop
+                // continues its periodic poll.
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(account = %account_id, %error, "idle_watch failed; backing off");
+                backoff_secs = (backoff_secs.saturating_mul(2)).clamp(15, 300);
+                continue;
+            }
+        };
+        backoff_secs = 0;
+
+        loop {
+            tokio::select! {
+                event = watcher.next_event() => {
+                    match event {
+                        Ok(()) => {
+                            tracing::debug!(account = %account_id, "idle event; waking sync loop");
+                            notify.notify_one();
+                        }
+                        Err(error) => {
+                            tracing::warn!(account = %account_id, %error, "idle watcher dropped; reconnecting");
+                            backoff_secs = backoff_secs.saturating_add(5).clamp(5, 300);
+                            break;
+                        }
+                    }
+                }
+                changed = shutdown_rx.changed() => {
+                    if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                        return;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -36,6 +124,8 @@ async fn sync_loop_for_account(
 ) {
     let mut backoff_secs: u64 = 0;
     let mut skip_sleep = true;
+    // Phase 3.1: wake the sleep early when an IDLE watcher signals.
+    let idle_notify = state.idle_notify_for_account(&account_id);
 
     loop {
         if *shutdown_rx.borrow() {
@@ -59,6 +149,9 @@ async fn sync_loop_for_account(
             };
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_secs(wait)) => {}
+                _ = idle_notify.notified() => {
+                    tracing::debug!(account = %account_id, "sync loop woken by IDLE notification");
+                }
                 changed = shutdown_rx.changed() => {
                     if changed.is_ok() && *shutdown_rx.borrow_and_update() {
                         tracing::info!(account = %account_id, "Sync loop exiting during backoff: daemon shutdown requested");
@@ -777,6 +870,89 @@ pub async fn snooze_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<
 mod tests {
     use super::*;
     use mxr_protocol::{IpcMessage, IpcPayload, Request, Response, ResponseData};
+
+    /// Phase 3.1 / Behavior 4: a provider whose `idle_watch` returns
+    /// `Ok(None)` (the default) does NOT keep an IDLE loop running.
+    /// The sync loop continues with its periodic poll. Catches
+    /// regressions where the watcher is spawned unconditionally and
+    /// busy-loops re-attempting `idle_watch` on a Gmail / SMTP account.
+    #[tokio::test]
+    async fn idle_loop_exits_immediately_when_provider_does_not_support_idle() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_provider().account_id().clone();
+        let provider = state.default_provider().clone();
+        let (_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+        // Default fake provider has `idle_trigger = None` → idle_watch
+        // returns Ok(None) → loop returns immediately.
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            idle_loop_for_account(state.clone(), account_id, provider, shutdown_rx),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "idle loop must exit promptly when provider has no IDLE"
+        );
+    }
+
+    /// Phase 3.1 / Behavior 1 (TUI-side proxy): an IDLE event from the
+    /// watcher signals the per-account `Notify`, which the sync loop's
+    /// select branch wakes on. We can't run the full sync loop here
+    /// without bringing in the entire sync engine fixture, so this
+    /// test verifies the wake-up plumbing — the watcher fires the
+    /// notification, and the same Notify the sync loop awaits is the
+    /// one that gets fired.
+    #[tokio::test]
+    async fn idle_event_wakes_per_account_notify() {
+        use std::sync::Arc as StdArc;
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_provider().account_id().clone();
+
+        // Enable IDLE on the fake provider. Get the trigger handle so
+        // the test can simulate a server-pushed event.
+        let mut fake = mxr_provider_fake::FakeProvider::new(account_id.clone());
+        let trigger = fake.enable_idle();
+        let provider: StdArc<dyn mxr_core::MailSyncProvider> = StdArc::new(fake);
+
+        // The notify that the sync loop awaits.
+        let notify = state.idle_notify_for_account(&account_id);
+
+        let (_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let watcher_state = state.clone();
+        let watcher_account = account_id.clone();
+        let watcher_handle = tokio::spawn(async move {
+            idle_loop_for_account(watcher_state, watcher_account, provider, shutdown_rx).await
+        });
+
+        // Race: fire the trigger; the watcher's next_event awaits resolve;
+        // notify.notify_one() is called; our notified() future returns.
+        trigger.notify_one();
+
+        let woken = tokio::time::timeout(std::time::Duration::from_secs(2), notify.notified())
+            .await
+            .is_ok();
+        assert!(woken, "Notify must fire within 2s after trigger");
+
+        watcher_handle.abort();
+    }
+
+    /// Phase 3.1: `idle_notify_for_account` returns the same handle on
+    /// repeated calls so watcher and sync loop see the same Notify.
+    /// Catches "each call creates a new Notify" regressions where
+    /// the wake-up never reaches the sync loop.
+    #[tokio::test]
+    async fn idle_notify_for_account_returns_stable_handle() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_provider().account_id().clone();
+        let a = state.idle_notify_for_account(&account_id);
+        let b = state.idle_notify_for_account(&account_id);
+        assert!(
+            std::sync::Arc::ptr_eq(&a, &b),
+            "idle_notify_for_account must return the same Arc"
+        );
+    }
+
 
     #[tokio::test]
     async fn apply_rules_to_messages_marks_message_read_and_logs_history() {

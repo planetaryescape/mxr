@@ -66,6 +66,33 @@ pub trait MailSyncProvider: Send + Sync {
             "Server-side search not supported".into(),
         ))
     }
+
+    /// Phase 3.1: open an IDLE-style watcher that emits a notification
+    /// whenever the server pushes an EXISTS / EXPUNGE / equivalent
+    /// "something changed" event on the watched folder (default: INBOX).
+    ///
+    /// Default impl returns `Ok(None)`, signalling the daemon should
+    /// fall back to its periodic poll loop. Providers that want push
+    /// freshness override this. The watcher owns its own connection;
+    /// the regular sync session is not interrupted.
+    async fn idle_watch(&self) -> Result<Option<Box<dyn IdleWatcher>>> {
+        Ok(None)
+    }
+}
+
+/// Phase 3.1: a long-lived watcher returned by
+/// `MailSyncProvider::idle_watch`. The daemon polls `next_event`
+/// in a loop; each successful return triggers a delta sync for the
+/// owning account. Errors signal a dropped connection — the daemon
+/// reconnects with backoff.
+#[async_trait]
+pub trait IdleWatcher: Send + Sync {
+    /// Wait for the next server-side change notification on the
+    /// watched folder. Implementations should re-issue the protocol
+    /// IDLE command before any vendor-specific timeout (~28 minutes
+    /// for IMAP per RFC 2177) and return `Ok(())` on the next real
+    /// event.
+    async fn next_event(&mut self) -> Result<()>;
 }
 
 #[async_trait]

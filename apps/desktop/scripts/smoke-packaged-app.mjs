@@ -11,6 +11,7 @@ const platform = process.argv.includes("--platform")
 const arch = process.argv.includes("--arch")
   ? process.argv[process.argv.indexOf("--arch") + 1]
   : process.arch;
+const timeoutMs = Number(process.env.MXR_DESKTOP_SMOKE_TIMEOUT_MS ?? "120000");
 
 const executable = findPackagedExecutable(platform, arch);
 const tempDir = await mkdtemp(join(tmpdir(), "mxr-desktop-smoke-"));
@@ -25,22 +26,27 @@ const child = spawn(executable, [`--user-data-dir=${join(tempDir, "profile")}`],
 });
 
 let output = "";
+let spawnError = null;
 child.stdout.on("data", (chunk) => {
   output += chunk.toString();
 });
 child.stderr.on("data", (chunk) => {
   output += chunk.toString();
 });
+child.once("error", (error) => {
+  spawnError = error;
+  output += `${error.stack ?? error.message}\n`;
+});
 
 try {
-  const result = await waitForResult(resultPath, 60_000);
+  const result = await waitForResult(resultPath, timeoutMs);
   if (
     !result.rendererLoaded ||
     !result.preloadApi ||
     result.bridgeKind !== "ready" ||
     !result.mailboxHydrated
   ) {
-    throw new Error(`packaged smoke failed: ${JSON.stringify(result)}`);
+    throw new Error(`packaged smoke failed: ${JSON.stringify(result)}\n${output}`);
   }
   console.log(`Packaged app smoke passed (${platform}/${arch})`);
 } finally {
@@ -79,6 +85,9 @@ function findPackagedExecutable(targetPlatform, targetArch) {
 async function waitForResult(path, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (spawnError) {
+      throw spawnError;
+    }
     if (existsSync(path)) {
       return JSON.parse(await readFile(path, "utf8"));
     }
@@ -91,20 +100,55 @@ async function waitForResult(path, timeoutMs) {
 }
 
 async function terminateChild() {
-  if (child.exitCode != null) {
+  if (child.exitCode != null || child.signalCode != null) {
     return;
   }
 
+  const exit = waitForChildExit();
   child.kill("SIGTERM");
+  const terminated = await raceWithTimeout(
+    exit.then(() => true),
+    2_000,
+    false,
+  );
+  if (terminated) {
+    return;
+  }
+
+  child.kill("SIGKILL");
+  await raceWithTimeout(exit, 2_000, undefined);
+}
+
+async function waitForChildExit() {
+  if (child.exitCode != null || child.signalCode != null) {
+    return;
+  }
+
   await new Promise((resolveExit) => {
-    const killTimer = setTimeout(() => {
-      if (child.exitCode == null) {
-        child.kill("SIGKILL");
-      }
-    }, 2_000);
-    child.once("exit", () => {
-      clearTimeout(killTimer);
+    const finish = () => {
+      child.removeListener("exit", onExit);
+      child.removeListener("error", onError);
       resolveExit();
-    });
+    };
+    const onExit = () => finish();
+    const onError = () => finish();
+    child.once("exit", onExit);
+    child.once("error", onError);
   });
+}
+
+async function raceWithTimeout(promise, timeoutMs, fallback) {
+  let timeoutId = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((resolveTimeout) => {
+        timeoutId = setTimeout(() => resolveTimeout(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }

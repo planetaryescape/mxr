@@ -1,11 +1,4 @@
-import {
-  app,
-  BrowserWindow,
-  dialog,
-  ipcMain,
-  shell,
-  type IpcMainInvokeEvent,
-} from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -73,7 +66,9 @@ async function createWindow(): Promise<void> {
     window.webContents.on("render-process-gone", (_event, details) => {
       console.error(`[renderer:gone] ${details.reason} exitCode=${details.exitCode}`);
     });
-    window.webContents.openDevTools({ mode: "detach" });
+    if (process.env.MXR_DESKTOP_OPEN_DEVTOOLS === "1") {
+      window.webContents.openDevTools({ mode: "detach" });
+    }
   }
 
   window.webContents.on("before-input-event", (event, input) => {
@@ -219,11 +214,9 @@ function shouldEnableMacAutoUpdate(): boolean {
   }
 
   try {
-    execFileSync(
-      "codesign",
-      ["--verify", "--deep", "--strict", app.getPath("exe")],
-      { stdio: "ignore" },
-    );
+    execFileSync("codesign", ["--verify", "--deep", "--strict", app.getPath("exe")], {
+      stdio: "ignore",
+    });
     return true;
   } catch {
     return false;

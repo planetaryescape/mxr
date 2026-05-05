@@ -61,11 +61,29 @@ Where disk is going.
 mxr storage --by sender             # bytes per sender, descending
 mxr storage --by mimetype           # bytes per attachment type
 mxr storage --by label              # bytes per label
+mxr storage --by message            # individual messages by size
 mxr storage --by sender --limit 20 --format json | jq '.'
 ```
 
-Use it to find heavyweight senders (newsletters with attachments, an old
-work inbox), then archive or trash with `mxr search` plus a mutation.
+Four views: three rollups (sender / mimetype / label) and one per-message
+ranking. The first three give you the bucket totals; `--by message` gives
+you the single fattest emails — the 250 MB attachment from a courier
+service, the giant zip a colleague sent in 2017 — with their message IDs
+so you can act on them directly.
+
+```bash
+# Inspect the top 20 single biggest emails.
+mxr storage --by message --limit 20
+
+# Trash all messages from the heaviest sender.
+mxr search "from:noreply@example.com" --format ids | xargs -n1 mxr trash
+
+# Or trash the biggest individual messages directly.
+mxr storage --by message --limit 10 --format ids | xargs -n1 mxr trash
+```
+
+The pattern: any storage view + `--format ids` pipes into `mxr search`
+or directly into a mutation (`mxr trash`, `mxr archive`).
 
 ### Subscriptions
 
@@ -156,6 +174,43 @@ arrival window.
 
 If `Sample size: 0`, run `mxr doctor --rebuild-analytics` — reply pairs
 need at least one rebuild to populate from existing data.
+
+### Wrapped
+
+Year-in-review for your inbox. Like Spotify Wrapped, except it runs
+locally and never phones home.
+
+```bash
+mxr wrapped                          # year-to-date (default)
+mxr wrapped --ytd                    # explicit; same as above
+mxr wrapped --year 2025              # full 2025 calendar year
+mxr wrapped --since-days 90          # last 90 days (quarterly review)
+mxr wrapped --year 2025 --format json | jq '.'
+```
+
+The narrative output covers seven slices:
+
+- **Volume** — sent, received, distinct threads.
+- **When you do email** — busiest weekday, busiest hour-of-day,
+  single busiest calendar day.
+- **Top contacts** — most-emailed-to-me, most-emailed-by-me, most
+  one-sided counterparty.
+- **Reply discipline** — p50/p90 clock-time + business-hours,
+  fastest reply (with target), slowest reply (capped at 30 days so
+  the "8 years later" pathological pairs don't claim the title).
+- **Storage** — total bytes in window, top mimetype, single
+  heaviest message.
+- **Newsletters** — unique lists, top list with open rate, share of
+  inbound that came from a list.
+- **Superlatives** — longest thread, most-ghosted counterparty
+  (≥10 inbound, 0 outbound).
+
+If a slice is missing data (e.g. no reply pairs in the window), the
+section either reports the zero or hints at running
+`mxr doctor --rebuild-analytics`. The JSON output is the full
+`WrappedSummary` for piping into wrappers — your own end-of-year blog
+post, a personal dashboard, a quick agent that mails you the summary on
+Jan 1.
 
 ### Account addresses
 
@@ -334,6 +389,44 @@ The first file is your "reply or hand off before Friday EOD" list. The
 second is for the OOO message ("if you've been waiting on me, please
 hold until next Wednesday"). The third sets the bar your replacement
 or your future self will be measured against.
+
+### Disk reclamation, drill-down edition
+
+*The feeling*: `mxr storage --by sender` showed someone is eating 4 GB
+and you want to delete the actual culprits, not just see a number.
+
+```bash
+# What individual emails are the biggest offenders?
+mxr storage --by message --limit 30
+
+# Same thing but as IDs — pipe into trash for bulk delete.
+mxr storage --by message --limit 30 --format ids | xargs -n1 mxr trash
+
+# Drill into one heavy sender specifically.
+mxr search "from:noreply@example.com has:attachment" --limit 20
+mxr search "from:noreply@example.com has:attachment" --format ids | xargs -n1 mxr trash
+```
+
+Pick the format that matches the action:
+`mxr storage --by sender` for "who's responsible",
+`mxr storage --by mimetype` for "what kind of file",
+`mxr storage --by message` for "which specific emails to delete."
+
+### Wrapped — your year, summarised
+
+*The feeling*: Spotify just sent you Wrapped. You'd like the same thing
+for the inbox you actually live in, without sending your email to a
+third party.
+
+```bash
+mxr wrapped                          # year-to-date
+mxr wrapped --year 2025              # full prior year
+mxr wrapped --since-days 90          # quarterly version
+```
+
+Read the slowest-reply line first; it's almost always the most
+informative one. Pair with `mxr response-time --since-days 365` if you
+want the full distribution and not just the extremes.
 
 ### Year-in-review — without the year-in-review email
 

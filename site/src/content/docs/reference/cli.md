@@ -216,6 +216,12 @@ Notes:
 mxr storage --by sender
 mxr storage --by mimetype
 mxr storage --by label
+mxr storage --by message            # individual messages by size
+mxr storage --by message --format ids | xargs -n1 mxr trash    # bulk-trash the biggest
+
+mxr wrapped                          # year-to-date inbox stats (default)
+mxr wrapped --year 2025
+mxr wrapped --since-days 90
 
 mxr subscriptions --rank          # alias: mxr unsub --rank
 mxr subscriptions --rank --format json

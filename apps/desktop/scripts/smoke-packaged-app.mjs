@@ -44,10 +44,8 @@ try {
   }
   console.log(`Packaged app smoke passed (${platform}/${arch})`);
 } finally {
-  if (!child.killed) {
-    child.kill("SIGTERM");
-  }
-  await rm(tempDir, { force: true, recursive: true });
+  await terminateChild();
+  await rm(tempDir, { force: true, maxRetries: 5, recursive: true, retryDelay: 100 });
 }
 
 function findPackagedExecutable(targetPlatform, targetArch) {
@@ -55,7 +53,15 @@ function findPackagedExecutable(targetPlatform, targetArch) {
   const candidates =
     targetPlatform === "darwin"
       ? [
-          join(root, "out", `mxr-darwin-${releaseArch}`, "mxr.app", "Contents", "MacOS", "mxr-desktop"),
+          join(
+            root,
+            "out",
+            `mxr-darwin-${releaseArch}`,
+            "mxr.app",
+            "Contents",
+            "MacOS",
+            "mxr-desktop",
+          ),
           join(root, "out", `mxr-darwin-${releaseArch}`, "mxr.app", "Contents", "MacOS", "mxr"),
         ]
       : [
@@ -82,4 +88,23 @@ async function waitForResult(path, timeoutMs) {
     await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 250));
   }
   throw new Error(`timed out waiting for packaged app smoke result\n${output}`);
+}
+
+async function terminateChild() {
+  if (child.exitCode != null) {
+    return;
+  }
+
+  child.kill("SIGTERM");
+  await new Promise((resolveExit) => {
+    const killTimer = setTimeout(() => {
+      if (child.exitCode == null) {
+        child.kill("SIGKILL");
+      }
+    }, 2_000);
+    child.once("exit", () => {
+      clearTimeout(killTimer);
+      resolveExit();
+    });
+  });
 }

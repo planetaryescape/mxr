@@ -11,7 +11,9 @@ pub use compose::{compose, drafts, forward, reply, reply_all, send_draft, Compos
 /// daemon's specific failure (NotFound / WindowExpired / Irreversible).
 pub async fn undo(mutation_id: String) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let resp = client.request(Request::UndoMutation { mutation_id }).await?;
+    let resp = client
+        .request(Request::UndoMutation { mutation_id })
+        .await?;
     match resp {
         Response::Ok {
             data: ResponseData::Ack,

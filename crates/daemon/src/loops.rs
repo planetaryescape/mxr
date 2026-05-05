@@ -953,7 +953,6 @@ mod tests {
         );
     }
 
-
     #[tokio::test]
     async fn apply_rules_to_messages_marks_message_read_and_logs_history() {
         let state = Arc::new(AppState::in_memory().await.unwrap());

@@ -24,11 +24,11 @@ pub mod stale;
 pub mod status;
 pub mod storage;
 pub mod subscriptions;
-pub mod wrapped;
 pub mod sync_cmd;
 pub mod thread;
 pub mod version;
 pub mod web;
+pub mod wrapped;
 
 use mxr_protocol::Response;
 

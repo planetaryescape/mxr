@@ -363,9 +363,7 @@ impl ImapSessionFactory for RealImapSessionFactory {
         Ok(Box::new(RealImapSession { session }))
     }
 
-    async fn create_idle_watcher(
-        &self,
-    ) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
+    async fn create_idle_watcher(&self) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
         let mut session = self.open_authenticated_session().await?;
 
         // No IDLE capability → fall back to poll-only.
@@ -458,9 +456,10 @@ impl mxr_core::IdleWatcher for RealImapIdleWatcher {
             self.ensure_idling()
                 .await
                 .map_err(mxr_core::MxrError::from)?;
-            let handle = self.handle.as_mut().ok_or_else(|| {
-                mxr_core::MxrError::Provider("idle handle missing".to_string())
-            })?;
+            let handle = self
+                .handle
+                .as_mut()
+                .ok_or_else(|| mxr_core::MxrError::Provider("idle handle missing".to_string()))?;
             let (fut, _stop) = handle.wait_with_timeout(Self::IDLE_RESET_INTERVAL);
             let response = fut
                 .await
@@ -477,9 +476,7 @@ impl mxr_core::IdleWatcher for RealImapIdleWatcher {
                     continue;
                 }
                 async_imap::extensions::idle::IdleResponse::ManualInterrupt => {
-                    return Err(mxr_core::MxrError::Provider(
-                        "IDLE interrupted".to_string(),
-                    ));
+                    return Err(mxr_core::MxrError::Provider("IDLE interrupted".to_string()));
                 }
             }
         }
@@ -1191,9 +1188,7 @@ pub mod mock {
             )))
         }
 
-        async fn create_idle_watcher(
-            &self,
-        ) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
+        async fn create_idle_watcher(&self) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
             let Some(trigger) = self.idle_trigger.clone() else {
                 return Ok(None);
             };

@@ -602,9 +602,7 @@ pub enum Command {
     /// Undo a recent destructive mutation by its id (~60s window).
     /// The mutation id is printed by `archive`, `trash`, `spam`,
     /// `mark-read`, and `read-archive`; copy it from there.
-    Undo {
-        mutation_id: String,
-    },
+    Undo { mutation_id: String },
 
     // --- Phase 2: Snooze ---
     /// Snooze a message until a specified time

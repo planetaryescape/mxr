@@ -336,7 +336,14 @@ fn cli_journey_compose_send_inserts_synthetic_envelope_searchable_by_subject() {
         &instance,
         &data_dir,
         &config_dir,
-        &["search", &unique_subject, "--format", "json", "--limit", "10"],
+        &[
+            "search",
+            &unique_subject,
+            "--format",
+            "json",
+            "--limit",
+            "10",
+        ],
     );
     let arr = results
         .as_array()
@@ -456,7 +463,14 @@ fn cli_journey_compose_send_response_carries_message_id_matching_search() {
         &instance,
         &data_dir,
         &config_dir,
-        &["search", &unique_subject, "--format", "json", "--limit", "10"],
+        &[
+            "search",
+            &unique_subject,
+            "--format",
+            "json",
+            "--limit",
+            "10",
+        ],
     );
     let searched_id = results
         .as_array()
@@ -513,14 +527,7 @@ fn cli_journey_archive_then_undo_restores_inbox() {
         &instance,
         &data_dir,
         &config_dir,
-        &[
-            "search",
-            "label:inbox",
-            "--format",
-            "json",
-            "--limit",
-            "10",
-        ],
+        &["search", "label:inbox", "--format", "json", "--limit", "10"],
     );
     let target_id = inbox
         .as_array()
@@ -540,7 +547,10 @@ fn cli_journey_archive_then_undo_restores_inbox() {
     let mutation_id = archive
         .stdout
         .lines()
-        .find_map(|line| line.strip_prefix("Undo with: mxr undo ").map(str::to_string))
+        .find_map(|line| {
+            line.strip_prefix("Undo with: mxr undo ")
+                .map(str::to_string)
+        })
         .unwrap_or_else(|| {
             panic!(
                 "archive --yes must print `Undo with: mxr undo <id>`; stdout={:?}",

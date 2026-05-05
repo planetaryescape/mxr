@@ -2260,11 +2260,8 @@ mod tests {
     #[tokio::test]
     async fn idle_watch_returns_none_when_factory_does_not_enable_idle() {
         let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
         let watcher = provider.idle_watch().await.expect("idle_watch ok");
         assert!(
             watcher.is_none(),
@@ -2281,11 +2278,8 @@ mod tests {
         let mut factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
         let trigger = factory.enable_idle();
         let log = factory.log.clone();
-        let provider = ImapProvider::with_session_factory(
-            AccountId::new(),
-            test_config(),
-            Box::new(factory),
-        );
+        let provider =
+            ImapProvider::with_session_factory(AccountId::new(), test_config(), Box::new(factory));
 
         let mut watcher = provider
             .idle_watch()

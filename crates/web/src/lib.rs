@@ -730,6 +730,11 @@ async fn search(
             } else {
                 results
             };
+            let response_total = if thread_scope {
+                effective_results.len() as u32
+            } else {
+                total
+            };
             let message_ids = effective_results
                 .iter()
                 .map(|result| result.message_id.clone())
@@ -767,7 +772,7 @@ async fn search(
                 "scope": query.scope.unwrap_or_else(|| "threads".to_string()),
                 "sort": query.sort.unwrap_or_else(|| "recent".to_string()),
                 "mode": query.mode.unwrap_or_default(),
-                "total": total,
+                "total": response_total,
                 "has_more": has_more,
                 "next_offset": next_offset,
                 "groups": groups,

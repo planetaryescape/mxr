@@ -266,8 +266,7 @@ impl super::Store {
                     let inbound = in_c.max(0) as u32;
                     let outbound = out_c.max(0) as u32;
                     let denom = inbound.max(outbound).max(1) as f64;
-                    let asymmetry =
-                        (inbound as f64 - outbound as f64).abs() / denom;
+                    let asymmetry = (inbound as f64 - outbound as f64).abs() / denom;
                     ContactAsymmetryRow {
                         email,
                         display_name: name,

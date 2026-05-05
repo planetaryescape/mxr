@@ -149,10 +149,7 @@ fn render_narrative(s: &WrappedSummary) {
     // Reply discipline
     if let Some(rd) = &s.reply_discipline {
         println!("⏱   Reply discipline");
-        println!(
-            "    Sample size: {} replies you sent.",
-            rd.sample_count
-        );
+        println!("    Sample size: {} replies you sent.", rd.sample_count);
         println!(
             "    Median reply time (clock):     {}",
             humanize_duration(rd.clock_p50_seconds)
@@ -186,9 +183,7 @@ fn render_narrative(s: &WrappedSummary) {
         println!();
     } else {
         println!("⏱   Reply discipline");
-        println!(
-            "    No reply pairs in this window. Run `mxr doctor --rebuild-analytics`"
-        );
+        println!("    No reply pairs in this window. Run `mxr doctor --rebuild-analytics`");
         println!("    to backfill reply pairs from existing messages.");
         println!();
     }
@@ -219,10 +214,7 @@ fn render_narrative(s: &WrappedSummary) {
 
     // Newsletters
     println!("📰  Newsletters");
-    println!(
-        "    {} unique mailing lists.",
-        s.newsletters.unique_lists
-    );
+    println!("    {} unique mailing lists.", s.newsletters.unique_lists);
     if let Some(top) = &s.newsletters.top_list {
         let open_pct = if top.message_count > 0 {
             (top.opened_count as f64 / top.message_count as f64) * 100.0

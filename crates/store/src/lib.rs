@@ -17,11 +17,11 @@ mod snooze;
 mod sync_cursor;
 mod sync_log;
 mod sync_runtime_status;
-mod undo;
-mod wrapped;
 #[cfg(test)]
 mod test_fixtures;
 mod thread;
+mod undo;
+mod wrapped;
 
 pub use diagnostics::StoreRecordCounts;
 pub use event_log::{EventLogEntry, EventLogRefs};
@@ -2659,7 +2659,10 @@ mod tests {
         let s = &fetched.snapshots[0];
         assert_eq!(s.provider_id, snapshot.provider_id);
         assert_eq!(s.prior_flags_bits, snapshot.prior_flags_bits);
-        assert_eq!(s.prior_label_provider_ids, snapshot.prior_label_provider_ids);
+        assert_eq!(
+            s.prior_label_provider_ids,
+            snapshot.prior_label_provider_ids
+        );
     }
 
     /// Phase 1.4 / Behavior 4: reading an unknown id returns `None` so the

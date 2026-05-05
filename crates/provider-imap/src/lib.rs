@@ -716,18 +716,20 @@ impl MailSyncProvider for ImapProvider {
         }
     }
 
-    // Phase 3.1: framework is in place — `MailSyncProvider::idle_watch`
-    // default impl returns `Ok(None)` so the daemon falls back to its
-    // periodic poll loop for IMAP. The full IMAP IDLE wiring follows
-    // in a focused follow-up: it requires plumbing async-imap's
-    // `extensions::idle::Handle` lifecycle (init → wait_with_timeout
-    // → done → re-idle) through the existing `ImapSession` wrapper,
-    // plus a dedicated second connection so the regular sync session
-    // is not interrupted, plus fake-imap-server test infrastructure
-    // for the EXISTS/EXPUNGE behaviors. The wake-up plumbing
-    // (per-account Notify, sync-loop select branch, watcher loop)
-    // is already in place and exercised by FakeProvider tests in
-    // crates/daemon/src/loops.rs.
+    /// Phase 3.1: open a dedicated IDLE watcher on a fresh
+    /// authenticated session. Delegates to the session factory's
+    /// `create_idle_watcher`, which checks the IDLE capability and
+    /// returns `Ok(None)` for servers without it. The daemon's
+    /// `idle_loop_for_account` then exits gracefully and the sync
+    /// loop falls back to its periodic poll.
+    async fn idle_watch(
+        &self,
+    ) -> mxr_core::provider::Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
+        self.session_factory
+            .create_idle_watcher()
+            .await
+            .map_err(mxr_core::error::MxrError::from)
+    }
 
     async fn authenticate(&mut self) -> mxr_core::provider::Result<()> {
         let mut session = self
@@ -2248,5 +2250,70 @@ mod tests {
         provider3.set_starred("INBOX:4", true).await.unwrap();
         let cmds = log3.lock().unwrap().commands.clone();
         assert!(cmds.contains(&"UID STORE 4 +FLAGS (\\Flagged)".to_string()));
+    }
+
+    /// Phase 3.1 / Behavior 4: a factory whose `create_idle_watcher`
+    /// returns `Ok(None)` (the default — IDLE not enabled / not
+    /// supported) means the provider's `idle_watch` returns None,
+    /// signalling the daemon to stay poll-only. Catches "watcher
+    /// spawned for non-IDLE servers" regressions.
+    #[tokio::test]
+    async fn idle_watch_returns_none_when_factory_does_not_enable_idle() {
+        let factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
+        let provider = ImapProvider::with_session_factory(
+            AccountId::new(),
+            test_config(),
+            Box::new(factory),
+        );
+        let watcher = provider.idle_watch().await.expect("idle_watch ok");
+        assert!(
+            watcher.is_none(),
+            "default factory must yield no IDLE watcher"
+        );
+    }
+
+    /// Phase 3.1 / Behavior 1: when IDLE is enabled on the factory and
+    /// the test fires the trigger, the watcher's `next_event` returns
+    /// Ok(()) within the timeout. End-to-end test of the IMAP
+    /// provider's IDLE path through the trait abstraction.
+    #[tokio::test]
+    async fn idle_watch_returns_watcher_that_wakes_on_trigger() {
+        let mut factory = MockImapSessionFactory::new(mailbox_info(1, 1, 0), vec![], vec![]);
+        let trigger = factory.enable_idle();
+        let log = factory.log.clone();
+        let provider = ImapProvider::with_session_factory(
+            AccountId::new(),
+            test_config(),
+            Box::new(factory),
+        );
+
+        let mut watcher = provider
+            .idle_watch()
+            .await
+            .expect("idle_watch ok")
+            .expect("idle enabled, watcher should be Some");
+
+        // The mock factory logs an `IDLE_WATCH SELECT INBOX` line on
+        // create. Confirms the provider opened a dedicated IDLE
+        // session — RFC 2177 requires it separate from the sync session.
+        let cmds = log.lock().unwrap().commands.clone();
+        assert!(
+            cmds.iter().any(|c| c == "IDLE_WATCH SELECT INBOX"),
+            "create_idle_watcher must SELECT INBOX on a fresh session; got {cmds:?}"
+        );
+
+        // Spawn the watcher's next_event in the background so we can
+        // race a trigger fire against a timeout.
+        let event_handle = tokio::spawn(async move { watcher.next_event().await });
+
+        // Give the spawn a moment to enter `notified()` then fire.
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        trigger.notify_one();
+
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), event_handle)
+            .await
+            .expect("event must arrive within 2s")
+            .expect("watcher task must not panic");
+        assert!(result.is_ok(), "next_event must return Ok on trigger");
     }
 }

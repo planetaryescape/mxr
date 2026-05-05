@@ -47,6 +47,18 @@ pub trait ImapSession: Send {
 #[async_trait]
 pub trait ImapSessionFactory: Send + Sync {
     async fn create_session(&self) -> Result<Box<dyn ImapSession>>;
+
+    /// Phase 3.1: open a dedicated IDLE watcher session for INBOX.
+    /// Returns `Ok(None)` when the server doesn't advertise IDLE, when
+    /// IDLE is feature-gated off, or when the factory is a mock that
+    /// hasn't enabled IDLE for the test. Default: no IDLE.
+    ///
+    /// The watcher owns its own connection per RFC 2177 — IDLE blocks
+    /// the session for the duration, so the daemon's regular sync
+    /// session must stay separate.
+    async fn create_idle_watcher(&self) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
+        Ok(None)
+    }
 }
 
 /// Type alias for the TLS stream used by async-imap (futures-based async IO).
@@ -176,6 +188,85 @@ impl RealImapSessionFactory {
     }
 }
 
+impl RealImapSessionFactory {
+    /// Phase 3.1: open a fresh, authenticated `async_imap::Session` for
+    /// either the regular sync path or a dedicated IDLE watcher.
+    /// Centralised so the IDLE path doesn't drift from the sync path
+    /// auth-wise (TLS, PREAUTH, ANONYMOUS, fallback LOGIN).
+    async fn open_authenticated_session(&self) -> Result<async_imap::Session<ImapTlsStream>> {
+        let tcp = async_std::net::TcpStream::connect((&*self.config.host, self.config.port))
+            .await
+            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
+        let tls = async_native_tls::TlsConnector::new();
+        let tls_stream = tls
+            .connect(&self.config.host, tcp)
+            .await
+            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
+        let mut client = async_imap::Client::new(tls_stream);
+        let greeting = client
+            .read_response()
+            .await
+            .ok_or_else(|| {
+                ImapProviderError::Connection(
+                    "Server closed the IMAP connection before sending a greeting.".into(),
+                )
+            })?
+            .map_err(|e| ImapProviderError::Connection(e.to_string()))?;
+
+        let session = match greeting.parsed() {
+            async_imap::imap_proto::Response::Data {
+                status: async_imap::imap_proto::Status::PreAuth,
+                ..
+            } => client.into_session(),
+            async_imap::imap_proto::Response::Data {
+                status: async_imap::imap_proto::Status::Ok,
+                ..
+            } if self.config.auth_required => {
+                let password = self.config.resolve_password()?;
+                client
+                    .login(&self.config.username, &password)
+                    .await
+                    .map_err(|e| ImapProviderError::Auth(e.0.to_string()))?
+            }
+            async_imap::imap_proto::Response::Data {
+                status: async_imap::imap_proto::Status::Ok,
+                ..
+            } => match client
+                .authenticate("ANONYMOUS", AnonymousAuthenticator)
+                .await
+            {
+                Ok(session) => session,
+                Err((_, client)) => {
+                    let fallback_username = if self.config.username.trim().is_empty() {
+                        "anonymous".to_string()
+                    } else {
+                        self.config.username.clone()
+                    };
+                    let fallback_password = if !self.config.username.trim().is_empty()
+                        && !self.config.password_ref.trim().is_empty()
+                    {
+                        self.config
+                            .resolve_password()
+                            .unwrap_or_else(|_| "anonymous".to_string())
+                    } else {
+                        "anonymous".to_string()
+                    };
+                    client
+                        .login(&fallback_username, &fallback_password)
+                        .await
+                        .map_err(|e| ImapProviderError::Auth(e.0.to_string()))?
+                }
+            },
+            other => {
+                return Err(ImapProviderError::Connection(format!(
+                    "Unexpected IMAP greeting from server: {other:?}"
+                )));
+            }
+        };
+        Ok(session)
+    }
+}
+
 #[async_trait]
 impl ImapSessionFactory for RealImapSessionFactory {
     async fn create_session(&self) -> Result<Box<dyn ImapSession>> {
@@ -270,6 +361,128 @@ impl ImapSessionFactory for RealImapSessionFactory {
         };
 
         Ok(Box::new(RealImapSession { session }))
+    }
+
+    async fn create_idle_watcher(
+        &self,
+    ) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
+        let mut session = self.open_authenticated_session().await?;
+
+        // No IDLE capability → fall back to poll-only.
+        let caps = session
+            .capabilities()
+            .await
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        if !caps.has_str("IDLE") {
+            let _ = session.logout().await;
+            return Ok(None);
+        }
+
+        session
+            .select("INBOX")
+            .await
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+
+        Ok(Some(Box::new(RealImapIdleWatcher::new(session))))
+    }
+}
+
+/// Phase 3.1: real IMAP IDLE watcher. Owns a dedicated authenticated
+/// session in IDLE-or-Selected state. `next_event` cycles through the
+/// async-imap Handle lifecycle:
+///   1. session.idle() → Handle (consumes Session)
+///   2. handle.init().await sends IDLE
+///   3. handle.wait_with_timeout(25min) waits for events
+///   4. on Timeout we re-issue done()→idle()→init() to respect the
+///      28-min RFC 2177 cap (servers drop silent IDLE connections).
+///   5. on NewData we done()→Session and return Ok(()).
+///
+/// State is stored as exactly one of `session` or `handle` being
+/// `Some` between calls; transitions use `Option::take()` to satisfy
+/// async-imap's consume-on-state-change API.
+struct RealImapIdleWatcher {
+    session: Option<async_imap::Session<ImapTlsStream>>,
+    handle: Option<async_imap::extensions::idle::Handle<ImapTlsStream>>,
+}
+
+impl RealImapIdleWatcher {
+    fn new(session: async_imap::Session<ImapTlsStream>) -> Self {
+        Self {
+            session: Some(session),
+            handle: None,
+        }
+    }
+
+    /// Cap below the RFC 2177 28-minute server limit so we re-IDLE
+    /// well before the server drops us.
+    const IDLE_RESET_INTERVAL: std::time::Duration = std::time::Duration::from_secs(25 * 60);
+
+    /// Move from session-state into init'd handle-state. Idempotent
+    /// when already in handle-state.
+    async fn ensure_idling(&mut self) -> Result<()> {
+        if self.handle.is_some() {
+            return Ok(());
+        }
+        let session = self.session.take().ok_or_else(|| {
+            ImapProviderError::protocol_detail("idle watcher in invalid state".to_string())
+        })?;
+        let mut handle = session.idle();
+        handle
+            .init()
+            .await
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        self.handle = Some(handle);
+        Ok(())
+    }
+
+    /// Send DONE to leave IDLE and recover the Session for the next
+    /// cycle. Called both on user-set timeout (re-IDLE) and when we
+    /// got a real notification.
+    async fn done_idling(&mut self) -> Result<()> {
+        let Some(handle) = self.handle.take() else {
+            return Ok(());
+        };
+        let session = handle
+            .done()
+            .await
+            .map_err(|e| ImapProviderError::protocol_detail(e.to_string()))?;
+        self.session = Some(session);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl mxr_core::IdleWatcher for RealImapIdleWatcher {
+    async fn next_event(&mut self) -> std::result::Result<(), mxr_core::MxrError> {
+        loop {
+            self.ensure_idling()
+                .await
+                .map_err(mxr_core::MxrError::from)?;
+            let handle = self.handle.as_mut().ok_or_else(|| {
+                mxr_core::MxrError::Provider("idle handle missing".to_string())
+            })?;
+            let (fut, _stop) = handle.wait_with_timeout(Self::IDLE_RESET_INTERVAL);
+            let response = fut
+                .await
+                .map_err(|e| mxr_core::MxrError::Provider(e.to_string()))?;
+            match response {
+                async_imap::extensions::idle::IdleResponse::NewData(_) => {
+                    self.done_idling().await.map_err(mxr_core::MxrError::from)?;
+                    return Ok(());
+                }
+                async_imap::extensions::idle::IdleResponse::Timeout => {
+                    // RFC 2177 cap reset. Re-issue IDLE and keep
+                    // waiting; the daemon doesn't see a wake-up.
+                    self.done_idling().await.map_err(mxr_core::MxrError::from)?;
+                    continue;
+                }
+                async_imap::extensions::idle::IdleResponse::ManualInterrupt => {
+                    return Err(mxr_core::MxrError::Provider(
+                        "IDLE interrupted".to_string(),
+                    ));
+                }
+            }
+        }
     }
 }
 
@@ -897,6 +1110,10 @@ pub mod mock {
         pub folders: Vec<FolderInfo>,
         pub log: Arc<Mutex<CommandLog>>,
         state: Arc<Mutex<MockSessionState>>,
+        /// Phase 3.1: when set, `create_idle_watcher` returns a mock
+        /// watcher whose `next_event` awaits this Notify. Tests use
+        /// `notify_one()` to simulate server-pushed EXISTS/EXPUNGE.
+        idle_trigger: Option<std::sync::Arc<tokio::sync::Notify>>,
     }
 
     impl MockImapSessionFactory {
@@ -917,7 +1134,16 @@ pub mod mock {
                     fetch_queues_by_mailbox,
                     uid_search_results: HashMap::new(),
                 })),
+                idle_trigger: None,
             }
+        }
+
+        /// Phase 3.1: enable IDLE on this mock factory and return the
+        /// trigger handle test code uses to simulate events.
+        pub fn enable_idle(&mut self) -> std::sync::Arc<tokio::sync::Notify> {
+            let trigger = std::sync::Arc::new(tokio::sync::Notify::new());
+            self.idle_trigger = Some(trigger.clone());
+            trigger
         }
 
         pub fn with_capabilities(mut self, capabilities: ImapCapabilities) -> Self {
@@ -963,6 +1189,32 @@ pub mod mock {
                 self.log.clone(),
                 self.state.clone(),
             )))
+        }
+
+        async fn create_idle_watcher(
+            &self,
+        ) -> Result<Option<Box<dyn mxr_core::IdleWatcher>>> {
+            let Some(trigger) = self.idle_trigger.clone() else {
+                return Ok(None);
+            };
+            self.log
+                .lock()
+                .unwrap()
+                .commands
+                .push("IDLE_WATCH SELECT INBOX".to_string());
+            Ok(Some(Box::new(MockIdleWatcher { trigger })))
+        }
+    }
+
+    struct MockIdleWatcher {
+        trigger: std::sync::Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl mxr_core::IdleWatcher for MockIdleWatcher {
+        async fn next_event(&mut self) -> std::result::Result<(), mxr_core::MxrError> {
+            self.trigger.notified().await;
+            Ok(())
         }
     }
 

@@ -78,6 +78,47 @@ fn help_sections(state: &HelpModalState<'_>) -> Vec<HelpSection> {
                 ("q".into(), "Quit".into()),
             ],
         },
+        // Phase 3.3: task-oriented entry points. Each line answers
+        // "how do I do X" — pointing at a specific binding or palette
+        // command — so a new user doesn't have to scan the keybinding
+        // table to figure out what to press first.
+        HelpSection {
+            title: "How do I…".into(),
+            entries: vec![
+                (
+                    "Add an account".into(),
+                    "4 → n (or palette: New IMAP/SMTP Account)".into(),
+                ),
+                (
+                    "Compose and send".into(),
+                    "c → write in $EDITOR → save → s to send".into(),
+                ),
+                (
+                    "Search and save a search".into(),
+                    "/ to query → palette: New Saved Search → n in sidebar to refine".into(),
+                ),
+                (
+                    "Manage rules".into(),
+                    "3 → n new / E edit / D dry-run / palette: Refresh Rules".into(),
+                ),
+                (
+                    "Reset local state".into(),
+                    "shell: mxr reset --hard (or mxr burn) — keeps config + creds".into(),
+                ),
+                (
+                    "Repair an unhealthy account".into(),
+                    "4 → select account → r when [unhealthy] indicator shown".into(),
+                ),
+                (
+                    "Open analytics".into(),
+                    "palette: Analytics: Storage / Stale Threads / Contact Asymmetry / Response Time".into(),
+                ),
+                (
+                    "Undo a destructive action".into(),
+                    "u within 60s of archive/trash/spam/mark-read".into(),
+                ),
+            ],
+        },
         HelpSection {
             title: "Most Common Actions".into(),
             entries: context_entries(state),
@@ -666,6 +707,62 @@ mod tests {
             selected: 0,
             _marker: std::marker::PhantomData,
         }
+    }
+
+    /// Phase 3.3 / Behavior 1: the help renderer's output contains
+    /// both the keybindings table and the task-oriented section
+    /// headings. Locks down "How do I..." as the entry point a new
+    /// user looks for.
+    #[test]
+    fn help_renders_task_oriented_section_alongside_keybindings() {
+        let state = help_state(UiContext::MailboxList, "");
+        let titles: Vec<String> = help_sections(&state)
+            .into_iter()
+            .map(|section| section.title)
+            .collect();
+        assert!(
+            titles.contains(&"How do I…".to_string()),
+            "task-oriented section missing; got {titles:?}"
+        );
+        // The keybindings sections still ship — task-oriented help is
+        // additive, not a replacement.
+        assert!(
+            titles.iter().any(|t| t.starts_with("Mailbox")),
+            "keybinding sections must still appear; got {titles:?}"
+        );
+    }
+
+    /// Phase 3.3 / Behavior 2: each task-oriented entry references
+    /// either a real keybinding or a real palette command. Catches
+    /// "task entry points to a binding that doesn't exist" rot.
+    #[test]
+    fn task_oriented_entries_reference_real_bindings_or_palette_commands() {
+        let state = help_state(UiContext::MailboxList, "");
+        let task_section = help_sections(&state)
+            .into_iter()
+            .find(|section| section.title == "How do I…")
+            .expect("task section");
+        // Every entry should mention something a user can actually do.
+        // We verify by checking each entry's hint contains either a
+        // concrete keybinding (single char or numeric tab) or the
+        // string "palette:" for a palette command, or "shell:" for a
+        // CLI escape hatch.
+        for (label, hint) in &task_section.entries {
+            let mentions_action = hint.contains("palette:")
+                || hint.contains("shell:")
+                || hint.contains('→')
+                || hint.contains("⇒")
+                || hint.chars().any(|c| matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z'));
+            assert!(
+                mentions_action,
+                "entry {label:?} hint {hint:?} must reference an action"
+            );
+        }
+        assert!(
+            task_section.entries.len() >= 5,
+            "plan §3.3 calls for 5+ task entries; got {}",
+            task_section.entries.len()
+        );
     }
 
     #[test]

@@ -1280,6 +1280,9 @@ pub async fn run() -> anyhow::Result<()> {
                         AsyncResult::ConnectionState(state) => {
                             app.set_connection_state(state);
                         }
+                        AsyncResult::ReportedError(entry) => {
+                            app.push_reported_error(entry);
+                        }
                         other => {
                             let Some(other) = handle_local_io_result(&mut app, other) else {
                                 continue;
@@ -6185,6 +6188,98 @@ mod tests {
         let mut app = App::new();
         app.set_connection_state(ConnectionState::Connected);
         assert!(app.connection_state_label().is_none());
+    }
+
+    /// Phase 1.3 / Behavior 1: a Warn through the reporter lands in the
+    /// ring buffer with the supplied message and Warn severity. Catches
+    /// regressions where async errors silently disappear (the original
+    /// `let _ = ...` smell).
+    #[test]
+    fn report_warn_adds_one_entry_to_ring_buffer() {
+        use crate::app::UserErrorSeverity;
+        let mut app = App::new();
+        app.report_warn("body parse failed");
+
+        let log = &app.modals.error_log;
+        assert_eq!(log.len(), 1, "exactly one entry after one warn");
+        let entry = log.back().expect("entry");
+        assert_eq!(entry.message, "body parse failed");
+        assert!(matches!(entry.severity, UserErrorSeverity::Warn));
+    }
+
+    /// Phase 1.3 / Behavior 2: the ring buffer caps at 5 — pushing a sixth
+    /// drops the oldest. No panic, no unbounded growth. Catches both
+    /// "buffer not capped" (memory leak under error storms) and
+    /// "buffer drops newest" (would lose the most actionable info).
+    #[test]
+    fn ring_buffer_keeps_five_most_recent_entries() {
+        let mut app = App::new();
+        for i in 0..6 {
+            app.report_warn(format!("warn {i}"));
+        }
+
+        let log = &app.modals.error_log;
+        assert_eq!(log.len(), 5, "ring buffer caps at 5");
+        let messages: Vec<&str> = log.iter().map(|e| e.message.as_str()).collect();
+        assert!(
+            !messages.iter().any(|m| *m == "warn 0"),
+            "oldest entry must be dropped; got {messages:?}"
+        );
+        assert!(
+            messages.iter().any(|m| *m == "warn 5"),
+            "newest entry must be kept; got {messages:?}"
+        );
+    }
+
+    /// Phase 1.3 / Behavior 3: a warn shown in the status bar auto-clears
+    /// after 5s of wall time so a transient error doesn't permanently
+    /// hide the inbox info.
+    #[test]
+    fn current_user_warn_clears_after_5s() {
+        let mut app = App::new();
+        app.report_warn("body parse failed");
+        let since = app
+            .modals
+            .error_log
+            .back()
+            .expect("entry must exist")
+            .since;
+
+        assert_eq!(
+            app.current_user_warn(since + std::time::Duration::from_secs(4))
+                .as_deref(),
+            Some("body parse failed"),
+            "warn must still be visible at 4s"
+        );
+        assert_eq!(
+            app.current_user_warn(since + std::time::Duration::from_secs(6)),
+            None,
+            "warn must clear by 6s"
+        );
+    }
+
+    /// Phase 1.3 / Behavior 4: an `Error` escalates to `ErrorModalState`
+    /// even if the status bar slot is occupied — errors must never be
+    /// hidden behind transient status messages.
+    #[test]
+    fn report_error_opens_modal_even_if_status_occupied() {
+        let mut app = App::new();
+        app.status_message = Some("Working...".into());
+        assert!(app.modals.error.is_none(), "precondition: no modal");
+
+        app.report_error("Body parse failed", "details about the failure");
+
+        let modal = app.modals.error.as_ref().expect("modal must open");
+        assert!(
+            modal.title.to_lowercase().contains("body parse"),
+            "modal title must mention the error; got {:?}",
+            modal.title
+        );
+        assert!(
+            modal.detail.contains("details"),
+            "modal detail must include the supplied detail string"
+        );
+        assert_eq!(app.modals.error_log.len(), 1);
     }
 
     /// Phase 1.2 / Behavior 1+3: ConnectionState defaults to Connecting on

@@ -294,6 +294,77 @@ impl App {
             }
         }
     }
+
+    /// Push a user-visible warning into the bounded error log. Surfaces in
+    /// the status bar (auto-clears after 5s). Use for transient async
+    /// failures that the user might want to know about but shouldn't
+    /// block: HTML asset fetch, body parse, attachment fetch, etc.
+    pub fn report_warn(&mut self, message: impl Into<String>) {
+        self.push_user_error(UserError {
+            severity: UserErrorSeverity::Warn,
+            message: message.into(),
+            title: None,
+            since: std::time::Instant::now(),
+        });
+    }
+
+    /// Push a user-visible error and escalate it to the error modal. Use
+    /// for failures that demand user attention (mutation rollback, send
+    /// failure, etc). The modal opens even if the status bar is occupied.
+    pub fn report_error(&mut self, title: impl Into<String>, detail: impl Into<String>) {
+        let title = title.into();
+        let detail = detail.into();
+        self.push_user_error(UserError {
+            severity: UserErrorSeverity::Error,
+            message: detail.clone(),
+            title: Some(title.clone()),
+            since: std::time::Instant::now(),
+        });
+        // Surface immediately. If a modal is already open, leave it — the
+        // user will see the remaining errors via the log; we don't stack
+        // modals on top of each other.
+        if self.modals.error.is_none() {
+            self.modals.error = Some(crate::app::ErrorModalState::new(title, detail));
+        }
+    }
+
+    fn push_user_error(&mut self, entry: UserError) {
+        let log = &mut self.modals.error_log;
+        if log.len() >= USER_ERROR_LOG_CAPACITY {
+            log.pop_front();
+        }
+        log.push_back(entry);
+    }
+
+    /// Apply a `UserError` raised by a background task. Used by the main
+    /// event loop when consuming `AsyncResult::ReportedError`. Errors
+    /// also escalate to the modal; warns just go in the ring buffer.
+    pub fn push_reported_error(&mut self, entry: UserError) {
+        let escalate = matches!(entry.severity, UserErrorSeverity::Error);
+        let title = entry.title.clone().unwrap_or_else(|| "Error".to_string());
+        let message = entry.message.clone();
+        self.push_user_error(entry);
+        if escalate && self.modals.error.is_none() {
+            self.modals.error = Some(crate::app::ErrorModalState::new(title, message));
+        }
+    }
+
+    /// Latest unexpired warning suitable for the status bar. Returns
+    /// `None` when the most recent warn is older than the TTL or when
+    /// the log has no warns. Errors don't surface here — they're shown
+    /// via the error modal instead.
+    pub fn current_user_warn(&self, now: std::time::Instant) -> Option<String> {
+        let entry = self
+            .modals
+            .error_log
+            .iter()
+            .rev()
+            .find(|e| matches!(e.severity, UserErrorSeverity::Warn))?;
+        if now.saturating_duration_since(entry.since) >= WARN_STATUS_TTL {
+            return None;
+        }
+        Some(entry.message.clone())
+    }
 }
 
 fn apply_provider_label_changes(

@@ -44,6 +44,7 @@ impl App {
                 sync_status: self.last_sync_status.clone(),
                 status_message: self
                     .connection_state_label()
+                    .or_else(|| self.current_user_warn(std::time::Instant::now()))
                     .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
@@ -69,6 +70,7 @@ impl App {
                 sync_status: self.last_sync_status.clone(),
                 status_message: self
                     .connection_state_label()
+                    .or_else(|| self.current_user_warn(std::time::Instant::now()))
                     .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),
@@ -85,6 +87,7 @@ impl App {
                 sync_status: self.last_sync_status.clone(),
                 status_message: self
                     .connection_state_label()
+                    .or_else(|| self.current_user_warn(std::time::Instant::now()))
                     .or_else(|| self.status_message.clone()),
                 pending_mutation_count: self.pending_mutation_count,
                 pending_mutation_status: self.pending_mutation_status.clone(),

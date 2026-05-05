@@ -2,6 +2,32 @@ use super::super::MutationEffect;
 use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
 use mxr_core::id::{AccountId, MessageId};
 use mxr_protocol::Request;
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
+
+/// Maximum number of user-visible errors retained in the ring buffer.
+/// Beyond this, oldest entries are dropped — bounded memory under
+/// error storms (e.g. flaky body parser hammering the reporter).
+pub const USER_ERROR_LOG_CAPACITY: usize = 5;
+
+/// Severity of a reported user-visible error. Warns surface in the
+/// status bar (auto-clear after 5s); Errors escalate to a modal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserErrorSeverity {
+    Warn,
+    Error,
+}
+
+#[derive(Debug, Clone)]
+pub struct UserError {
+    pub severity: UserErrorSeverity,
+    pub message: String,
+    pub title: Option<String>,
+    pub since: Instant,
+}
+
+/// How long a warn remains visible in the status bar before clearing.
+pub const WARN_STATUS_TTL: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Default)]
 pub struct FeatureOnboardingState {
@@ -33,6 +59,9 @@ pub struct ModalsState {
     pub error: Option<ErrorModalState>,
     pub pending_unsubscribe_confirm: Option<PendingUnsubscribeConfirm>,
     pub pending_unsubscribe_action: Option<PendingUnsubscribeAction>,
+    /// Ring buffer of user-visible warns and errors. Bounded so error
+    /// storms don't leak memory; oldest entries are dropped.
+    pub error_log: VecDeque<UserError>,
 }
 
 #[derive(Debug, Clone)]

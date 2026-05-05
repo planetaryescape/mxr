@@ -92,6 +92,11 @@ pub(crate) enum AsyncResult {
     /// Emitted by the IPC worker when the daemon connection state changes.
     /// Replaces the old "silent return on initial connect failure" behavior.
     ConnectionState(app::ConnectionState),
+    /// A user-visible error/warn raised by a background task. Preferred
+    /// over `let _ = ...` silent drops on async paths that affect what
+    /// the user sees (HTML asset fetch, body parse, attachment fetch,
+    /// search streaming).
+    ReportedError(app::UserError),
 }
 
 pub(crate) struct ComposeReadyData {

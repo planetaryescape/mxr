@@ -10,6 +10,7 @@ export function ComposeDialog(props: {
   open: boolean;
   session: ComposeSession | null;
   draft: ComposeFrontmatter | null;
+  canSend: boolean;
   busyLabel: string | null;
   error: string | null;
   utilityRail: UtilityRailPayload;
@@ -106,9 +107,12 @@ export function ComposeDialog(props: {
   }, [contactQuery, props.onDraftChange]);
 
   const handleSend = useCallback(() => {
+    if (!props.canSend) {
+      return;
+    }
     commitPendingRecipients();
     props.onSend();
-  }, [commitPendingRecipients, props.onSend]);
+  }, [commitPendingRecipients, props.canSend, props.onSend]);
 
   const handleSave = useCallback(() => {
     commitPendingRecipients();
@@ -296,9 +300,20 @@ export function ComposeDialog(props: {
                   </button>
                   <button
                     type="button"
-                    className="bg-accent/12 px-3 py-1 text-[length:var(--text-xs)] font-medium text-accent hover:bg-accent/20"
+                    className={cn(
+                      "px-3 py-1 text-[length:var(--text-xs)] font-medium",
+                      props.canSend
+                        ? "bg-accent/12 text-accent hover:bg-accent/20"
+                        : "cursor-not-allowed bg-panel-elevated text-foreground-subtle",
+                    )}
                     style={{ borderRadius: "var(--radius-sm)" }}
                     onClick={handleSend}
+                    disabled={!props.canSend}
+                    title={
+                      props.canSend
+                        ? undefined
+                        : "Send is not configured for this account"
+                    }
                   >
                     Send
                   </button>

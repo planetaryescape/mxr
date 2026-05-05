@@ -34,6 +34,14 @@ interface BridgeConnection {
 interface ManagedBridgeProcess {
   connection: BridgeConnection;
   stop(): Promise<void>;
+  exited?: Promise<BridgeProcessExit>;
+}
+
+interface BridgeProcessExit {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  error?: string;
+  stderr: string;
 }
 
 interface PendingWaiter {
@@ -101,6 +109,9 @@ export class BridgeManager {
   }
 
   async getState(): Promise<BridgeState> {
+    if (this.state.kind === "ready" && this.bridgeProcess && !this.draining && !this.pendingIntent) {
+      return await this.verifyCachedReadyState(this.state, this.bridgeProcess);
+    }
     if (this.state.kind !== "idle" && !this.draining && !this.pendingIntent) {
       return this.state;
     }
@@ -292,6 +303,7 @@ export class BridgeManager {
       const authToken = this.createAuthToken();
       const bridge = await this.launchBridge(binaryPath, authToken);
       this.bridgeProcess = bridge;
+      this.monitorBridgeProcess(bridge, binaryPath, usingBundled);
       const initialMailbox = await this.verifyBridgeContractImpl(bridge.connection);
       return {
         kind: "ready",
@@ -319,6 +331,51 @@ export class BridgeManager {
     const bridge = this.bridgeProcess;
     this.bridgeProcess = null;
     await bridge?.stop();
+  }
+
+  private async verifyCachedReadyState(
+    readyState: Extract<BridgeState, { kind: "ready" }>,
+    bridge: ManagedBridgeProcess,
+  ): Promise<BridgeState> {
+    try {
+      await this.verifyBridgeContractImpl(bridge.connection);
+      return readyState;
+    } catch (error) {
+      await this.stopBridge();
+      this.state = {
+        kind: "error",
+        binaryPath: readyState.binaryPath,
+        usingBundled: readyState.usingBundled,
+        title: "mxr web bridge stopped responding",
+        detail: formatError(error),
+      };
+      return this.state;
+    }
+  }
+
+  private monitorBridgeProcess(
+    bridge: ManagedBridgeProcess,
+    binaryPath: string,
+    usingBundled: boolean,
+  ): void {
+    if (!bridge.exited) {
+      return;
+    }
+    void bridge.exited.then((exit) => {
+      if (this.bridgeProcess !== bridge) {
+        return;
+      }
+      this.bridgeProcess = null;
+      this.state = {
+        kind: "error",
+        binaryPath,
+        usingBundled,
+        title: "mxr web bridge exited",
+        detail: formatBridgeExit(exit),
+      };
+      this.settledGeneration = this.requestedGeneration;
+      this.resolveWaiters();
+    });
   }
 
   private async readStatus(binaryPath: string): Promise<MxrStatusSnapshot> {
@@ -392,6 +449,7 @@ async function launchBridgeProcess(
     const line = await waitForBridgeStartupLine(child, stderr);
     return {
       connection: parseBridgeConnection(line.trim(), authToken),
+      exited: childExitDetails(child, stderr),
       stop: async () => {
         await stopChildProcess(child);
       },
@@ -474,6 +532,40 @@ async function childExit(child: SpawnedBridgeProcess): Promise<void> {
     };
     const onExit = () => finish();
     const onError = () => finish();
+    child.once("exit", onExit);
+    child.once("error", onError);
+  });
+}
+
+async function childExitDetails(
+  child: SpawnedBridgeProcess,
+  stderr: string[],
+): Promise<BridgeProcessExit> {
+  if (child.exitCode !== null) {
+    return {
+      code: child.exitCode,
+      signal: child.signalCode,
+      stderr: stderr.join(""),
+    };
+  }
+
+  return await new Promise<BridgeProcessExit>((resolve) => {
+    const finish = (exit: BridgeProcessExit) => {
+      child.removeListener("exit", onExit);
+      child.removeListener("error", onError);
+      resolve(exit);
+    };
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      finish({ code, signal, stderr: stderr.join("") });
+    };
+    const onError = (error: Error) => {
+      finish({
+        code: child.exitCode,
+        signal: child.signalCode,
+        error: error.message,
+        stderr: stderr.join(""),
+      });
+    };
     child.once("exit", onExit);
     child.once("error", onError);
   });
@@ -569,4 +661,12 @@ function formatError(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function formatBridgeExit(exit: BridgeProcessExit): string {
+  const status = exit.error
+    ? `error: ${exit.error}`
+    : `code ${exit.code ?? "unknown"}${exit.signal ? `, signal ${exit.signal}` : ""}`;
+  const stderr = exit.stderr.trim();
+  return stderr ? `${status}: ${stderr}` : status;
 }

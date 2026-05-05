@@ -1,18 +1,45 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  type IpcMainInvokeEvent,
+} from "electron";
 import { mkdtemp, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import type { OpenBrowserDocumentRequest } from "../shared/types.js";
 import { BridgeManager } from "./bridge-manager.js";
+import { LinuxUpdateManager } from "./linux-updater.js";
 import { openDraftInEditor } from "./open-editor.js";
 import { runBinary } from "./run-binary.js";
 import { DesktopSettingsStore } from "./settings-store.js";
+import { configureMainTelemetry } from "./telemetry.js";
+import {
+  assertTrustedSender,
+  validateDesktopSettingsPatch,
+  validateExternalBinaryPath,
+  validateExternalUrl,
+  validateKnownLocalPath,
+  validateOpenBrowserDocumentRequest,
+  validateOpenDraftInEditorRequest,
+} from "./ipc-validation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const RENDERER_ENTRY = join(__dirname, "../../dist/renderer/index.html");
 const bridgeManager = new BridgeManager();
 const settingsStore = new DesktopSettingsStore();
+const linuxUpdateManager = new LinuxUpdateManager({
+  currentVersion: app.getVersion(),
+  packaged: app.isPackaged,
+});
 const CONFIG_PATH_TIMEOUT_MS = 8_000;
+let bridgeStopInProgress = false;
+let bridgeStoppedForQuit = false;
 
 async function createWindow(): Promise<void> {
   const window = new BrowserWindow({
@@ -20,11 +47,18 @@ async function createWindow(): Promise<void> {
     height: 980,
     backgroundColor: "#090b12",
     webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
+      preload: join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
+  });
+
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", (event, url) => {
+    if (stripUrlNoise(url) !== stripUrlNoise(window.webContents.getURL())) {
+      event.preventDefault();
+    }
   });
 
   if (process.env.MXR_DESKTOP_DEBUG_RENDERER === "1") {
@@ -54,55 +88,67 @@ async function createWindow(): Promise<void> {
     }
   });
 
-  const rendererEntry = join(__dirname, "../../dist/renderer/index.html");
-  await window.loadFile(rendererEntry);
+  await window.loadFile(RENDERER_ENTRY);
+  await maybeRunPackagedSmoke(window);
 }
 
 app.whenReady().then(async () => {
-  ipcMain.handle("mxr:getBridgeState", () => bridgeManager.getState());
-  ipcMain.handle("mxr:retryBridge", () => bridgeManager.retry());
-  ipcMain.handle("mxr:useBundledMxr", () => bridgeManager.useBundledBinary());
-  ipcMain.handle("mxr:setExternalBinaryPath", (_event, path: string) =>
-    bridgeManager.setExternalBinaryPath(path),
+  configureMainTelemetry(settingsStore.get(), mainTelemetryOptions());
+  configureMacAutoUpdate();
+  secureHandle("mxr:getBridgeState", () => bridgeManager.getState());
+  secureHandle("mxr:retryBridge", () => bridgeManager.retry());
+  secureHandle("mxr:useBundledMxr", () => bridgeManager.useBundledBinary());
+  secureHandle("mxr:setExternalBinaryPath", (_event, path: unknown) =>
+    bridgeManager.setExternalBinaryPath(validateExternalBinaryPath(path)),
   );
-  ipcMain.handle("mxr:getDesktopSettings", () => settingsStore.get());
-  ipcMain.handle("mxr:updateDesktopSettings", (_event, patch) =>
-    settingsStore.set(patch),
-  );
-  ipcMain.handle("mxr:pickAttachments", async () => {
+  secureHandle("mxr:getDesktopSettings", () => settingsStore.get());
+  secureHandle("mxr:updateDesktopSettings", (_event, patch: unknown) => {
+    const settings = settingsStore.set(validateDesktopSettingsPatch(patch));
+    configureMainTelemetry(settings, mainTelemetryOptions());
+    return settings;
+  });
+  secureHandle("mxr:pickAttachments", async () => {
     const result = await dialog.showOpenDialog({
       title: "Attach files",
       properties: ["openFile", "multiSelections"],
     });
     return { paths: result.canceled ? [] : result.filePaths };
   });
-  ipcMain.handle("mxr:openDraftInEditor", (_event, request) => openDraftInEditor(request));
-  ipcMain.handle("mxr:openBrowserDocument", async (_event, request: OpenBrowserDocumentRequest) => {
-    const path = await writeBrowserDocument(request);
+  secureHandle("mxr:openDraftInEditor", (_event, request: unknown) =>
+    openDraftInEditor(validateOpenDraftInEditorRequest(request)),
+  );
+  secureHandle("mxr:openBrowserDocument", async (_event, request: unknown) => {
+    const path = await writeBrowserDocument(validateOpenBrowserDocumentRequest(request));
     const errorMessage = await shell.openPath(path);
     if (errorMessage) {
       throw new Error(errorMessage);
     }
     return { ok: true };
   });
-  ipcMain.handle("mxr:openExternalUrl", async (_event, url: string) => {
-    await shell.openExternal(url);
+  secureHandle("mxr:openExternalUrl", async (_event, url: unknown) => {
+    await shell.openExternal(validateExternalUrl(url));
     return { ok: true };
   });
-  ipcMain.handle("mxr:openLocalPath", async (_event, path: string) => {
-    const errorMessage = await shell.openPath(path);
+  secureHandle("mxr:openLocalPath", async (_event, path: unknown) => {
+    const errorMessage = await shell.openPath(validateKnownLocalPath(path));
     if (errorMessage) {
       throw new Error(errorMessage);
     }
     return { ok: true };
   });
-  ipcMain.handle("mxr:openConfigFile", async () => {
+  secureHandle("mxr:openConfigFile", async () => {
     const binaryPath = await bridgeManager.resolveBinaryPath();
     const configPath = await readMxrConfigPath(binaryPath);
     const errorMessage = await shell.openPath(configPath);
     if (errorMessage) {
       throw new Error(errorMessage);
     }
+    return { ok: true };
+  });
+  secureHandle("mxr:checkForDesktopUpdate", () => linuxUpdateManager.check());
+  secureHandle("mxr:downloadDesktopUpdate", () => linuxUpdateManager.download());
+  secureHandle("mxr:openDownloadedUpdate", async () => {
+    await linuxUpdateManager.openDownloaded();
     return { ok: true };
   });
 
@@ -121,9 +167,68 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on("before-quit", async () => {
-  await bridgeManager.stop();
+app.on("before-quit", (event) => {
+  if (bridgeStoppedForQuit) {
+    return;
+  }
+  event.preventDefault();
+  if (bridgeStopInProgress) {
+    return;
+  }
+  bridgeStopInProgress = true;
+  void bridgeManager.stop().finally(() => {
+    bridgeStoppedForQuit = true;
+    app.quit();
+  });
 });
+
+function secureHandle<TArgs extends unknown[], TResult>(
+  channel: string,
+  handler: (event: IpcMainInvokeEvent, ...args: TArgs) => TResult | Promise<TResult>,
+): void {
+  ipcMain.handle(channel, async (event, ...args: TArgs) => {
+    assertTrustedSender(event, RENDERER_ENTRY);
+    return await handler(event, ...args);
+  });
+}
+
+function stripUrlNoise(value: string): string {
+  const url = new URL(value);
+  url.hash = "";
+  url.search = "";
+  return url.toString();
+}
+
+function configureMacAutoUpdate(): void {
+  if (!shouldEnableMacAutoUpdate()) {
+    return;
+  }
+
+  updateElectronApp({
+    updateSource: {
+      type: UpdateSourceType.ElectronPublicUpdateService,
+      repo: "planetaryescape/mxr",
+    },
+    updateInterval: "1 hour",
+  });
+}
+
+function shouldEnableMacAutoUpdate(): boolean {
+  if (process.platform !== "darwin" || !app.isPackaged) {
+    return false;
+  }
+
+  try {
+    execFileSync(
+      "codesign",
+      ["--verify", "--deep", "--strict", app.getPath("exe")],
+      { stdio: "ignore" },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function readMxrConfigPath(binaryPath: string): Promise<string> {
   const { stdout, stderr } = await runBinary(binaryPath, ["config", "path"], {
@@ -148,4 +253,57 @@ function sanitizeBrowserFilename(value: string): string {
   const trimmed = value.trim().toLowerCase();
   const normalized = trimmed.replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return normalized || "message";
+}
+
+async function maybeRunPackagedSmoke(window: BrowserWindow): Promise<void> {
+  const resultPath = process.env.MXR_DESKTOP_SMOKE_RESULT;
+  if (!resultPath) {
+    return;
+  }
+
+  try {
+    const result = (await window.webContents.executeJavaScript(
+      `(() => {
+        return Promise.resolve()
+          .then(async () => {
+            const api = window.mxrDesktop;
+            const state = await api.getBridgeState();
+            return {
+              rendererLoaded: Boolean(document.getElementById("root")),
+              preloadApi: Boolean(api && api.getBridgeState),
+              bridgeKind: state.kind,
+              mailboxHydrated: state.kind === "ready" && Boolean(state.initialMailbox?.mailbox),
+            };
+          });
+      })()`,
+      true,
+    )) as unknown;
+    await writeFile(resultPath, JSON.stringify(result, null, 2), "utf8");
+  } catch (error) {
+    await writeFile(
+      resultPath,
+      JSON.stringify(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+  } finally {
+    app.quit();
+  }
+}
+
+function mainTelemetryOptions(): {
+  dsn?: string;
+  version: string;
+  environment?: string;
+} {
+  return {
+    dsn: process.env.MXR_DESKTOP_SENTRY_DSN,
+    version: app.getVersion(),
+    environment: process.env.MXR_DESKTOP_SENTRY_ENVIRONMENT,
+  };
 }

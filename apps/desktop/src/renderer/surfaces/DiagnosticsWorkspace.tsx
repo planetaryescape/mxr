@@ -5,6 +5,7 @@ import type {
   BridgeState,
   DiagnosticsWorkspaceSection,
   DiagnosticsWorkspaceState,
+  DesktopUpdateState,
   SavedDraftSummary,
   SidebarItem,
   SnoozedMessageSummary,
@@ -44,6 +45,8 @@ export function DiagnosticsWorkspace(props: {
   const [keymapText, setKeymapText] = useState("");
   const [keymapError, setKeymapError] = useState<string | null>(null);
   const [keymapStatus, setKeymapStatus] = useState<string | null>(null);
+  const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
   const { theme, setTheme, settings, updateDesktopSettings } =
     useDesktopSettings();
 
@@ -66,8 +69,11 @@ export function DiagnosticsWorkspace(props: {
   );
 
   useEffect(() => {
-    setKeymapText(
-      formatKeymapBindings(serializeKeymapBindings(effectiveKeymap)),
+    const nextKeymapText = formatKeymapBindings(
+      serializeKeymapBindings(effectiveKeymap),
+    );
+    setKeymapText((current) =>
+      current === nextKeymapText ? current : nextKeymapText,
     );
     setKeymapError(null);
   }, [effectiveKeymap]);
@@ -83,6 +89,24 @@ export function DiagnosticsWorkspace(props: {
       setKeymapError(
         error instanceof Error ? error.message : "Invalid keymap JSON",
       );
+    }
+  };
+
+  const checkForUpdate = async () => {
+    setUpdateBusy(true);
+    try {
+      setUpdateState(await window.mxrDesktop.checkForDesktopUpdate());
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+
+  const downloadUpdate = async () => {
+    setUpdateBusy(true);
+    try {
+      setUpdateState(await window.mxrDesktop.downloadDesktopUpdate());
+    } finally {
+      setUpdateBusy(false);
     }
   };
 
@@ -605,6 +629,65 @@ export function DiagnosticsWorkspace(props: {
                     ))}
                   </select>
                 </label>
+              </Panel>
+
+              <Panel
+                title="Updates and telemetry"
+                subtitle="Crash reporting is off unless you opt in"
+              >
+                <label className="flex items-start gap-3 border border-outline bg-canvas-elevated px-3 py-2 text-sm text-foreground-muted">
+                  <input
+                    type="checkbox"
+                    checked={settings.telemetry.sentryEnabled}
+                    onChange={(event) =>
+                      void updateDesktopSettings({
+                        telemetry: { sentryEnabled: event.target.checked },
+                      })
+                    }
+                  />
+                  <span>
+                    <span className="block text-foreground">
+                      Send redacted crash/error metadata
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-foreground-subtle">
+                      Subjects, bodies, recipients, paths, tokens, and bug-report
+                      content are stripped before upload.
+                    </span>
+                  </span>
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="border border-outline px-2 py-1.5 text-xs text-foreground-muted hover:bg-panel hover:text-foreground"
+                    style={{ borderRadius: "var(--radius-sm)" }}
+                    disabled={updateBusy}
+                    onClick={() => void checkForUpdate()}
+                  >
+                    Check for updates
+                  </button>
+                  <button
+                    type="button"
+                    className="border border-outline px-2 py-1.5 text-xs text-foreground-muted hover:bg-panel hover:text-foreground disabled:opacity-60"
+                    style={{ borderRadius: "var(--radius-sm)" }}
+                    disabled={updateBusy || updateState?.status !== "available"}
+                    onClick={() => void downloadUpdate()}
+                  >
+                    Download installer
+                  </button>
+                  <button
+                    type="button"
+                    className="border border-outline px-2 py-1.5 text-xs text-foreground-muted hover:bg-panel hover:text-foreground disabled:opacity-60"
+                    style={{ borderRadius: "var(--radius-sm)" }}
+                    disabled={updateBusy || updateState?.status !== "downloaded"}
+                    onClick={() => void window.mxrDesktop.openDownloadedUpdate()}
+                  >
+                    Open installer
+                  </button>
+                </div>
+                <p className="text-xs leading-5 text-foreground-subtle">
+                  {updateState?.message ??
+                    "macOS updates install automatically. Linux downloads a verified installer."}
+                </p>
               </Panel>
 
               <Panel

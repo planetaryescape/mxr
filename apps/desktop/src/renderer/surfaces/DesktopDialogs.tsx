@@ -28,6 +28,7 @@ export function DesktopDialogs(props: {
   composeOpen: boolean;
   composeSession: ComposeSession | null;
   composeDraft: ComposeFrontmatter | null;
+  composeCanSend: boolean;
   composeBusy: string | null;
   composeError: string | null;
   utilityRail: UtilityRailPayload;
@@ -125,6 +126,7 @@ export function DesktopDialogs(props: {
         open={props.composeOpen}
         session={props.composeSession}
         draft={props.composeDraft}
+        canSend={props.composeCanSend}
         busyLabel={props.composeBusy}
         error={props.composeError}
         utilityRail={props.utilityRail}

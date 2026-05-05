@@ -14,6 +14,9 @@ const api: DesktopApi = {
   openExternalUrl: (url) => ipcRenderer.invoke("mxr:openExternalUrl", url),
   openLocalPath: (path) => ipcRenderer.invoke("mxr:openLocalPath", path),
   openConfigFile: () => ipcRenderer.invoke("mxr:openConfigFile"),
+  checkForDesktopUpdate: () => ipcRenderer.invoke("mxr:checkForDesktopUpdate"),
+  downloadDesktopUpdate: () => ipcRenderer.invoke("mxr:downloadDesktopUpdate"),
+  openDownloadedUpdate: () => ipcRenderer.invoke("mxr:openDownloadedUpdate"),
 };
 
 ipcRenderer.on("mxr:commandPaletteShortcut", () => {

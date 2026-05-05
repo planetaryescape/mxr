@@ -120,6 +120,8 @@ const EMPTY_SEARCH: SearchResponse = {
   sort: "relevant",
   mode: "lexical",
   total: 0,
+  has_more: false,
+  next_offset: null,
   groups: [],
   explain: null,
 };
@@ -440,6 +442,18 @@ export default function App() {
       ) ?? null,
     [accountsState.accounts, selectedAccountId],
   );
+  const composeCanSend = useMemo(() => {
+    if (!composeSession) {
+      return true;
+    }
+    const account = accountsState.accounts.find(
+      (candidate) => candidate.account_id === composeSession.accountId,
+    );
+    if (!account) {
+      return true;
+    }
+    return account.capabilities?.supports_send ?? Boolean(account.send_kind);
+  }, [accountsState.accounts, composeSession]);
   const effectiveSelection = useMemo(
     () =>
       selectedMessageIds.size > 0
@@ -1395,10 +1409,15 @@ export default function App() {
     composeOpen,
     closeComposeShell,
     submitCompose: (action) => {
-      if (action === "send")
+      if (action === "send") {
+        if (!composeCanSend) {
+          showNotice("Send is not configured for this account");
+          return;
+        }
         void submitComposeAction("/compose/session/send", "Sent");
-      else if (action === "save")
+      } else if (action === "save") {
         void submitComposeAction("/compose/session/save", "Draft saved");
+      }
     },
     closeAllDialogs,
     setFocusContext,
@@ -1465,6 +1484,7 @@ export default function App() {
     savedDrafts,
     composeSession,
     composeOpen,
+    composeCanSend,
     setComposeOpen,
     setFocusContext,
     selectedRow,
@@ -1718,6 +1738,7 @@ function renderDesktopWorkbench(props: {
   savedDrafts: SavedDraftSummary[];
   composeSession: ComposeSession | null;
   composeOpen: boolean;
+  composeCanSend: boolean;
   setComposeOpen: StateSetter<boolean>;
   setFocusContext: StateSetter<FocusContext>;
   selectedRow: MailboxRow | null;
@@ -2285,6 +2306,7 @@ function renderDesktopWorkbench(props: {
         composeOpen={props.composeOpen}
         composeSession={props.composeSession}
         composeDraft={props.composeDraft}
+        composeCanSend={props.composeCanSend}
         composeBusy={props.composeBusy}
         composeError={props.composeError}
         utilityRail={props.utilityRail}
@@ -2294,9 +2316,12 @@ function renderDesktopWorkbench(props: {
         onAttachComposeFiles={() => void props.attachComposeFiles()}
         onRemoveComposeAttachment={props.removeComposeAttachment}
         onRefreshCompose={() => void props.refreshComposeSession()}
-        onSendCompose={() =>
-          void props.submitComposeAction("/compose/session/send", "Sent")
-        }
+        onSendCompose={() => {
+          if (!props.composeCanSend) {
+            return;
+          }
+          void props.submitComposeAction("/compose/session/send", "Sent");
+        }}
         onSaveCompose={() =>
           void props.submitComposeAction("/compose/session/save", "Draft saved")
         }

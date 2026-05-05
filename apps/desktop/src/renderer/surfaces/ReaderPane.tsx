@@ -2,7 +2,8 @@ import { Archive, ChevronDown, ChevronRight, Paperclip, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AttachmentMeta, MailboxRow, ReaderMode, ThreadBody, ThreadResponse } from "../../shared/types";
 import { cn } from "../lib/cn";
-import { SkeletonReaderBody, SkeletonReaderHeader } from "../lib/skeleton";
+import { buildSanitizedEmailDocument } from "../lib/emailHtml";
+import { SkeletonReaderBody } from "../lib/skeleton";
 import { formatBytes, renderReaderBody, renderReaderParagraphs } from "./formatters";
 
 export function ReaderPane(props: {
@@ -271,7 +272,12 @@ function MessageBody(props: {
 
   // HTML mode
   if (props.readerMode === "html" && htmlBody) {
-    const sanitizedHtml = props.remoteContentEnabled ? htmlBody : stripRemoteContent(htmlBody);
+    const sanitizedHtml = buildSanitizedEmailDocument({
+      title: "HTML message",
+      html: htmlBody,
+      css: READER_HTML_CSS,
+      allowRemoteContent: props.remoteContentEnabled,
+    });
     return (
       <div>
         {!props.remoteContentEnabled ? (
@@ -369,7 +375,7 @@ const READER_HTML_CSS = `
 function HtmlMessageFrame(props: { html: string }) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const [frameHeight, setFrameHeight] = useState(MIN_HTML_FRAME_HEIGHT_PX);
-  const srcDoc = useMemo(() => wrapHtmlForReader(props.html), [props.html]);
+  const srcDoc = useMemo(() => props.html, [props.html]);
 
   useEffect(() => {
     setFrameHeight(MIN_HTML_FRAME_HEIGHT_PX);
@@ -538,24 +544,4 @@ function getAvatarColor(sender: string): string {
     hash = ((hash << 5) - hash + sender.charCodeAt(i)) | 0;
   }
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-function stripRemoteContent(html: string): string {
-  return html
-    .replace(/<img\s[^>]*src=["']https?:\/\/[^"']*["'][^>]*\/?>/gi, "<!-- remote image blocked -->")
-    .replace(/url\(["']?https?:\/\/[^)"']*["']?\)/gi, "url()")
-    .replace(/<link\s[^>]*href=["']https?:\/\/[^"']*["'][^>]*\/?>/gi, "<!-- remote stylesheet blocked -->");
-}
-
-function wrapHtmlForReader(html: string): string {
-  const styleTag = `<style>${READER_HTML_CSS}</style>`;
-
-  if (/<html[\s>]/i.test(html)) {
-    if (/<head[\s>]/i.test(html)) {
-      return html.replace(/<head([^>]*)>/i, `<head$1>${styleTag}`);
-    }
-    return html.replace(/<html([^>]*)>/i, `<html$1><head>${styleTag}</head>`);
-  }
-
-  return `<!doctype html><html><head>${styleTag}</head><body>${html}</body></html>`;
 }

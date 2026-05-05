@@ -2,6 +2,9 @@ import { Dialog } from "@base-ui/react";
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type {
+  AccountConfig,
+  AccountSendConfig,
+  AccountSyncConfig,
   AccountOperationResponse,
   RuleFormPayload,
   SidebarItem,
@@ -61,7 +64,12 @@ export function LabelDialog(props: {
       return;
     }
     const focusTimer = window.setTimeout(() => {
-      optionRefs.current[activeOptionIndex]?.focus() ?? popupRef.current?.focus();
+      const activeOption = optionRefs.current[activeOptionIndex];
+      if (activeOption) {
+        activeOption.focus();
+      } else {
+        popupRef.current?.focus();
+      }
     }, 0);
     return () => window.clearTimeout(focusTimer);
   }, [activeOptionIndex, props.open]);
@@ -731,6 +739,23 @@ export function AccountFormDialog(props: {
   onTest: () => void;
   onSave: () => void;
 }) {
+  const parsed = parseAccountDialogDraft(props.draftJson);
+  const account = parsed.account ?? defaultAccountDialogConfig();
+  const providerMode = accountProviderMode(account);
+  const jsonError = parsed.error;
+  const updateAccount = (next: AccountConfig) => {
+    props.onChange(JSON.stringify(next, null, 2));
+  };
+  const updateBase = (patch: Partial<AccountConfig>) => {
+    updateAccount({ ...account, ...patch });
+  };
+  const updateSync = (sync: AccountSyncConfig | null) => {
+    updateAccount({ ...account, sync });
+  };
+  const updateSend = (send: AccountSendConfig | null) => {
+    updateAccount({ ...account, send });
+  };
+
   return (
     <Dialog.Root open={props.open} onOpenChange={(next) => !next && props.onClose()}>
       <Dialog.Portal>
@@ -743,15 +768,91 @@ export function AccountFormDialog(props: {
                   New account
                 </Dialog.Title>
                 <p className="mt-3 text-sm text-foreground-muted">
-                  JSON-backed for now. Thin wrapper over the daemon account config surface.
+                  Choose a provider, then save the same account config the daemon uses.
                 </p>
               </div>
               <div className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
-                <textarea
-                  className="min-h-full w-full rounded-md border border-outline bg-panel-muted px-5 py-5 font-mono text-sm leading-7 text-foreground outline-none"
-                  value={props.draftJson}
-                  onChange={(event) => props.onChange(event.target.value)}
-                />
+                <div className="grid gap-5">
+                  <div className="flex flex-wrap gap-2">
+                    {(["gmail", "imap_smtp", "smtp"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        className={cn(
+                          "rounded border px-3 py-2 text-sm",
+                          providerMode === mode
+                            ? "border-accent/35 bg-accent/12 text-accent"
+                            : "border-outline bg-panel-elevated text-foreground-muted",
+                        )}
+                        onClick={() => updateAccount(accountWithProviderMode(account, mode))}
+                      >
+                        {accountProviderModeLabel(mode)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <ComposeField
+                      label="Account key"
+                      value={account.key}
+                      placeholder="personal"
+                      onChange={(value) => updateBase({ key: value })}
+                    />
+                    <ComposeField
+                      label="Display name"
+                      value={account.name}
+                      placeholder="Personal"
+                      onChange={(value) => updateBase({ name: value })}
+                    />
+                    <ComposeField
+                      label="Email"
+                      value={account.email}
+                      placeholder="me@example.com"
+                      onChange={(value) => updateBase({ email: value })}
+                    />
+                    <label className="flex items-center gap-3 rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground-muted">
+                      <input
+                        type="checkbox"
+                        checked={account.is_default}
+                        onChange={(event) => updateBase({ is_default: event.target.checked })}
+                      />
+                      Default account
+                    </label>
+                  </div>
+
+                  {providerMode === "gmail" ? (
+                    <GmailAccountFields account={account} onSyncChange={updateSync} />
+                  ) : null}
+
+                  {providerMode === "imap_smtp" ? (
+                    <ImapSmtpFields
+                      account={account}
+                      onSyncChange={updateSync}
+                      onSendChange={updateSend}
+                    />
+                  ) : null}
+
+                  {providerMode === "smtp" ? (
+                    <SmtpFields account={account} onSendChange={updateSend} />
+                  ) : null}
+
+                  <details
+                    className="rounded border border-outline bg-panel-muted px-4 py-3"
+                    open={Boolean(jsonError)}
+                  >
+                    <summary className="cursor-pointer text-sm text-foreground-muted">
+                      Advanced JSON
+                    </summary>
+                    {jsonError ? (
+                      <p className="mt-3 text-xs text-danger">{jsonError}</p>
+                    ) : null}
+                    <textarea
+                      className="mt-3 min-h-64 w-full rounded-md border border-outline bg-panel-muted px-5 py-5 font-mono text-sm leading-7 text-foreground outline-none"
+                      value={props.draftJson}
+                      onChange={(event) => props.onChange(event.target.value)}
+                    />
+                  </details>
+                </div>
               </div>
               <div className="flex items-center justify-between gap-3 border-t border-outline px-6 py-4">
                 <span className="mono-meta">{props.busyLabel ?? "Ready"}</span>
@@ -779,4 +880,237 @@ export function AccountFormDialog(props: {
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+function GmailAccountFields(props: {
+  account: AccountConfig;
+  onSyncChange: (sync: AccountSyncConfig) => void;
+}) {
+  const sync = props.account.sync?.type === "gmail" ? props.account.sync : gmailSync(props.account);
+  const setSync = (patch: Partial<typeof sync>) => props.onSyncChange({ ...sync, ...patch });
+  return (
+    <section className="grid gap-4 rounded border border-outline bg-panel-muted px-4 py-4">
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="flex items-center gap-3 rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground-muted">
+          <input
+            type="radio"
+            checked={(sync.credential_source ?? "bundled") === "bundled"}
+            onChange={() => setSync({ credential_source: "bundled" })}
+          />
+          Bundled beta OAuth
+        </label>
+        <label className="flex items-center gap-3 rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground-muted">
+          <input
+            type="radio"
+            checked={sync.credential_source === "custom"}
+            onChange={() => setSync({ credential_source: "custom" })}
+          />
+          Bring your own OAuth
+        </label>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <ComposeField
+          label="Client ID"
+          value={sync.client_id}
+          onChange={(value) => setSync({ client_id: value })}
+        />
+        <ComposeField
+          label="Client secret"
+          value={sync.client_secret ?? ""}
+          onChange={(value) => setSync({ client_secret: value || null })}
+        />
+        <ComposeField
+          label="Token ref"
+          value={sync.token_ref}
+          onChange={(value) => setSync({ token_ref: value })}
+        />
+      </div>
+    </section>
+  );
+}
+
+function ImapSmtpFields(props: {
+  account: AccountConfig;
+  onSyncChange: (sync: AccountSyncConfig) => void;
+  onSendChange: (send: AccountSendConfig) => void;
+}) {
+  const sync = props.account.sync?.type === "imap" ? props.account.sync : imapSync(props.account);
+  const send = props.account.send?.type === "smtp" ? props.account.send : smtpSend(props.account);
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      <ServerFields
+        title="IMAP"
+        value={sync}
+        onChange={(next) => props.onSyncChange(next)}
+      />
+      <ServerFields
+        title="SMTP"
+        value={send}
+        onChange={(next) => props.onSendChange(next)}
+      />
+    </div>
+  );
+}
+
+function SmtpFields(props: {
+  account: AccountConfig;
+  onSendChange: (send: AccountSendConfig) => void;
+}) {
+  const send = props.account.send?.type === "smtp" ? props.account.send : smtpSend(props.account);
+  return (
+    <ServerFields
+      title="SMTP"
+      value={send}
+      onChange={(next) => props.onSendChange(next)}
+    />
+  );
+}
+
+function ServerFields<T extends Extract<AccountSyncConfig | AccountSendConfig, { type: "imap" | "smtp" }>>(
+  props: {
+    title: string;
+    value: T;
+    onChange: (value: T) => void;
+  },
+) {
+  const update = (patch: Partial<T>) => props.onChange({ ...props.value, ...patch });
+  return (
+    <section className="grid gap-4 rounded border border-outline bg-panel-muted px-4 py-4">
+      <p className="mono-meta">{props.title}</p>
+      <div className="grid gap-4 md:grid-cols-[1fr_7rem]">
+        <ComposeField
+          label="Host"
+          value={props.value.host}
+          onChange={(value) => update({ host: value } as Partial<T>)}
+        />
+        <ComposeField
+          label="Port"
+          value={String(props.value.port)}
+          onChange={(value) =>
+            update({ port: Number.parseInt(value, 10) || props.value.port } as Partial<T>)
+          }
+        />
+      </div>
+      <ComposeField
+        label="Username"
+        value={props.value.username}
+        onChange={(value) => update({ username: value } as Partial<T>)}
+      />
+      <ComposeField
+        label="Password ref"
+        value={props.value.password_ref}
+        onChange={(value) => update({ password_ref: value } as Partial<T>)}
+      />
+      <ComposeField
+        label="Password"
+        value={props.value.password ?? ""}
+        onChange={(value) => update({ password: value || null } as Partial<T>)}
+      />
+      <label className="flex items-center gap-3 rounded border border-outline bg-panel-elevated px-4 py-3 text-sm text-foreground-muted">
+        <input
+          type="checkbox"
+          checked={props.value.use_tls}
+          onChange={(event) => update({ use_tls: event.target.checked } as Partial<T>)}
+        />
+        TLS
+      </label>
+    </section>
+  );
+}
+
+function parseAccountDialogDraft(value: string): {
+  account: AccountConfig | null;
+  error: string | null;
+} {
+  try {
+    return { account: JSON.parse(value) as AccountConfig, error: null };
+  } catch (error) {
+    return {
+      account: null,
+      error: error instanceof Error ? error.message : "Invalid account JSON",
+    };
+  }
+}
+
+function defaultAccountDialogConfig(): AccountConfig {
+  return accountWithProviderMode(
+    {
+      key: "personal",
+      name: "Personal",
+      email: "me@example.com",
+      enabled: true,
+      sync: null,
+      send: null,
+      is_default: true,
+    },
+    "gmail",
+  );
+}
+
+function accountProviderMode(account: AccountConfig): "gmail" | "imap_smtp" | "smtp" {
+  if (account.sync?.type === "gmail") {
+    return "gmail";
+  }
+  if (account.sync?.type === "imap") {
+    return "imap_smtp";
+  }
+  return "smtp";
+}
+
+function accountProviderModeLabel(mode: "gmail" | "imap_smtp" | "smtp") {
+  if (mode === "gmail") return "Gmail";
+  if (mode === "imap_smtp") return "IMAP + SMTP";
+  return "SMTP only";
+}
+
+function accountWithProviderMode(
+  account: AccountConfig,
+  mode: "gmail" | "imap_smtp" | "smtp",
+): AccountConfig {
+  if (mode === "gmail") {
+    return { ...account, sync: gmailSync(account), send: { type: "gmail" } };
+  }
+  if (mode === "imap_smtp") {
+    return { ...account, sync: imapSync(account), send: smtpSend(account) };
+  }
+  return { ...account, sync: null, send: smtpSend(account) };
+}
+
+function gmailSync(account: AccountConfig): Extract<AccountSyncConfig, { type: "gmail" }> {
+  const existing = account.sync?.type === "gmail" ? account.sync : null;
+  return {
+    type: "gmail",
+    credential_source: existing?.credential_source ?? "bundled",
+    client_id: existing?.client_id ?? "",
+    client_secret: existing?.client_secret ?? null,
+    token_ref: existing?.token_ref ?? `gmail:${account.key || "personal"}`,
+  };
+}
+
+function imapSync(account: AccountConfig): Extract<AccountSyncConfig, { type: "imap" }> {
+  const existing = account.sync?.type === "imap" ? account.sync : null;
+  return {
+    type: "imap",
+    host: existing?.host ?? "",
+    port: existing?.port ?? 993,
+    username: existing?.username ?? account.email,
+    password_ref: existing?.password_ref ?? `imap:${account.key || "personal"}`,
+    password: existing?.password ?? null,
+    auth_required: existing?.auth_required ?? true,
+    use_tls: existing?.use_tls ?? true,
+  };
+}
+
+function smtpSend(account: AccountConfig): Extract<AccountSendConfig, { type: "smtp" }> {
+  const existing = account.send?.type === "smtp" ? account.send : null;
+  return {
+    type: "smtp",
+    host: existing?.host ?? "",
+    port: existing?.port ?? 587,
+    username: existing?.username ?? account.email,
+    password_ref: existing?.password_ref ?? `smtp:${account.key || "personal"}`,
+    password: existing?.password ?? null,
+    auth_required: existing?.auth_required ?? true,
+    use_tls: existing?.use_tls ?? true,
+  };
 }

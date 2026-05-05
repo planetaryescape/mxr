@@ -192,4 +192,69 @@ describe("BridgeManager", () => {
     expect(launchBridge).toHaveBeenCalledTimes(1);
     expect(stopFirst).toHaveBeenCalledTimes(1);
   });
+
+  it("moves out of ready when a started bridge exits", async () => {
+    const exited = deferred<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+      stderr: string;
+    }>();
+    const manager = new BridgeManager({
+      inspectBinary: vi.fn(async () => ({
+        protocol_version: 1,
+        daemon_version: "1.0.0",
+      })),
+      launchBridge: vi.fn(async (_binaryPath: string, authToken: string) => ({
+        connection: { baseUrl: "http://bridge/bundled", authToken },
+        exited: exited.promise,
+        stop: vi.fn(async () => {}),
+      })),
+      verifyBridgeContract: vi.fn(async () => initialMailbox),
+      createAuthToken: () => "token-3",
+      getUserDataPath: () => userDataDir,
+      getBundledBinaryPath: () => "/tmp/bundled-mxr",
+      getEnvBinaryPath: () => null,
+    });
+
+    await expect(manager.getState()).resolves.toMatchObject({ kind: "ready" });
+    exited.resolve({ code: 9, signal: null, stderr: "bridge died" });
+    await vi.waitFor(async () => {
+      await expect(manager.getState()).resolves.toMatchObject({
+        kind: "error",
+        title: "mxr web bridge exited",
+        detail: "code 9: bridge died",
+      });
+    });
+  });
+
+  it("probes cached ready state before returning it", async () => {
+    const stop = vi.fn(async () => {});
+    const verifyBridgeContract = vi
+      .fn()
+      .mockResolvedValueOnce(initialMailbox)
+      .mockRejectedValueOnce(new Error("connection refused"));
+    const manager = new BridgeManager({
+      inspectBinary: vi.fn(async () => ({
+        protocol_version: 1,
+        daemon_version: "1.0.0",
+      })),
+      launchBridge: vi.fn(async (_binaryPath: string, authToken: string) => ({
+        connection: { baseUrl: "http://bridge/bundled", authToken },
+        stop,
+      })),
+      verifyBridgeContract,
+      createAuthToken: () => "token-4",
+      getUserDataPath: () => userDataDir,
+      getBundledBinaryPath: () => "/tmp/bundled-mxr",
+      getEnvBinaryPath: () => null,
+    });
+
+    await expect(manager.getState()).resolves.toMatchObject({ kind: "ready" });
+    await expect(manager.getState()).resolves.toMatchObject({
+      kind: "error",
+      title: "mxr web bridge stopped responding",
+      detail: "connection refused",
+    });
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
 });

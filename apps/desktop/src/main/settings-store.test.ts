@@ -24,7 +24,7 @@ describe("DesktopSettingsStore", () => {
     expect(store.get()).toEqual(DEFAULT_DESKTOP_SETTINGS);
   });
 
-  it("persists theme and keymap overrides", () => {
+  it("persists theme, telemetry, and keymap overrides", () => {
     const store = new DesktopSettingsStore({
       cwd,
       name: "desktop-settings-test",
@@ -32,6 +32,9 @@ describe("DesktopSettingsStore", () => {
 
     const saved = store.set({
       theme: "catppuccin-mocha",
+      telemetry: {
+        sentryEnabled: true,
+      },
       keymapOverrides: {
         rules: {
           n: "open_rule_form_new",
@@ -41,6 +44,9 @@ describe("DesktopSettingsStore", () => {
 
     expect(saved).toMatchObject({
       theme: "catppuccin-mocha",
+      telemetry: {
+        sentryEnabled: true,
+      },
       keymapOverrides: {
         rules: {
           n: "open_rule_form_new",

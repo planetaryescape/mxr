@@ -74,6 +74,14 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "dump_action_trace",
+        "label": "Dump Trace",
+        "display": "Ctrl-Alt-d",
+        "tokens": [
+          "Ctrl-Alt-d"
+        ]
+      },
+      {
         "action": "page_down",
         "label": "Page Down",
         "display": "Ctrl-d",
@@ -518,6 +526,14 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "dump_action_trace",
+        "label": "Dump Trace",
+        "display": "Ctrl-Alt-d",
+        "tokens": [
+          "Ctrl-Alt-d"
+        ]
+      },
+      {
         "action": "unsubscribe",
         "label": "Unsubscribe",
         "display": "D",
@@ -743,6 +759,14 @@ export const tuiDesktopManifest = {
         "display": "A",
         "tokens": [
           "A"
+        ]
+      },
+      {
+        "action": "dump_action_trace",
+        "label": "Dump Trace",
+        "display": "Ctrl-Alt-d",
+        "tokens": [
+          "Ctrl-Alt-d"
         ]
       },
       {
@@ -1259,6 +1283,66 @@ export const tuiDesktopManifest = {
       "shortcut": "",
       "action": "sync",
       "category": "Sync"
+    },
+    {
+      "label": "Analytics: Storage",
+      "shortcut": "",
+      "action": "open_analytics_view",
+      "category": "Analytics"
+    },
+    {
+      "label": "Analytics: Stale Threads",
+      "shortcut": "",
+      "action": "open_analytics_view",
+      "category": "Analytics"
+    },
+    {
+      "label": "Analytics: Contact Asymmetry",
+      "shortcut": "",
+      "action": "open_analytics_view",
+      "category": "Analytics"
+    },
+    {
+      "label": "Analytics: Response Time",
+      "shortcut": "",
+      "action": "open_analytics_view",
+      "category": "Analytics"
+    },
+    {
+      "label": "Semantic: Enable",
+      "shortcut": "",
+      "action": "enable_semantic",
+      "category": "Semantic"
+    },
+    {
+      "label": "Semantic: Disable",
+      "shortcut": "",
+      "action": "disable_semantic",
+      "category": "Semantic"
+    },
+    {
+      "label": "Semantic: Reindex",
+      "shortcut": "",
+      "action": "reindex_semantic",
+      "category": "Semantic"
+    },
+    {
+      "label": "Semantic: Install Profile (BGE Small EN)",
+      "shortcut": "",
+      "action": "install_semantic_profile",
+      "category": "Semantic"
+    },
+    {
+      "label": "Semantic: Install Profile (Multilingual E5)",
+      "shortcut": "",
+      "action": "install_semantic_profile",
+      "category": "Semantic"
+    },
+    {
+      "label": "Semantic: Install Profile (BGE-M3)",
+      "shortcut": "",
+      "action": "install_semantic_profile",
+      "category": "Semantic"
     },
     {
       "label": "Help",

@@ -83,6 +83,9 @@ const readyBridge = {
 const defaultDesktopSettings = {
   theme: "mxr-dark" as const,
   keymapOverrides: {},
+  telemetry: {
+    sentryEnabled: false,
+  },
 };
 
 const mismatchBridge = {
@@ -142,6 +145,9 @@ function installDesktopApi(bridgeState: BridgeState = readyBridge) {
         ...desktopSettings,
         ...patch,
         keymapOverrides: patch?.keymapOverrides ?? desktopSettings.keymapOverrides,
+        telemetry: patch?.telemetry
+          ? { ...desktopSettings.telemetry, ...patch.telemetry }
+          : desktopSettings.telemetry,
       };
       return desktopSettings;
     }),
@@ -153,6 +159,19 @@ function installDesktopApi(bridgeState: BridgeState = readyBridge) {
     openExternalUrl: vi.fn().mockResolvedValue({ ok: true }),
     openLocalPath: vi.fn().mockResolvedValue({ ok: true }),
     openConfigFile: vi.fn().mockResolvedValue({ ok: true }),
+    checkForDesktopUpdate: vi.fn().mockResolvedValue({
+      status: "up-to-date",
+      message: "mxr Desktop is up to date.",
+    }),
+    downloadDesktopUpdate: vi.fn().mockResolvedValue({
+      status: "downloaded",
+      version: "0.4.63",
+      assetName: "mxr.deb",
+      path: "/tmp/mxr.deb",
+      sha256: "0".repeat(64),
+      message: "Downloaded",
+    }),
+    openDownloadedUpdate: vi.fn().mockResolvedValue({ ok: true }),
   };
   Object.defineProperty(window, "mxrDesktop", {
     value: api,
@@ -1596,7 +1615,29 @@ describe("App", () => {
     });
   });
 
-  it("creates, renames, and deletes labels plus deletes saved searches from diagnostics", async () => {
+  it("creates labels from diagnostics", async () => {
+    installDesktopApi();
+    installFetchMocks();
+
+    renderApp();
+
+    await findActiveLens("Inbox");
+
+    fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
+    fireEvent.click(await screen.findByRole("tab", { name: /Labels/i }));
+    const createLabelInput = await screen.findByPlaceholderText("Create label");
+    expect(createLabelInput).toBeInTheDocument();
+
+    fireEvent.change(createLabelInput, {
+      target: { value: "Escalations" },
+    });
+    fireEvent.submit(createLabelInput.closest("form")!);
+    await waitFor(() => {
+      expect(findRequest("/labels/create", "POST")).toBeDefined();
+    });
+  });
+
+  it("renames labels from diagnostics", async () => {
     installDesktopApi();
     installFetchMocks();
 
@@ -1610,29 +1651,47 @@ describe("App", () => {
       await screen.findByPlaceholderText("Create label"),
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Create label"), {
-      target: { value: "Escalations" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
-    await waitFor(() => {
-      expect(findRequest("/labels/create", "POST")).toBeDefined();
-    });
-
     fireEvent.click(screen.getAllByRole("button", { name: "Rename" })[0]!);
     fireEvent.change(screen.getByDisplayValue("Follow Up"), {
       target: { value: "Priority" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.submit(screen.getByDisplayValue("Priority").closest("form")!);
     await waitFor(() => {
       expect(findRequest("/labels/rename", "POST")).toBeDefined();
     });
+  });
+
+  it("deletes labels from diagnostics", async () => {
+    installDesktopApi();
+    installFetchMocks();
+
+    renderApp();
+
+    await findActiveLens("Inbox");
+
+    fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
+    fireEvent.click(await screen.findByRole("tab", { name: /Labels/i }));
+    expect(
+      await screen.findByPlaceholderText("Create label"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
     await waitFor(() => {
       expect(findRequest("/labels/delete", "POST")).toBeDefined();
     });
+  });
 
-    fireEvent.click(screen.getByRole("tab", { name: /Saved Searches/i }));
+  it("deletes saved searches from diagnostics", async () => {
+    installDesktopApi();
+    installFetchMocks();
+
+    renderApp();
+
+    await findActiveLens("Inbox");
+
+    fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
+    fireEvent.click(await screen.findByRole("tab", { name: /Saved Searches/i }));
+
     fireEvent.click(
       (await screen.findAllByRole("button", { name: "Delete" }))[0]!,
     );
@@ -1763,6 +1822,9 @@ describe("App", () => {
     ).toBeGreaterThan(0);
 
     const htmlFrames = await screen.findAllByTitle("HTML message");
+    expect(htmlFrames[0]?.getAttribute("sandbox")).toBe("allow-same-origin");
+    expect(htmlFrames[0]?.getAttribute("sandbox")).not.toContain("allow-scripts");
+    expect(htmlFrames[0]?.getAttribute("sandbox")).not.toContain("allow-forms");
     await waitFor(() => {
       expect(
         htmlFrames.every(
@@ -1844,6 +1906,11 @@ describe("App", () => {
         expect.objectContaining({
           title: "Deploy complete",
           html: expect.stringContaining("Production deploy succeeded"),
+        }),
+      );
+      expect(desktopApi.openBrowserDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          html: expect.not.stringContaining("https://cdn.example.com/deploy.png"),
         }),
       );
     });

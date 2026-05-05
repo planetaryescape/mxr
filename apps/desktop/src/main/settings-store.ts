@@ -7,6 +7,9 @@ import type {
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   theme: "mxr-dark",
   keymapOverrides: {},
+  telemetry: {
+    sentryEnabled: false,
+  },
 };
 
 export class DesktopSettingsStore {
@@ -22,8 +25,14 @@ export class DesktopSettingsStore {
 
   get(): DesktopSettings {
     return {
-      theme: this.store.get("theme"),
-      keymapOverrides: this.store.get("keymapOverrides"),
+      theme: this.store.get("theme") ?? DEFAULT_DESKTOP_SETTINGS.theme,
+      keymapOverrides:
+        this.store.get("keymapOverrides") ??
+        DEFAULT_DESKTOP_SETTINGS.keymapOverrides,
+      telemetry: {
+        ...DEFAULT_DESKTOP_SETTINGS.telemetry,
+        ...this.store.get("telemetry"),
+      },
     };
   }
 
@@ -33,6 +42,9 @@ export class DesktopSettingsStore {
       ...current,
       ...patch,
       keymapOverrides: patch.keymapOverrides ?? current.keymapOverrides,
+      telemetry: patch.telemetry
+        ? { ...current.telemetry, ...patch.telemetry }
+        : current.telemetry,
     };
 
     this.store.set(next);

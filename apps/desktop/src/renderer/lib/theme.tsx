@@ -11,10 +11,14 @@ import type {
   DesktopSettingsPatch,
   DesktopThemeId,
 } from "../../shared/types";
+import { configureRendererTelemetry } from "./telemetry";
 
 const DEFAULT_SETTINGS: DesktopSettings = {
   theme: "mxr-dark",
   keymapOverrides: {},
+  telemetry: {
+    sentryEnabled: false,
+  },
 };
 
 interface DesktopSettingsContextValue {
@@ -62,6 +66,7 @@ export function ThemeProvider(props: { children: ReactNode }) {
           return;
         }
         setSettings(next);
+        configureRendererTelemetry(next);
         setLoaded(true);
       })
       .catch(() => {
@@ -88,11 +93,13 @@ export function ThemeProvider(props: { children: ReactNode }) {
       setTheme: async (theme) => {
         const next = await window.mxrDesktop.updateDesktopSettings({ theme });
         setSettings(next);
+        configureRendererTelemetry(next);
         return next;
       },
       updateDesktopSettings: async (patch) => {
         const next = await window.mxrDesktop.updateDesktopSettings(patch);
         setSettings(next);
+        configureRendererTelemetry(next);
         return next;
       },
     }),

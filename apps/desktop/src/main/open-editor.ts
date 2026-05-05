@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { basename } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -14,21 +15,26 @@ export async function openDraftInEditor(request: {
   editorCommand: string;
   cursorLine?: number;
 }): Promise<{ ok: true }> {
-  const command = buildEditorCommand(request.editorCommand, request.draftPath, request.cursorLine);
+  const launch = buildEditorLaunch(
+    request.editorCommand,
+    request.draftPath,
+    request.cursorLine,
+  );
 
-  if (process.platform === "darwin" && looksTerminalEditor(request.editorCommand)) {
+  if (process.platform === "darwin" && looksTerminalEditor(launch.executable)) {
     await execFileAsync("osascript", [
       "-e",
       'tell application "Terminal" to activate',
       "-e",
-      `tell application "Terminal" to do script ${appleScriptString(command)}`,
+      `tell application "Terminal" to do script ${appleScriptString(
+        buildTerminalCommand(launch),
+      )}`,
     ]);
     return { ok: true };
   }
 
-  const child = spawn(command, {
+  const child = spawn(launch.executable, launch.args, {
     detached: true,
-    shell: true,
     stdio: "ignore",
   });
   child.unref();
@@ -36,22 +42,102 @@ export async function openDraftInEditor(request: {
   return { ok: true };
 }
 
-function buildEditorCommand(editorCommand: string, draftPath: string, cursorLine?: number) {
-  const lower = editorCommand.toLowerCase();
+export function buildEditorLaunch(
+  editorCommand: string,
+  draftPath: string,
+  cursorLine?: number,
+): { executable: string; args: string[] } {
+  const [executable, ...baseArgs] = splitEditorCommand(editorCommand);
+  if (!executable || executable.startsWith("-")) {
+    throw new Error("$EDITOR must start with an executable");
+  }
+
+  const editorName = basename(executable).toLowerCase();
+  const args = [...baseArgs];
   if (cursorLine) {
-    if (lower.includes("vim") || lower === "vi" || lower.includes("nvim")) {
-      return `${editorCommand} +${cursorLine} ${shellQuote(draftPath)}`;
+    if (["vi", "vim", "nvim"].includes(editorName)) {
+      args.push(`+${cursorLine}`, draftPath);
+      return { executable, args };
     }
-    if (lower.includes("hx") || lower.includes("helix")) {
-      return `${editorCommand} ${shellQuote(`${draftPath}:${cursorLine}`)}`;
+    if (["hx", "helix"].includes(editorName)) {
+      args.push(`${draftPath}:${cursorLine}`);
+      return { executable, args };
     }
   }
 
-  return `${editorCommand} ${shellQuote(draftPath)}`;
+  args.push(draftPath);
+  return { executable, args };
 }
 
-function looksTerminalEditor(editorCommand: string) {
-  return TERMINAL_EDITOR_PATTERNS.some((pattern) => pattern.test(editorCommand));
+function splitEditorCommand(editorCommand: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaping = false;
+
+  for (const char of editorCommand.trim()) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+
+    if (char === "\\" && quote !== "'") {
+      escaping = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    if (/[|&;<>()`]/.test(char) || char.charCodeAt(0) < 32) {
+      throw new Error("$EDITOR contains shell syntax that is not supported");
+    }
+
+    current += char;
+  }
+
+  if (escaping) {
+    current += "\\";
+  }
+  if (quote) {
+    throw new Error("$EDITOR contains an unterminated quote");
+  }
+  if (current) {
+    tokens.push(current);
+  }
+  if (tokens.length === 0) {
+    throw new Error("$EDITOR is empty");
+  }
+  return tokens;
+}
+
+function looksTerminalEditor(executable: string) {
+  const editorName = basename(executable);
+  return TERMINAL_EDITOR_PATTERNS.some((pattern) => pattern.test(editorName));
+}
+
+function buildTerminalCommand(launch: { executable: string; args: string[] }) {
+  return [launch.executable, ...launch.args].map(shellQuote).join(" ");
 }
 
 function shellQuote(value: string) {

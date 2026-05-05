@@ -63,6 +63,9 @@ export interface DesktopApi {
   openExternalUrl(url: string): Promise<ActionAckResponse>;
   openLocalPath(path: string): Promise<ActionAckResponse>;
   openConfigFile(): Promise<ActionAckResponse>;
+  checkForDesktopUpdate(): Promise<DesktopUpdateState>;
+  downloadDesktopUpdate(): Promise<DesktopUpdateState>;
+  openDownloadedUpdate(): Promise<ActionAckResponse>;
 }
 
 export type WorkbenchScreen =
@@ -115,9 +118,40 @@ export type DesktopKeymapBindings = Partial<
 export interface DesktopSettings {
   theme: DesktopThemeId;
   keymapOverrides: DesktopKeymapBindings;
+  telemetry: DesktopTelemetrySettings;
 }
 
-export type DesktopSettingsPatch = Partial<DesktopSettings>;
+export interface DesktopTelemetrySettings {
+  sentryEnabled: boolean;
+}
+
+export type DesktopSettingsPatch = Partial<
+  Omit<DesktopSettings, "telemetry">
+> & {
+  telemetry?: Partial<DesktopTelemetrySettings>;
+};
+
+export type DesktopUpdateState =
+  | {
+      status: "unsupported" | "not-packaged" | "up-to-date" | "unavailable";
+      message: string;
+    }
+  | {
+      status: "available";
+      version: string;
+      currentVersion: string;
+      assetName: string;
+      releaseUrl: string;
+      message: string;
+    }
+  | {
+      status: "downloaded";
+      version: string;
+      assetName: string;
+      path: string;
+      sha256: string;
+      message: string;
+    };
 
 export type DiagnosticsWorkspaceSection =
   | "overview"
@@ -243,6 +277,7 @@ export interface ThreadResponse {
   thread: ThreadSummary;
   messages: MailboxRow[];
   bodies: ThreadBody[];
+  body_failures?: Array<{ message_id: string; error: string }>;
   reader_mode: ReaderMode;
   right_rail?: UtilityRailPayload;
 }
@@ -253,6 +288,7 @@ export interface SearchResponse {
   mode: SearchMode;
   total: number;
   has_more?: boolean;
+  next_offset?: number | null;
   groups: MailboxGroup[];
   explain: unknown | null;
 }
@@ -305,6 +341,19 @@ export interface AccountSummary {
   editable: string;
   sync?: AccountSyncConfig | null;
   send?: AccountSendConfig | null;
+  capabilities?: AccountCapabilities;
+}
+
+export interface AccountCapabilities {
+  labels: boolean;
+  server_search: boolean;
+  delta_sync: boolean;
+  push: boolean;
+  batch_operations: boolean;
+  native_thread_ids: boolean;
+  supports_send: boolean;
+  supports_local_drafts: boolean;
+  supports_server_drafts: boolean;
 }
 
 export interface AccountsResponse {
@@ -315,6 +364,7 @@ export interface AccountConfig {
   key: string;
   name: string;
   email: string;
+  enabled?: boolean;
   sync?: AccountSyncConfig | null;
   send?: AccountSendConfig | null;
   is_default: boolean;
@@ -337,6 +387,7 @@ export type AccountSyncConfig =
       username: string;
       password_ref: string;
       password?: string | null;
+      auth_required?: boolean;
       use_tls: boolean;
     };
 
@@ -351,6 +402,7 @@ export type AccountSendConfig =
       username: string;
       password_ref: string;
       password?: string | null;
+      auth_required?: boolean;
       use_tls: boolean;
     };
 
@@ -370,6 +422,33 @@ export interface AccountOperationResult {
 
 export interface AccountOperationResponse {
   result: AccountOperationResult;
+}
+
+export type AuthFlow = "auto" | "installed" | "device";
+
+export type AuthSessionState =
+  | "starting"
+  | "waiting_for_user"
+  | "authorized"
+  | "failed"
+  | "cancelled";
+
+export interface AuthSession {
+  session_id: string;
+  state: AuthSessionState;
+  flow: Exclude<AuthFlow, "auto">;
+  account_key: string;
+  auth_url?: string | null;
+  user_code?: string | null;
+  verification_uri?: string | null;
+  expires_at_unix?: number | null;
+  poll_interval_secs?: number | null;
+  message?: string | null;
+  error?: string | null;
+}
+
+export interface AuthSessionResponse {
+  session: AuthSession;
 }
 
 export interface DiagnosticsReport {

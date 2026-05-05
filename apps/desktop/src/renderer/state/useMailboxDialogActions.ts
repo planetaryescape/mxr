@@ -14,6 +14,7 @@ import type {
   ThreadResponse,
 } from "../../shared/types";
 import { fetchJson } from "./bridgeHttp";
+import { buildPlainTextEmailDocument, buildSanitizedEmailDocument } from "../lib/emailHtml";
 import type { DesktopRequestCoordinator } from "./requestCoordinator";
 
 type StateSetter<T> = (updater: SetStateAction<T>) => void;
@@ -423,23 +424,13 @@ async function loadThreadForBrowserOpen(
 
 function buildBrowserDocument(subject: string, body: ThreadBody) {
   if (body.text_html) {
-    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
-      subject,
-    )}</title></head><body>${body.text_html}</body></html>`;
+    return buildSanitizedEmailDocument({
+      title: subject,
+      html: body.text_html,
+    });
   }
   if (body.text_plain) {
-    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
-      subject,
-    )}</title></head><body><pre>${escapeHtml(body.text_plain)}</pre></body></html>`;
+    return buildPlainTextEmailDocument(subject, body.text_plain);
   }
   return null;
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }

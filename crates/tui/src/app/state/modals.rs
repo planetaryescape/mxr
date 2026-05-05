@@ -67,6 +67,16 @@ pub struct ModalsState {
     /// does delete-then-create so the daemon's UNIQUE-name constraint
     /// doesn't reject the update.
     pub saved_search_form: Option<SavedSearchFormState>,
+    /// Queue of saved-search IPC requests waiting for the dispatcher
+    /// to send. Stored as a Vec so the edit path can enqueue
+    /// `[Delete, Create]` atomically.
+    pub pending_saved_search_dispatch: Vec<Request>,
+    /// Set after a saved-search mutation completes so the next
+    /// dispatcher tick refreshes `app.mailbox.saved_searches`.
+    pub pending_saved_search_refresh: bool,
+    /// `Some(name)` while a delete confirmation is open. Pressing
+    /// `y`/`Enter` dispatches the delete; `n`/`Esc` cancels.
+    pub pending_saved_search_delete_confirm: Option<String>,
 }
 
 /// Modal form for creating (or editing via delete+create) a saved

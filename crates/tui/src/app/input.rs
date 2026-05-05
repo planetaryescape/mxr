@@ -246,6 +246,31 @@ impl App {
             };
         }
 
+        // Saved-search delete confirm: y/Enter confirms, n/Esc cancels.
+        // Placed before the form check because both can technically
+        // be open when a delete is triggered from the sidebar with no
+        // form open — but the typical lifecycle is: form closed,
+        // delete pending. Either way: confirm wins.
+        if self.modals.pending_saved_search_delete_confirm.is_some() {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Char('y') | KeyCode::Enter, _) => {
+                    self.confirm_pending_saved_search_delete();
+                    None
+                }
+                (KeyCode::Char('n') | KeyCode::Esc, _) => {
+                    self.cancel_pending_saved_search_delete();
+                    None
+                }
+                _ => None,
+            };
+        }
+
+        // Saved-search form: routed before command palette so keys
+        // typed into the modal don't trigger global shortcuts.
+        if self.modals.saved_search_form.is_some() {
+            return self.handle_saved_search_form_key(key);
+        }
+
         if self.command_palette.palette.visible {
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => return self.command_palette.palette.confirm(),
@@ -712,6 +737,25 @@ impl App {
                     self.expand_current_sidebar_section();
                     None
                 }
+                // n always opens a new saved-search form from the sidebar.
+                // Even on system labels there's no other affordance for `n`.
+                (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                    Some(Action::OpenSavedSearchFormNew)
+                }
+                // e/d only meaningful on a Saved Searches row — a label
+                // can't be edited or deleted from here. When focused on
+                // a non-saved-search row we fall through so e/d retain
+                // any future bindings or contextual behavior.
+                (KeyCode::Char('e'), KeyModifiers::NONE)
+                    if self.current_sidebar_group() == SidebarGroup::SavedSearches =>
+                {
+                    Some(Action::OpenSavedSearchFormEdit)
+                }
+                (KeyCode::Char('d'), KeyModifiers::NONE)
+                    if self.current_sidebar_group() == SidebarGroup::SavedSearches =>
+                {
+                    Some(Action::DeleteSavedSearch)
+                }
                 (KeyCode::Enter | KeyCode::Char('o'), _) => self.sidebar_select(),
                 // l = select label and move to mail list
                 (KeyCode::Char('l') | KeyCode::Right, KeyModifiers::NONE) => self.sidebar_select(),
@@ -931,6 +975,74 @@ impl App {
                 None
             }
             (KeyCode::Enter, _) => Some(Action::SaveRuleForm),
+            _ => None,
+        }
+    }
+
+    fn handle_saved_search_form_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Option<Action> {
+        let Some(form) = self.modals.saved_search_form.as_mut() else {
+            return None;
+        };
+        match (key.code, key.modifiers) {
+            (KeyCode::Esc, _) => {
+                self.close_saved_search_form();
+                None
+            }
+            (KeyCode::Tab, _) => {
+                form.active_field = match form.active_field {
+                    SavedSearchFormField::Name => SavedSearchFormField::Query,
+                    SavedSearchFormField::Query => SavedSearchFormField::Mode,
+                    SavedSearchFormField::Mode => SavedSearchFormField::Name,
+                };
+                form.validation_error = None;
+                None
+            }
+            (KeyCode::BackTab, _) => {
+                form.active_field = match form.active_field {
+                    SavedSearchFormField::Name => SavedSearchFormField::Mode,
+                    SavedSearchFormField::Query => SavedSearchFormField::Name,
+                    SavedSearchFormField::Mode => SavedSearchFormField::Query,
+                };
+                form.validation_error = None;
+                None
+            }
+            (KeyCode::Enter, _) | (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
+                Some(Action::SaveSavedSearchForm)
+            }
+            (KeyCode::Char(' '), _) if form.active_field == SavedSearchFormField::Mode => {
+                form.search_mode = match form.search_mode {
+                    mxr_core::types::SearchMode::Lexical => mxr_core::types::SearchMode::Hybrid,
+                    mxr_core::types::SearchMode::Hybrid => mxr_core::types::SearchMode::Semantic,
+                    mxr_core::types::SearchMode::Semantic => mxr_core::types::SearchMode::Lexical,
+                };
+                form.validation_error = None;
+                None
+            }
+            (KeyCode::Backspace, _) => {
+                match form.active_field {
+                    SavedSearchFormField::Name => {
+                        form.name.pop();
+                    }
+                    SavedSearchFormField::Query => {
+                        form.query.pop();
+                    }
+                    SavedSearchFormField::Mode => {}
+                }
+                form.validation_error = None;
+                None
+            }
+            (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                match form.active_field {
+                    SavedSearchFormField::Name => form.name.push(c),
+                    SavedSearchFormField::Query => form.query.push(c),
+                    SavedSearchFormField::Mode => {}
+                }
+                form.validation_error = None;
+                None
+            }
             _ => None,
         }
     }

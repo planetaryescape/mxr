@@ -617,6 +617,111 @@ fn cli_journey_archive_then_undo_restores_inbox() {
     );
 }
 
+/// Phase 2.1 stage B / Behaviors 1, 3, 5: a CLI round-trip on the saved-search
+/// surface. The TUI dispatches the same `Request::CreateSavedSearch` /
+/// `DeleteSavedSearch` requests as `mxr saved add` / `mxr saved delete`, so
+/// covering the CLI side proves the daemon contract holds and verifies
+/// parity with whatever the TUI sends.
+#[test]
+fn cli_journey_saved_search_create_list_delete_round_trip() {
+    let _guard = cli_journey_guard();
+    let temp = TempDir::new().expect("temp dir");
+    let instance = unique_instance_name();
+    let data_dir = temp.path().join("data");
+    let config_dir = temp.path().join("config");
+    let socket_path = instance_socket_path(&instance);
+    let pid_path = data_dir.join("daemon.pid");
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    write_fake_config(&config_dir);
+
+    let mut daemon = DaemonGuard {
+        socket_path: socket_path.clone(),
+        pid_path,
+        pid: None,
+    };
+
+    let status = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["status", "--format", "json"],
+    );
+    daemon.pid = status["daemon_pid"].as_u64();
+    assert!(daemon.pid.is_some(), "daemon should auto-start");
+
+    // Empty list at start: clean ground for the round-trip.
+    let initial = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["saved", "--format", "json", "list"],
+    );
+    let initial_count = initial.as_array().map(|a| a.len()).unwrap_or(0);
+
+    // Create. Behavior 1: after a successful create, the list contains
+    // the new entry.
+    run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["saved", "add", "Test Search", "label:inbox"],
+    );
+
+    let after_create = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["saved", "--format", "json", "list"],
+    );
+    let after_create_arr = after_create
+        .as_array()
+        .expect("saved list must be JSON array");
+    assert_eq!(
+        after_create_arr.len(),
+        initial_count + 1,
+        "exactly one new saved search after create; got {after_create:#}"
+    );
+    let created = after_create_arr
+        .iter()
+        .find(|s| s["name"].as_str() == Some("Test Search"))
+        .unwrap_or_else(|| panic!("created search missing in list: {after_create:#}"));
+    assert_eq!(
+        created["query"].as_str(),
+        Some("label:inbox"),
+        "query must round-trip exactly"
+    );
+
+    // Delete. Behavior 3: removed from the list.
+    run_status_only(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["saved", "delete", "Test Search"],
+    );
+
+    let after_delete = run_json(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["saved", "--format", "json", "list"],
+    );
+    let after_delete_arr = after_delete
+        .as_array()
+        .expect("saved list must be JSON array");
+    assert_eq!(
+        after_delete_arr.len(),
+        initial_count,
+        "list returns to initial size after delete; got {after_delete:#}"
+    );
+    assert!(
+        after_delete_arr
+            .iter()
+            .all(|s| s["name"].as_str() != Some("Test Search")),
+        "deleted entry must not reappear in list"
+    );
+}
+
 fn write_fake_config(config_dir: &Path) {
     let toml = r#"[general]
 default_account = "fake"

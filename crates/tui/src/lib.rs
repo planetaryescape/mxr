@@ -467,6 +467,55 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        // Drain any queued saved-search requests (Create / Delete). The edit
+        // path queues `[Delete, Create]` so we dispatch them in order; the
+        // last response triggers a list refresh.
+        let saved_search_dispatch = app.take_pending_saved_search_dispatch();
+        if !saved_search_dispatch.is_empty() {
+            let total = saved_search_dispatch.len();
+            for (index, request) in saved_search_dispatch.into_iter().enumerate() {
+                let bg = bg.clone();
+                let is_last = index + 1 == total;
+                let _ = submit_task(&queued, async move {
+                    let resp = ipc_call(&bg, request).await;
+                    let result: Result<(), MxrError> = match resp {
+                        Ok(Response::Ok { .. }) => Ok(()),
+                        Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                        Err(e) => Err(e),
+                    };
+                    let _ = is_last; // last-flag is observed by the response handler.
+                    AsyncResult::SavedSearchMutation(result)
+                });
+            }
+            app.modals.pending_saved_search_refresh = true;
+        }
+
+        // Refresh the sidebar list once a saved-search mutation completes.
+        // Triggered either by the dispatch above or by the response handler
+        // when it observes `pending_saved_search_refresh`.
+        if app.modals.pending_saved_search_refresh
+            && app.modals.pending_saved_search_dispatch.is_empty()
+        {
+            // Don't refire if a refresh task is already in flight: clear
+            // the flag here so the response handler can re-set it on the
+            // *next* mutation. Avoids spamming ListSavedSearches every
+            // tick while a save is in-flight.
+            app.modals.pending_saved_search_refresh = false;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, Request::ListSavedSearches).await;
+                let result: Result<Vec<mxr_core::types::SavedSearch>, MxrError> = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::SavedSearches { searches },
+                    }) => Ok(searches),
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::SavedSearchListRefreshed(result)
+            });
+        }
+
         if app.diagnostics.page.refresh_pending {
             app.diagnostics.page.refresh_pending = false;
             app.diagnostics.pending_status_refresh = false;
@@ -1299,6 +1348,25 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::UndoCaptured(undo) => {
                             app.set_pending_undo(undo);
+                        }
+                        AsyncResult::SavedSearchMutation(Ok(())) => {
+                            // Trigger a follow-up list refresh on the next
+                            // dispatcher tick. We don't refresh inline so
+                            // pipelined edits (delete+create) update the
+                            // sidebar with the final state, not mid-flight.
+                            app.modals.pending_saved_search_refresh = true;
+                        }
+                        AsyncResult::SavedSearchMutation(Err(e)) => {
+                            app.report_error(
+                                "Saved search failed",
+                                format!("Could not save: {e}"),
+                            );
+                        }
+                        AsyncResult::SavedSearchListRefreshed(Ok(searches)) => {
+                            app.mailbox.saved_searches = searches;
+                        }
+                        AsyncResult::SavedSearchListRefreshed(Err(e)) => {
+                            app.report_warn(format!("Could not refresh saved searches: {e}"));
                         }
                         other => {
                             let Some(other) = handle_local_io_result(&mut app, other) else {
@@ -6418,6 +6486,121 @@ mod tests {
             }
             other => panic!("expected CreateSavedSearch second, got {other:?}"),
         }
+    }
+
+    /// Phase 2.1 stage B / Behavior 1 + dispatch wiring: dispatching
+    /// `SaveSavedSearchForm` with a valid form queues exactly one
+    /// `CreateSavedSearch` request for the IPC dispatcher and closes
+    /// the form. Catches "save action no-ops" regressions where the
+    /// keybinding fires but no request reaches the daemon.
+    #[test]
+    fn save_saved_search_form_action_queues_create_request() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.open_saved_search_form_new();
+        let form = app
+            .modals
+            .saved_search_form
+            .as_mut()
+            .expect("form open");
+        form.name = "Important".into();
+        form.query = "label:starred".into();
+
+        app.apply(Action::SaveSavedSearchForm);
+
+        let queue = app.take_pending_saved_search_dispatch();
+        assert_eq!(queue.len(), 1, "expected one queued request: {queue:?}");
+        match &queue[0] {
+            mxr_protocol::Request::CreateSavedSearch { name, query, .. } => {
+                assert_eq!(name, "Important");
+                assert_eq!(query, "label:starred");
+            }
+            other => panic!("expected CreateSavedSearch, got {other:?}"),
+        }
+        assert!(
+            app.modals.saved_search_form.is_none(),
+            "form should close after a valid save"
+        );
+        assert!(
+            app.modals.pending_saved_search_dispatch.is_empty(),
+            "queue must be drained by take_pending_saved_search_dispatch"
+        );
+    }
+
+    /// Phase 2.1 stage B / Behavior 2: `SaveSavedSearchForm` with an
+    /// empty query keeps the form open with a validation error and
+    /// does NOT enqueue a request. Matches the principle "form fails
+    /// fast, daemon never sees garbage".
+    #[test]
+    fn save_saved_search_form_action_skips_dispatch_on_validation_failure() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.open_saved_search_form_new();
+        let form = app
+            .modals
+            .saved_search_form
+            .as_mut()
+            .expect("form open");
+        form.name = "Important".into();
+        form.query = "  ".into(); // whitespace-only — rejected.
+
+        app.apply(Action::SaveSavedSearchForm);
+
+        assert!(
+            app.modals.pending_saved_search_dispatch.is_empty(),
+            "no requests must queue on a rejected save"
+        );
+        let form = app
+            .modals
+            .saved_search_form
+            .as_ref()
+            .expect("form must remain open");
+        assert!(
+            form.validation_error.is_some(),
+            "validation_error must be set so the modal can surface it"
+        );
+    }
+
+    /// Phase 2.1 stage B / Behavior 3: opening the delete-confirm via
+    /// `DeleteSavedSearch` with a Saved Search row selected, then
+    /// confirming, queues exactly one `DeleteSavedSearch` request.
+    /// Cancel path clears the confirm without dispatching.
+    #[test]
+    fn delete_saved_search_confirm_path_queues_delete_request() {
+        let mut app = App::new();
+        // Confirm path
+        app.modals.pending_saved_search_delete_confirm = Some("Important".into());
+        let confirmed = app.confirm_pending_saved_search_delete();
+        assert_eq!(confirmed.as_deref(), Some("Important"));
+        let queue = app.take_pending_saved_search_dispatch();
+        assert_eq!(queue.len(), 1, "expected one queued delete: {queue:?}");
+        match &queue[0] {
+            mxr_protocol::Request::DeleteSavedSearch { name } => {
+                assert_eq!(name, "Important");
+            }
+            other => panic!("expected DeleteSavedSearch, got {other:?}"),
+        }
+        assert!(
+            app.modals.pending_saved_search_delete_confirm.is_none(),
+            "confirm dialog must close after confirm"
+        );
+    }
+
+    /// Phase 2.1 stage B / Behavior 3 (cancel path): pressing `n`/Esc
+    /// on the delete confirm clears it without dispatching.
+    #[test]
+    fn delete_saved_search_cancel_path_does_not_queue_request() {
+        let mut app = App::new();
+        app.modals.pending_saved_search_delete_confirm = Some("Important".into());
+        app.cancel_pending_saved_search_delete();
+        assert!(
+            app.modals.pending_saved_search_delete_confirm.is_none(),
+            "confirm must clear on cancel"
+        );
+        assert!(
+            app.modals.pending_saved_search_dispatch.is_empty(),
+            "no request must queue on cancel"
+        );
     }
 
     /// Phase 1.4 / Behavior 6: setting a pending-undo handle exposes

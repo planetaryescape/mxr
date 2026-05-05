@@ -100,6 +100,12 @@ pub(crate) enum AsyncResult {
     /// Captured by the dispatch site when a mutation response carries a
     /// `mutation_id`. Drives the "u to undo" status-bar affordance.
     UndoCaptured(app::PendingUndo),
+    /// One CreateSavedSearch / DeleteSavedSearch response. The dispatcher
+    /// queues these one-shot per request; the success path triggers a
+    /// follow-up `SavedSearchListRefreshed` to update the sidebar.
+    SavedSearchMutation(Result<(), MxrError>),
+    /// Refreshed sidebar list after a saved-search create/delete.
+    SavedSearchListRefreshed(Result<Vec<mxr_core::types::SavedSearch>, MxrError>),
 }
 
 pub(crate) struct ComposeReadyData {

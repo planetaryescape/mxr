@@ -17,6 +17,7 @@ mod mutation_helpers;
 mod recorder;
 mod rule_actions;
 mod runtime_helpers;
+mod saved_search_actions;
 mod screen_actions;
 mod screen_helpers;
 mod search_actions;
@@ -45,7 +46,7 @@ use throbber_widgets_tui::ThrobberState;
 use tui_textarea::TextArea;
 
 pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
-use state::{PendingPreviewRead, SavedSearchFormState};
+use state::PendingPreviewRead;
 pub use state::*;
 
 const PREVIEW_MARK_READ_DELAY: Duration = Duration::from_secs(5);
@@ -135,7 +136,7 @@ pub struct PendingUndo {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SidebarGroup {
+pub(super) enum SidebarGroup {
     SystemLabels,
     UserLabels,
     SavedSearches,

@@ -209,6 +209,9 @@ fn action_name(action: &Action) -> Option<&'static str> {
         Action::ShowRuleDryRun => Some("show_rule_dry_run"),
         Action::ShowRuleHistory => Some("show_rule_history"),
         Action::DeleteRule => Some("delete_rule"),
+        Action::OpenSavedSearchFormNew => Some("open_saved_search_form_new"),
+        Action::OpenSavedSearchFormEdit => Some("open_saved_search_form_edit"),
+        Action::DeleteSavedSearch => Some("delete_saved_search"),
         Action::OpenAccountFormNew => Some("open_account_form_new"),
         Action::TestAccountForm => Some("test_account_form"),
         Action::SetDefaultAccount => Some("set_default_account"),
@@ -225,6 +228,7 @@ fn action_name(action: &Action) -> Option<&'static str> {
         | Action::ConfirmUnsubscribeAndArchiveSender
         | Action::CancelUnsubscribe
         | Action::PatternSelect(_)
+        | Action::SaveSavedSearchForm
         | Action::SwitchAccount(_) => None,
     }
 }

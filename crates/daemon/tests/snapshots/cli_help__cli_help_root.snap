@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 13
 expression: stdout
 ---
 Terminal email client
@@ -54,6 +55,7 @@ Commands:
   label          Apply a label to a message
   unlabel        Remove a label from a message
   move           Move message to a label/folder
+  undo           Undo a recent destructive mutation by its id (~60s window). The mutation id is printed by `archive`, `trash`, `spam`, `mark-read`, and `read-archive`; copy it from there
   snooze         Snooze a message until a specified time
   unsnooze       Unsnooze a message
   snoozed        List snoozed messages

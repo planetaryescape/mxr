@@ -139,6 +139,10 @@ impl App {
             | Action::OpenRuleFormNew
             | Action::OpenRuleFormEdit
             | Action::SaveRuleForm => self.apply_rule_action(action),
+            Action::OpenSavedSearchFormNew
+            | Action::OpenSavedSearchFormEdit
+            | Action::SaveSavedSearchForm
+            | Action::DeleteSavedSearch => self.apply_saved_search_action(action),
             Action::RefreshDiagnostics
             | Action::GenerateBugReport
             | Action::EditConfig

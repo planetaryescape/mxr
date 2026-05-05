@@ -285,6 +285,22 @@ impl App {
             theme,
         );
 
+        // Saved-search form overlay (above sidebar/mail list, below modals)
+        ui::saved_search_form::draw(
+            frame,
+            area,
+            self.modals.saved_search_form.as_ref(),
+            theme,
+        );
+
+        // Saved-search delete confirm overlay
+        ui::saved_search_form::draw_delete_confirm(
+            frame,
+            area,
+            self.modals.pending_saved_search_delete_confirm.as_deref(),
+            theme,
+        );
+
         // Error overlay
         ui::error_modal::draw(frame, area, self.modals.error.as_ref(), theme);
 

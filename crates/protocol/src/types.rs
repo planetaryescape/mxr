@@ -278,6 +278,12 @@ pub enum Request {
         limit: u32,
     },
     Mutation(MutationCommand),
+    /// Reverse a recent undoable mutation by id. Available within ~60s of
+    /// the mutation landing; daemon refuses with an `Error` response
+    /// past that window.
+    UndoMutation {
+        mutation_id: String,
+    },
     Unsubscribe {
         message_id: MessageId,
     },
@@ -352,6 +358,7 @@ impl Request {
             | Self::GetHeaders { .. }
             | Self::ListRuleHistory { .. }
             | Self::Mutation(_)
+            | Self::UndoMutation { .. }
             | Self::Unsubscribe { .. }
             | Self::Snooze { .. }
             | Self::Unsnooze { .. }
@@ -493,6 +500,13 @@ pub struct MutationResultData {
     pub skipped: u32,
     pub failed: u32,
     pub accounts: Vec<AccountMutationResultData>,
+    /// Set by undoable mutations (Archive / Trash / Spam / SetRead /
+    /// ReadAndArchive). Identifies a row in the daemon's
+    /// `mutation_undo_log` that the client can reference via
+    /// `Request::UndoMutation` for ~60s after the mutation lands.
+    /// `None` for non-undoable mutations (Star, ModifyLabels, Move).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutation_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

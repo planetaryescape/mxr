@@ -17,6 +17,7 @@ mod snooze;
 mod sync_cursor;
 mod sync_log;
 mod sync_runtime_status;
+mod undo;
 mod wrapped;
 #[cfg(test)]
 mod test_fixtures;
@@ -28,6 +29,7 @@ pub use pool::Store;
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
 pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
+pub use undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 
 use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;
@@ -2615,5 +2617,128 @@ mod tests {
 
         let events = store.list_message_events(&env.id).await.unwrap();
         assert_eq!(events.len(), 1);
+    }
+
+    /// Phase 1.4 / Behavior 1: an undo entry written by `write_undo_entry`
+    /// round-trips losslessly through `read_undo_entry`. If the schema or
+    /// JSON encoding drifts, this catches it.
+    #[tokio::test]
+    async fn write_undo_entry_roundtrips_via_read() {
+        use crate::undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let snapshot = UndoEntrySnapshot {
+            message_id: MessageId::new(),
+            account_id: account.id.clone(),
+            provider_id: "fake-msg-1".into(),
+            prior_flags_bits: MessageFlags::READ.bits(),
+            prior_label_provider_ids: vec!["INBOX".into(), "Work".into()],
+        };
+        let entry = UndoEntry {
+            mutation_id: "01HVTEST0000000000000000".into(),
+            kind: UndoableMutationKind::Archive,
+            snapshots: vec![snapshot.clone()],
+            applied_at: 1_700_000_000,
+            expires_at: 1_700_000_060,
+        };
+
+        store.write_undo_entry(&entry).await.unwrap();
+        let fetched = store
+            .read_undo_entry(&entry.mutation_id)
+            .await
+            .unwrap()
+            .expect("entry must round-trip");
+
+        assert_eq!(fetched.mutation_id, entry.mutation_id);
+        assert!(matches!(fetched.kind, UndoableMutationKind::Archive));
+        assert_eq!(fetched.applied_at, entry.applied_at);
+        assert_eq!(fetched.expires_at, entry.expires_at);
+        assert_eq!(fetched.snapshots.len(), 1);
+        let s = &fetched.snapshots[0];
+        assert_eq!(s.provider_id, snapshot.provider_id);
+        assert_eq!(s.prior_flags_bits, snapshot.prior_flags_bits);
+        assert_eq!(s.prior_label_provider_ids, snapshot.prior_label_provider_ids);
+    }
+
+    /// Phase 1.4 / Behavior 4: reading an unknown id returns `None` so the
+    /// daemon can map it to the `NotFound` error class. No row, no panic.
+    #[tokio::test]
+    async fn read_undo_entry_returns_none_for_unknown_id() {
+        let store = Store::in_memory().await.unwrap();
+        let result = store.read_undo_entry("does-not-exist").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    /// Phase 1.4: deletion is exact and idempotent — deleting twice is
+    /// fine, and other rows are untouched. Catches "DELETE WHERE 1=1"
+    /// regressions.
+    #[tokio::test]
+    async fn delete_undo_entry_is_exact_and_idempotent() {
+        use crate::undo::{UndoEntry, UndoableMutationKind};
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        for id in ["mut-a", "mut-b"] {
+            store
+                .write_undo_entry(&UndoEntry {
+                    mutation_id: id.into(),
+                    kind: UndoableMutationKind::Trash,
+                    snapshots: Vec::new(),
+                    applied_at: 1,
+                    expires_at: 61,
+                })
+                .await
+                .unwrap();
+        }
+
+        store.delete_undo_entry("mut-a").await.unwrap();
+        // Second delete is a no-op, not an error.
+        store.delete_undo_entry("mut-a").await.unwrap();
+
+        assert!(store.read_undo_entry("mut-a").await.unwrap().is_none());
+        assert!(
+            store.read_undo_entry("mut-b").await.unwrap().is_some(),
+            "delete must not touch other rows"
+        );
+    }
+
+    /// Phase 1.4: pruning drops only entries whose `expires_at <= now`.
+    /// Bounds the table under heavy mutation traffic without dropping
+    /// in-window entries.
+    #[tokio::test]
+    async fn prune_expired_undo_entries_drops_only_stale_rows() {
+        use crate::undo::{UndoEntry, UndoableMutationKind};
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        store
+            .write_undo_entry(&UndoEntry {
+                mutation_id: "expired".into(),
+                kind: UndoableMutationKind::Spam,
+                snapshots: Vec::new(),
+                applied_at: 100,
+                expires_at: 160,
+            })
+            .await
+            .unwrap();
+        store
+            .write_undo_entry(&UndoEntry {
+                mutation_id: "fresh".into(),
+                kind: UndoableMutationKind::Spam,
+                snapshots: Vec::new(),
+                applied_at: 200,
+                expires_at: 260,
+            })
+            .await
+            .unwrap();
+
+        let pruned = store.prune_expired_undo_entries(180).await.unwrap();
+        assert_eq!(pruned, 1, "only the expired row must be dropped");
+        assert!(store.read_undo_entry("expired").await.unwrap().is_none());
+        assert!(store.read_undo_entry("fresh").await.unwrap().is_some());
     }
 }

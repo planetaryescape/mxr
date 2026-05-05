@@ -351,6 +351,9 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             runtime::export_search(state, query, format).await
         }
         Request::Mutation(cmd) => mutations::mutation(state, cmd).await,
+        Request::UndoMutation { mutation_id } => {
+            mutations::undo_mutation(state, mutation_id).await
+        }
         Request::Snooze {
             message_id,
             wake_at,
@@ -553,6 +556,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::DeleteSavedSearch { .. } => "delete_saved_search",
         Request::RunSavedSearch { .. } => "run_saved_search",
         Request::Mutation(cmd) => mutation_kind(cmd),
+        Request::UndoMutation { .. } => "undo_mutation",
         Request::Unsubscribe { .. } => "unsubscribe",
         Request::Snooze { .. } => "snooze",
         Request::Unsnooze { .. } => "unsnooze",

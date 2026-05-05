@@ -129,8 +129,45 @@ pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> Handler
             skipped,
             failed,
             accounts,
+            // Stage 1 of Phase 1.4 only ships the protocol surface and the
+            // store layer; the daemon-side snapshot + log write follows in
+            // a subsequent stage. Until that lands we report `None` so
+            // clients fall back to "not undoable" gracefully.
+            mutation_id: None,
         },
     })
+}
+
+/// Reverse a recent undoable mutation by id. Stage 1 ships the IPC and
+/// store surface only; restoration of local state + provider reverse
+/// mutation is wired in subsequent stages. The `NotFound` and
+/// `WindowExpired` paths are functional now so clients can already wire
+/// the error UX.
+pub(super) async fn undo_mutation(
+    state: &AppState,
+    mutation_id: &str,
+) -> HandlerResult {
+    let entry = state
+        .store
+        .read_undo_entry(mutation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(entry) = entry else {
+        return Err(format!(
+            "undo: mutation `{mutation_id}` not found (expired or already undone)"
+        ));
+    };
+    let now = chrono::Utc::now().timestamp();
+    if entry.expires_at <= now {
+        let _ = state.store.delete_undo_entry(&entry.mutation_id).await;
+        return Err(format!(
+            "undo: window expired for mutation `{mutation_id}`"
+        ));
+    }
+    // Subsequent stages restore local state + issue provider reverse op.
+    // Keep the entry in the log until then so the call is idempotent once
+    // the implementation lands.
+    Err("undo: implementation pending (Phase 1.4 stage 2)".into())
 }
 
 fn mutation_message_ids(cmd: &MutationCommand) -> &[mxr_core::MessageId] {

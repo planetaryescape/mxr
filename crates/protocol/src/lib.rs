@@ -634,6 +634,7 @@ mod tests {
                             failed: 0,
                             error: None,
                         }],
+                        mutation_id: None,
                     },
                 },
                 IpcCategory::CoreMail,

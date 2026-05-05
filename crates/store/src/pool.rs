@@ -219,6 +219,9 @@ CREATE INDEX IF NOT EXISTS idx_semantic_embeddings_profile_id
         sqlx::raw_sql("CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(account_id, status)")
             .execute(&self.writer)
             .await?;
+        sqlx::raw_sql(include_str!("../migrations/012_mutation_undo_log.sql"))
+            .execute(&self.writer)
+            .await?;
         self.validate_schema().await?;
         Ok(())
     }

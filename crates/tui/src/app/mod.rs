@@ -1,6 +1,7 @@
 mod account_actions;
 mod account_form_helpers;
 mod actions;
+mod analytics_actions;
 mod attachment_helpers;
 mod body_helpers;
 mod compose_actions;
@@ -99,6 +100,7 @@ pub enum Screen {
     Rules,
     Diagnostics,
     Accounts,
+    Analytics,
 }
 
 /// Health of the IPC connection to the daemon. Drives the status bar and the
@@ -150,6 +152,7 @@ pub struct App {
     pub accounts: AccountsState,
     pub rules: RulesState,
     pub diagnostics: DiagnosticsState,
+    pub analytics: AnalyticsState,
     pub modals: ModalsState,
     pub compose: ComposeState,
     pub screen: Screen,
@@ -225,6 +228,7 @@ impl App {
             accounts: AccountsState::default(),
             rules: RulesState::default(),
             diagnostics: DiagnosticsState::default(),
+            analytics: AnalyticsState::default(),
             modals: ModalsState {
                 snooze_config: snooze_config.clone(),
                 ..ModalsState::default()

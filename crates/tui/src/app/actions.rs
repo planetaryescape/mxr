@@ -98,6 +98,11 @@ impl App {
             | Action::OpenTab5
             | Action::SyncNow
             | Action::Noop => self.apply_screen_action(action),
+            Action::OpenAnalyticsScreen
+            | Action::OpenAnalyticsView(_)
+            | Action::NextAnalyticsView
+            | Action::PrevAnalyticsView
+            | Action::RefreshAnalytics => self.apply_analytics_action(action),
             Action::MoveDown
             | Action::MoveUp
             | Action::JumpTop

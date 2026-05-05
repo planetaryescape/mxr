@@ -696,6 +696,38 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if app.analytics.refresh_pending {
+            app.analytics.refresh_pending = false;
+            app.analytics.loading = true;
+            app.analytics.error = None;
+            let view = app.analytics.view;
+            let request = app.analytics_request_for_active_view();
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, request).await;
+                let result: Result<crate::async_result::AnalyticsResultPayload, MxrError> = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::StorageBreakdown { rows },
+                    }) => Ok(crate::async_result::AnalyticsResultPayload::Storage(rows)),
+                    Ok(Response::Ok {
+                        data: ResponseData::StaleThreads { rows },
+                    }) => Ok(crate::async_result::AnalyticsResultPayload::Stale(rows)),
+                    Ok(Response::Ok {
+                        data: ResponseData::ContactAsymmetry { rows },
+                    }) => Ok(crate::async_result::AnalyticsResultPayload::Asymmetry(rows)),
+                    Ok(Response::Ok {
+                        data: ResponseData::ResponseTime { summary },
+                    }) => Ok(crate::async_result::AnalyticsResultPayload::ResponseTime(summary)),
+                    Ok(Response::Ok { .. }) => {
+                        Err(MxrError::Ipc("unexpected analytics response".into()))
+                    }
+                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                };
+                AsyncResult::AnalyticsResult { view, result }
+            });
+        }
+
         if let Some(account) = app.accounts.pending_repair.take() {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
@@ -1414,6 +1446,40 @@ pub async fn run() -> anyhow::Result<()> {
                                 "Semantic action failed",
                                 format!("The daemon returned: {e}"),
                             );
+                        }
+                        AsyncResult::AnalyticsResult { view, result } => {
+                            // Drop responses for a view the user already
+                            // navigated away from. Avoids the "table
+                            // briefly flashes the previous view's data"
+                            // race when switching tabs quickly.
+                            if app.analytics.view != view {
+                                continue;
+                            }
+                            app.analytics.loading = false;
+                            match result {
+                                Ok(crate::async_result::AnalyticsResultPayload::Storage(rows)) => {
+                                    app.analytics.storage_rows = rows;
+                                }
+                                Ok(crate::async_result::AnalyticsResultPayload::Stale(rows)) => {
+                                    app.analytics.stale_rows = rows;
+                                }
+                                Ok(crate::async_result::AnalyticsResultPayload::Asymmetry(
+                                    rows,
+                                )) => {
+                                    app.analytics.asymmetry_rows = rows;
+                                }
+                                Ok(crate::async_result::AnalyticsResultPayload::ResponseTime(
+                                    summary,
+                                )) => {
+                                    app.analytics.response_time = Some(summary);
+                                }
+                                Err(e) => {
+                                    app.analytics.error = Some(e.to_string());
+                                    app.report_warn(format!(
+                                        "Analytics request failed: {e}"
+                                    ));
+                                }
+                            }
                         }
                         other => {
                             let Some(other) = handle_local_io_result(&mut app, other) else {
@@ -6725,6 +6791,91 @@ mod tests {
                 assert_eq!(p.as_str(), profile.as_str());
             }
             other => panic!("expected InstallSemanticProfile, got {other:?}"),
+        }
+    }
+
+    /// Phase 2.5 / Behavior 1: opening an analytics view from the
+    /// palette switches to the Analytics screen, sets the right view
+    /// mode, and sets `refresh_pending` so the dispatcher fires the
+    /// matching `List*` request next tick. Catches "palette entry
+    /// opens the screen but never loads data" regressions.
+    #[test]
+    fn open_analytics_view_action_switches_screen_and_marks_refresh_pending() {
+        use crate::action::Action;
+        use crate::app::AnalyticsView;
+        let mut app = App::new();
+        app.apply(Action::OpenAnalyticsView(AnalyticsView::ContactAsymmetry));
+        assert!(matches!(app.screen, crate::app::Screen::Analytics));
+        assert_eq!(app.analytics.view, AnalyticsView::ContactAsymmetry);
+        assert!(
+            app.analytics.refresh_pending,
+            "opening an analytics view must mark refresh_pending so the daemon request fires"
+        );
+    }
+
+    /// Phase 2.5: the active view determines which `Request` the
+    /// dispatcher fires. Locks down the mapping so a daemon-side
+    /// rename (e.g. ListStorageBreakdown → ListStorageBuckets) shows
+    /// up here as a compile error or a test failure rather than as
+    /// "the screen renders but nothing ever loads."
+    #[test]
+    fn analytics_request_for_active_view_maps_each_variant() {
+        use crate::app::AnalyticsView;
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Storage;
+        assert!(matches!(
+            app.analytics_request_for_active_view(),
+            mxr_protocol::Request::ListStorageBreakdown { .. }
+        ));
+        app.analytics.view = AnalyticsView::StaleThreads;
+        assert!(matches!(
+            app.analytics_request_for_active_view(),
+            mxr_protocol::Request::ListStaleThreads { .. }
+        ));
+        app.analytics.view = AnalyticsView::ContactAsymmetry;
+        assert!(matches!(
+            app.analytics_request_for_active_view(),
+            mxr_protocol::Request::ListContactAsymmetry { .. }
+        ));
+        app.analytics.view = AnalyticsView::ResponseTime;
+        assert!(matches!(
+            app.analytics_request_for_active_view(),
+            mxr_protocol::Request::ListResponseTime { .. }
+        ));
+    }
+
+    /// Phase 2.5 / Behavior 4: the refresh action re-marks
+    /// `refresh_pending` and clears any prior error. Catches "press r
+    /// after a daemon error and nothing happens" regressions.
+    #[test]
+    fn refresh_analytics_action_clears_error_and_marks_pending() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.screen = crate::app::Screen::Analytics;
+        app.analytics.error = Some("stale".into());
+        app.analytics.refresh_pending = false;
+        app.apply(Action::RefreshAnalytics);
+        assert!(app.analytics.refresh_pending);
+        assert!(app.analytics.error.is_none());
+    }
+
+    /// Phase 2.5: the four analytics palette entries are present.
+    /// Locks down discoverability — the only entrypoint to these
+    /// views is the palette.
+    #[test]
+    fn analytics_palette_entries_present_in_default_commands() {
+        let commands = crate::ui::command_palette::default_commands();
+        let labels: Vec<&str> = commands.iter().map(|c| c.label.as_str()).collect();
+        for needle in [
+            "Analytics: Storage",
+            "Analytics: Stale Threads",
+            "Analytics: Contact Asymmetry",
+            "Analytics: Response Time",
+        ] {
+            assert!(
+                labels.contains(&needle),
+                "expected `{needle}` in palette; got {labels:?}"
+            );
         }
     }
 

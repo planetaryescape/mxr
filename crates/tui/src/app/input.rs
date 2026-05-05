@@ -783,7 +783,34 @@ impl App {
             Screen::Rules => self.handle_rules_screen_key(key),
             Screen::Diagnostics => self.handle_diagnostics_screen_key(key),
             Screen::Accounts => self.handle_accounts_screen_key(key),
+            Screen::Analytics => self.handle_analytics_screen_key(key),
             Screen::Mailbox => None,
+        }
+    }
+
+    fn handle_analytics_screen_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Option<Action> {
+        match (key.code, key.modifiers) {
+            (KeyCode::Char('j') | KeyCode::Down, _) => {
+                let len = analytics_row_count(self);
+                if len > 0 {
+                    self.analytics.selected_index =
+                        (self.analytics.selected_index + 1).min(len.saturating_sub(1));
+                }
+                None
+            }
+            (KeyCode::Char('k') | KeyCode::Up, _) => {
+                self.analytics.selected_index =
+                    self.analytics.selected_index.saturating_sub(1);
+                None
+            }
+            (KeyCode::Tab, _) => Some(Action::NextAnalyticsView),
+            (KeyCode::BackTab, _) => Some(Action::PrevAnalyticsView),
+            (KeyCode::Char('r'), _) => Some(Action::RefreshAnalytics),
+            (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
+            _ => self.contextual_input_action(key),
         }
     }
 
@@ -1346,5 +1373,15 @@ impl App {
             (KeyCode::Char(' '), _) if self.toggle_current_account_form_field(true) => None,
             _ => None,
         }
+    }
+}
+
+fn analytics_row_count(app: &App) -> usize {
+    use crate::app::AnalyticsView;
+    match app.analytics.view {
+        AnalyticsView::Storage => app.analytics.storage_rows.len(),
+        AnalyticsView::StaleThreads => app.analytics.stale_rows.len(),
+        AnalyticsView::ContactAsymmetry => app.analytics.asymmetry_rows.len(),
+        AnalyticsView::ResponseTime => 1, // single summary row
     }
 }

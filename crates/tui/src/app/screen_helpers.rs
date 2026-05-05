@@ -33,6 +33,7 @@ impl App {
                     UiContext::AccountsList
                 }
             }
+            Screen::Analytics => UiContext::Analytics,
         }
     }
 

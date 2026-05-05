@@ -479,6 +479,30 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Sync".into(),
         },
         PaletteCommand {
+            label: "Analytics: Storage".into(),
+            shortcut: "".into(),
+            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Storage),
+            category: "Analytics".into(),
+        },
+        PaletteCommand {
+            label: "Analytics: Stale Threads".into(),
+            shortcut: "".into(),
+            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::StaleThreads),
+            category: "Analytics".into(),
+        },
+        PaletteCommand {
+            label: "Analytics: Contact Asymmetry".into(),
+            shortcut: "".into(),
+            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::ContactAsymmetry),
+            category: "Analytics".into(),
+        },
+        PaletteCommand {
+            label: "Analytics: Response Time".into(),
+            shortcut: "".into(),
+            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::ResponseTime),
+            category: "Analytics".into(),
+        },
+        PaletteCommand {
             label: "Semantic: Enable".into(),
             shortcut: "".into(),
             action: Action::EnableSemantic,

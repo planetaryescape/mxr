@@ -111,6 +111,22 @@ pub(crate) enum AsyncResult {
     /// so a missing `semantic-local` feature is visible to the user
     /// rather than silently swallowed.
     SemanticOperationResult(Result<(), MxrError>),
+    /// Result of one of the four analytics list requests. The
+    /// dispatcher keys the response to the active view at the time
+    /// the request was sent — late responses for a switched-away
+    /// view are dropped by the handler.
+    AnalyticsResult {
+        view: app::AnalyticsView,
+        result: Result<AnalyticsResultPayload, MxrError>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum AnalyticsResultPayload {
+    Storage(Vec<mxr_core::types::StorageBucket>),
+    Stale(Vec<mxr_core::types::StaleThreadRow>),
+    Asymmetry(Vec<mxr_core::types::ContactAsymmetryRow>),
+    ResponseTime(mxr_core::types::ResponseTimeSummary),
 }
 
 pub(crate) struct ComposeReadyData {

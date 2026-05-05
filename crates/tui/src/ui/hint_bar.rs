@@ -239,6 +239,14 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
             ("Esc".to_string(), "Close".to_string()),
             ("?".to_string(), "Help".to_string()),
         ],
+        UiContext::Analytics => vec![
+            ("Tab".to_string(), "Next View".to_string()),
+            ("Shift-Tab".to_string(), "Prev View".to_string()),
+            ("j/k".to_string(), "Move Row".to_string()),
+            ("r".to_string(), "Refresh".to_string()),
+            ("Esc".to_string(), "Mailbox".to_string()),
+            ("?".to_string(), "Help".to_string()),
+        ],
     }
 }
 

@@ -134,6 +134,12 @@ fn context_entries(state: &HelpModalState<'_>) -> Vec<(String, String)> {
             ("t".into(), "Test selected account".into()),
             ("c".into(), "Edit config".into()),
         ],
+        UiContext::Analytics => vec![
+            ("Tab".into(), "Next analytics view".into()),
+            ("Shift-Tab".into(), "Previous analytics view".into()),
+            ("r".into(), "Refresh current view".into()),
+            ("Esc".into(), "Back to mailbox".into()),
+        ],
     };
 
     entries.insert(0, ("Context".into(), state.ui_context.label().into()));
@@ -262,6 +268,15 @@ fn screen_sections(context: UiContext) -> Vec<HelpSection> {
                 ("d".into(), "Set default".into()),
                 ("c".into(), "Edit config".into()),
                 ("s".into(), "Save account form".into()),
+            ],
+        }],
+        UiContext::Analytics => vec![HelpSection {
+            title: "Analytics Page".into(),
+            entries: vec![
+                ("Tab / Shift-Tab".into(), "Switch view".into()),
+                ("j / k".into(), "Move row".into()),
+                ("r".into(), "Refresh".into()),
+                ("Esc".into(), "Back to mailbox".into()),
             ],
         }],
     }

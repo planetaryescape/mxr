@@ -17,6 +17,10 @@ fn selected_tab(screen: Screen) -> usize {
         Screen::Rules => 2,
         Screen::Accounts => 3,
         Screen::Diagnostics => 4,
+        // Analytics doesn't have a top tab — it's reached via the
+        // command palette. Highlight Mailbox so the tab strip stays
+        // sensible.
+        Screen::Analytics => 0,
     }
 }
 
@@ -241,6 +245,9 @@ impl App {
                     &self.diagnostics.page.sync_statuses,
                     theme,
                 );
+            }
+            Screen::Analytics => {
+                ui::analytics_page::draw(frame, content_area, &self.analytics, theme);
             }
         }
 

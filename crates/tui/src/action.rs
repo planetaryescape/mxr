@@ -21,6 +21,11 @@ pub enum Action {
     OpenRulesScreen,
     OpenDiagnosticsScreen,
     OpenAccountsScreen,
+    OpenAnalyticsScreen,
+    OpenAnalyticsView(crate::app::AnalyticsView),
+    NextAnalyticsView,
+    PrevAnalyticsView,
+    RefreshAnalytics,
     OpenTab1,
     OpenTab2,
     OpenTab3,
@@ -153,6 +158,7 @@ pub enum ScreenContext {
     Rules,
     Diagnostics,
     Accounts,
+    Analytics,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -168,6 +174,7 @@ pub enum UiContext {
     Diagnostics,
     AccountsList,
     AccountsForm,
+    Analytics,
 }
 
 impl UiContext {
@@ -180,6 +187,7 @@ impl UiContext {
             Self::RulesList | Self::RulesForm => ScreenContext::Rules,
             Self::Diagnostics => ScreenContext::Diagnostics,
             Self::AccountsList | Self::AccountsForm => ScreenContext::Accounts,
+            Self::Analytics => ScreenContext::Analytics,
         }
     }
 
@@ -196,6 +204,7 @@ impl UiContext {
             Self::Diagnostics => "Diagnostics",
             Self::AccountsList => "Accounts",
             Self::AccountsForm => "Accounts / Form",
+            Self::Analytics => "Analytics",
         }
     }
 }
@@ -211,6 +220,36 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
 
     match context {
         MailboxSidebar | MailboxList | MailboxMessage => true,
+        Analytics => matches!(
+            action,
+            OpenCommandPalette
+                | CloseCommandPalette
+                | OpenMailboxScreen
+                | OpenSearchScreen
+                | OpenRulesScreen
+                | OpenDiagnosticsScreen
+                | OpenAccountsScreen
+                | OpenAnalyticsScreen
+                | OpenAnalyticsView(_)
+                | NextAnalyticsView
+                | PrevAnalyticsView
+                | RefreshAnalytics
+                | OpenTab1
+                | OpenTab2
+                | OpenTab3
+                | OpenTab4
+                | OpenTab5
+                | SyncNow
+                | EditConfig
+                | OpenLogs
+                | ShowOnboarding
+                | Help
+                | QuitView
+                | MoveDown
+                | MoveUp
+                | JumpTop
+                | JumpBottom
+        ),
         SearchEditor => matches!(
             action,
             OpenGlobalSearch
@@ -224,6 +263,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenRulesScreen
                 | OpenDiagnosticsScreen
                 | OpenAccountsScreen
+                | OpenAnalyticsScreen
                 | OpenTab1
                 | OpenTab2
                 | OpenTab3
@@ -270,6 +310,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenRulesScreen
                 | OpenDiagnosticsScreen
                 | OpenAccountsScreen
+                | OpenAnalyticsScreen
                 | OpenTab1
                 | OpenTab2
                 | OpenTab3
@@ -303,6 +344,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenRulesScreen
                 | OpenDiagnosticsScreen
                 | OpenAccountsScreen
+                | OpenAnalyticsScreen
                 | OpenTab1
                 | OpenTab2
                 | OpenTab3
@@ -331,6 +373,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenRulesScreen
                 | OpenDiagnosticsScreen
                 | OpenAccountsScreen
+                | OpenAnalyticsScreen
                 | OpenTab1
                 | OpenTab2
                 | OpenTab3

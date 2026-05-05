@@ -1,4 +1,5 @@
 mod accounts;
+mod analytics;
 mod command_palette;
 mod compose;
 mod diagnostics;
@@ -9,6 +10,7 @@ mod search;
 
 pub(in crate::app) use accounts::AccountFormToggleField;
 pub use accounts::{AccountFormMode, AccountFormState, AccountsPageState, AccountsState};
+pub use analytics::{AnalyticsState, AnalyticsView};
 pub use command_palette::CommandPaletteState;
 pub use compose::{ComposeAction, ComposeState, PendingSend, PendingSendMode};
 pub use diagnostics::{DiagnosticsPageState, DiagnosticsPaneKind, DiagnosticsState};

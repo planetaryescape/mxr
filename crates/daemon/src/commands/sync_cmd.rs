@@ -139,7 +139,7 @@ pub async fn run(
             }
             _ => println!("Sync triggered"),
         },
-        Response::Error { message } => anyhow::bail!("{}", message),
+        Response::Error { message, .. } => anyhow::bail!("{}", message),
         _ => anyhow::bail!("Unexpected response"),
     }
 
@@ -172,7 +172,7 @@ async fn fetch_sync_statuses(
                 data: ResponseData::Status { sync_statuses, .. },
             },
         ) => Ok(sync_statuses),
-        (_, Response::Error { message }) => anyhow::bail!("{}", message),
+        (_, Response::Error { message, .. }) => anyhow::bail!("{}", message),
         _ => anyhow::bail!("Unexpected response from daemon"),
     }
 }

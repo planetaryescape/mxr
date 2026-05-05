@@ -681,7 +681,7 @@ async fn fetch_daemon_status_snapshot_from_path(
             daemon_version,
             daemon_build_id,
         }),
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected daemon status response"),
     }
 }
@@ -700,11 +700,9 @@ where
             );
             IpcMessage {
                 id: msg_id,
-                payload: IpcPayload::Response(Response::Error {
-                    message: format!(
-                        "Daemon handler panicked while processing the request: {panic_message}"
-                    ),
-                }),
+                payload: IpcPayload::Response(Response::error(format!(
+                    "Daemon handler panicked while processing the request: {panic_message}"
+                ))),
             }
         }
     }
@@ -1162,7 +1160,7 @@ mod tests {
         .await;
 
         match response.payload {
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 assert!(message.contains("boom"));
             }
             other => panic!("expected error response, got {other:?}"),

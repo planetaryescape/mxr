@@ -67,7 +67,7 @@ impl App {
                 self.mailbox.sidebar_selected = 0;
                 Ok(())
             }
-            Ok(Response::Error { message }) => {
+            Ok(Response::Error { message, .. }) => {
                 self.mailbox.envelopes = self.all_mail_envelopes();
                 self.mailbox.active_label = None;
                 self.status_message = Some(format!("Inbox load failed: {message}"));

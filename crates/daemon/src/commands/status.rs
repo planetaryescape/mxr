@@ -152,7 +152,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                     )?
                 );
             }
-            Response::Error { message } => anyhow::bail!("{}", message),
+            Response::Error { message, .. } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),
         }
 

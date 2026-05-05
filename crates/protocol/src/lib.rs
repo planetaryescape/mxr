@@ -4,7 +4,7 @@ mod types;
 pub use codec::IpcCodec;
 pub use types::*;
 
-pub const IPC_PROTOCOL_VERSION: u32 = 1;
+pub const IPC_PROTOCOL_VERSION: u32 = 2;
 
 #[cfg(test)]
 mod tests {
@@ -547,6 +547,7 @@ mod tests {
             (
                 ResponseData::Bodies {
                     bodies: vec![sample_body()],
+                    failures: Vec::new(),
                 },
                 IpcCategory::CoreMail,
             ),
@@ -578,7 +579,9 @@ mod tests {
             (
                 ResponseData::SearchResults {
                     results: Vec::new(),
+                    total: 0,
                     has_more: false,
+                    next_offset: None,
                     explain: None,
                 },
                 IpcCategory::CoreMail,
@@ -883,9 +886,7 @@ mod tests {
         let ok = Response::Ok {
             data: ResponseData::Pong,
         };
-        let err = Response::Error {
-            message: "something failed".to_string(),
-        };
+        let err = Response::error("something failed");
 
         for resp in [ok, err] {
             let msg = IpcMessage {

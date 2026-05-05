@@ -36,16 +36,17 @@ pub(crate) fn spawn_ipc_worker(
         let mut client = loop {
             match connect_ipc_client(&socket_path, event_tx.clone()).await {
                 Ok(client) => {
-                    let _ = result_tx
-                        .send(AsyncResult::ConnectionState(ConnectionState::Connected));
+                    let _ =
+                        result_tx.send(AsyncResult::ConnectionState(ConnectionState::Connected));
                     break client;
                 }
                 Err(error) => {
-                    let _ =
-                        result_tx.send(AsyncResult::ConnectionState(ConnectionState::Reconnecting {
+                    let _ = result_tx.send(AsyncResult::ConnectionState(
+                        ConnectionState::Reconnecting {
                             since: std::time::Instant::now(),
                             reason: error.to_string(),
-                        }));
+                        },
+                    ));
                     // Drain any queued requests with an error so the main
                     // loop doesn't sit indefinitely waiting on oneshot replies.
                     while let Ok(req) = rx.try_recv() {

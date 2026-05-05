@@ -3,7 +3,6 @@
 /// Time) share a Screen variant and one render path because they're
 /// shaped identically: filter row → table → footer. Per-view rows
 /// live in dedicated fields so each refresh path is independent.
-
 use mxr_core::types::{
     ContactAsymmetryRow, ResponseTimeDirection, ResponseTimeSummary, StaleBallInCourt,
     StaleThreadRow, StorageBucket, StorageGroupBy,

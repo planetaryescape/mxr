@@ -198,13 +198,13 @@ async fn execute_replaceable_request(
                                 scores,
                                 has_more,
                             }),
-                            Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                            Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                             Err(error) => Err(error),
                             _ => Err(MxrError::Ipc("unexpected response".into())),
                         }
                     }
                 }
-                Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
@@ -230,7 +230,7 @@ async fn execute_replaceable_request(
                 Ok(Response::Ok {
                     data: ResponseData::Count { count },
                 }) => Ok(count),
-                Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
@@ -257,7 +257,7 @@ async fn execute_replaceable_request(
                 Ok(Response::Ok {
                     data: ResponseData::Thread { thread, messages },
                 }) => Ok((thread, messages)),
-                Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
@@ -281,7 +281,7 @@ async fn execute_replaceable_request(
                 Ok(Response::Ok {
                     data: ResponseData::RuleData { rule },
                 }) => Ok(rule),
-                Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
@@ -309,7 +309,7 @@ async fn execute_replaceable_request(
                 Ok(Response::Ok {
                     data: ResponseData::RuleHistory { entries },
                 }) => Ok(entries),
-                Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
@@ -329,7 +329,7 @@ async fn execute_replaceable_request(
                 Ok(Response::Ok {
                     data: ResponseData::RuleFormData { form },
                 }) => Ok(form),
-                Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };
@@ -362,7 +362,7 @@ async fn execute_replaceable_request(
                     total_messages,
                     sync_statuses,
                 }),
-                Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),
                 _ => Err(MxrError::Ipc("unexpected response".into())),
             };

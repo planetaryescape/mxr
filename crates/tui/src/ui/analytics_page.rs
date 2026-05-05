@@ -1,16 +1,9 @@
 use crate::app::{AnalyticsState, AnalyticsView};
-use mxr_core::types::{
-    ResponseTimeDirection, StaleBallInCourt, StorageGroupBy,
-};
+use mxr_core::types::{ResponseTimeDirection, StaleBallInCourt, StorageGroupBy};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(
-    frame: &mut Frame,
-    area: Rect,
-    state: &AnalyticsState,
-    theme: &crate::theme::Theme,
-) {
+pub fn draw(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -25,12 +18,7 @@ pub fn draw(
     draw_footer(frame, chunks[2], state, theme);
 }
 
-fn draw_header(
-    frame: &mut Frame,
-    area: Rect,
-    state: &AnalyticsState,
-    theme: &crate::theme::Theme,
-) {
+fn draw_header(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
     let mut tabs = Vec::new();
     for view in [
         AnalyticsView::Storage,
@@ -50,7 +38,10 @@ fn draw_header(
         tabs.push(Span::styled(label, style));
     }
     let title = match state.view {
-        AnalyticsView::Storage => format!("Storage  [group_by={}]", group_by_label(state.storage_group_by)),
+        AnalyticsView::Storage => format!(
+            "Storage  [group_by={}]",
+            group_by_label(state.storage_group_by)
+        ),
         AnalyticsView::StaleThreads => format!(
             "Stale Threads  [perspective={}  older_than={}d  within={}d]",
             stale_perspective_label(state.stale_perspective),
@@ -75,19 +66,16 @@ fn draw_header(
     frame.render_widget(Paragraph::new(Line::from(tabs)), inner);
 }
 
-fn draw_table(
-    frame: &mut Frame,
-    area: Rect,
-    state: &AnalyticsState,
-    theme: &crate::theme::Theme,
-) {
+fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
     if state.loading {
         let block = Block::default()
             .title(" Loading ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme.text_muted));
         frame.render_widget(
-            Paragraph::new("Computing analytics...").block(block).wrap(Wrap { trim: false }),
+            Paragraph::new("Computing analytics...")
+                .block(block)
+                .wrap(Wrap { trim: false }),
             area,
         );
         return;
@@ -98,7 +86,9 @@ fn draw_table(
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme.error));
         frame.render_widget(
-            Paragraph::new(error.to_string()).block(block).wrap(Wrap { trim: false }),
+            Paragraph::new(error.to_string())
+                .block(block)
+                .wrap(Wrap { trim: false }),
             area,
         );
         return;
@@ -112,7 +102,12 @@ fn draw_table(
     }
 }
 
-fn draw_storage(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
+fn draw_storage(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AnalyticsState,
+    theme: &crate::theme::Theme,
+) {
     if state.storage_rows.is_empty() {
         empty_state(
             frame,
@@ -123,8 +118,8 @@ fn draw_storage(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &c
         return;
     }
 
-    let header = Row::new(vec!["Key", "Bytes", "Count"])
-        .style(Style::default().fg(theme.text_muted).bold());
+    let header =
+        Row::new(vec!["Key", "Bytes", "Count"]).style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
         .storage_rows
         .iter()
@@ -155,12 +150,7 @@ fn draw_storage(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &c
 
 fn draw_stale(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
     if state.stale_rows.is_empty() {
-        empty_state(
-            frame,
-            area,
-            "No stale threads in this window.",
-            theme,
-        );
+        empty_state(frame, area, "No stale threads in this window.", theme);
         return;
     }
     let header = Row::new(vec!["Subject", "Counterparty", "Days Stale", "Latest"])
@@ -258,7 +248,10 @@ fn draw_response_time(
         return;
     };
     let lines = vec![
-        Line::from(format!("Direction: {}", response_direction_label(summary.direction))),
+        Line::from(format!(
+            "Direction: {}",
+            response_direction_label(summary.direction)
+        )),
         Line::from(format!("Sample count: {}", summary.sample_count)),
         Line::from(""),
         Line::from(format!(
@@ -290,7 +283,9 @@ fn draw_response_time(
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.accent));
     frame.render_widget(
-        Paragraph::new(lines).block(block).wrap(Wrap { trim: false }),
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false }),
         area,
     );
 }
@@ -333,12 +328,7 @@ fn empty_state(frame: &mut Frame, area: Rect, message: &str, theme: &crate::them
     );
 }
 
-fn draw_footer(
-    frame: &mut Frame,
-    area: Rect,
-    state: &AnalyticsState,
-    theme: &crate::theme::Theme,
-) {
+fn draw_footer(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
     let _ = state;
     let hint = "Tab/Shift-Tab:switch view  j/k:select  r:refresh  Esc:mailbox";
     frame.render_widget(
@@ -474,7 +464,10 @@ mod tests {
         });
         assert!(rendered.contains("Sample count: 17"));
         assert!(rendered.contains("Clock p50"));
-        assert!(rendered.contains("1h0m"), "p90 should format duration: {rendered}");
+        assert!(
+            rendered.contains("1h0m"),
+            "p90 should format duration: {rendered}"
+        );
         assert!(
             rendered.contains("not yet computed"),
             "business-hours sentinel missing: {rendered}"
@@ -498,7 +491,10 @@ mod tests {
             draw(frame, Rect::new(0, 0, 120, 24), &state, &theme());
         });
         assert!(rendered.contains("noreply@example.com"));
-        assert!(rendered.contains("1.00"), "asymmetry value missing: {rendered}");
+        assert!(
+            rendered.contains("1.00"),
+            "asymmetry value missing: {rendered}"
+        );
     }
 
     /// Phase 2.5 / Behavior 5: an error message replaces the table

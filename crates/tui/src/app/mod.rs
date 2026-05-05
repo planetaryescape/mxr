@@ -20,11 +20,11 @@ mod rule_actions;
 mod runtime_helpers;
 mod saved_search_actions;
 mod screen_actions;
-mod semantic_actions;
 mod screen_helpers;
 mod search_actions;
 mod search_helpers;
 mod selection_helpers;
+mod semantic_actions;
 mod sidebar_helpers;
 mod state;
 use crate::action::{Action, PatternKind, ScreenContext, UiContext};
@@ -418,10 +418,7 @@ impl App {
         if now.saturating_duration_since(undo.applied_at) >= UNDO_HINT_TTL {
             return None;
         }
-        Some(format!(
-            "{} {} — u to undo",
-            undo.verb_past, undo.count
-        ))
+        Some(format!("{} {} — u to undo", undo.verb_past, undo.count))
     }
 
     /// Take the active undo handle, returning the `mutation_id` to

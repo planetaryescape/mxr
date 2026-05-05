@@ -43,11 +43,21 @@ pub fn draw(
         .split(inner);
 
     frame.render_widget(
-        field_line("Name", &form.name, form.active_field == SavedSearchFormField::Name, theme),
+        field_line(
+            "Name",
+            &form.name,
+            form.active_field == SavedSearchFormField::Name,
+            theme,
+        ),
         chunks[0],
     );
     frame.render_widget(
-        field_line("Query", &form.query, form.active_field == SavedSearchFormField::Query, theme),
+        field_line(
+            "Query",
+            &form.query,
+            form.active_field == SavedSearchFormField::Query,
+            theme,
+        ),
         chunks[1],
     );
     frame.render_widget(
@@ -81,7 +91,12 @@ pub fn draw(
     );
 }
 
-fn field_line<'a>(label: &'a str, value: &'a str, active: bool, theme: &crate::theme::Theme) -> Paragraph<'a> {
+fn field_line<'a>(
+    label: &'a str,
+    value: &'a str,
+    active: bool,
+    theme: &crate::theme::Theme,
+) -> Paragraph<'a> {
     let label_span = Span::styled(
         format!("{label:<7}"),
         if active {

@@ -64,6 +64,7 @@ pub(super) async fn list_runtime_accounts(
                 editable: AccountEditModeData::RuntimeOnly,
                 sync: None,
                 send: None,
+                capabilities: Default::default(),
             },
         );
     }
@@ -86,6 +87,7 @@ pub(super) async fn list_runtime_accounts(
                 editable: AccountEditModeData::Full,
                 sync: None,
                 send: None,
+                capabilities: Default::default(),
             });
 
         summary.account_id = account_id;

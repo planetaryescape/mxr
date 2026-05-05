@@ -190,7 +190,7 @@ async fn get_rule(client: &mut IpcClient, key: String) -> anyhow::Result<serde_j
         Response::Ok {
             data: ResponseData::RuleData { rule },
         } => Ok(rule),
-        Response::Error { message } => anyhow::bail!("{}", message),
+        Response::Error { message, .. } => anyhow::bail!("{}", message),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -203,7 +203,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
             Response::Ok {
                 data: ResponseData::Rules { rules },
             } => println!("{}", render_rules(&rules, resolve_format(format))?),
-            Response::Error { message } => anyhow::bail!("{}", message),
+            Response::Error { message, .. } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),
         },
         RulesAction::Show { rule } => {
@@ -232,7 +232,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
                 Response::Ok {
                     data: ResponseData::RuleData { rule },
                 } => println!("{}", rule["id"].as_str().unwrap_or("")),
-                Response::Error { message } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{}", message),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -271,7 +271,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
                 Response::Ok {
                     data: ResponseData::RuleData { rule },
                 } => println!("{}", serde_json::to_string_pretty(&rule)?),
-                Response::Error { message } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{}", message),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -297,7 +297,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
                 Response::Ok {
                     data: ResponseData::RuleData { rule },
                 } => println!("{}", rule["enabled"].as_bool().unwrap_or(false)),
-                Response::Error { message } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{}", message),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -310,7 +310,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
                 Response::Ok {
                     data: ResponseData::RuleData { rule },
                 } => println!("{}", rule["enabled"].as_bool().unwrap_or(false)),
-                Response::Error { message } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{}", message),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -318,7 +318,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
             Response::Ok {
                 data: ResponseData::Ack,
             } => println!("Deleted"),
-            Response::Error { message } => anyhow::bail!("{}", message),
+            Response::Error { message, .. } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),
         },
         RulesAction::DryRun { rule, all, after } => match client
@@ -328,7 +328,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
             Response::Ok {
                 data: ResponseData::RuleDryRun { results },
             } => println!("{}", serde_json::to_string_pretty(&results)?),
-            Response::Error { message } => anyhow::bail!("{}", message),
+            Response::Error { message, .. } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),
         },
         RulesAction::History { rule, limit } => match client
@@ -338,7 +338,7 @@ pub async fn run(action: Option<RulesAction>, format: Option<OutputFormat>) -> a
             Response::Ok {
                 data: ResponseData::RuleHistory { entries },
             } => println!("{}", serde_json::to_string_pretty(&entries)?),
-            Response::Error { message } => anyhow::bail!("{}", message),
+            Response::Error { message, .. } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),
         },
     }

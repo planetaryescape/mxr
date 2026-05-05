@@ -14,14 +14,19 @@ use crate::state::AppState;
 use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{ExportFormat, SearchMode, SemanticProfile, SortOrder};
 use mxr_protocol::IPC_PROTOCOL_VERSION;
-use mxr_protocol::{ResponseData, SearchExplain, SearchExplainResult, SearchResultItem};
+use mxr_protocol::{
+    DaemonEvent, IpcMessage, IpcPayload, ResponseData, SearchExplain, SearchExplainResult,
+    SearchResultItem,
+};
 use mxr_search::{SearchPage, SearchResult};
 use std::collections::HashMap;
 
 #[derive(Debug)]
 struct SearchExecution {
     results: Vec<SearchResult>,
+    total: usize,
     has_more: bool,
+    next_offset: Option<usize>,
     executed_mode: SearchMode,
     explain: Option<SearchExplain>,
 }
@@ -107,7 +112,9 @@ pub(crate) async fn search(
     .await?;
     Ok(ResponseData::SearchResults {
         results: search_result_items(execution.results, execution.executed_mode),
+        total: execution.total as u32,
         has_more: execution.has_more,
+        next_offset: execution.next_offset.map(|value| value as u32),
         explain: execution.explain,
     })
 }
@@ -228,8 +235,7 @@ pub(crate) async fn list_largest_messages(
     let resolved = account_id
         .cloned()
         .or_else(|| state.default_account_id_opt());
-    let since_unix = since_days
-        .map(|d| chrono::Utc::now().timestamp() - i64::from(d) * 86_400);
+    let since_unix = since_days.map(|d| chrono::Utc::now().timestamp() - i64::from(d) * 86_400);
     let rows = state
         .store
         .largest_messages(resolved.as_ref(), since_unix, limit)
@@ -313,12 +319,7 @@ pub(crate) async fn list_contact_decay(
         .or_else(|| state.default_account_id_opt());
     let rows = state
         .store
-        .list_contact_decay(
-            resolved.as_ref(),
-            threshold_days,
-            max_lookback_days,
-            limit,
-        )
+        .list_contact_decay(resolved.as_ref(), threshold_days, max_lookback_days, limit)
         .await
         .map_err(|e| e.to_string())?;
     Ok(ResponseData::ContactDecay { rows })
@@ -575,7 +576,9 @@ pub(crate) async fn run_saved_search(state: &AppState, name: &str, limit: u32) -
     .await?;
     Ok(ResponseData::SearchResults {
         results: search_result_items(execution.results, execution.executed_mode),
+        total: execution.total as u32,
         has_more: execution.has_more,
+        next_offset: execution.next_offset.map(|value| value as u32),
         explain: None,
     })
 }
@@ -604,20 +607,120 @@ pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
 }
 
 pub(crate) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {
-    let provider = state.get_provider(account_id)?.clone();
-    let outcome = state
+    let operation_id = uuid::Uuid::now_v7().to_string();
+    let operation = "sync".to_string();
+    let account_id = account_id.cloned();
+    emit_operation_event(
+        state,
+        DaemonEvent::OperationStarted {
+            operation_id: operation_id.clone(),
+            operation: operation.clone(),
+            account_id: account_id.clone(),
+            message: "Starting sync".to_string(),
+        },
+    );
+
+    let provider = match state.get_provider(account_id.as_ref()) {
+        Ok(provider) => provider.clone(),
+        Err(error) => {
+            emit_operation_event(
+                state,
+                DaemonEvent::OperationFailed {
+                    operation_id,
+                    operation,
+                    account_id,
+                    error: error.clone(),
+                    retryable: false,
+                },
+            );
+            return Err(error);
+        }
+    };
+
+    emit_operation_event(
+        state,
+        DaemonEvent::OperationProgress {
+            operation_id: operation_id.clone(),
+            operation: operation.clone(),
+            account_id: account_id.clone(),
+            current: 0,
+            total: None,
+            message: "Syncing provider".to_string(),
+        },
+    );
+
+    let outcome = match state
         .sync_engine
         .sync_account_with_outcome(provider.as_ref())
         .await
-        .map_err(|e| e.to_string())?;
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let error = error.to_string();
+            emit_operation_event(
+                state,
+                DaemonEvent::OperationFailed {
+                    operation_id,
+                    operation,
+                    account_id,
+                    error: error.clone(),
+                    retryable: true,
+                },
+            );
+            return Err(error);
+        }
+    };
     if !outcome.upserted_message_ids.is_empty() {
-        state
+        emit_operation_event(
+            state,
+            DaemonEvent::OperationProgress {
+                operation_id: operation_id.clone(),
+                operation: operation.clone(),
+                account_id: account_id.clone(),
+                current: outcome.upserted_message_ids.len() as u32,
+                total: Some(outcome.upserted_message_ids.len() as u32),
+                message: "Queueing semantic ingest".to_string(),
+            },
+        );
+        if let Err(error) = state
             .semantic
             .enqueue_ingest_messages(&outcome.upserted_message_ids)
             .await
-            .map_err(|e| e.to_string())?;
+        {
+            let error = error.to_string();
+            emit_operation_event(
+                state,
+                DaemonEvent::OperationFailed {
+                    operation_id,
+                    operation,
+                    account_id,
+                    error: error.clone(),
+                    retryable: false,
+                },
+            );
+            return Err(error);
+        }
     }
+    emit_operation_event(
+        state,
+        DaemonEvent::OperationCompleted {
+            operation_id,
+            operation,
+            account_id,
+            message: format!(
+                "Sync complete: {} message(s) updated",
+                outcome.upserted_message_ids.len()
+            ),
+        },
+    );
     Ok(ResponseData::Ack)
+}
+
+fn emit_operation_event(state: &AppState, event: DaemonEvent) {
+    let _ = state.event_tx.send(IpcMessage {
+        id: 0,
+        payload: IpcPayload::Event(event),
+    });
 }
 
 pub(crate) async fn export_thread(
@@ -627,7 +730,7 @@ pub(crate) async fn export_thread(
 ) -> HandlerResult {
     match handle_export_thread(state, thread_id, format).await {
         mxr_protocol::Response::Ok { data } => Ok(data),
-        mxr_protocol::Response::Error { message } => Err(message),
+        mxr_protocol::Response::Error { message, .. } => Err(message),
     }
 }
 
@@ -638,7 +741,7 @@ pub(crate) async fn export_search(
 ) -> HandlerResult {
     match handle_export_search(state, query, format).await {
         mxr_protocol::Response::Ok { data } => Ok(data),
-        mxr_protocol::Response::Error { message } => Err(message),
+        mxr_protocol::Response::Error { message, .. } => Err(message),
     }
 }
 
@@ -670,7 +773,9 @@ fn build_execution(
     requested_mode: SearchMode,
     executed_mode: SearchMode,
     results: Vec<SearchResult>,
+    total: usize,
     has_more: bool,
+    next_offset: Option<usize>,
     explain_input: ExecutionExplainInput<'_>,
 ) -> SearchExecution {
     let explain = explain_input.include_explain.then(|| SearchExplain {
@@ -693,7 +798,9 @@ fn build_execution(
 
     SearchExecution {
         results,
+        total,
         has_more,
+        next_offset,
         executed_mode,
         explain,
     }
@@ -825,8 +932,11 @@ async fn sort_results(
 
 fn paginate_results(results: Vec<SearchResult>, offset: usize, limit: usize) -> SearchPage {
     let total = results.len();
+    let has_more = total > offset.saturating_add(limit);
     SearchPage {
-        has_more: total > offset.saturating_add(limit),
+        total,
+        has_more,
+        next_offset: has_more.then_some(offset.saturating_add(limit)),
         results: results.into_iter().skip(offset).take(limit).collect(),
     }
 }

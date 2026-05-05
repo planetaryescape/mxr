@@ -10,6 +10,7 @@
 
 mod accounts;
 mod admin;
+mod auth_sessions;
 #[path = "diagnostics/mod.rs"]
 mod diagnostics_impl;
 mod helpers;
@@ -58,9 +59,7 @@ pub async fn handle_request(state: &Arc<AppState>, msg: &IpcMessage) -> IpcMessa
             );
             dispatch(state, req).instrument(span).await
         }
-        _ => Response::Error {
-            message: "Expected a Request".to_string(),
-        },
+        _ => Response::error("Expected a Request"),
     };
 
     IpcMessage {
@@ -81,7 +80,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
     if let Err(message) = enforce_safety_policy(state.config_snapshot().general.safety_policy, req)
     {
         tracing::warn!(request, account_id, account_key, error = %message, "request rejected by safety policy");
-        return Response::Error { message };
+        return Response::error(message);
     }
 
     let result = match req {
@@ -142,6 +141,21 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             account,
             reauthorize,
         } => accounts::authorize_account(account.clone(), *reauthorize).await,
+        Request::StartAuthSession {
+            account,
+            reauthorize,
+            flow,
+        } => auth_sessions::start_auth_session(state, account.clone(), *reauthorize, *flow).await,
+        Request::GetAuthSession { session_id } => {
+            auth_sessions::get_auth_session(state, session_id)
+        }
+        Request::CancelAuthSession { session_id } => {
+            auth_sessions::cancel_auth_session(state, session_id)
+        }
+        Request::CompleteAuthSession {
+            session_id,
+            save_account,
+        } => auth_sessions::complete_auth_session(state, session_id, *save_account).await,
         Request::UpsertAccountConfig { account } => {
             accounts::upsert_account(state, account.clone()).await
         }
@@ -205,9 +219,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             since_unix,
             until_unix,
             label,
-        } => {
-            platform::wrapped(state, account_id.as_ref(), *since_unix, *until_unix, label).await
-        }
+        } => platform::wrapped(state, account_id.as_ref(), *since_unix, *until_unix, label).await,
         Request::ListStaleThreads {
             account_id,
             perspective,
@@ -351,9 +363,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             runtime::export_search(state, query, format).await
         }
         Request::Mutation(cmd) => mutations::mutation(state, cmd).await,
-        Request::UndoMutation { mutation_id } => {
-            mutations::undo_mutation(state, mutation_id).await
-        }
+        Request::UndoMutation { mutation_id } => mutations::undo_mutation(state, mutation_id).await,
         Request::Snooze {
             message_id,
             wake_at,
@@ -402,7 +412,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
                 error = %message,
                 "request failed"
             );
-            Response::Error { message }
+            Response::error(message)
         }
     }
 }
@@ -442,14 +452,12 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListEnvelopesByIds { .. }
             | Request::GetEnvelope { .. }
             | Request::GetBody { .. }
-            | Request::GetHtmlImageAssets { .. }
-            | Request::DownloadAttachment { .. }
-            | Request::OpenAttachment { .. }
             | Request::ListBodies { .. }
             | Request::GetThread { .. }
             | Request::ListLabels { .. }
             | Request::ListAccounts
             | Request::ListAccountsConfig
+            | Request::GetAuthSession { .. }
             | Request::ListRules
             | Request::GetRule { .. }
             | Request::GetRuleForm { .. }
@@ -462,13 +470,8 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListStaleThreads { .. }
             | Request::ListContactAsymmetry { .. }
             | Request::ListContactDecay { .. }
-            | Request::RefreshContacts
-            | Request::RebuildAnalytics
             | Request::ListResponseTime { .. }
             | Request::ListAccountAddresses { .. }
-            | Request::AddAccountAddress { .. }
-            | Request::RemoveAccountAddress { .. }
-            | Request::SetPrimaryAccountAddress { .. }
             | Request::RunSavedSearch { .. }
             | Request::ListEvents { .. }
             | Request::GetLogs { .. }
@@ -509,6 +512,10 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListAccounts => "list_accounts",
         Request::ListAccountsConfig => "list_accounts_config",
         Request::AuthorizeAccountConfig { .. } => "authorize_account_config",
+        Request::StartAuthSession { .. } => "start_auth_session",
+        Request::GetAuthSession { .. } => "get_auth_session",
+        Request::CancelAuthSession { .. } => "cancel_auth_session",
+        Request::CompleteAuthSession { .. } => "complete_auth_session",
         Request::UpsertAccountConfig { .. } => "upsert_account_config",
         Request::SetDefaultAccount { .. } => "set_default_account",
         Request::TestAccountConfig { .. } => "test_account_config",
@@ -622,6 +629,7 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
 fn request_account_key(req: &Request) -> Option<&str> {
     match req {
         Request::AuthorizeAccountConfig { account, .. }
+        | Request::StartAuthSession { account, .. }
         | Request::UpsertAccountConfig { account }
         | Request::TestAccountConfig { account } => Some(account.key.as_str()),
         Request::SetDefaultAccount { key } => Some(key.as_str()),
@@ -1295,6 +1303,11 @@ async fn list_runtime_accounts(state: &AppState) -> Result<Vec<AccountSummaryDat
             .clone()
             .or_else(|| send_kind.clone())
             .unwrap_or_else(|| "unknown".to_string());
+        let mut capabilities = state
+            .get_provider(Some(&account.id))
+            .map(|provider| AccountCapabilitiesData::from(provider.capabilities()))
+            .unwrap_or_default();
+        capabilities.supports_send = send_kind.is_some();
         let map_key = key.clone().unwrap_or_else(|| account.id.to_string());
 
         accounts.insert(
@@ -1313,6 +1326,7 @@ async fn list_runtime_accounts(state: &AppState) -> Result<Vec<AccountSummaryDat
                 editable: AccountEditModeData::RuntimeOnly,
                 sync: None,
                 send: None,
+                capabilities,
             },
         );
     }
@@ -1335,6 +1349,7 @@ async fn list_runtime_accounts(state: &AppState) -> Result<Vec<AccountSummaryDat
                 editable: AccountEditModeData::Full,
                 sync: None,
                 send: None,
+                capabilities: config_account_capabilities(&account),
             });
 
         summary.account_id = account_id;
@@ -1353,6 +1368,11 @@ async fn list_runtime_accounts(state: &AppState) -> Result<Vec<AccountSummaryDat
             _ => AccountSourceData::Config,
         };
         summary.editable = AccountEditModeData::Full;
+        summary.capabilities = state
+            .get_provider(Some(&summary.account_id))
+            .map(|provider| AccountCapabilitiesData::from(provider.capabilities()))
+            .unwrap_or_else(|_| config_account_capabilities(&account));
+        summary.capabilities.supports_send = summary.send_kind.is_some();
     }
 
     let mut accounts = accounts.into_values().collect::<Vec<_>>();
@@ -2453,6 +2473,41 @@ fn account_primary_provider_kind(account: &mxr_config::AccountConfig) -> String 
         .unwrap_or_else(|| "unknown".into())
 }
 
+fn config_account_capabilities(account: &mxr_config::AccountConfig) -> AccountCapabilitiesData {
+    let mut capabilities = account
+        .sync
+        .as_ref()
+        .map(config_sync_capabilities)
+        .unwrap_or_default();
+    capabilities.supports_send = account.send.is_some();
+    capabilities
+}
+
+fn config_sync_capabilities(sync: &mxr_config::SyncProviderConfig) -> AccountCapabilitiesData {
+    match sync {
+        mxr_config::SyncProviderConfig::Gmail { .. } => AccountCapabilitiesData {
+            labels: true,
+            server_search: true,
+            delta_sync: true,
+            batch_operations: true,
+            native_thread_ids: true,
+            ..AccountCapabilitiesData::default()
+        },
+        mxr_config::SyncProviderConfig::Imap { .. } => AccountCapabilitiesData {
+            server_search: true,
+            delta_sync: true,
+            ..AccountCapabilitiesData::default()
+        },
+        mxr_config::SyncProviderConfig::Fake => AccountCapabilitiesData {
+            labels: true,
+            native_thread_ids: true,
+            ..AccountCapabilitiesData::default()
+        },
+        mxr_config::SyncProviderConfig::OutlookPersonal { .. }
+        | mxr_config::SyncProviderConfig::OutlookWork { .. } => AccountCapabilitiesData::default(),
+    }
+}
+
 fn provider_kind_label(kind: &mxr_core::ProviderKind) -> &'static str {
     match kind {
         mxr_core::ProviderKind::Gmail => "gmail",
@@ -2759,7 +2814,7 @@ async fn handle_export_thread(
                 data: ResponseData::ExportResult { content },
             }
         }
-        Err(e) => Response::Error { message: e },
+        Err(e) => Response::error(e),
     }
 }
 
@@ -2771,9 +2826,7 @@ async fn handle_export_search(state: &AppState, query: &str, format: &ExportForm
     {
         Ok(results) => results,
         Err(e) => {
-            return Response::Error {
-                message: e.to_string(),
-            }
+            return Response::error(e.to_string());
         }
     };
 
@@ -3050,6 +3103,8 @@ mod tests {
         message: &'static str,
     }
 
+    struct UnsupportedServerDraftProvider;
+
     struct FailingSyncProvider {
         account_id: mxr_core::AccountId,
         message: &'static str,
@@ -3068,6 +3123,21 @@ mod tests {
             _from: &mxr_core::Address,
         ) -> Result<mxr_core::SendReceipt, mxr_core::MxrError> {
             Err(mxr_core::MxrError::Provider(self.message.to_string()))
+        }
+    }
+
+    #[async_trait]
+    impl mxr_core::MailSendProvider for UnsupportedServerDraftProvider {
+        fn name(&self) -> &str {
+            "unsupported-server-draft"
+        }
+
+        async fn send(
+            &self,
+            _draft: &mxr_core::Draft,
+            _from: &mxr_core::Address,
+        ) -> Result<mxr_core::SendReceipt, mxr_core::MxrError> {
+            unreachable!("save_draft_to_server fallback test must not send")
         }
     }
 
@@ -3458,7 +3528,7 @@ mod tests {
                     inbox.id
                 );
             }
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 panic!("Got error response: {message}");
             }
             other => panic!("Expected Envelopes, got {:?}", other),
@@ -3944,6 +4014,7 @@ mod tests {
                         results,
                         has_more,
                         explain,
+                        ..
                     },
             }) => {
                 assert_eq!(has_more, false);
@@ -4320,7 +4391,7 @@ mod tests {
         let resp = handle_request(&state, &msg).await;
 
         match resp.payload {
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 assert!(message.contains("Invalid search query"));
                 assert!(message.contains("invalid date"));
             }
@@ -4396,7 +4467,7 @@ mod tests {
 
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Bodies { bodies },
+                data: ResponseData::Bodies { bodies, .. },
             }) => {
                 assert!(
                     bodies.is_empty(),
@@ -4468,7 +4539,7 @@ mod tests {
 
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Bodies { bodies },
+                data: ResponseData::Bodies { bodies, .. },
             }) => {
                 assert_eq!(bodies.len(), 1);
                 assert!(
@@ -4609,7 +4680,7 @@ mod tests {
 
         match resp.payload {
             IpcPayload::Response(Response::Ok {
-                data: ResponseData::Bodies { bodies },
+                data: ResponseData::Bodies { bodies, .. },
             }) => {
                 assert_eq!(bodies.len(), 1);
                 assert_eq!(bodies[0].text_plain.as_deref(), Some("hello"));
@@ -5244,7 +5315,7 @@ mod tests {
             }),
         };
         match handle_request(&state, &snooze).await.payload {
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 assert!(
                     message.contains("Reconciled message not found"),
                     "expected missing reanchor error, got: {message}"
@@ -5397,7 +5468,7 @@ mod tests {
             payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
         };
         match handle_request(&state, &replay).await.payload {
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 assert!(
                     message.to_lowercase().contains("not found"),
                     "second undo must return not-found; got {message}"
@@ -5420,7 +5491,7 @@ mod tests {
             }),
         };
         match handle_request(&state, &msg).await.payload {
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 assert!(
                     message.to_lowercase().contains("not found"),
                     "expected not-found error; got {message}"
@@ -6002,7 +6073,7 @@ mod tests {
             }),
         };
         match handle_request(&state, &send).await.payload {
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 assert!(message.contains("draft-only safety policy"));
             }
             other => panic!("Expected safety policy error, got {:?}", other),
@@ -6035,7 +6106,7 @@ mod tests {
             })),
         };
         match handle_request(&state, &mutation).await.payload {
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 assert!(message.contains("read-only safety policy"));
             }
             other => panic!("Expected safety policy error, got {:?}", other),
@@ -6097,7 +6168,7 @@ mod tests {
         };
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 assert!(message.contains("consulting-smtp"));
                 assert!(message.contains("mxr accounts repair"));
             }
@@ -6280,7 +6351,7 @@ mod tests {
         };
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 assert!(
                     message.contains("unsubscribe"),
                     "Expected error about unsubscribe, got: {}",
@@ -6345,7 +6416,7 @@ mod tests {
         };
         let resp = handle_request(&state, &msg).await;
         match resp.payload {
-            IpcPayload::Response(Response::Error { message }) => {
+            IpcPayload::Response(Response::Error { message, .. }) => {
                 assert!(
                     message.contains("not found") || message.contains("Not found"),
                     "Expected 'not found' error, got: {}",
@@ -6370,6 +6441,60 @@ mod tests {
                 data: ResponseData::Drafts { drafts },
             }) => {
                 assert!(drafts.is_empty(), "Expected empty drafts list");
+            }
+            other => panic!("Expected Drafts, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_list_drafts_includes_all_accounts() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let default_account_id = state.default_account_id();
+        let other_account_id = mxr_core::AccountId::new();
+        let other_account = crate::test_fixtures::test_account_with_id(other_account_id.clone());
+        state.store.insert_account(&other_account).await.unwrap();
+
+        let old_draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: default_account_id,
+            reply_headers: None,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Default account draft".to_string(),
+            body_markdown: "older".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now() - chrono::Duration::minutes(5),
+            updated_at: chrono::Utc::now() - chrono::Duration::minutes(5),
+        };
+        let new_draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id: other_account_id,
+            reply_headers: None,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Other account draft".to_string(),
+            body_markdown: "newer".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        state.store.insert_draft(&old_draft).await.unwrap();
+        state.store.insert_draft(&new_draft).await.unwrap();
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::ListDrafts),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Drafts { drafts },
+            }) => {
+                assert_eq!(drafts.len(), 2);
+                assert_eq!(drafts[0].id, new_draft.id);
+                assert_eq!(drafts[1].id, old_draft.id);
             }
             other => panic!("Expected Drafts, got {:?}", other),
         }
@@ -6439,6 +6564,118 @@ mod tests {
 
         assert_eq!(fake.sent_drafts().len(), 1);
         assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn dispatch_send_draft_preserves_parent_thread_for_synthetic_sent() {
+        let account_id = mxr_core::AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+        let send_provider: Arc<dyn mxr_core::MailSendProvider> = fake.clone();
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+                .await
+                .unwrap(),
+        );
+        let parent_thread_id = mxr_core::ThreadId::new();
+        let parent = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .thread_id(parent_thread_id.clone())
+            .provider_id("parent")
+            .message_id_header(Some("<parent@example.com>".to_string()))
+            .build();
+        state.store.upsert_envelope(&parent).await.unwrap();
+
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id,
+            reply_headers: Some(mxr_core::ReplyHeaders {
+                in_reply_to: "<parent@example.com>".to_string(),
+                references: vec!["<parent@example.com>".to_string()],
+                thread_id: None,
+            }),
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "test@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Re: parent".to_string(),
+            body_markdown: "reply".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::SendDraft { draft }),
+        };
+        let resp = handle_request(&state, &msg).await;
+        let local_message_id = match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data:
+                    ResponseData::SendReceipt {
+                        local_message_id, ..
+                    },
+            }) => local_message_id,
+            other => panic!("Expected SendReceipt, got {:?}", other),
+        };
+        let sent = state
+            .store
+            .get_envelope(&local_message_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(sent.thread_id, parent_thread_id);
+    }
+
+    #[tokio::test]
+    async fn dispatch_save_draft_to_server_falls_back_to_local_draft() {
+        let account_id = mxr_core::AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake;
+        let send_provider: Arc<dyn mxr_core::MailSendProvider> =
+            Arc::new(UnsupportedServerDraftProvider);
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, sync_provider, Some(send_provider))
+                .await
+                .unwrap(),
+        );
+
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id,
+            reply_headers: None,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "test@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Local fallback".to_string(),
+            body_markdown: "body".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::SaveDraftToServer {
+                draft: draft.clone(),
+            }),
+        };
+        let resp = handle_request(&state, &msg).await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+        assert!(state.store.get_draft(&draft.id).await.unwrap().is_some());
     }
 
     #[tokio::test]

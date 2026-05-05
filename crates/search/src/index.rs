@@ -5,8 +5,11 @@ use mxr_core::types::{Envelope, MessageBody, SortOrder};
 use mxr_core::MxrError;
 use std::path::Path;
 use tantivy::{
-    collector::TopDocs, query::Query, query::QueryParser, schema::Value, Index, IndexReader,
-    IndexWriter, Order, ReloadPolicy, TantivyDocument,
+    collector::{Count, TopDocs},
+    query::Query,
+    query::QueryParser,
+    schema::Value,
+    Index, IndexReader, IndexWriter, Order, ReloadPolicy, TantivyDocument,
 };
 
 pub struct SearchIndex {
@@ -27,7 +30,9 @@ pub struct SearchResult {
 #[derive(Debug, Clone)]
 pub struct SearchPage {
     pub results: Vec<SearchResult>,
+    pub total: usize,
     pub has_more: bool,
+    pub next_offset: Option<usize>,
 }
 
 fn sane_search_sort_timestamp(timestamp: i64) -> i64 {
@@ -273,6 +278,9 @@ impl SearchIndex {
             .map_err(|e| MxrError::Search(e.to_string()))?;
 
         let searcher = self.reader.searcher();
+        let total = searcher
+            .search(&query, &Count)
+            .map_err(|e| MxrError::Search(e.to_string()))?;
         let fetch_limit = limit.saturating_add(1);
         let top_docs = match sort {
             SortOrder::Relevance => searcher
@@ -304,7 +312,8 @@ impl SearchIndex {
                 .collect::<Vec<_>>(),
         };
 
-        let has_more = top_docs.len() > limit;
+        let has_more = offset.saturating_add(limit) < total;
+        let next_offset = has_more.then_some(offset.saturating_add(limit));
         let mut results = Vec::with_capacity(top_docs.len().min(limit));
         for (score, doc_address) in top_docs.into_iter().take(limit) {
             let doc: TantivyDocument = searcher
@@ -335,7 +344,12 @@ impl SearchIndex {
             });
         }
 
-        Ok(SearchPage { results, has_more })
+        Ok(SearchPage {
+            results,
+            total,
+            has_more,
+            next_offset,
+        })
     }
 
     /// Number of indexed documents.
@@ -361,6 +375,9 @@ impl SearchIndex {
     ) -> Result<SearchPage, MxrError> {
         let s = &self.schema;
         let searcher = self.reader.searcher();
+        let total = searcher
+            .search(&*query, &Count)
+            .map_err(|e| MxrError::Search(e.to_string()))?;
         let fetch_limit = limit.saturating_add(1);
         let top_docs = match sort {
             SortOrder::Relevance => searcher
@@ -395,7 +412,8 @@ impl SearchIndex {
                 .collect::<Vec<_>>(),
         };
 
-        let has_more = top_docs.len() > limit;
+        let has_more = offset.saturating_add(limit) < total;
+        let next_offset = has_more.then_some(offset.saturating_add(limit));
         let mut results = Vec::with_capacity(top_docs.len().min(limit));
         for (score, doc_address) in top_docs.into_iter().take(limit) {
             let doc: TantivyDocument = searcher
@@ -426,6 +444,11 @@ impl SearchIndex {
             });
         }
 
-        Ok(SearchPage { results, has_more })
+        Ok(SearchPage {
+            results,
+            total,
+            has_more,
+            next_offset,
+        })
     }
 }

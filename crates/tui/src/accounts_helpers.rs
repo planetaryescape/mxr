@@ -33,7 +33,7 @@ async fn load_config_account_summaries(
             .into_iter()
             .map(account_config_to_summary)
             .collect()),
-        Response::Error { message } => Err(MxrError::Ipc(message)),
+        Response::Error { message, .. } => Err(MxrError::Ipc(message)),
         _ => Err(MxrError::Ipc("unexpected response".into())),
     }
 }
@@ -61,6 +61,7 @@ fn account_config_to_summary(account: AccountConfigData) -> AccountSummaryData {
         editable: AccountEditModeData::Full,
         sync: account.sync,
         send: account.send,
+        capabilities: Default::default(),
     }
 }
 

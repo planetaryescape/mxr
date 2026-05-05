@@ -76,7 +76,7 @@ pub(super) async fn handle_export_thread(
                 data: ResponseData::ExportResult { content },
             }
         }
-        Err(e) => Response::Error { message: e },
+        Err(e) => Response::error(e),
     }
 }
 
@@ -92,9 +92,7 @@ pub(super) async fn handle_export_search(
     {
         Ok(results) => results,
         Err(e) => {
-            return Response::Error {
-                message: e.to_string(),
-            }
+            return Response::error(e.to_string());
         }
     };
 

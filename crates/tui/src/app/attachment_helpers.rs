@@ -149,10 +149,10 @@ impl App {
                 // "Loading external assets…" chip in the message
                 // header so users see *something* while the network
                 // round-trip resolves.
-                assets_loading: self
-                    .queued_html_image_asset_fetches
-                    .contains(&message.id)
-                    || self.in_flight_html_image_asset_requests.contains(&message.id),
+                assets_loading: self.queued_html_image_asset_fetches.contains(&message.id)
+                    || self
+                        .in_flight_html_image_asset_requests
+                        .contains(&message.id),
             })
             .collect()
     }

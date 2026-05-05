@@ -63,7 +63,9 @@ pub(super) async fn execute_search(
                 });
                 SearchExecution {
                     results: page.results,
+                    total: page.total,
                     has_more: page.has_more,
+                    next_offset: page.next_offset,
                     executed_mode: SearchMode::Lexical,
                     explain,
                 }
@@ -86,6 +88,7 @@ async fn filter_disabled_accounts(
         .await
         .map_err(|e| e.to_string())?
         .into_iter()
+        .filter(|account| account.enabled)
         .map(|account| account.id.as_str())
         .collect::<HashSet<_>>();
 
@@ -108,6 +111,7 @@ async fn filter_disabled_accounts(
     }
     if execution.results.is_empty() {
         execution.has_more = false;
+        execution.next_offset = None;
     }
     Ok(())
 }
@@ -154,7 +158,9 @@ async fn execute_search_ast(
             options.mode,
             SearchMode::Lexical,
             lexical_page.results,
+            lexical_page.total,
             lexical_page.has_more,
+            lexical_page.next_offset,
             ExecutionExplainInput {
                 include_explain: options.explain,
                 semantic_query: None,
@@ -174,7 +180,9 @@ async fn execute_search_ast(
             options.mode,
             SearchMode::Lexical,
             page.results,
+            page.total,
             page.has_more,
+            page.next_offset,
             ExecutionExplainInput {
                 include_explain: options.explain,
                 semantic_query: None,
@@ -199,7 +207,9 @@ async fn execute_search_ast(
             options.mode,
             SearchMode::Lexical,
             page.results,
+            page.total,
             page.has_more,
+            page.next_offset,
             ExecutionExplainInput {
                 include_explain: options.explain,
                 semantic_query: None,
@@ -224,7 +234,9 @@ async fn execute_search_ast(
             options.mode,
             SearchMode::Lexical,
             page.results,
+            page.total,
             page.has_more,
+            page.next_offset,
             ExecutionExplainInput {
                 include_explain: options.explain,
                 semantic_query: Some(semantic_query),
@@ -244,7 +256,9 @@ async fn execute_search_ast(
             options.mode,
             SearchMode::Lexical,
             page.results,
+            page.total,
             page.has_more,
+            page.next_offset,
             ExecutionExplainInput {
                 include_explain: options.explain,
                 semantic_query: Some(semantic_query),
@@ -275,7 +289,9 @@ async fn execute_search_ast(
                 options.mode,
                 SearchMode::Lexical,
                 page.results,
+                page.total,
                 page.has_more,
+                page.next_offset,
                 ExecutionExplainInput {
                     include_explain: options.explain,
                     semantic_query: Some(semantic_query),
@@ -297,7 +313,9 @@ async fn execute_search_ast(
             options.mode,
             SearchMode::Semantic,
             page.results,
+            page.total,
             page.has_more,
+            page.next_offset,
             ExecutionExplainInput {
                 include_explain: options.explain,
                 semantic_query: Some(semantic_query),
@@ -325,7 +343,9 @@ async fn execute_search_ast(
         options.mode,
         SearchMode::Hybrid,
         page.results,
+        page.total,
         page.has_more,
+        page.next_offset,
         ExecutionExplainInput {
             include_explain: options.explain,
             semantic_query: Some(semantic_query),

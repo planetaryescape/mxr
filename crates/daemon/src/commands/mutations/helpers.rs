@@ -34,7 +34,7 @@ pub(super) async fn resolve_message_ids(
                 Response::Ok {
                     data: ResponseData::SearchResults { results, .. },
                 } => Ok(results.into_iter().map(|r| r.message_id).collect()),
-                Response::Error { message } => anyhow::bail!("{message}"),
+                Response::Error { message, .. } => anyhow::bail!("{message}"),
                 _ => anyhow::bail!("Unexpected response from search"),
             }
         }
@@ -67,7 +67,7 @@ pub(super) async fn resolve_mutation_selection(
             Response::Ok {
                 data: ResponseData::Envelopes { envelopes },
             } => envelopes,
-            Response::Error { message } => anyhow::bail!("{message}"),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
             _ => anyhow::bail!("Unexpected response from envelope lookup"),
         }
     };
@@ -231,7 +231,7 @@ pub(super) fn handle_mutation_response(
                 println!("Undo with: mxr undo {mutation_id}");
             }
         }
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
@@ -282,7 +282,7 @@ pub(super) async fn load_attachments(
             }
             Ok(body.attachments)
         }
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -305,7 +305,7 @@ pub(super) async fn request_attachment_file(
         Response::Ok {
             data: ResponseData::AttachmentFile { file },
         } => Ok(PathBuf::from(file.path)),
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
 }

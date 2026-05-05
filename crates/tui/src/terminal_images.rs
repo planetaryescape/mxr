@@ -165,7 +165,7 @@ pub(crate) fn spawn_html_image_asset_worker(
                                     Ok(Response::Ok {
                                         data: ResponseData::HtmlImageAssets { assets, .. },
                                     }) => Ok(assets),
-                                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                                     Err(error) => Err(error),
                                     _ => Err(MxrError::Ipc("unexpected response".into())),
                                 };

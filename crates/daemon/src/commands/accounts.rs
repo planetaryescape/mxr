@@ -104,7 +104,7 @@ async fn resolve_account_id(name: Option<&str>) -> anyhow::Result<AccountId> {
         Response::Ok {
             data: ResponseData::Accounts { accounts },
         } => accounts,
-        Response::Error { message } => anyhow::bail!(message),
+        Response::Error { message, .. } => anyhow::bail!(message),
         other => anyhow::bail!("Unexpected accounts response: {other:?}"),
     };
 
@@ -136,7 +136,7 @@ async fn list_addresses(
         Response::Ok {
             data: ResponseData::AccountAddresses { addresses },
         } => addresses,
-        Response::Error { message } => anyhow::bail!(message),
+        Response::Error { message, .. } => anyhow::bail!(message),
         other => anyhow::bail!("Unexpected addresses response: {other:?}"),
     };
     render_addresses(&addresses, format)
@@ -192,7 +192,7 @@ async fn add_address(account_name: Option<&str>, email: &str, primary: bool) -> 
             println!("Added {email}{}.", if primary { " (primary)" } else { "" });
             Ok(())
         }
-        Response::Error { message } => anyhow::bail!(message),
+        Response::Error { message, .. } => anyhow::bail!(message),
     }
 }
 
@@ -210,7 +210,7 @@ async fn remove_address(account_name: Option<&str>, email: &str) -> anyhow::Resu
             println!("Removed {email}.");
             Ok(())
         }
-        Response::Error { message } => anyhow::bail!(message),
+        Response::Error { message, .. } => anyhow::bail!(message),
     }
 }
 
@@ -228,7 +228,7 @@ async fn set_primary_address(account_name: Option<&str>, email: &str) -> anyhow:
             println!("Promoted {email} to primary.");
             Ok(())
         }
-        Response::Error { message } => anyhow::bail!(message),
+        Response::Error { message, .. } => anyhow::bail!(message),
     }
 }
 
@@ -334,7 +334,7 @@ async fn account_configs() -> anyhow::Result<Vec<AccountConfigData>> {
         Response::Ok {
             data: ResponseData::AccountsConfig { accounts },
         } => Ok(accounts),
-        Response::Error { message } => anyhow::bail!(message),
+        Response::Error { message, .. } => anyhow::bail!(message),
         other => anyhow::bail!("Unexpected accounts response: {other:?}"),
     }
 }
@@ -361,7 +361,7 @@ async fn request_account_operation(
         Response::Ok {
             data: ResponseData::AccountOperation { result },
         } => Ok(result),
-        Response::Error { message } => anyhow::bail!(message),
+        Response::Error { message, .. } => anyhow::bail!(message),
         other => anyhow::bail!("Unexpected account operation response: {other:?}"),
     }
 }

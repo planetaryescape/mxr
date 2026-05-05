@@ -1,4 +1,5 @@
 use thiserror::Error;
+use yup_oauth2::authenticator_delegate::{DeviceFlowDelegate, InstalledFlowDelegate};
 use yup_oauth2::DeviceFlowAuthenticator;
 use yup_oauth2::InstalledFlowAuthenticator;
 use yup_oauth2::InstalledFlowReturnMethod;
@@ -189,6 +190,18 @@ impl GmailAuth {
     /// in any browser — works on SSH sessions, headless containers, or any
     /// box without a browser.
     pub async fn interactive_auth_with_flow(&mut self, flow: AuthFlow) -> Result<(), AuthError> {
+        self.interactive_auth_with_delegates(flow, None, None).await
+    }
+
+    /// Run OAuth with caller-provided yup-oauth2 delegates. Desktop and web
+    /// clients use this to expose the auth URL/device code through a structured
+    /// session instead of relying on stdout.
+    pub async fn interactive_auth_with_delegates(
+        &mut self,
+        flow: AuthFlow,
+        installed_delegate: Option<Box<dyn InstalledFlowDelegate>>,
+        device_delegate: Option<Box<dyn DeviceFlowDelegate>>,
+    ) -> Result<(), AuthError> {
         let secret = self.make_secret();
         let token_path = self.token_path();
 
@@ -198,14 +211,18 @@ impl GmailAuth {
 
         match flow {
             AuthFlow::Installed => {
-                let auth = InstalledFlowAuthenticator::builder(
+                let mut builder = InstalledFlowAuthenticator::builder(
                     secret,
                     InstalledFlowReturnMethod::HTTPRedirect,
                 )
-                .persist_tokens_to_disk(token_path)
-                .build()
-                .await
-                .map_err(|e| AuthError::OAuth2(e.to_string()))?;
+                .persist_tokens_to_disk(token_path);
+                if let Some(delegate) = installed_delegate {
+                    builder = builder.flow_delegate(delegate);
+                }
+                let auth = builder
+                    .build()
+                    .await
+                    .map_err(|e| AuthError::OAuth2(e.to_string()))?;
 
                 let _token = auth
                     .token(GMAIL_SCOPES)
@@ -227,8 +244,12 @@ impl GmailAuth {
                 }));
             }
             AuthFlow::Device => {
-                let auth = DeviceFlowAuthenticator::builder(secret)
-                    .persist_tokens_to_disk(token_path)
+                let mut builder =
+                    DeviceFlowAuthenticator::builder(secret).persist_tokens_to_disk(token_path);
+                if let Some(delegate) = device_delegate {
+                    builder = builder.flow_delegate(delegate);
+                }
+                let auth = builder
                     .build()
                     .await
                     .map_err(|e| AuthError::OAuth2(e.to_string()))?;

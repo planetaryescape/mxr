@@ -39,7 +39,7 @@ where
     F: FnOnce(Response) -> Option<T>,
 {
     match resp {
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         other => extract(other).ok_or_else(|| anyhow::anyhow!("unexpected response from daemon")),
     }
 }

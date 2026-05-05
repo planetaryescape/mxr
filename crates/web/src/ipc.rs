@@ -23,7 +23,7 @@ pub(crate) async fn ipc_request(
                 IpcPayload::Response(mxr_protocol::Response::Ok { data }) => {
                     return Ok(data)
                 }
-                IpcPayload::Response(mxr_protocol::Response::Error { message }) => {
+                IpcPayload::Response(mxr_protocol::Response::Error { message, .. }) => {
                     return Err(BridgeError::Ipc(message));
                 }
                 IpcPayload::Event(_) => continue,

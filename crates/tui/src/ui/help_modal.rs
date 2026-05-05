@@ -752,7 +752,9 @@ mod tests {
                 || hint.contains("shell:")
                 || hint.contains('→')
                 || hint.contains("⇒")
-                || hint.chars().any(|c| matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z'));
+                || hint
+                    .chars()
+                    .any(|c| matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z'));
             assert!(
                 mentions_action,
                 "entry {label:?} hint {hint:?} must reference an action"

@@ -65,7 +65,7 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 } => {
                     println!("{}", render_labels(&labels, resolve_format(format))?);
                 }
-                Response::Error { message } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{}", message),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -97,7 +97,7 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 } => {
                     println!("{}", label.name);
                 }
-                Response::Error { message } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{}", message),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -124,7 +124,7 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 Response::Ok {
                     data: ResponseData::Ack,
                 } => println!("Deleted"),
-                Response::Error { message } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{}", message),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }
@@ -155,7 +155,7 @@ pub async fn run(action: Option<LabelsAction>, format: Option<OutputFormat>) -> 
                 Response::Ok {
                     data: ResponseData::Label { label },
                 } => println!("{}", label.name),
-                Response::Error { message } => anyhow::bail!("{}", message),
+                Response::Error { message, .. } => anyhow::bail!("{}", message),
                 _ => anyhow::bail!("Unexpected response"),
             }
         }

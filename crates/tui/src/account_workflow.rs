@@ -20,7 +20,7 @@ pub(crate) async fn request_account_operation(
         Ok(Response::Ok {
             data: ResponseData::AccountOperation { result },
         }) => Ok(result),
-        Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
         Err(e) => Err(e),
         _ => Err(MxrError::Ipc("unexpected response".into())),
     }

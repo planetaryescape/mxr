@@ -162,7 +162,7 @@ async fn reply_inner(
         Response::Ok {
             data: ResponseData::ReplyContext { context },
         } => context,
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     };
 
@@ -214,7 +214,7 @@ pub async fn forward(
         Response::Ok {
             data: ResponseData::ForwardContext { context },
         } => context,
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     };
 
@@ -360,7 +360,7 @@ pub async fn drafts(format: Option<OutputFormat>) -> anyhow::Result<()> {
                 }
             }
         },
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
@@ -663,6 +663,7 @@ mod tests {
             editable: AccountEditModeData::Full,
             sync: None,
             send: None,
+            capabilities: Default::default(),
         }
     }
 

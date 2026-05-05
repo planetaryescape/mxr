@@ -34,7 +34,7 @@ async fn refresh() -> anyhow::Result<()> {
             println!("Refreshed {rows} contact rows.");
             Ok(())
         }
-        Response::Error { message } => anyhow::bail!(message),
+        Response::Error { message, .. } => anyhow::bail!(message),
         other => anyhow::bail!("Unexpected response: {other:?}"),
     }
 }

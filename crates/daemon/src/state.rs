@@ -1,6 +1,6 @@
 use mxr_core::id::AccountId;
 use mxr_core::*;
-use mxr_protocol::IpcMessage;
+use mxr_protocol::{AccountConfigData, AuthSessionData, AuthSessionId, IpcMessage};
 use mxr_search::{SearchIndex, SearchServiceHandle};
 use mxr_semantic::{SemanticEngine, SemanticServiceHandle};
 use mxr_store::Store;
@@ -153,6 +153,13 @@ pub struct AppState {
     shutdown_tx: watch::Sender<bool>,
     runtime_tasks: RuntimeTasks,
     admin_blocking: Arc<Semaphore>,
+    pub(crate) auth_sessions: ParkingMutex<HashMap<AuthSessionId, AuthSessionRuntime>>,
+}
+
+pub(crate) struct AuthSessionRuntime {
+    pub account: AccountConfigData,
+    pub status: Arc<ParkingMutex<AuthSessionData>>,
+    pub handle: JoinHandle<()>,
 }
 
 impl AppState {
@@ -222,6 +229,7 @@ impl AppState {
             shutdown_tx,
             runtime_tasks,
             admin_blocking,
+            auth_sessions: ParkingMutex::new(HashMap::new()),
         })
     }
 
@@ -645,6 +653,11 @@ impl AppState {
             }
         }
 
+        for (session_id, session) in self.auth_sessions.lock().drain() {
+            session.handle.abort();
+            tracing::trace!(session_id = %session_id.0, "auth session task aborted");
+        }
+
         tracing::info!(
             elapsed_ms = drain_started.elapsed().as_secs_f64() * 1000.0,
             "daemon shutdown drain completed"
@@ -882,6 +895,7 @@ impl AppState {
             shutdown_tx,
             runtime_tasks,
             admin_blocking,
+            auth_sessions: ParkingMutex::new(HashMap::new()),
         })
     }
 
@@ -925,6 +939,7 @@ impl AppState {
             shutdown_tx,
             runtime_tasks,
             admin_blocking,
+            auth_sessions: ParkingMutex::new(HashMap::new()),
         })
     }
 
@@ -986,14 +1001,15 @@ impl AppState {
                     default_send_provider: send_provider,
                 }),
                 sync_loop_accounts: ParkingMutex::new(HashSet::new()),
-            idle_loop_accounts: ParkingMutex::new(HashSet::new()),
-            idle_notifies: ParkingMutex::new(HashMap::new()),
+                idle_loop_accounts: ParkingMutex::new(HashSet::new()),
+                idle_notifies: ParkingMutex::new(HashMap::new()),
                 event_tx,
                 start_time: Instant::now(),
                 config: RwLock::new(config),
                 shutdown_tx,
                 runtime_tasks,
                 admin_blocking,
+                auth_sessions: ParkingMutex::new(HashMap::new()),
             },
             fake,
         ))

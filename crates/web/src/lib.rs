@@ -91,6 +91,16 @@ pub fn app(_config: WebServerConfig) -> Router {
         .route("/accounts/test", post(test_account))
         .route("/accounts/upsert", post(upsert_account))
         .route("/accounts/default", post(set_default_account))
+        .route("/auth/sessions/start", post(start_auth_session))
+        .route("/auth/sessions/{session_id}", get(get_auth_session))
+        .route(
+            "/auth/sessions/{session_id}/cancel",
+            post(cancel_auth_session),
+        )
+        .route(
+            "/auth/sessions/{session_id}/complete",
+            post(complete_auth_session),
+        )
         .route("/diagnostics", get(diagnostics))
         .route("/diagnostics/bug-report", get(generate_bug_report))
         .route("/mutations/archive", post(archive))
@@ -394,6 +404,8 @@ struct SearchQuery {
     #[serde(default = "default_limit")]
     limit: u32,
     #[serde(default)]
+    offset: u32,
+    #[serde(default)]
     mode: Option<SearchMode>,
     #[serde(default)]
     scope: Option<String>,
@@ -518,6 +530,21 @@ struct SetDefaultAccountRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct StartAuthSessionRequest {
+    account: mxr_protocol::AccountConfigData,
+    #[serde(default)]
+    reauthorize: bool,
+    #[serde(default)]
+    flow: mxr_protocol::AuthFlowData,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompleteAuthSessionRequest {
+    #[serde(default)]
+    save_account: bool,
+}
+
+#[derive(Debug, Deserialize)]
 struct AttachmentRequest {
     message_id: String,
     attachment_id: String,
@@ -583,7 +610,7 @@ async fn thread(
     let thread_id = parse_thread_id(&thread_id)?;
     match ipc_request(&state.config.socket_path, Request::GetThread { thread_id }).await? {
         ResponseData::Thread { thread, messages } => {
-            let bodies = match ipc_request(
+            let (bodies, body_failures) = match ipc_request(
                 &state.config.socket_path,
                 Request::ListBodies {
                     message_ids: messages
@@ -594,7 +621,7 @@ async fn thread(
             )
             .await?
             {
-                ResponseData::Bodies { bodies } => bodies,
+                ResponseData::Bodies { bodies, failures } => (bodies, failures),
                 _ => return Err(BridgeError::UnexpectedResponse),
             };
 
@@ -607,6 +634,7 @@ async fn thread(
                 "thread": thread,
                 "messages": messages.iter().map(message_row_view).collect::<Vec<_>>(),
                 "bodies": bodies,
+                "body_failures": body_failures,
                 "reader_mode": thread_reader_mode(&bodies),
                 "right_rail": {
                     "title": "Thread context",
@@ -661,6 +689,7 @@ async fn search(
             "mode": query.mode.unwrap_or_default(),
             "total": 0,
             "has_more": false,
+            "next_offset": serde_json::Value::Null,
             "groups": [],
             "explain": serde_json::Value::Null,
         })));
@@ -681,7 +710,7 @@ async fn search(
         Request::Search {
             query: query.q,
             limit: query.limit,
-            offset: 0,
+            offset: query.offset,
             mode: query.mode,
             sort: Some(sort),
             explain: query.explain,
@@ -693,6 +722,8 @@ async fn search(
             results,
             explain,
             has_more,
+            total,
+            next_offset,
         } => {
             let effective_results = if thread_scope {
                 dedupe_search_results_by_thread(results)
@@ -725,12 +756,11 @@ async fn search(
             } else {
                 Vec::new()
             };
-            let (groups, total) = if attachment_scope {
+            let groups = if attachment_scope {
                 let rows = attachment_search_rows(&envelopes, &bodies);
-                let total = rows.len();
-                (group_row_views(rows), total)
+                group_row_views(rows)
             } else {
-                (group_envelopes(envelopes), effective_results.len())
+                group_envelopes(envelopes)
             };
 
             Ok(Json(json!({
@@ -739,6 +769,7 @@ async fn search(
                 "mode": query.mode.unwrap_or_default(),
                 "total": total,
                 "has_more": has_more,
+                "next_offset": next_offset,
                 "groups": groups,
                 "explain": explain,
             })))
@@ -1368,6 +1399,92 @@ async fn set_default_account(
     }
 }
 
+async fn start_auth_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<StartAuthSessionRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let request_id = bridge_request_id(&headers);
+    match ipc_request_with_id(
+        &state.config.socket_path,
+        request_id,
+        Request::StartAuthSession {
+            account: request.account,
+            reauthorize: request.reauthorize,
+            flow: request.flow,
+        },
+    )
+    .await?
+    {
+        ResponseData::AuthSession { session } => Ok(Json(json!({ "session": session }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn get_auth_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    AxumPath(session_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::GetAuthSession {
+            session_id: mxr_protocol::AuthSessionId(session_id),
+        },
+    )
+    .await?
+    {
+        ResponseData::AuthSession { session } => Ok(Json(json!({ "session": session }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn cancel_auth_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    AxumPath(session_id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::CancelAuthSession {
+            session_id: mxr_protocol::AuthSessionId(session_id),
+        },
+    )
+    .await?
+    {
+        ResponseData::AuthSession { session } => Ok(Json(json!({ "session": session }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn complete_auth_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    AxumPath(session_id): AxumPath<String>,
+    Json(request): Json<CompleteAuthSessionRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::CompleteAuthSession {
+            session_id: mxr_protocol::AuthSessionId(session_id),
+            save_account: request.save_account,
+        },
+    )
+    .await?
+    {
+        ResponseData::AuthSession { session } => Ok(Json(json!({ "session": session }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 async fn diagnostics(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1573,7 +1690,7 @@ async fn ipc_request_with_id(
         match framed.next().await {
             Some(Ok(response)) => match response.payload {
                 IpcPayload::Response(mxr_protocol::Response::Ok { data }) => return Ok(data),
-                IpcPayload::Response(mxr_protocol::Response::Error { message }) => {
+                IpcPayload::Response(mxr_protocol::Response::Error { message, .. }) => {
                     return Err(BridgeError::Ipc(message));
                 }
                 IpcPayload::Event(_) => continue,
@@ -2799,6 +2916,7 @@ mod tests {
             editable: mxr_protocol::AccountEditModeData::Full,
             sync: None,
             send: None,
+            capabilities: Default::default(),
         }
     }
 
@@ -3189,6 +3307,7 @@ mod tests {
                     Some(Response::Ok {
                         data: ResponseData::Bodies {
                             bodies: vec![body.clone()],
+                            failures: Vec::new(),
                         },
                     })
                 }
@@ -3245,6 +3364,7 @@ mod tests {
                     Some(Response::Ok {
                         data: ResponseData::Bodies {
                             bodies: vec![body.clone()],
+                            failures: Vec::new(),
                         },
                     })
                 }
@@ -3347,7 +3467,9 @@ mod tests {
                 } if query == "buildkite" => Some(Response::Ok {
                     data: ResponseData::SearchResults {
                         results: vec![result.clone()],
+                        total: 1,
                         has_more: false,
+                        next_offset: None,
                         explain: None,
                     },
                 }),
@@ -3486,7 +3608,9 @@ mod tests {
                 } if query == "deploy" => Some(Response::Ok {
                     data: ResponseData::SearchResults {
                         results: vec![newer_result.clone(), older_result.clone()],
+                        total: 2,
                         has_more: false,
+                        next_offset: None,
                         explain: Some(explain.clone()),
                     },
                 }),
@@ -3575,7 +3699,9 @@ mod tests {
                 } if query == "dalumuzi" => Some(Response::Ok {
                     data: ResponseData::SearchResults {
                         results: results.clone(),
+                        total: results.len() as u32,
                         has_more: false,
+                        next_offset: None,
                         explain: None,
                     },
                 }),
@@ -3648,7 +3774,9 @@ mod tests {
                 } if query == "deploy artifacts" => Some(Response::Ok {
                     data: ResponseData::SearchResults {
                         results: vec![result.clone()],
+                        total: 1,
                         has_more: false,
+                        next_offset: None,
                         explain: None,
                     },
                 }),
@@ -3663,6 +3791,7 @@ mod tests {
                     Some(Response::Ok {
                         data: ResponseData::Bodies {
                             bodies: vec![body.clone()],
+                            failures: Vec::new(),
                         },
                     })
                 }
@@ -4004,9 +4133,7 @@ mod tests {
                         accounts: vec![account.clone()],
                     },
                 }),
-                Request::SendDraft { .. } => Some(Response::Error {
-                    message: error_for_server.clone(),
-                }),
+                Request::SendDraft { .. } => Some(Response::error(error_for_server.clone())),
                 _ => None,
             },
             None,

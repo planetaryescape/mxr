@@ -62,7 +62,7 @@ pub(crate) async fn list_bodies_by_message_ids(
     )
     .await?
     {
-        ResponseData::Bodies { bodies } => Ok(reorder_bodies(bodies, message_ids)),
+        ResponseData::Bodies { bodies, .. } => Ok(reorder_bodies(bodies, message_ids)),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }

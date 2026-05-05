@@ -93,6 +93,22 @@ pub enum Request {
         account: AccountConfigData,
         reauthorize: bool,
     },
+    StartAuthSession {
+        account: AccountConfigData,
+        reauthorize: bool,
+        #[serde(default)]
+        flow: AuthFlowData,
+    },
+    GetAuthSession {
+        session_id: AuthSessionId,
+    },
+    CancelAuthSession {
+        session_id: AuthSessionId,
+    },
+    CompleteAuthSession {
+        session_id: AuthSessionId,
+        save_account: bool,
+    },
     UpsertAccountConfig {
         account: AccountConfigData,
     },
@@ -376,6 +392,10 @@ impl Request {
             Self::ListAccounts
             | Self::ListAccountsConfig
             | Self::AuthorizeAccountConfig { .. }
+            | Self::StartAuthSession { .. }
+            | Self::GetAuthSession { .. }
+            | Self::CancelAuthSession { .. }
+            | Self::CompleteAuthSession { .. }
             | Self::UpsertAccountConfig { .. }
             | Self::SetDefaultAccount { .. }
             | Self::TestAccountConfig { .. }
@@ -513,8 +533,90 @@ pub struct MutationResultData {
 #[serde(tag = "status")]
 #[allow(clippy::large_enum_variant)]
 pub enum Response {
-    Ok { data: ResponseData },
-    Error { message: String },
+    Ok {
+        data: ResponseData,
+    },
+    Error {
+        message: String,
+        #[serde(default)]
+        kind: IpcErrorKind,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        code: String,
+        #[serde(default)]
+        retryable: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        details: Option<serde_json::Value>,
+    },
+}
+
+impl Response {
+    pub fn error(message: impl Into<String>) -> Self {
+        let message = message.into();
+        Self::Error {
+            kind: classify_error_kind(&message),
+            code: classify_error_code(&message).to_string(),
+            retryable: error_looks_retryable(&message),
+            details: None,
+            message,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IpcErrorKind {
+    InvalidRequest,
+    NotFound,
+    Auth,
+    Policy,
+    Provider,
+    Store,
+    Unsupported,
+    #[default]
+    Internal,
+}
+
+fn classify_error_kind(message: &str) -> IpcErrorKind {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("not found") {
+        IpcErrorKind::NotFound
+    } else if lower.contains("unauthorized") || lower.contains("auth") || lower.contains("oauth") {
+        IpcErrorKind::Auth
+    } else if lower.contains("safety policy") {
+        IpcErrorKind::Policy
+    } else if lower.contains("unsupported") || lower.contains("not supported") {
+        IpcErrorKind::Unsupported
+    } else if lower.contains("provider") || lower.contains("imap") || lower.contains("gmail") {
+        IpcErrorKind::Provider
+    } else if lower.contains("sqlite") || lower.contains("database") || lower.contains("store") {
+        IpcErrorKind::Store
+    } else if lower.contains("invalid") || lower.contains("expected") {
+        IpcErrorKind::InvalidRequest
+    } else {
+        IpcErrorKind::Internal
+    }
+}
+
+fn classify_error_code(message: &str) -> &'static str {
+    match classify_error_kind(message) {
+        IpcErrorKind::InvalidRequest => "invalid_request",
+        IpcErrorKind::NotFound => "not_found",
+        IpcErrorKind::Auth => "auth",
+        IpcErrorKind::Policy => "policy",
+        IpcErrorKind::Provider => "provider",
+        IpcErrorKind::Store => "store",
+        IpcErrorKind::Unsupported => "unsupported",
+        IpcErrorKind::Internal => "internal",
+    }
+}
+
+fn error_looks_retryable(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("timeout")
+        || lower.contains("temporar")
+        || lower.contains("rate limit")
+        || lower.contains("unavailable")
+        || lower.contains("connection")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -540,6 +642,8 @@ pub enum ResponseData {
     },
     Bodies {
         bodies: Vec<MessageBody>,
+        #[serde(default)]
+        failures: Vec<BodyFailure>,
     },
     Thread {
         thread: Thread,
@@ -555,7 +659,11 @@ pub enum ResponseData {
     SearchResults {
         results: Vec<SearchResultItem>,
         #[serde(default)]
+        total: u32,
+        #[serde(default)]
         has_more: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        next_offset: Option<u32>,
         explain: Option<SearchExplain>,
     },
     SyncStatus {
@@ -601,6 +709,9 @@ pub enum ResponseData {
     },
     AccountOperation {
         result: AccountOperationResult,
+    },
+    AuthSession {
+        session: AuthSessionData,
     },
     RuleFormData {
         form: RuleFormData,
@@ -731,6 +842,7 @@ impl ResponseData {
             | Self::Accounts { .. }
             | Self::AccountsConfig { .. }
             | Self::AccountOperation { .. }
+            | Self::AuthSession { .. }
             | Self::RuleFormData { .. }
             | Self::RuleDryRun { .. }
             | Self::SavedSearches { .. }
@@ -766,6 +878,12 @@ pub struct SearchResultItem {
     pub thread_id: ThreadId,
     pub score: f32,
     pub mode: SearchMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BodyFailure {
+    pub message_id: MessageId,
+    pub error: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -976,6 +1094,50 @@ pub struct AccountConfigData {
     pub is_default: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AuthSessionId(pub String);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthFlowData {
+    #[default]
+    Auto,
+    Installed,
+    Device,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthSessionStateData {
+    Starting,
+    WaitingForUser,
+    Authorized,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthSessionData {
+    pub session_id: AuthSessionId,
+    pub state: AuthSessionStateData,
+    pub flow: AuthFlowData,
+    pub account_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification_uri: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at_unix: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poll_interval_secs: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 fn default_account_enabled() -> bool {
     true
 }
@@ -1010,6 +1172,51 @@ pub struct AccountSummaryData {
     pub editable: AccountEditModeData,
     pub sync: Option<AccountSyncConfigData>,
     pub send: Option<AccountSendConfigData>,
+    #[serde(default)]
+    pub capabilities: AccountCapabilitiesData,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccountCapabilitiesData {
+    pub labels: bool,
+    pub server_search: bool,
+    pub delta_sync: bool,
+    pub push: bool,
+    pub batch_operations: bool,
+    pub native_thread_ids: bool,
+    pub supports_send: bool,
+    pub supports_local_drafts: bool,
+    pub supports_server_drafts: bool,
+}
+
+impl Default for AccountCapabilitiesData {
+    fn default() -> Self {
+        Self {
+            labels: false,
+            server_search: false,
+            delta_sync: false,
+            push: false,
+            batch_operations: false,
+            native_thread_ids: false,
+            supports_send: false,
+            supports_local_drafts: true,
+            supports_server_drafts: false,
+        }
+    }
+}
+
+impl From<SyncCapabilities> for AccountCapabilitiesData {
+    fn from(capabilities: SyncCapabilities) -> Self {
+        Self {
+            labels: capabilities.labels,
+            server_search: capabilities.server_search,
+            delta_sync: capabilities.delta_sync,
+            push: capabilities.push,
+            batch_operations: capabilities.batch_operations,
+            native_thread_ids: capabilities.native_thread_ids,
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -1125,6 +1332,39 @@ pub enum DaemonEvent {
     LabelCountsUpdated {
         counts: Vec<LabelCount>,
     },
+    OperationStarted {
+        operation_id: String,
+        operation: String,
+        account_id: Option<AccountId>,
+        message: String,
+    },
+    OperationProgress {
+        operation_id: String,
+        operation: String,
+        account_id: Option<AccountId>,
+        current: u32,
+        total: Option<u32>,
+        message: String,
+    },
+    OperationCompleted {
+        operation_id: String,
+        operation: String,
+        account_id: Option<AccountId>,
+        message: String,
+    },
+    OperationFailed {
+        operation_id: String,
+        operation: String,
+        account_id: Option<AccountId>,
+        error: String,
+        retryable: bool,
+    },
+    OperationCancelled {
+        operation_id: String,
+        operation: String,
+        account_id: Option<AccountId>,
+        message: String,
+    },
 }
 
 impl DaemonEvent {
@@ -1135,6 +1375,11 @@ impl DaemonEvent {
             | Self::NewMessages { .. }
             | Self::MessageUnsnoozed { .. }
             | Self::LabelCountsUpdated { .. } => IpcCategory::CoreMail,
+            Self::OperationStarted { .. }
+            | Self::OperationProgress { .. }
+            | Self::OperationCompleted { .. }
+            | Self::OperationFailed { .. }
+            | Self::OperationCancelled { .. } => IpcCategory::AdminMaintenance,
         }
     }
 }

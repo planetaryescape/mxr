@@ -201,9 +201,9 @@ pub async fn run() -> anyhow::Result<()> {
                 .await;
                 let result = match resp {
                     Ok(Response::Ok {
-                        data: ResponseData::Bodies { bodies },
+                        data: ResponseData::Bodies { bodies, .. },
                     }) => Ok(bodies),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -281,7 +281,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::Ack,
                     }) => Ok(()),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(error) => Err(error),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -325,7 +325,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 "archive skipped {} message(s)",
                                 result.skipped
                             ))),
-                            Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                            Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                             Err(error) => Err(error),
                             _ => Err(MxrError::Ipc("unexpected response".into())),
                         }
@@ -345,7 +345,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::Rules { rules },
                     }) => Ok(rules),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -387,7 +387,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::RuleDryRun { results },
                     }) => Ok(results),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -410,7 +410,7 @@ pub async fn run() -> anyhow::Result<()> {
                 let resp = ipc_call(&bg, Request::DeleteRule { rule }).await;
                 let result = match resp {
                     Ok(Response::Ok { .. }) => Ok(()),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                 };
                 AsyncResult::RuleDeleted(result)
@@ -425,7 +425,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::RuleData { rule },
                     }) => Ok(rule),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -459,7 +459,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::RuleData { rule },
                     }) => Ok(rule),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -480,7 +480,7 @@ pub async fn run() -> anyhow::Result<()> {
                     let resp = ipc_call(&bg, request).await;
                     let result: Result<(), MxrError> = match resp {
                         Ok(Response::Ok { .. }) => Ok(()),
-                        Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                         Err(e) => Err(e),
                     };
                     let _ = is_last; // last-flag is observed by the response handler.
@@ -508,7 +508,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::SavedSearches { searches },
                     }) => Ok(searches),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -526,7 +526,7 @@ pub async fn run() -> anyhow::Result<()> {
                 let resp = ipc_call(&bg, request).await;
                 let result: Result<(), MxrError> = match resp {
                     Ok(Response::Ok { .. }) => Ok(()),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                 };
                 AsyncResult::SemanticOperationResult(result)
@@ -597,7 +597,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::Labels { labels },
                     }) => Ok(labels),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -623,7 +623,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::Envelopes { envelopes },
                     }) => Ok(envelopes),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -647,7 +647,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::Subscriptions { subscriptions },
                     }) => Ok(subscriptions),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -705,25 +705,28 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let resp = ipc_call(&bg, request).await;
-                let result: Result<crate::async_result::AnalyticsResultPayload, MxrError> = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::StorageBreakdown { rows },
-                    }) => Ok(crate::async_result::AnalyticsResultPayload::Storage(rows)),
-                    Ok(Response::Ok {
-                        data: ResponseData::StaleThreads { rows },
-                    }) => Ok(crate::async_result::AnalyticsResultPayload::Stale(rows)),
-                    Ok(Response::Ok {
-                        data: ResponseData::ContactAsymmetry { rows },
-                    }) => Ok(crate::async_result::AnalyticsResultPayload::Asymmetry(rows)),
-                    Ok(Response::Ok {
-                        data: ResponseData::ResponseTime { summary },
-                    }) => Ok(crate::async_result::AnalyticsResultPayload::ResponseTime(summary)),
-                    Ok(Response::Ok { .. }) => {
-                        Err(MxrError::Ipc("unexpected analytics response".into()))
-                    }
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                };
+                let result: Result<crate::async_result::AnalyticsResultPayload, MxrError> =
+                    match resp {
+                        Ok(Response::Ok {
+                            data: ResponseData::StorageBreakdown { rows },
+                        }) => Ok(crate::async_result::AnalyticsResultPayload::Storage(rows)),
+                        Ok(Response::Ok {
+                            data: ResponseData::StaleThreads { rows },
+                        }) => Ok(crate::async_result::AnalyticsResultPayload::Stale(rows)),
+                        Ok(Response::Ok {
+                            data: ResponseData::ContactAsymmetry { rows },
+                        }) => Ok(crate::async_result::AnalyticsResultPayload::Asymmetry(rows)),
+                        Ok(Response::Ok {
+                            data: ResponseData::ResponseTime { summary },
+                        }) => Ok(crate::async_result::AnalyticsResultPayload::ResponseTime(
+                            summary,
+                        )),
+                        Ok(Response::Ok { .. }) => {
+                            Err(MxrError::Ipc("unexpected analytics response".into()))
+                        }
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(e) => Err(e),
+                    };
                 AsyncResult::AnalyticsResult { view, result }
             });
         }
@@ -732,8 +735,7 @@ pub async fn run() -> anyhow::Result<()> {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let result =
-                    request_account_operation(&bg, Request::RepairAccountConfig { account })
-                        .await;
+                    request_account_operation(&bg, Request::RepairAccountConfig { account }).await;
                 AsyncResult::AccountOperation(result)
             });
         }
@@ -755,7 +757,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::BugReport { content },
                     }) => Ok(content),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -781,7 +783,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::AttachmentFile { file },
                     }) => Ok(file),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -810,7 +812,7 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::Envelopes { envelopes },
                     }) => Ok(envelopes),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -836,14 +838,13 @@ pub async fn run() -> anyhow::Result<()> {
                         data: ResponseData::MutationResult { result },
                     }) if result.succeeded > 0 => {
                         if let Some(mutation_id) = result.mutation_id.clone() {
-                            let _ = result_tx_inner.send(AsyncResult::UndoCaptured(
-                                app::PendingUndo {
+                            let _ =
+                                result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
                                     mutation_id,
                                     verb_past: verb.into(),
                                     count: result.succeeded,
                                     applied_at: std::time::Instant::now(),
-                                },
-                            ));
+                                }));
                         }
                         Ok(effect)
                     }
@@ -853,7 +854,7 @@ pub async fn run() -> anyhow::Result<()> {
                         "mutation skipped {} message(s)",
                         result.skipped
                     ))),
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -888,7 +889,7 @@ pub async fn run() -> anyhow::Result<()> {
                             Err(e) => Err(MxrError::Ipc(format!("Write failed: {e}"))),
                         }
                     }
-                    Ok(Response::Error { message }) => Err(MxrError::Ipc(message)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
@@ -1139,7 +1140,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 } => {
                                     app.diagnostics.page.logs = lines;
                                 }
-                                Response::Error { message } => {
+                                Response::Error { message, .. } => {
                                     app.diagnostics.page.status = Some(message);
                                 }
                                 _ => {}
@@ -6458,12 +6459,7 @@ mod tests {
     fn current_user_warn_clears_after_5s() {
         let mut app = App::new();
         app.report_warn("body parse failed");
-        let since = app
-            .modals
-            .error_log
-            .back()
-            .expect("entry must exist")
-            .since;
+        let since = app.modals.error_log.back().expect("entry must exist").since;
 
         assert_eq!(
             app.current_user_warn(since + std::time::Duration::from_secs(4))
@@ -6505,10 +6501,7 @@ mod tests {
             } => {
                 assert_eq!(name, "Work overdue");
                 assert_eq!(query, "label:work older_than:7d");
-                assert!(matches!(
-                    search_mode,
-                    mxr_core::types::SearchMode::Lexical
-                ));
+                assert!(matches!(search_mode, mxr_core::types::SearchMode::Lexical));
             }
             other => panic!("expected CreateSavedSearch, got {other:?}"),
         }
@@ -6611,11 +6604,7 @@ mod tests {
         use crate::action::Action;
         let mut app = App::new();
         app.open_saved_search_form_new();
-        let form = app
-            .modals
-            .saved_search_form
-            .as_mut()
-            .expect("form open");
+        let form = app.modals.saved_search_form.as_mut().expect("form open");
         form.name = "Important".into();
         form.query = "label:starred".into();
 
@@ -6649,11 +6638,7 @@ mod tests {
         use crate::action::Action;
         let mut app = App::new();
         app.open_saved_search_form_new();
-        let form = app
-            .modals
-            .saved_search_form
-            .as_mut()
-            .expect("form open");
+        let form = app.modals.saved_search_form.as_mut().expect("form open");
         form.name = "Important".into();
         form.query = "  ".into(); // whitespace-only — rejected.
 
@@ -6908,7 +6893,10 @@ mod tests {
             },
         );
         app.apply(Action::OpenSelected);
-        assert!(matches!(app.mailbox.body_view_state, BodyViewState::Ready { .. }));
+        assert!(matches!(
+            app.mailbox.body_view_state,
+            BodyViewState::Ready { .. }
+        ));
 
         // User scrolls down before toggling.
         app.mailbox.message_scroll_offset = 7;
@@ -6968,9 +6956,7 @@ mod tests {
         };
         let labels = body_status_labels_with_loading(&metadata, &BodySource::Html, false, true);
         assert!(
-            labels
-                .iter()
-                .any(|l| l.contains("Loading external assets")),
+            labels.iter().any(|l| l.contains("Loading external assets")),
             "expected loading label in {labels:?}"
         );
     }
@@ -7089,6 +7075,7 @@ mod tests {
             editable: mxr_protocol::AccountEditModeData::Full,
             sync: None,
             send: None,
+            capabilities: Default::default(),
         };
 
         // No status yet → freshly added accounts don't flicker through
@@ -7159,6 +7146,7 @@ mod tests {
                 auth_required: true,
                 use_tls: true,
             }),
+            capabilities: Default::default(),
         }];
         app.accounts.page.selected_index = 0;
 
@@ -7343,18 +7331,11 @@ mod tests {
 
         // 4s in — under the threshold; modal must not have opened yet.
         app.tick_connection_state(t0 + std::time::Duration::from_secs(4));
-        assert!(
-            app.modals.error.is_none(),
-            "modal must not open before 5s"
-        );
+        assert!(app.modals.error.is_none(), "modal must not open before 5s");
 
         // 6s in — over the threshold; modal must be open with non-empty detail.
         app.tick_connection_state(t0 + std::time::Duration::from_secs(6));
-        let modal = app
-            .modals
-            .error
-            .as_ref()
-            .expect("modal must open after 5s");
+        let modal = app.modals.error.as_ref().expect("modal must open after 5s");
         assert!(
             modal.title.to_lowercase().contains("daemon"),
             "modal title must mention the daemon; got {:?}",

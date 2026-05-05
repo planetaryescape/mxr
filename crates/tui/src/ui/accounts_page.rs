@@ -845,6 +845,7 @@ mod tests {
             editable: mxr_protocol::AccountEditModeData::Full,
             sync: None,
             send: None,
+            capabilities: Default::default(),
         }
     }
 
@@ -862,11 +863,7 @@ mod tests {
             } else {
                 Some("auth failed".into())
             },
-            failure_class: if healthy {
-                None
-            } else {
-                Some("auth".into())
-            },
+            failure_class: if healthy { None } else { Some("auth".into()) },
             consecutive_failures: if healthy { 0 } else { 3 },
             backoff_until: None,
             sync_in_progress: false,
@@ -930,7 +927,6 @@ mod tests {
             "healthy account must not render the unhealthy indicator; got:\n{rendered}"
         );
     }
-
 
     #[test]
     fn account_key_help_explains_internal_id_and_refs() {

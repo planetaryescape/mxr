@@ -86,7 +86,11 @@ impl App {
                         // Status reads "Undoing..." until the daemon
                         // acknowledges and completes the refresh.
                         MutationEffect::RefreshList,
-                        format!("Undoing {} {}...", undo.verb_past.to_lowercase(), undo.count),
+                        format!(
+                            "Undoing {} {}...",
+                            undo.verb_past.to_lowercase(),
+                            undo.count
+                        ),
                     );
                 } else {
                     self.status_message =

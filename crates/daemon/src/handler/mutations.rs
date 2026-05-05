@@ -209,10 +209,7 @@ fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
 /// has been hard-deleted (e.g. IMAP EXPUNGE) the provider call fails
 /// and we surface that as an "irreversible" error rather than leaving
 /// the local store and provider out of sync.
-pub(super) async fn undo_mutation(
-    state: &AppState,
-    mutation_id: &str,
-) -> HandlerResult {
+pub(super) async fn undo_mutation(state: &AppState, mutation_id: &str) -> HandlerResult {
     let entry = state
         .store
         .read_undo_entry(mutation_id)
@@ -226,9 +223,7 @@ pub(super) async fn undo_mutation(
     let now = chrono::Utc::now().timestamp();
     if entry.expires_at <= now {
         let _ = state.store.delete_undo_entry(&entry.mutation_id).await;
-        return Err(format!(
-            "undo: window expired for mutation `{mutation_id}`"
-        ));
+        return Err(format!("undo: window expired for mutation `{mutation_id}`"));
     }
 
     // Group snapshots by account so we resolve the provider once per
@@ -334,15 +329,9 @@ async fn restore_snapshot(
             .modify_labels(&snapshot.provider_id, &to_add, &to_remove)
             .await
             .map_err(|error| classify_provider_error(error))?;
-        reconcile_label_mutation(
-            state,
-            provider,
-            &snapshot.message_id,
-            &to_add,
-            &to_remove,
-        )
-        .await
-        .map_err(SnapshotError::Other)?;
+        reconcile_label_mutation(state, provider, &snapshot.message_id, &to_add, &to_remove)
+            .await
+            .map_err(SnapshotError::Other)?;
     }
 
     // Read flag: only relevant for SetRead and ReadAndArchive. For the
@@ -361,7 +350,11 @@ async fn restore_snapshot(
                 .map_err(|error| classify_provider_error(error))?;
             state
                 .store
-                .set_read(&snapshot.message_id, prior_read, mxr_core::EventSource::User)
+                .set_read(
+                    &snapshot.message_id,
+                    prior_read,
+                    mxr_core::EventSource::User,
+                )
                 .await
                 .map_err(|e| SnapshotError::Other(e.to_string()))?;
         }
@@ -692,14 +685,22 @@ pub(super) async fn list_snoozed(state: &AppState) -> HandlerResult {
 }
 
 pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
-    let Some(default_account_id) = state.default_account_id_opt() else {
-        return Ok(ResponseData::Drafts { drafts: Vec::new() });
-    };
-    let drafts = state
+    let accounts = state
         .store
-        .list_drafts(&default_account_id)
+        .list_accounts()
         .await
         .map_err(|e| e.to_string())?;
+    let mut drafts = Vec::new();
+    for account in accounts {
+        drafts.extend(
+            state
+                .store
+                .list_drafts(&account.id)
+                .await
+                .map_err(|e| e.to_string())?,
+        );
+    }
+    drafts.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
     Ok(ResponseData::Drafts { drafts })
 }
 
@@ -783,8 +784,6 @@ pub(super) async fn prepare_reply(
             subject: envelope.subject.clone(),
             from,
             thread_context,
-            // Provider-native thread hint is sourced from a future Envelope.provider_thread_id
-            // field; today In-Reply-To/References headers do the heavy lifting for threading.
             thread_id: None,
         },
     })
@@ -994,7 +993,7 @@ async fn ingest_sent_message(
         id: message_id.clone(),
         account_id: draft.account_id.clone(),
         provider_id: provider_id_value,
-        thread_id: mxr_core::ThreadId::new(),
+        thread_id: sent_thread_id(state, draft).await.unwrap_or_default(),
         message_id_header: Some(receipt.rfc2822_message_id.clone()),
         in_reply_to: draft.reply_headers.as_ref().map(|h| h.in_reply_to.clone()),
         references: draft
@@ -1075,8 +1074,26 @@ async fn ingest_sent_message(
     Ok(message_id)
 }
 
+async fn sent_thread_id(state: &AppState, draft: &Draft) -> Option<mxr_core::ThreadId> {
+    let in_reply_to = draft.reply_headers.as_ref()?.in_reply_to.as_str();
+    state
+        .store
+        .list_envelopes_by_message_id_header(&draft.account_id, in_reply_to)
+        .await
+        .ok()?
+        .into_iter()
+        .next()
+        .map(|envelope| envelope.thread_id)
+}
+
 pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> HandlerResult {
-    let sender = state.send_provider_for_account(&draft.account_id)?;
+    let sender = match state.send_provider_for_account(&draft.account_id) {
+        Ok(sender) => sender,
+        Err(error) => {
+            tracing::info!(error, "No server draft provider; saving local draft");
+            return save_draft(state, draft).await;
+        }
+    };
     let account = state
         .store
         .get_account(&draft.account_id)
@@ -1095,7 +1112,10 @@ pub(super) async fn save_draft_to_server(state: &AppState, draft: &Draft) -> Han
             tracing::info!(draft_id, "Draft saved to server");
             Ok(ResponseData::Ack)
         }
-        Ok(None) => Err("Provider does not support server-side drafts".to_string()),
+        Ok(None) => {
+            tracing::info!("Provider does not support server-side drafts; saving local draft");
+            save_draft(state, draft).await
+        }
         Err(error) => Err(format!("Failed to save draft: {error}")),
     }
 }
@@ -1212,10 +1232,51 @@ pub(super) async fn set_flags(
     message_id: &mxr_core::MessageId,
     flags: mxr_core::MessageFlags,
 ) -> HandlerResult {
-    state
+    let envelope = state
         .store
-        .update_flags(message_id, flags, mxr_core::EventSource::User)
+        .get_envelope(message_id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Message not found: {message_id}"))?;
+
+    let supported = MessageFlags::READ | MessageFlags::STARRED;
+    let unsupported_changed_bits = (envelope.flags.bits() ^ flags.bits()) & !supported.bits();
+    if unsupported_changed_bits != 0 {
+        return Err(
+            "SetFlags only supports provider-routed READ and STARRED changes; use typed mutations"
+                .to_string(),
+        );
+    }
+
+    let provider = state.get_provider(Some(&envelope.account_id))?;
+    let provider_id = envelope.provider_id.as_str();
+
+    let read = flags.contains(MessageFlags::READ);
+    if envelope.flags.contains(MessageFlags::READ) != read {
+        provider
+            .set_read(provider_id, read)
+            .await
+            .map_err(|e| e.to_string())?;
+        state
+            .store
+            .set_read(message_id, read, mxr_core::EventSource::User)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let starred = flags.contains(MessageFlags::STARRED);
+    if envelope.flags.contains(MessageFlags::STARRED) != starred {
+        provider
+            .set_starred(provider_id, starred)
+            .await
+            .map_err(|e| e.to_string())?;
+        state
+            .store
+            .set_starred(message_id, starred, mxr_core::EventSource::User)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    reindex_message_in_search(state, message_id).await?;
     Ok(ResponseData::Ack)
 }

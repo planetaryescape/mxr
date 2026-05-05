@@ -37,6 +37,7 @@ pub async fn run(
                     results,
                     has_more: _,
                     explain: explain_payload,
+                    ..
                 },
         } => Some((results, explain_payload)),
         _ => None,

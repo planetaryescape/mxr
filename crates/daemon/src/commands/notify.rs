@@ -43,7 +43,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                     render_notify(inbox_unread_count(&labels), fmt.clone())?
                 );
             }
-            Response::Error { message } => anyhow::bail!("{}", message),
+            Response::Error { message, .. } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),
         }
 

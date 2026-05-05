@@ -739,9 +739,7 @@ impl App {
                 }
                 // n always opens a new saved-search form from the sidebar.
                 // Even on system labels there's no other affordance for `n`.
-                (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                    Some(Action::OpenSavedSearchFormNew)
-                }
+                (KeyCode::Char('n'), KeyModifiers::NONE) => Some(Action::OpenSavedSearchFormNew),
                 // e/d only meaningful on a Saved Searches row — a label
                 // can't be edited or deleted from here. When focused on
                 // a non-saved-search row we fall through so e/d retain
@@ -788,10 +786,7 @@ impl App {
         }
     }
 
-    fn handle_analytics_screen_key(
-        &mut self,
-        key: crossterm::event::KeyEvent,
-    ) -> Option<Action> {
+    fn handle_analytics_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         match (key.code, key.modifiers) {
             (KeyCode::Char('j') | KeyCode::Down, _) => {
                 let len = analytics_row_count(self);
@@ -802,8 +797,7 @@ impl App {
                 None
             }
             (KeyCode::Char('k') | KeyCode::Up, _) => {
-                self.analytics.selected_index =
-                    self.analytics.selected_index.saturating_sub(1);
+                self.analytics.selected_index = self.analytics.selected_index.saturating_sub(1);
                 None
             }
             (KeyCode::Tab, _) => Some(Action::NextAnalyticsView),
@@ -1006,10 +1000,7 @@ impl App {
         }
     }
 
-    fn handle_saved_search_form_key(
-        &mut self,
-        key: crossterm::event::KeyEvent,
-    ) -> Option<Action> {
+    fn handle_saved_search_form_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
         let Some(form) = self.modals.saved_search_form.as_mut() else {
             return None;
         };

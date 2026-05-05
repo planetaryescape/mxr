@@ -85,7 +85,7 @@ impl Client {
             Response::Ok {
                 data: ResponseData::Envelopes { envelopes },
             } => Ok(envelopes),
-            Response::Error { message } => Err(MxrError::Ipc(message)),
+            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }
     }
@@ -98,7 +98,7 @@ impl Client {
             Response::Ok {
                 data: ResponseData::Labels { labels },
             } => Ok(labels),
-            Response::Error { message } => Err(MxrError::Ipc(message)),
+            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }
     }
@@ -122,7 +122,7 @@ impl Client {
             Response::Ok {
                 data: ResponseData::SearchResults { results, .. },
             } => Ok(results),
-            Response::Error { message } => Err(MxrError::Ipc(message)),
+            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }
     }
@@ -137,7 +137,7 @@ impl Client {
             Response::Ok {
                 data: ResponseData::Envelope { envelope },
             } => Ok(envelope),
-            Response::Error { message } => Err(MxrError::Ipc(message)),
+            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }
     }
@@ -152,7 +152,7 @@ impl Client {
             Response::Ok {
                 data: ResponseData::Body { body },
             } => Ok(body),
-            Response::Error { message } => Err(MxrError::Ipc(message)),
+            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }
     }
@@ -170,7 +170,7 @@ impl Client {
             Response::Ok {
                 data: ResponseData::Thread { thread, messages },
             } => Ok((thread, messages)),
-            Response::Error { message } => Err(MxrError::Ipc(message)),
+            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }
     }
@@ -183,7 +183,7 @@ impl Client {
             Response::Ok {
                 data: ResponseData::SavedSearches { searches },
             } => Ok(searches),
-            Response::Error { message } => Err(MxrError::Ipc(message)),
+            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }
     }
@@ -202,7 +202,7 @@ impl Client {
             Response::Ok {
                 data: ResponseData::Subscriptions { subscriptions },
             } => Ok(subscriptions),
-            Response::Error { message } => Err(MxrError::Ipc(message)),
+            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),
         }
     }

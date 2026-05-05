@@ -34,7 +34,7 @@ pub async fn attachments_list(message_id: String) -> anyhow::Result<()> {
                 println!("\n{} attachment(s)", body.attachments.len());
             }
         }
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())

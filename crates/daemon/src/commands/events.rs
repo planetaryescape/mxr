@@ -17,7 +17,18 @@ pub fn event_matches_type(event: &DaemonEvent, event_type: Option<&str>) -> bool
         ),
         "message" => matches!(event, DaemonEvent::NewMessages { .. }),
         "snooze" => matches!(event, DaemonEvent::MessageUnsnoozed { .. }),
-        "error" => matches!(event, DaemonEvent::SyncError { .. }),
+        "operation" => matches!(
+            event,
+            DaemonEvent::OperationStarted { .. }
+                | DaemonEvent::OperationProgress { .. }
+                | DaemonEvent::OperationCompleted { .. }
+                | DaemonEvent::OperationFailed { .. }
+                | DaemonEvent::OperationCancelled { .. }
+        ),
+        "error" => matches!(
+            event,
+            DaemonEvent::SyncError { .. } | DaemonEvent::OperationFailed { .. }
+        ),
         _ => false,
     }
 }
@@ -45,6 +56,48 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
             DaemonEvent::LabelCountsUpdated { counts } => {
                 format!("sync label_counts_updated={}", counts.len())
             }
+            DaemonEvent::OperationStarted {
+                operation_id,
+                operation,
+                message,
+                ..
+            } => format!("operation started id={operation_id} operation={operation} {message}"),
+            DaemonEvent::OperationProgress {
+                operation_id,
+                operation,
+                current,
+                total,
+                message,
+                ..
+            } => {
+                let total = total
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "?".into());
+                format!(
+                    "operation progress id={operation_id} operation={operation} current={current} total={total} {message}"
+                )
+            }
+            DaemonEvent::OperationCompleted {
+                operation_id,
+                operation,
+                message,
+                ..
+            } => format!("operation completed id={operation_id} operation={operation} {message}"),
+            DaemonEvent::OperationFailed {
+                operation_id,
+                operation,
+                error,
+                retryable,
+                ..
+            } => {
+                format!("operation failed id={operation_id} operation={operation} retryable={retryable} {error}")
+            }
+            DaemonEvent::OperationCancelled {
+                operation_id,
+                operation,
+                message,
+                ..
+            } => format!("operation cancelled id={operation_id} operation={operation} {message}"),
         },
     })
 }

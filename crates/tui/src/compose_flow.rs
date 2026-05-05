@@ -56,7 +56,7 @@ pub(crate) async fn handle_compose_action(
                     subject: context.subject,
                     thread_context: context.thread_context,
                 },
-                Response::Error { message } => return Err(MxrError::Ipc(message)),
+                Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
             };
             (account_id, account.email, kind)
@@ -86,7 +86,7 @@ pub(crate) async fn handle_compose_action(
                     subject: context.subject,
                     thread_context: context.thread_context,
                 },
-                Response::Error { message } => return Err(MxrError::Ipc(message)),
+                Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
             };
             (account_id, account.email, kind)
@@ -104,7 +104,7 @@ pub(crate) async fn handle_compose_action(
                     subject: context.subject,
                     original_context: context.forwarded_content,
                 },
-                Response::Error { message } => return Err(MxrError::Ipc(message)),
+                Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
             };
             (account_id, account.email, kind)
@@ -151,7 +151,7 @@ pub(crate) async fn resolve_compose_account(
                     .ok_or_else(|| MxrError::Ipc("No runtime account configured".into()))
             }
         }
-        Response::Error { message } => Err(MxrError::Ipc(message)),
+        Response::Error { message, .. } => Err(MxrError::Ipc(message)),
         _ => Err(MxrError::Ipc("Unexpected account response".into())),
     }
 }
@@ -206,11 +206,12 @@ pub(crate) async fn pending_send_from_edited_draft(
         })?;
     let unchanged = content == data.initial_content;
 
-    let (fm, body) =
-        mxr_compose::frontmatter::parse_compose_file(&content).map_err(|e| ComposeValidationError {
+    let (fm, body) = mxr_compose::frontmatter::parse_compose_file(&content).map_err(|e| {
+        ComposeValidationError {
             kind: ComposeValidationKind::System,
             issues: vec![format!("Parse error: {e}")],
-        })?;
+        }
+    })?;
     let save_issues = mxr_compose::validate_draft_for_save(&fm, &body);
     if save_issues.iter().any(|issue| issue.is_error()) {
         return Err(ComposeValidationError {

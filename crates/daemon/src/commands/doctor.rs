@@ -58,7 +58,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                     println!("  contacts rows refreshed  : {contacts_rows}");
                 }
             },
-            Response::Error { message } => anyhow::bail!("{message}"),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
             other => anyhow::bail!("Unexpected response: {other:?}"),
         }
         return Ok(());
@@ -72,7 +72,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
             } => {
                 println!("Refreshed {rows} contact rows.");
             }
-            Response::Error { message } => anyhow::bail!("{message}"),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
             other => anyhow::bail!("Unexpected response: {other:?}"),
         }
         return Ok(());
@@ -112,7 +112,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                     }
                 }
             },
-            Response::Error { message } => anyhow::bail!("{}", message),
+            Response::Error { message, .. } => anyhow::bail!("{}", message),
             _ => anyhow::bail!("Unexpected response"),
         }
         if options.semantic_status && !options.reindex {

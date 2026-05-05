@@ -19,7 +19,7 @@ pub async fn undo(mutation_id: String) -> anyhow::Result<()> {
             println!("Undone");
             Ok(())
         }
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
 }
@@ -379,7 +379,7 @@ pub async fn snooze(
             Response::Ok {
                 data: ResponseData::Ack,
             } => succeeded += 1,
-            Response::Error { message } => {
+            Response::Error { message, .. } => {
                 failed += 1;
                 eprintln!("Skipped {} ({message})", id.as_str());
             }
@@ -424,7 +424,7 @@ pub async fn unsnooze(message_id: Option<String>, all: bool) -> anyhow::Result<(
                         Response::Ok {
                             data: ResponseData::Ack,
                         } => succeeded += 1,
-                        Response::Error { message } => {
+                        Response::Error { message, .. } => {
                             failed += 1;
                             eprintln!("Failed to unsnooze {}: {message}", s.message_id);
                         }
@@ -439,7 +439,7 @@ pub async fn unsnooze(message_id: Option<String>, all: bool) -> anyhow::Result<(
                 }
                 println!("Unsnoozed {} message(s)", succeeded);
             }
-            Response::Error { message } => anyhow::bail!("{message}"),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
             _ => anyhow::bail!("Unexpected response"),
         }
     } else {
@@ -450,7 +450,7 @@ pub async fn unsnooze(message_id: Option<String>, all: bool) -> anyhow::Result<(
             Response::Ok {
                 data: ResponseData::Ack,
             } => println!("Unsnoozed"),
-            Response::Error { message } => anyhow::bail!("{message}"),
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
             _ => anyhow::bail!("Unexpected response"),
         }
     }
@@ -505,7 +505,7 @@ pub async fn snoozed(format: Option<OutputFormat>) -> anyhow::Result<()> {
                 }
             }
         },
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())
@@ -545,7 +545,7 @@ pub async fn unsubscribe(
             Response::Ok {
                 data: ResponseData::Ack,
             } => succeeded += 1,
-            Response::Error { message } => {
+            Response::Error { message, .. } => {
                 failed += 1;
                 eprintln!("Skipped {} ({message})", id.as_str());
             }
@@ -591,7 +591,7 @@ pub async fn open_in_browser(message_id: String) -> anyhow::Result<()> {
             maybe_cleanup_browser_cache(&dir, &path);
             println!("Opened in browser: {}", path.display());
         }
-        Response::Error { message } => anyhow::bail!("{message}"),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),
     }
     Ok(())

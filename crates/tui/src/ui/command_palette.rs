@@ -523,9 +523,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         PaletteCommand {
             label: "Semantic: Install Profile (BGE Small EN)".into(),
             shortcut: "".into(),
-            action: Action::InstallSemanticProfile(
-                mxr_core::types::SemanticProfile::BgeSmallEnV15,
-            ),
+            action: Action::InstallSemanticProfile(mxr_core::types::SemanticProfile::BgeSmallEnV15),
             category: "Semantic".into(),
         },
         PaletteCommand {

@@ -8,7 +8,7 @@ use mxr_core::types::{
     BodyPartSource, Envelope, HtmlImageAsset, HtmlImageAssetStatus, HtmlImageSourceKind,
     MessageBody,
 };
-use mxr_protocol::ResponseData;
+use mxr_protocol::{BodyFailure, ResponseData};
 use scraper::{Html, Selector};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -635,15 +635,20 @@ fn html_image_dir(state: &AppState, message_id: &MessageId) -> PathBuf {
 pub(super) async fn list_bodies(state: &AppState, message_ids: &[MessageId]) -> HandlerResult {
     tracing::debug!(count = message_ids.len(), "ListBodies: fetching bodies");
     let mut bodies = Vec::with_capacity(message_ids.len());
+    let mut failures = Vec::new();
     for id in message_ids {
         match load_body_for_message(state, id).await {
             Ok(body) => bodies.push(body),
             Err(error) => {
                 tracing::debug!(message_id = %id, error = %error, "ListBodies: body unavailable");
+                failures.push(BodyFailure {
+                    message_id: id.clone(),
+                    error,
+                });
             }
         }
     }
-    Ok(ResponseData::Bodies { bodies })
+    Ok(ResponseData::Bodies { bodies, failures })
 }
 
 pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {

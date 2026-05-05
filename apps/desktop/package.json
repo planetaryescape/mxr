@@ -1,8 +1,9 @@
 {
   "name": "mxr-desktop",
   "productName": "mxr",
+  "description": "A local-first desktop email client for mxr.",
   "private": true,
-  "version": "0.4.64",
+  "version": "0.4.65",
   "type": "module",
   "main": "dist-electron/main/index.js",
   "scripts": {

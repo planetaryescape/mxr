@@ -16,6 +16,7 @@ apps/desktop/dist/
 apps/desktop/dist-electron/
 apps/desktop/out/
 apps/desktop/resources/bin/
+.claude/*.lock
 mxr-v*.tar.gz
 mxr-v*.tar.gz.sha256
 mxr-v*.zip

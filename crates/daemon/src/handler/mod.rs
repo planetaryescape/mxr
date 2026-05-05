@@ -5330,6 +5330,189 @@ mod tests {
         assert!(events[0].summary.contains("Archived"));
     }
 
+    /// Phase 1.4 / Behaviors 1+2+3+8: archive a message, observe the new
+    /// `mutation_id` in the response, undo it within the window, and
+    /// verify the message is back under the INBOX label both locally and
+    /// on the (fake) provider. Proves the snapshot capture, write,
+    /// reverse-op dispatch, and local restoration all line up.
+    #[tokio::test]
+    async fn undo_archive_restores_inbox_label() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let id = sync_and_get_first_id(&state).await;
+
+        // Pre-condition: the message has the INBOX label.
+        let pre = state.store.get_envelope(&id).await.unwrap().unwrap();
+        assert!(
+            pre.label_provider_ids.iter().any(|l| l == "INBOX"),
+            "fixture must start in INBOX; got {:?}",
+            pre.label_provider_ids
+        );
+
+        // Archive — captures snapshot, writes undo entry, returns mutation_id.
+        let archive = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Archive {
+                message_ids: vec![id.clone()],
+            })),
+        };
+        let result = assert_mutation_succeeded(handle_request(&state, &archive).await.payload);
+        let mutation_id = result
+            .mutation_id
+            .clone()
+            .expect("Archive must return a mutation_id");
+
+        let post_archive = state.store.get_envelope(&id).await.unwrap().unwrap();
+        assert!(
+            !post_archive.label_provider_ids.iter().any(|l| l == "INBOX"),
+            "INBOX must be removed by Archive; got {:?}",
+            post_archive.label_provider_ids
+        );
+
+        // Undo — restores INBOX both locally and via the fake provider.
+        let undo = IpcMessage {
+            id: 2,
+            payload: IpcPayload::Request(Request::UndoMutation {
+                mutation_id: mutation_id.clone(),
+            }),
+        };
+        let resp = handle_request(&state, &undo).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("expected Ack from UndoMutation; got {other:?}"),
+        }
+
+        let restored = state.store.get_envelope(&id).await.unwrap().unwrap();
+        assert!(
+            restored.label_provider_ids.iter().any(|l| l == "INBOX"),
+            "INBOX must be restored after Undo; got {:?}",
+            restored.label_provider_ids
+        );
+
+        // The undo entry is consumed — replaying the same id is now a no-op
+        // (regression test for "user mashes u and double-undoes").
+        let replay = IpcMessage {
+            id: 3,
+            payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
+        };
+        match handle_request(&state, &replay).await.payload {
+            IpcPayload::Response(Response::Error { message }) => {
+                assert!(
+                    message.to_lowercase().contains("not found"),
+                    "second undo must return not-found; got {message}"
+                );
+            }
+            other => panic!("expected Error on replay; got {other:?}"),
+        }
+    }
+
+    /// Phase 1.4 / Behavior 4: Undo for an unknown id returns Error
+    /// with "not found" so the TUI can render the right message instead
+    /// of silently succeeding or panicking.
+    #[tokio::test]
+    async fn undo_unknown_mutation_id_returns_not_found() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::UndoMutation {
+                mutation_id: "01HVTOTALLYBOGUSID0000000".into(),
+            }),
+        };
+        match handle_request(&state, &msg).await.payload {
+            IpcPayload::Response(Response::Error { message }) => {
+                assert!(
+                    message.to_lowercase().contains("not found"),
+                    "expected not-found error; got {message}"
+                );
+            }
+            other => panic!("expected Error; got {other:?}"),
+        }
+    }
+
+    /// Phase 1.4 / Behavior 6: a bulk Archive of multiple messages
+    /// produces a single mutation_id and a single Undo restores all of
+    /// them. Catches regressions where snapshots are dropped or only the
+    /// first envelope is restored.
+    #[tokio::test]
+    async fn undo_bulk_archive_restores_all_messages() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        // Sync first to populate the fixture.
+        let _ = sync_and_get_first_id(&state).await;
+
+        // Pull three INBOX-tagged messages by listing envelopes.
+        let list_msg = IpcMessage {
+            id: 100,
+            payload: IpcPayload::Request(Request::ListEnvelopes {
+                label_id: None,
+                account_id: None,
+                limit: 3,
+                offset: 0,
+            }),
+        };
+        let envelopes = match handle_request(&state, &list_msg).await.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Envelopes { envelopes },
+            }) => envelopes,
+            other => panic!("expected Envelopes; got {other:?}"),
+        };
+        let ids: Vec<mxr_core::MessageId> =
+            envelopes.iter().take(3).map(|e| e.id.clone()).collect();
+        assert!(ids.len() >= 2, "fixture must contain >=2 messages");
+
+        let archive = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Archive {
+                message_ids: ids.clone(),
+            })),
+        };
+        let result = assert_mutation_succeeded(handle_request(&state, &archive).await.payload);
+        let mutation_id = result.mutation_id.clone().expect("mutation_id required");
+        assert_eq!(result.succeeded, ids.len() as u32);
+
+        let undo = IpcMessage {
+            id: 2,
+            payload: IpcPayload::Request(Request::UndoMutation { mutation_id }),
+        };
+        match handle_request(&state, &undo).await.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack,
+            }) => {}
+            other => panic!("expected Ack; got {other:?}"),
+        }
+
+        // Every archived message should now have INBOX again.
+        for id in &ids {
+            let env = state.store.get_envelope(id).await.unwrap().unwrap();
+            assert!(
+                env.label_provider_ids.iter().any(|l| l == "INBOX"),
+                "{id} must have INBOX restored; got {:?}",
+                env.label_provider_ids
+            );
+        }
+    }
+
+    /// Phase 1.4: Star is not undoable — the response carries no
+    /// mutation_id so clients know not to render the undo affordance.
+    #[tokio::test]
+    async fn star_mutation_omits_mutation_id() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let id = sync_and_get_first_id(&state).await;
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::Mutation(MutationCommand::Star {
+                message_ids: vec![id],
+                starred: true,
+            })),
+        };
+        let result = assert_mutation_succeeded(handle_request(&state, &msg).await.payload);
+        assert!(
+            result.mutation_id.is_none(),
+            "Star must not return a mutation_id; got {:?}",
+            result.mutation_id
+        );
+    }
+
     #[tokio::test]
     async fn mutation_archives_healthy_account_when_other_account_provider_fails() {
         let state = Arc::new(AppState::in_memory().await.unwrap());

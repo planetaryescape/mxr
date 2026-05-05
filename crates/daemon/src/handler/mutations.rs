@@ -11,8 +11,13 @@ use mxr_protocol::{
     AccountMutationResultData, ForwardContext, MutationCommand, MutationResultData, ReplyContext,
     ResponseData,
 };
-use mxr_store::EventLogRefs;
+use mxr_store::{EventLogRefs, UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
 use std::collections::HashMap;
+
+/// How long after the mutation the user can undo it. Matches the plan
+/// (~60s) and pairs with `tick_connection_state`-style UI affordances on
+/// the TUI side.
+const UNDO_WINDOW_SECS: i64 = 60;
 
 async fn log_mutation(
     state: &AppState,
@@ -48,6 +53,7 @@ fn quoted_subject(subject: &str) -> String {
 
 pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> HandlerResult {
     let message_ids = mutation_message_ids(cmd);
+    let undoable_kind = undoable_kind(cmd);
     let mut grouped: HashMap<mxr_core::AccountId, Vec<Envelope>> = HashMap::new();
     for message_id in message_ids {
         let envelope = state
@@ -61,6 +67,11 @@ pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> Handler
             .or_default()
             .push(envelope);
     }
+
+    // Snapshot the prior state of every envelope so that undoable
+    // mutations can be reversed. Captured before `apply_mutation_to_envelope`
+    // touches the store.
+    let mut succeeded_snapshots: Vec<UndoEntrySnapshot> = Vec::new();
 
     let mut accounts = Vec::new();
     for (account_id, envelopes) in grouped {
@@ -93,9 +104,27 @@ pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> Handler
         };
 
         for (index, envelope) in envelopes.iter().enumerate() {
+            // Capture the prior state BEFORE the mutation runs so undo
+            // can restore exactly what the user had. Cheap clone — flags
+            // are u32 and label IDs are short strings.
+            let snapshot = if undoable_kind.is_some() {
+                Some(UndoEntrySnapshot {
+                    message_id: envelope.id.clone(),
+                    account_id: envelope.account_id.clone(),
+                    provider_id: envelope.provider_id.clone(),
+                    prior_flags_bits: envelope.flags.bits(),
+                    prior_label_provider_ids: envelope.label_provider_ids.clone(),
+                })
+            } else {
+                None
+            };
+
             match apply_mutation_to_envelope(state, provider.as_ref(), cmd, envelope).await {
                 Ok(()) => {
                     account_result.succeeded += 1;
+                    if let Some(snapshot) = snapshot {
+                        succeeded_snapshots.push(snapshot);
+                    }
                     let (summary, details) = mutation_log_entry(cmd, envelope);
                     if let Err(error) = log_mutation(state, envelope, summary, details).await {
                         tracing::warn!(%error, "failed to record mutation event");
@@ -122,6 +151,29 @@ pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> Handler
     let skipped = accounts.iter().map(|account| account.skipped).sum();
     let failed = accounts.iter().map(|account| account.failed).sum();
 
+    let mutation_id = match (undoable_kind, succeeded_snapshots.is_empty()) {
+        (Some(kind), false) => {
+            let id = uuid::Uuid::now_v7().to_string();
+            let now = chrono::Utc::now().timestamp();
+            let entry = UndoEntry {
+                mutation_id: id.clone(),
+                kind,
+                snapshots: succeeded_snapshots,
+                applied_at: now,
+                expires_at: now + UNDO_WINDOW_SECS,
+            };
+            if let Err(error) = state.store.write_undo_entry(&entry).await {
+                // Non-fatal: the mutation already succeeded; the user
+                // just loses the undo affordance.
+                tracing::warn!(%error, "failed to write undo entry");
+                None
+            } else {
+                Some(id)
+            }
+        }
+        _ => None,
+    };
+
     Ok(ResponseData::MutationResult {
         result: MutationResultData {
             requested: message_ids.len() as u32,
@@ -129,20 +181,34 @@ pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> Handler
             skipped,
             failed,
             accounts,
-            // Stage 1 of Phase 1.4 only ships the protocol surface and the
-            // store layer; the daemon-side snapshot + log write follows in
-            // a subsequent stage. Until that lands we report `None` so
-            // clients fall back to "not undoable" gracefully.
-            mutation_id: None,
+            mutation_id,
         },
     })
 }
 
-/// Reverse a recent undoable mutation by id. Stage 1 ships the IPC and
-/// store surface only; restoration of local state + provider reverse
-/// mutation is wired in subsequent stages. The `NotFound` and
-/// `WindowExpired` paths are functional now so clients can already wire
-/// the error UX.
+/// Map a `MutationCommand` to the `UndoableMutationKind` used to drive
+/// the reverse op, or `None` if the mutation isn't reversible (Star /
+/// ModifyLabels / Move — the user already has full control there).
+fn undoable_kind(cmd: &MutationCommand) -> Option<UndoableMutationKind> {
+    match cmd {
+        MutationCommand::Archive { .. } => Some(UndoableMutationKind::Archive),
+        MutationCommand::Trash { .. } => Some(UndoableMutationKind::Trash),
+        MutationCommand::Spam { .. } => Some(UndoableMutationKind::Spam),
+        MutationCommand::SetRead { .. } => Some(UndoableMutationKind::SetRead),
+        MutationCommand::ReadAndArchive { .. } => Some(UndoableMutationKind::ReadAndArchive),
+        MutationCommand::Star { .. }
+        | MutationCommand::ModifyLabels { .. }
+        | MutationCommand::Move { .. } => None,
+    }
+}
+
+/// Reverse a recent undoable mutation by id.
+///
+/// Restores both local state (label memberships and read flag) and
+/// provider state (via `modify_labels`). When the upstream message
+/// has been hard-deleted (e.g. IMAP EXPUNGE) the provider call fails
+/// and we surface that as an "irreversible" error rather than leaving
+/// the local store and provider out of sync.
 pub(super) async fn undo_mutation(
     state: &AppState,
     mutation_id: &str,
@@ -164,10 +230,158 @@ pub(super) async fn undo_mutation(
             "undo: window expired for mutation `{mutation_id}`"
         ));
     }
-    // Subsequent stages restore local state + issue provider reverse op.
-    // Keep the entry in the log until then so the call is idempotent once
-    // the implementation lands.
-    Err("undo: implementation pending (Phase 1.4 stage 2)".into())
+
+    // Group snapshots by account so we resolve the provider once per
+    // account (not per message). Inside each account, restore each
+    // message's labels and read flag.
+    let mut by_account: HashMap<mxr_core::AccountId, Vec<&UndoEntrySnapshot>> = HashMap::new();
+    for snapshot in &entry.snapshots {
+        by_account
+            .entry(snapshot.account_id.clone())
+            .or_default()
+            .push(snapshot);
+    }
+
+    let mut restored = 0u32;
+    let mut irreversible = 0u32;
+    let mut last_error: Option<String> = None;
+    for (account_id, snapshots) in by_account {
+        let provider = match state.get_provider(Some(&account_id)) {
+            Ok(p) => p,
+            Err(error) => {
+                last_error = Some(format!("account unavailable: {error}"));
+                irreversible += snapshots.len() as u32;
+                continue;
+            }
+        };
+        for snapshot in snapshots {
+            match restore_snapshot(state, provider.as_ref(), entry.kind, snapshot).await {
+                Ok(()) => restored += 1,
+                Err(SnapshotError::Irreversible(msg)) => {
+                    irreversible += 1;
+                    last_error = Some(msg);
+                }
+                Err(SnapshotError::Other(msg)) => {
+                    last_error = Some(msg);
+                }
+            }
+        }
+    }
+
+    if restored == 0 {
+        let detail = last_error.unwrap_or_else(|| "no messages restored".into());
+        return Err(format!(
+            "undo: irreversible ({irreversible} message(s)) — {detail}"
+        ));
+    }
+
+    // Successful undo: drop the entry so the same id can't be replayed.
+    let _ = state.store.delete_undo_entry(&entry.mutation_id).await;
+    Ok(ResponseData::Ack)
+}
+
+enum SnapshotError {
+    /// The upstream message can't be modified (e.g. EXPUNGE, deleted on
+    /// the server). Surfacing this distinct from generic errors lets
+    /// the UI explain why undo failed.
+    Irreversible(String),
+    Other(String),
+}
+
+async fn restore_snapshot(
+    state: &AppState,
+    provider: &dyn mxr_core::MailSyncProvider,
+    kind: UndoableMutationKind,
+    snapshot: &UndoEntrySnapshot,
+) -> Result<(), SnapshotError> {
+    // Read current state so we can compute the diff to apply against
+    // the provider. If the message is gone locally, the provider almost
+    // certainly does not have it either.
+    let current = state
+        .store
+        .get_envelope(&snapshot.message_id)
+        .await
+        .map_err(|e| SnapshotError::Other(e.to_string()))?
+        .ok_or_else(|| {
+            SnapshotError::Irreversible(format!(
+                "message `{}` no longer exists locally",
+                snapshot.message_id
+            ))
+        })?;
+
+    let prior_labels: std::collections::HashSet<&str> = snapshot
+        .prior_label_provider_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let current_labels: std::collections::HashSet<&str> = current
+        .label_provider_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
+
+    let to_add: Vec<String> = prior_labels
+        .difference(&current_labels)
+        .map(|s| (*s).to_string())
+        .collect();
+    let to_remove: Vec<String> = current_labels
+        .difference(&prior_labels)
+        .map(|s| (*s).to_string())
+        .collect();
+
+    if !to_add.is_empty() || !to_remove.is_empty() {
+        provider
+            .modify_labels(&snapshot.provider_id, &to_add, &to_remove)
+            .await
+            .map_err(|error| classify_provider_error(error))?;
+        reconcile_label_mutation(
+            state,
+            provider,
+            &snapshot.message_id,
+            &to_add,
+            &to_remove,
+        )
+        .await
+        .map_err(SnapshotError::Other)?;
+    }
+
+    // Read flag: only relevant for SetRead and ReadAndArchive. For the
+    // other kinds (Archive, Trash, Spam) we don't touch the read flag.
+    if matches!(
+        kind,
+        UndoableMutationKind::SetRead | UndoableMutationKind::ReadAndArchive
+    ) {
+        let prior_flags = mxr_core::MessageFlags::from_bits_truncate(snapshot.prior_flags_bits);
+        let prior_read = prior_flags.contains(mxr_core::MessageFlags::READ);
+        let current_read = current.flags.contains(mxr_core::MessageFlags::READ);
+        if prior_read != current_read {
+            provider
+                .set_read(&snapshot.provider_id, prior_read)
+                .await
+                .map_err(|error| classify_provider_error(error))?;
+            state
+                .store
+                .set_read(&snapshot.message_id, prior_read, mxr_core::EventSource::User)
+                .await
+                .map_err(|e| SnapshotError::Other(e.to_string()))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn classify_provider_error(error: mxr_core::MxrError) -> SnapshotError {
+    let message = error.to_string();
+    let lower = message.to_lowercase();
+    let irreversible = lower.contains("not found")
+        || lower.contains("expunge")
+        || lower.contains("does not exist")
+        || lower.contains("no such message");
+    if irreversible {
+        SnapshotError::Irreversible(message)
+    } else {
+        SnapshotError::Other(message)
+    }
 }
 
 fn mutation_message_ids(cmd: &MutationCommand) -> &[mxr_core::MessageId] {

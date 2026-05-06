@@ -98,16 +98,86 @@ jobs:
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
 
+      # macOS code signing happens BEFORE the archive so the signed binary
+      # is what gets distributed. Both signing and notarization gracefully
+      # no-op when their secrets are missing — the maintainer provisions
+      # Apple Developer credentials once and re-runs.
+      - name: Import Apple Developer ID certificate
+        if: matrix.platform_family == 'macos'
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$APPLE_CERT_P12_BASE64" ]; then
+            echo "::warning ::APPLE_CERT_P12_BASE64 secret not set; macOS binary will be unsigned (Gatekeeper will warn end users)."
+            echo "APPLE_SIGN_AVAILABLE=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          KEYCHAIN_PATH="$RUNNER_TEMP/codesign.keychain-db"
+          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple: -k "$APPLE_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm "$RUNNER_TEMP/cert.p12"
+          echo "APPLE_SIGN_AVAILABLE=true" >> "$GITHUB_ENV"
+
+      - name: Sign mxr binary (macOS)
+        if: matrix.platform_family == 'macos' && env.APPLE_SIGN_AVAILABLE == 'true'
+        env:
+          APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
+          MATRIX_TARGET: ${{ matrix.target }}
+        run: |
+          if [ -z "$APPLE_DEVELOPER_ID" ]; then
+            echo "::warning ::APPLE_DEVELOPER_ID secret not set; cannot sign without an identity name."
+            exit 0
+          fi
+          BINARY="target/${MATRIX_TARGET}/release/mxr"
+          codesign --force --options runtime --timestamp \
+            --sign "$APPLE_DEVELOPER_ID" "$BINARY"
+          codesign --verify --strict --verbose=2 "$BINARY"
+
       - name: Package CLI archive
         if: needs.plan.outputs.cli_changed == 'true'
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+          MATRIX_ARCHIVE: ${{ matrix.archive }}
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          ARCHIVE="mxr-v${VERSION}-${{ matrix.archive }}"
+          ARCHIVE="mxr-v${VERSION}-${MATRIX_ARCHIVE}"
           mkdir -p release
-          cp "target/${{ matrix.target }}/release/mxr" release/
+          cp "target/${MATRIX_TARGET}/release/mxr" release/
           cp LICENSE-MIT LICENSE-APACHE README.md release/
           cd release && tar czf "../${ARCHIVE}" ./* && cd ..
           echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      # Notarization needs a .zip created with `ditto` (Apple-recognized
+      # format). After the upload completes the archive is good — stapling
+      # doesn't apply to bare CLI binaries (Apple validates online via
+      # Gatekeeper). The macOS .tar.gz contains the same signed bytes.
+      - name: Notarize macOS binary
+        if: matrix.platform_family == 'macos' && env.APPLE_SIGN_AVAILABLE == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          MATRIX_TARGET: ${{ matrix.target }}
+        run: |
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_TEAM_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ]; then
+            echo "::warning ::Notarization secrets not set; binary is signed but not notarized. End users will see a Gatekeeper warning on first run."
+            exit 0
+          fi
+          NOTARIZE_ZIP="$RUNNER_TEMP/mxr-notarize.zip"
+          ditto -c -k --keepParent "target/${MATRIX_TARGET}/release/mxr" "$NOTARIZE_ZIP"
+          xcrun notarytool submit "$NOTARIZE_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --wait
+          rm "$NOTARIZE_ZIP"
 
       - name: Generate CLI SHA256 checksum
         if: needs.plan.outputs.cli_changed == 'true'

@@ -675,6 +675,23 @@ The docs site deploys on every push to main (for content updates), but also on r
 | `HOMEBREW_TAP_TOKEN` | GitHub PAT with push access to the homebrew-tap repo |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare Pages deployment |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account identifier |
+| `APPLE_CERT_P12_BASE64` | Developer ID Application cert exported as `.p12`, then `base64 -i cert.p12 \| pbcopy`. Without it, macOS binaries are unsigned and Gatekeeper warns end users. |
+| `APPLE_CERT_PASSWORD` | Password used when exporting the `.p12`. |
+| `APPLE_KEYCHAIN_PASSWORD` | Throwaway password used to unlock the temporary keychain CI creates per run. Any string works; CI deletes the keychain after the job. |
+| `APPLE_DEVELOPER_ID` | Identity name passed to `codesign --sign` — typically `Developer ID Application: Your Name (TEAMID)`. Find via `security find-identity -p codesigning -v`. |
+| `APPLE_ID` | Apple Developer account email — needed by `notarytool submit`. |
+| `APPLE_TEAM_ID` | 10-char alphanumeric team identifier (visible in Apple Developer portal). |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password generated at appleid.apple.com → Sign-In and Security → App-Specific Passwords. Notarytool authenticates with this, NOT your real Apple ID password. |
+| `MXR_GMAIL_TEST_CLIENT_ID` | Live Gmail E2E smoke test (workflow_dispatch only). OAuth client id of the throwaway Gmail test account. |
+| `MXR_GMAIL_TEST_CLIENT_SECRET` | OAuth client secret for the same. |
+| `MXR_GMAIL_TEST_REFRESH_TOKEN` | Long-lived refresh token. Generate once with the test account; rotate when it expires. |
+
+Signing and notarization gracefully no-op when their secrets are missing
+— the workflow logs a `::warning` and continues, so the maintainer can
+provision Apple Developer credentials incrementally without breaking
+existing release runs. Once all four signing secrets and all three
+notarytool secrets are set, every macOS tarball is shipped with a
+signed, notarized `mxr` binary.
 
 ---
 

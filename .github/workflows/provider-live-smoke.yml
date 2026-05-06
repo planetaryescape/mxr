@@ -1,4 +1,4 @@
-name: Provider Offline Smoke
+name: Provider Smoke
 
 on:
   workflow_dispatch:
@@ -10,10 +10,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
       - uses: dtolnay/rust-toolchain@stable
-
       - uses: Swatinem/rust-cache@v2
-
       - name: Run deterministic provider smoke suite
         run: cargo test --workspace provider_offline_smoke_ -- --nocapture
+
+  # Real-Gmail end-to-end test, gated on workflow_dispatch + secrets being set
+  # so it does not run on schedule by default — credentials are supplied
+  # explicitly when the maintainer wants to gate a release on a real-API run.
+  # The 0.4.52 label-id regression would have been caught here. See
+  # crates/daemon/tests/live_gmail_e2e.rs for what is covered.
+  live-gmail-e2e:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      MXR_GMAIL_TEST_CLIENT_ID: ${{ secrets.MXR_GMAIL_TEST_CLIENT_ID }}
+      MXR_GMAIL_TEST_CLIENT_SECRET: ${{ secrets.MXR_GMAIL_TEST_CLIENT_SECRET }}
+      MXR_GMAIL_TEST_REFRESH_TOKEN: ${{ secrets.MXR_GMAIL_TEST_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify live credentials are configured
+        run: |
+          if [ -z "$MXR_GMAIL_TEST_CLIENT_ID" ] \
+            || [ -z "$MXR_GMAIL_TEST_CLIENT_SECRET" ] \
+            || [ -z "$MXR_GMAIL_TEST_REFRESH_TOKEN" ]; then
+            echo "::error ::Missing one of MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN} repo secrets."
+            exit 1
+          fi
+      - name: Run live Gmail end-to-end smoke
+        run: cargo test -p mxr --test live_gmail_e2e -- --ignored --nocapture

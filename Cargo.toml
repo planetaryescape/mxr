@@ -51,6 +51,10 @@ path = "crates/daemon/tests/reset_cli.rs"
 name = "cli_journey"
 path = "crates/daemon/tests/cli_journey.rs"
 
+[[test]]
+name = "live_gmail_e2e"
+path = "crates/daemon/tests/live_gmail_e2e.rs"
+
 [features]
 # Default profile is intentionally minimal so CLI iteration is fast (~1m vs ~6m).
 # Activate the full local-semantic stack with `--features semantic-local`.

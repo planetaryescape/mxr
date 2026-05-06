@@ -1,0 +1,205 @@
+//! `TokenStorage` impl that persists yup-oauth2 token caches in the OS
+//! keychain (Keychain Access on macOS, Secret Service on Linux). Falls back
+//! to the on-disk format yup-oauth2 ships with when the keychain is
+//! unavailable, so headless Linux without secret-service still functions.
+//!
+//! Format: `[ { "scopes": [...], "token": <TokenInfo> }, ... ]` — same JSON
+//! shape as yup-oauth2's `DiskStorage` so a one-shot migration from the
+//! legacy disk path is a straight read-write-delete.
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::sync::Mutex;
+use yup_oauth2::storage::{TokenInfo, TokenStorage};
+
+pub(crate) const KEYCHAIN_SERVICE: &str = "mxr-gmail-oauth";
+
+#[derive(Serialize, Deserialize, Clone)]
+struct StoredToken {
+    scopes: Vec<String>,
+    token: TokenInfo,
+}
+
+pub(crate) struct KeychainTokenStorage {
+    token_ref: String,
+    /// Disk path retained as a fallback target when keychain writes fail
+    /// (e.g. headless Linux with no secret-service backend). Also the path
+    /// from which legacy on-disk caches are migrated on first read.
+    fallback_path: PathBuf,
+    cache: Mutex<Vec<StoredToken>>,
+}
+
+impl KeychainTokenStorage {
+    pub(crate) fn new(token_ref: String, fallback_path: PathBuf) -> Self {
+        let cache = load_initial(&token_ref, &fallback_path);
+        Self {
+            token_ref,
+            fallback_path,
+            cache: Mutex::new(cache),
+        }
+    }
+
+    fn persist(&self, json: &str) -> std::io::Result<()> {
+        match keyring::Entry::new(KEYCHAIN_SERVICE, &self.token_ref) {
+            Ok(entry) => match entry.set_password(json) {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    tracing::warn!(
+                        token_ref = %self.token_ref,
+                        error = %error,
+                        "keychain write failed; falling back to disk-encrypted cache"
+                    );
+                    self.persist_to_disk(json)
+                }
+            },
+            Err(error) => {
+                tracing::warn!(
+                    token_ref = %self.token_ref,
+                    error = %error,
+                    "keychain unavailable; falling back to disk cache"
+                );
+                self.persist_to_disk(json)
+            }
+        }
+    }
+
+    fn persist_to_disk(&self, json: &str) -> std::io::Result<()> {
+        if let Some(parent) = self.fallback_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&self.fallback_path, json)
+    }
+}
+
+fn load_initial(token_ref: &str, fallback_path: &std::path::Path) -> Vec<StoredToken> {
+    if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, token_ref) {
+        if let Ok(payload) = entry.get_password() {
+            if let Ok(parsed) = serde_json::from_str::<Vec<StoredToken>>(&payload) {
+                return parsed;
+            }
+        }
+    }
+
+    if fallback_path.exists() {
+        if let Ok(bytes) = std::fs::read(fallback_path) {
+            if let Ok(parsed) = serde_json::from_slice::<Vec<StoredToken>>(&bytes) {
+                if !parsed.is_empty() {
+                    if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, token_ref) {
+                        if let Ok(json) = serde_json::to_string(&parsed) {
+                            if entry.set_password(&json).is_ok() {
+                                let _ = std::fs::remove_file(fallback_path);
+                                tracing::info!(
+                                    token_ref = %token_ref,
+                                    "migrated OAuth token cache from disk to keychain"
+                                );
+                            }
+                        }
+                    }
+                }
+                return parsed;
+            }
+        }
+    }
+
+    Vec::new()
+}
+
+#[async_trait]
+impl TokenStorage for KeychainTokenStorage {
+    async fn set(&self, scopes: &[&str], token: TokenInfo) -> anyhow::Result<()> {
+        let scopes_owned: Vec<String> = scopes.iter().map(|s| (*s).to_string()).collect();
+        let json = {
+            let mut cache = self
+                .cache
+                .lock()
+                .map_err(|_| anyhow::anyhow!("token cache mutex poisoned"))?;
+            cache.retain(|stored| stored.scopes != scopes_owned);
+            cache.push(StoredToken {
+                scopes: scopes_owned,
+                token,
+            });
+            serde_json::to_string(&*cache)?
+        };
+        self.persist(&json)?;
+        Ok(())
+    }
+
+    async fn get(&self, scopes: &[&str]) -> Option<TokenInfo> {
+        let cache = self.cache.lock().ok()?;
+        cache
+            .iter()
+            .find(|stored| {
+                stored.scopes.len() == scopes.len()
+                    && stored
+                        .scopes
+                        .iter()
+                        .zip(scopes.iter())
+                        .all(|(a, b)| a == b)
+            })
+            .map(|stored| stored.token.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tempfile::tempdir;
+
+    fn fake_token(value: &str) -> TokenInfo {
+        TokenInfo {
+            access_token: Some(value.to_string()),
+            refresh_token: Some(format!("{value}-refresh")),
+            expires_at: None,
+            id_token: None,
+        }
+    }
+
+    fn unique_ref(prefix: &str) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        format!("{prefix}-{nanos}")
+    }
+
+    #[tokio::test]
+    async fn set_and_get_round_trip_in_memory_cache() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("missing.json");
+        let storage = KeychainTokenStorage {
+            token_ref: unique_ref("test-mem"),
+            fallback_path: path,
+            cache: Mutex::new(Vec::new()),
+        };
+        let scopes = ["scope-a", "scope-b"];
+        {
+            let mut cache = storage.cache.lock().unwrap();
+            cache.push(StoredToken {
+                scopes: scopes.iter().map(|s| s.to_string()).collect(),
+                token: fake_token("hello"),
+            });
+        }
+
+        let fetched = storage.get(&scopes).await.unwrap();
+        assert_eq!(fetched.access_token.as_deref(), Some("hello"));
+    }
+
+    #[tokio::test]
+    async fn migrates_legacy_disk_cache_into_keychain_storage() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("legacy.json");
+        let legacy = vec![StoredToken {
+            scopes: vec!["scope-a".to_string()],
+            token: fake_token("legacy-access"),
+        }];
+        std::fs::write(&path, serde_json::to_string(&legacy).unwrap()).unwrap();
+
+        let storage = KeychainTokenStorage::new(unique_ref("test-migrate"), path);
+        let token = storage.get(&["scope-a"]).await.unwrap();
+        assert_eq!(token.access_token.as_deref(), Some("legacy-access"));
+    }
+}

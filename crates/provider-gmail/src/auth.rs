@@ -4,6 +4,8 @@ use yup_oauth2::DeviceFlowAuthenticator;
 use yup_oauth2::InstalledFlowAuthenticator;
 use yup_oauth2::InstalledFlowReturnMethod;
 
+use crate::auth_storage::KeychainTokenStorage;
+
 #[derive(Debug, Error)]
 pub enum AuthError {
     #[error("OAuth2 error: {0}")]
@@ -211,11 +213,13 @@ impl GmailAuth {
 
         match flow {
             AuthFlow::Installed => {
+                let storage =
+                    KeychainTokenStorage::new(self.token_ref.clone(), token_path.clone());
                 let mut builder = InstalledFlowAuthenticator::builder(
                     secret,
                     InstalledFlowReturnMethod::HTTPRedirect,
                 )
-                .persist_tokens_to_disk(token_path);
+                .with_storage(Box::new(storage));
                 if let Some(delegate) = installed_delegate {
                     builder = builder.flow_delegate(delegate);
                 }
@@ -244,8 +248,10 @@ impl GmailAuth {
                 }));
             }
             AuthFlow::Device => {
+                let storage =
+                    KeychainTokenStorage::new(self.token_ref.clone(), token_path.clone());
                 let mut builder =
-                    DeviceFlowAuthenticator::builder(secret).persist_tokens_to_disk(token_path);
+                    DeviceFlowAuthenticator::builder(secret).with_storage(Box::new(storage));
                 if let Some(delegate) = device_delegate {
                     builder = builder.flow_delegate(delegate);
                 }
@@ -280,14 +286,22 @@ impl GmailAuth {
 
     pub async fn load_existing(&mut self) -> Result<(), AuthError> {
         let token_path = self.token_path();
-        if !token_path.exists() {
+        // Either the keychain entry or the legacy on-disk cache must exist.
+        // The keychain check is fast enough (one OS call) that it's fine in
+        // the common case even when nothing is stored.
+        let has_keychain_entry = keyring::Entry::new(crate::auth_storage::KEYCHAIN_SERVICE, &self.token_ref)
+            .ok()
+            .and_then(|e| e.get_password().ok())
+            .is_some();
+        if !has_keychain_entry && !token_path.exists() {
             return Err(AuthError::TokenExpired);
         }
 
+        let storage = KeychainTokenStorage::new(self.token_ref.clone(), token_path);
         let secret = self.make_secret();
         let auth =
             InstalledFlowAuthenticator::builder(secret, InstalledFlowReturnMethod::HTTPRedirect)
-                .persist_tokens_to_disk(token_path)
+                .with_storage(Box::new(storage))
                 .build()
                 .await
                 .map_err(|e| AuthError::OAuth2(e.to_string()))?;

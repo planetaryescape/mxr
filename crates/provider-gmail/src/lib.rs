@@ -1,4 +1,5 @@
 pub mod auth;
+mod auth_storage;
 pub mod client;
 pub mod error;
 pub mod parse;

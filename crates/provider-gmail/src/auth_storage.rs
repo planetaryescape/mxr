@@ -108,13 +108,13 @@ fn load_initial(token_ref: &str, fallback_path: &std::path::Path) -> Vec<StoredT
 #[async_trait]
 impl TokenStorage for KeychainTokenStorage {
     async fn set(&self, scopes: &[&str], token: TokenInfo) -> anyhow::Result<()> {
-        let scopes_owned: Vec<String> = scopes.iter().map(|s| (*s).to_string()).collect();
+        let scopes_owned = normalize_scopes(scopes);
         let json = {
             let mut cache = self
                 .cache
                 .lock()
                 .map_err(|_| anyhow::anyhow!("token cache mutex poisoned"))?;
-            cache.retain(|stored| stored.scopes != scopes_owned);
+            cache.retain(|stored| normalize_scopes_owned(&stored.scopes) != scopes_owned);
             cache.push(StoredToken {
                 scopes: scopes_owned,
                 token,
@@ -126,15 +126,33 @@ impl TokenStorage for KeychainTokenStorage {
     }
 
     async fn get(&self, scopes: &[&str]) -> Option<TokenInfo> {
+        let target = normalize_scopes(scopes);
         let cache = self.cache.lock().ok()?;
         cache
             .iter()
-            .find(|stored| {
-                stored.scopes.len() == scopes.len()
-                    && stored.scopes.iter().zip(scopes.iter()).all(|(a, b)| a == b)
-            })
+            .find(|stored| normalize_scopes_owned(&stored.scopes) == target)
             .map(|stored| stored.token.clone())
     }
+}
+
+/// yup-oauth2's storage layer always passes scopes already sorted+deduped
+/// (see `Storage::set` in yup-oauth2/src/storage.rs). But the legacy on-disk
+/// `DiskStorage` writes scopes in their *original* order, and our migration
+/// from disk preserves that order verbatim. Without this normalisation a
+/// migrated cache entry would never match a fresh `get()` call and yup-oauth2
+/// would fall through to a full interactive-auth flow.
+fn normalize_scopes(scopes: &[&str]) -> Vec<String> {
+    let mut owned: Vec<String> = scopes.iter().map(|s| (*s).to_string()).collect();
+    owned.sort_unstable();
+    owned.dedup();
+    owned
+}
+
+fn normalize_scopes_owned(scopes: &[String]) -> Vec<String> {
+    let mut owned = scopes.to_vec();
+    owned.sort_unstable();
+    owned.dedup();
+    owned
 }
 
 #[cfg(test)]
@@ -197,5 +215,45 @@ mod tests {
         let storage = KeychainTokenStorage::new(unique_ref("test-migrate"), path);
         let token = storage.get(&["scope-a"]).await.unwrap();
         assert_eq!(token.access_token.as_deref(), Some("legacy-access"));
+    }
+
+    /// Regression: yup-oauth2's storage layer always passes scopes
+    /// sorted+deduped, but the legacy on-disk DiskStorage wrote them in their
+    /// original order (typically the order the SDK declared them, which is
+    /// `gmail.readonly`, `gmail.modify`, `gmail.labels` — not lexicographic).
+    /// A migrated cache row had unsorted scopes; without normalisation, the
+    /// ordered comparison missed and yup-oauth2 fell through to a full
+    /// interactive-auth flow on the next access — hanging the daemon.
+    #[tokio::test]
+    async fn get_matches_when_stored_scopes_are_in_a_different_order() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("missing.json");
+        let storage = KeychainTokenStorage {
+            token_ref: unique_ref("test-scope-order"),
+            fallback_path: path,
+            cache: Mutex::new(vec![StoredToken {
+                // Stored in the unsorted order the legacy migration produced.
+                scopes: vec![
+                    "https://www.googleapis.com/auth/gmail.readonly".to_string(),
+                    "https://www.googleapis.com/auth/gmail.modify".to_string(),
+                    "https://www.googleapis.com/auth/gmail.labels".to_string(),
+                ],
+                token: fake_token("legacy-token"),
+            }]),
+        };
+
+        // yup-oauth2 always passes scopes sorted+deduped to TokenStorage::get.
+        let sorted_scopes = [
+            "https://www.googleapis.com/auth/gmail.labels",
+            "https://www.googleapis.com/auth/gmail.modify",
+            "https://www.googleapis.com/auth/gmail.readonly",
+        ];
+
+        let token = storage.get(&sorted_scopes).await;
+        assert!(
+            token.is_some(),
+            "stored unsorted scopes must still match a sorted lookup"
+        );
+        assert_eq!(token.unwrap().access_token.as_deref(), Some("legacy-token"));
     }
 }

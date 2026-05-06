@@ -4,10 +4,11 @@ expression: stdout
 ---
 Send a draft by ID
 
-Usage: mxr send <DRAFT_ID>
+Usage: mxr send [OPTIONS] <DRAFT_ID>
 
 Arguments:
   <DRAFT_ID>  Draft ID to send
 
 Options:
-  -h, --help  Print help
+      --dry-run  Show what would be sent (sender, recipients, subject, byte count) without sending
+  -h, --help     Print help

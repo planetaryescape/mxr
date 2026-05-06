@@ -366,9 +366,76 @@ pub async fn drafts(format: Option<OutputFormat>) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn send_draft(draft_id: String) -> anyhow::Result<()> {
+pub async fn send_draft(draft_id: String, dry_run: bool) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
+
+    if dry_run {
+        let resp = client.request(Request::ListDrafts).await?;
+        let drafts = match resp {
+            Response::Ok {
+                data: ResponseData::Drafts { drafts },
+            } => drafts,
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            _ => anyhow::bail!("Unexpected response"),
+        };
+        let draft = drafts
+            .into_iter()
+            .find(|d| d.id == draft_id)
+            .ok_or_else(|| anyhow::anyhow!("Draft not found: {draft_id}"))?;
+
+        let recipients = draft
+            .to
+            .iter()
+            .chain(draft.cc.iter())
+            .chain(draft.bcc.iter())
+            .map(|addr| addr.email.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("DRY-RUN — would send draft {draft_id}");
+        println!("  account: {}", draft.account_id);
+        println!(
+            "  to:      {}",
+            draft
+                .to
+                .iter()
+                .map(|a| a.email.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        if !draft.cc.is_empty() {
+            println!(
+                "  cc:      {}",
+                draft
+                    .cc
+                    .iter()
+                    .map(|a| a.email.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        if !draft.bcc.is_empty() {
+            println!(
+                "  bcc:     {}",
+                draft
+                    .bcc
+                    .iter()
+                    .map(|a| a.email.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        println!("  subject: {}", draft.subject);
+        println!("  body:    {} bytes", draft.body_markdown.len());
+        if !draft.attachments.is_empty() {
+            println!("  attachments: {}", draft.attachments.len());
+        }
+        if recipients.is_empty() {
+            anyhow::bail!("Draft has no recipients; aborting before send");
+        }
+        return Ok(());
+    }
+
     let resp = client
         .request(Request::SendStoredDraft {
             draft_id: draft_id.clone(),

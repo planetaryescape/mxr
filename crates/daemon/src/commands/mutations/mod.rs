@@ -402,7 +402,11 @@ pub async fn snooze(
     Ok(())
 }
 
-pub async fn unsnooze(message_id: Option<String>, all: bool) -> anyhow::Result<()> {
+pub async fn unsnooze(
+    message_id: Option<String>,
+    all: bool,
+    dry_run: bool,
+) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     if all {
         let resp = client.request(Request::ListSnoozed).await?;
@@ -412,6 +416,16 @@ pub async fn unsnooze(message_id: Option<String>, all: bool) -> anyhow::Result<(
             } => {
                 if snoozed.is_empty() {
                     println!("No snoozed messages");
+                    return Ok(());
+                }
+                if dry_run {
+                    println!(
+                        "DRY-RUN — would unsnooze {} message(s):",
+                        snoozed.len()
+                    );
+                    for s in &snoozed {
+                        println!("  {} (wakes {})", s.message_id, s.wake_at.to_rfc3339());
+                    }
                     return Ok(());
                 }
                 let mut succeeded = 0usize;
@@ -447,6 +461,10 @@ pub async fn unsnooze(message_id: Option<String>, all: bool) -> anyhow::Result<(
     } else {
         let id_str = message_id.ok_or_else(|| anyhow::anyhow!("Provide a message ID or --all"))?;
         let id = parse_message_id(&id_str)?;
+        if dry_run {
+            println!("DRY-RUN — would unsnooze {id}");
+            return Ok(());
+        }
         let resp = client.request(Request::Unsnooze { message_id: id }).await?;
         match resp {
             Response::Ok {

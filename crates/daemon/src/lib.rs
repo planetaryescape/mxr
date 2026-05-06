@@ -369,9 +369,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::drafts(format).await?;
         }
-        Some(Command::Send { draft_id }) => {
+        Some(Command::Send { draft_id, dry_run }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::send_draft(draft_id).await?;
+            commands::mutations::send_draft(draft_id, dry_run).await?;
         }
         Some(Command::Archive {
             message_id,
@@ -489,9 +489,13 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::snooze(message_id, until, search, yes, dry_run).await?;
         }
-        Some(Command::Unsnooze { message_id, all }) => {
+        Some(Command::Unsnooze {
+            message_id,
+            all,
+            dry_run,
+        }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unsnooze(message_id, all).await?;
+            commands::mutations::unsnooze(message_id, all, dry_run).await?;
         }
         Some(Command::Snoozed { format }) => {
             crate::server::ensure_daemon_running().await?;

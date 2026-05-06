@@ -10,5 +10,6 @@ Arguments:
   [MESSAGE_ID]  
 
 Options:
-      --all   Unsnooze all
-  -h, --help  Print help
+      --all      Unsnooze all
+      --dry-run  Show which messages would be unsnoozed without performing the mutation
+  -h, --help     Print help

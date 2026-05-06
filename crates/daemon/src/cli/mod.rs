@@ -469,6 +469,9 @@ pub enum Command {
     Send {
         /// Draft ID to send
         draft_id: String,
+        /// Show what would be sent (sender, recipients, subject, byte count) without sending
+        #[arg(long)]
+        dry_run: bool,
     },
 
     // --- Phase 2: Mutations ---
@@ -624,6 +627,9 @@ pub enum Command {
         /// Unsnooze all
         #[arg(long)]
         all: bool,
+        /// Show which messages would be unsnoozed without performing the mutation
+        #[arg(long)]
+        dry_run: bool,
     },
     /// List snoozed messages
     Snoozed {

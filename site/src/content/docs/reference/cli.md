@@ -21,9 +21,11 @@ It does not get special screen-only payloads from the daemon. Formatting stays i
 |---------|---------|
 | `mxr` | Launch TUI |
 | `mxr daemon [--foreground]` | Start daemon |
+| `mxr restart` | Reap the running daemon and start a fresh one against the current binary |
 | `mxr sync [--account NAME] [--status] [--history]` | Trigger or inspect sync |
 | `mxr status [--watch]` | Daemon health |
 | `mxr doctor` | Diagnostics and index/store checks |
+| `mxr web [--host HOST] [--port PORT]` | HTTP/WebSocket bridge over the daemon socket |
 | `mxr reset --hard` / `mxr burn` | Destroy local runtime state only |
 
 ## Mail retrieval and inspection
@@ -40,14 +42,33 @@ mxr export --search QUERY --format mbox
 
 Useful flags:
 
-- `mxr search --format table|json|csv|ids`
+- `mxr search --format table|json|jsonl|csv|ids`
 - `mxr search --limit N`
 - `mxr search --mode lexical|hybrid|semantic`
 - `mxr search --explain`
-- `mxr cat --raw`
-- `mxr cat --html`
+- `mxr cat --view reader|raw|html|headers`
+- `mxr cat --assets` (extracts inline images alongside the body)
 - `mxr thread --format json`
 - `mxr export --output PATH`
+
+### Query operators
+
+The query parser accepts Gmail-style operators in any search query
+(`mxr search`, `mxr count`, `mxr saved add`, the TUI `/`, the
+`--search` flag on every batch mutation):
+
+| Operator | Example | Notes |
+|---|---|---|
+| `from:` / `to:` / `cc:` / `bcc:` | `from:alice@example.com` | substring + display-name match |
+| `subject:` | `subject:"quarterly review"` | quoted phrase, exact within tokens |
+| `body:` | `body:reimbursement` | full-text body |
+| `label:` | `label:inbox` | matches by `provider_id` (case-insensitive) |
+| `is:` | `is:unread`, `is:starred`, `is:answered` | flags |
+| `has:` | `has:attachment` | |
+| `before:` / `after:` | `after:2025-01-01` | YYYY-MM-DD |
+| `older_than:` / `newer_than:` | `older_than:30d`, `newer_than:7d` | days |
+| `filename:` | `filename:invoice.pdf` | attachment names |
+| `OR`, `AND`, `NOT`, `(...)` | `from:vendor AND (label:bills OR label:travel)` | AND is implicit between bare terms |
 
 Search modes:
 
@@ -74,10 +95,16 @@ Dense side intent:
 ```bash
 mxr saved
 mxr saved list
-mxr saved add NAME QUERY
-mxr saved delete NAME
-mxr saved run NAME
+mxr saved add owe-replies "is:unread label:inbox older_than:3d"
+mxr saved add hot-clients "from:client@bigcorp.com" --mode hybrid
+mxr saved delete owe-replies
+mxr saved run owe-replies
+mxr saved run owe-replies --format ids | xargs -n1 mxr archive --yes
 ```
+
+`--mode` accepts `lexical`, `hybrid`, or `semantic` (defaults to whatever
+`config.search.default_mode` is set to). Saved searches show up in the
+TUI sidebar as one-key lenses.
 
 ## Compose and drafts
 
@@ -89,16 +116,17 @@ mxr reply-all MESSAGE_ID
 mxr forward MESSAGE_ID --to team@example.com
 mxr drafts
 mxr send DRAFT_ID
+mxr send DRAFT_ID --dry-run     # account, recipients, subject, body bytes; no provider call
 ```
 
-Useful flags:
+Useful flags on the compose verbs:
 
 - `--body`
 - `--body-stdin`
 - `--attach PATH` repeatable
 - `--from ACCOUNT`
 - `--yes`
-- `--dry-run`
+- `--dry-run` (compose verbs render a preview; `mxr send --dry-run` shows what would be sent without touching the provider)
 
 ## Mail mutations
 
@@ -133,6 +161,25 @@ Shared mutation flags:
 - `--yes`
 - `--dry-run`
 
+Undoable mutations (`archive`, `trash`, `spam`, `read`, `read-archive`)
+print a `mutation_id` after they land. Pass it to `mxr undo` within
+~60 seconds to reverse the operation.
+
+## Undo
+
+```bash
+mxr archive abc123             # prints: mutation_id=mut_01HW...
+mxr undo mut_01HW...           # restores the original labels and read state
+```
+
+The undo log is local: the daemon snapshots the message's labels and
+flags before each undoable mutation and replays the inverse on `mxr
+undo`. Tantivy is reindexed after the restore. Window is fixed at ~60
+seconds; older mutation IDs return `not found`.
+
+The TUI binds `u` to the same operation against the most recent
+mutation — handy for "oops, didn't mean to archive that."
+
 ## Snooze
 
 ```bash
@@ -140,10 +187,13 @@ mxr snooze MESSAGE_ID --until tomorrow
 mxr snooze --search "label:inbox from:alerts@example.com" --until monday
 mxr unsnooze MESSAGE_ID
 mxr unsnooze --all
+mxr unsnooze --all --dry-run     # lists which messages would wake; no mutation
 mxr snoozed
 ```
 
-Accepted preset values include `tomorrow`, `monday`, `weekend`, `tonight`, or an ISO8601 timestamp.
+Accepted `--until` preset values include `tomorrow`, `monday`,
+`weekend`, `tonight`, or an ISO8601 timestamp. The TUI binds `Z` to
+snooze the focused message via the same path.
 
 ## Attachments
 
@@ -182,13 +232,34 @@ mxr rules history
 ## Accounts
 
 ```bash
-mxr accounts
-mxr accounts add gmail
-mxr accounts add imap
-mxr accounts add smtp
+mxr accounts                                  # list accounts
+mxr accounts add gmail                        # interactive OAuth (asks: bundled or BYO client)
+mxr accounts add gmail --gmail-bundled true   # non-interactive: use mxr's bundled OAuth client
+mxr accounts add imap                         # interactive: prompts for host, port, password
+mxr accounts add imap --imap-host imap.fastmail.com --imap-username me@fm --imap-password ENV:IMAP_PW
+mxr accounts add smtp --smtp-host smtp.fastmail.com --smtp-username me@fm --smtp-password ENV:SMTP_PW
+mxr accounts add outlook                      # device-code OAuth for personal Outlook (alpha; via IMAP)
 mxr accounts show ACCOUNT
-mxr accounts test ACCOUNT
+mxr accounts test ACCOUNT                     # round-trips auth without writing anything
+
+# Maintenance
+mxr accounts repair ACCOUNT                   # re-prompts for the credential and overwrites the keychain entry
+mxr accounts disable ACCOUNT                  # stop syncing, keep config + local data
+mxr accounts remove ACCOUNT                   # remove from config; preserves local data
+mxr accounts remove ACCOUNT --purge-local-data  # also drops messages, labels, semantic chunks for that account
+
+# Owned addresses (for inbound/outbound classification + analytics)
+mxr accounts addresses list
+mxr accounts addresses add me@example.com --primary
+mxr accounts addresses add alias@example.com
+mxr accounts addresses set-primary alias@example.com
+mxr accounts addresses remove old@example.com
 ```
+
+OAuth refresh tokens (Gmail, Outlook personal) live in the OS keychain
+(macOS Keychain, Linux Secret Service). IMAP and SMTP passwords live in
+the same place. `mxr accounts repair` is the unified re-prompt path
+when a credential goes stale.
 
 ## Semantic
 
@@ -238,16 +309,16 @@ mxr contacts refresh
 mxr response-time
 mxr response-time --theirs
 mxr response-time --counterparty alice@example.com --since-days 90
-
-mxr accounts addresses list
-mxr accounts addresses add me@example.com --primary
-mxr accounts addresses add alias@example.com
-mxr accounts addresses set-primary alias@example.com
-mxr accounts addresses remove old@example.com
+mxr response-time --since-days 30 --format json   # both clock and business-hours rows
 
 mxr doctor --rebuild-analytics    # one-shot rebuild after schema changes
 mxr doctor --refresh-contacts     # contacts table only
 ```
+
+`response-time` always emits both clock-time and business-hours
+percentiles per direction; there is no `--working-hours` toggle. Owned
+addresses (used to classify inbound vs. outbound) are managed under
+`mxr accounts addresses` — see the Accounts section above.
 
 See the [Analytics guide](/guides/analytics/) for what each command means
 and how to bootstrap a fresh install.

@@ -84,7 +84,12 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
             QueryField::Body => FieldCondition::BodyContains {
                 pattern: StringMatch::Contains(value),
             },
-            QueryField::Cc | QueryField::Bcc | QueryField::Filename => {
+            QueryField::Cc
+            | QueryField::Bcc
+            | QueryField::Filename
+            | QueryField::List
+            | QueryField::DeliveredTo
+            | QueryField::Rfc822MsgId => {
                 return Err("field is not supported in rules form".to_string())
             }
         }),
@@ -115,8 +120,19 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
         QueryNode::Filter(FilterKind::Archived) => Conditions::Field(FieldCondition::HasLabel {
             label: system_labels::ARCHIVE.to_string(),
         }),
-        QueryNode::Filter(FilterKind::Answered) => {
-            return Err("is:answered is not supported in rules form".to_string())
+        QueryNode::Filter(
+            FilterKind::Answered
+            | FilterKind::Anywhere
+            | FilterKind::HasUserLabels
+            | FilterKind::NoUserLabels
+            | FilterKind::HasDrive
+            | FilterKind::HasDocument
+            | FilterKind::HasSpreadsheet
+            | FilterKind::HasPresentation
+            | FilterKind::HasYoutube
+            | FilterKind::HasInlineImage,
+        ) => {
+            return Err("search filter is not supported in rules form".to_string())
         }
         QueryNode::Text(value) | QueryNode::Phrase(value) => {
             Conditions::Field(FieldCondition::BodyContains {
@@ -167,6 +183,9 @@ fn query_ast_to_conditions(node: mxr_search::ast::QueryNode) -> Result<Condition
                 ],
             },
         },
+        QueryNode::Near { .. } => {
+            return Err("AROUND is not supported in rules form".to_string())
+        }
     })
 }
 

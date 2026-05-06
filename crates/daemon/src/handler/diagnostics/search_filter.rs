@@ -12,9 +12,14 @@ pub(super) struct SemanticQueryPlan {
 
 pub(super) fn matches_structured_filters(node: &QueryNode, envelope: &mxr_core::Envelope) -> bool {
     match node {
-        QueryNode::Text(_) | QueryNode::Phrase(_) => true,
+        QueryNode::Text(_) | QueryNode::Phrase(_) | QueryNode::Near { .. } => true,
         QueryNode::Field { field, value } => match field {
-            QueryField::Subject | QueryField::Body | QueryField::Filename => true,
+            QueryField::Subject
+            | QueryField::Body
+            | QueryField::Filename
+            | QueryField::List
+            | QueryField::DeliveredTo
+            | QueryField::Rfc822MsgId => true,
             QueryField::From => {
                 address_matches(&envelope.from.email, envelope.from.name.as_deref(), value)
             }
@@ -84,7 +89,47 @@ fn matches_filter(filter: &FilterKind, envelope: &mxr_core::Envelope) -> bool {
                 && !envelope.flags.contains(mxr_core::MessageFlags::SPAM)
         }
         FilterKind::HasAttachment => envelope.has_attachments,
+        FilterKind::Anywhere => true,
+        FilterKind::HasUserLabels => envelope
+            .label_provider_ids
+            .iter()
+            .any(|label| !is_system_label(label)),
+        FilterKind::NoUserLabels => envelope
+            .label_provider_ids
+            .iter()
+            .all(|label| is_system_label(label)),
+        FilterKind::HasDrive
+        | FilterKind::HasDocument
+        | FilterKind::HasSpreadsheet
+        | FilterKind::HasPresentation
+        | FilterKind::HasYoutube
+        | FilterKind::HasInlineImage => true,
     }
+}
+
+fn is_system_label(label: &str) -> bool {
+    let label = label.to_ascii_uppercase();
+    label.starts_with("CATEGORY_")
+        || matches!(
+            label.as_str(),
+            "INBOX"
+                | "SENT"
+                | "DRAFT"
+                | "DRAFTS"
+                | "TRASH"
+                | "DELETED"
+                | "SPAM"
+                | "JUNK"
+                | "STARRED"
+                | "UNREAD"
+                | "IMPORTANT"
+                | "CHAT"
+                | "ARCHIVE"
+                | "ARCHIVED"
+                | "SNOOZED"
+                | "MUTED"
+                | "MUTE"
+        )
 }
 
 fn matches_date(bound: &DateBound, date: &DateValue, envelope: &mxr_core::Envelope) -> bool {
@@ -165,6 +210,10 @@ fn collect_semantic_terms(
             parts.push(text.clone());
             *use_all_sources = true;
         }
+        QueryNode::Near { left, right, .. } if !negated => {
+            parts.push(format!("{left} {right}"));
+            *use_all_sources = true;
+        }
         QueryNode::Field { field, value }
             if !negated
                 && matches!(
@@ -202,7 +251,7 @@ pub(super) fn has_negated_semantic_terms(node: &QueryNode) -> bool {
 
 fn contains_semantic_term(node: &QueryNode) -> bool {
     match node {
-        QueryNode::Text(_) | QueryNode::Phrase(_) => true,
+        QueryNode::Text(_) | QueryNode::Phrase(_) | QueryNode::Near { .. } => true,
         QueryNode::Field { field, .. } => matches!(
             field,
             QueryField::Subject | QueryField::Body | QueryField::Filename
@@ -232,7 +281,13 @@ fn source_kinds_for_field(field: &QueryField) -> &'static [SemanticChunkSourceKi
             SemanticChunkSourceKind::AttachmentSummary,
             SemanticChunkSourceKind::AttachmentText,
         ],
-        QueryField::From | QueryField::To | QueryField::Cc | QueryField::Bcc => &[],
+        QueryField::From
+        | QueryField::To
+        | QueryField::Cc
+        | QueryField::Bcc
+        | QueryField::List
+        | QueryField::DeliveredTo
+        | QueryField::Rfc822MsgId => &[],
     }
 }
 

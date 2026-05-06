@@ -12,9 +12,12 @@ enum Token {
     Minus,
     LParen,
     RParen,
+    LBrace,
+    RBrace,
     And,
     Or,
     Not,
+    Around,
 }
 
 // -- Errors -------------------------------------------------------------------
@@ -27,6 +30,8 @@ pub enum ParseError {
     UnexpectedToken(String),
     #[error("unmatched parenthesis")]
     UnmatchedParen,
+    #[error("unmatched brace")]
+    UnmatchedBrace,
     #[error("expected value after field")]
     ExpectedValue,
     #[error("unknown filter: {0}")]
@@ -56,6 +61,14 @@ fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
                 chars.next();
                 tokens.push(Token::RParen);
             }
+            '{' => {
+                chars.next();
+                tokens.push(Token::LBrace);
+            }
+            '}' => {
+                chars.next();
+                tokens.push(Token::RBrace);
+            }
             ':' => {
                 chars.next();
                 tokens.push(Token::Colon);
@@ -79,17 +92,29 @@ fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
             _ => {
                 let mut word = String::new();
                 while let Some(&c) = chars.peek() {
-                    if c.is_whitespace() || c == '(' || c == ')' || c == ':' || c == '"' {
+                    if c.is_whitespace()
+                        || c == '('
+                        || c == ')'
+                        || c == '{'
+                        || c == '}'
+                        || c == ':'
+                        || c == '"'
+                    {
                         break;
                     }
                     word.push(c);
                     chars.next();
                 }
-                match word.as_str() {
-                    "AND" => tokens.push(Token::And),
-                    "OR" => tokens.push(Token::Or),
-                    "NOT" => tokens.push(Token::Not),
-                    _ => tokens.push(Token::Word(word)),
+                if word.eq_ignore_ascii_case("AND") {
+                    tokens.push(Token::And);
+                } else if word.eq_ignore_ascii_case("OR") {
+                    tokens.push(Token::Or);
+                } else if word.eq_ignore_ascii_case("NOT") {
+                    tokens.push(Token::Not);
+                } else if word.eq_ignore_ascii_case("AROUND") {
+                    tokens.push(Token::Around);
+                } else {
+                    tokens.push(Token::Word(word));
                 }
             }
         }
@@ -132,7 +157,7 @@ impl Parser {
 
         while !self.at_end() {
             // Stop if we see a closing paren (handled by caller)
-            if matches!(self.peek(), Some(Token::RParen)) {
+            if matches!(self.peek(), Some(Token::RParen | Token::RBrace)) {
                 break;
             }
             // Stop if next is OR (handled by parse_or caller)
@@ -143,7 +168,9 @@ impl Parser {
             if matches!(self.peek(), Some(Token::And)) {
                 self.next();
             }
-            if self.at_end() || matches!(self.peek(), Some(Token::RParen | Token::Or)) {
+            if self.at_end()
+                || matches!(self.peek(), Some(Token::RParen | Token::RBrace | Token::Or))
+            {
                 break;
             }
             let right = self.parse_or()?;
@@ -154,12 +181,37 @@ impl Parser {
     }
 
     fn parse_or(&mut self) -> Result<QueryNode, ParseError> {
-        let mut left = self.parse_unary()?;
+        let mut left = self.parse_near()?;
 
         while matches!(self.peek(), Some(Token::Or)) {
             self.next(); // consume OR
-            let right = self.parse_unary()?;
+            let right = self.parse_near()?;
             left = QueryNode::Or(Box::new(left), Box::new(right));
+        }
+
+        Ok(left)
+    }
+
+    fn parse_near(&mut self) -> Result<QueryNode, ParseError> {
+        let mut left = self.parse_unary()?;
+
+        while matches!(self.peek(), Some(Token::Around)) {
+            self.next();
+            let distance = match self.next() {
+                Some(Token::Word(w)) => w
+                    .parse::<u32>()
+                    .map_err(|_| ParseError::UnexpectedToken(w.to_string()))?,
+                Some(tok) => return Err(ParseError::UnexpectedToken(format!("{:?}", tok))),
+                None => return Err(ParseError::UnexpectedEnd),
+            };
+            let right = self.parse_unary()?;
+            let left_term = near_term(&left)?;
+            let right_term = near_term(&right)?;
+            left = QueryNode::Near {
+                left: left_term,
+                right: right_term,
+                distance,
+            };
         }
 
         Ok(left)
@@ -191,10 +243,11 @@ impl Parser {
                     _ => Err(ParseError::UnmatchedParen),
                 }
             }
+            Some(Token::LBrace) => self.parse_brace_group(),
             Some(Token::Phrase(s)) => {
                 let s = s.clone();
                 self.next();
-                Ok(QueryNode::Phrase(s))
+                phrase_node(s)
             }
             Some(Token::Word(_)) => {
                 // Check if this is a field:value pattern
@@ -214,6 +267,30 @@ impl Parser {
         }
     }
 
+    fn parse_brace_group(&mut self) -> Result<QueryNode, ParseError> {
+        self.next();
+        let mut node: Option<QueryNode> = None;
+
+        while !self.at_end() {
+            if matches!(self.peek(), Some(Token::RBrace)) {
+                self.next();
+                return node.ok_or(ParseError::UnexpectedEnd);
+            }
+            if matches!(self.peek(), Some(Token::And | Token::Or)) {
+                self.next();
+                continue;
+            }
+
+            let part = self.parse_or()?;
+            node = Some(match node {
+                Some(left) => QueryNode::Or(Box::new(left), Box::new(part)),
+                None => part,
+            });
+        }
+
+        Err(ParseError::UnmatchedBrace)
+    }
+
     fn parse_field_value(&mut self) -> Result<QueryNode, ParseError> {
         let field_name = match self.next() {
             Some(Token::Word(w)) => w,
@@ -226,12 +303,70 @@ impl Parser {
             _ => return Err(ParseError::ExpectedValue),
         }
 
+        if matches!(self.peek(), Some(Token::LParen)) {
+            return self.parse_field_group(&field_name);
+        }
+
         let value = match self.next() {
             Some(Token::Word(w)) => w,
             Some(Token::Phrase(p)) => p,
             _ => return Err(ParseError::ExpectedValue),
         };
 
+        self.build_field_value(&field_name, normalize_value(value))
+    }
+
+    fn parse_field_group(&mut self, field_name: &str) -> Result<QueryNode, ParseError> {
+        self.next();
+        let mut node: Option<QueryNode> = None;
+        let mut use_or = false;
+
+        while !self.at_end() {
+            match self.peek() {
+                Some(Token::RParen) => {
+                    self.next();
+                    return node.ok_or(ParseError::ExpectedValue);
+                }
+                Some(Token::And) => {
+                    self.next();
+                    use_or = false;
+                }
+                Some(Token::Or) => {
+                    self.next();
+                    use_or = true;
+                }
+                Some(Token::Minus | Token::Not) => {
+                    self.next();
+                    let value = self.next_field_group_value(field_name)?;
+                    node = Some(combine_group_node(
+                        node,
+                        QueryNode::Not(Box::new(value)),
+                        use_or,
+                    ));
+                    use_or = false;
+                }
+                _ => {
+                    let value = self.next_field_group_value(field_name)?;
+                    node = Some(combine_group_node(node, value, use_or));
+                    use_or = false;
+                }
+            }
+        }
+
+        Err(ParseError::UnmatchedParen)
+    }
+
+    fn next_field_group_value(&mut self, field_name: &str) -> Result<QueryNode, ParseError> {
+        let value = match self.next() {
+            Some(Token::Word(w)) => normalize_value(w),
+            Some(Token::Phrase(p)) => normalize_value(p),
+            Some(tok) => return Err(ParseError::UnexpectedToken(format!("{:?}", tok))),
+            None => return Err(ParseError::UnexpectedEnd),
+        };
+        self.build_field_value(field_name, value)
+    }
+
+    fn build_field_value(&self, field_name: &str, value: String) -> Result<QueryNode, ParseError> {
         match field_name.to_lowercase().as_str() {
             "from" => Ok(QueryNode::Field {
                 field: QueryField::From,
@@ -261,11 +396,28 @@ impl Parser {
                 field: QueryField::Filename,
                 value,
             }),
+            "list" => Ok(QueryNode::Field {
+                field: QueryField::List,
+                value,
+            }),
+            "deliveredto" => Ok(QueryNode::Field {
+                field: QueryField::DeliveredTo,
+                value,
+            }),
+            "rfc822msgid" => Ok(QueryNode::Field {
+                field: QueryField::Rfc822MsgId,
+                value,
+            }),
             "label" => Ok(QueryNode::Label(value)),
+            "category" => category_label(&value)
+                .map(|label| QueryNode::Label(label.to_string()))
+                .ok_or_else(|| ParseError::UnknownFilter(value.to_lowercase())),
             "is" => match value.to_lowercase().as_str() {
                 "unread" => Ok(QueryNode::Filter(FilterKind::Unread)),
                 "read" => Ok(QueryNode::Filter(FilterKind::Read)),
                 "starred" => Ok(QueryNode::Filter(FilterKind::Starred)),
+                "important" => Ok(QueryNode::Label("IMPORTANT".to_string())),
+                "muted" => Ok(QueryNode::Label("MUTED".to_string())),
                 "draft" | "drafts" => Ok(QueryNode::Filter(FilterKind::Draft)),
                 "sent" => Ok(QueryNode::Filter(FilterKind::Sent)),
                 "trash" | "deleted" => Ok(QueryNode::Filter(FilterKind::Trash)),
@@ -275,13 +427,55 @@ impl Parser {
                 "archived" | "archive" => Ok(QueryNode::Filter(FilterKind::Archived)),
                 other => Err(ParseError::UnknownFilter(other.to_string())),
             },
+            "in" => match value.to_lowercase().as_str() {
+                "inbox" => Ok(QueryNode::Filter(FilterKind::Inbox)),
+                "anywhere" | "all" | "allmail" | "all_mail" => {
+                    Ok(QueryNode::Filter(FilterKind::Anywhere))
+                }
+                "draft" | "drafts" => Ok(QueryNode::Filter(FilterKind::Draft)),
+                "sent" => Ok(QueryNode::Filter(FilterKind::Sent)),
+                "trash" | "deleted" => Ok(QueryNode::Filter(FilterKind::Trash)),
+                "spam" | "junk" => Ok(QueryNode::Filter(FilterKind::Spam)),
+                "archived" | "archive" => Ok(QueryNode::Filter(FilterKind::Archived)),
+                "snoozed" => Ok(QueryNode::Label("SNOOZED".to_string())),
+                other => Err(ParseError::UnknownFilter(other.to_string())),
+            },
             "has" => match value.to_lowercase().as_str() {
                 "attachment" | "attachments" => Ok(QueryNode::Filter(FilterKind::HasAttachment)),
+                "userlabels" => Ok(QueryNode::Filter(FilterKind::HasUserLabels)),
+                "nouserlabels" => Ok(QueryNode::Filter(FilterKind::NoUserLabels)),
+                "drive" => Ok(QueryNode::Filter(FilterKind::HasDrive)),
+                "document" => Ok(QueryNode::Filter(FilterKind::HasDocument)),
+                "spreadsheet" => Ok(QueryNode::Filter(FilterKind::HasSpreadsheet)),
+                "presentation" => Ok(QueryNode::Filter(FilterKind::HasPresentation)),
+                "youtube" => Ok(QueryNode::Filter(FilterKind::HasYoutube)),
+                "inline" | "image" | "inline-image" | "inline-images" => {
+                    Ok(QueryNode::Filter(FilterKind::HasInlineImage))
+                }
+                "yellow-star" | "orange-star" | "red-star" | "purple-star" | "blue-star"
+                | "green-star" | "red-bang" | "orange-guillemet" | "yellow-bang"
+                | "green-check" | "blue-info" | "purple-question" => {
+                    Ok(QueryNode::Filter(FilterKind::Starred))
+                }
                 other => Err(ParseError::UnknownFilter(other.to_string())),
             },
             "size" => {
                 let (op, bytes) = parse_size_value(&value)?;
                 Ok(QueryNode::Size { op, bytes })
+            }
+            "larger" => {
+                let bytes = parse_size_bytes(&value)?;
+                Ok(QueryNode::Size {
+                    op: SizeOp::GreaterThan,
+                    bytes,
+                })
+            }
+            "smaller" => {
+                let bytes = parse_size_bytes(&value)?;
+                Ok(QueryNode::Size {
+                    op: SizeOp::LessThan,
+                    bytes,
+                })
             }
             "after" => {
                 let date = parse_date_value(&value)?;
@@ -311,7 +505,21 @@ impl Parser {
                     date: DateValue::Specific(date),
                 })
             }
+            "older_than" => {
+                let date = parse_relative_duration_date(&value)?;
+                Ok(QueryNode::DateRange {
+                    bound: DateBound::Before,
+                    date: DateValue::Specific(date),
+                })
+            }
             "newer" => {
+                let date = parse_relative_duration_date(&value)?;
+                Ok(QueryNode::DateRange {
+                    bound: DateBound::After,
+                    date: DateValue::Specific(date),
+                })
+            }
+            "newer_than" => {
                 let date = parse_relative_duration_date(&value)?;
                 Ok(QueryNode::DateRange {
                     bound: DateBound::After,
@@ -323,6 +531,52 @@ impl Parser {
     }
 }
 
+fn combine_group_node(left: Option<QueryNode>, right: QueryNode, use_or: bool) -> QueryNode {
+    match left {
+        Some(left) if use_or => QueryNode::Or(Box::new(left), Box::new(right)),
+        Some(left) => QueryNode::And(Box::new(left), Box::new(right)),
+        None => right,
+    }
+}
+
+fn normalize_value(value: String) -> String {
+    value.strip_prefix('+').unwrap_or(&value).to_string()
+}
+
+fn near_term(node: &QueryNode) -> Result<String, ParseError> {
+    match node {
+        QueryNode::Text(value) | QueryNode::Phrase(value) => Ok(value.clone()),
+        other => Err(ParseError::UnexpectedToken(format!("{:?}", other))),
+    }
+}
+
+fn phrase_node(value: String) -> Result<QueryNode, ParseError> {
+    let parts = value.split_whitespace().collect::<Vec<_>>();
+    if parts.len() == 4 && parts[1].eq_ignore_ascii_case("AROUND") {
+        if let Ok(distance) = parts[2].parse::<u32>() {
+            return Ok(QueryNode::Near {
+                left: parts[0].to_string(),
+                right: parts[3].to_string(),
+                distance,
+            });
+        }
+    }
+    Ok(QueryNode::Phrase(value))
+}
+
+fn category_label(value: &str) -> Option<&'static str> {
+    match value.to_lowercase().as_str() {
+        "primary" | "personal" => Some("CATEGORY_PERSONAL"),
+        "social" => Some("CATEGORY_SOCIAL"),
+        "promotions" => Some("CATEGORY_PROMOTIONS"),
+        "updates" => Some("CATEGORY_UPDATES"),
+        "forums" => Some("CATEGORY_FORUMS"),
+        "reservations" => Some("CATEGORY_RESERVATIONS"),
+        "purchases" => Some("CATEGORY_PURCHASES"),
+        _ => None,
+    }
+}
+
 fn parse_date_value(s: &str) -> Result<DateValue, ParseError> {
     match s.to_lowercase().as_str() {
         "today" => Ok(DateValue::Today),
@@ -330,9 +584,12 @@ fn parse_date_value(s: &str) -> Result<DateValue, ParseError> {
         "this-week" => Ok(DateValue::ThisWeek),
         "this-month" => Ok(DateValue::ThisMonth),
         _ => {
-            let date = NaiveDate::parse_from_str(s, "%Y-%m-%d")
-                .map_err(|_| ParseError::InvalidDate(s.to_string()))?;
-            Ok(DateValue::Specific(date))
+            for format in ["%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y"] {
+                if let Ok(date) = NaiveDate::parse_from_str(s, format) {
+                    return Ok(DateValue::Specific(date));
+                }
+            }
+            Err(ParseError::InvalidDate(s.to_string()))
         }
     }
 }
@@ -400,6 +657,10 @@ fn parse_size_value(s: &str) -> Result<(SizeOp, u64), ParseError> {
     Ok((op, (value * multiplier).round() as u64))
 }
 
+fn parse_size_bytes(s: &str) -> Result<u64, ParseError> {
+    parse_size_value(s).map(|(_, bytes)| bytes)
+}
+
 // -- Public API ---------------------------------------------------------------
 
 pub fn parse_query(input: &str) -> Result<QueryNode, ParseError> {
@@ -413,8 +674,12 @@ pub fn parse_query(input: &str) -> Result<QueryNode, ParseError> {
     }
     let mut parser = Parser::new(tokens);
     let node = parser.parse_expression()?;
-    if !parser.at_end() && matches!(parser.peek(), Some(Token::RParen)) {
-        return Err(ParseError::UnmatchedParen);
+    if !parser.at_end() {
+        match parser.peek() {
+            Some(Token::RParen) => return Err(ParseError::UnmatchedParen),
+            Some(Token::RBrace) => return Err(ParseError::UnmatchedBrace),
+            _ => {}
+        }
     }
     Ok(node)
 }

@@ -67,7 +67,12 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
             QueryField::Body => FieldCondition::BodyContains {
                 pattern: StringMatch::Contains(value),
             },
-            QueryField::Cc | QueryField::Bcc | QueryField::Filename => {
+            QueryField::Cc
+            | QueryField::Bcc
+            | QueryField::Filename
+            | QueryField::List
+            | QueryField::DeliveredTo
+            | QueryField::Rfc822MsgId => {
                 anyhow::bail!("field is not supported in rules conditions yet")
             }
         }),
@@ -98,8 +103,19 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
         QueryNode::Filter(FilterKind::Archived) => Conditions::Field(FieldCondition::HasLabel {
             label: "ARCHIVE".to_string(),
         }),
-        QueryNode::Filter(FilterKind::Answered) => {
-            anyhow::bail!("is:answered is not supported in rules conditions yet")
+        QueryNode::Filter(
+            FilterKind::Answered
+            | FilterKind::Anywhere
+            | FilterKind::HasUserLabels
+            | FilterKind::NoUserLabels
+            | FilterKind::HasDrive
+            | FilterKind::HasDocument
+            | FilterKind::HasSpreadsheet
+            | FilterKind::HasPresentation
+            | FilterKind::HasYoutube
+            | FilterKind::HasInlineImage,
+        ) => {
+            anyhow::bail!("this search filter is not supported in rules conditions yet")
         }
         QueryNode::Text(value) | QueryNode::Phrase(value) => {
             Conditions::Field(FieldCondition::BodyContains {
@@ -154,6 +170,9 @@ fn query_to_conditions(node: QueryNode) -> anyhow::Result<Conditions> {
                 ],
             },
         },
+        QueryNode::Near { .. } => {
+            anyhow::bail!("AROUND is not supported in rules conditions yet")
+        }
     })
 }
 

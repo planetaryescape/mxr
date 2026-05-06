@@ -5,6 +5,7 @@ pub struct MxrSchema {
     pub message_id: Field,
     pub account_id: Field,
     pub thread_id: Field,
+    pub message_id_header: Field,
     pub subject: Field,
     pub from_name: Field,
     pub from_email: Field,
@@ -14,12 +15,16 @@ pub struct MxrSchema {
     pub snippet: Field,
     pub body_text: Field,
     pub attachment_filenames: Field,
+    pub list_id: Field,
+    pub delivered_to: Field,
+    pub content_hints: Field,
     pub labels: Field,
     pub date: Field,
     pub sort_date_ts: Field,
     pub size_bytes: Field,
     pub flags: Field,
     pub has_attachments: Field,
+    pub has_user_labels: Field,
     pub is_read: Field,
     pub is_starred: Field,
     pub is_draft: Field,
@@ -36,6 +41,7 @@ impl MxrSchema {
         let message_id = builder.add_text_field("message_id", STRING | STORED);
         let account_id = builder.add_text_field("account_id", STRING | STORED);
         let thread_id = builder.add_text_field("thread_id", STRING | STORED);
+        let message_id_header = builder.add_text_field("message_id_header", STRING);
 
         let subject = builder.add_text_field("subject", TEXT);
         let from_name = builder.add_text_field("from_name", TEXT);
@@ -46,6 +52,9 @@ impl MxrSchema {
         let snippet = builder.add_text_field("snippet", TEXT);
         let body_text = builder.add_text_field("body_text", TEXT);
         let attachment_filenames = builder.add_text_field("attachment_filenames", TEXT);
+        let list_id = builder.add_text_field("list_id", TEXT);
+        let delivered_to = builder.add_text_field("delivered_to", STRING);
+        let content_hints = builder.add_text_field("content_hints", TEXT);
 
         let labels = builder.add_text_field("labels", STRING);
         let date = builder.add_date_field("date", INDEXED | STORED | FAST);
@@ -53,6 +62,7 @@ impl MxrSchema {
         let size_bytes = builder.add_u64_field("size_bytes", INDEXED | STORED);
         let flags = builder.add_u64_field("flags", INDEXED);
         let has_attachments = builder.add_bool_field("has_attachments", INDEXED);
+        let has_user_labels = builder.add_bool_field("has_user_labels", INDEXED);
         let is_read = builder.add_bool_field("is_read", INDEXED);
         let is_starred = builder.add_bool_field("is_starred", INDEXED);
         let is_draft = builder.add_bool_field("is_draft", INDEXED);
@@ -68,6 +78,7 @@ impl MxrSchema {
             message_id,
             account_id,
             thread_id,
+            message_id_header,
             subject,
             from_name,
             from_email,
@@ -77,12 +88,16 @@ impl MxrSchema {
             snippet,
             body_text,
             attachment_filenames,
+            list_id,
+            delivered_to,
+            content_hints,
             labels,
             date,
             sort_date_ts,
             size_bytes,
             flags,
             has_attachments,
+            has_user_labels,
             is_read,
             is_starred,
             is_draft,

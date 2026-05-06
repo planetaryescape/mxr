@@ -44,6 +44,90 @@ fn sane_search_sort_timestamp(timestamp: i64) -> i64 {
     }
 }
 
+fn normalized_message_id_header(value: Option<&str>) -> String {
+    value
+        .unwrap_or("")
+        .trim()
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .to_ascii_lowercase()
+}
+
+fn has_user_label(labels: &[String]) -> bool {
+    labels.iter().any(|label| !is_system_label(label))
+}
+
+fn is_system_label(label: &str) -> bool {
+    let label = label.to_ascii_uppercase();
+    label.starts_with("CATEGORY_")
+        || matches!(
+            label.as_str(),
+            "INBOX"
+                | "SENT"
+                | "DRAFT"
+                | "DRAFTS"
+                | "TRASH"
+                | "DELETED"
+                | "SPAM"
+                | "JUNK"
+                | "STARRED"
+                | "UNREAD"
+                | "IMPORTANT"
+                | "CHAT"
+                | "ARCHIVE"
+                | "ARCHIVED"
+                | "SNOOZED"
+                | "MUTED"
+                | "MUTE"
+        )
+}
+
+fn delivered_to_values(raw_headers: Option<&str>) -> Vec<String> {
+    let mut values = Vec::new();
+    let Some(raw_headers) = raw_headers else {
+        return values;
+    };
+
+    for line in raw_headers.lines() {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        if name.eq_ignore_ascii_case("delivered-to") || name.eq_ignore_ascii_case("x-original-to") {
+            let value = value.trim().trim_matches('<').trim_matches('>');
+            if !value.is_empty() {
+                values.push(value.to_ascii_lowercase());
+            }
+        }
+    }
+
+    values
+}
+
+fn content_hints(body: &MessageBody) -> String {
+    let mut hints = Vec::new();
+    if let Some(text) = body.text_plain.as_deref() {
+        hints.push(text.to_string());
+    }
+    if let Some(html) = body.text_html.as_deref() {
+        hints.push(html.to_string());
+    }
+    if let Some(list_id) = body.metadata.list_id.as_deref() {
+        hints.push(list_id.to_string());
+    }
+    for attachment in &body.attachments {
+        hints.push(attachment.filename.clone());
+        hints.push(attachment.mime_type.clone());
+        if let Some(content_id) = attachment.content_id.as_deref() {
+            hints.push(content_id.to_string());
+        }
+        if let Some(content_location) = attachment.content_location.as_deref() {
+            hints.push(content_location.to_string());
+        }
+    }
+    hints.join(" ")
+}
+
 impl SearchIndex {
     pub fn schema(&self) -> &MxrSchema {
         &self.schema
@@ -136,17 +220,21 @@ impl SearchIndex {
         doc.add_text(s.message_id, envelope.id.as_str());
         doc.add_text(s.account_id, envelope.account_id.as_str());
         doc.add_text(s.thread_id, envelope.thread_id.as_str());
+        doc.add_text(
+            s.message_id_header,
+            normalized_message_id_header(envelope.message_id_header.as_deref()),
+        );
         doc.add_text(s.subject, &envelope.subject);
         doc.add_text(s.from_name, envelope.from.name.as_deref().unwrap_or(""));
-        doc.add_text(s.from_email, &envelope.from.email);
+        doc.add_text(s.from_email, envelope.from.email.to_ascii_lowercase());
         for addr in &envelope.to {
-            doc.add_text(s.to_email, &addr.email);
+            doc.add_text(s.to_email, addr.email.to_ascii_lowercase());
         }
         for addr in &envelope.cc {
-            doc.add_text(s.cc_email, &addr.email);
+            doc.add_text(s.cc_email, addr.email.to_ascii_lowercase());
         }
         for addr in &envelope.bcc {
-            doc.add_text(s.bcc_email, &addr.email);
+            doc.add_text(s.bcc_email, addr.email.to_ascii_lowercase());
         }
         doc.add_text(s.snippet, &envelope.snippet);
         for label in &envelope.label_provider_ids {
@@ -155,6 +243,10 @@ impl SearchIndex {
         doc.add_u64(s.size_bytes, envelope.size_bytes);
         doc.add_u64(s.flags, envelope.flags.bits() as u64);
         doc.add_bool(s.has_attachments, envelope.has_attachments);
+        doc.add_bool(
+            s.has_user_labels,
+            has_user_label(&envelope.label_provider_ids),
+        );
         doc.add_bool(s.is_read, envelope.flags.contains(MessageFlags::READ));
         doc.add_bool(s.is_starred, envelope.flags.contains(MessageFlags::STARRED));
         doc.add_bool(s.is_draft, envelope.flags.contains(MessageFlags::DRAFT));
@@ -186,17 +278,21 @@ impl SearchIndex {
         doc.add_text(s.message_id, envelope.id.as_str());
         doc.add_text(s.account_id, envelope.account_id.as_str());
         doc.add_text(s.thread_id, envelope.thread_id.as_str());
+        doc.add_text(
+            s.message_id_header,
+            normalized_message_id_header(envelope.message_id_header.as_deref()),
+        );
         doc.add_text(s.subject, &envelope.subject);
         doc.add_text(s.from_name, envelope.from.name.as_deref().unwrap_or(""));
-        doc.add_text(s.from_email, &envelope.from.email);
+        doc.add_text(s.from_email, envelope.from.email.to_ascii_lowercase());
         for addr in &envelope.to {
-            doc.add_text(s.to_email, &addr.email);
+            doc.add_text(s.to_email, addr.email.to_ascii_lowercase());
         }
         for addr in &envelope.cc {
-            doc.add_text(s.cc_email, &addr.email);
+            doc.add_text(s.cc_email, addr.email.to_ascii_lowercase());
         }
         for addr in &envelope.bcc {
-            doc.add_text(s.bcc_email, &addr.email);
+            doc.add_text(s.bcc_email, addr.email.to_ascii_lowercase());
         }
         doc.add_text(s.snippet, &envelope.snippet);
         for label in &envelope.label_provider_ids {
@@ -205,13 +301,27 @@ impl SearchIndex {
 
         let body_text = body.text_plain.as_deref().unwrap_or("");
         doc.add_text(s.body_text, body_text);
+        if let Some(html) = body.text_html.as_deref() {
+            doc.add_text(s.body_text, html);
+        }
         for attachment in &body.attachments {
             doc.add_text(s.attachment_filenames, attachment.filename.to_lowercase());
         }
+        if let Some(list_id) = body.metadata.list_id.as_deref() {
+            doc.add_text(s.list_id, list_id);
+        }
+        for delivered_to in delivered_to_values(body.metadata.raw_headers.as_deref()) {
+            doc.add_text(s.delivered_to, delivered_to);
+        }
+        doc.add_text(s.content_hints, content_hints(body));
 
         doc.add_u64(s.size_bytes, envelope.size_bytes);
         doc.add_u64(s.flags, envelope.flags.bits() as u64);
         doc.add_bool(s.has_attachments, envelope.has_attachments);
+        doc.add_bool(
+            s.has_user_labels,
+            has_user_label(&envelope.label_provider_ids),
+        );
         doc.add_bool(s.is_read, envelope.flags.contains(MessageFlags::READ));
         doc.add_bool(s.is_starred, envelope.flags.contains(MessageFlags::STARRED));
         doc.add_bool(s.is_draft, envelope.flags.contains(MessageFlags::DRAFT));
@@ -265,6 +375,7 @@ impl SearchIndex {
                 s.snippet,
                 s.body_text,
                 s.attachment_filenames,
+                s.content_hints,
             ],
         );
         query_parser.set_field_boost(s.subject, 3.0);

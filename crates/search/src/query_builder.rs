@@ -15,9 +15,13 @@ pub struct QueryBuilder {
     to_email: Field,
     cc_email: Field,
     bcc_email: Field,
+    message_id_header: Field,
     snippet: Field,
     body_text: Field,
     attachment_filenames: Field,
+    list_id: Field,
+    delivered_to: Field,
+    content_hints: Field,
     labels: Field,
     is_read: Field,
     is_starred: Field,
@@ -27,6 +31,7 @@ pub struct QueryBuilder {
     is_spam: Field,
     is_answered: Field,
     has_attachments: Field,
+    has_user_labels: Field,
 }
 
 impl QueryBuilder {
@@ -38,9 +43,13 @@ impl QueryBuilder {
             to_email: schema.to_email,
             cc_email: schema.cc_email,
             bcc_email: schema.bcc_email,
+            message_id_header: schema.message_id_header,
             snippet: schema.snippet,
             body_text: schema.body_text,
             attachment_filenames: schema.attachment_filenames,
+            list_id: schema.list_id,
+            delivered_to: schema.delivered_to,
+            content_hints: schema.content_hints,
             labels: schema.labels,
             is_read: schema.is_read,
             is_starred: schema.is_starred,
@@ -50,6 +59,7 @@ impl QueryBuilder {
             is_spam: schema.is_spam,
             is_answered: schema.is_answered,
             has_attachments: schema.has_attachments,
+            has_user_labels: schema.has_user_labels,
         }
     }
 
@@ -62,6 +72,11 @@ impl QueryBuilder {
             QueryNode::Label(label) => self.build_label_query(label),
             QueryNode::DateRange { bound, date } => self.build_date_query(bound, date),
             QueryNode::Size { op, bytes } => self.build_size_query(op, *bytes),
+            QueryNode::Near {
+                left,
+                right,
+                distance,
+            } => self.build_near_query(left, right, *distance),
             QueryNode::And(left, right) => {
                 let left_q = self.build(left);
                 let right_q = self.build(right);
@@ -120,24 +135,27 @@ impl QueryBuilder {
     }
 
     fn build_phrase_query(&self, phrase: &str) -> Box<dyn Query> {
-        let terms: Vec<Term> = phrase
-            .split_whitespace()
-            .map(|w| Term::from_field_text(self.subject, &w.to_lowercase()))
-            .collect();
+        let fields_boosts: Vec<(Field, f32)> = vec![
+            (self.subject, 3.0),
+            (self.from_name, 2.0),
+            (self.snippet, 1.0),
+            (self.body_text, 0.5),
+            (self.attachment_filenames, 0.75),
+        ];
 
-        if terms.len() == 1 {
-            let tq = TermQuery::new(
-                terms
-                    .into_iter()
-                    .next()
-                    .expect("single-term phrase queries should have one term"),
-                IndexRecordOption::WithFreqs,
-            );
-            return Box::new(BoostQuery::new(Box::new(tq), 3.0));
-        }
-
-        let phrase_q = PhraseQuery::new(terms);
-        Box::new(BoostQuery::new(Box::new(phrase_q), 3.0))
+        let subqueries = fields_boosts
+            .into_iter()
+            .filter_map(|(field, boost)| {
+                self.build_phrase_field_query(field, phrase, 0)
+                    .map(|query| {
+                        (
+                            Occur::Should,
+                            Box::new(BoostQuery::new(query, boost)) as Box<dyn Query>,
+                        )
+                    })
+            })
+            .collect::<Vec<_>>();
+        Box::new(BooleanQuery::new(subqueries))
     }
 
     fn build_field_query(&self, field: &QueryField, value: &str) -> Box<dyn Query> {
@@ -149,14 +167,25 @@ impl QueryBuilder {
             QueryField::Subject => self.subject,
             QueryField::Body => self.body_text,
             QueryField::Filename => self.attachment_filenames,
+            QueryField::List => self.list_id,
+            QueryField::DeliveredTo => self.delivered_to,
+            QueryField::Rfc822MsgId => self.message_id_header,
         };
 
         match field {
-            QueryField::Subject | QueryField::Body | QueryField::Filename => {
+            QueryField::Subject | QueryField::Body | QueryField::Filename | QueryField::List => {
                 self.build_text_field_query(tantivy_field, value)
             }
-            QueryField::From | QueryField::To | QueryField::Cc | QueryField::Bcc => {
-                let term = Term::from_field_text(tantivy_field, value);
+            QueryField::From
+            | QueryField::To
+            | QueryField::Cc
+            | QueryField::Bcc
+            | QueryField::DeliveredTo => {
+                let term = Term::from_field_text(tantivy_field, &value.to_ascii_lowercase());
+                Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))
+            }
+            QueryField::Rfc822MsgId => {
+                let term = Term::from_field_text(tantivy_field, &normalize_message_id(value));
                 Box::new(TermQuery::new(term, IndexRecordOption::WithFreqs))
             }
         }
@@ -197,6 +226,7 @@ impl QueryBuilder {
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
             FilterKind::Inbox => self.build_label_query("INBOX"),
+            FilterKind::Anywhere => Box::new(AllQuery),
             FilterKind::Archived => Box::new(BooleanQuery::new(vec![
                 (Occur::Should, self.build_label_query("ARCHIVE")),
                 (
@@ -215,6 +245,36 @@ impl QueryBuilder {
                 let term = Term::from_field_bool(self.has_attachments, true);
                 Box::new(TermQuery::new(term, IndexRecordOption::Basic))
             }
+            FilterKind::HasUserLabels => {
+                let term = Term::from_field_bool(self.has_user_labels, true);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::NoUserLabels => {
+                let term = Term::from_field_bool(self.has_user_labels, false);
+                Box::new(TermQuery::new(term, IndexRecordOption::Basic))
+            }
+            FilterKind::HasDrive => self.build_content_hint_any(&[
+                "drive.google.com",
+                "docs.google.com",
+                "application/vnd.google-apps",
+            ]),
+            FilterKind::HasDocument => self.build_content_hint_any(&[
+                "docs.google.com document",
+                "application/vnd.google-apps.document",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ]),
+            FilterKind::HasSpreadsheet => self.build_content_hint_any(&[
+                "docs.google.com spreadsheets",
+                "application/vnd.google-apps.spreadsheet",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ]),
+            FilterKind::HasPresentation => self.build_content_hint_any(&[
+                "docs.google.com presentation",
+                "application/vnd.google-apps.presentation",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ]),
+            FilterKind::HasYoutube => self.build_content_hint_any(&["youtube.com", "youtu.be"]),
+            FilterKind::HasInlineImage => self.build_content_hint_any(&["content-id", "image"]),
         }
     }
 
@@ -299,6 +359,71 @@ impl QueryBuilder {
         Box::new(PhraseQuery::new(terms))
     }
 
+    fn build_phrase_field_query(
+        &self,
+        field: Field,
+        value: &str,
+        slop: u32,
+    ) -> Option<Box<dyn Query>> {
+        let terms: Vec<Term> = tokenize_text_value(value)
+            .into_iter()
+            .map(|word| Term::from_field_text(field, &word))
+            .collect();
+
+        if terms.is_empty() {
+            return None;
+        }
+        if terms.len() == 1 {
+            return Some(Box::new(TermQuery::new(
+                terms.into_iter().next().expect("checked non-empty terms"),
+                IndexRecordOption::WithFreqs,
+            )));
+        }
+
+        let mut phrase_q = PhraseQuery::new(terms);
+        if slop > 0 {
+            phrase_q.set_slop(slop);
+        }
+        Some(Box::new(phrase_q))
+    }
+
+    fn build_near_query(&self, left: &str, right: &str, distance: u32) -> Box<dyn Query> {
+        let value = format!("{left} {right}");
+        let fields_boosts: Vec<(Field, f32)> = vec![
+            (self.subject, 3.0),
+            (self.from_name, 2.0),
+            (self.snippet, 1.0),
+            (self.body_text, 0.5),
+            (self.attachment_filenames, 0.75),
+        ];
+        let subqueries = fields_boosts
+            .into_iter()
+            .filter_map(|(field, boost)| {
+                self.build_phrase_field_query(field, &value, distance)
+                    .map(|query| {
+                        (
+                            Occur::Should,
+                            Box::new(BoostQuery::new(query, boost)) as Box<dyn Query>,
+                        )
+                    })
+            })
+            .collect::<Vec<_>>();
+        Box::new(BooleanQuery::new(subqueries))
+    }
+
+    fn build_content_hint_any(&self, values: &[&str]) -> Box<dyn Query> {
+        let subqueries = values
+            .iter()
+            .map(|value| {
+                (
+                    Occur::Should,
+                    self.build_text_field_query(self.content_hints, value),
+                )
+            })
+            .collect::<Vec<_>>();
+        Box::new(BooleanQuery::new(subqueries))
+    }
+
     fn build_text_token_query(
         &self,
         fields_boosts: &[(Field, f32)],
@@ -347,6 +472,14 @@ fn tokenize_text_value(value: &str) -> Vec<String> {
         .filter(|part| !part.is_empty())
         .map(|part| part.to_lowercase())
         .collect()
+}
+
+fn normalize_message_id(value: &str) -> String {
+    value
+        .trim()
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .to_ascii_lowercase()
 }
 
 #[cfg(test)]

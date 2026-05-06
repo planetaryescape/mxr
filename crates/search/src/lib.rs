@@ -370,6 +370,341 @@ mod tests {
     }
 
     #[test]
+    fn e2e_search_in_inbox_alias_filters_by_inbox_label() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let mut inbox = make_envelope_full(
+            "Adrian inbox",
+            "Follow up",
+            "Adrian",
+            "adrian@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        inbox.label_provider_ids = vec!["INBOX".into()];
+        let mut archived = make_envelope_full(
+            "Adrian archived",
+            "Follow up",
+            "Adrian",
+            "adrian@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        archived.label_provider_ids = vec![];
+        let inbox_id = inbox.id.as_str();
+
+        idx.index_envelope(&inbox).unwrap();
+        idx.index_envelope(&archived).unwrap();
+        idx.commit().unwrap();
+
+        assert_eq!(e2e_search(&idx, "adrian in:inbox"), vec![inbox_id]);
+    }
+
+    #[test]
+    fn e2e_search_gmail_category_and_label_status_aliases() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let mut promo = make_envelope_full(
+            "Sale receipt",
+            "Discount applied",
+            "Shop",
+            "shop@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        promo.label_provider_ids = vec!["CATEGORY_PROMOTIONS".into(), "IMPORTANT".into()];
+        let mut regular = make_envelope_full(
+            "Regular receipt",
+            "No category",
+            "Shop",
+            "shop@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        regular.label_provider_ids = vec!["INBOX".into()];
+        let promo_id = promo.id.as_str();
+
+        idx.index_envelope(&promo).unwrap();
+        idx.index_envelope(&regular).unwrap();
+        idx.commit().unwrap();
+
+        assert_eq!(
+            e2e_search(&idx, "category:promotions"),
+            vec![promo_id.clone()]
+        );
+        assert_eq!(e2e_search(&idx, "is:important"), vec![promo_id]);
+    }
+
+    #[test]
+    fn e2e_search_gmail_header_fields() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let mut target = make_envelope_full(
+            "List delivery",
+            "Header metadata",
+            "Sender",
+            "sender@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        target.message_id_header = Some("<200503292@example.com>".into());
+        let target_id = target.id.as_str();
+        let target_body = MessageBody {
+            message_id: target.id.clone(),
+            text_plain: Some("Mailing list update".to_string()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata {
+                list_id: Some("info.example.com".into()),
+                raw_headers: Some(
+                    "Delivered-To: username@example.com\nX-Original-To: alias@example.com\n".into(),
+                ),
+                ..MessageMetadata::default()
+            },
+        };
+        let other = make_envelope_full(
+            "Other delivery",
+            "Different headers",
+            "Sender",
+            "sender@example.com",
+            MessageFlags::READ,
+            false,
+        );
+
+        idx.index_body(&target, &target_body).unwrap();
+        idx.index_envelope(&other).unwrap();
+        idx.commit().unwrap();
+
+        assert_eq!(
+            e2e_search(&idx, "list:info.example.com"),
+            vec![target_id.clone()]
+        );
+        assert_eq!(
+            e2e_search(&idx, "deliveredto:username@example.com"),
+            vec![target_id.clone()]
+        );
+        assert_eq!(
+            e2e_search(&idx, "rfc822msgid:200503292@example.com"),
+            vec![target_id]
+        );
+    }
+
+    #[test]
+    fn e2e_search_gmail_size_and_date_aliases() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let mut target = make_envelope_full(
+            "April invoice",
+            "Window match",
+            "Alice",
+            "alice@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        target.date = chrono::DateTime::parse_from_rfc3339("2004-04-17T12:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        target.size_bytes = 6 * 1024 * 1024;
+        let target_id = target.id.as_str();
+        let mut outside = make_envelope_full(
+            "Later invoice",
+            "Window miss",
+            "Alice",
+            "alice@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        outside.date = chrono::DateTime::parse_from_rfc3339("2004-04-19T12:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        outside.size_bytes = 8 * 1024 * 1024;
+
+        idx.index_envelope(&target).unwrap();
+        idx.index_envelope(&outside).unwrap();
+        idx.commit().unwrap();
+
+        assert_eq!(
+            e2e_search(
+                &idx,
+                "after:2004/04/16 before:04/18/2004 larger:5M smaller:7M",
+            ),
+            vec![target_id]
+        );
+    }
+
+    #[test]
+    fn e2e_search_gmail_or_braces_and_field_groups() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let amy = make_envelope_full(
+            "Dinner movie plan",
+            "Friday",
+            "Amy",
+            "amy@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        let david = make_envelope_full(
+            "Lunch plan",
+            "Saturday",
+            "David",
+            "david@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        let other = make_envelope_full(
+            "Dinner only",
+            "Sunday",
+            "Carol",
+            "carol@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        let amy_id = amy.id.as_str();
+        let david_id = david.id.as_str();
+
+        idx.index_envelope(&amy).unwrap();
+        idx.index_envelope(&david).unwrap();
+        idx.index_envelope(&other).unwrap();
+        idx.commit().unwrap();
+
+        let brace_results = e2e_search(&idx, "{from:amy@example.com from:david@example.com}");
+        assert_eq!(brace_results.len(), 2);
+        assert!(brace_results.contains(&amy_id));
+        assert!(brace_results.contains(&david_id));
+        assert_eq!(e2e_search(&idx, "subject:(dinner movie)"), vec![amy_id]);
+    }
+
+    #[test]
+    fn e2e_search_gmail_has_userlabels_and_rich_content() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let mut labeled = make_envelope_full(
+            "Project video",
+            "Has useful links",
+            "Alice",
+            "alice@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        labeled.label_provider_ids = vec!["INBOX".into(), "ProjectX".into()];
+        let labeled_id = labeled.id.as_str();
+        let body = MessageBody {
+            message_id: labeled.id.clone(),
+            text_plain: Some("Watch https://youtube.com/watch?v=abc".to_string()),
+            text_html: Some("<a href=\"https://docs.google.com/document/d/abc\">Doc</a>".into()),
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
+        };
+        let mut system_only = make_envelope_full(
+            "Plain inbox",
+            "Only system labels",
+            "Bob",
+            "bob@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        system_only.label_provider_ids = vec!["INBOX".into()];
+        let system_only_id = system_only.id.as_str();
+
+        idx.index_body(&labeled, &body).unwrap();
+        idx.index_envelope(&system_only).unwrap();
+        idx.commit().unwrap();
+
+        assert_eq!(e2e_search(&idx, "has:userlabels"), vec![labeled_id.clone()]);
+        assert_eq!(e2e_search(&idx, "has:nouserlabels"), vec![system_only_id]);
+        assert_eq!(e2e_search(&idx, "has:youtube"), vec![labeled_id.clone()]);
+        assert_eq!(e2e_search(&idx, "has:document"), vec![labeled_id]);
+    }
+
+    #[test]
+    fn e2e_search_gmail_remaining_status_and_rich_aliases() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let mut target = make_envelope_full(
+            "Rich Gmail aliases",
+            "Useful references",
+            "Alice",
+            "alice@example.com",
+            MessageFlags::READ | MessageFlags::STARRED,
+            true,
+        );
+        target.label_provider_ids = vec!["SNOOZED".into(), "MUTED".into()];
+        let target_id = target.id.as_str();
+        let body = MessageBody {
+            message_id: target.id.clone(),
+            text_plain: Some("Open https://drive.google.com/file/d/abc".to_string()),
+            text_html: Some(
+                "<a href=\"https://docs.google.com/spreadsheets/d/sheet\">Sheet</a>\
+                 <a href=\"https://docs.google.com/presentation/d/slides\">Slides</a>"
+                    .into(),
+            ),
+            attachments: vec![AttachmentMeta {
+                id: AttachmentId::new(),
+                message_id: target.id.clone(),
+                filename: "inline.png".to_string(),
+                mime_type: "image/png".to_string(),
+                disposition: AttachmentDisposition::Inline,
+                content_id: Some("image-1".to_string()),
+                content_location: None,
+                size_bytes: 10,
+                local_path: None,
+                provider_id: "inline-1".to_string(),
+            }],
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
+        };
+        let other = make_envelope_full(
+            "Plain message",
+            "Nothing special",
+            "Bob",
+            "bob@example.com",
+            MessageFlags::READ,
+            false,
+        );
+
+        idx.index_body(&target, &body).unwrap();
+        idx.index_envelope(&other).unwrap();
+        idx.commit().unwrap();
+
+        for query in [
+            "in:snoozed",
+            "is:muted",
+            "has:yellow-star",
+            "has:drive",
+            "has:spreadsheet",
+            "has:presentation",
+            "has:inline",
+        ] {
+            assert_eq!(e2e_search(&idx, query), vec![target_id.clone()]);
+        }
+        assert_eq!(e2e_search(&idx, "in:anywhere").len(), 2);
+    }
+
+    #[test]
+    fn e2e_search_gmail_around_operator() {
+        let mut idx = SearchIndex::in_memory().unwrap();
+        let near = make_envelope_full(
+            "Trip ideas",
+            "holiday plans then vacation dates",
+            "Alice",
+            "alice@example.com",
+            MessageFlags::READ,
+            false,
+        );
+        let near_id = near.id.as_str();
+        let far = make_envelope_full(
+            "Trip archive",
+            "holiday plans notes budget packing calendar vacation dates",
+            "Bob",
+            "bob@example.com",
+            MessageFlags::READ,
+            false,
+        );
+
+        idx.index_envelope(&near).unwrap();
+        idx.index_envelope(&far).unwrap();
+        idx.commit().unwrap();
+
+        assert_eq!(e2e_search(&idx, "holiday AROUND 3 vacation"), vec![near_id]);
+    }
+
+    #[test]
     fn e2e_filter_starred() {
         let (idx, envelopes) = build_e2e_index();
         let results = e2e_search(&idx, "is:starred");

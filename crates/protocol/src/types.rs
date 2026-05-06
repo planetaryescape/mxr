@@ -560,6 +560,19 @@ impl Response {
             message,
         }
     }
+
+    /// Construct an `Error` response with an explicitly-known `IpcErrorKind`,
+    /// bypassing the substring-based classifier. Prefer this when the handler
+    /// already knows the error category — e.g. when mapping a typed `MxrError`.
+    pub fn error_kinded(message: impl Into<String>, kind: IpcErrorKind) -> Self {
+        Self::Error {
+            kind,
+            code: kind.as_code().to_string(),
+            retryable: kind.is_retryable(),
+            details: None,
+            message: message.into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -570,16 +583,39 @@ pub enum IpcErrorKind {
     Auth,
     Policy,
     Provider,
+    RateLimited,
     Store,
     Unsupported,
     #[default]
     Internal,
 }
 
+impl IpcErrorKind {
+    pub fn as_code(self) -> &'static str {
+        match self {
+            IpcErrorKind::InvalidRequest => "invalid_request",
+            IpcErrorKind::NotFound => "not_found",
+            IpcErrorKind::Auth => "auth",
+            IpcErrorKind::Policy => "policy",
+            IpcErrorKind::Provider => "provider",
+            IpcErrorKind::RateLimited => "rate_limited",
+            IpcErrorKind::Store => "store",
+            IpcErrorKind::Unsupported => "unsupported",
+            IpcErrorKind::Internal => "internal",
+        }
+    }
+
+    pub fn is_retryable(self) -> bool {
+        matches!(self, IpcErrorKind::Provider | IpcErrorKind::RateLimited)
+    }
+}
+
 fn classify_error_kind(message: &str) -> IpcErrorKind {
     let lower = message.to_ascii_lowercase();
     if lower.contains("not found") {
         IpcErrorKind::NotFound
+    } else if lower.contains("rate limit") {
+        IpcErrorKind::RateLimited
     } else if lower.contains("unauthorized") || lower.contains("auth") || lower.contains("oauth") {
         IpcErrorKind::Auth
     } else if lower.contains("safety policy") {
@@ -598,16 +634,7 @@ fn classify_error_kind(message: &str) -> IpcErrorKind {
 }
 
 fn classify_error_code(message: &str) -> &'static str {
-    match classify_error_kind(message) {
-        IpcErrorKind::InvalidRequest => "invalid_request",
-        IpcErrorKind::NotFound => "not_found",
-        IpcErrorKind::Auth => "auth",
-        IpcErrorKind::Policy => "policy",
-        IpcErrorKind::Provider => "provider",
-        IpcErrorKind::Store => "store",
-        IpcErrorKind::Unsupported => "unsupported",
-        IpcErrorKind::Internal => "internal",
-    }
+    classify_error_kind(message).as_code()
 }
 
 fn error_looks_retryable(message: &str) -> bool {

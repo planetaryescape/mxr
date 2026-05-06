@@ -310,13 +310,8 @@ async fn sync_loop_for_account(
                     .map(|status| status.consecutive_failures.saturating_add(1))
                     .unwrap_or(1);
                 let mut backoff_until = None;
-                if err_str.contains("Rate limited") {
-                    let secs = err_str
-                        .split("retry after ")
-                        .nth(1)
-                        .and_then(|s| s.trim_end_matches('s').parse::<u64>().ok())
-                        .unwrap_or(120);
-                    backoff_secs = secs + 10;
+                if let mxr_core::MxrError::RateLimited { retry_after_secs } = &e {
+                    backoff_secs = retry_after_secs.saturating_add(10);
                     backoff_until =
                         Some(chrono::Utc::now() + chrono::Duration::seconds(backoff_secs as i64));
                 } else {

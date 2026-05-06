@@ -20,6 +20,13 @@ pub enum MxrError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    /// Provider asked us to back off. `retry_after_secs` is the wait the
+    /// provider suggested (Retry-After header for Gmail, server hint for IMAP).
+    /// Surfaced as a typed variant so the daemon's sync loop can size its
+    /// backoff without parsing strings.
+    #[error("Rate limited — retry after {retry_after_secs}s")]
+    RateLimited { retry_after_secs: u64 },
+
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 

@@ -330,12 +330,14 @@ service. Send a real reply this week.
 want to know if it's true.
 
 ```bash
-mxr response-time --working-hours --since-days 30
-mxr response-time --working-hours --since-days 365
+mxr response-time --since-days 30
+mxr response-time --since-days 365
 ```
 
-If `business_hours_p90` for the last 30 days is meaningfully higher
-than the year-long baseline, you're a bottleneck on something
+`response-time` always emits both clock-time and business-hours
+percentiles per direction; pick the row that matches what you care
+about. If `business_hours_p90` for the last 30 days is meaningfully
+higher than the year-long baseline, you're a bottleneck on something
 specific. Either set expectations explicitly (auto-replies, "I batch
 email at noon") or set up a `mxr rules` filter to demote low-priority
 inbound.
@@ -363,7 +365,7 @@ proposals.
 
 ```bash
 # How long do I take to reply to my manager?
-mxr response-time --counterparty manager@company.com --working-hours --since-days 90
+mxr response-time --counterparty manager@company.com --since-days 90
 
 # How fast does this client respond to my outbound?
 mxr response-time --counterparty client@example.com --theirs --since-days 90
@@ -434,10 +436,11 @@ want the full distribution and not just the extremes.
 not the one your inbox app's marketing team made.
 
 ```bash
-mxr response-time --since-days 365 --working-hours
-mxr response-time --since-days 365 --theirs --working-hours
+mxr response-time --since-days 365
+mxr response-time --since-days 365 --theirs
 mxr contacts asymmetry --min-inbound 20 --format json | jq '.[0:20]'
 mxr storage --by sender --limit 20 --since-days 365
+mxr wrapped --year 2025                       # human-readable year-in-review
 ```
 
 Four numbers and two lists. Compare against last year by running the
@@ -471,7 +474,8 @@ it. The CLI is the definitive surface, but saved searches live in the
 TUI sidebar and stay one keypress away:
 
 ```bash
-mxr saved create "owe-replies" "is:inbound -in:replied newer_than:14d older_than:7d"
+mxr saved add owe-replies "is:unread label:inbox older_than:3d"
+mxr saved add hot-clients "from:client@bigcorp.com" --mode hybrid
 ```
 
 ### Run analytics in scripts

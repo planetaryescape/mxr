@@ -25,11 +25,30 @@ That is the intended boundary. The network is for talking to your provider, not 
 
 ## Guardrails that exist today
 
-- `--dry-run` on risky mutation commands
+- `--dry-run` on risky mutation commands (including `mxr send` and `mxr unsnooze --all`)
 - Interactive confirmation for destructive and batch mutation flows unless `--yes` is set
+- Undoable mutations: `archive`, `trash`, `spam`, `read`, `read-archive` print a `mutation_id` you can pass to `mxr undo` for ~60s
 - Persisted mutation history through `mxr history`
 - Event and log views through diagnostics and CLI commands
 - Plain-text-first reader mode, with browser escape hatch for original HTML
+
+### Where credentials live
+
+All account credentials are stored in your OS-native secret store, not
+in plaintext on disk:
+
+- **macOS**: Keychain (Keychain Access)
+- **Linux**: Secret Service (e.g. GNOME Keyring, KWallet)
+
+That includes Gmail OAuth refresh tokens, IMAP passwords, SMTP
+passwords, and Outlook OAuth tokens. `mxr accounts repair NAME`
+re-prompts for the credential and overwrites the keychain entry. The
+on-disk `config.toml` only references credentials by `password_ref`; it
+never stores the secret itself.
+
+If you previously ran a version older than the keychain migration,
+your old `~/.local/share/mxr/tokens/*.json` files are migrated into the
+keychain on first startup of the new daemon and then deleted.
 
 ## Not shipped yet
 

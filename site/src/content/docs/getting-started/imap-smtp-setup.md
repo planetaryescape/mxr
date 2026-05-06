@@ -9,13 +9,34 @@ They sync into the same local runtime and IPC surface as Gmail accounts. The dae
 
 ## Add an IMAP/SMTP account
 
-Edit your mxr config file:
+The shortest path is `mxr accounts add`. It writes the config entry, stores the password in your OS keychain, and runs an authentication round-trip before saving anything:
 
 ```bash
-mxr config path  # shows the location
+# Interactive — prompts for host, port, username, password
+mxr accounts add imap
+mxr accounts add smtp
+
+# Non-interactive — useful in scripts or first-boot setup
+mxr accounts add imap \
+  --account-name work \
+  --imap-host imap.fastmail.com \
+  --imap-username you@example.com \
+  --imap-password ENV:WORK_IMAP_PW
+
+mxr accounts add smtp \
+  --account-name work \
+  --smtp-host smtp.fastmail.com \
+  --smtp-username you@example.com \
+  --smtp-password ENV:WORK_SMTP_PW
 ```
 
-Add an account entry:
+Passwords supplied via `--imap-password` / `--smtp-password` accept either a literal value or `ENV:VAR_NAME` to avoid exposing the secret in shell history. The actual credential is then written to the OS keychain (Keychain on macOS, Secret Service on Linux) — never to `config.toml`.
+
+If a password ever goes stale (provider rotated it, you regenerated an app password), re-run `mxr accounts repair work` to overwrite the keychain entry without touching the rest of the account config.
+
+### Manual TOML (escape hatch)
+
+You can write the config by hand if you prefer. `mxr config path` shows the file location. The shape is:
 
 ```toml
 [accounts.work]
@@ -27,7 +48,7 @@ type = "imap"
 host = "imap.example.com"
 port = 993
 username = "you@example.com"
-password_ref = "keyring:mxr/work"
+password_ref = "mxr-work-imap"
 use_tls = true
 
 [accounts.work.send]
@@ -35,23 +56,21 @@ type = "smtp"
 host = "smtp.example.com"
 port = 587
 username = "you@example.com"
-password_ref = "keyring:mxr/work"
+password_ref = "mxr-work-smtp"
 use_tls = true
 ```
 
-## Store your password
-
-mxr reads passwords from the system keyring. Store it with:
+`password_ref` is the **service name** the daemon will query in the OS keychain (paired with the `username` as the account). Store the password yourself with:
 
 ```bash
 # macOS
-security add-generic-password -a "you@example.com" -s "mxr/work" -w
+security add-generic-password -a "you@example.com" -s "mxr-work-imap" -w
 
 # Linux (using secret-tool)
-secret-tool store --label="mxr/work" service mxr account work
+secret-tool store --label="mxr-work-imap" service "mxr-work-imap" account "you@example.com"
 ```
 
-The `password_ref` in the config uses the format `keyring:<service>` to look up the credential.
+The `mxr accounts add` flow above is the supported path; the manual TOML shape is documented for advanced users only.
 
 ## Common provider settings
 
@@ -80,28 +99,17 @@ mxr sync --account work
 
 ## Multiple accounts
 
-Add as many accounts as you need. Each gets its own section:
+Add as many accounts as you need — each `mxr accounts add` invocation appends a new entry to the config:
 
-```toml
-[accounts.personal]
-name = "personal"
-email = "me@fastmail.com"
-
-[accounts.personal.sync]
-type = "imap"
-host = "imap.fastmail.com"
-port = 993
-username = "me@fastmail.com"
-password_ref = "keyring:mxr/personal"
-use_tls = true
-
-[accounts.personal.send]
-type = "smtp"
-host = "smtp.fastmail.com"
-port = 587
-username = "me@fastmail.com"
-password_ref = "keyring:mxr/personal"
-use_tls = true
+```bash
+mxr accounts add imap --account-name personal \
+  --imap-host imap.fastmail.com \
+  --imap-username me@fastmail.com \
+  --imap-password ENV:PERSONAL_IMAP_PW
+mxr accounts add smtp --account-name personal \
+  --smtp-host smtp.fastmail.com \
+  --smtp-username me@fastmail.com \
+  --smtp-password ENV:PERSONAL_SMTP_PW
 ```
 
 You can mix and match: one account on Gmail, another on IMAP/SMTP, a third on something else. They all sync into the same local database and are searchable together.
@@ -122,4 +130,4 @@ Some providers require app-specific passwords instead of your regular password w
 - **Yahoo**: Account Security > Generate app password
 - **Outlook with 2FA**: Security > App passwords
 
-Use the app password in your keyring, not your login password.
+Use the app password when `mxr accounts add` prompts for one — never your login password.

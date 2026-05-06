@@ -46,59 +46,104 @@ impl super::Store {
         let size_bytes = envelope.size_bytes as i64;
         let direction_str = direction.as_db_str();
 
-        sqlx::query!(
+        let mut tx = self.writer().begin().await?;
+
+        // The 0.4.52 release changed `MessageId` derivation from
+        // `from_provider_id` to `from_scoped_provider_id`, which means a fresh
+        // sync can compute a different `id` for a message that already exists
+        // under its old unscoped UUID. The natural key `(account_id, provider_id)`
+        // is `UNIQUE`, so a plain `INSERT ... ON CONFLICT(id)` would hit
+        // SQLITE_CONSTRAINT (2067). Resolve by id when present, otherwise resolve
+        // by the natural key and update in place.
+        let existing_id: Option<String> =
+            sqlx::query_scalar("SELECT id FROM messages WHERE account_id = ? AND provider_id = ?")
+                .bind(&account_id)
+                .bind(&envelope.provider_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+
+        if let Some(existing_id) = existing_id {
+            sqlx::query(
+                "UPDATE messages SET
+                    thread_id = ?,
+                    message_id_header = ?,
+                    in_reply_to = ?,
+                    reference_headers = ?,
+                    from_name = ?,
+                    from_email = ?,
+                    to_addrs = ?,
+                    cc_addrs = ?,
+                    bcc_addrs = ?,
+                    subject = ?,
+                    date = ?,
+                    flags = ?,
+                    snippet = ?,
+                    has_attachments = ?,
+                    size_bytes = ?,
+                    unsubscribe_method = ?,
+                    direction = CASE
+                        WHEN ? = 'unknown' THEN direction
+                        ELSE ?
+                    END
+                 WHERE id = ?",
+            )
+            .bind(thread_id)
+            .bind(&envelope.message_id_header)
+            .bind(&envelope.in_reply_to)
+            .bind(&refs)
+            .bind(from_name)
+            .bind(&envelope.from.email)
+            .bind(&to_addrs)
+            .bind(&cc_addrs)
+            .bind(&bcc_addrs)
+            .bind(&envelope.subject)
+            .bind(date)
+            .bind(flags)
+            .bind(&envelope.snippet)
+            .bind(has_attachments)
+            .bind(size_bytes)
+            .bind(&unsub)
+            .bind(direction_str)
+            .bind(direction_str)
+            .bind(existing_id)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Ok(());
+        }
+
+        sqlx::query(
             "INSERT INTO messages
              (id, account_id, provider_id, thread_id, message_id_header, in_reply_to,
               reference_headers, from_name, from_email, to_addrs, cc_addrs, bcc_addrs,
               subject, date, flags, snippet, has_attachments, size_bytes,
               unsubscribe_method, direction)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(id) DO UPDATE SET
-                provider_id = excluded.provider_id,
-                thread_id = excluded.thread_id,
-                message_id_header = excluded.message_id_header,
-                in_reply_to = excluded.in_reply_to,
-                reference_headers = excluded.reference_headers,
-                from_name = excluded.from_name,
-                from_email = excluded.from_email,
-                to_addrs = excluded.to_addrs,
-                cc_addrs = excluded.cc_addrs,
-                bcc_addrs = excluded.bcc_addrs,
-                subject = excluded.subject,
-                date = excluded.date,
-                flags = excluded.flags,
-                snippet = excluded.snippet,
-                has_attachments = excluded.has_attachments,
-                size_bytes = excluded.size_bytes,
-                unsubscribe_method = excluded.unsubscribe_method,
-                direction = CASE
-                    WHEN excluded.direction = 'unknown' THEN messages.direction
-                    ELSE excluded.direction
-                END",
-            id,
-            account_id,
-            envelope.provider_id,
-            thread_id,
-            envelope.message_id_header,
-            envelope.in_reply_to,
-            refs,
-            from_name,
-            envelope.from.email,
-            to_addrs,
-            cc_addrs,
-            bcc_addrs,
-            envelope.subject,
-            date,
-            flags,
-            envelope.snippet,
-            has_attachments,
-            size_bytes,
-            unsub,
-            direction_str,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .execute(self.writer())
+        .bind(id)
+        .bind(account_id)
+        .bind(&envelope.provider_id)
+        .bind(thread_id)
+        .bind(&envelope.message_id_header)
+        .bind(&envelope.in_reply_to)
+        .bind(&refs)
+        .bind(from_name)
+        .bind(&envelope.from.email)
+        .bind(&to_addrs)
+        .bind(&cc_addrs)
+        .bind(&bcc_addrs)
+        .bind(&envelope.subject)
+        .bind(date)
+        .bind(flags)
+        .bind(&envelope.snippet)
+        .bind(has_attachments)
+        .bind(size_bytes)
+        .bind(&unsub)
+        .bind(direction_str)
+        .execute(&mut *tx)
         .await?;
 
+        tx.commit().await?;
         Ok(())
     }
 

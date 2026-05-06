@@ -382,6 +382,114 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn label_upsert_preserves_existing_provider_identity_when_generated_id_changes() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let legacy_label = Label {
+            id: LabelId::from_provider_id("gmail", "INBOX"),
+            account_id: account.id.clone(),
+            name: "Inbox".to_string(),
+            kind: LabelKind::System,
+            color: None,
+            provider_id: "INBOX".to_string(),
+            unread_count: 4,
+            total_count: 7,
+        };
+        store.upsert_label(&legacy_label).await.unwrap();
+
+        let env = test_envelope(&account.id);
+        store.upsert_envelope(&env).await.unwrap();
+        store
+            .set_message_labels(
+                &env.id,
+                std::slice::from_ref(&legacy_label.id),
+                EventSource::Sync,
+            )
+            .await
+            .unwrap();
+
+        let regenerated_label = Label {
+            id: LabelId::from_scoped_provider_id(&account.id, "gmail", "INBOX"),
+            account_id: account.id.clone(),
+            name: "Inbox".to_string(),
+            kind: LabelKind::System,
+            color: Some("#00ff00".to_string()),
+            provider_id: "INBOX".to_string(),
+            unread_count: 99,
+            total_count: 99,
+        };
+
+        store.upsert_label(&regenerated_label).await.unwrap();
+
+        let labels = store.list_labels_by_account(&account.id).await.unwrap();
+        assert_eq!(labels.len(), 1);
+        assert_eq!(labels[0].id, legacy_label.id);
+        assert_eq!(labels[0].provider_id, "INBOX");
+        assert_eq!(labels[0].color.as_deref(), Some("#00ff00"));
+        assert_eq!(labels[0].unread_count, 4);
+        assert_eq!(labels[0].total_count, 7);
+
+        let by_label = store
+            .list_envelopes_by_label(&legacy_label.id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(by_label.len(), 1);
+        assert_eq!(by_label[0].id, env.id);
+    }
+
+    #[tokio::test]
+    async fn envelope_upsert_preserves_existing_provider_identity_when_generated_id_changes() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let legacy_id = MessageId::from_provider_id("gmail", "msg-001");
+        let mut legacy_envelope = test_envelope(&account.id);
+        legacy_envelope.id = legacy_id.clone();
+        legacy_envelope.provider_id = "msg-001".to_string();
+        store.upsert_envelope(&legacy_envelope).await.unwrap();
+
+        let label = Label {
+            id: LabelId::from_provider_id("gmail", "INBOX"),
+            account_id: account.id.clone(),
+            name: "Inbox".to_string(),
+            kind: LabelKind::System,
+            color: None,
+            provider_id: "INBOX".to_string(),
+            unread_count: 1,
+            total_count: 1,
+        };
+        store.upsert_label(&label).await.unwrap();
+        store
+            .set_message_labels(&legacy_id, std::slice::from_ref(&label.id), EventSource::Sync)
+            .await
+            .unwrap();
+
+        let mut regenerated = test_envelope(&account.id);
+        regenerated.id = MessageId::from_scoped_provider_id(&account.id, "gmail", "msg-001");
+        regenerated.provider_id = "msg-001".to_string();
+        regenerated.subject = "Updated subject".to_string();
+        store.upsert_envelope(&regenerated).await.unwrap();
+
+        let list = store
+            .list_envelopes_by_account(&account.id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, legacy_id);
+        assert_eq!(list[0].subject, "Updated subject");
+
+        let by_label = store
+            .list_envelopes_by_label(&label.id, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(by_label.len(), 1);
+        assert_eq!(by_label[0].id, legacy_id);
+    }
+
+    #[tokio::test]
     async fn body_cache() {
         let store = Store::in_memory().await.unwrap();
         let account = test_account();

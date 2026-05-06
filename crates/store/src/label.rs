@@ -15,10 +15,37 @@ impl super::Store {
         let unread_count = label.unread_count as i64;
         let total_count = label.total_count as i64;
 
+        let mut tx = self.writer().begin().await?;
+
+        let existing_id: Option<String> =
+            sqlx::query_scalar("SELECT id FROM labels WHERE account_id = ? AND provider_id = ?")
+                .bind(&account_id)
+                .bind(&label.provider_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+
+        if let Some(existing_id) = existing_id {
+            sqlx::query(
+                "UPDATE labels SET
+                    name = ?,
+                    kind = ?,
+                    color = ?
+                 WHERE id = ?",
+            )
+            .bind(&label.name)
+            .bind(kind)
+            .bind(&label.color)
+            .bind(existing_id)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Ok(());
+        }
+
         // On conflict, do NOT overwrite counts — those are managed by
         // recalculate_label_counts() from the junction table. Only update
         // metadata (name, kind, color, provider_id).
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO labels (id, account_id, name, kind, color, provider_id, unread_count, total_count)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
@@ -26,18 +53,19 @@ impl super::Store {
                 kind = excluded.kind,
                 color = excluded.color,
                 provider_id = excluded.provider_id",
-            id,
-            account_id,
-            label.name,
-            kind,
-            label.color,
-            label.provider_id,
-            unread_count,
-            total_count,
         )
-        .execute(self.writer())
+        .bind(&id)
+        .bind(&account_id)
+        .bind(&label.name)
+        .bind(kind)
+        .bind(&label.color)
+        .bind(&label.provider_id)
+        .bind(unread_count)
+        .bind(total_count)
+        .execute(&mut *tx)
         .await?;
 
+        tx.commit().await?;
         Ok(())
     }
 

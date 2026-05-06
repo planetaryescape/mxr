@@ -249,7 +249,8 @@ jobs:
     name: Desktop Build
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.expensive == 'true'
+    # Temporarily paused while desktop packaging is stabilized.
+    if: false
     defaults:
       run:
         working-directory: apps/desktop

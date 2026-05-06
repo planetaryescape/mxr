@@ -16,8 +16,8 @@ emit_output() {
 
 if [[ -z "${base_ref}" ]]; then
   emit_output cli_changed true
-  emit_output desktop_source_changed true
-  emit_output desktop_changed true
+  emit_output desktop_source_changed false
+  emit_output desktop_changed false
   emit_output has_artifacts true
   exit 0
 fi
@@ -95,11 +95,10 @@ if relevant_diff "apps/desktop/package-lock.json" "${package_json_ignore}"; then
   desktop_source_changed=true
 fi
 
-if [[ "${cli_changed}" == true || "${desktop_source_changed}" == true ]]; then
-  desktop_changed=true
-else
-  desktop_changed=false
-fi
+# Temporarily pause Electron desktop release artifacts. The CLI/TUI release
+# remains active; desktop packaging will be re-enabled once stabilized.
+desktop_source_changed=false
+desktop_changed=false
 
 has_artifacts=false
 if [[ "${cli_changed}" == true || "${desktop_changed}" == true ]]; then
@@ -113,7 +112,7 @@ fi
 head_subject="$(git log -1 --pretty=%s "${head_ref}" 2>/dev/null || echo "")"
 if printf '%s\n' "${head_subject}" | grep -Eq '^release: prepare mxr [0-9]+\.[0-9]+\.[0-9]+($|[[:space:]])'; then
   cli_changed=true
-  desktop_changed=true
+  desktop_changed=false
   has_artifacts=true
 fi
 

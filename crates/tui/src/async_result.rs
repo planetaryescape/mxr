@@ -96,6 +96,10 @@ pub(crate) enum AsyncResult {
     /// over `let _ = ...` silent drops on async paths that affect what
     /// the user sees (HTML asset fetch, body parse, attachment fetch,
     /// search streaming).
+    #[expect(
+        dead_code,
+        reason = "background producers can report through this path"
+    )]
     ReportedError(app::UserError),
     /// Captured by the dispatch site when a mutation response carries a
     /// `mutation_id`. Drives the "u to undo" status-bar affordance.

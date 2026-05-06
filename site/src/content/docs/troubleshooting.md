@@ -48,7 +48,7 @@ Common causes:
 
 - **Provider rate-limit.** The daemon backs off automatically; just wait. `mxr status --format json` will show `last_error` if it's a rate-limit retry.
 - **Stale Gmail history cursor.** mxr falls back to a full resync automatically. If it doesn't, force one with `mxr doctor --reindex`.
-- **Stale OAuth token.** Run `mxr accounts repair <name>` for IMAP+SMTP, or `mxr accounts add gmail --account-name <existing-name>` to re-auth (overwrites the token).
+- **Stale OAuth token.** Run `mxr accounts repair <name>` (works for any account whose credential lives in the OS keychain — Gmail OAuth, IMAP password, or SMTP password). Re-prompts for the credential and overwrites the keychain entry.
 
 ## Sent message isn't searchable
 
@@ -69,8 +69,8 @@ Install via Homebrew (recommended) or `cargo install --git`:
 
 ```bash
 brew install planetaryescape/mxr/mxr
-# or
-cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.63 --locked mxr
+# or (replace vX.Y.Z with the latest release tag)
+cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
 ```
 
 ## Search returns nothing for a query that should match
@@ -93,13 +93,13 @@ mxr count --search "your query"
 mxr daemon --foreground
 ```
 
-Foreground mode prints startup errors to your terminal. If it complains about a stale socket:
+Foreground mode prints startup errors to your terminal. If it complains about a stale socket, the simplest fix is:
 
 ```bash
-# Mac/Linux
-rm "$(mxr config get socket_path)"
-mxr daemon
+mxr restart
 ```
+
+`mxr restart` reaps the existing daemon, removes any stale socket, and brings a fresh one up against the same binary.
 
 If it complains about a missing migration on the SQLite database, the local store schema is older than the binary. Either run `mxr doctor` (which applies pending migrations) or, as a last resort:
 

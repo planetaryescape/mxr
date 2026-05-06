@@ -35,10 +35,10 @@ brew install mxr
 
 </div>
 <div class="install-method">
-<h4>crates.io</h4>
+<h4>Cargo (from source)</h4>
 
 ```bash
-cargo install mxr
+cargo install --git https://github.com/planetaryescape/mxr --locked mxr
 ```
 
 </div>
@@ -52,12 +52,10 @@ macOS (Intel + Apple Silicon) and Linux x86_64.
 </div>
 </div>
 
-If you want current `main` instead of the latest release:
+If you want a specific tag instead of `main`:
 
 ```bash
-git clone https://github.com/planetaryescape/mxr
-cd mxr
-cargo install --path . --locked
+cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
 ```
 
 Works with **Gmail**, **IMAP**, and **SMTP** out of the box. One local database, one CLI, all your accounts.

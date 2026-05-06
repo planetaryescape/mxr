@@ -17,7 +17,8 @@ brew tap planetaryescape/mxr
 brew install mxr
 
 # Cargo from source at a specific tag
-cargo install --git https://github.com/planetaryescape/mxr --tag v0.4.63 --locked mxr
+# (replace vX.Y.Z with the latest tag from the releases page)
+cargo install --git https://github.com/planetaryescape/mxr --tag vX.Y.Z --locked mxr
 ```
 
 Pre-built release tarballs are also available for:
@@ -46,11 +47,13 @@ A renderable terminal demo tape lives at [`docs/demo.tape`](docs/demo.tape). It 
 Current release shape:
 
 - macOS and Linux
-- Gmail sync/send
-- IMAP sync
+- Gmail sync/send (OAuth tokens stored in OS keychain)
+- IMAP sync (CONDSTORE / QRESYNC + UID fallback + IDLE for real-time delivery)
 - SMTP send
-- lexical + hybrid + semantic search
+- lexical + hybrid + semantic search with Gmail-style operators (`is:unread`, `from:`, `older_than:30d`, etc.)
 - CLI, TUI, daemon socket, agent skill
+- Inbox tooling: snooze with presets, undoable mutations (60s window), saved searches, deterministic rules with `--dry-run`
+- Analytics: stale-thread queue, response-time percentiles, contact decay, year-in-review (`mxr wrapped`), storage rollups
 
 ## Search modes
 

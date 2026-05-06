@@ -162,6 +162,22 @@ impl GmailAuth {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn for_test_token(token: impl Into<String>) -> Self {
+        let token = token.into();
+        let token_fn = Box::new(move || {
+            let token = token.clone();
+            Box::pin(async move { Ok(token) }) as TokenFuture
+        });
+
+        Self {
+            client_id: "test-client".into(),
+            client_secret: "test-secret".into(),
+            token_ref: "test-token".into(),
+            token_fn: Some(token_fn),
+        }
+    }
+
     fn token_path(&self) -> std::path::PathBuf {
         let data_dir = dirs::data_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))

@@ -359,6 +359,12 @@ impl App {
     pub fn resolve_body_success(&mut self, body: MessageBody) {
         let message_id = body.message_id.clone();
         self.mailbox.in_flight_body_requests.remove(&message_id);
+        self.mailbox
+            .priority_body_fetches
+            .retain(|id| id != &message_id);
+        self.mailbox
+            .queued_body_fetches
+            .retain(|id| id != &message_id);
         self.mailbox.body_cache.insert(message_id.clone(), body);
         self.queue_html_assets_for_message(&message_id);
 
@@ -380,8 +386,45 @@ impl App {
         }
     }
 
+    pub fn resolve_body_batch(
+        &mut self,
+        requested: Vec<MessageId>,
+        bodies: Vec<MessageBody>,
+        failures: Vec<mxr_protocol::BodyFailure>,
+    ) {
+        let mut returned = std::collections::HashSet::new();
+        for body in bodies {
+            returned.insert(body.message_id.clone());
+            self.resolve_body_success(body);
+        }
+
+        let failures: std::collections::HashMap<_, _> = failures
+            .into_iter()
+            .map(|failure| (failure.message_id, failure.error))
+            .collect();
+        for message_id in requested {
+            if returned.contains(&message_id) {
+                continue;
+            }
+            if self.mailbox.body_cache.contains_key(&message_id) {
+                continue;
+            }
+            let message = failures
+                .get(&message_id)
+                .cloned()
+                .unwrap_or_else(|| "body not available".into());
+            self.resolve_body_fetch_error(&message_id, message);
+        }
+    }
+
     pub fn resolve_body_fetch_error(&mut self, message_id: &MessageId, message: String) {
         self.mailbox.in_flight_body_requests.remove(message_id);
+        self.mailbox
+            .priority_body_fetches
+            .retain(|id| id != message_id);
+        self.mailbox
+            .queued_body_fetches
+            .retain(|id| id != message_id);
         if self.mailbox.pending_browser_open_after_load.as_ref() == Some(message_id) {
             self.mailbox.pending_browser_open_after_load = None;
         }

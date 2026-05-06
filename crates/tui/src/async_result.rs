@@ -4,8 +4,8 @@ use image::DynamicImage;
 use mxr_core::types::SubscriptionSummary;
 use mxr_core::{Envelope, Label, MessageBody, MessageId, MxrError, Thread, ThreadId};
 use mxr_protocol::{
-    AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, DaemonEvent,
-    Response, RuleFormData,
+    AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, BodyFailure,
+    DaemonEvent, Response, RuleFormData,
 };
 use ratatui_image::thread::ResizeResponse;
 
@@ -59,7 +59,7 @@ pub(crate) enum AsyncResult {
     LabelEnvelopes(Result<Vec<Envelope>, MxrError>),
     Bodies {
         requested: Vec<MessageId>,
-        result: Result<Vec<MessageBody>, MxrError>,
+        result: Result<(Vec<MessageBody>, Vec<BodyFailure>), MxrError>,
     },
     HtmlImageAssets {
         message_id: MessageId,

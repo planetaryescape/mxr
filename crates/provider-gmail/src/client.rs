@@ -363,12 +363,7 @@ impl GmailClient {
             .as_str()
             .ok_or_else(|| GmailError::Parse("Missing attachment data field".into()))?;
 
-        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-        use base64::Engine;
-        let bytes = URL_SAFE_NO_PAD
-            .decode(data)
-            .map_err(|e| GmailError::Parse(format!("Base64 decode error: {e}")))?;
-        Ok(bytes)
+        decode_attachment_data(data)
     }
 
     /// Create a draft in Gmail. Returns the draft ID.
@@ -489,6 +484,16 @@ impl GmailClient {
 
         Ok(())
     }
+}
+
+fn decode_attachment_data(data: &str) -> Result<Vec<u8>, GmailError> {
+    use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
+    use base64::Engine;
+
+    URL_SAFE_NO_PAD
+        .decode(data)
+        .or_else(|_| URL_SAFE.decode(data))
+        .map_err(|e| GmailError::Parse(format!("Base64 decode error: {e}")))
 }
 
 #[async_trait]
@@ -867,6 +872,29 @@ mod tests {
         assert_eq!(msgs[0].id, "msg1");
         assert_eq!(msgs[1].id, "msg2");
         assert!(resp.next_page_token.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_attachment_accepts_padded_base64url_data() {
+        let Some(server) = start_mock_server().await else {
+            return;
+        };
+
+        Mock::given(method("GET"))
+            .and(path("/messages/msg-123/attachments/att-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": "JVBERg=="
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client =
+            GmailClient::new(GmailAuth::for_test_token("test-token")).with_base_url(server.uri());
+
+        let bytes = client.get_attachment("msg-123", "att-1").await.unwrap();
+
+        assert_eq!(bytes, b"%PDF");
     }
 
     #[tokio::test]

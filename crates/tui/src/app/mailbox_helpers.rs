@@ -379,7 +379,7 @@ impl App {
     pub(super) fn ensure_current_body_state(&mut self) {
         if let Some(env) = self.mailbox.viewing_envelope.clone() {
             if !self.mailbox.body_cache.contains_key(&env.id) {
-                self.queue_body_fetch(env.id.clone());
+                self.queue_priority_body_fetch(env.id.clone());
             }
             self.mailbox.body_view_state = self.resolve_body_view_state(&env);
         } else {
@@ -390,6 +390,7 @@ impl App {
     pub(super) fn queue_body_fetch(&mut self, message_id: MessageId) {
         if self.mailbox.body_cache.contains_key(&message_id)
             || self.mailbox.in_flight_body_requests.contains(&message_id)
+            || self.mailbox.priority_body_fetches.contains(&message_id)
             || self.mailbox.queued_body_fetches.contains(&message_id)
         {
             return;
@@ -399,6 +400,22 @@ impl App {
             .in_flight_body_requests
             .insert(message_id.clone());
         self.mailbox.queued_body_fetches.push(message_id);
+    }
+
+    pub(super) fn queue_priority_body_fetch(&mut self, message_id: MessageId) {
+        if self.mailbox.body_cache.contains_key(&message_id)
+            || self.mailbox.priority_body_fetches.contains(&message_id)
+        {
+            return;
+        }
+
+        self.mailbox
+            .queued_body_fetches
+            .retain(|id| id != &message_id);
+        self.mailbox
+            .in_flight_body_requests
+            .insert(message_id.clone());
+        self.mailbox.priority_body_fetches.push(message_id);
     }
 
     pub(super) fn queue_thread_fetch(&mut self, thread_id: mxr_core::ThreadId) {

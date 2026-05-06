@@ -1047,6 +1047,29 @@ mod tests {
             .build()
     }
 
+    fn test_account_summary(
+        email: &str,
+        enabled: bool,
+        is_default: bool,
+    ) -> mxr_protocol::AccountSummaryData {
+        mxr_protocol::AccountSummaryData {
+            account_id: mxr_core::AccountId::new(),
+            key: Some(email.to_string()),
+            name: email.to_string(),
+            email: email.to_string(),
+            provider_kind: "imap".into(),
+            sync_kind: Some("imap".into()),
+            send_kind: Some("smtp".into()),
+            enabled,
+            is_default,
+            source: mxr_protocol::AccountSourceData::Config,
+            editable: mxr_protocol::AccountEditModeData::Full,
+            sync: None,
+            send: None,
+            capabilities: Default::default(),
+        }
+    }
+
     #[test]
     fn build_mail_list_rows_ignores_impossible_future_thread_dates() {
         let thread_id = mxr_core::ThreadId::new();
@@ -1064,5 +1087,51 @@ mod tests {
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].representative.subject, recent.subject);
+    }
+
+    #[test]
+    fn mailbox_sidebar_hides_disabled_sync_accounts_without_removing_account_records() {
+        let mut app = App::new();
+        app.mailbox.sidebar_accounts_expanded = true;
+        let enabled_primary = test_account_summary("primary@example.com", true, true);
+        let disabled = test_account_summary("disabled@example.com", false, false);
+        let enabled_secondary = test_account_summary("secondary@example.com", true, false);
+        app.accounts.page.accounts = vec![
+            enabled_primary.clone(),
+            disabled.clone(),
+            enabled_secondary.clone(),
+        ];
+
+        let sidebar_accounts: Vec<_> = app
+            .sidebar_items()
+            .into_iter()
+            .filter_map(|item| match item {
+                SidebarItem::Account(account) => Some(account.email),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            sidebar_accounts,
+            vec![
+                enabled_primary.email.clone(),
+                enabled_secondary.email.clone()
+            ]
+        );
+        assert_eq!(app.accounts.page.accounts.len(), 3);
+        assert!(app
+            .accounts
+            .page
+            .accounts
+            .iter()
+            .any(|account| account.email == disabled.email));
+
+        let rendered_accounts: Vec<_> = app
+            .sidebar_view()
+            .accounts
+            .iter()
+            .map(|account| account.email.clone())
+            .collect();
+        assert_eq!(rendered_accounts, sidebar_accounts);
     }
 }

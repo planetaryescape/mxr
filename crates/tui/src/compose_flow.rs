@@ -135,25 +135,37 @@ pub(crate) async fn resolve_compose_account(
             data: ResponseData::Accounts { mut accounts },
         } => {
             if let Some(account_id) = account_id {
-                return accounts
+                let account = accounts
                     .into_iter()
                     .find(|account| &account.account_id == account_id)
                     .ok_or_else(|| {
                         MxrError::Ipc(format!("Compose account not found: {account_id}"))
-                    });
+                    })?;
+                if !compose_account_eligible(&account) {
+                    return Err(MxrError::Ipc(format!(
+                        "Compose account is not enabled for sending: {}",
+                        account.email
+                    )));
+                }
+                return Ok(account);
             }
+            accounts.retain(compose_account_eligible);
             if let Some(index) = accounts.iter().position(|account| account.is_default) {
                 Ok(accounts.remove(index))
             } else {
                 accounts
                     .into_iter()
                     .next()
-                    .ok_or_else(|| MxrError::Ipc("No runtime account configured".into()))
+                    .ok_or_else(|| MxrError::Ipc("No enabled send account configured".into()))
             }
         }
         Response::Error { message, .. } => Err(MxrError::Ipc(message)),
         _ => Err(MxrError::Ipc("Unexpected account response".into())),
     }
+}
+
+fn compose_account_eligible(account: &AccountSummaryData) -> bool {
+    account.enabled && account.send_kind.is_some()
 }
 
 /// Phase 3.2: structured error from compose validation. Carries the
@@ -276,7 +288,31 @@ pub(crate) async fn handle_compose_editor_status(
 
 #[cfg(test)]
 mod tests {
-    use super::{ComposeValidationError, ComposeValidationKind};
+    use super::{resolve_compose_account, ComposeValidationError, ComposeValidationKind};
+    use crate::ipc::IpcRequest;
+    use mxr_protocol::{
+        AccountEditModeData, AccountSourceData, AccountSummaryData, Request, Response, ResponseData,
+    };
+    use tokio::sync::mpsc;
+
+    fn test_account_summary(email: &str, enabled: bool, is_default: bool) -> AccountSummaryData {
+        AccountSummaryData {
+            account_id: mxr_core::AccountId::new(),
+            key: Some(email.to_string()),
+            name: email.to_string(),
+            email: email.to_string(),
+            provider_kind: "imap".into(),
+            sync_kind: Some("imap".into()),
+            send_kind: Some("smtp".into()),
+            enabled,
+            is_default,
+            source: AccountSourceData::Config,
+            editable: AccountEditModeData::Full,
+            sync: None,
+            send: None,
+            capabilities: Default::default(),
+        }
+    }
 
     /// Phase 3.2 / Behavior 3: multiple validation issues render as a
     /// bullet list so users see all of them at once instead of just
@@ -315,5 +351,63 @@ mod tests {
         };
         assert_eq!(system.modal_title(), "Compose Failed");
         assert_eq!(draft.modal_title(), "Draft Has Errors");
+    }
+
+    #[tokio::test]
+    async fn compose_account_resolution_skips_disabled_default_account() {
+        let disabled_default = test_account_summary("disabled@example.com", false, true);
+        let enabled_account = test_account_summary("enabled@example.com", true, false);
+        let expected_id = enabled_account.account_id.clone();
+        let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
+
+        tokio::spawn(async move {
+            let request = rx.recv().await.expect("compose account request");
+            assert!(matches!(request.request, Request::ListAccounts));
+            let _ = request.reply.send(Ok(Response::Ok {
+                data: ResponseData::Accounts {
+                    accounts: vec![disabled_default, enabled_account],
+                },
+            }));
+        });
+
+        let resolved = resolve_compose_account(&tx, None).await.unwrap();
+
+        assert_eq!(resolved.account_id, expected_id);
+        assert_eq!(resolved.email, "enabled@example.com");
+    }
+
+    #[tokio::test]
+    async fn new_compose_draft_includes_tui_recipient_and_subject_frontmatter() {
+        let account = test_account_summary("me@example.com", true, true);
+        let account_id = account.account_id.clone();
+        let (tx, mut rx) = mpsc::unbounded_channel::<IpcRequest>();
+
+        tokio::spawn(async move {
+            let request = rx.recv().await.expect("compose account request");
+            assert!(matches!(request.request, Request::ListAccounts));
+            let _ = request.reply.send(Ok(Response::Ok {
+                data: ResponseData::Accounts {
+                    accounts: vec![account],
+                },
+            }));
+        });
+
+        let ready = super::handle_compose_action(
+            &tx,
+            crate::app::ComposeAction::New {
+                to: "alice@example.com, bob@example.com".into(),
+                subject: "Lunch".into(),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(ready.account_id, account_id);
+        assert!(ready
+            .initial_content
+            .contains("to: alice@example.com, bob@example.com"));
+        assert!(ready.initial_content.contains("subject: Lunch"));
+
+        let _ = std::fs::remove_file(ready.draft_path);
     }
 }

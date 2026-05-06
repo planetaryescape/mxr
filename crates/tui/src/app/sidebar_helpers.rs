@@ -1,5 +1,9 @@
 use super::*;
 
+fn mailbox_sidebar_account(account: &mxr_protocol::AccountSummaryData) -> bool {
+    account.enabled && account.sync_kind.is_some()
+}
+
 impl App {
     pub fn sidebar_items(&self) -> Vec<SidebarItem> {
         let mut items = Vec::new();
@@ -9,7 +13,7 @@ impl App {
             .page
             .accounts
             .iter()
-            .filter(|a| a.sync_kind.is_some())
+            .filter(|a| mailbox_sidebar_account(a))
             .collect();
         if sync_accounts.len() > 1 && self.mailbox.sidebar_accounts_expanded {
             items.extend(sync_accounts.into_iter().cloned().map(SidebarItem::Account));
@@ -50,7 +54,7 @@ impl App {
             .page
             .accounts
             .iter()
-            .filter(|a| a.sync_kind.is_some())
+            .filter(|a| mailbox_sidebar_account(a))
             .map(|a| AccountInfo {
                 email: a.email.clone(),
                 is_default: a.is_default,

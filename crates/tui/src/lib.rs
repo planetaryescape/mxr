@@ -185,10 +185,21 @@ pub async fn run() -> anyhow::Result<()> {
             }
         }
 
-        // Batch any queued body fetches. Current message fetches and window prefetches
-        // share the same path so all state transitions stay consistent.
-        if !app.mailbox.queued_body_fetches.is_empty() {
-            let ids = std::mem::take(&mut app.mailbox.queued_body_fetches);
+        // Batch body fetches, keeping the selected message ahead of window prefetches.
+        let body_fetch_ids = if !app.mailbox.priority_body_fetches.is_empty() {
+            let ids = std::mem::take(&mut app.mailbox.priority_body_fetches);
+            for id in &ids {
+                app.mailbox
+                    .queued_body_fetches
+                    .retain(|queued| queued != id);
+            }
+            Some(ids)
+        } else if !app.mailbox.queued_body_fetches.is_empty() {
+            Some(std::mem::take(&mut app.mailbox.queued_body_fetches))
+        } else {
+            None
+        };
+        if let Some(ids) = body_fetch_ids {
             let bg = bg.clone();
             let _ = submit_task(&queued, async move {
                 let requested = ids;
@@ -201,8 +212,8 @@ pub async fn run() -> anyhow::Result<()> {
                 .await;
                 let result = match resp {
                     Ok(Response::Ok {
-                        data: ResponseData::Bodies { bodies, .. },
-                    }) => Ok(bodies),
+                        data: ResponseData::Bodies { bodies, failures },
+                    }) => Ok((bodies, failures)),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
@@ -1272,20 +1283,11 @@ pub async fn run() -> anyhow::Result<()> {
                             app.mailbox.pending_active_label = None;
                             app.status_message = Some(format!("Label filter failed: {e}"));
                         }
-                        AsyncResult::Bodies { requested, result: Ok(bodies) } => {
-                            let mut returned = std::collections::HashSet::new();
-                            for body in bodies {
-                                returned.insert(body.message_id.clone());
-                                app.resolve_body_success(body);
-                            }
-                            for message_id in requested {
-                                if !returned.contains(&message_id) {
-                                    app.resolve_body_fetch_error(
-                                        &message_id,
-                                        "body not available".into(),
-                                    );
-                                }
-                            }
+                        AsyncResult::Bodies {
+                            requested,
+                            result: Ok((bodies, failures)),
+                        } => {
+                            app.resolve_body_batch(requested, bodies, failures);
                         }
                         AsyncResult::Bodies { requested, result: Err(e) } => {
                             let message = e.to_string();
@@ -1705,7 +1707,7 @@ mod tests {
     use mxr_core::id::*;
     use mxr_core::types::*;
     use mxr_core::MxrError;
-    use mxr_protocol::{DaemonEvent, LabelCount, MutationCommand, Request};
+    use mxr_protocol::{BodyFailure, DaemonEvent, LabelCount, MutationCommand, Request};
     use mxr_test_support::render_to_string;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::collections::VecDeque;
@@ -5878,8 +5880,9 @@ mod tests {
             BodyViewState::Loading { ref preview }
                 if preview.as_deref() == Some("Snippet 0")
         ));
+        assert!(app.mailbox.queued_body_fetches.is_empty());
         assert_eq!(
-            app.mailbox.queued_body_fetches,
+            app.mailbox.priority_body_fetches,
             vec![app.mailbox.envelopes[0].id.clone()]
         );
         assert!(app
@@ -6014,6 +6017,82 @@ mod tests {
                 if message == "boom" && preview.as_deref() == Some("Snippet 0")
         ));
         assert!(!app.mailbox.in_flight_body_requests.contains(&env.id));
+    }
+
+    #[test]
+    fn current_body_fetch_is_prioritized_even_when_prefetch_is_already_in_flight() {
+        let mut app = App::new();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        let env = app.mailbox.envelopes[0].clone();
+        app.mailbox.in_flight_body_requests.insert(env.id.clone());
+
+        app.apply(Action::OpenSelected);
+
+        assert_eq!(app.mailbox.priority_body_fetches, vec![env.id.clone()]);
+        assert!(matches!(
+            app.mailbox.body_view_state,
+            BodyViewState::Loading { ref preview }
+                if preview.as_deref() == Some("Snippet 0")
+        ));
+    }
+
+    #[test]
+    fn body_batch_uses_daemon_failure_message_for_missing_current_body() {
+        let mut app = App::new();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.apply(Action::OpenSelected);
+        let env = app.mailbox.envelopes[0].clone();
+
+        app.resolve_body_batch(
+            vec![env.id.clone()],
+            vec![],
+            vec![BodyFailure {
+                message_id: env.id.clone(),
+                error: "hydrate failed".into(),
+            }],
+        );
+
+        assert!(matches!(
+            app.mailbox.body_view_state,
+            BodyViewState::Error { ref message, ref preview }
+                if message == "hydrate failed" && preview.as_deref() == Some("Snippet 0")
+        ));
+        assert!(!app.mailbox.in_flight_body_requests.contains(&env.id));
+    }
+
+    #[test]
+    fn late_prefetch_failure_does_not_clobber_priority_body_success() {
+        let mut app = App::new();
+        app.mailbox.envelopes = make_test_envelopes(1);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+        app.apply(Action::OpenSelected);
+        let env = app.mailbox.envelopes[0].clone();
+
+        app.resolve_body_success(MessageBody {
+            message_id: env.id.clone(),
+            text_plain: Some("Loaded by priority request".into()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        });
+
+        app.resolve_body_batch(
+            vec![env.id.clone()],
+            vec![],
+            vec![BodyFailure {
+                message_id: env.id.clone(),
+                error: "late prefetch failed".into(),
+            }],
+        );
+
+        assert!(matches!(
+            app.mailbox.body_view_state,
+            BodyViewState::Ready { ref raw, .. }
+                if raw == "Loaded by priority request"
+        ));
     }
 
     #[test]

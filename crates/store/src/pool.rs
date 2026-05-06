@@ -58,26 +58,149 @@ impl Store {
     }
 
     async fn run_migrations(&self) -> Result<(), sqlx::Error> {
-        sqlx::raw_sql(include_str!("../migrations/001_initial.sql"))
-            .execute(&self.writer)
-            .await?;
-        self.add_column_if_missing(
-            "bodies",
-            "metadata_json",
-            "ALTER TABLE bodies ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'",
-        )
-        .await?;
-        sqlx::raw_sql(include_str!("../migrations/003_sync_runtime_status.sql"))
-            .execute(&self.writer)
-            .await?;
-        self.add_column_if_missing(
-            "saved_searches",
-            "search_mode",
-            "ALTER TABLE saved_searches ADD COLUMN search_mode TEXT NOT NULL DEFAULT '\"lexical\"'",
-        )
-        .await?;
+        // Bootstrap the version-tracking table itself. Done outside the
+        // version-tracked path so existing DBs (which may have all migrations
+        // applied but no version stamps) get a clean target to backfill into.
         sqlx::raw_sql(
-            r#"
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version    INTEGER PRIMARY KEY,
+                name       TEXT NOT NULL,
+                applied_at INTEGER NOT NULL
+            )",
+        )
+        .execute(&self.writer)
+        .await?;
+
+        for migration in MIGRATIONS {
+            self.apply_migration(migration).await?;
+        }
+
+        self.validate_schema().await?;
+        Ok(())
+    }
+
+    async fn apply_migration(&self, migration: &Migration) -> Result<(), sqlx::Error> {
+        if self.is_migration_applied(migration.version).await? {
+            return Ok(());
+        }
+
+        // The earlier draft wrapped each migration in a sqlx Transaction and
+        // ran column-exists checks against `&mut *tx`, but that propagated a
+        // higher-ranked Send bound through the daemon's request-handler future
+        // (server.rs:202 spawns into a tokio JoinSet and the bound poisoned
+        // unrelated handlers). Use the writer pool directly:
+        // `add_column_if_missing` is idempotent, every embedded SQL file uses
+        // `CREATE TABLE/INDEX IF NOT EXISTS`, and the schema_migrations stamp
+        // is the last write — a crash mid-migration causes the next run to
+        // re-apply the (idempotent) body and then stamp.
+        match migration.kind {
+            MigrationKind::Sql(sql) => {
+                sqlx::raw_sql(sql).execute(&self.writer).await?;
+            }
+            MigrationKind::AddColumn { table, column, sql } => {
+                self.add_column_if_missing(table, column, sql).await?;
+            }
+            MigrationKind::Composite(steps) => {
+                for step in steps.iter() {
+                    match step {
+                        MigrationStep::Sql(sql) => {
+                            sqlx::raw_sql(sql).execute(&self.writer).await?;
+                        }
+                        MigrationStep::AddColumn { table, column, sql } => {
+                            self.add_column_if_missing(table, column, sql).await?;
+                        }
+                    }
+                }
+            }
+        }
+
+        let applied_at = chrono::Utc::now().timestamp();
+        sqlx::query("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)")
+            .bind(migration.version as i64)
+            .bind(migration.name)
+            .bind(applied_at)
+            .execute(&self.writer)
+            .await?;
+        Ok(())
+    }
+
+    async fn add_column_if_missing(
+        &self,
+        table: &str,
+        column: &str,
+        sql: &str,
+    ) -> Result<(), sqlx::Error> {
+        if !self.column_exists(table, column).await? {
+            sqlx::raw_sql(sql).execute(&self.writer).await?;
+        }
+        Ok(())
+    }
+
+    async fn is_migration_applied(&self, version: u32) -> Result<bool, sqlx::Error> {
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT version FROM schema_migrations WHERE version = ?")
+                .bind(version as i64)
+                .fetch_optional(&self.writer)
+                .await?;
+        Ok(row.is_some())
+    }
+
+    async fn column_exists(&self, table: &str, column: &str) -> Result<bool, sqlx::Error> {
+        let query = format!("PRAGMA table_info({table})");
+        let rows = sqlx::query_as::<_, (i64, String, String, i64, Option<String>, i64)>(&query)
+            .fetch_all(&self.writer)
+            .await?;
+        Ok(rows.iter().any(|(_, name, _, _, _, _)| name == column))
+    }
+
+    async fn validate_schema(&self) -> Result<(), sqlx::Error> {
+        for (table, columns) in REQUIRED_COLUMNS {
+            for column in *columns {
+                if !self.column_exists(table, column).await? {
+                    return Err(sqlx::Error::Protocol(format!(
+                        "store schema is missing required column {table}.{column}"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn writer(&self) -> &SqlitePool {
+        &self.writer
+    }
+
+    pub fn reader(&self) -> &SqlitePool {
+        &self.reader
+    }
+}
+
+struct Migration {
+    version: u32,
+    name: &'static str,
+    kind: MigrationKind,
+}
+
+enum MigrationKind {
+    Sql(&'static str),
+    AddColumn {
+        table: &'static str,
+        column: &'static str,
+        sql: &'static str,
+    },
+    Composite(&'static [MigrationStep]),
+}
+
+enum MigrationStep {
+    Sql(&'static str),
+    AddColumn {
+        table: &'static str,
+        column: &'static str,
+        sql: &'static str,
+    },
+}
+
+const SEMANTIC_SEARCH_SQL: &str = r#"
 CREATE TABLE IF NOT EXISTS semantic_profiles (
     id                 TEXT PRIMARY KEY,
     profile_name       TEXT NOT NULL UNIQUE,
@@ -121,152 +244,158 @@ CREATE TABLE IF NOT EXISTS semantic_embeddings (
 
 CREATE INDEX IF NOT EXISTS idx_semantic_embeddings_profile_id
     ON semantic_embeddings(profile_id);
-"#,
-        )
-        .execute(&self.writer)
-        .await?;
-        self.add_column_if_missing(
-            "attachments",
-            "disposition",
-            "ALTER TABLE attachments ADD COLUMN disposition TEXT NOT NULL DEFAULT 'unspecified'",
-        )
-        .await?;
-        self.add_column_if_missing(
-            "attachments",
-            "content_id",
-            "ALTER TABLE attachments ADD COLUMN content_id TEXT",
-        )
-        .await?;
-        self.add_column_if_missing(
-            "attachments",
-            "content_location",
-            "ALTER TABLE attachments ADD COLUMN content_location TEXT",
-        )
-        .await?;
-        sqlx::raw_sql(
-            "CREATE INDEX IF NOT EXISTS idx_attachments_content_id ON attachments(content_id)",
-        )
-        .execute(&self.writer)
-        .await?;
-        sqlx::raw_sql(include_str!("../migrations/006_message_events.sql"))
-            .execute(&self.writer)
-            .await?;
-        self.add_column_if_missing(
-            "messages",
-            "direction",
-            "ALTER TABLE messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'unknown' \
-             CHECK (direction IN ('inbound', 'outbound', 'unknown'))",
-        )
-        .await?;
-        self.add_column_if_missing(
-            "messages",
-            "list_id",
-            "ALTER TABLE messages ADD COLUMN list_id TEXT",
-        )
-        .await?;
-        self.add_column_if_missing(
-            "messages",
-            "body_word_count",
-            "ALTER TABLE messages ADD COLUMN body_word_count INTEGER",
-        )
-        .await?;
-        self.add_column_if_missing(
-            "messages",
-            "body_quoted_lines",
-            "ALTER TABLE messages ADD COLUMN body_quoted_lines INTEGER",
-        )
-        .await?;
-        sqlx::raw_sql(
-            "CREATE INDEX IF NOT EXISTS idx_messages_account_direction_date \
-             ON messages(account_id, direction, date DESC); \
-             CREATE INDEX IF NOT EXISTS idx_messages_list_id \
-             ON messages(list_id) WHERE list_id IS NOT NULL; \
-             CREATE INDEX IF NOT EXISTS idx_messages_from_date \
-             ON messages(from_email, date DESC); \
-             CREATE INDEX IF NOT EXISTS idx_attachments_mime \
-             ON attachments(mime_type)",
-        )
-        .execute(&self.writer)
-        .await?;
-        sqlx::raw_sql(include_str!("../migrations/008_account_addresses.sql"))
-            .execute(&self.writer)
-            .await?;
-        sqlx::raw_sql(include_str!("../migrations/009_reply_pairs.sql"))
-            .execute(&self.writer)
-            .await?;
-        sqlx::raw_sql(include_str!("../migrations/010_contacts.sql"))
-            .execute(&self.writer)
-            .await?;
-        self.add_column_if_missing(
-            "drafts",
-            "status",
-            "ALTER TABLE drafts ADD COLUMN status TEXT NOT NULL DEFAULT 'draft' \
-             CHECK (status IN ('draft', 'sending', 'sent'))",
-        )
-        .await?;
-        self.add_column_if_missing(
-            "drafts",
-            "status_updated_at",
-            "ALTER TABLE drafts ADD COLUMN status_updated_at INTEGER",
-        )
-        .await?;
-        self.add_column_if_missing(
-            "drafts",
-            "message_id_header",
-            "ALTER TABLE drafts ADD COLUMN message_id_header TEXT",
-        )
-        .await?;
-        sqlx::raw_sql("CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(account_id, status)")
-            .execute(&self.writer)
-            .await?;
-        sqlx::raw_sql(include_str!("../migrations/012_mutation_undo_log.sql"))
-            .execute(&self.writer)
-            .await?;
-        self.validate_schema().await?;
-        Ok(())
-    }
+"#;
 
-    async fn add_column_if_missing(
-        &self,
-        table: &str,
-        column: &str,
-        sql: &str,
-    ) -> Result<(), sqlx::Error> {
-        if !self.column_exists(table, column).await? {
-            sqlx::raw_sql(sql).execute(&self.writer).await?;
-        }
-        Ok(())
-    }
+const ATTACHMENTS_INLINE_METADATA_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumn {
+        table: "attachments",
+        column: "disposition",
+        sql: "ALTER TABLE attachments ADD COLUMN disposition TEXT NOT NULL DEFAULT 'unspecified'",
+    },
+    MigrationStep::AddColumn {
+        table: "attachments",
+        column: "content_id",
+        sql: "ALTER TABLE attachments ADD COLUMN content_id TEXT",
+    },
+    MigrationStep::AddColumn {
+        table: "attachments",
+        column: "content_location",
+        sql: "ALTER TABLE attachments ADD COLUMN content_location TEXT",
+    },
+    MigrationStep::Sql(
+        "CREATE INDEX IF NOT EXISTS idx_attachments_content_id ON attachments(content_id)",
+    ),
+];
 
-    async fn column_exists(&self, table: &str, column: &str) -> Result<bool, sqlx::Error> {
-        let query = format!("PRAGMA table_info({table})");
-        let rows = sqlx::query_as::<_, (i64, String, String, i64, Option<String>, i64)>(&query)
-            .fetch_all(&self.writer)
-            .await?;
-        Ok(rows.iter().any(|(_, name, _, _, _, _)| name == column))
-    }
+const MESSAGE_ANALYTICS_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumn {
+        table: "messages",
+        column: "direction",
+        sql: "ALTER TABLE messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'unknown' \
+              CHECK (direction IN ('inbound', 'outbound', 'unknown'))",
+    },
+    MigrationStep::AddColumn {
+        table: "messages",
+        column: "list_id",
+        sql: "ALTER TABLE messages ADD COLUMN list_id TEXT",
+    },
+    MigrationStep::AddColumn {
+        table: "messages",
+        column: "body_word_count",
+        sql: "ALTER TABLE messages ADD COLUMN body_word_count INTEGER",
+    },
+    MigrationStep::AddColumn {
+        table: "messages",
+        column: "body_quoted_lines",
+        sql: "ALTER TABLE messages ADD COLUMN body_quoted_lines INTEGER",
+    },
+    MigrationStep::Sql(
+        "CREATE INDEX IF NOT EXISTS idx_messages_account_direction_date \
+         ON messages(account_id, direction, date DESC); \
+         CREATE INDEX IF NOT EXISTS idx_messages_list_id \
+         ON messages(list_id) WHERE list_id IS NOT NULL; \
+         CREATE INDEX IF NOT EXISTS idx_messages_from_date \
+         ON messages(from_email, date DESC); \
+         CREATE INDEX IF NOT EXISTS idx_attachments_mime \
+         ON attachments(mime_type)",
+    ),
+];
 
-    async fn validate_schema(&self) -> Result<(), sqlx::Error> {
-        for (table, columns) in REQUIRED_COLUMNS {
-            for column in *columns {
-                if !self.column_exists(table, column).await? {
-                    return Err(sqlx::Error::Protocol(format!(
-                        "store schema is missing required column {table}.{column}"
-                    )));
-                }
-            }
-        }
-        Ok(())
-    }
+const DRAFT_STATUS_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumn {
+        table: "drafts",
+        column: "status",
+        sql: "ALTER TABLE drafts ADD COLUMN status TEXT NOT NULL DEFAULT 'draft' \
+              CHECK (status IN ('draft', 'sending', 'sent'))",
+    },
+    MigrationStep::AddColumn {
+        table: "drafts",
+        column: "status_updated_at",
+        sql: "ALTER TABLE drafts ADD COLUMN status_updated_at INTEGER",
+    },
+    MigrationStep::AddColumn {
+        table: "drafts",
+        column: "message_id_header",
+        sql: "ALTER TABLE drafts ADD COLUMN message_id_header TEXT",
+    },
+    MigrationStep::Sql(
+        "CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(account_id, status)",
+    ),
+];
 
-    pub fn writer(&self) -> &SqlitePool {
-        &self.writer
-    }
-
-    pub fn reader(&self) -> &SqlitePool {
-        &self.reader
-    }
-}
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial",
+        kind: MigrationKind::Sql(include_str!("../migrations/001_initial.sql")),
+    },
+    Migration {
+        version: 2,
+        name: "body_metadata",
+        kind: MigrationKind::AddColumn {
+            table: "bodies",
+            column: "metadata_json",
+            sql: "ALTER TABLE bodies ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'",
+        },
+    },
+    Migration {
+        version: 3,
+        name: "sync_runtime_status",
+        kind: MigrationKind::Sql(include_str!("../migrations/003_sync_runtime_status.sql")),
+    },
+    Migration {
+        version: 4,
+        name: "semantic_search",
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn {
+                table: "saved_searches",
+                column: "search_mode",
+                sql: "ALTER TABLE saved_searches ADD COLUMN search_mode TEXT NOT NULL DEFAULT '\"lexical\"'",
+            },
+            MigrationStep::Sql(SEMANTIC_SEARCH_SQL),
+        ]),
+    },
+    Migration {
+        version: 5,
+        name: "inline_attachment_metadata",
+        kind: MigrationKind::Composite(ATTACHMENTS_INLINE_METADATA_STEPS),
+    },
+    Migration {
+        version: 6,
+        name: "message_events",
+        kind: MigrationKind::Sql(include_str!("../migrations/006_message_events.sql")),
+    },
+    Migration {
+        version: 7,
+        name: "message_analytics_columns",
+        kind: MigrationKind::Composite(MESSAGE_ANALYTICS_STEPS),
+    },
+    Migration {
+        version: 8,
+        name: "account_addresses",
+        kind: MigrationKind::Sql(include_str!("../migrations/008_account_addresses.sql")),
+    },
+    Migration {
+        version: 9,
+        name: "reply_pairs",
+        kind: MigrationKind::Sql(include_str!("../migrations/009_reply_pairs.sql")),
+    },
+    Migration {
+        version: 10,
+        name: "contacts",
+        kind: MigrationKind::Sql(include_str!("../migrations/010_contacts.sql")),
+    },
+    Migration {
+        version: 11,
+        name: "draft_status",
+        kind: MigrationKind::Composite(DRAFT_STATUS_STEPS),
+    },
+    Migration {
+        version: 12,
+        name: "mutation_undo_log",
+        kind: MigrationKind::Sql(include_str!("../migrations/012_mutation_undo_log.sql")),
+    },
+];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     (
@@ -417,5 +546,82 @@ mod tests {
             error.to_string().contains("bodies.text_plain"),
             "expected missing column error, got {error}"
         );
+    }
+
+    #[tokio::test]
+    async fn fresh_store_records_all_migration_versions() {
+        let store = Store::in_memory().await.unwrap();
+        let rows: Vec<(i64, String)> =
+            sqlx::query_as("SELECT version, name FROM schema_migrations ORDER BY version")
+                .fetch_all(store.writer())
+                .await
+                .unwrap();
+        assert_eq!(rows.len(), super::MIGRATIONS.len());
+        for (i, (version, name)) in rows.iter().enumerate() {
+            let expected = &super::MIGRATIONS[i];
+            assert_eq!(*version, expected.version as i64);
+            assert_eq!(name, expected.name);
+        }
+    }
+
+    #[tokio::test]
+    async fn re_running_migrations_is_idempotent() {
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("idem.db");
+
+        {
+            let store = Store::new(&db_path).await.unwrap();
+            drop(store);
+        }
+
+        let store = Store::new(&db_path).await.unwrap();
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM schema_migrations")
+            .fetch_one(store.writer())
+            .await
+            .unwrap();
+        assert_eq!(count.0 as usize, super::MIGRATIONS.len());
+    }
+
+    #[tokio::test]
+    async fn pre_versioning_db_is_backfilled_into_schema_migrations() {
+        // Simulates a user who ran an older daemon that applied every migration
+        // imperatively without recording versions. On next launch the new code
+        // must stamp every migration row without re-running any migration body
+        // (because all `CREATE TABLE IF NOT EXISTS` / column-exists checks pass).
+        let temp = tempdir().unwrap();
+        let db_path = temp.path().join("legacy.db");
+
+        // First open: produces a fully-migrated DB.
+        {
+            let store = Store::new(&db_path).await.unwrap();
+            drop(store);
+        }
+
+        // Erase the version stamps to simulate a pre-versioning install.
+        {
+            let url = format!("sqlite:{}", db_path.display());
+            let opts = SqliteConnectOptions::from_str(&url)
+                .unwrap()
+                .create_if_missing(false);
+            let pool = SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(opts)
+                .await
+                .unwrap();
+            sqlx::query("DELETE FROM schema_migrations")
+                .execute(&pool)
+                .await
+                .unwrap();
+            pool.close().await;
+        }
+
+        // Re-open: should backfill cleanly without complaints.
+        let store = Store::new(&db_path).await.unwrap();
+        let rows: Vec<(i64,)> =
+            sqlx::query_as("SELECT version FROM schema_migrations ORDER BY version")
+                .fetch_all(store.writer())
+                .await
+                .unwrap();
+        assert_eq!(rows.len(), super::MIGRATIONS.len());
     }
 }

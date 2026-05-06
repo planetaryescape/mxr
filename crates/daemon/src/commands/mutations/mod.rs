@@ -402,11 +402,7 @@ pub async fn snooze(
     Ok(())
 }
 
-pub async fn unsnooze(
-    message_id: Option<String>,
-    all: bool,
-    dry_run: bool,
-) -> anyhow::Result<()> {
+pub async fn unsnooze(message_id: Option<String>, all: bool, dry_run: bool) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     if all {
         let resp = client.request(Request::ListSnoozed).await?;
@@ -419,10 +415,7 @@ pub async fn unsnooze(
                     return Ok(());
                 }
                 if dry_run {
-                    println!(
-                        "DRY-RUN — would unsnooze {} message(s):",
-                        snoozed.len()
-                    );
+                    println!("DRY-RUN — would unsnooze {} message(s):", snoozed.len());
                     for s in &snoozed {
                         println!("  {} (wakes {})", s.message_id, s.wake_at.to_rfc3339());
                     }

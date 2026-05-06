@@ -131,11 +131,7 @@ impl TokenStorage for KeychainTokenStorage {
             .iter()
             .find(|stored| {
                 stored.scopes.len() == scopes.len()
-                    && stored
-                        .scopes
-                        .iter()
-                        .zip(scopes.iter())
-                        .all(|(a, b)| a == b)
+                    && stored.scopes.iter().zip(scopes.iter()).all(|(a, b)| a == b)
             })
             .map(|stored| stored.token.clone())
     }

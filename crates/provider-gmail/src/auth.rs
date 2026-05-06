@@ -213,8 +213,7 @@ impl GmailAuth {
 
         match flow {
             AuthFlow::Installed => {
-                let storage =
-                    KeychainTokenStorage::new(self.token_ref.clone(), token_path.clone());
+                let storage = KeychainTokenStorage::new(self.token_ref.clone(), token_path.clone());
                 let mut builder = InstalledFlowAuthenticator::builder(
                     secret,
                     InstalledFlowReturnMethod::HTTPRedirect,
@@ -248,8 +247,7 @@ impl GmailAuth {
                 }));
             }
             AuthFlow::Device => {
-                let storage =
-                    KeychainTokenStorage::new(self.token_ref.clone(), token_path.clone());
+                let storage = KeychainTokenStorage::new(self.token_ref.clone(), token_path.clone());
                 let mut builder =
                     DeviceFlowAuthenticator::builder(secret).with_storage(Box::new(storage));
                 if let Some(delegate) = device_delegate {
@@ -289,10 +287,11 @@ impl GmailAuth {
         // Either the keychain entry or the legacy on-disk cache must exist.
         // The keychain check is fast enough (one OS call) that it's fine in
         // the common case even when nothing is stored.
-        let has_keychain_entry = keyring::Entry::new(crate::auth_storage::KEYCHAIN_SERVICE, &self.token_ref)
-            .ok()
-            .and_then(|e| e.get_password().ok())
-            .is_some();
+        let has_keychain_entry =
+            keyring::Entry::new(crate::auth_storage::KEYCHAIN_SERVICE, &self.token_ref)
+                .ok()
+                .and_then(|e| e.get_password().ok())
+                .is_some();
         if !has_keychain_entry && !token_path.exists() {
             return Err(AuthError::TokenExpired);
         }

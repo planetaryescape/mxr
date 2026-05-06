@@ -463,7 +463,11 @@ mod tests {
         };
         store.upsert_label(&label).await.unwrap();
         store
-            .set_message_labels(&legacy_id, std::slice::from_ref(&label.id), EventSource::Sync)
+            .set_message_labels(
+                &legacy_id,
+                std::slice::from_ref(&label.id),
+                EventSource::Sync,
+            )
             .await
             .unwrap();
 

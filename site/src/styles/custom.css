@@ -205,6 +205,49 @@ body {
 
 [data-page-title] .hero .action svg { display: none; }
 
+/* Docs-nav strip — under the hero, above the bullet marquee.
+   Surfaces the actual documentation routes that the splash
+   template otherwise hides. Same typographic register as section
+   headers so it reads as part of the page rather than chrome.
+   Horizontally scrollable on narrow screens. */
+.docs-nav {
+  max-width: 84rem;
+  margin: 0 auto;
+  padding: 0.85rem clamp(1.25rem, 4vw, 4rem);
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.docs-nav::-webkit-scrollbar { display: none; }
+
+.docs-nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  white-space: nowrap;
+}
+
+.docs-nav a {
+  color: var(--paper);
+  text-decoration: none;
+  border: none;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+
+.docs-nav a:hover { color: var(--signal); }
+
+.docs-nav-sep {
+  color: var(--paper-faint);
+  font-size: 0.62rem;
+}
+
 /* Bullet-rhythm strip directly under the hero. Repeating provider
    names form a visual texture and tell the user, at a glance, what
    mxr connects to. Direct steal from the nyx repeating-pattern

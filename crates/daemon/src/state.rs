@@ -137,6 +137,27 @@ impl RuntimeTasks {
     }
 }
 
+/// Key for the in-memory `Wrapped` summary cache. Disambiguates by
+/// account scope (`None` = "all accounts"), the requested time
+/// window in unix seconds, and the human label (so "year-to-date"
+/// and "year=2026" don't collide when the dates happen to align).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct WrappedCacheKey {
+    pub account_id: Option<AccountId>,
+    pub since_unix: i64,
+    pub until_unix: i64,
+    pub label: String,
+}
+
+/// TTL for the daemon-side `Wrapped` summary cache. Wrapped runs
+/// ~10 SQL queries per call; this lets repeated requests within a
+/// short window (e.g. the user toggling between analytics tabs in
+/// the TUI before the client cache settles, or an automation
+/// loop) reuse the prior result instead of re-running the queries.
+/// Sync completion does NOT proactively invalidate; entries
+/// naturally roll over within `WRAPPED_CACHE_TTL`.
+const WRAPPED_CACHE_TTL: Duration = Duration::from_secs(60);
+
 pub struct AppState {
     pub store: Arc<Store>,
     pub search: SearchServiceHandle,
@@ -160,6 +181,9 @@ pub struct AppState {
     idle_notifies: ParkingMutex<HashMap<AccountId, Arc<Notify>>>,
     pub event_tx: broadcast::Sender<IpcMessage>,
     pub start_time: Instant,
+    /// 60s in-memory cache for `Wrapped` summaries. See
+    /// `WrappedCacheKey` and `WRAPPED_CACHE_TTL` above.
+    wrapped_cache: ParkingMutex<HashMap<WrappedCacheKey, (Instant, Arc<types::WrappedSummary>)>>,
     /// Set on the first successful sync after daemon start when the
     /// one-shot heavy analytics repair (reply_pairs backfill from
     /// existing messages) has run. Subsequent syncs only run the
@@ -243,6 +267,7 @@ impl AppState {
             idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
             start_time: Instant::now(),
+            wrapped_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
@@ -566,6 +591,34 @@ impl AppState {
 
     pub fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
+    }
+
+    /// Look up a cached `Wrapped` summary if one was computed within
+    /// `WRAPPED_CACHE_TTL`. Returns `None` on miss or expiry; expired
+    /// entries are evicted lazily on the next miss for that key.
+    pub(crate) fn wrapped_cache_get(
+        &self,
+        key: &WrappedCacheKey,
+    ) -> Option<Arc<types::WrappedSummary>> {
+        let mut cache = self.wrapped_cache.lock();
+        if let Some((stored_at, summary)) = cache.get(key) {
+            if stored_at.elapsed() < WRAPPED_CACHE_TTL {
+                return Some(summary.clone());
+            }
+            // Stale — drop while we hold the lock.
+            cache.remove(key);
+        }
+        None
+    }
+
+    /// Insert a freshly-computed `Wrapped` summary into the cache.
+    pub(crate) fn wrapped_cache_put(
+        &self,
+        key: WrappedCacheKey,
+        summary: Arc<types::WrappedSummary>,
+    ) {
+        let mut cache = self.wrapped_cache.lock();
+        cache.insert(key, (Instant::now(), summary));
     }
 
     pub fn config_snapshot(&self) -> mxr_config::MxrConfig {
@@ -914,6 +967,7 @@ impl AppState {
             idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
             start_time: Instant::now(),
+            wrapped_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
@@ -959,6 +1013,7 @@ impl AppState {
             idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
             start_time: Instant::now(),
+            wrapped_cache: ParkingMutex::new(HashMap::new()),
             analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
@@ -1030,6 +1085,7 @@ impl AppState {
                 idle_notifies: ParkingMutex::new(HashMap::new()),
                 event_tx,
                 start_time: Instant::now(),
+                wrapped_cache: ParkingMutex::new(HashMap::new()),
                 analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 config: RwLock::new(config),
                 shutdown_tx,

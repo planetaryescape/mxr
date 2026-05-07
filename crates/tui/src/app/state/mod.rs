@@ -10,7 +10,10 @@ mod search;
 
 pub(in crate::app) use accounts::AccountFormToggleField;
 pub use accounts::{AccountFormMode, AccountFormState, AccountsPageState, AccountsState};
-pub use analytics::{AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow};
+pub use analytics::{
+    AnalyticsCacheKey, AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow,
+    ANALYTICS_CACHE_TTL,
+};
 pub use command_palette::CommandPaletteState;
 pub use compose::{ComposeAction, ComposeState, PendingSend, PendingSendMode};
 pub use diagnostics::{DiagnosticsPageState, DiagnosticsPaneKind, DiagnosticsState};

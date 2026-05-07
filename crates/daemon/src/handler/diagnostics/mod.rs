@@ -254,11 +254,23 @@ pub(crate) async fn wrapped(
     let resolved = account_id
         .cloned()
         .or_else(|| state.default_account_id_opt());
+    let cache_key = crate::state::WrappedCacheKey {
+        account_id: resolved.clone(),
+        since_unix,
+        until_unix,
+        label: label.to_string(),
+    };
+    if let Some(cached) = state.wrapped_cache_get(&cache_key) {
+        return Ok(ResponseData::Wrapped {
+            summary: (*cached).clone(),
+        });
+    }
     let summary = state
         .store
         .wrapped_summary(resolved.as_ref(), since_unix, until_unix, label)
         .await
         .map_err(|e| e.to_string())?;
+    state.wrapped_cache_put(cache_key, std::sync::Arc::new(summary.clone()));
     Ok(ResponseData::Wrapped { summary })
 }
 

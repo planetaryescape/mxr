@@ -937,10 +937,7 @@ pub async fn run() -> anyhow::Result<()> {
                     }
                     Ok(Response::Ok {
                         data: ResponseData::MutationResult { result },
-                    }) => Err(MxrError::Ipc(format!(
-                        "mutation skipped {} message(s)",
-                        result.skipped
-                    ))),
+                    }) => Err(MxrError::Ipc(format_mutation_failure(&result))),
                     Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
@@ -1558,6 +1555,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 continue;
                             }
                             app.analytics.loading = false;
+                            let was_ok = result.is_ok();
                             match result {
                                 Ok(crate::async_result::AnalyticsResultPayload::Storage(rows)) => {
                                     app.analytics.storage_rows = rows;
@@ -1617,6 +1615,9 @@ pub async fn run() -> anyhow::Result<()> {
                                     ));
                                 }
                             }
+                            if was_ok {
+                                app.analytics.mark_refreshed();
+                            }
                         }
                         other => {
                             let Some(other) = handle_local_io_result(&mut app, other) else {
@@ -1663,6 +1664,24 @@ fn mutation_verb_past(req: &Request) -> &'static str {
         }
     } else {
         "Done"
+    }
+}
+
+/// Render a no-success mutation result as something the user can act on.
+/// Joining the per-account error strings is the difference between
+/// "mutation skipped 1 message(s)" (useless) and "pool timed out while
+/// waiting for an open connection" (a real lead).
+fn format_mutation_failure(result: &mxr_protocol::MutationResultData) -> String {
+    let errors: Vec<&str> = result
+        .accounts
+        .iter()
+        .filter_map(|account| account.error.as_deref())
+        .collect();
+    let header = format!("mutation skipped {} message(s)", result.skipped);
+    if errors.is_empty() {
+        header
+    } else {
+        format!("{header}: {}", errors.join("; "))
     }
 }
 
@@ -3468,6 +3487,64 @@ mod tests {
             app.pending_mutation_status.as_deref(),
             Some("Marking 3 messages as read and archiving...")
         );
+    }
+
+    /// `format_mutation_failure` is what the runtime surfaces to the
+    /// user when the daemon returns 0 succeeded with skipped > 0.
+    /// Locks down two behaviors:
+    ///  - when no per-account error is set, it falls back to the
+    ///    skipped-count summary (the previous all-the-time behavior);
+    ///  - when per-account errors are present, they are joined onto
+    ///    the summary so the user sees the real cause (e.g. pool
+    ///    timeout) instead of a meaningless "skipped 1 message(s)".
+    #[test]
+    fn format_mutation_failure_joins_per_account_errors() {
+        use super::format_mutation_failure;
+        use mxr_core::id::AccountId;
+        use mxr_protocol::{AccountMutationResultData, MutationResultData};
+
+        let bare = MutationResultData {
+            requested: 1,
+            succeeded: 0,
+            skipped: 1,
+            failed: 0,
+            accounts: vec![AccountMutationResultData {
+                account_id: AccountId::new(),
+                account_name: "primary".into(),
+                succeeded: 0,
+                skipped: 1,
+                failed: 0,
+                error: None,
+            }],
+            mutation_id: None,
+        };
+        assert_eq!(format_mutation_failure(&bare), "mutation skipped 1 message(s)");
+
+        let with_error = MutationResultData {
+            accounts: vec![
+                AccountMutationResultData {
+                    account_id: AccountId::new(),
+                    account_name: "primary".into(),
+                    succeeded: 0,
+                    skipped: 1,
+                    failed: 0,
+                    error: Some("pool timed out while waiting for an open connection".into()),
+                },
+                AccountMutationResultData {
+                    account_id: AccountId::new(),
+                    account_name: "secondary".into(),
+                    succeeded: 0,
+                    skipped: 1,
+                    failed: 0,
+                    error: Some("disk I/O error".into()),
+                },
+            ],
+            ..bare
+        };
+        let formatted = format_mutation_failure(&with_error);
+        assert!(formatted.starts_with("mutation skipped 1 message(s):"));
+        assert!(formatted.contains("pool timed out"));
+        assert!(formatted.contains("disk I/O error"));
     }
 
     #[test]
@@ -7857,6 +7934,40 @@ mod tests {
             app.analytics.refresh_pending,
             "tab 6 must mark refresh_pending so the dispatcher fires the active analytics request"
         );
+    }
+
+    /// Opening a message in Mailbox arms a delayed auto-mark-read
+    /// timer; switching screens away from Mailbox must cancel it so
+    /// the SetRead doesn't fire while the user is on a different
+    /// screen. All non-Mailbox screen openers do this; Analytics used
+    /// to be the exception, which surfaced as a "Mutation Failed"
+    /// modal in Analytics tab 6 whenever the daemon's pool was busy
+    /// enough to time out the late SetRead.
+    #[test]
+    fn opening_analytics_cancels_pending_preview_read() {
+        use crate::action::Action;
+        use crate::app::AnalyticsView;
+
+        for opener in [
+            Action::OpenAnalyticsScreen,
+            Action::OpenTab6,
+            Action::OpenAnalyticsView(AnalyticsView::Subscriptions),
+        ] {
+            let mut app = App::new();
+            app.mailbox.envelopes = make_test_envelopes(1);
+            app.mailbox.envelopes[0].flags = MessageFlags::empty();
+            app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+            app.apply(Action::OpenSelected);
+
+            app.apply(opener.clone());
+
+            app.expire_pending_preview_read_for_tests();
+            app.tick();
+            assert!(
+                app.pending_mutation_queue.is_empty(),
+                "{opener:?}: no SetRead mutation should fire after navigating to Analytics"
+            );
+        }
     }
 
     /// Slice 1 / B1.2: the top tab bar must include `"6 Analytics"`

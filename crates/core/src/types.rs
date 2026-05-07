@@ -410,6 +410,25 @@ pub struct WrappedTimePatterns {
     /// The single calendar day with the most activity, and its count.
     pub busiest_date: Option<DateTime<Utc>>,
     pub busiest_date_count: u32,
+    /// Per-hour message counts (UTC), indexed 0..=23. Powers the
+    /// hour-of-day chart in the TUI Wrapped view.
+    /// `#[serde(default)]` keeps older daemons compatible.
+    #[serde(default = "default_hour_distribution")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<u32>))]
+    pub hour_distribution: [u32; 24],
+    /// Per-day-of-week message counts. Index 0 = Monday … 6 = Sunday.
+    /// `#[serde(default)]` keeps older daemons compatible.
+    #[serde(default = "default_day_of_week_distribution")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<u32>))]
+    pub day_of_week_distribution: [u32; 7],
+}
+
+fn default_hour_distribution() -> [u32; 24] {
+    [0; 24]
+}
+
+fn default_day_of_week_distribution() -> [u32; 7] {
+    [0; 7]
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -524,9 +543,42 @@ pub struct ResponseTimeSummary {
     pub clock_p90_seconds: u32,
     pub business_hours_p50_seconds: Option<u32>,
     pub business_hours_p90_seconds: Option<u32>,
+    /// Distribution of clock latencies (seconds) bucketed for the
+    /// histogram view in the TUI / future CLI surface. Ordered from
+    /// shortest to longest by `upper_bound_seconds`. `#[serde(default)]`
+    /// so older daemons returning the previous payload deserialize
+    /// cleanly during a rolling upgrade.
+    #[serde(default)]
+    pub histogram: Vec<ResponseTimeBucket>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// A single bucket of the response-time histogram. `count` rows had a
+/// clock latency in `(prev_upper, upper_bound_seconds]`. The last
+/// bucket uses `u32::MAX` as `upper_bound_seconds` to mean "no upper
+/// limit".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ResponseTimeBucket {
+    pub upper_bound_seconds: u32,
+    pub count: u32,
+}
+
+/// Fixed bucket edges for the response-time histogram. Tuned for
+/// email reply latency: <1m, <5m, <30m, <1h, <6h, <1d, <3d, ≥3d.
+/// Edges are exclusive upper bounds; the final bucket uses
+/// `u32::MAX` to capture everything ≥ 3 days.
+pub const RESPONSE_TIME_HISTOGRAM_EDGES: [u32; 8] = [
+    60,
+    300,
+    1800,
+    3600,
+    21_600,
+    86_400,
+    259_200,
+    u32::MAX,
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseTimeDirection {
@@ -604,7 +656,7 @@ pub struct StaleThreadRow {
     pub days_stale: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum StaleBallInCourt {
@@ -635,7 +687,7 @@ pub struct StorageBucket {
     pub count: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum StorageGroupBy {

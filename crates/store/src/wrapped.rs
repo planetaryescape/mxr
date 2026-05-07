@@ -95,38 +95,67 @@ impl super::Store {
         since: i64,
         until: i64,
     ) -> Result<WrappedTimePatterns, sqlx::Error> {
-        // Day-of-week: SQLite returns 0=Sun..6=Sat from strftime('%w', ...).
-        let dow: Option<(i64, i64)> = sqlx::query_as(
+        // Full DOW distribution (up to 7 rows). SQLite's strftime('%w')
+        // returns 0=Sunday..6=Saturday; the public `day_of_week_distribution`
+        // array uses 0=Monday..6=Sunday, so remap by `(sqlite_dow + 6) % 7`.
+        let dow_rows: Vec<(i64, i64)> = sqlx::query_as(
             r#"SELECT CAST(strftime('%w', date, 'unixepoch') AS INTEGER) AS dow,
                       COUNT(*) AS c
                FROM messages
                WHERE (?1 IS NULL OR account_id = ?1)
                  AND date >= ?2 AND date <= ?3
-               GROUP BY dow
-               ORDER BY c DESC, dow ASC
-               LIMIT 1"#,
+               GROUP BY dow"#,
         )
         .bind(acct)
         .bind(since)
         .bind(until)
-        .fetch_optional(self.reader())
+        .fetch_all(self.reader())
         .await?;
 
-        let hour: Option<(i64, i64)> = sqlx::query_as(
+        let mut day_of_week_distribution = [0u32; 7];
+        let mut busiest_dow_sqlite: Option<i64> = None;
+        let mut busiest_dow_count: u32 = 0;
+        for (sqlite_dow, count) in &dow_rows {
+            let idx = (((*sqlite_dow).rem_euclid(7) + 6) % 7) as usize;
+            let count_u32 = (*count).max(0) as u32;
+            day_of_week_distribution[idx] = count_u32;
+            if count_u32 > busiest_dow_count
+                || (count_u32 == busiest_dow_count && busiest_dow_sqlite.is_none())
+            {
+                busiest_dow_count = count_u32;
+                busiest_dow_sqlite = Some(*sqlite_dow);
+            }
+        }
+
+        // Full hour distribution (up to 24 rows).
+        let hour_rows: Vec<(i64, i64)> = sqlx::query_as(
             r#"SELECT CAST(strftime('%H', date, 'unixepoch') AS INTEGER) AS hr,
                       COUNT(*) AS c
                FROM messages
                WHERE (?1 IS NULL OR account_id = ?1)
                  AND date >= ?2 AND date <= ?3
-               GROUP BY hr
-               ORDER BY c DESC, hr ASC
-               LIMIT 1"#,
+               GROUP BY hr"#,
         )
         .bind(acct)
         .bind(since)
         .bind(until)
-        .fetch_optional(self.reader())
+        .fetch_all(self.reader())
         .await?;
+
+        let mut hour_distribution = [0u32; 24];
+        let mut busiest_hour: Option<u8> = None;
+        let mut busiest_hour_count: u32 = 0;
+        for (hr, count) in &hour_rows {
+            let hr_clamped = (*hr).clamp(0, 23) as usize;
+            let count_u32 = (*count).max(0) as u32;
+            hour_distribution[hr_clamped] = count_u32;
+            if count_u32 > busiest_hour_count
+                || (count_u32 == busiest_hour_count && busiest_hour.is_none())
+            {
+                busiest_hour_count = count_u32;
+                busiest_hour = Some(hr_clamped as u8);
+            }
+        }
 
         let day: Option<(i64, i64)> = sqlx::query_as(
             r#"SELECT MIN(date) AS first_ts, COUNT(*) AS c
@@ -144,15 +173,17 @@ impl super::Store {
         .await?;
 
         Ok(WrappedTimePatterns {
-            busiest_day_of_week: dow.as_ref().map(|(d, _)| dow_name(*d).to_string()),
-            busiest_day_of_week_count: dow.map(|(_, c)| c.max(0) as u32).unwrap_or(0),
-            busiest_hour_utc: hour.as_ref().map(|(h, _)| (*h).clamp(0, 23) as u8),
-            busiest_hour_count: hour.map(|(_, c)| c.max(0) as u32).unwrap_or(0),
+            busiest_day_of_week: busiest_dow_sqlite.map(|d| dow_name(d).to_string()),
+            busiest_day_of_week_count: busiest_dow_count,
+            busiest_hour_utc: busiest_hour,
+            busiest_hour_count,
             busiest_date: match day {
                 Some((ts, _)) => Some(decode_timestamp(ts)?),
                 None => None,
             },
             busiest_date_count: day.map(|(_, c)| c.max(0) as u32).unwrap_or(0),
+            hour_distribution,
+            day_of_week_distribution,
         })
     }
 

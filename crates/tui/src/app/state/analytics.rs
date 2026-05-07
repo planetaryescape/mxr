@@ -10,6 +10,50 @@ use mxr_core::types::{
     ResponseTimeSummary, StaleBallInCourt, StaleThreadRow, StorageBucket, StorageGroupBy,
     SubscriptionSummary, WrappedSummary,
 };
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+/// How long an analytics view's cached data is considered fresh
+/// before a tab-switch will trigger a background refresh. Manual
+/// refresh (`r`) and filter changes always refresh regardless.
+pub const ANALYTICS_CACHE_TTL: Duration = Duration::from_secs(300);
+
+/// Cache key disambiguating an analytics view by its filter combo.
+/// Two requests with different filters (e.g., Storage grouped by
+/// Sender vs Mimetype) must not share a freshness timestamp.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AnalyticsCacheKey {
+    StorageBreakdown {
+        group_by: StorageGroupBy,
+    },
+    StorageLargest {
+        since_days: Option<u32>,
+        limit: u32,
+    },
+    Stale {
+        perspective: StaleBallInCourt,
+        older_than_days: u32,
+        within_days: u32,
+    },
+    ContactsAsymmetry {
+        min_inbound: u32,
+    },
+    ContactsDecay {
+        threshold_days: u32,
+        max_lookback_days: u32,
+    },
+    ResponseTime {
+        direction: ResponseTimeDirection,
+        counterparty: Option<String>,
+        since_days: Option<u32>,
+    },
+    Subscriptions {
+        limit: u32,
+    },
+    Wrapped {
+        window: WrappedWindow,
+    },
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnalyticsView {
@@ -55,7 +99,7 @@ pub enum ContactsMode {
 
 /// Wrapped time window. Mirrors the three CLI window flags
 /// (`--ytd`, `--year YYYY`, `--since-days N`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WrappedWindow {
     Ytd,
     Year(i32),
@@ -66,12 +110,22 @@ pub enum WrappedWindow {
 pub struct AnalyticsState {
     pub view: AnalyticsView,
     pub selected_index: usize,
+    /// True iff the dispatcher has fired a request and is waiting for a
+    /// response. The renderer only paints a full "Computing analytics..."
+    /// blank when `loading && !has_data_for_view(view)` — i.e., a true
+    /// cold load. With cached data present, rendering keeps the prior
+    /// view and shows a small refreshing indicator instead.
     pub loading: bool,
     pub error: Option<String>,
     /// Set when navigation enters the Analytics screen so the dispatcher
     /// fires the corresponding `List*` request next tick. Cleared after
     /// dispatch.
     pub refresh_pending: bool,
+    /// Per-(view + filter) freshness timestamps. A pure tab switch
+    /// (no filter change, no manual `r`) skips the refetch when the
+    /// cached data for the destination view is younger than
+    /// `ANALYTICS_CACHE_TTL`. Populated on every successful response.
+    pub last_refresh_at: HashMap<AnalyticsCacheKey, Instant>,
 
     pub storage_mode: StorageMode,
     pub storage_rows: Vec<StorageBucket>,
@@ -125,6 +179,7 @@ impl Default for AnalyticsState {
             loading: false,
             error: None,
             refresh_pending: false,
+            last_refresh_at: HashMap::new(),
 
             storage_mode: StorageMode::Breakdown,
             storage_rows: Vec::new(),
@@ -160,5 +215,106 @@ impl Default for AnalyticsState {
             pending_contacts_refresh: false,
             wrapped_selected_tile: 0,
         }
+    }
+}
+
+impl AnalyticsState {
+    /// Cache key for the *currently active* view + filter combo. Used
+    /// to look up freshness and to record a successful response.
+    pub fn current_cache_key(&self) -> AnalyticsCacheKey {
+        Self::cache_key_for(self, self.view)
+    }
+
+    /// Cache key for a *specific* view at the current filter values.
+    /// Used by the tab-switch path to ask whether the destination view
+    /// is fresh before deciding to refetch.
+    pub fn cache_key_for(&self, view: AnalyticsView) -> AnalyticsCacheKey {
+        match view {
+            AnalyticsView::Storage => match self.storage_mode {
+                StorageMode::Breakdown => AnalyticsCacheKey::StorageBreakdown {
+                    group_by: self.storage_group_by,
+                },
+                StorageMode::LargestMessages => AnalyticsCacheKey::StorageLargest {
+                    since_days: self.largest_since_days,
+                    limit: self.largest_limit,
+                },
+            },
+            AnalyticsView::StaleThreads => AnalyticsCacheKey::Stale {
+                perspective: self.stale_perspective,
+                older_than_days: self.stale_older_than_days,
+                within_days: self.stale_within_days,
+            },
+            AnalyticsView::Contacts => match self.contacts_mode {
+                ContactsMode::Asymmetry => AnalyticsCacheKey::ContactsAsymmetry {
+                    min_inbound: self.asymmetry_min_inbound,
+                },
+                ContactsMode::Decay => AnalyticsCacheKey::ContactsDecay {
+                    threshold_days: self.decay_threshold_days,
+                    max_lookback_days: self.decay_max_lookback_days,
+                },
+            },
+            AnalyticsView::ResponseTime => AnalyticsCacheKey::ResponseTime {
+                direction: self.response_time_direction,
+                counterparty: self.response_time_counterparty.clone(),
+                since_days: self.response_time_since_days,
+            },
+            AnalyticsView::Subscriptions => AnalyticsCacheKey::Subscriptions {
+                limit: self.subscriptions_limit,
+            },
+            AnalyticsView::Wrapped => AnalyticsCacheKey::Wrapped {
+                window: self.wrapped_window,
+            },
+        }
+    }
+
+    /// Does the given view already have data populated? Used to
+    /// decide whether a tab switch should trigger a refetch and
+    /// whether to render a cold-load blank vs the cached view.
+    pub fn has_data_for_view(&self, view: AnalyticsView) -> bool {
+        match view {
+            AnalyticsView::Storage => match self.storage_mode {
+                StorageMode::Breakdown => !self.storage_rows.is_empty(),
+                StorageMode::LargestMessages => !self.largest_message_rows.is_empty(),
+            },
+            AnalyticsView::StaleThreads => !self.stale_rows.is_empty(),
+            AnalyticsView::Contacts => match self.contacts_mode {
+                ContactsMode::Asymmetry => !self.asymmetry_rows.is_empty(),
+                ContactsMode::Decay => !self.decay_rows.is_empty(),
+            },
+            AnalyticsView::ResponseTime => self.response_time.is_some(),
+            AnalyticsView::Subscriptions => !self.subscriptions.is_empty(),
+            AnalyticsView::Wrapped => self.wrapped.is_some(),
+        }
+    }
+
+    /// True when the cached data for `view` (under current filters)
+    /// was refreshed within `ANALYTICS_CACHE_TTL`. Returns `false` if
+    /// no entry exists.
+    pub fn cache_is_fresh(&self, view: AnalyticsView) -> bool {
+        let key = self.cache_key_for(view);
+        match self.last_refresh_at.get(&key) {
+            Some(t) => t.elapsed() < ANALYTICS_CACHE_TTL,
+            None => false,
+        }
+    }
+
+    /// True iff the renderer should blank the analytics pane with a
+    /// cold-load message. False when stale data exists; the renderer
+    /// then keeps painting the cached view + a refreshing indicator.
+    pub fn should_show_cold_load(&self) -> bool {
+        self.loading && !self.has_data_for_view(self.view)
+    }
+
+    /// True iff a refresh is in flight while stale data is still on
+    /// screen. Triggers the small "↻ refreshing" badge in the header.
+    pub fn is_refreshing_with_data(&self) -> bool {
+        self.loading && self.has_data_for_view(self.view)
+    }
+
+    /// Record a successful refresh for the active view + filter combo.
+    /// Called from the response handler in the dispatcher.
+    pub fn mark_refreshed(&mut self) {
+        self.last_refresh_at
+            .insert(self.current_cache_key(), Instant::now());
     }
 }

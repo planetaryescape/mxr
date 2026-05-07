@@ -1,4 +1,8 @@
 use crate::app::{AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow};
+use crate::ui::analytics_widgets::{
+    big_number_card, format_count, histogram_bar_chart, horizontal_bar_chart, percentile_bars,
+    ratio_gauge, stat_card,
+};
 use mxr_core::types::{ResponseTimeDirection, StaleBallInCourt, StorageGroupBy};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -85,8 +89,12 @@ fn draw_header(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cr
         ),
         AnalyticsView::Wrapped => format!("Wrapped  [{}]", wrapped_window_label(state.wrapped_window)),
     };
+    let mut full_title = format!(" {title} ");
+    if state.is_refreshing_with_data() {
+        full_title.push_str("↻ refreshing ");
+    }
     let block = Block::default()
-        .title(format!(" {title} "))
+        .title(full_title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.accent));
     let inner = block.inner(area);
@@ -95,7 +103,12 @@ fn draw_header(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cr
 }
 
 fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
-    if state.loading {
+    // Cold load: no cached data and a request is in flight. Only here
+    // do we replace the pane with a "Computing analytics..." block.
+    // When stale data exists for the active view we fall through and
+    // keep rendering it; the refreshing indicator in the header tells
+    // the user a background refresh is running.
+    if state.should_show_cold_load() {
         let block = Block::default()
             .title(" Loading ")
             .borders(Borders::ALL)
@@ -138,6 +151,47 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
     }
 }
 
+/// Standard analytics-tab layout: a 3-up "stat strip" of cards on top,
+/// then a chart pane, then (optionally) a detail table. Returns the
+/// three sub-rectangles. `chart_height` controls how many rows the
+/// chart gets; pass 0 to skip the chart and let the table take the
+/// remaining space.
+fn analytics_layout(area: Rect, chart_height: u16, with_table: bool) -> (Rect, Rect, Rect) {
+    let strip_h = 5u16;
+    let chunks = if with_table {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(strip_h),
+                Constraint::Length(chart_height),
+                Constraint::Min(0),
+            ])
+            .split(area)
+    } else {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(strip_h),
+                Constraint::Min(0),
+                Constraint::Length(0),
+            ])
+            .split(area)
+    };
+    (chunks[0], chunks[1], chunks[2])
+}
+
+fn three_up(area: Rect) -> [Rect; 3] {
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(33),
+            Constraint::Percentage(33),
+            Constraint::Percentage(34),
+        ])
+        .split(area);
+    [cols[0], cols[1], cols[2]]
+}
+
 fn draw_storage(
     frame: &mut Frame,
     area: Rect,
@@ -153,6 +207,48 @@ fn draw_storage(
         );
         return;
     }
+
+    let total_bytes: u64 = state.storage_rows.iter().map(|r| r.bytes).sum();
+    let total_count: u64 = state.storage_rows.iter().map(|r| r.count as u64).sum();
+    let top_share = state
+        .storage_rows
+        .first()
+        .map(|r| {
+            if total_bytes == 0 {
+                0.0
+            } else {
+                (r.bytes as f64) / (total_bytes as f64) * 100.0
+            }
+        })
+        .unwrap_or(0.0);
+
+    let (strip, chart, table) = analytics_layout(area, 12, true);
+    let cards = three_up(strip);
+    stat_card(frame, cards[0], "Total", &format_bytes(total_bytes), theme, true);
+    stat_card(
+        frame,
+        cards[1],
+        "Items",
+        &format_count(total_count),
+        theme,
+        false,
+    );
+    stat_card(
+        frame,
+        cards[2],
+        "Top share",
+        &format!("{top_share:.1}%"),
+        theme,
+        false,
+    );
+
+    let bars: Vec<(String, u64)> = state
+        .storage_rows
+        .iter()
+        .take(10)
+        .map(|r| (format!("{} {}", r.key, format_bytes(r.bytes)), r.bytes))
+        .collect();
+    horizontal_bar_chart(frame, chart, "Top by size", &bars, theme, 28);
 
     let header =
         Row::new(vec!["Key", "Bytes", "Count"]).style(Style::default().fg(theme.text_muted).bold());
@@ -174,7 +270,7 @@ fn draw_storage(
     ];
     render_table(
         frame,
-        area,
+        table,
         " Storage ",
         header,
         rows,
@@ -189,6 +285,47 @@ fn draw_stale(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         empty_state(frame, area, "No stale threads in this window.", theme);
         return;
     }
+
+    let count = state.stale_rows.len() as u64;
+    let oldest = state
+        .stale_rows
+        .iter()
+        .map(|r| r.days_stale)
+        .max()
+        .unwrap_or(0);
+    let median = {
+        let mut ages: Vec<u32> = state.stale_rows.iter().map(|r| r.days_stale).collect();
+        ages.sort_unstable();
+        ages.get(ages.len() / 2).copied().unwrap_or(0)
+    };
+
+    let (strip, chart, table) = analytics_layout(area, 10, true);
+    let cards = three_up(strip);
+    stat_card(frame, cards[0], "Stale", &format_count(count), theme, true);
+    stat_card(frame, cards[1], "Oldest", &format!("{oldest}d"), theme, false);
+    stat_card(frame, cards[2], "Median", &format!("{median}d"), theme, false);
+
+    let mut buckets = [0u64; 4]; // 7-14, 14-30, 30-90, 90+
+    for r in &state.stale_rows {
+        let d = r.days_stale;
+        if d < 14 {
+            buckets[0] += 1;
+        } else if d < 30 {
+            buckets[1] += 1;
+        } else if d < 90 {
+            buckets[2] += 1;
+        } else {
+            buckets[3] += 1;
+        }
+    }
+    let hist = vec![
+        ("7-14d".to_string(), buckets[0]),
+        ("14-30d".to_string(), buckets[1]),
+        ("30-90d".to_string(), buckets[2]),
+        ("90d+".to_string(), buckets[3]),
+    ];
+    histogram_bar_chart(frame, chart, "Age distribution", &hist, theme);
+
     let header = Row::new(vec!["Subject", "Counterparty", "Days Stale", "Latest"])
         .style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
@@ -211,7 +348,7 @@ fn draw_stale(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
     ];
     render_table(
         frame,
-        area,
+        table,
         " Stale Threads ",
         header,
         rows,
@@ -236,6 +373,61 @@ fn draw_asymmetry(
         );
         return;
     }
+
+    let count = state.asymmetry_rows.len() as u64;
+    let max_asym = state
+        .asymmetry_rows
+        .iter()
+        .map(|r| r.asymmetry)
+        .fold(0.0_f64, f64::max);
+    let avg_asym = state
+        .asymmetry_rows
+        .iter()
+        .map(|r| r.asymmetry)
+        .sum::<f64>()
+        / (count as f64).max(1.0);
+
+    let (strip, chart, table) = analytics_layout(area, 12, true);
+    let cards = three_up(strip);
+    stat_card(
+        frame,
+        cards[0],
+        "Contacts",
+        &format_count(count),
+        theme,
+        true,
+    );
+    stat_card(
+        frame,
+        cards[1],
+        "Max",
+        &format!("{max_asym:.2}"),
+        theme,
+        false,
+    );
+    stat_card(
+        frame,
+        cards[2],
+        "Avg",
+        &format!("{avg_asym:.2}"),
+        theme,
+        false,
+    );
+
+    let bars: Vec<(String, u64)> = state
+        .asymmetry_rows
+        .iter()
+        .take(10)
+        .map(|r| {
+            let label: String = r.email.chars().take(28).collect();
+            (
+                format!("{label} {}/{}", r.total_inbound, r.total_outbound),
+                r.total_inbound as u64,
+            )
+        })
+        .collect();
+    horizontal_bar_chart(frame, chart, "Top by inbound", &bars, theme, 36);
+
     let header = Row::new(vec!["Email", "Inbound", "Outbound", "Asymmetry"])
         .style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
@@ -258,7 +450,7 @@ fn draw_asymmetry(
     ];
     render_table(
         frame,
-        area,
+        table,
         " Contact Asymmetry ",
         header,
         rows,
@@ -283,47 +475,101 @@ fn draw_response_time(
         );
         return;
     };
-    let lines = vec![
-        Line::from(format!(
-            "Direction: {}",
-            response_direction_label(summary.direction)
-        )),
-        Line::from(format!("Sample count: {}", summary.sample_count)),
-        Line::from(""),
-        Line::from(format!(
-            "Clock p50: {}",
-            format_duration_seconds(summary.clock_p50_seconds)
-        )),
-        Line::from(format!(
-            "Clock p90: {}",
-            format_duration_seconds(summary.clock_p90_seconds)
-        )),
-        Line::from(""),
-        Line::from(format!(
-            "Business-hours p50: {}",
-            summary
-                .business_hours_p50_seconds
-                .map(format_duration_seconds)
-                .unwrap_or_else(|| "(not yet computed)".into())
-        )),
-        Line::from(format!(
-            "Business-hours p90: {}",
-            summary
-                .business_hours_p90_seconds
-                .map(format_duration_seconds)
-                .unwrap_or_else(|| "(not yet computed)".into())
-        )),
-    ];
-    let block = Block::default()
-        .title(" Response Time ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.accent));
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false }),
-        area,
+
+    if summary.sample_count == 0 {
+        empty_state(
+            frame,
+            area,
+            "No reply pairs in scope. Try widening the filter.",
+            theme,
+        );
+        return;
+    }
+
+    // Vertical split: hero card | percentile bars | histogram.
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(7),
+            Constraint::Length(7),
+            Constraint::Min(0),
+        ])
+        .split(area);
+
+    let direction_label = match summary.direction {
+        ResponseTimeDirection::IReplied => "→ I replied",
+        ResponseTimeDirection::TheyReplied => "← they replied",
+    };
+    let hero_split = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+        .split(chunks[0]);
+    big_number_card(
+        frame,
+        hero_split[0],
+        "Clock p50",
+        &format_duration_seconds(summary.clock_p50_seconds),
+        theme,
     );
+    let mut meta_lines = vec![
+        Line::from(Span::styled(
+            direction_label,
+            theme.accent_style().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(format!("samples: {}", format_count(summary.sample_count as u64))),
+    ];
+    if let Some(cp) = state.response_time_counterparty.as_deref() {
+        meta_lines.push(Line::from(format!("counterparty: {cp}")));
+    }
+    if let Some(d) = state.response_time_since_days {
+        meta_lines.push(Line::from(format!("since: {d}d")));
+    }
+    let meta_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(theme.muted_style())
+        .title(" Direction ");
+    frame.render_widget(
+        Paragraph::new(meta_lines)
+            .block(meta_block)
+            .wrap(Wrap { trim: false }),
+        hero_split[1],
+    );
+
+    let max_p90 = summary
+        .clock_p90_seconds
+        .max(summary.business_hours_p90_seconds.unwrap_or(0));
+    let rows = vec![
+        ("clock p50".to_string(), Some(summary.clock_p50_seconds)),
+        ("clock p90".to_string(), Some(summary.clock_p90_seconds)),
+        ("biz p50".to_string(), summary.business_hours_p50_seconds),
+        ("biz p90".to_string(), summary.business_hours_p90_seconds),
+    ];
+    percentile_bars(frame, chunks[1], "Percentiles", &rows, max_p90, theme);
+
+    let buckets: Vec<(String, u64)> = summary
+        .histogram
+        .iter()
+        .map(|b| {
+            let label = histogram_bucket_label(b.upper_bound_seconds);
+            (label, b.count as u64)
+        })
+        .collect();
+    histogram_bar_chart(frame, chunks[2], "Distribution", &buckets, theme);
+}
+
+fn histogram_bucket_label(upper_bound_seconds: u32) -> String {
+    if upper_bound_seconds == u32::MAX {
+        return "3d+".into();
+    }
+    if upper_bound_seconds < 60 {
+        format!("<{upper_bound_seconds}s")
+    } else if upper_bound_seconds < 3600 {
+        format!("<{}m", upper_bound_seconds / 60)
+    } else if upper_bound_seconds < 86_400 {
+        format!("<{}h", upper_bound_seconds / 3600)
+    } else {
+        format!("<{}d", upper_bound_seconds / 86_400)
+    }
 }
 
 fn render_table<'a>(
@@ -367,6 +613,53 @@ fn draw_largest_messages(
         );
         return;
     }
+
+    let total_bytes: u64 = state
+        .largest_message_rows
+        .iter()
+        .map(|r| r.size_bytes)
+        .sum();
+    let count = state.largest_message_rows.len() as u64;
+    let biggest = state
+        .largest_message_rows
+        .first()
+        .map(|r| r.size_bytes)
+        .unwrap_or(0);
+
+    let (strip, chart, table) = analytics_layout(area, 12, true);
+    let cards = three_up(strip);
+    stat_card(
+        frame,
+        cards[0],
+        "Sum",
+        &format_bytes(total_bytes),
+        theme,
+        true,
+    );
+    stat_card(frame, cards[1], "Messages", &format_count(count), theme, false);
+    stat_card(
+        frame,
+        cards[2],
+        "Biggest",
+        &format_bytes(biggest),
+        theme,
+        false,
+    );
+
+    let bars: Vec<(String, u64)> = state
+        .largest_message_rows
+        .iter()
+        .take(10)
+        .map(|r| {
+            let subject: String = r.subject.chars().take(28).collect();
+            (
+                format!("{subject} {}", format_bytes(r.size_bytes)),
+                r.size_bytes,
+            )
+        })
+        .collect();
+    horizontal_bar_chart(frame, chart, "Top by size", &bars, theme, 36);
+
     let header = Row::new(vec!["Subject", "From", "Size", "Date"])
         .style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
@@ -389,7 +682,7 @@ fn draw_largest_messages(
     ];
     render_table(
         frame,
-        area,
+        table,
         " Largest Messages ",
         header,
         rows,
@@ -414,6 +707,47 @@ fn draw_decay(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         );
         return;
     }
+
+    let count = state.decay_rows.len() as u64;
+    let longest = state
+        .decay_rows
+        .iter()
+        .map(|r| r.days_since_inbound)
+        .max()
+        .unwrap_or(0);
+    let median = {
+        let mut ds: Vec<u32> = state.decay_rows.iter().map(|r| r.days_since_inbound).collect();
+        ds.sort_unstable();
+        ds.get(ds.len() / 2).copied().unwrap_or(0)
+    };
+
+    let (strip, chart, table) = analytics_layout(area, 10, true);
+    let cards = three_up(strip);
+    stat_card(frame, cards[0], "Cold contacts", &format_count(count), theme, true);
+    stat_card(frame, cards[1], "Longest gap", &format!("{longest}d"), theme, false);
+    stat_card(frame, cards[2], "Median gap", &format!("{median}d"), theme, false);
+
+    let mut buckets = [0u64; 4]; // <60, 60-90, 90-180, 180+
+    for r in &state.decay_rows {
+        let d = r.days_since_inbound;
+        if d < 60 {
+            buckets[0] += 1;
+        } else if d < 90 {
+            buckets[1] += 1;
+        } else if d < 180 {
+            buckets[2] += 1;
+        } else {
+            buckets[3] += 1;
+        }
+    }
+    let hist = vec![
+        ("30-60d".to_string(), buckets[0]),
+        ("60-90d".to_string(), buckets[1]),
+        ("90-180d".to_string(), buckets[2]),
+        ("180d+".to_string(), buckets[3]),
+    ];
+    histogram_bar_chart(frame, chart, "Days since inbound", &hist, theme);
+
     let header = Row::new(vec!["Email", "Days since inbound", "Days since outbound"])
         .style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
@@ -436,7 +770,7 @@ fn draw_decay(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
     ];
     render_table(
         frame,
-        area,
+        table,
         " Contact Decay ",
         header,
         rows,
@@ -466,6 +800,107 @@ fn draw_subscriptions(
         );
         return;
     }
+
+    let total_msgs: u64 = state
+        .subscriptions
+        .iter()
+        .map(|s| s.message_count as u64)
+        .sum();
+    let avg_open = {
+        let (sum, n) = state.subscriptions.iter().fold((0.0_f64, 0u32), |(s, n), r| {
+            if r.message_count == 0 {
+                (s, n)
+            } else {
+                (s + (r.opened_count as f64) / (r.message_count as f64), n + 1)
+            }
+        });
+        if n == 0 {
+            0.0
+        } else {
+            sum / (n as f64) * 100.0
+        }
+    };
+
+    let (strip, chart, table) = analytics_layout(area, 12, true);
+    let cards = three_up(strip);
+    stat_card(
+        frame,
+        cards[0],
+        "Senders",
+        &format_count(state.subscriptions.len() as u64),
+        theme,
+        true,
+    );
+    stat_card(
+        frame,
+        cards[1],
+        "Messages",
+        &format_count(total_msgs),
+        theme,
+        false,
+    );
+    stat_card(
+        frame,
+        cards[2],
+        "Avg open",
+        &format!("{avg_open:.1}%"),
+        theme,
+        false,
+    );
+
+    if state.subscriptions_rank {
+        // Bottom-10 by open rate.
+        let mut ranked: Vec<&_> = state.subscriptions.iter().collect();
+        ranked.sort_by(|a, b| {
+            let ra = open_rate(a.message_count, a.opened_count);
+            let rb = open_rate(b.message_count, b.opened_count);
+            ra.partial_cmp(&rb)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| b.archived_unread_count.cmp(&a.archived_unread_count))
+        });
+        let bars: Vec<(String, u64)> = ranked
+            .iter()
+            .take(10)
+            .map(|s| {
+                let label: String = s
+                    .sender_name
+                    .clone()
+                    .unwrap_or_else(|| s.sender_email.clone())
+                    .chars()
+                    .take(28)
+                    .collect();
+                let rate = open_rate(s.message_count, s.opened_count) * 100.0;
+                (
+                    format!("{label} {rate:.0}%"),
+                    s.archived_unread_count as u64,
+                )
+            })
+            .collect();
+        horizontal_bar_chart(frame, chart, "Bottom by open rate", &bars, theme, 36);
+    } else {
+        // Top-10 by message count.
+        let mut top: Vec<&_> = state.subscriptions.iter().collect();
+        top.sort_by(|a, b| b.message_count.cmp(&a.message_count));
+        let bars: Vec<(String, u64)> = top
+            .iter()
+            .take(10)
+            .map(|s| {
+                let label: String = s
+                    .sender_name
+                    .clone()
+                    .unwrap_or_else(|| s.sender_email.clone())
+                    .chars()
+                    .take(28)
+                    .collect();
+                (
+                    format!("{label} ({})", s.message_count),
+                    s.message_count as u64,
+                )
+            })
+            .collect();
+        horizontal_bar_chart(frame, chart, "Top by volume", &bars, theme, 36);
+    }
+
     let mut indexed: Vec<usize> = (0..state.subscriptions.len()).collect();
     if state.subscriptions_rank {
         indexed.sort_by(|&a, &b| {
@@ -537,7 +972,7 @@ fn draw_subscriptions(
         .collect();
     render_table(
         frame,
-        area,
+        table,
         " Subscriptions ",
         header,
         rows,
@@ -545,6 +980,14 @@ fn draw_subscriptions(
         state.selected_index,
         theme,
     );
+}
+
+fn open_rate(message_count: u32, opened: u32) -> f64 {
+    if message_count == 0 {
+        0.0
+    } else {
+        (opened as f64) / (message_count as f64)
+    }
 }
 
 fn unsubscribe_method_label(method: &mxr_core::types::UnsubscribeMethod) -> &'static str {
@@ -558,10 +1001,15 @@ fn unsubscribe_method_label(method: &mxr_core::types::UnsubscribeMethod) -> &'st
     }
 }
 
-/// Slice 8: Wrapped renders a 7-tile dashboard grid (Volume, When,
-/// Contacts, Reply, Storage, Newsletters, Superlatives). Each tile
-/// is a bordered block with a few key numbers from `WrappedSummary`.
-/// Empty/loading states mirror the existing pattern.
+/// Wrapped year-in-review dashboard. A header strip (BigText window
+/// label + window range + totals) sits above two rows of three tiles
+/// — Volume, When, Contacts, Reply discipline, Storage, Newsletters
+/// — and a full-width Superlatives strip. Each tile picks the
+/// widget that fits its data shape (BarChart for Volume + When,
+/// horizontal BarChart for top contacts, percentile bars for reply
+/// discipline, ratio gauges for storage + newsletters share).
+/// Tile selection (`wrapped_selected_tile`, 0..=6) draws the focused
+/// border around the selected tile.
 fn draw_wrapped(
     frame: &mut Frame,
     area: Rect,
@@ -578,26 +1026,22 @@ fn draw_wrapped(
         return;
     };
 
-    let outer = Block::default()
-        .title(format!(
-            " Wrapped — {}  ({} → {}) ",
-            summary.label,
-            summary.window_start.format("%Y-%m-%d"),
-            summary.window_end.format("%Y-%m-%d"),
-        ))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.accent));
-    let inner = outer.inner(area);
-    frame.render_widget(outer, area);
+    // Outer split: header (8 rows) | body (rest).
+    let outer_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(8), Constraint::Min(0)])
+        .split(area);
+    draw_wrapped_header(frame, outer_chunks[0], summary, theme);
 
-    let rows = Layout::default()
+    // Body split: row1 | row2 | superlatives.
+    let body_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(33),
-            Constraint::Percentage(33),
-            Constraint::Percentage(34),
+            Constraint::Percentage(45),
+            Constraint::Percentage(45),
+            Constraint::Min(4),
         ])
-        .split(inner);
+        .split(outer_chunks[1]);
 
     let row1 = Layout::default()
         .direction(Direction::Horizontal)
@@ -606,7 +1050,7 @@ fn draw_wrapped(
             Constraint::Percentage(33),
             Constraint::Percentage(34),
         ])
-        .split(rows[0]);
+        .split(body_chunks[0]);
     let row2 = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -614,145 +1058,309 @@ fn draw_wrapped(
             Constraint::Percentage(33),
             Constraint::Percentage(34),
         ])
-        .split(rows[1]);
+        .split(body_chunks[1]);
 
-    draw_tile(
-        frame,
-        row1[0],
-        " Volume ",
-        vec![
-            Line::from(format!("inbound  {}", summary.volume.inbound_count)),
-            Line::from(format!("outbound {}", summary.volume.outbound_count)),
-            Line::from(format!("threads  {}", summary.volume.thread_count)),
-        ],
-        theme,
-    );
-    let when = &summary.time_patterns;
-    draw_tile(
-        frame,
-        row1[1],
-        " When ",
-        vec![
-            Line::from(format!(
-                "busiest day:  {}",
-                when.busiest_day_of_week.as_deref().unwrap_or("-")
-            )),
-            Line::from(format!(
-                "busiest hour: {}",
-                when.busiest_hour_utc
-                    .map(|h| format!("{h:02}:00 UTC"))
-                    .unwrap_or_else(|| "-".into())
-            )),
-            Line::from(format!(
-                "busiest date: {}",
-                when.busiest_date
-                    .map(|d| d.format("%Y-%m-%d").to_string())
-                    .unwrap_or_else(|| "-".into())
-            )),
-        ],
-        theme,
-    );
-    let contacts = &summary.top_contacts;
-    let mut contact_lines = vec![Line::from("top inbound:")];
-    for c in contacts.most_emailed_to_me.iter().take(3) {
-        contact_lines.push(Line::from(format!("  {} ({})", c.email, c.count)));
-    }
-    contact_lines.push(Line::from("top outbound:"));
-    for c in contacts.most_emailed_by_me.iter().take(3) {
-        contact_lines.push(Line::from(format!("  {} ({})", c.email, c.count)));
-    }
-    draw_tile(frame, row1[2], " Contacts ", contact_lines, theme);
-
-    let reply_lines = if let Some(reply) = summary.reply_discipline.as_ref() {
-        vec![
-            Line::from(format!("samples  {}", reply.sample_count)),
-            Line::from(format!(
-                "p50 {}",
-                format_duration_seconds(reply.clock_p50_seconds)
-            )),
-            Line::from(format!(
-                "p90 {}",
-                format_duration_seconds(reply.clock_p90_seconds)
-            )),
-        ]
-    } else {
-        vec![Line::from("(no reply pairs yet)")]
-    };
-    draw_tile(frame, row2[0], " Reply discipline ", reply_lines, theme);
-
-    let storage = &summary.storage;
-    let mut storage_lines = vec![Line::from(format!(
-        "total {}",
-        format_bytes(storage.total_bytes)
-    ))];
-    if let Some(top) = storage.top_mimetype.as_ref() {
-        storage_lines.push(Line::from(format!(
-            "top mime {} ({})",
-            top.key,
-            format_bytes(top.bytes)
-        )));
-    }
-    if let Some(heaviest) = storage.heaviest_message.as_ref() {
-        let truncated: String = heaviest.subject.chars().take(28).collect();
-        storage_lines.push(Line::from(format!(
-            "heaviest {} ({})",
-            truncated,
-            format_bytes(heaviest.size_bytes)
-        )));
-    }
-    draw_tile(frame, row2[1], " Storage ", storage_lines, theme);
-
-    let news = &summary.newsletters;
-    let mut news_lines = vec![Line::from(format!("unique lists  {}", news.unique_lists))];
-    if let Some(top) = news.top_list.as_ref() {
-        news_lines.push(Line::from(format!(
-            "top list {} ({} msgs)",
-            top.list_id, top.message_count
-        )));
-    }
-    news_lines.push(Line::from(format!(
-        "list share  {:.1}%",
-        news.list_share_of_inbound_pct
-    )));
-    draw_tile(frame, row2[2], " Newsletters ", news_lines, theme);
-
-    let sup = &summary.superlatives;
-    let mut sup_lines = Vec::new();
-    if let Some(t) = sup.longest_thread.as_ref() {
-        let truncated: String = t.subject.chars().take(60).collect();
-        sup_lines.push(Line::from(format!(
-            "longest thread: {} ({} msgs)",
-            truncated, t.message_count
-        )));
-    }
-    if let Some(g) = sup.most_ghosted.as_ref() {
-        sup_lines.push(Line::from(format!(
-            "most ghosted: {} ({} inbound, 0 outbound)",
-            g.email, g.inbound_count
-        )));
-    }
-    if sup_lines.is_empty() {
-        sup_lines.push(Line::from("(no superlatives yet)"));
-    }
-    draw_tile(frame, rows[2], " Superlatives ", sup_lines, theme);
+    let selected = state.wrapped_selected_tile;
+    draw_wrapped_volume(frame, row1[0], summary, theme, selected == 0);
+    draw_wrapped_when(frame, row1[1], summary, theme, selected == 1);
+    draw_wrapped_contacts(frame, row1[2], summary, theme, selected == 2);
+    draw_wrapped_reply(frame, row2[0], summary, theme, selected == 3);
+    draw_wrapped_storage(frame, row2[1], summary, theme, selected == 4);
+    draw_wrapped_newsletters(frame, row2[2], summary, theme, selected == 5);
+    draw_wrapped_superlatives(frame, body_chunks[2], summary, theme, selected == 6);
 }
 
-fn draw_tile(
+fn draw_wrapped_header(
     frame: &mut Frame,
     area: Rect,
-    title: &str,
-    lines: Vec<Line<'_>>,
+    summary: &mxr_core::types::WrappedSummary,
     theme: &crate::theme::Theme,
 ) {
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(area);
+    let label = summary.label.to_uppercase();
+    big_number_card(frame, cols[0], "Wrapped", &label, theme);
+
+    let total_msgs =
+        summary.volume.inbound_count as u64 + summary.volume.outbound_count as u64;
+    let lines = vec![
+        Line::from(Span::styled(
+            format!(
+                "{} → {}",
+                summary.window_start.format("%Y-%m-%d"),
+                summary.window_end.format("%Y-%m-%d"),
+            ),
+            theme.accent_style().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(format!("messages: {}", format_count(total_msgs))),
+        Line::from(format!(
+            "threads:  {}",
+            format_count(summary.volume.thread_count as u64)
+        )),
+    ];
     let block = Block::default()
-        .title(title.to_string())
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.text_muted));
+        .border_style(theme.muted_style())
+        .title(" Window ");
     frame.render_widget(
         Paragraph::new(lines)
             .block(block)
             .wrap(Wrap { trim: false }),
-        area,
+        cols[1],
+    );
+}
+
+fn wrapped_tile_block<'a>(
+    title: &'a str,
+    theme: &crate::theme::Theme,
+    focused: bool,
+) -> Block<'a> {
+    Block::default()
+        .borders(Borders::ALL)
+        .border_style(theme.border_style(focused))
+        .title(format!(" {title} "))
+}
+
+fn draw_wrapped_volume(
+    frame: &mut Frame,
+    area: Rect,
+    summary: &mxr_core::types::WrappedSummary,
+    theme: &crate::theme::Theme,
+    focused: bool,
+) {
+    let block = wrapped_tile_block("Volume", theme, focused);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let bars = vec![
+        ("in".to_string(), summary.volume.inbound_count as u64),
+        ("out".to_string(), summary.volume.outbound_count as u64),
+        ("threads".to_string(), summary.volume.thread_count as u64),
+    ];
+    histogram_bar_chart(frame, inner, "", &bars, theme);
+}
+
+fn draw_wrapped_when(
+    frame: &mut Frame,
+    area: Rect,
+    summary: &mxr_core::types::WrappedSummary,
+    theme: &crate::theme::Theme,
+    focused: bool,
+) {
+    let title = format!(
+        "When · busiest {}",
+        summary
+            .time_patterns
+            .busiest_hour_utc
+            .map(|h| format!("{h:02}:00 UTC"))
+            .unwrap_or_else(|| "—".into())
+    );
+    let block = wrapped_tile_block(&title, theme, focused);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let bars: Vec<(String, u64)> = summary
+        .time_patterns
+        .hour_distribution
+        .iter()
+        .enumerate()
+        .map(|(h, c)| (format!("{h:02}"), *c as u64))
+        .collect();
+    histogram_bar_chart(frame, inner, "", &bars, theme);
+}
+
+fn draw_wrapped_contacts(
+    frame: &mut Frame,
+    area: Rect,
+    summary: &mxr_core::types::WrappedSummary,
+    theme: &crate::theme::Theme,
+    focused: bool,
+) {
+    let block = wrapped_tile_block("Top inbound", theme, focused);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let bars: Vec<(String, u64)> = summary
+        .top_contacts
+        .most_emailed_to_me
+        .iter()
+        .take(5)
+        .map(|c| {
+            let label: String = c.email.chars().take(22).collect();
+            (format!("{label} ({})", c.count), c.count as u64)
+        })
+        .collect();
+    horizontal_bar_chart(frame, inner, "", &bars, theme, 28);
+}
+
+fn draw_wrapped_reply(
+    frame: &mut Frame,
+    area: Rect,
+    summary: &mxr_core::types::WrappedSummary,
+    theme: &crate::theme::Theme,
+    focused: bool,
+) {
+    if let Some(reply) = summary.reply_discipline.as_ref() {
+        let max_p90 = reply
+            .clock_p90_seconds
+            .max(reply.business_hours_p90_seconds.unwrap_or(0));
+        let title = format!("Reply discipline · samples {}", reply.sample_count);
+        let block = wrapped_tile_block(&title, theme, focused);
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        let rows = vec![
+            ("clock p50".to_string(), Some(reply.clock_p50_seconds)),
+            ("clock p90".to_string(), Some(reply.clock_p90_seconds)),
+            ("biz p50".to_string(), reply.business_hours_p50_seconds),
+            ("biz p90".to_string(), reply.business_hours_p90_seconds),
+        ];
+        percentile_bars(frame, inner, "", &rows, max_p90, theme);
+    } else {
+        let block = wrapped_tile_block("Reply discipline", theme, focused);
+        frame.render_widget(
+            Paragraph::new("(no reply pairs yet)")
+                .style(theme.muted_style())
+                .block(block),
+            area,
+        );
+    }
+}
+
+fn draw_wrapped_storage(
+    frame: &mut Frame,
+    area: Rect,
+    summary: &mxr_core::types::WrappedSummary,
+    theme: &crate::theme::Theme,
+    focused: bool,
+) {
+    let storage = &summary.storage;
+    let title = format!("Storage · {}", format_bytes(storage.total_bytes));
+    let block = wrapped_tile_block(&title, theme, focused);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .split(inner);
+    let (label, ratio) = match storage.top_mimetype.as_ref() {
+        Some(top) => {
+            let r = if storage.total_bytes == 0 {
+                0.0
+            } else {
+                (top.bytes as f64) / (storage.total_bytes as f64)
+            };
+            (format!("{} ({})", top.key, format_bytes(top.bytes)), r)
+        }
+        None => ("(no attachments)".to_string(), 0.0),
+    };
+    ratio_gauge(frame, chunks[0], "Top mime share", &label, ratio, theme);
+    let mut detail = Vec::new();
+    if let Some(heaviest) = storage.heaviest_message.as_ref() {
+        let subject: String = heaviest.subject.chars().take(40).collect();
+        detail.push(Line::from(format!(
+            "heaviest: {subject} ({})",
+            format_bytes(heaviest.size_bytes)
+        )));
+    }
+    frame.render_widget(
+        Paragraph::new(detail).wrap(Wrap { trim: false }),
+        chunks[1],
+    );
+}
+
+fn draw_wrapped_newsletters(
+    frame: &mut Frame,
+    area: Rect,
+    summary: &mxr_core::types::WrappedSummary,
+    theme: &crate::theme::Theme,
+    focused: bool,
+) {
+    let news = &summary.newsletters;
+    let title = format!("Newsletters · {} lists", news.unique_lists);
+    let block = wrapped_tile_block(&title, theme, focused);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .split(inner);
+    let share_ratio = (news.list_share_of_inbound_pct / 100.0).clamp(0.0, 1.0);
+    ratio_gauge(
+        frame,
+        chunks[0],
+        "Share of inbound",
+        &format!("{:.1}%", news.list_share_of_inbound_pct),
+        share_ratio,
+        theme,
+    );
+    let mut detail = Vec::new();
+    if let Some(top) = news.top_list.as_ref() {
+        let opened_pct = if top.message_count == 0 {
+            0.0
+        } else {
+            (top.opened_count as f64) / (top.message_count as f64) * 100.0
+        };
+        let id: String = top.list_id.chars().take(40).collect();
+        detail.push(Line::from(format!(
+            "top: {id} ({} msgs, {opened_pct:.0}% opened)",
+            top.message_count
+        )));
+    }
+    frame.render_widget(
+        Paragraph::new(detail).wrap(Wrap { trim: false }),
+        chunks[1],
+    );
+}
+
+fn draw_wrapped_superlatives(
+    frame: &mut Frame,
+    area: Rect,
+    summary: &mxr_core::types::WrappedSummary,
+    theme: &crate::theme::Theme,
+    focused: bool,
+) {
+    let sup = &summary.superlatives;
+    let block = wrapped_tile_block("Superlatives", theme, focused);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(inner);
+
+    let accent = theme.accent_style().add_modifier(Modifier::BOLD);
+    let muted = theme.muted_style();
+
+    let longest_lines = match sup.longest_thread.as_ref() {
+        Some(t) => {
+            let subject: String = t.subject.chars().take(60).collect();
+            vec![
+                Line::from(Span::styled("longest thread", muted)),
+                Line::from(Span::styled(subject, theme.primary_style())),
+                Line::from(Span::styled(format!("{} messages", t.message_count), accent)),
+            ]
+        }
+        None => vec![Line::from(Span::styled("(no longest thread)", muted))],
+    };
+    frame.render_widget(
+        Paragraph::new(longest_lines).wrap(Wrap { trim: false }),
+        cols[0],
+    );
+
+    let ghosted_lines = match sup.most_ghosted.as_ref() {
+        Some(g) => vec![
+            Line::from(Span::styled("most ghosted", muted)),
+            Line::from(Span::styled(g.email.clone(), theme.primary_style())),
+            Line::from(Span::styled(
+                format!("{} inbound, 0 replied", g.inbound_count),
+                accent,
+            )),
+        ],
+        None => vec![Line::from(Span::styled("(no most-ghosted)", muted))],
+    };
+    frame.render_widget(
+        Paragraph::new(ghosted_lines).wrap(Wrap { trim: false }),
+        cols[1],
     );
 }
 
@@ -828,7 +1436,7 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
-fn format_duration_seconds(seconds: u32) -> String {
+pub(super) fn format_duration_seconds(seconds: u32) -> String {
     if seconds < 60 {
         format!("{seconds}s")
     } else if seconds < 3600 {
@@ -893,12 +1501,13 @@ mod tests {
         );
     }
 
-    /// Phase 2.5: response-time view shows the summary numbers and a
-    /// sentinel when the business-hours percentile hasn't been
-    /// computed (regression: would render "0s" and pretend it was
-    /// real data).
+    /// Response Time view now renders a hero card (clock p50), a
+    /// percentile-bar stack with `clock p50 / p90 / biz p50 / biz p90`
+    /// labels and a `—` sentinel when business-hours percentiles are
+    /// unset, plus a histogram pane labeled "Distribution".
     #[test]
-    fn response_time_view_renders_clock_and_business_hours_status() {
+    fn response_time_view_renders_hero_percentiles_and_histogram() {
+        use mxr_core::types::ResponseTimeBucket;
         let mut state = AnalyticsState::default();
         state.view = AnalyticsView::ResponseTime;
         state.response_time = Some(ResponseTimeSummary {
@@ -908,19 +1517,72 @@ mod tests {
             clock_p90_seconds: 3600,
             business_hours_p50_seconds: None,
             business_hours_p90_seconds: None,
+            histogram: vec![
+                ResponseTimeBucket {
+                    upper_bound_seconds: 60,
+                    count: 5,
+                },
+                ResponseTimeBucket {
+                    upper_bound_seconds: 300,
+                    count: 8,
+                },
+                ResponseTimeBucket {
+                    upper_bound_seconds: u32::MAX,
+                    count: 4,
+                },
+            ],
         });
-        let rendered = render_to_string(120, 24, |frame| {
-            draw(frame, Rect::new(0, 0, 120, 24), &state, &theme());
+        let rendered = render_to_string(120, 30, |frame| {
+            draw(frame, Rect::new(0, 0, 120, 30), &state, &theme());
         });
-        assert!(rendered.contains("Sample count: 17"));
-        assert!(rendered.contains("Clock p50"));
+        // Direction badge.
         assert!(
-            rendered.contains("1h0m"),
-            "p90 should format duration: {rendered}"
+            rendered.contains("I replied"),
+            "direction badge missing: {rendered}"
+        );
+        // Sample count somewhere in the meta block.
+        assert!(rendered.contains("17"), "sample count missing: {rendered}");
+        // Percentile labels render in the LineGauges.
+        assert!(rendered.contains("p50"), "p50 label missing: {rendered}");
+        assert!(rendered.contains("p90"), "p90 label missing: {rendered}");
+        // Business-hours rows fall back to "—".
+        assert!(
+            rendered.contains("biz p50"),
+            "biz p50 label missing: {rendered}"
         );
         assert!(
-            rendered.contains("not yet computed"),
-            "business-hours sentinel missing: {rendered}"
+            rendered.contains("—"),
+            "business-hours `—` sentinel missing: {rendered}"
+        );
+        // Histogram pane title.
+        assert!(
+            rendered.contains("Distribution"),
+            "histogram pane missing: {rendered}"
+        );
+    }
+
+    /// Empty histogram with `sample_count == 0` should fall through
+    /// to the empty-state block, not crash.
+    #[test]
+    fn response_time_view_renders_empty_state_when_zero_samples() {
+        let mut state = AnalyticsState::default();
+        state.view = AnalyticsView::ResponseTime;
+        state.response_time = Some(ResponseTimeSummary {
+            direction: ResponseTimeDirection::IReplied,
+            sample_count: 0,
+            clock_p50_seconds: 0,
+            clock_p90_seconds: 0,
+            business_hours_p50_seconds: None,
+            business_hours_p90_seconds: None,
+            histogram: vec![],
+        });
+        let rendered = render_to_string(120, 30, |frame| {
+            draw(frame, Rect::new(0, 0, 120, 30), &state, &theme());
+        });
+        assert!(
+            rendered.contains("No reply pairs in scope")
+                || rendered.contains("No response-time data"),
+            "empty-state missing: {rendered}"
         );
     }
 
@@ -964,6 +1626,131 @@ mod tests {
         assert!(
             !rendered.contains("No storage data"),
             "empty-state must not render alongside an error"
+        );
+    }
+
+    /// Phase 0 cache: when a refresh is in flight AND the active view
+    /// already has data, the renderer must keep painting that data
+    /// instead of replacing it with a "Computing analytics..." block.
+    /// Regression target: cycling tabs felt slow because every switch
+    /// blanked the screen.
+    #[test]
+    fn refreshing_with_cached_data_keeps_view_visible() {
+        let mut state = AnalyticsState::default();
+        state.view = AnalyticsView::Storage;
+        state.loading = true;
+        state.storage_rows = vec![StorageBucket {
+            key: "cached@example.com".into(),
+            bytes: 2048,
+            count: 3,
+        }];
+        let rendered = render_to_string(120, 24, |frame| {
+            draw(frame, Rect::new(0, 0, 120, 24), &state, &theme());
+        });
+        assert!(
+            !rendered.contains("Computing analytics"),
+            "cold-load block must NOT replace cached data: {rendered}"
+        );
+        assert!(
+            rendered.contains("cached@example.com"),
+            "cached row should still render: {rendered}"
+        );
+        assert!(
+            rendered.contains("refreshing"),
+            "refreshing indicator should be in the header: {rendered}"
+        );
+    }
+
+    /// Phase 0 cache: a true cold load (loading + no data) still
+    /// shows the "Computing analytics..." block.
+    #[test]
+    fn cold_load_still_blanks_view() {
+        let mut state = AnalyticsState::default();
+        state.view = AnalyticsView::Storage;
+        state.loading = true;
+        // No data populated.
+        let rendered = render_to_string(120, 24, |frame| {
+            draw(frame, Rect::new(0, 0, 120, 24), &state, &theme());
+        });
+        assert!(
+            rendered.contains("Computing analytics"),
+            "cold-load block should render when no cached data exists: {rendered}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use crate::app::{AnalyticsState, AnalyticsView, StorageMode};
+    use mxr_core::types::{StorageBucket, StorageGroupBy};
+
+    /// Tab-switch must NOT trigger a refetch when the destination
+    /// view already has data and the cache is fresh.
+    #[test]
+    fn fresh_cache_skips_refetch_on_tab_switch() {
+        let mut state = AnalyticsState::default();
+        state.view = AnalyticsView::Storage;
+        state.storage_rows = vec![StorageBucket {
+            key: "k".into(),
+            bytes: 1,
+            count: 1,
+        }];
+        // Mark the Storage view as just refreshed.
+        state.mark_refreshed();
+
+        // After a successful refresh, refresh_pending should be
+        // logically false (the dispatcher cleared it earlier). And
+        // the destination view should report fresh.
+        assert!(state.has_data_for_view(AnalyticsView::Storage));
+        assert!(state.cache_is_fresh(AnalyticsView::Storage));
+    }
+
+    /// A view with no data is never fresh, regardless of TTL.
+    #[test]
+    fn empty_view_is_not_fresh() {
+        let state = AnalyticsState::default();
+        assert!(!state.has_data_for_view(AnalyticsView::Storage));
+        assert!(!state.cache_is_fresh(AnalyticsView::Storage));
+    }
+
+    /// Cache key must change when filters change so freshness is
+    /// scoped per-filter-combo. Different group_by → different key.
+    #[test]
+    fn cache_key_distinguishes_filter_combos() {
+        let mut state = AnalyticsState::default();
+        state.view = AnalyticsView::Storage;
+        state.storage_mode = StorageMode::Breakdown;
+        state.storage_group_by = StorageGroupBy::Sender;
+        let key_sender = state.current_cache_key();
+        state.storage_group_by = StorageGroupBy::Mimetype;
+        let key_mime = state.current_cache_key();
+        assert_ne!(
+            key_sender, key_mime,
+            "different group_by must produce distinct cache keys"
+        );
+    }
+
+    /// `should_show_cold_load` is the gate that decides whether to
+    /// blank the view. Stale data must keep the view visible.
+    #[test]
+    fn should_show_cold_load_only_without_data() {
+        let mut state = AnalyticsState::default();
+        state.view = AnalyticsView::Storage;
+        state.loading = true;
+        assert!(state.should_show_cold_load(), "no data → cold load");
+
+        state.storage_rows = vec![StorageBucket {
+            key: "k".into(),
+            bytes: 1,
+            count: 1,
+        }];
+        assert!(
+            !state.should_show_cold_load(),
+            "with cached data, refresh must not blank the view"
+        );
+        assert!(
+            state.is_refreshing_with_data(),
+            "should report refreshing-with-data so the badge renders"
         );
     }
 }

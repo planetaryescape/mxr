@@ -8,27 +8,57 @@ impl App {
     pub(super) fn apply_analytics_action(&mut self, action: Action) {
         match action {
             Action::OpenAnalyticsScreen => {
+                // Cancel the auto-mark-read timer scheduled by mailbox
+                // preview. Otherwise it fires later while we're in
+                // Analytics, queues a SetRead the user didn't ask for,
+                // and surfaces as a "Mutation Failed" modal if the
+                // daemon's connection pool is busy.
+                self.mailbox.pending_preview_read = None;
                 self.screen = Screen::Analytics;
-                self.analytics.refresh_pending = true;
+                let view = self.analytics.view;
+                if !self.analytics.has_data_for_view(view)
+                    || !self.analytics.cache_is_fresh(view)
+                {
+                    self.analytics.refresh_pending = true;
+                }
             }
             Action::OpenAnalyticsView(view) => {
+                self.mailbox.pending_preview_read = None;
                 self.screen = Screen::Analytics;
                 self.analytics.view = view;
                 self.analytics.selected_index = 0;
                 self.analytics.error = None;
-                self.analytics.refresh_pending = true;
+                if !self.analytics.has_data_for_view(view)
+                    || !self.analytics.cache_is_fresh(view)
+                {
+                    self.analytics.refresh_pending = true;
+                }
             }
             Action::NextAnalyticsView => {
-                self.analytics.view = next_analytics_view(self.analytics.view);
+                let next = next_analytics_view(self.analytics.view);
+                self.analytics.view = next;
                 self.analytics.selected_index = 0;
                 self.analytics.error = None;
-                self.analytics.refresh_pending = true;
+                // Keep tab cycling instant: only refetch if the
+                // destination view has no cached data or its cache has
+                // gone stale. Manual `r` and filter changes still
+                // refresh unconditionally.
+                if !self.analytics.has_data_for_view(next)
+                    || !self.analytics.cache_is_fresh(next)
+                {
+                    self.analytics.refresh_pending = true;
+                }
             }
             Action::PrevAnalyticsView => {
-                self.analytics.view = prev_analytics_view(self.analytics.view);
+                let prev = prev_analytics_view(self.analytics.view);
+                self.analytics.view = prev;
                 self.analytics.selected_index = 0;
                 self.analytics.error = None;
-                self.analytics.refresh_pending = true;
+                if !self.analytics.has_data_for_view(prev)
+                    || !self.analytics.cache_is_fresh(prev)
+                {
+                    self.analytics.refresh_pending = true;
+                }
             }
             Action::RefreshAnalytics => {
                 self.analytics.error = None;

@@ -130,6 +130,33 @@ fn percentile(sorted: &[i64], q: f64) -> u32 {
     sorted[idx.min(sorted.len() - 1)].max(0) as u32
 }
 
+/// Bucket clock latencies into the fixed histogram edges defined in
+/// `RESPONSE_TIME_HISTOGRAM_EDGES`. Negative latencies are skipped
+/// (shouldn't occur, but guard against bad data). Single linear pass.
+fn build_response_time_histogram(clock_seconds: &[i64]) -> Vec<ResponseTimeBucket> {
+    let mut counts = [0u32; RESPONSE_TIME_HISTOGRAM_EDGES.len()];
+    for &latency in clock_seconds {
+        if latency < 0 {
+            continue;
+        }
+        let latency = u32::try_from(latency).unwrap_or(u32::MAX);
+        for (i, edge) in RESPONSE_TIME_HISTOGRAM_EDGES.iter().enumerate() {
+            if latency < *edge {
+                counts[i] += 1;
+                break;
+            }
+        }
+    }
+    RESPONSE_TIME_HISTOGRAM_EDGES
+        .iter()
+        .zip(counts.iter())
+        .map(|(&upper, &count)| ResponseTimeBucket {
+            upper_bound_seconds: upper,
+            count,
+        })
+        .collect()
+}
+
 impl super::Store {
     /// Compute clock and (optional) business-hours percentile reply
     /// latencies for a direction. Loads the latency vector into memory and
@@ -169,6 +196,7 @@ impl super::Store {
         let mut business: Vec<i64> = rows.iter().filter_map(|(_, b)| *b).collect();
         clock.sort_unstable();
         business.sort_unstable();
+        let histogram = build_response_time_histogram(&clock);
         Ok(ResponseTimeSummary {
             direction,
             sample_count: rows.len() as u32,
@@ -184,6 +212,7 @@ impl super::Store {
             } else {
                 Some(percentile(&business, 0.9))
             },
+            histogram,
         })
     }
 

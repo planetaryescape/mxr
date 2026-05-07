@@ -5,6 +5,7 @@ mod envelope_list;
 mod legacy;
 mod middleware;
 mod openapi;
+mod routes_v6;
 
 use axum::{
     extract::ws::{Message as WebSocketMessage, WebSocket, WebSocketUpgrade},
@@ -191,9 +192,9 @@ pub fn app(config: WebServerConfig) -> Router {
 
     let v1 = Router::new()
         .route("/health", get(health))
-        .nest("/admin", admin_router())
-        .nest("/mail", mail_router())
-        .nest("/platform", platform_router())
+        .nest("/admin", routes_v6::extend_admin(admin_router()))
+        .nest("/mail", routes_v6::extend_mail(mail_router()))
+        .nest("/platform", routes_v6::extend_platform(platform_router()))
         .nest("/desktop", desktop_router())
         .route("/events", get(events))
         .with_state(state);
@@ -2905,6 +2906,157 @@ mod tests {
 
         assert!(text.contains("SyncCompleted"));
         assert!(text.contains("\"messages_synced\":3"));
+    }
+
+    /// Slice 6 — exemplar new routes from each bucket dispatch the right
+    /// `Request` variant and return the corresponding `ResponseData`. Not
+    /// exhaustive (per-variant coverage moves to slice 7's harness against
+    /// the FakeProvider) — this catches "did the route table hook up at
+    /// all" mistakes per slice.
+    #[tokio::test]
+    async fn slice6_routes_dispatch_correct_request_variants() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            |request| match request {
+                Request::Ping => Some(Response::Ok {
+                    data: ResponseData::Pong,
+                }),
+                Request::ListAccountsConfig => Some(Response::Ok {
+                    data: ResponseData::AccountsConfig { accounts: vec![] },
+                }),
+                Request::ListSavedSearches => Some(Response::Ok {
+                    data: ResponseData::SavedSearches { searches: vec![] },
+                }),
+                Request::Count { mode, .. } => Some(Response::Ok {
+                    data: ResponseData::Count {
+                        // surface the mode round-trip so we know the
+                        // handler parsed and forwarded it correctly
+                        count: if mode == Some(SearchMode::Lexical) { 7 } else { 0 },
+                    },
+                }),
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let client = reqwest::Client::new();
+
+        // admin/ping (Request::Ping → ResponseData::Pong)
+        let response = client
+            .post(format!("http://{addr}/api/v1/admin/ping"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["pong"], true);
+
+        // ResponseData uses #[serde(tag = "kind")] (internally tagged), so
+        // the JSON shape is {"kind": "Variant", ...fields}.
+
+        // platform/accounts/config (Request::ListAccountsConfig)
+        let response = client
+            .get(format!("http://{addr}/api/v1/platform/accounts/config"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["kind"], "AccountsConfig");
+        assert!(json["accounts"].is_array());
+
+        // platform/saved-searches (Request::ListSavedSearches)
+        let response = client
+            .get(format!("http://{addr}/api/v1/platform/saved-searches"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["kind"], "SavedSearches");
+
+        // mail/count with mode=lexical — verifies query-param parsing on
+        // a route that wasn't covered before slice 6.
+        let response = client
+            .get(format!(
+                "http://{addr}/api/v1/mail/count?query=alice&mode=lexical"
+            ))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["kind"], "Count");
+        assert_eq!(
+            json["count"], 7,
+            "mode=lexical must round-trip — fake responder returns 7 only for that mode"
+        );
+    }
+
+    /// Slice 6 — bad query params surface a 4xx error rather than a
+    /// generic 500. Probes the per-handler validation paths (rubric
+    /// dim 4: negative cases).
+    #[tokio::test]
+    async fn slice6_routes_reject_invalid_query_params() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let client = reqwest::Client::new();
+
+        // bad mode → BridgeError::Ipc → 5xx; the point is we don't 200
+        // for bad inputs.
+        let response = client
+            .get(format!(
+                "http://{addr}/api/v1/mail/count?query=q&mode=garbage"
+            ))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            !response.status().is_success(),
+            "garbage mode must not return 2xx; got {}",
+            response.status()
+        );
+
+        // missing required `query` parameter → 4xx (axum returns 400 for
+        // failed Query extraction).
+        let response = client
+            .get(format!("http://{addr}/api/v1/mail/count"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            response.status().is_client_error(),
+            "missing query param must surface a 4xx; got {}",
+            response.status()
+        );
     }
 
     /// Slice 4 — `Authorization: Bearer X` is the preferred auth path

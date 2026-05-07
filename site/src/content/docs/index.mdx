@@ -1,187 +1,199 @@
 ---
 title: "Your inbox, on your computer."
-description: "Read, search, draft, and send email even on a plane. mxr keeps your entire mailbox locally · and gives your scripts, agents, and your own clients the same access you have."
+description: "A local-first notebook for your email. Read, search, draft, and send even on a plane. Two-way sync with Gmail or any IMAP server. Scriptable from your shell. Operable by your agent."
 template: splash
 hero:
   title: |
     Your inbox,
     <span class="hero-accent">on your computer.</span>
-  tagline: "Read, search, draft, and send email even on a plane. mxr keeps your entire mailbox on your laptop, syncs both ways with your provider, and gives your scripts, agents, and your own clients the same access you have."
+  tagline: "A notebook for your email. Read, search, draft, and send even on a plane. Two-way sync with Gmail or any IMAP server. Scriptable from your shell. Operable by your agent."
   actions:
-    - text: Get started
-      link: /getting-started/install/
-      icon: right-arrow
+    - text: Read on
+      link: '#install'
       variant: primary
-    - text: View on GitHub
+    - text: Source
       link: https://github.com/planetaryescape/mxr
-      icon: external
       variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+<div class="bullet-strip" aria-hidden="true">
+<div>
+<span>Gmail</span><span class="bullet">◈</span><span>IMAP</span><span class="bullet">◈</span><span>SMTP</span><span class="bullet">◈</span><span>Fastmail</span><span class="bullet">◈</span><span>Migadu</span><span class="bullet">◈</span><span>Proton Bridge</span><span class="bullet">◈</span><span>Custom adapters</span><span class="bullet">◈</span><span>Gmail</span><span class="bullet">◈</span><span>IMAP</span><span class="bullet">◈</span><span>SMTP</span><span class="bullet">◈</span><span>Fastmail</span><span class="bullet">◈</span><span>Migadu</span><span class="bullet">◈</span><span>Proton Bridge</span><span class="bullet">◈</span><span>Custom adapters</span><span class="bullet">◈</span>
+</div>
+</div>
 
-<div class="landing-section install-section">
+<div class="landing-section install-section" id="install" data-folio="01">
 
-## Install
+<div class="install-masthead">
+  <span>chapter one ◈ install</span>
+  <span>three methods</span>
+</div>
 
-<div class="install-grid">
-<div class="install-method">
-<h4>Homebrew</h4>
+<div class="install-flow">
+  <div class="install-method">
+    <h4>Homebrew</h4>
 
 ```bash
 brew tap planetaryescape/mxr
 brew install mxr
 ```
 
-</div>
-<div class="install-method">
-<h4>Cargo (from source)</h4>
-
-```bash
-cargo install --git https://github.com/planetaryescape/mxr --locked mxr
-```
-
-</div>
-<div class="install-method">
-<h4>Pre-built binaries</h4>
-
-macOS (Intel + Apple Silicon) and Linux x86_64.
-
-[Download latest release ->](https://github.com/planetaryescape/mxr/releases/latest)
-
-</div>
-</div>
-
-```bash
-mxr accounts add        # connect Gmail or IMAP+SMTP
-mxr sync                # pull your archive locally
-mxr                      # open the TUI · you're in
-```
-
-Works with **Gmail**, **IMAP**, and **SMTP** out of the box. One local database, one binary, all your accounts.
-
-</div>
-
-<div class="landing-section offline-section">
-
-## Mid-flight, mid-sort.
-
-<div class="terminal-log" aria-label="Example session: triage on a plane, sync on landing">
-  <div class="log-prompt"><span class="log-cmd-prompt">~</span><span class="log-cmd-prompt"> $</span> mxr</div>
-  <div class="log-line"><span class="log-time">19:42</span><span class="log-glyph log-read">●</span> opened · 47 unread, 11 threads</div>
-  <div class="log-line"><span class="log-time">20:18</span><span class="log-glyph log-write">↑</span> drafted 3 replies <span class="log-meta">(queued for send)</span></div>
-  <div class="log-line"><span class="log-time">20:55</span><span class="log-glyph log-snooze">↓</span> snoozed 12 threads <span class="log-meta">(resume 09:00 tomorrow)</span></div>
-  <div class="log-line"><span class="log-time">21:14</span><span class="log-glyph log-write">●</span> drafted: <span class="log-file">announcement-q3.md</span> <span class="log-meta">(saved locally)</span></div>
-  <div class="log-divider">─── wifi reconnected, syncing ───</div>
-  <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> sent 3 replies <span class="log-meta">(provider acknowledged)</span></div>
-  <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> 47 reads pushed upstream</div>
-  <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> 12 snoozes registered</div>
-</div>
-
-Open mxr on a plane with the wifi off. Triage. Reply. Draft. Snooze. Opening a message is a SQLite read, not a fetch · there is no network round trip waiting on you. When you land and your laptop reconnects, mxr finishes everything you queued.
-
-Your archive is on disk, not in someone else's cloud. Years of email, every attachment, every label: local, indexed, yours.
-
-</div>
-
-<div class="landing-section search-section">
-
-## Search like it's local. Because it is.
-
-<div class="search-demo">
-  <div class="search-query">
-    <span class="search-prompt">$</span> mxr search <span class="search-string">"from:supplier subject:contract has:attachment after:2019"</span>
   </div>
-  <div class="search-meta">4 matches · 12ms · index 47 213 messages</div>
-  <div class="search-results">
-    <div class="search-row">
-      <span class="search-date">2024-08-12</span>
-      <span class="search-from">Supplier Co.</span>
-      <span class="search-subject">Contract revision v3 · sign by Friday</span>
-      <span class="search-attach">📎</span>
-    </div>
-    <div class="search-row">
-      <span class="search-date">2023-03-04</span>
-      <span class="search-from">Supplier Co.</span>
-      <span class="search-subject">2023 framework agreement (signed PDF)</span>
-      <span class="search-attach">📎</span>
-    </div>
-    <div class="search-row">
-      <span class="search-date">2019-11-22</span>
-      <span class="search-from">contracts@supplier</span>
-      <span class="search-subject">Contract terms · initial draft</span>
-      <span class="search-attach">📎</span>
-    </div>
-    <div class="search-row">
-      <span class="search-date">2019-09-08</span>
-      <span class="search-from">Supplier Co.</span>
-      <span class="search-subject">Onboarding contract for review</span>
-      <span class="search-attach">📎</span>
-    </div>
+  <div class="install-method">
+    <h4>Cargo</h4>
+
+```bash
+cargo install --git \
+  https://github.com/planetaryescape/mxr \
+  --locked mxr
+```
+
+  </div>
+  <div class="install-method">
+    <h4>Binaries</h4>
+
+<p>macOS Intel + Apple Silicon · Linux x86_64</p>
+
+[Download latest release →](https://github.com/planetaryescape/mxr/releases/latest)
+
   </div>
 </div>
 
-Find a 2019 contract by the supplier's name. Pull every receipt from a vendor. List the apology email you sent in March. mxr indexes your mail with [Tantivy](https://github.com/quickwit-oss/tantivy) · the BM25 engine behind Quickwit · with field boosts on subject, body, sender, and attachment names. Optional local hybrid retrieval when you turn it on. No round trips, no rate limits, no "loading more."
+<div class="install-runline">
+  <div class="run-step"><span class="run-mark">◈</span><span class="run-cmd">mxr accounts add</span><span class="run-note">connect Gmail or IMAP+SMTP</span></div>
+  <div class="run-step"><span class="run-mark">◈</span><span class="run-cmd">mxr sync</span><span class="run-note">pull your archive locally</span></div>
+  <div class="run-step"><span class="run-mark">◈</span><span class="run-cmd">mxr</span><span class="run-note">open the TUI, you're in</span></div>
+</div>
 
-```bash
-mxr search "subject:invoice" --format json | jq '.[] | .from.email' | sort -u
-mxr storage --by sender --limit 20      # who's eating your inbox?
-mxr stale --mine --older-than-days 14   # threads waiting on a reply
-mxr wrapped --year 2025                  # year in review, your data only
-```
-
-Every command emits JSON. Compose mxr with `jq`, `xargs`, `fzf`, your shell.
+<p class="install-coda">Works with Gmail, IMAP, and SMTP out of the box. One local database, one binary, all your accounts.</p>
 
 </div>
 
-<div class="landing-section agent-section">
+<div class="landing-section offline-section" data-folio="02">
 
-## Email your agent can fully operate.
+## offline
 
-Anything you can do with email, your agent can do. Not "compose a draft and stop" · actually run the workflow.
+<div class="spread">
+  <div class="narrative">
+    <h3>No signal. <em>No problem.</em></h3>
+    <p>Open mxr on a plane with the wifi off. Triage. Reply. Draft. Snooze. Opening a message is a SQLite read, not a fetch, so there is no network round trip waiting on you. When you land and your laptop reconnects, mxr finishes everything you queued.</p>
+    <p>Your archive is on disk, not in someone else's cloud. Years of email, every attachment, every label: local, indexed, yours.</p>
+  </div>
+
+  <div class="terminal-log" aria-label="Example session: triage on a plane, sync on landing">
+    <div class="log-prompt"><span class="log-cmd-prompt">~</span><span class="log-cmd-prompt"> $</span> mxr</div>
+    <div class="log-line"><span class="log-time">19:42</span><span class="log-glyph log-read">●</span> opened, 47 unread, 11 threads</div>
+    <div class="log-line"><span class="log-time">20:18</span><span class="log-glyph log-write">↑</span> drafted 3 replies <span class="log-meta">(queued for send)</span></div>
+    <div class="log-line"><span class="log-time">20:55</span><span class="log-glyph log-snooze">↓</span> snoozed 12 threads <span class="log-meta">(resume 09:00 tomorrow)</span></div>
+    <div class="log-line"><span class="log-time">21:14</span><span class="log-glyph log-write">●</span> drafted: <span class="log-file">announcement-q3.md</span> <span class="log-meta">(saved locally)</span></div>
+    <div class="log-divider">◈ wifi reconnected, syncing</div>
+    <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> sent 3 replies <span class="log-meta">(provider acknowledged)</span></div>
+    <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> 47 reads pushed upstream</div>
+    <div class="log-line"><span class="log-time">21:30</span><span class="log-glyph log-success">✓</span> 12 snoozes registered</div>
+  </div>
+</div>
+
+</div>
+
+<div class="landing-section search-section" data-folio="03">
+
+## search like it's <em>local</em>
+
+<div class="search-event">
+  <span class="search-prompt">$</span>
+  <span><span class="search-cmd">mxr search </span><span class="search-string">"from:supplier subject:contract has:attachment after:2019"</span></span>
+  <span class="search-timing">12 ms ◈ 47 213 indexed</span>
+</div>
+
+<div class="search-results">
+  <div class="search-row">
+    <span class="search-date">2024-08-12</span>
+    <span class="search-from">Supplier Co.</span>
+    <span class="search-subject">Contract revision v3, sign by Friday</span>
+    <span class="search-attach">📎</span>
+  </div>
+  <div class="search-row">
+    <span class="search-date">2023-03-04</span>
+    <span class="search-from">Supplier Co.</span>
+    <span class="search-subject">2023 framework agreement (signed PDF)</span>
+    <span class="search-attach">📎</span>
+  </div>
+  <div class="search-row">
+    <span class="search-date">2019-11-22</span>
+    <span class="search-from">contracts@supplier</span>
+    <span class="search-subject">Contract terms · initial draft</span>
+    <span class="search-attach">📎</span>
+  </div>
+  <div class="search-row">
+    <span class="search-date">2019-09-08</span>
+    <span class="search-from">Supplier Co.</span>
+    <span class="search-subject">Onboarding contract for review</span>
+    <span class="search-attach">📎</span>
+  </div>
+</div>
+
+<div class="search-coda">
+  <p>Find a 2019 contract by the supplier's name. Pull every receipt from a vendor. List the apology email you sent in March. mxr indexes your mail with <a href="https://github.com/quickwit-oss/tantivy">Tantivy</a>, the BM25 engine behind Quickwit, with field boosts on subject, body, sender, and attachment names. Optional local hybrid retrieval when you turn it on. No round trips, no rate limits, no "loading more."</p>
+
+```bash
+mxr storage --by sender --limit 20
+mxr stale --mine --older-than-days 14
+mxr wrapped --year 2025
+mxr search "subject:invoice" --format json | jq '.[].from.email' | sort -u
+```
+
+</div>
+
+</div>
+
+<div class="landing-section agent-section" data-folio="04">
+
+## email your agent can <em>operate</em>
+
+<p>Anything you can do with email, your agent can do. Not "compose a draft and stop." Actually run the workflow.</p>
 
 <div class="agent-conversation">
   <div class="agent-turn">
-    <div class="agent-label agent-you">you →</div>
+    <div class="agent-label">◈ prompt</div>
     <div class="agent-prompt">Find newsletters I haven't opened in three months. Show me the list, unsubscribe from the ones I confirm.</div>
     <div class="agent-runs">
       <code>mxr subscriptions --rank --format json</code>
       <code>mxr stale --within-days 90 --format ids</code>
     </div>
-    <div class="agent-result">found 14 candidates. you confirmed 11. <span class="agent-ok">11 unsubscribed, 3 archived</span></div>
+    <div class="agent-result">found 14 candidates ◈ you confirmed 11 ◈<span class="agent-ok">11 unsubscribed, 3 archived.</span></div>
   </div>
 
-  <div class="agent-turn agent-turn-flip">
-    <div class="agent-label agent-you">you →</div>
+  <div class="agent-turn">
+    <div class="agent-label">◈ prompt</div>
     <div class="agent-prompt">I'm prepping for my 1-on-1 with Sarah. Pull all email threads between us from the last two weeks, summarise the open items, draft an agenda.</div>
     <div class="agent-runs">
       <code>mxr search "from:sarah OR to:sarah after:2026-04-23" --format json</code>
       <code>mxr compose --to sarah --draft</code>
     </div>
-    <div class="agent-result">7 threads found, 4 with open asks. <span class="agent-ok">draft saved to ~/.mxr/drafts/agenda.md</span></div>
+    <div class="agent-result">7 threads, 4 with open asks ◈<span class="agent-ok">draft saved to ~/.mxr/drafts/agenda.md.</span></div>
   </div>
 
   <div class="agent-turn">
-    <div class="agent-label agent-you">you →</div>
+    <div class="agent-label">◈ prompt</div>
     <div class="agent-prompt">Find every CI failure email from last week. Cross-reference with my recent commits and archive the ones whose tests have since been fixed.</div>
     <div class="agent-runs">
       <code>mxr search "from:ci@github.com after:2026-04-30" --format json</code>
       <code>git log --since=1.week --pretty=%H %s</code>
       <code>mxr archive --search "&lt;ids&gt;"</code>
     </div>
-    <div class="agent-result">23 failures found, 18 since fixed. <span class="agent-ok">18 archived, 5 left for review</span></div>
+    <div class="agent-result">23 failures, 18 since fixed ◈<span class="agent-ok">18 archived, 5 left for review.</span></div>
   </div>
 </div>
 
-This works because mxr isn't a GUI with an API bolted on · the CLI **is** the interface. Every operation supports `--format json`, every mutation has a `--dry-run`, every search composes with `jq`, `xargs`, `fzf`, your shell. Your agent doesn't need browser automation, screen scraping, or a provider-specific SDK.
+<p>This works because mxr isn't a GUI with an API bolted on. The CLI <strong>is</strong> the interface. Every operation supports <code>--format json</code>, every mutation has a <code>--dry-run</code>, every search composes with the rest of your shell. Your agent doesn't need browser automation, screen scraping, or a provider-specific SDK.</p>
 
-[Install the mxr skill →](/guides/agent-skill/)
+<p><a href="/guides/agent-skill/">Install the mxr skill →</a></p>
 
 </div>
 
-<div class="landing-section eulogy-section">
+<div class="landing-section eulogy-section" data-folio="05">
 
-## When Gmail dies, you don't.
+## when gmail dies, you don't
 
 <div class="eulogy-list" aria-label="Killed Google products">
   <div class="eulogy-row"><span class="eulogy-name">Google Reader</span><span class="eulogy-date">2005 – 2013</span></div>
@@ -191,23 +203,23 @@ This works because mxr isn't a GUI with an API bolted on · the CLI **is** the i
   <div class="eulogy-row eulogy-pending"><span class="eulogy-name">?</span><span class="eulogy-date">next</span></div>
 </div>
 
-Each had millions of users when it shut down.
-
-If your provider goes dark tomorrow · outage, lockout, deprecation, account flag · you lose a day or two of new mail. Everything else is on your laptop. You keep your archive, your search, your drafts, your filters. Re-point mxr at a different provider; carry on.
-
-Your email is data. It belongs on a disk you own.
+<div class="eulogy-prose">
+  <p>Each had millions of users when it shut down.</p>
+  <p>If your provider goes dark tomorrow, an outage, a lockout, a deprecation, an account flag, you lose a day or two of new mail. Everything else is on your laptop. You keep your archive, your search, your drafts, your filters. Re-point mxr at a different provider; carry on.</p>
+  <p>Your email is data. It belongs on a disk you own.</p>
+</div>
 
 </div>
 
-<div class="landing-section duplex-section">
+<div class="landing-section duplex-section" data-folio="06">
 
-## Use it alongside Gmail. Or instead of it.
+## not a lock-in
 
-mxr is a client, not a replacement. It keeps a live two-way sync with your provider so changes flow both directions within seconds.
+<p>mxr is a client, not a replacement. It keeps a live two-way sync with your provider so changes flow both directions within seconds.</p>
 
 <div class="duplex-grid">
   <div class="duplex-side">
-    <div class="duplex-side-label">in your other client</div>
+    <div class="duplex-side-label">◈ in your other client</div>
     <ul class="duplex-actions">
       <li><span class="duplex-arrow">→</span> read a thread in Gmail web on your phone</li>
       <li><span class="duplex-arrow">→</span> apply a label in Apple Mail</li>
@@ -217,10 +229,10 @@ mxr is a client, not a replacement. It keeps a live two-way sync with your provi
   <div class="duplex-bridge">
     <div class="duplex-mech">Gmail History API</div>
     <div class="duplex-mech-line">↕</div>
-    <div class="duplex-mech">IMAP CONDSTORE + IDLE</div>
+    <div class="duplex-mech">IMAP CONDSTORE<br/>+ IDLE</div>
   </div>
   <div class="duplex-side">
-    <div class="duplex-side-label">in mxr (within seconds)</div>
+    <div class="duplex-side-label">◈ in mxr (within seconds)</div>
     <ul class="duplex-actions">
       <li><span class="duplex-arrow">←</span> mxr marks the thread read</li>
       <li><span class="duplex-arrow">←</span> the label appears in mxr's sidebar</li>
@@ -229,46 +241,45 @@ mxr is a client, not a replacement. It keeps a live two-way sync with your provi
   </div>
 </div>
 
-You're not locked in either direction. Stop using mxr tomorrow and your mail is still in Gmail / your IMAP server, exactly where it was. The local archive on disk is yours to keep.
+<p>You're not locked in either direction. Stop using mxr tomorrow and your mail is still in Gmail or your IMAP server, exactly where it was. The local archive on disk is yours to keep.</p>
 
 </div>
 
-<div class="landing-section capability-section">
+<div class="landing-section capability-section" data-folio="07">
 
-## Built like a Unix tool.
+## principles
 
-<div class="capability-row">
-  <div class="capability-text">
-    <h3>One daemon. Many surfaces.</h3>
+<div class="principle">
+  <div class="principle-text">
+    <h3>One daemon, many surfaces.</h3>
     <p>The TUI, CLI, and HTTP bridge are clients of the same process. Sync, indexing, rules, snoozing, and analytics self-healing run in the background. Close the TUI; nothing stops.</p>
   </div>
-  <div class="capability-snippet">
-    <pre><code><span class="snip-comment"># one daemon, three clients, one mailbox</span>
-mxr daemon &amp;
-mxr             <span class="snip-comment"># TUI</span>
-mxr search ... <span class="snip-comment"># CLI</span>
-mxr web         <span class="snip-comment"># HTTP+WS bridge</span></code></pre>
+  <div class="principle-margin">
+    <pre><code>{`mxr daemon &
+mxr             # TUI
+mxr search ... # CLI
+mxr web         # HTTP bridge`}</code></pre>
   </div>
 </div>
 
-<div class="capability-row capability-row-flip">
-  <div class="capability-text">
+<div class="principle principle-flip">
+  <div class="principle-text">
     <h3>A real search engine, not a filter.</h3>
     <p>Tantivy gives you sub-second BM25-ranked full-text search across your entire mailbox, with field boosts on subject, body, sender, and attachment filenames. Saved searches sit in the sidebar as programmable lenses. Optional local hybrid retrieval when you opt in.</p>
   </div>
-  <div class="capability-snippet">
-    <pre><code>mxr search <span class="snip-string">"subject:invoice from:vendor"</span>
-mxr search <span class="snip-string">"has:attachment larger:5M"</span>
-mxr search <span class="snip-string">"is:unread label:client/acme"</span></code></pre>
+  <div class="principle-margin">
+    <pre><code>{`mxr search "subject:invoice from:vendor"
+mxr search "has:attachment larger:5M"
+mxr search "is:unread label:client/acme"`}</code></pre>
   </div>
 </div>
 
-<div class="capability-row">
-  <div class="capability-text">
+<div class="principle">
+  <div class="principle-text">
     <h3>Compose where you already write.</h3>
     <p>$EDITOR opens with markdown and YAML frontmatter. Your keybindings, your plugins, your muscle memory. mxr handles parsing, markdown to multipart conversion, and sending. No second editor, no janky web textarea.</p>
   </div>
-  <div class="capability-snippet">
+  <div class="principle-margin">
     <pre><code>{`---
 to:      team@example.com
 subject: ship plan
@@ -280,40 +291,39 @@ We're cutting v0.5 on Friday.`}</code></pre>
   </div>
 </div>
 
-<div class="capability-row capability-row-flip">
-  <div class="capability-text">
+<div class="principle principle-flip">
+  <div class="principle-text">
     <h3>Provider-agnostic by construction.</h3>
     <p>Gmail, IMAP, SMTP all normalise into one internal model. Mix providers freely; mxr handles the per-provider quirks behind a clean Rust trait. A conformance suite validates new adapters before they ship.</p>
   </div>
-  <div class="capability-snippet">
-    <pre><code>mxr accounts add gmail
-mxr accounts add imap   <span class="snip-comment"># work</span>
-mxr accounts add gmail  <span class="snip-comment"># personal</span>
-<span class="snip-comment"># one mailbox, one search,</span>
-<span class="snip-comment"># one keymap</span></code></pre>
+  <div class="principle-margin">
+    <pre><code>{`mxr accounts add gmail
+mxr accounts add imap   # work
+mxr accounts add gmail  # personal
+# one mailbox, one search`}</code></pre>
   </div>
 </div>
 
-<div class="capability-row">
-  <div class="capability-text">
+<div class="principle">
+  <div class="principle-text">
     <h3>Distraction-free reader mode.</h3>
     <p>Reader mode strips tracking pixels, banners, signatures, quoted text. You see what the email says, not what it is selling. One key to unsubscribe; one key to mark read and archive.</p>
   </div>
-  <div class="capability-snippet">
-    <pre><code><span class="snip-key">D</span>     unsubscribe
-<span class="snip-key">e</span>     archive
-<span class="snip-key">m</span>     mark read + archive
-<span class="snip-key">R</span>     toggle reader mode
-<span class="snip-key">L</span>     open links picker</code></pre>
+  <div class="principle-margin">
+    <pre><code>{`D     unsubscribe
+e     archive
+m     mark read + archive
+R     toggle reader mode
+L     open links picker`}</code></pre>
   </div>
 </div>
 
-<div class="capability-row capability-row-flip">
-  <div class="capability-text">
+<div class="principle principle-flip">
+  <div class="principle-text">
     <h3>Pipeable everything.</h3>
     <p>--format json, --format jsonl, --format ids, --dry-run, --search for batch ops. Every command emits structured output by default when piped. Compose mxr with the rest of your shell.</p>
   </div>
-  <div class="capability-snippet">
+  <div class="principle-margin">
     <pre><code>{`mxr search "from:noreply" --format ids \\
   | xargs -n1 mxr archive
 
@@ -324,17 +334,17 @@ mxr stale --mine --format json \\
 
 </div>
 
-<div class="landing-section surfaces-section">
+<div class="landing-section surfaces-section" data-folio="08">
 
-## Don't like terminals? Use a different surface.
+## surfaces
 
-mxr is a daemon plus clients. Three ship today; the daemon speaks JSON over a Unix socket and HTTP, so anything that can open a socket can drive your inbox.
+<p>mxr is a daemon plus clients. Three ship today; the daemon speaks JSON over a Unix socket and HTTP, so anything that can open a socket can drive your inbox.</p>
 
 <div class="surface-stack">
   <div class="surface-block">
     <div class="surface-meta">
       <div class="surface-key">TUI</div>
-      <div class="surface-tag">default</div>
+      <div class="surface-tag">◈ default</div>
     </div>
     <div class="surface-body">
       <p>Vim-native keys, Gmail-style chords. Six top-level screens including a full Analytics view (storage, contacts, stale, response-time, subscriptions, wrapped). Compose in $EDITOR.</p>
@@ -345,22 +355,22 @@ mxr is a daemon plus clients. Three ship today; the daemon speaks JSON over a Un
   <div class="surface-block">
     <div class="surface-meta">
       <div class="surface-key">CLI</div>
-      <div class="surface-tag">scriptable</div>
+      <div class="surface-tag">◈ scriptable</div>
     </div>
     <div class="surface-body">
       <p>Every TUI action has a CLI equivalent. Pipe through jq, xargs, anything Unix. Use it from a shell, a Makefile, your prompt, your editor, your agent.</p>
-      <pre class="surface-snippet"><code>$ mxr archive --search "from:noreply older:30d" --dry-run
-would archive 142 messages.</code></pre>
+      <pre class="surface-snippet"><code>{`$ mxr archive --search "from:noreply older:30d" --dry-run
+would archive 142 messages.`}</code></pre>
     </div>
   </div>
 
   <div class="surface-block">
     <div class="surface-meta">
-      <div class="surface-key">HTTP bridge</div>
-      <div class="surface-tag">browser-friendly</div>
+      <div class="surface-key">HTTP</div>
+      <div class="surface-tag">◈ browser-friendly</div>
     </div>
     <div class="surface-body">
-      <p><code>mxr web</code> exposes the daemon over HTTP + WebSocket. Bearer-token auth, OpenAPI-described, generates typed SDK clients. Use the browser app we ship · or build your own client against the same API.</p>
+      <p><code>mxr web</code> exposes the daemon over HTTP and WebSocket. Bearer-token auth, OpenAPI-described, generates typed SDK clients. Use the browser app we ship, or build your own client against the same API.</p>
       <pre class="surface-snippet"><code>{`$ curl -H "Authorization: Bearer $TOKEN" \\
     http://127.0.0.1:7777/api/v1/mail/threads/recent
 {"threads": [...]}`}</code></pre>
@@ -370,7 +380,7 @@ would archive 142 messages.</code></pre>
   <div class="surface-block surface-block-fourth">
     <div class="surface-meta">
       <div class="surface-key">your client</div>
-      <div class="surface-tag">build it</div>
+      <div class="surface-tag">◈ build it</div>
     </div>
     <div class="surface-body">
       <p>A Raycast extension. A phone app. A Slack bot. A custom dashboard. The OpenAPI spec is the contract; your agent can write the rest.</p>
@@ -380,11 +390,11 @@ would archive 142 messages.</code></pre>
 
 </div>
 
-<div class="landing-section lineage-section">
+<div class="landing-section lineage-section" data-folio="09">
 
-## Standing on the work that came before.
+## standing on
 
-Each predecessor taught us something we kept. Read down · it's a commit log of the genre, with mxr as `HEAD`.
+<p>Each predecessor taught us something we kept. Read down. It is a commit log of the genre, with mxr as <code>HEAD</code>.</p>
 
 <div class="lineage-log" aria-label="Timeline of terminal mail clients and what mxr inherits from each">
 
@@ -398,7 +408,7 @@ Each predecessor taught us something we kept. Read down · it's a commit log of 
     </div>
     <p class="lineage-tagline">Everything below, synthesised. One daemon underneath; many surfaces on top.</p>
     <ul class="lineage-deltas">
-      <li><span class="delta-add">+</span> daemon-backed: TUI, CLI, HTTP bridge, your agent · one engine</li>
+      <li><span class="delta-add">+</span> daemon-backed: TUI, CLI, HTTP bridge, your agent share one engine</li>
       <li><span class="delta-add">+</span> eager body fetch: opening a message is a SQLite read, not a fetch</li>
       <li><span class="delta-add">+</span> Tantivy BM25 with field boosts; optional local hybrid retrieval</li>
       <li><span class="delta-add">+</span> agent-native pipeable JSON across every command</li>
@@ -433,7 +443,7 @@ Each predecessor taught us something we kept. Read down · it's a commit log of 
     <ul class="lineage-inherits">
       <li><span class="delta-keep">&rarr;</span> scriptability as a first-class feature</li>
       <li><span class="delta-keep">&rarr;</span> JSON-aware output</li>
-      <li><span class="delta-keep">&rarr;</span> engine / view split · clients are clients</li>
+      <li><span class="delta-keep">&rarr;</span> engine and view split, clients are clients</li>
     </ul>
   </div>
 </div>
@@ -449,7 +459,7 @@ Each predecessor taught us something we kept. Read down · it's a commit log of 
     <ul class="lineage-inherits">
       <li><span class="delta-keep">&rarr;</span> tabbed compose, embedded HTML rendering</li>
       <li><span class="delta-keep">&rarr;</span> ex-commands and pipe-to-shell</li>
-      <li><span class="delta-keep">&rarr;</span> filter / search split for navigation vs. discovery</li>
+      <li><span class="delta-keep">&rarr;</span> filter and search split for navigation vs. discovery</li>
     </ul>
   </div>
 </div>
@@ -515,18 +525,16 @@ Each predecessor taught us something we kept. Read down · it's a commit log of 
 
 </div>
 
-<div class="landing-section opensource-section">
+<div class="landing-section opensource-section" data-folio="10">
 
-## Open source. No telemetry.
+<div class="endplate-meta">end plate ◈ open source ◈ MIT / Apache-2.0</div>
 
-mxr is MIT / Apache-2.0 dual-licensed. Built in Rust: one binary, no runtime, runs everywhere. No analytics, no phone-home, no third-party services in the hot path.
-
-The architecture is designed for contribution: clean crate boundaries (`core`, `protocol`, `store`, `search`, `sync`, `daemon`, `tui`, `web`, provider adapters), compile-time-checked SQL via sqlx, a conformance test suite for provider adapters. Whether it's a bug fix, a new provider adapter, a CLI improvement, or an idea, we want to hear from you.
+<p>Built in Rust: one binary, no runtime, runs everywhere. No analytics, no phone-home, no third-party services in the hot path. The architecture is designed for contribution: clean crate boundaries, compile-time-checked SQL via sqlx, a conformance test suite for provider adapters. Whether it's a bug fix, a new provider adapter, a CLI improvement, or an idea, we want to hear from you.</p>
 
 <div class="cta-buttons">
-  <a href="/getting-started/install/" class="cta-primary">Get started</a>
-  <a href="https://github.com/planetaryescape/mxr" class="cta-secondary">Contribute on GitHub</a>
-  <a href="/guides/agent-skill/" class="cta-secondary">Install the AI skill</a>
+  <a href="/getting-started/install/" class="cta-primary">Get started →</a>
+  <a href="https://github.com/planetaryescape/mxr">GitHub</a>
+  <a href="/guides/agent-skill/">Agent skill</a>
 </div>
 
 </div>

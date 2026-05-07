@@ -7,6 +7,8 @@ mod middleware;
 mod openapi;
 mod routes_v6;
 
+pub use openapi::ApiDoc;
+
 use axum::{
     extract::ws::{Message as WebSocketMessage, WebSocket, WebSocketUpgrade},
     extract::{Path as AxumPath, Query, State},

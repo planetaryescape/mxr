@@ -1,0 +1,89 @@
+name: OpenAPI Conformance
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "crates/web/**"
+      - "crates/protocol/**"
+      - "crates/core/**"
+  pull_request:
+    paths:
+      - "crates/web/**"
+      - "crates/protocol/**"
+      - "crates/core/**"
+  workflow_dispatch:
+
+concurrency:
+  group: openapi-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bridge-integration:
+    name: Bridge integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run mxr-web integration suite
+        run: cargo test -p mxr-web --test integration
+
+      - name: Verify openapi.json snapshot
+        # Insta snapshot of /api/v1/openapi.json metadata + schema names is
+        # committed at crates/web/src/snapshots/. Drift fails this step.
+        run: cargo test -p mxr-web --lib openapi_spec_snapshot
+
+  spec-lint:
+    name: Spec validates as OpenAPI 3.1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Schemathesis
+        run: pip install "schemathesis==3.39.5"
+
+      - name: Dump served OpenAPI spec
+        run: |
+          # Run a focused integration test that prints the spec to a
+          # file. This avoids needing a long-lived bridge process in CI.
+          cargo test -p mxr-web --test integration \
+            openapi_spec_is_3_1_and_lists_v1_paths -- --nocapture
+          # Build, then dump the spec via a one-shot helper:
+          mkdir -p .openapi
+          # The integration suite already asserts spec shape; we re-emit
+          # it here for downstream linting tools.
+          cargo run --quiet --example dump_openapi_spec -p mxr-web \
+            > .openapi/spec.json
+
+      - name: Schemathesis spec lint
+        # st run with --dry-run loads + validates the spec without
+        # exercising endpoints. This catches schema-level breakage
+        # (missing $refs, malformed components) early.
+        # Endpoint-level conformance testing requires a real daemon
+        # backed by FakeProvider — tracked as a follow-up after v0.5
+        # ships.
+        run: schemathesis run --dry-run --validate-schema=true .openapi/spec.json
+
+      - name: Upload spec artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: .openapi/spec.json

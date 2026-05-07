@@ -500,3 +500,285 @@
   pointer-events: none;
   z-index: 9999;
 }
+
+/* ==========================================================
+   Lineage section — rendered as a `git log --graph` view.
+   Each predecessor is a commit, mxr is HEAD, additions vs.
+   inherited lines visually distinct.
+   ========================================================== */
+.lineage-section {
+  border: 1px solid var(--mxr-border);
+  border-radius: 0.5rem;
+  padding: 2rem;
+  background: var(--mxr-surface-raised);
+  position: relative;
+  overflow: hidden;
+}
+
+.lineage-section::before {
+  content: 'git log --graph --decorate genre/terminal-mail';
+  position: absolute;
+  top: 0.55rem;
+  right: 0.85rem;
+  font-family: var(--sl-font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  color: var(--mxr-text-tertiary);
+  pointer-events: none;
+  user-select: none;
+}
+
+.lineage-section::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(57, 211, 83, 0.012) 2px,
+      rgba(57, 211, 83, 0.012) 4px
+    );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.lineage-section > * {
+  position: relative;
+  z-index: 1;
+}
+
+.lineage-section > p {
+  color: var(--mxr-text-secondary);
+  max-width: 60ch;
+  margin-block-end: 1.75rem;
+  font-size: 0.95rem;
+}
+
+.lineage-log {
+  font-family: var(--sl-font-mono);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.lineage-entry {
+  display: grid;
+  grid-template-columns: 1.75rem 1fr;
+  position: relative;
+  padding-block: 0.85rem;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: lineage-reveal 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Staggered reveal so the page-load feels orchestrated, per the
+   one-well-orchestrated-moment principle. */
+.lineage-entry:nth-child(1)  { animation-delay: 0.00s; }
+.lineage-entry:nth-child(2)  { animation-delay: 0.06s; }
+.lineage-entry:nth-child(3)  { animation-delay: 0.12s; }
+.lineage-entry:nth-child(4)  { animation-delay: 0.18s; }
+.lineage-entry:nth-child(5)  { animation-delay: 0.24s; }
+.lineage-entry:nth-child(6)  { animation-delay: 0.30s; }
+.lineage-entry:nth-child(7)  { animation-delay: 0.36s; }
+.lineage-entry:nth-child(8)  { animation-delay: 0.42s; }
+
+@keyframes lineage-reveal {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lineage-entry {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The graph column draws the vertical line connecting commits
+   plus the commit dot itself. */
+.lineage-graph {
+  position: relative;
+  font-size: 1rem;
+  color: var(--mxr-green);
+  display: flex;
+  justify-content: center;
+  padding-top: 0.15rem;
+  z-index: 2;
+  text-shadow: 0 0 8px rgba(57, 211, 83, 0.4);
+}
+
+.lineage-entry::before {
+  content: '';
+  position: absolute;
+  left: calc(0.875rem - 1px);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--mxr-green-dim);
+  opacity: 0.55;
+  z-index: 1;
+}
+
+/* Top of the first commit's line stops at the dot, not above it. */
+.lineage-entry:first-child::before {
+  top: 1.05rem;
+}
+
+/* The root commit (Unix philosophy, 1969) has no descendant
+   below it — terminate the line there. */
+.lineage-root::before {
+  bottom: calc(100% - 1.05rem);
+}
+
+.lineage-content {
+  padding-left: 0.5rem;
+}
+
+.lineage-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-block-end: 0.35rem;
+}
+
+.lineage-decoration {
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: var(--mxr-amber);
+  background: rgba(227, 179, 65, 0.08);
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.2rem;
+  border: 1px solid rgba(227, 179, 65, 0.25);
+}
+
+.lineage-tool {
+  font-weight: 700;
+  color: var(--mxr-green);
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.lineage-mxr .lineage-tool {
+  color: var(--mxr-green);
+  text-shadow: 0 0 18px rgba(57, 211, 83, 0.35);
+}
+
+.lineage-year {
+  color: var(--mxr-cyan);
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.lineage-tagline {
+  color: var(--mxr-text-secondary);
+  margin: 0 0 0.45rem 0;
+  font-family: var(--sl-font);
+  font-size: 0.95rem;
+  font-style: italic;
+  max-width: 60ch;
+}
+
+.lineage-inherits,
+.lineage-deltas {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.lineage-inherits li,
+.lineage-deltas li {
+  font-family: var(--sl-font-mono);
+  font-size: 0.825rem;
+  color: var(--mxr-text-primary);
+  padding-left: 0;
+}
+
+.delta-keep {
+  color: var(--mxr-cyan);
+  display: inline-block;
+  width: 1.5rem;
+  font-weight: 600;
+}
+
+.delta-add {
+  color: var(--mxr-green);
+  display: inline-block;
+  width: 1.5rem;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(57, 211, 83, 0.4);
+}
+
+.lineage-mxr {
+  background: linear-gradient(
+    180deg,
+    rgba(57, 211, 83, 0.03) 0%,
+    rgba(57, 211, 83, 0) 100%
+  );
+  border-left: 2px solid var(--mxr-green);
+  margin-left: -2px;
+  padding-left: 0;
+}
+
+.lineage-mxr .lineage-graph {
+  font-size: 1.15rem;
+  color: var(--mxr-green);
+}
+
+.lineage-root .lineage-tool {
+  color: var(--mxr-text-tertiary);
+  font-weight: 500;
+}
+
+.lineage-root .lineage-tagline {
+  color: var(--mxr-text-tertiary);
+}
+
+.lineage-root .lineage-graph {
+  color: var(--mxr-text-tertiary);
+  text-shadow: none;
+}
+
+/* Light-theme adjustments — the dim green line + amber decoration
+   need stronger contrast on white. */
+:root[data-theme='light'] .lineage-entry::before {
+  background: var(--mxr-green);
+  opacity: 0.25;
+}
+
+:root[data-theme='light'] .lineage-decoration {
+  background: rgba(227, 179, 65, 0.18);
+  color: #8b6708;
+  border-color: rgba(227, 179, 65, 0.4);
+}
+
+:root[data-theme='light'] .lineage-section::after {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .lineage-entry {
+    grid-template-columns: 1.4rem 1fr;
+  }
+  .lineage-entry::before {
+    left: calc(0.7rem - 1px);
+  }
+  .lineage-content {
+    padding-left: 0.35rem;
+  }
+  .lineage-header {
+    gap: 0.4rem;
+  }
+}

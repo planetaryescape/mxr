@@ -79,6 +79,9 @@ impl App {
             Action::OpenTab5 => {
                 self.apply(Action::OpenDiagnosticsScreen);
             }
+            Action::OpenTab6 => {
+                self.apply(Action::OpenAnalyticsScreen);
+            }
             // Command palette
             Action::SyncNow => {
                 self.queue_mutation(

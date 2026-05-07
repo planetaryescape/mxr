@@ -1,12 +1,13 @@
 use super::*;
 
-fn tab_titles() -> [&'static str; 5] {
+fn tab_titles() -> [&'static str; 6] {
     [
         "1 Mailbox",
         "2 Search",
         "3 Rules",
         "4 Accounts",
         "5 Diagnostics",
+        "6 Analytics",
     ]
 }
 
@@ -17,10 +18,7 @@ fn selected_tab(screen: Screen) -> usize {
         Screen::Rules => 2,
         Screen::Accounts => 3,
         Screen::Diagnostics => 4,
-        // Analytics doesn't have a top tab — it's reached via the
-        // command palette. Highlight Mailbox so the tab strip stays
-        // sensible.
-        Screen::Analytics => 0,
+        Screen::Analytics => 5,
     }
 }
 
@@ -309,6 +307,9 @@ impl App {
             theme,
         );
 
+        // Analytics filter modal overlay
+        ui::analytics_filter_modal::draw(frame, area, self.modals.analytics_filter.as_ref(), theme);
+
         // Error overlay
         ui::error_modal::draw(frame, area, self.modals.error.as_ref(), theme);
 
@@ -347,7 +348,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::tab_titles;
+    use super::{selected_tab, tab_titles, Screen};
 
     #[test]
     fn tab_titles_include_numeric_shortcuts() {
@@ -359,7 +360,26 @@ mod tests {
                 "3 Rules",
                 "4 Accounts",
                 "5 Diagnostics",
+                "6 Analytics",
             ]
         );
+    }
+
+    /// Slice 1 / B1.3: the screen → tab-index map is what the renderer
+    /// hands to ratatui's `Tabs::select`. Each top-level screen owns
+    /// exactly one tab index, and Analytics owns the new 6th slot.
+    /// Before this slice, `Screen::Analytics` mapped to index 0 so the
+    /// Mailbox tab lit up while the user was on Analytics — confusing
+    /// enough that the screen had to stay hidden behind the command
+    /// palette. This test pins the new mapping so a future `_ => 0`
+    /// fallback can't silently re-introduce the bug.
+    #[test]
+    fn selected_tab_maps_each_screen_to_its_tab_index() {
+        assert_eq!(selected_tab(Screen::Mailbox), 0);
+        assert_eq!(selected_tab(Screen::Search), 1);
+        assert_eq!(selected_tab(Screen::Rules), 2);
+        assert_eq!(selected_tab(Screen::Accounts), 3);
+        assert_eq!(selected_tab(Screen::Diagnostics), 4);
+        assert_eq!(selected_tab(Screen::Analytics), 5);
     }
 }

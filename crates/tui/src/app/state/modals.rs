@@ -81,6 +81,28 @@ pub struct ModalsState {
     /// Populated by palette actions (Enable/Disable/Reindex/Install
     /// Profile); drained one-at-a-time by the lib.rs dispatcher.
     pub pending_semantic_dispatch: Vec<Request>,
+    /// Modal for editing the active analytics view's filter
+    /// parameters in one form. Populated when the user presses `f`
+    /// inside the Analytics screen; cleared on Esc/Enter.
+    pub analytics_filter: Option<AnalyticsFilterModalState>,
+}
+
+/// Form state for the analytics filter modal. Holds string-form
+/// fields per active view so the user can edit numeric inputs by
+/// typing; on submit, the analytics action handler parses them back
+/// into the typed `AnalyticsState` fields.
+#[derive(Debug, Clone)]
+pub struct AnalyticsFilterModalState {
+    pub view: crate::app::AnalyticsView,
+    pub active_field: usize,
+    pub fields: Vec<AnalyticsFilterField>,
+    pub validation_error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AnalyticsFilterField {
+    pub label: String,
+    pub value: String,
 }
 
 /// Modal form for creating (or editing via delete+create) a saved

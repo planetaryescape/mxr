@@ -787,6 +787,21 @@ impl App {
     }
 
     fn handle_analytics_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        // The analytics filter modal is a focused form: capture
+        // text-edit keys here before they fall through to the screen
+        // keymap.
+        if self.modals.analytics_filter.is_some() {
+            return self.handle_analytics_filter_modal_key(key);
+        }
+
+        // The Wrapped view replaces row navigation with tile
+        // navigation (the tile grid is a 3x3 layout, not a list).
+        if self.analytics.view == crate::app::AnalyticsView::Wrapped {
+            return self.handle_wrapped_key(key);
+        }
+
+        let view = self.analytics.view;
+        let storage_mode = self.analytics.storage_mode;
         match (key.code, key.modifiers) {
             (KeyCode::Char('j') | KeyCode::Down, _) => {
                 let len = analytics_row_count(self);
@@ -804,7 +819,152 @@ impl App {
             (KeyCode::BackTab, _) => Some(Action::PrevAnalyticsView),
             (KeyCode::Char('r'), _) => Some(Action::RefreshAnalytics),
             (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
+            (KeyCode::Char('f'), KeyModifiers::NONE) => Some(Action::OpenAnalyticsFilterModal),
+            (KeyCode::Enter, _) => Some(Action::AnalyticsRowDrillDown),
+            // Storage view bindings.
+            (KeyCode::Char('m'), KeyModifiers::NONE)
+                if view == crate::app::AnalyticsView::Storage =>
+            {
+                Some(Action::CycleStorageMode)
+            }
+            (KeyCode::Char('g'), KeyModifiers::NONE)
+                if view == crate::app::AnalyticsView::Storage
+                    && storage_mode == crate::app::StorageMode::Breakdown =>
+            {
+                Some(Action::CycleStorageGroupBy)
+            }
+            // Stale view bindings.
+            (KeyCode::Char('p'), KeyModifiers::NONE)
+                if view == crate::app::AnalyticsView::StaleThreads =>
+            {
+                Some(Action::ToggleStalePerspective)
+            }
+            (KeyCode::Char('['), _) if view == crate::app::AnalyticsView::StaleThreads => {
+                Some(Action::AdjustStaleOlderThanDays(-7))
+            }
+            (KeyCode::Char(']'), _) if view == crate::app::AnalyticsView::StaleThreads => {
+                Some(Action::AdjustStaleOlderThanDays(7))
+            }
+            (KeyCode::Char('{'), _) if view == crate::app::AnalyticsView::StaleThreads => {
+                Some(Action::AdjustStaleWithinDays(-30))
+            }
+            (KeyCode::Char('}'), _) if view == crate::app::AnalyticsView::StaleThreads => {
+                Some(Action::AdjustStaleWithinDays(30))
+            }
+            // Contacts view bindings.
+            (KeyCode::Char('m'), KeyModifiers::NONE)
+                if view == crate::app::AnalyticsView::Contacts =>
+            {
+                Some(Action::CycleContactsMode)
+            }
+            (KeyCode::Char('R'), modifiers)
+                if plain_or_shift(modifiers) && view == crate::app::AnalyticsView::Contacts =>
+            {
+                Some(Action::RefreshContacts)
+            }
+            // ResponseTime view bindings.
+            (KeyCode::Char('d'), KeyModifiers::NONE)
+                if view == crate::app::AnalyticsView::ResponseTime =>
+            {
+                Some(Action::ToggleResponseTimeDirection)
+            }
+            // Subscriptions view bindings.
+            (KeyCode::Char('o'), KeyModifiers::NONE)
+                if view == crate::app::AnalyticsView::Subscriptions =>
+            {
+                Some(Action::ToggleSubscriptionsRank)
+            }
+            (KeyCode::Char('u'), KeyModifiers::NONE)
+                if view == crate::app::AnalyticsView::Subscriptions =>
+            {
+                Some(Action::AnalyticsUnsubscribe)
+            }
             _ => self.contextual_input_action(key),
+        }
+    }
+
+    fn handle_wrapped_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
+        // Tile order is row-major over a 3x3 grid (last cell is the
+        // wide Superlatives banner spanning the bottom row). Indices:
+        // 0=Volume 1=When 2=Contacts | 3=Reply 4=Storage 5=News | 6=Sup
+        match (key.code, key.modifiers) {
+            (KeyCode::Char('h') | KeyCode::Left, _) => {
+                let curr = self.analytics.wrapped_selected_tile;
+                if curr > 0 && curr <= 5 {
+                    self.analytics.wrapped_selected_tile = curr - 1;
+                }
+                None
+            }
+            (KeyCode::Char('l') | KeyCode::Right, _) => {
+                let curr = self.analytics.wrapped_selected_tile;
+                if curr < 5 {
+                    self.analytics.wrapped_selected_tile = curr + 1;
+                }
+                None
+            }
+            (KeyCode::Char('j') | KeyCode::Down, _) => {
+                let curr = self.analytics.wrapped_selected_tile;
+                let next = if curr <= 2 {
+                    curr + 3
+                } else if curr <= 5 {
+                    6
+                } else {
+                    curr
+                };
+                self.analytics.wrapped_selected_tile = next;
+                None
+            }
+            (KeyCode::Char('k') | KeyCode::Up, _) => {
+                let curr = self.analytics.wrapped_selected_tile;
+                let next = if curr == 6 { 4 } else if curr >= 3 { curr - 3 } else { curr };
+                self.analytics.wrapped_selected_tile = next;
+                None
+            }
+            (KeyCode::Tab, _) => Some(Action::NextAnalyticsView),
+            (KeyCode::BackTab, _) => Some(Action::PrevAnalyticsView),
+            (KeyCode::Char('r'), _) => Some(Action::RefreshAnalytics),
+            (KeyCode::Esc, _) => Some(Action::OpenMailboxScreen),
+            (KeyCode::Char('f'), KeyModifiers::NONE) => Some(Action::OpenAnalyticsFilterModal),
+            (KeyCode::Enter, _) => Some(Action::AnalyticsRowDrillDown),
+            (KeyCode::Char('y'), KeyModifiers::NONE) => Some(Action::StepWrappedYear(-1)),
+            (KeyCode::Char('Y'), modifiers) if plain_or_shift(modifiers) => {
+                Some(Action::StepWrappedYear(1))
+            }
+            (KeyCode::Char('t'), KeyModifiers::NONE) => Some(Action::CycleWrappedWindow),
+            _ => self.contextual_input_action(key),
+        }
+    }
+
+    fn handle_analytics_filter_modal_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Option<Action> {
+        let modal = self.modals.analytics_filter.as_mut()?;
+        match (key.code, key.modifiers) {
+            (KeyCode::Esc, _) => Some(Action::CloseAnalyticsFilterModal),
+            (KeyCode::Enter, _) => Some(Action::SubmitAnalyticsFilterModal),
+            (KeyCode::Tab, _) => {
+                modal.active_field = (modal.active_field + 1) % modal.fields.len().max(1);
+                None
+            }
+            (KeyCode::BackTab, _) => {
+                let n = modal.fields.len().max(1);
+                modal.active_field = (modal.active_field + n - 1) % n;
+                None
+            }
+            (KeyCode::Backspace, _) => {
+                if let Some(f) = modal.fields.get_mut(modal.active_field) {
+                    f.value.pop();
+                }
+                None
+            }
+            (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                if let Some(f) = modal.fields.get_mut(modal.active_field) {
+                    f.value.push(c);
+                }
+                None
+            }
+            _ => None,
         }
     }
 
@@ -1368,11 +1528,19 @@ impl App {
 }
 
 fn analytics_row_count(app: &App) -> usize {
-    use crate::app::AnalyticsView;
+    use crate::app::{AnalyticsView, ContactsMode, StorageMode};
     match app.analytics.view {
-        AnalyticsView::Storage => app.analytics.storage_rows.len(),
+        AnalyticsView::Storage => match app.analytics.storage_mode {
+            StorageMode::Breakdown => app.analytics.storage_rows.len(),
+            StorageMode::LargestMessages => app.analytics.largest_message_rows.len(),
+        },
         AnalyticsView::StaleThreads => app.analytics.stale_rows.len(),
-        AnalyticsView::ContactAsymmetry => app.analytics.asymmetry_rows.len(),
+        AnalyticsView::Contacts => match app.analytics.contacts_mode {
+            ContactsMode::Asymmetry => app.analytics.asymmetry_rows.len(),
+            ContactsMode::Decay => app.analytics.decay_rows.len(),
+        },
         AnalyticsView::ResponseTime => 1, // single summary row
+        AnalyticsView::Subscriptions => app.analytics.subscriptions.len(),
+        AnalyticsView::Wrapped => 1, // tile grid uses tile selection, not row index
     }
 }

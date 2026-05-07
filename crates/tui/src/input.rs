@@ -127,6 +127,12 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::OpenLogs)
             }
+            (KeyState::WaitingForSecond { first: 'g', .. }, KeyCode::Char('A'), modifiers)
+                if plain_or_shift(modifiers) =>
+            {
+                self.state = KeyState::Normal;
+                Some(Action::OpenAnalyticsScreen)
+            }
 
             // Multi-key: zz
             (KeyState::Normal, KeyCode::Char('z'), KeyModifiers::NONE) => {
@@ -179,6 +185,7 @@ impl InputHandler {
             (KeyState::Normal, KeyCode::Char('3'), KeyModifiers::NONE) => Some(Action::OpenTab3),
             (KeyState::Normal, KeyCode::Char('4'), KeyModifiers::NONE) => Some(Action::OpenTab4),
             (KeyState::Normal, KeyCode::Char('5'), KeyModifiers::NONE) => Some(Action::OpenTab5),
+            (KeyState::Normal, KeyCode::Char('6'), KeyModifiers::NONE) => Some(Action::OpenTab6),
 
             // Search navigation
             (KeyState::Normal, KeyCode::Char('n'), KeyModifiers::NONE) => {
@@ -220,5 +227,56 @@ impl InputHandler {
 
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn key_with(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent::new(code, modifiers)
+    }
+
+    /// Slice 1 / B1.4: a single press of '6' from the normal state
+    /// dispatches `OpenTab6` so users can reach the analytics screen
+    /// from any other top-level view via the same numeric pattern as
+    /// tabs 1-5. Catches "we added the tab to the bar but forgot to
+    /// route the keystroke" regressions.
+    #[test]
+    fn pressing_six_returns_open_tab_6() {
+        let mut input = InputHandler::new();
+        let action = input.handle_key(key(KeyCode::Char('6')));
+        assert_eq!(action, Some(Action::OpenTab6));
+    }
+
+    /// Slice 1 / B1.5: the chord `g` then `A` (capital, mirroring the
+    /// existing `g L` -> OpenLogs convention) opens the analytics
+    /// screen directly. Lowercase `g a` is already bound to
+    /// GoToAllMail, so capital A is the analytics mnemonic.
+    #[test]
+    fn chord_g_then_capital_a_opens_analytics() {
+        let mut input = InputHandler::new();
+        // First key consumes silently while waiting for the second.
+        let first = input.handle_key(key(KeyCode::Char('g')));
+        assert_eq!(first, None, "g alone must wait, not act");
+        let second = input.handle_key(key_with(KeyCode::Char('A'), KeyModifiers::SHIFT));
+        assert_eq!(second, Some(Action::OpenAnalyticsScreen));
+    }
+
+    /// Slice 1 / B1.5 (continued): lowercase `g a` must keep its
+    /// existing meaning (GoToAllMail). Guards against accidentally
+    /// stealing a Gmail navigation chord when adding the analytics
+    /// shortcut.
+    #[test]
+    fn chord_g_then_lowercase_a_still_goes_to_all_mail() {
+        let mut input = InputHandler::new();
+        let _ = input.handle_key(key(KeyCode::Char('g')));
+        let action = input.handle_key(key(KeyCode::Char('a')));
+        assert_eq!(action, Some(Action::GoToAllMail));
     }
 }

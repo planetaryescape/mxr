@@ -96,13 +96,30 @@ impl App {
             | Action::OpenTab3
             | Action::OpenTab4
             | Action::OpenTab5
+            | Action::OpenTab6
             | Action::SyncNow
             | Action::Noop => self.apply_screen_action(action),
             Action::OpenAnalyticsScreen
             | Action::OpenAnalyticsView(_)
             | Action::NextAnalyticsView
             | Action::PrevAnalyticsView
-            | Action::RefreshAnalytics => self.apply_analytics_action(action),
+            | Action::RefreshAnalytics
+            | Action::CycleStorageMode
+            | Action::CycleStorageGroupBy
+            | Action::ToggleStalePerspective
+            | Action::AdjustStaleOlderThanDays(_)
+            | Action::AdjustStaleWithinDays(_)
+            | Action::CycleContactsMode
+            | Action::RefreshContacts
+            | Action::ToggleResponseTimeDirection
+            | Action::ToggleSubscriptionsRank
+            | Action::CycleWrappedWindow
+            | Action::StepWrappedYear(_)
+            | Action::AnalyticsRowDrillDown
+            | Action::AnalyticsUnsubscribe
+            | Action::OpenAnalyticsFilterModal
+            | Action::CloseAnalyticsFilterModal
+            | Action::SubmitAnalyticsFilterModal => self.apply_analytics_action(action),
             Action::MoveDown
             | Action::MoveUp
             | Action::JumpTop

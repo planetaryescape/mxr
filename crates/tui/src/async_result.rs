@@ -128,9 +128,14 @@ pub(crate) enum AsyncResult {
 #[derive(Debug, Clone)]
 pub(crate) enum AnalyticsResultPayload {
     Storage(Vec<mxr_core::types::StorageBucket>),
+    LargestMessages(Vec<mxr_core::types::LargestMessageRow>),
     Stale(Vec<mxr_core::types::StaleThreadRow>),
     Asymmetry(Vec<mxr_core::types::ContactAsymmetryRow>),
+    Decay(Vec<mxr_core::types::ContactDecayRow>),
     ResponseTime(mxr_core::types::ResponseTimeSummary),
+    Subscriptions(Vec<mxr_core::types::SubscriptionSummary>),
+    Wrapped(mxr_core::types::WrappedSummary),
+    ContactsRefreshed { rows: u32 },
 }
 
 pub(crate) struct ComposeReadyData {

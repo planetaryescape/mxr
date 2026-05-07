@@ -10,7 +10,7 @@ mod search;
 
 pub(in crate::app) use accounts::AccountFormToggleField;
 pub use accounts::{AccountFormMode, AccountFormState, AccountsPageState, AccountsState};
-pub use analytics::{AnalyticsState, AnalyticsView};
+pub use analytics::{AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow};
 pub use command_palette::CommandPaletteState;
 pub use compose::{ComposeAction, ComposeState, PendingSend, PendingSendMode};
 pub use diagnostics::{DiagnosticsPageState, DiagnosticsPaneKind, DiagnosticsState};
@@ -23,10 +23,10 @@ pub use mailbox::{
     SidebarSection, SubscriptionEntry, SubscriptionsPageState,
 };
 pub use modals::{
-    ErrorModalState, FeatureOnboardingState, ModalsState, PendingBulkConfirm,
-    PendingUnsubscribeAction, PendingUnsubscribeConfirm, SavedSearchFormField,
-    SavedSearchFormState, SnoozePanelState, SnoozePreset, UserError, UserErrorSeverity,
-    SNOOZE_PRESETS, USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
+    AnalyticsFilterField, AnalyticsFilterModalState, ErrorModalState, FeatureOnboardingState,
+    ModalsState, PendingBulkConfirm, PendingUnsubscribeAction, PendingUnsubscribeConfirm,
+    SavedSearchFormField, SavedSearchFormState, SnoozePanelState, SnoozePreset, UserError,
+    UserErrorSeverity, SNOOZE_PRESETS, USER_ERROR_LOG_CAPACITY, WARN_STATUS_TTL,
 };
 pub use rules::{RuleFormState, RulesPageState, RulesPanel, RulesState};
 pub use search::{

@@ -1,4 +1,5 @@
 pub mod accounts_page;
+pub mod analytics_filter_modal;
 pub mod analytics_page;
 pub mod attachment_modal;
 pub mod bulk_confirm_modal;

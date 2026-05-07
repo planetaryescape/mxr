@@ -26,11 +26,31 @@ pub enum Action {
     NextAnalyticsView,
     PrevAnalyticsView,
     RefreshAnalytics,
+    // Analytics filter cycles (Slices 3, 4, 6, 7, 9)
+    CycleStorageMode,
+    CycleStorageGroupBy,
+    ToggleStalePerspective,
+    AdjustStaleOlderThanDays(i32),
+    AdjustStaleWithinDays(i32),
+    CycleContactsMode,
+    RefreshContacts,
+    ToggleResponseTimeDirection,
+    ToggleSubscriptionsRank,
+    CycleWrappedWindow,
+    StepWrappedYear(i32),
+    // Analytics drill-down + actionable rows (Slice 11, Slice 6)
+    AnalyticsRowDrillDown,
+    AnalyticsUnsubscribe,
+    // Analytics filter modal (Slice 10)
+    OpenAnalyticsFilterModal,
+    CloseAnalyticsFilterModal,
+    SubmitAnalyticsFilterModal,
     OpenTab1,
     OpenTab2,
     OpenTab3,
     OpenTab4,
     OpenTab5,
+    OpenTab6,
     // Search
     OpenGlobalSearch,
     OpenMailboxFilter,
@@ -234,11 +254,28 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | NextAnalyticsView
                 | PrevAnalyticsView
                 | RefreshAnalytics
+                | CycleStorageMode
+                | CycleStorageGroupBy
+                | ToggleStalePerspective
+                | AdjustStaleOlderThanDays(_)
+                | AdjustStaleWithinDays(_)
+                | CycleContactsMode
+                | RefreshContacts
+                | ToggleResponseTimeDirection
+                | ToggleSubscriptionsRank
+                | CycleWrappedWindow
+                | StepWrappedYear(_)
+                | AnalyticsRowDrillDown
+                | AnalyticsUnsubscribe
+                | OpenAnalyticsFilterModal
+                | CloseAnalyticsFilterModal
+                | SubmitAnalyticsFilterModal
                 | OpenTab1
                 | OpenTab2
                 | OpenTab3
                 | OpenTab4
                 | OpenTab5
+                | OpenTab6
                 | SyncNow
                 | EditConfig
                 | OpenLogs
@@ -269,6 +306,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenTab3
                 | OpenTab4
                 | OpenTab5
+                | OpenTab6
                 | SyncNow
                 | EditConfig
                 | OpenLogs
@@ -316,6 +354,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenTab3
                 | OpenTab4
                 | OpenTab5
+                | OpenTab6
                 | RefreshRules
                 | ToggleRuleEnabled
                 | DeleteRule
@@ -350,6 +389,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenTab3
                 | OpenTab4
                 | OpenTab5
+                | OpenTab6
                 | EnableSemantic
                 | DisableSemantic
                 | ReindexSemantic
@@ -379,6 +419,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | OpenTab3
                 | OpenTab4
                 | OpenTab5
+                | OpenTab6
                 | RefreshAccounts
                 | OpenAccountFormNew
                 | SaveAccountForm

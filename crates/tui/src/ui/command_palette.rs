@@ -491,15 +491,27 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Analytics".into(),
         },
         PaletteCommand {
-            label: "Analytics: Contact Asymmetry".into(),
+            label: "Analytics: Contacts".into(),
             shortcut: "".into(),
-            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::ContactAsymmetry),
+            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Contacts),
             category: "Analytics".into(),
         },
         PaletteCommand {
             label: "Analytics: Response Time".into(),
             shortcut: "".into(),
             action: Action::OpenAnalyticsView(crate::app::AnalyticsView::ResponseTime),
+            category: "Analytics".into(),
+        },
+        PaletteCommand {
+            label: "Analytics: Subscriptions".into(),
+            shortcut: "".into(),
+            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Subscriptions),
+            category: "Analytics".into(),
+        },
+        PaletteCommand {
+            label: "Analytics: Wrapped".into(),
+            shortcut: "".into(),
+            action: Action::OpenAnalyticsView(crate::app::AnalyticsView::Wrapped),
             category: "Analytics".into(),
         },
         PaletteCommand {

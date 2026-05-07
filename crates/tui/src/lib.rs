@@ -722,16 +722,60 @@ pub async fn run() -> anyhow::Result<()> {
                             data: ResponseData::StorageBreakdown { rows },
                         }) => Ok(crate::async_result::AnalyticsResultPayload::Storage(rows)),
                         Ok(Response::Ok {
+                            data: ResponseData::LargestMessages { rows },
+                        }) => Ok(crate::async_result::AnalyticsResultPayload::LargestMessages(
+                            rows,
+                        )),
+                        Ok(Response::Ok {
                             data: ResponseData::StaleThreads { rows },
                         }) => Ok(crate::async_result::AnalyticsResultPayload::Stale(rows)),
                         Ok(Response::Ok {
                             data: ResponseData::ContactAsymmetry { rows },
                         }) => Ok(crate::async_result::AnalyticsResultPayload::Asymmetry(rows)),
                         Ok(Response::Ok {
+                            data: ResponseData::ContactDecay { rows },
+                        }) => Ok(crate::async_result::AnalyticsResultPayload::Decay(rows)),
+                        Ok(Response::Ok {
                             data: ResponseData::ResponseTime { summary },
                         }) => Ok(crate::async_result::AnalyticsResultPayload::ResponseTime(
                             summary,
                         )),
+                        Ok(Response::Ok {
+                            data: ResponseData::Subscriptions { subscriptions },
+                        }) => Ok(crate::async_result::AnalyticsResultPayload::Subscriptions(
+                            subscriptions,
+                        )),
+                        Ok(Response::Ok {
+                            data: ResponseData::Wrapped { summary },
+                        }) => Ok(crate::async_result::AnalyticsResultPayload::Wrapped(summary)),
+                        Ok(Response::Ok {
+                            data: ResponseData::RefreshedContacts { rows },
+                        }) => Ok(
+                            crate::async_result::AnalyticsResultPayload::ContactsRefreshed { rows },
+                        ),
+                        Ok(Response::Ok { .. }) => {
+                            Err(MxrError::Ipc("unexpected analytics response".into()))
+                        }
+                        Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                        Err(e) => Err(e),
+                    };
+                AsyncResult::AnalyticsResult { view, result }
+            });
+        }
+
+        if app.analytics.pending_contacts_refresh {
+            app.analytics.pending_contacts_refresh = false;
+            let view = app.analytics.view;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, Request::RefreshContacts).await;
+                let result: Result<crate::async_result::AnalyticsResultPayload, MxrError> =
+                    match resp {
+                        Ok(Response::Ok {
+                            data: ResponseData::RefreshedContacts { rows },
+                        }) => Ok(
+                            crate::async_result::AnalyticsResultPayload::ContactsRefreshed { rows },
+                        ),
                         Ok(Response::Ok { .. }) => {
                             Err(MxrError::Ipc("unexpected analytics response".into()))
                         }
@@ -1463,6 +1507,13 @@ pub async fn run() -> anyhow::Result<()> {
                                 Ok(crate::async_result::AnalyticsResultPayload::Storage(rows)) => {
                                     app.analytics.storage_rows = rows;
                                 }
+                                Ok(
+                                    crate::async_result::AnalyticsResultPayload::LargestMessages(
+                                        rows,
+                                    ),
+                                ) => {
+                                    app.analytics.largest_message_rows = rows;
+                                }
                                 Ok(crate::async_result::AnalyticsResultPayload::Stale(rows)) => {
                                     app.analytics.stale_rows = rows;
                                 }
@@ -1471,10 +1522,38 @@ pub async fn run() -> anyhow::Result<()> {
                                 )) => {
                                     app.analytics.asymmetry_rows = rows;
                                 }
+                                Ok(crate::async_result::AnalyticsResultPayload::Decay(rows)) => {
+                                    app.analytics.decay_rows = rows;
+                                }
                                 Ok(crate::async_result::AnalyticsResultPayload::ResponseTime(
                                     summary,
                                 )) => {
                                     app.analytics.response_time = Some(summary);
+                                }
+                                Ok(
+                                    crate::async_result::AnalyticsResultPayload::Subscriptions(
+                                        rows,
+                                    ),
+                                ) => {
+                                    app.analytics.subscriptions = rows;
+                                }
+                                Ok(crate::async_result::AnalyticsResultPayload::Wrapped(
+                                    summary,
+                                )) => {
+                                    app.analytics.wrapped = Some(summary);
+                                }
+                                Ok(
+                                    crate::async_result::AnalyticsResultPayload::ContactsRefreshed {
+                                        rows,
+                                    },
+                                ) => {
+                                    app.status_message =
+                                        Some(format!("Contacts refreshed: {rows} rows"));
+                                    // Re-fire the active contacts sub-view so the
+                                    // user immediately sees the recomputed numbers.
+                                    if app.analytics.view == crate::app::AnalyticsView::Contacts {
+                                        app.analytics.refresh_pending = true;
+                                    }
                                 }
                                 Err(e) => {
                                     app.analytics.error = Some(e.to_string());
@@ -2603,6 +2682,19 @@ mod tests {
         crate::test_fixtures::test_system_labels(&AccountId::new())
     }
 
+    /// Put `app` into an Inbox-active state so optimistic mutation effects
+    /// (which only fire when the active label matches the labels the
+    /// mutation removes) take effect during tests.
+    fn set_active_inbox(app: &mut App) {
+        app.mailbox.labels = make_test_labels();
+        app.mailbox.active_label = app
+            .mailbox
+            .labels
+            .iter()
+            .find(|label| label.name.eq_ignore_ascii_case("INBOX"))
+            .map(|label| label.id.clone());
+    }
+
     // --- Navigation tests ---
 
     #[test]
@@ -3064,6 +3156,7 @@ mod tests {
     #[test]
     fn archive_removes_from_list() {
         let mut app = App::new();
+        set_active_inbox(&mut app);
         app.mailbox.envelopes = make_test_envelopes(5);
         app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         let removed_id = app.mailbox.envelopes[0].id.clone();
@@ -3075,6 +3168,64 @@ mod tests {
             .envelopes
             .iter()
             .any(|envelope| envelope.id == removed_id));
+    }
+
+    #[test]
+    fn archive_in_threads_mode_targets_every_message_in_thread() {
+        let mut app = App::new();
+        set_active_inbox(&mut app);
+        let mut envelopes = make_test_envelopes(5);
+        let shared_thread = ThreadId::new();
+        envelopes[0].thread_id = shared_thread.clone();
+        envelopes[2].thread_id = shared_thread.clone();
+        envelopes[4].thread_id = shared_thread.clone();
+        app.mailbox.envelopes = envelopes.clone();
+        app.mailbox.all_envelopes = envelopes;
+        // Threads mode is the default; sanity-check it.
+        assert_eq!(app.mailbox.mail_list_mode, MailListMode::Threads);
+        // Cursor is on the row representing the 3-message thread.
+        app.mailbox.selected_index = 0;
+
+        app.apply(Action::Archive);
+
+        // 3 targets triggers the bulk-confirm modal before the mutation
+        // is dispatched. Inspect the staged request there.
+        let pending = app
+            .modals
+            .pending_bulk_confirm
+            .as_ref()
+            .expect("expected bulk confirm for multi-target archive");
+        match &pending.request {
+            Request::Mutation(MutationCommand::Archive { message_ids }) => {
+                assert_eq!(message_ids.len(), 3, "all thread members archived");
+            }
+            other => panic!("expected Archive mutation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn archive_outside_inbox_does_not_remove_optimistically() {
+        let mut app = App::new();
+        // Active label = STARRED (not INBOX). Archive removes INBOX, so the
+        // message still belongs in the Starred view and should NOT vanish.
+        app.mailbox.labels = make_test_labels();
+        app.mailbox.active_label = app
+            .mailbox
+            .labels
+            .iter()
+            .find(|label| label.name.eq_ignore_ascii_case("STARRED"))
+            .map(|label| label.id.clone());
+        app.mailbox.envelopes = make_test_envelopes(3);
+        app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
+
+        app.apply(Action::Archive);
+
+        assert_eq!(app.pending_mutation_queue.len(), 1);
+        assert_eq!(
+            app.mailbox.envelopes.len(),
+            3,
+            "archive outside inbox should not strip the row before the daemon responds"
+        );
     }
 
     #[test]
@@ -3166,6 +3317,7 @@ mod tests {
     #[test]
     fn mark_read_and_archive_removes_message_optimistically_and_queues_mutation() {
         let mut app = App::new();
+        set_active_inbox(&mut app);
         let mut envelopes = make_test_envelopes(1);
         envelopes[0].flags.remove(MessageFlags::READ);
         app.mailbox.envelopes = envelopes.clone();
@@ -3188,6 +3340,7 @@ mod tests {
     #[test]
     fn bulk_mark_read_and_archive_removes_messages_when_confirmed() {
         let mut app = App::new();
+        set_active_inbox(&mut app);
         let mut envelopes = make_test_envelopes(3);
         for envelope in &mut envelopes {
             envelope.flags.remove(MessageFlags::READ);
@@ -3262,6 +3415,7 @@ mod tests {
     #[test]
     fn archive_viewing_message_effect() {
         let mut app = App::new();
+        set_active_inbox(&mut app);
         app.mailbox.envelopes = make_test_envelopes(3);
         app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         // Open first message
@@ -5926,6 +6080,7 @@ mod tests {
     #[test]
     fn cached_html_only_body_resolves_ready_state() {
         let mut app = App::new();
+        app.mailbox.html_view = true;
         app.mailbox.envelopes = make_test_envelopes(1);
         app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         let env = app.mailbox.envelopes[0].clone();
@@ -6185,6 +6340,7 @@ mod tests {
     #[test]
     fn html_view_toggle_updates_mode_and_remote_content_status() {
         let mut app = App::new();
+        app.mailbox.html_view = true;
         app.mailbox.envelopes = make_test_envelopes(1);
         app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         let env = app.mailbox.envelopes[0].clone();
@@ -6278,6 +6434,7 @@ mod tests {
     #[test]
     fn reader_mode_toggle_is_blocked_in_html_view() {
         let mut app = App::new();
+        app.mailbox.html_view = true;
         app.mailbox.envelopes = make_test_envelopes(1);
         app.mailbox.all_envelopes = app.mailbox.envelopes.clone();
         let env = app.mailbox.envelopes[0].clone();
@@ -6868,9 +7025,9 @@ mod tests {
         use crate::action::Action;
         use crate::app::AnalyticsView;
         let mut app = App::new();
-        app.apply(Action::OpenAnalyticsView(AnalyticsView::ContactAsymmetry));
+        app.apply(Action::OpenAnalyticsView(AnalyticsView::Contacts));
         assert!(matches!(app.screen, crate::app::Screen::Analytics));
-        assert_eq!(app.analytics.view, AnalyticsView::ContactAsymmetry);
+        assert_eq!(app.analytics.view, AnalyticsView::Contacts);
         assert!(
             app.analytics.refresh_pending,
             "opening an analytics view must mark refresh_pending so the daemon request fires"
@@ -6896,7 +7053,8 @@ mod tests {
             app.analytics_request_for_active_view(),
             mxr_protocol::Request::ListStaleThreads { .. }
         ));
-        app.analytics.view = AnalyticsView::ContactAsymmetry;
+        app.analytics.view = AnalyticsView::Contacts;
+        // Default contacts_mode is Asymmetry per Default impl.
         assert!(matches!(
             app.analytics_request_for_active_view(),
             mxr_protocol::Request::ListContactAsymmetry { .. }
@@ -6923,6 +7081,519 @@ mod tests {
         assert!(app.analytics.error.is_none());
     }
 
+    /// Slice 3 / B3.1: with the Storage view in `LargestMessages`
+    /// sub-mode, the request builder must produce
+    /// `Request::ListLargestMessages` with the state's `since_days`
+    /// and `limit` — not the breakdown request. Otherwise the user
+    /// toggles the mode visually and sees breakdown rows.
+    #[test]
+    fn storage_largest_messages_mode_dispatches_largest_request() {
+        use crate::app::{AnalyticsView, StorageMode};
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Storage;
+        app.analytics.storage_mode = StorageMode::LargestMessages;
+        app.analytics.largest_limit = 25;
+        app.analytics.largest_since_days = Some(90);
+        match app.analytics_request_for_active_view() {
+            mxr_protocol::Request::ListLargestMessages {
+                since_days,
+                limit,
+                account_id,
+            } => {
+                assert_eq!(since_days, Some(90));
+                assert_eq!(limit, 25);
+                assert!(account_id.is_none());
+            }
+            other => panic!("expected ListLargestMessages, got {other:?}"),
+        }
+    }
+
+    /// Slice 3 / B3.2: pressing `m` on the Storage view dispatches
+    /// `CycleStorageMode`, which flips the sub-mode and primes the
+    /// next refresh. The toggle must be idempotent (Breakdown ↔
+    /// LargestMessages) so two presses return to the original mode.
+    #[test]
+    fn cycle_storage_mode_toggles_back_and_forth() {
+        use crate::action::Action;
+        use crate::app::StorageMode;
+        let mut app = App::new();
+        assert_eq!(app.analytics.storage_mode, StorageMode::Breakdown);
+        app.apply(Action::CycleStorageMode);
+        assert_eq!(app.analytics.storage_mode, StorageMode::LargestMessages);
+        assert!(app.analytics.refresh_pending);
+        app.analytics.refresh_pending = false;
+        app.apply(Action::CycleStorageMode);
+        assert_eq!(app.analytics.storage_mode, StorageMode::Breakdown);
+        assert!(app.analytics.refresh_pending);
+    }
+
+    /// Slice 4 / B4.1: Contacts view in Decay sub-mode dispatches
+    /// `Request::ListContactDecay` with the state's threshold and
+    /// lookback values. Defaults match the CLI (`mxr contacts
+    /// decay`): 30-day threshold, 1095-day (3-year) lookback.
+    #[test]
+    fn contacts_decay_mode_dispatches_decay_request_with_defaults() {
+        use crate::app::{AnalyticsView, ContactsMode};
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Contacts;
+        app.analytics.contacts_mode = ContactsMode::Decay;
+        match app.analytics_request_for_active_view() {
+            mxr_protocol::Request::ListContactDecay {
+                threshold_days,
+                max_lookback_days,
+                ..
+            } => {
+                assert_eq!(threshold_days, 30);
+                assert_eq!(max_lookback_days, 1095);
+            }
+            other => panic!("expected ListContactDecay, got {other:?}"),
+        }
+    }
+
+    /// Slice 4 / B4.2: pressing `m` on Contacts view toggles the
+    /// sub-mode and primes refresh. Mirror of the Storage toggle.
+    #[test]
+    fn cycle_contacts_mode_toggles_back_and_forth() {
+        use crate::action::Action;
+        use crate::app::ContactsMode;
+        let mut app = App::new();
+        assert_eq!(app.analytics.contacts_mode, ContactsMode::Asymmetry);
+        app.apply(Action::CycleContactsMode);
+        assert_eq!(app.analytics.contacts_mode, ContactsMode::Decay);
+        assert!(app.analytics.refresh_pending);
+    }
+
+    /// Slice 5 / B5.1: Action::RefreshContacts arms the
+    /// `pending_contacts_refresh` flag that the lib.rs dispatcher
+    /// uses to fire `Request::RefreshContacts`. Asserting the flag
+    /// (rather than the IPC request itself) keeps this test off the
+    /// runtime, but the dispatcher block is small enough that the
+    /// integration test in Slice 12 covers the wire path.
+    #[test]
+    fn refresh_contacts_action_sets_pending_contacts_refresh_flag() {
+        use crate::action::Action;
+        let mut app = App::new();
+        assert!(!app.analytics.pending_contacts_refresh);
+        app.apply(Action::RefreshContacts);
+        assert!(app.analytics.pending_contacts_refresh);
+    }
+
+    /// Slice 6 / B6.1: Subscriptions view dispatches
+    /// `Request::ListSubscriptions` with the CLI default limit (200).
+    #[test]
+    fn subscriptions_view_dispatches_list_subscriptions_with_default_limit() {
+        use crate::app::AnalyticsView;
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Subscriptions;
+        match app.analytics_request_for_active_view() {
+            mxr_protocol::Request::ListSubscriptions { limit, account_id } => {
+                assert_eq!(limit, 200);
+                assert!(account_id.is_none());
+            }
+            other => panic!("expected ListSubscriptions, got {other:?}"),
+        }
+    }
+
+    /// Slice 6 / B6.5: pressing `o` on Subscriptions toggles the rank
+    /// flag locally — no daemon round-trip, just a re-sort on the
+    /// next render. Toggling does not mark refresh_pending (the
+    /// underlying data is unchanged).
+    #[test]
+    fn toggle_subscriptions_rank_flips_local_flag_only() {
+        use crate::action::Action;
+        let mut app = App::new();
+        assert!(!app.analytics.subscriptions_rank);
+        assert!(!app.analytics.refresh_pending);
+        app.apply(Action::ToggleSubscriptionsRank);
+        assert!(app.analytics.subscriptions_rank);
+        assert!(
+            !app.analytics.refresh_pending,
+            "rank is a local re-sort; refresh_pending must stay off so \
+             we don't re-fire the daemon list call"
+        );
+    }
+
+    /// Slice 6 / B6.6: pressing `u` on a Subscriptions row populates
+    /// the existing unsubscribe-confirm modal with the row's
+    /// metadata. Reuses the modal/IPC path the mailbox uses, so this
+    /// test pins the wiring to that surface (modal becomes Some).
+    #[test]
+    fn analytics_unsubscribe_action_opens_confirm_modal_for_selected_row() {
+        use crate::action::Action;
+        use crate::app::AnalyticsView;
+        use mxr_core::id::{AccountId, MessageId, ThreadId};
+        use mxr_core::types::{MessageFlags, SubscriptionSummary, UnsubscribeMethod};
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Subscriptions;
+        app.analytics.selected_index = 0;
+        app.analytics.subscriptions = vec![SubscriptionSummary {
+            account_id: AccountId::new(),
+            sender_name: Some("Newsletter".into()),
+            sender_email: "promo@example.com".into(),
+            message_count: 12,
+            latest_message_id: MessageId::new(),
+            latest_provider_id: "msg-1".into(),
+            latest_thread_id: ThreadId::new(),
+            latest_subject: "Weekly digest".into(),
+            latest_snippet: "...".into(),
+            latest_date: chrono::Utc::now(),
+            latest_flags: MessageFlags::READ,
+            latest_has_attachments: false,
+            latest_size_bytes: 4096,
+            unsubscribe: UnsubscribeMethod::OneClick {
+                url: "https://example.com/unsub".into(),
+            },
+            opened_count: 1,
+            replied_count: 0,
+            archived_unread_count: 5,
+        }];
+        app.apply(Action::AnalyticsUnsubscribe);
+        let modal = app
+            .modals
+            .pending_unsubscribe_confirm
+            .as_ref()
+            .expect("unsubscribe modal must be opened");
+        assert_eq!(modal.sender_email, "promo@example.com");
+        assert!(
+            modal.method_label.contains("one-click"),
+            "method label must surface the chosen method; got {}",
+            modal.method_label
+        );
+    }
+
+    /// Slice 7 / B7.1: Wrapped view defaults to Ytd. The request
+    /// builder produces `Request::Wrapped` with a label following the
+    /// CLI's exact format (`"<year> year-to-date"`), so the daemon
+    /// echoes back identical metadata regardless of which client made
+    /// the call.
+    #[test]
+    fn wrapped_view_default_window_dispatches_ytd_request_with_cli_label() {
+        use crate::app::AnalyticsView;
+        use chrono::{Datelike, Utc};
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Wrapped;
+        let now_year = Utc::now().year();
+        match app.analytics_request_for_active_view() {
+            mxr_protocol::Request::Wrapped { label, .. } => {
+                let expected = format!("{now_year} year-to-date");
+                assert_eq!(label, expected);
+            }
+            other => panic!("expected Request::Wrapped, got {other:?}"),
+        }
+    }
+
+    /// Slice 7 / B7.3: setting `wrapped_window = Year(2025)` must
+    /// produce a request whose `since_unix` is 2025-01-01T00:00:00Z
+    /// and `until_unix` is 2025-12-31T23:59:59Z (UTC). Numbers come
+    /// from chrono — the same path the CLI uses.
+    #[test]
+    fn wrapped_window_year_dispatches_full_year_unix_bounds() {
+        use crate::app::{AnalyticsView, WrappedWindow};
+        use chrono::{TimeZone, Utc};
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Wrapped;
+        app.analytics.wrapped_window = WrappedWindow::Year(2025);
+        let expected_start = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap().timestamp();
+        let expected_end = Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap().timestamp();
+        match app.analytics_request_for_active_view() {
+            mxr_protocol::Request::Wrapped {
+                since_unix,
+                until_unix,
+                label,
+                ..
+            } => {
+                assert_eq!(since_unix, expected_start);
+                assert_eq!(until_unix, expected_end);
+                assert_eq!(label, "2025");
+            }
+            other => panic!("expected Request::Wrapped, got {other:?}"),
+        }
+    }
+
+    /// Slice 7 / B7.2: `StepWrappedYear(-1)` from Ytd transitions to
+    /// Year(now-1), and a second step decrements further. From a
+    /// Year, stepping moves to the next/previous year.
+    #[test]
+    fn step_wrapped_year_walks_year_backwards_from_ytd() {
+        use crate::action::Action;
+        use crate::app::WrappedWindow;
+        use chrono::{Datelike, Utc};
+        let mut app = App::new();
+        let now_year = Utc::now().year();
+        assert_eq!(app.analytics.wrapped_window, WrappedWindow::Ytd);
+        app.apply(Action::StepWrappedYear(-1));
+        assert_eq!(
+            app.analytics.wrapped_window,
+            WrappedWindow::Year(now_year - 1)
+        );
+        app.apply(Action::StepWrappedYear(-1));
+        assert_eq!(
+            app.analytics.wrapped_window,
+            WrappedWindow::Year(now_year - 2)
+        );
+    }
+
+    /// Slice 9 / B9.1: pressing the cycle key on Storage rotates
+    /// group_by Sender → Mimetype → Label → Sender. The request
+    /// builder picks up the new group_by value automatically because
+    /// it reads the same field.
+    #[test]
+    fn cycle_storage_group_by_rotates_through_three_axes() {
+        use crate::action::Action;
+        use mxr_core::types::StorageGroupBy;
+        let mut app = App::new();
+        assert_eq!(app.analytics.storage_group_by, StorageGroupBy::Sender);
+        app.apply(Action::CycleStorageGroupBy);
+        assert_eq!(app.analytics.storage_group_by, StorageGroupBy::Mimetype);
+        app.apply(Action::CycleStorageGroupBy);
+        assert_eq!(app.analytics.storage_group_by, StorageGroupBy::Label);
+        app.apply(Action::CycleStorageGroupBy);
+        assert_eq!(app.analytics.storage_group_by, StorageGroupBy::Sender);
+    }
+
+    /// Slice 9 / B9.2: ToggleStalePerspective flips Mine ↔ Theirs
+    /// and arms refresh.
+    #[test]
+    fn toggle_stale_perspective_flips_and_marks_refresh() {
+        use crate::action::Action;
+        use mxr_core::types::StaleBallInCourt;
+        let mut app = App::new();
+        assert_eq!(app.analytics.stale_perspective, StaleBallInCourt::Mine);
+        app.apply(Action::ToggleStalePerspective);
+        assert_eq!(app.analytics.stale_perspective, StaleBallInCourt::Theirs);
+        assert!(app.analytics.refresh_pending);
+    }
+
+    /// Slice 9 / B9.3: AdjustStaleOlderThanDays adds the delta and
+    /// clamps at 1 (the daemon rejects values < 1, so the TUI must
+    /// not allow them).
+    #[test]
+    fn adjust_stale_older_than_days_adds_delta_and_clamps_at_one() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.analytics.stale_older_than_days = 30;
+        app.apply(Action::AdjustStaleOlderThanDays(7));
+        assert_eq!(app.analytics.stale_older_than_days, 37);
+        app.apply(Action::AdjustStaleOlderThanDays(-100));
+        assert_eq!(
+            app.analytics.stale_older_than_days, 1,
+            "must clamp at 1, not underflow"
+        );
+    }
+
+    /// Slice 10 / B10.1: pressing `f` on the analytics screen opens
+    /// the filter modal populated for the active view. The modal
+    /// must contain at least one field; the active_field starts at
+    /// 0 so the user can begin typing immediately.
+    #[test]
+    fn open_analytics_filter_modal_populates_fields_for_active_view() {
+        use crate::action::Action;
+        use crate::app::AnalyticsView;
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::StaleThreads;
+        app.apply(Action::OpenAnalyticsFilterModal);
+        let modal = app
+            .modals
+            .analytics_filter
+            .as_ref()
+            .expect("modal must be Some after open action");
+        assert_eq!(modal.view, AnalyticsView::StaleThreads);
+        assert!(!modal.fields.is_empty());
+        assert_eq!(modal.active_field, 0);
+    }
+
+    /// Slice 10 / B10.3: submitting the filter modal copies the
+    /// edited string values back into the typed `AnalyticsState`
+    /// fields, sets refresh_pending, and closes the modal. Failure
+    /// to write back is the central regression risk for the modal —
+    /// it would silently swallow the user's edits.
+    #[test]
+    fn submit_analytics_filter_modal_writes_back_and_closes() {
+        use crate::action::Action;
+        use crate::app::AnalyticsView;
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::StaleThreads;
+        app.apply(Action::OpenAnalyticsFilterModal);
+        // older_than_days is field index 1 in the StaleThreads modal.
+        if let Some(modal) = app.modals.analytics_filter.as_mut() {
+            modal.fields[1].value = "60".into();
+        }
+        app.analytics.refresh_pending = false;
+        app.apply(Action::SubmitAnalyticsFilterModal);
+        assert!(app.modals.analytics_filter.is_none());
+        assert_eq!(app.analytics.stale_older_than_days, 60);
+        assert!(app.analytics.refresh_pending);
+    }
+
+    /// Slice 10: Esc cancels the filter modal without mutating
+    /// state — the validation errors and edited values are dropped.
+    #[test]
+    fn close_analytics_filter_modal_discards_edits() {
+        use crate::action::Action;
+        use crate::app::AnalyticsView;
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::StaleThreads;
+        app.analytics.stale_older_than_days = 30;
+        app.apply(Action::OpenAnalyticsFilterModal);
+        if let Some(modal) = app.modals.analytics_filter.as_mut() {
+            modal.fields[1].value = "999".into();
+        }
+        app.apply(Action::CloseAnalyticsFilterModal);
+        assert!(app.modals.analytics_filter.is_none());
+        assert_eq!(
+            app.analytics.stale_older_than_days, 30,
+            "Esc must discard edits"
+        );
+    }
+
+    /// Slice 11 / B11.1: Enter on a Storage Breakdown sender row
+    /// switches to the Search screen with the constructed query
+    /// `"from:<sender>"`. This is the most-used drill-down — clicking
+    /// "alice@example.com" in the breakdown should land on her mail.
+    #[test]
+    fn drill_down_storage_sender_jumps_to_search_with_from_query() {
+        use crate::action::Action;
+        use crate::app::{AnalyticsView, Screen, StorageMode};
+        use mxr_core::types::{StorageBucket, StorageGroupBy};
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Storage;
+        app.analytics.storage_mode = StorageMode::Breakdown;
+        app.analytics.storage_group_by = StorageGroupBy::Sender;
+        app.analytics.storage_rows = vec![StorageBucket {
+            key: "alice@example.com".into(),
+            bytes: 12345,
+            count: 3,
+        }];
+        app.analytics.selected_index = 0;
+        app.apply(Action::AnalyticsRowDrillDown);
+        assert!(matches!(app.screen, Screen::Search));
+        assert_eq!(app.search.page.query, "from:alice@example.com");
+    }
+
+    /// Slice 11 / B11.5: Enter on a Contacts row (either sub-mode)
+    /// jumps to search filtered to that contact's email.
+    #[test]
+    fn drill_down_contacts_asymmetry_jumps_to_search_with_from_query() {
+        use crate::action::Action;
+        use crate::app::{AnalyticsView, ContactsMode, Screen};
+        use mxr_core::types::ContactAsymmetryRow;
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Contacts;
+        app.analytics.contacts_mode = ContactsMode::Asymmetry;
+        app.analytics.asymmetry_rows = vec![ContactAsymmetryRow {
+            email: "bob@example.com".into(),
+            display_name: None,
+            total_inbound: 10,
+            total_outbound: 1,
+            asymmetry: 0.9,
+            last_seen_at: chrono::Utc::now(),
+        }];
+        app.apply(Action::AnalyticsRowDrillDown);
+        assert!(matches!(app.screen, Screen::Search));
+        assert_eq!(app.search.page.query, "from:bob@example.com");
+    }
+
+    /// Slice 2 / B2.1: forward cycling visits all six analytics views
+    /// in the documented order (Storage → StaleThreads → Contacts →
+    /// ResponseTime → Subscriptions → Wrapped → Storage). Pins the
+    /// next() arm so reordering or dropping a variant breaks here
+    /// instead of as a "Tab silently skips a tab" bug at runtime.
+    #[test]
+    fn next_analytics_view_cycles_all_six_variants_forward() {
+        use crate::action::Action;
+        use crate::app::AnalyticsView;
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Storage;
+        let order = [
+            AnalyticsView::StaleThreads,
+            AnalyticsView::Contacts,
+            AnalyticsView::ResponseTime,
+            AnalyticsView::Subscriptions,
+            AnalyticsView::Wrapped,
+            AnalyticsView::Storage,
+        ];
+        for expected in order {
+            app.apply(Action::NextAnalyticsView);
+            assert_eq!(app.analytics.view, expected);
+        }
+    }
+
+    /// Slice 2 / B2.1 (reverse): backward cycling is the exact inverse
+    /// of forward. Symmetric to the forward test.
+    #[test]
+    fn prev_analytics_view_cycles_all_six_variants_backward() {
+        use crate::action::Action;
+        use crate::app::AnalyticsView;
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Storage;
+        let order = [
+            AnalyticsView::Wrapped,
+            AnalyticsView::Subscriptions,
+            AnalyticsView::ResponseTime,
+            AnalyticsView::Contacts,
+            AnalyticsView::StaleThreads,
+            AnalyticsView::Storage,
+        ];
+        for expected in order {
+            app.apply(Action::PrevAnalyticsView);
+            assert_eq!(app.analytics.view, expected);
+        }
+    }
+
+    /// Slice 2 / B2.2: the default `AnalyticsState` initializes the
+    /// new sub-mode and window fields to the documented defaults so
+    /// the first refresh after `OpenAnalyticsScreen` produces the
+    /// same output as the CLI defaults (`storage --by sender`,
+    /// `contacts asymmetry`, `subscriptions`, `wrapped --ytd`).
+    #[test]
+    fn default_analytics_state_uses_documented_defaults() {
+        use crate::app::{
+            AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow,
+        };
+        let s = AnalyticsState::default();
+        assert_eq!(s.view, AnalyticsView::Storage);
+        assert_eq!(s.storage_mode, StorageMode::Breakdown);
+        assert_eq!(s.contacts_mode, ContactsMode::Asymmetry);
+        assert!(!s.subscriptions_rank);
+        assert_eq!(s.wrapped_window, WrappedWindow::Ytd);
+        assert_eq!(s.subscriptions_limit, 200);
+        assert_eq!(s.largest_limit, 50);
+        assert_eq!(s.decay_threshold_days, 30);
+        assert_eq!(s.decay_max_lookback_days, 1095);
+    }
+
+    /// Slice 1 / B1.1+B1.4: `OpenTab6` is the action that the numeric
+    /// `'6'` keystroke dispatches. It must route to the analytics
+    /// screen and prime the refresh flag, otherwise pressing `6`
+    /// switches the user to a blank Analytics tab that never loads.
+    /// Catches "we wired the action variant but forgot the screen
+    /// router" regressions.
+    #[test]
+    fn open_tab_6_action_opens_analytics_and_marks_refresh_pending() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.apply(Action::OpenTab6);
+        assert!(matches!(app.screen, crate::app::Screen::Analytics));
+        assert!(
+            app.analytics.refresh_pending,
+            "tab 6 must mark refresh_pending so the dispatcher fires the active analytics request"
+        );
+    }
+
+    /// Slice 1 / B1.2: the top tab bar must include `"6 Analytics"`
+    /// alongside the existing five tabs. Without this the analytics
+    /// screen has no surface presence and stays buried in the command
+    /// palette.
+    #[test]
+    fn tab_bar_renders_six_analytics_tab() {
+        let mut app = App::new();
+        let snapshot = mxr_test_support::render_to_string(120, 24, |frame| app.draw(frame));
+        assert!(
+            snapshot.contains("6 Analytics"),
+            "tab bar must include '6 Analytics'; got:\n{snapshot}"
+        );
+    }
+
     /// Phase 2.5: the four analytics palette entries are present.
     /// Locks down discoverability — the only entrypoint to these
     /// views is the palette.
@@ -6933,8 +7604,10 @@ mod tests {
         for needle in [
             "Analytics: Storage",
             "Analytics: Stale Threads",
-            "Analytics: Contact Asymmetry",
+            "Analytics: Contacts",
             "Analytics: Response Time",
+            "Analytics: Subscriptions",
+            "Analytics: Wrapped",
         ] {
             assert!(
                 labels.contains(&needle),

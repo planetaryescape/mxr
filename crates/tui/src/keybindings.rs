@@ -165,6 +165,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "open_tab_3" => Some(Action::OpenTab3),
         "open_tab_4" => Some(Action::OpenTab4),
         "open_tab_5" => Some(Action::OpenTab5),
+        "open_tab_6" => Some(Action::OpenTab6),
         "toggle_signature" => Some(Action::ToggleSignature),
         "show_onboarding" => Some(Action::ShowOnboarding),
         #[cfg(debug_assertions)]

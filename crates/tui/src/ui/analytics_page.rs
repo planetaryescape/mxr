@@ -1,11 +1,11 @@
 use crate::app::{AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow};
 use crate::ui::analytics_widgets::{
-    big_number_card, format_count, histogram_bar_chart, horizontal_bar_chart, percentile_bars,
-    ratio_gauge, stat_card,
+    big_text_banner, format_count, histogram_bar_chart, stat_card,
 };
 use mxr_core::types::{ResponseTimeDirection, StaleBallInCourt, StorageGroupBy};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
+use tui_big_text::PixelSize;
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
     let chunks = Layout::default()
@@ -151,32 +151,31 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
     }
 }
 
-/// Standard analytics-tab layout: a 3-up "stat strip" of cards on top,
-/// then a chart pane, then (optionally) a detail table. Returns the
-/// three sub-rectangles. `chart_height` controls how many rows the
-/// chart gets; pass 0 to skip the chart and let the table take the
-/// remaining space.
-fn analytics_layout(area: Rect, chart_height: u16, with_table: bool) -> (Rect, Rect, Rect) {
-    let strip_h = 5u16;
-    let chunks = if with_table {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(strip_h),
-                Constraint::Length(chart_height),
-                Constraint::Min(0),
-            ])
-            .split(area)
-    } else {
-        Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(strip_h),
-                Constraint::Min(0),
-                Constraint::Length(0),
-            ])
-            .split(area)
-    };
+/// Standard tabular-tab layout: a 3-up "stat strip" of cards on top
+/// and a detail table below. The strip is 4 rows; the table takes
+/// the rest. We deliberately do NOT include a chart pane between —
+/// charts that just illustrate a sorted column duplicate the table.
+fn strip_and_table(area: Rect) -> (Rect, Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(4), Constraint::Min(0)])
+        .split(area);
+    (chunks[0], chunks[1])
+}
+
+/// Layout for tabs whose tail is a real distribution chart, not a
+/// redundant bar list. Strip on top, chart in the middle, table at
+/// the bottom. Used by Contacts Decay (the only tab with a genuine
+/// distribution to render).
+fn strip_chart_table(area: Rect, chart_h: u16) -> (Rect, Rect, Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(4),
+            Constraint::Length(chart_h),
+            Constraint::Min(0),
+        ])
+        .split(area);
     (chunks[0], chunks[1], chunks[2])
 }
 
@@ -190,6 +189,19 @@ fn three_up(area: Rect) -> [Rect; 3] {
         ])
         .split(area);
     [cols[0], cols[1], cols[2]]
+}
+
+fn four_up(area: Rect) -> [Rect; 4] {
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+        ])
+        .split(area);
+    [cols[0], cols[1], cols[2], cols[3]]
 }
 
 fn draw_storage(
@@ -213,26 +225,13 @@ fn draw_storage(
     let top_share = state
         .storage_rows
         .first()
-        .map(|r| {
-            if total_bytes == 0 {
-                0.0
-            } else {
-                (r.bytes as f64) / (total_bytes as f64) * 100.0
-            }
-        })
+        .map(|r| share_pct(r.bytes, total_bytes))
         .unwrap_or(0.0);
 
-    let (strip, chart, table) = analytics_layout(area, 12, true);
+    let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
     stat_card(frame, cards[0], "Total", &format_bytes(total_bytes), theme, true);
-    stat_card(
-        frame,
-        cards[1],
-        "Items",
-        &format_count(total_count),
-        theme,
-        false,
-    );
+    stat_card(frame, cards[1], "Items", &format_count(total_count), theme, false);
     stat_card(
         frame,
         cards[2],
@@ -242,16 +241,11 @@ fn draw_storage(
         false,
     );
 
-    let bars: Vec<(String, u64)> = state
-        .storage_rows
-        .iter()
-        .take(10)
-        .map(|r| (format!("{} {}", r.key, format_bytes(r.bytes)), r.bytes))
-        .collect();
-    horizontal_bar_chart(frame, chart, "Top by size", &bars, theme, 28);
-
-    let header =
-        Row::new(vec!["Key", "Bytes", "Count"]).style(Style::default().fg(theme.text_muted).bold());
+    // `Share` (% of total bytes) replaces the redundant bar chart —
+    // it answers "which keys disproportionately eat the mailbox?"
+    // inline, in the same row as the count.
+    let header = Row::new(vec!["Key", "Bytes", "Count", "Share"])
+        .style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
         .storage_rows
         .iter()
@@ -260,13 +254,15 @@ fn draw_storage(
                 row.key.clone(),
                 format_bytes(row.bytes),
                 row.count.to_string(),
+                format!("{:.1}%", share_pct(row.bytes, total_bytes)),
             ])
         })
         .collect();
     let widths = [
-        Constraint::Percentage(60),
-        Constraint::Percentage(20),
-        Constraint::Percentage(20),
+        Constraint::Percentage(55),
+        Constraint::Percentage(18),
+        Constraint::Percentage(15),
+        Constraint::Percentage(12),
     ];
     render_table(
         frame,
@@ -278,6 +274,14 @@ fn draw_storage(
         state.selected_index,
         theme,
     );
+}
+
+fn share_pct(part: u64, total: u64) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        (part as f64) / (total as f64) * 100.0
+    }
 }
 
 fn draw_stale(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
@@ -299,33 +303,15 @@ fn draw_stale(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         ages.get(ages.len() / 2).copied().unwrap_or(0)
     };
 
-    let (strip, chart, table) = analytics_layout(area, 10, true);
+    let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
     stat_card(frame, cards[0], "Stale", &format_count(count), theme, true);
     stat_card(frame, cards[1], "Oldest", &format!("{oldest}d"), theme, false);
     stat_card(frame, cards[2], "Median", &format!("{median}d"), theme, false);
 
-    let mut buckets = [0u64; 4]; // 7-14, 14-30, 30-90, 90+
-    for r in &state.stale_rows {
-        let d = r.days_stale;
-        if d < 14 {
-            buckets[0] += 1;
-        } else if d < 30 {
-            buckets[1] += 1;
-        } else if d < 90 {
-            buckets[2] += 1;
-        } else {
-            buckets[3] += 1;
-        }
-    }
-    let hist = vec![
-        ("7-14d".to_string(), buckets[0]),
-        ("14-30d".to_string(), buckets[1]),
-        ("30-90d".to_string(), buckets[2]),
-        ("90d+".to_string(), buckets[3]),
-    ];
-    histogram_bar_chart(frame, chart, "Age distribution", &hist, theme);
-
+    // No age-distribution histogram: the active filter
+    // (older_than_days .. within_days) collapses every row into a
+    // single bucket. The strip already says "oldest / median".
     let header = Row::new(vec!["Subject", "Counterparty", "Days Stale", "Latest"])
         .style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
@@ -386,48 +372,36 @@ fn draw_asymmetry(
         .map(|r| r.asymmetry)
         .sum::<f64>()
         / (count as f64).max(1.0);
+    let one_sided = state
+        .asymmetry_rows
+        .iter()
+        .filter(|r| r.total_outbound == 0)
+        .count() as u64;
 
-    let (strip, chart, table) = analytics_layout(area, 12, true);
+    let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
-    stat_card(
-        frame,
-        cards[0],
-        "Contacts",
-        &format_count(count),
-        theme,
-        true,
-    );
+    stat_card(frame, cards[0], "Contacts", &format_count(count), theme, true);
     stat_card(
         frame,
         cards[1],
-        "Max",
-        &format!("{max_asym:.2}"),
+        "One-sided",
+        &format_count(one_sided),
         theme,
         false,
     );
     stat_card(
         frame,
         cards[2],
-        "Avg",
+        "Avg asym.",
         &format!("{avg_asym:.2}"),
         theme,
         false,
     );
+    let _ = max_asym; // surfaced via table column; one_sided is the more actionable summary
 
-    let bars: Vec<(String, u64)> = state
-        .asymmetry_rows
-        .iter()
-        .take(10)
-        .map(|r| {
-            let label: String = r.email.chars().take(28).collect();
-            (
-                format!("{label} {}/{}", r.total_inbound, r.total_outbound),
-                r.total_inbound as u64,
-            )
-        })
-        .collect();
-    horizontal_bar_chart(frame, chart, "Top by inbound", &bars, theme, 36);
-
+    // No bar chart: the table is already sorted by asymmetry, and
+    // a bar of `total_inbound` next to `total_inbound` is just
+    // visual duplication.
     let header = Row::new(vec!["Email", "Inbound", "Outbound", "Asymmetry"])
         .style(Style::default().fg(theme.text_muted).bold());
     let rows: Vec<Row> = state
@@ -486,75 +460,94 @@ fn draw_response_time(
         return;
     }
 
-    // Vertical split: hero card | percentile bars | histogram.
+    // Stat strip on top + histogram below. We dropped the BigText
+    // hero (one number doesn't deserve a billboard) and the
+    // percentile-bar block (those scaled to p90, so the p90 bar
+    // always rendered 100% full and conveyed nothing). Distribution
+    // shape + p50/p90 text annotations beats both.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(7),
-            Constraint::Length(7),
-            Constraint::Min(0),
-        ])
+        .constraints([Constraint::Length(4), Constraint::Min(0)])
         .split(area);
+    let cards = four_up(chunks[0]);
 
     let direction_label = match summary.direction {
-        ResponseTimeDirection::IReplied => "→ I replied",
-        ResponseTimeDirection::TheyReplied => "← they replied",
+        ResponseTimeDirection::IReplied => "you reply",
+        ResponseTimeDirection::TheyReplied => "they reply",
     };
-    let hero_split = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
-        .split(chunks[0]);
-    big_number_card(
+    stat_card(
         frame,
-        hero_split[0],
-        "Clock p50",
+        cards[0],
+        "p50",
         &format_duration_seconds(summary.clock_p50_seconds),
         theme,
+        true,
     );
-    let mut meta_lines = vec![
-        Line::from(Span::styled(
-            direction_label,
-            theme.accent_style().add_modifier(Modifier::BOLD),
-        )),
-        Line::from(format!("samples: {}", format_count(summary.sample_count as u64))),
-    ];
-    if let Some(cp) = state.response_time_counterparty.as_deref() {
-        meta_lines.push(Line::from(format!("counterparty: {cp}")));
-    }
-    if let Some(d) = state.response_time_since_days {
-        meta_lines.push(Line::from(format!("since: {d}d")));
-    }
-    let meta_block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(theme.muted_style())
-        .title(" Direction ");
-    frame.render_widget(
-        Paragraph::new(meta_lines)
-            .block(meta_block)
-            .wrap(Wrap { trim: false }),
-        hero_split[1],
+    stat_card(
+        frame,
+        cards[1],
+        "p90",
+        &format_duration_seconds(summary.clock_p90_seconds),
+        theme,
+        false,
     );
+    stat_card(
+        frame,
+        cards[2],
+        "samples",
+        &format!(
+            "{} ({})",
+            format_count(summary.sample_count as u64),
+            direction_label
+        ),
+        theme,
+        false,
+    );
+    let scope_value = match (
+        state.response_time_counterparty.as_deref(),
+        state.response_time_since_days,
+    ) {
+        (Some(cp), Some(d)) => format!("{}, {d}d", short_email(cp)),
+        (Some(cp), None) => short_email(cp).to_string(),
+        (None, Some(d)) => format!("{d}d"),
+        (None, None) => "all-time".to_string(),
+    };
+    stat_card(frame, cards[3], "scope", &scope_value, theme, false);
 
-    let max_p90 = summary
-        .clock_p90_seconds
-        .max(summary.business_hours_p90_seconds.unwrap_or(0));
-    let rows = vec![
-        ("clock p50".to_string(), Some(summary.clock_p50_seconds)),
-        ("clock p90".to_string(), Some(summary.clock_p90_seconds)),
-        ("biz p50".to_string(), summary.business_hours_p50_seconds),
-        ("biz p90".to_string(), summary.business_hours_p90_seconds),
-    ];
-    percentile_bars(frame, chunks[1], "Percentiles", &rows, max_p90, theme);
-
+    // Distribution histogram with p50/p90 callouts in the title — a
+    // chart with an annotation that puts the percentiles where they
+    // sit on the distribution. Bars containing p50/p90 are bolded.
+    let p50_idx = histogram_bucket_index(summary.clock_p50_seconds);
+    let p90_idx = histogram_bucket_index(summary.clock_p90_seconds);
+    let p50_bucket = summary
+        .histogram
+        .get(p50_idx)
+        .map(|b| histogram_bucket_label(b.upper_bound_seconds));
+    let p90_bucket = summary
+        .histogram
+        .get(p90_idx)
+        .map(|b| histogram_bucket_label(b.upper_bound_seconds));
+    let title = match (p50_bucket, p90_bucket) {
+        (Some(p50b), Some(p90b)) => format!(
+            "Distribution · p50 {} (in {}) · p90 {} (in {})",
+            format_duration_seconds(summary.clock_p50_seconds),
+            p50b,
+            format_duration_seconds(summary.clock_p90_seconds),
+            p90b,
+        ),
+        _ => "Distribution".to_string(),
+    };
     let buckets: Vec<(String, u64)> = summary
         .histogram
         .iter()
         .map(|b| {
-            let label = histogram_bucket_label(b.upper_bound_seconds);
-            (label, b.count as u64)
+            (
+                histogram_bucket_label(b.upper_bound_seconds),
+                b.count as u64,
+            )
         })
         .collect();
-    histogram_bar_chart(frame, chunks[2], "Distribution", &buckets, theme);
+    histogram_bar_chart(frame, chunks[1], &title, &buckets, theme);
 }
 
 fn histogram_bucket_label(upper_bound_seconds: u32) -> String {
@@ -569,6 +562,35 @@ fn histogram_bucket_label(upper_bound_seconds: u32) -> String {
         format!("<{}h", upper_bound_seconds / 3600)
     } else {
         format!("<{}d", upper_bound_seconds / 86_400)
+    }
+}
+
+/// Find which response-time histogram bucket a duration falls in,
+/// using the same edges (`RESPONSE_TIME_HISTOGRAM_EDGES`) the store
+/// uses to populate the histogram. Clamped to the last bucket.
+fn histogram_bucket_index(seconds: u32) -> usize {
+    use mxr_core::types::RESPONSE_TIME_HISTOGRAM_EDGES;
+    for (i, edge) in RESPONSE_TIME_HISTOGRAM_EDGES.iter().enumerate() {
+        if seconds < *edge {
+            return i;
+        }
+    }
+    RESPONSE_TIME_HISTOGRAM_EDGES.len().saturating_sub(1)
+}
+
+/// Truncate an email for display in tight spaces (stat cards, badges).
+/// Keeps the local-part if possible, otherwise truncates with ellipsis.
+fn short_email(email: &str) -> &str {
+    if email.len() <= 18 {
+        email
+    } else {
+        // Find first '@' and keep that bit if short.
+        if let Some(at) = email.find('@') {
+            if at <= 14 {
+                return &email[..at];
+            }
+        }
+        &email[..18]
     }
 }
 
@@ -626,39 +648,11 @@ fn draw_largest_messages(
         .map(|r| r.size_bytes)
         .unwrap_or(0);
 
-    let (strip, chart, table) = analytics_layout(area, 12, true);
+    let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
-    stat_card(
-        frame,
-        cards[0],
-        "Sum",
-        &format_bytes(total_bytes),
-        theme,
-        true,
-    );
+    stat_card(frame, cards[0], "Sum", &format_bytes(total_bytes), theme, true);
     stat_card(frame, cards[1], "Messages", &format_count(count), theme, false);
-    stat_card(
-        frame,
-        cards[2],
-        "Biggest",
-        &format_bytes(biggest),
-        theme,
-        false,
-    );
-
-    let bars: Vec<(String, u64)> = state
-        .largest_message_rows
-        .iter()
-        .take(10)
-        .map(|r| {
-            let subject: String = r.subject.chars().take(28).collect();
-            (
-                format!("{subject} {}", format_bytes(r.size_bytes)),
-                r.size_bytes,
-            )
-        })
-        .collect();
-    horizontal_bar_chart(frame, chart, "Top by size", &bars, theme, 36);
+    stat_card(frame, cards[2], "Biggest", &format_bytes(biggest), theme, false);
 
     let header = Row::new(vec!["Subject", "From", "Size", "Date"])
         .style(Style::default().fg(theme.text_muted).bold());
@@ -721,13 +715,16 @@ fn draw_decay(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         ds.get(ds.len() / 2).copied().unwrap_or(0)
     };
 
-    let (strip, chart, table) = analytics_layout(area, 10, true);
+    let (strip, chart, table) = strip_chart_table(area, 10);
     let cards = three_up(strip);
     stat_card(frame, cards[0], "Cold contacts", &format_count(count), theme, true);
     stat_card(frame, cards[1], "Longest gap", &format!("{longest}d"), theme, false);
     stat_card(frame, cards[2], "Median gap", &format!("{median}d"), theme, false);
 
-    let mut buckets = [0u64; 4]; // <60, 60-90, 90-180, 180+
+    // Decay buckets ARE genuinely a distribution (the threshold is
+    // a floor, not a window — gaps spread across a long tail).
+    // Keep the histogram; it's not redundant with the table.
+    let mut buckets = [0u64; 4];
     for r in &state.decay_rows {
         let d = r.days_since_inbound;
         if d < 60 {
@@ -821,7 +818,7 @@ fn draw_subscriptions(
         }
     };
 
-    let (strip, chart, table) = analytics_layout(area, 12, true);
+    let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
     stat_card(
         frame,
@@ -831,14 +828,7 @@ fn draw_subscriptions(
         theme,
         true,
     );
-    stat_card(
-        frame,
-        cards[1],
-        "Messages",
-        &format_count(total_msgs),
-        theme,
-        false,
-    );
+    stat_card(frame, cards[1], "Messages", &format_count(total_msgs), theme, false);
     stat_card(
         frame,
         cards[2],
@@ -847,59 +837,6 @@ fn draw_subscriptions(
         theme,
         false,
     );
-
-    if state.subscriptions_rank {
-        // Bottom-10 by open rate.
-        let mut ranked: Vec<&_> = state.subscriptions.iter().collect();
-        ranked.sort_by(|a, b| {
-            let ra = open_rate(a.message_count, a.opened_count);
-            let rb = open_rate(b.message_count, b.opened_count);
-            ra.partial_cmp(&rb)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| b.archived_unread_count.cmp(&a.archived_unread_count))
-        });
-        let bars: Vec<(String, u64)> = ranked
-            .iter()
-            .take(10)
-            .map(|s| {
-                let label: String = s
-                    .sender_name
-                    .clone()
-                    .unwrap_or_else(|| s.sender_email.clone())
-                    .chars()
-                    .take(28)
-                    .collect();
-                let rate = open_rate(s.message_count, s.opened_count) * 100.0;
-                (
-                    format!("{label} {rate:.0}%"),
-                    s.archived_unread_count as u64,
-                )
-            })
-            .collect();
-        horizontal_bar_chart(frame, chart, "Bottom by open rate", &bars, theme, 36);
-    } else {
-        // Top-10 by message count.
-        let mut top: Vec<&_> = state.subscriptions.iter().collect();
-        top.sort_by(|a, b| b.message_count.cmp(&a.message_count));
-        let bars: Vec<(String, u64)> = top
-            .iter()
-            .take(10)
-            .map(|s| {
-                let label: String = s
-                    .sender_name
-                    .clone()
-                    .unwrap_or_else(|| s.sender_email.clone())
-                    .chars()
-                    .take(28)
-                    .collect();
-                (
-                    format!("{label} ({})", s.message_count),
-                    s.message_count as u64,
-                )
-            })
-            .collect();
-        horizontal_bar_chart(frame, chart, "Top by volume", &bars, theme, 36);
-    }
 
     let mut indexed: Vec<usize> = (0..state.subscriptions.len()).collect();
     if state.subscriptions_rank {
@@ -922,28 +859,33 @@ fn draw_subscriptions(
                 .then_with(|| rb.archived_unread_count.cmp(&ra.archived_unread_count))
         });
     }
-    let (header, widths): (Row<'_>, [Constraint; 5]) = if state.subscriptions_rank {
+    // Open % replaces the redundant top-by-volume bar — it
+    // surfaces the engagement question ("which lists am I ignoring?")
+    // inline against the message count, where the answer lives.
+    let (header, widths): (Row<'_>, [Constraint; 6]) = if state.subscriptions_rank {
         (
-            Row::new(vec!["Sender", "Email", "Count", "Opened", "Arch/Unrd"])
+            Row::new(vec!["Sender", "Email", "Count", "Opened", "Open %", "Arch/Unrd"])
                 .style(Style::default().fg(theme.text_muted).bold()),
             [
-                Constraint::Percentage(25),
-                Constraint::Percentage(35),
-                Constraint::Percentage(10),
-                Constraint::Percentage(15),
-                Constraint::Percentage(15),
+                Constraint::Percentage(22),
+                Constraint::Percentage(30),
+                Constraint::Percentage(9),
+                Constraint::Percentage(11),
+                Constraint::Percentage(11),
+                Constraint::Percentage(17),
             ],
         )
     } else {
         (
-            Row::new(vec!["Sender", "Email", "Count", "Method", "Latest Subject"])
+            Row::new(vec!["Sender", "Email", "Count", "Open %", "Method", "Latest Subject"])
                 .style(Style::default().fg(theme.text_muted).bold()),
             [
-                Constraint::Percentage(20),
-                Constraint::Percentage(25),
+                Constraint::Percentage(18),
+                Constraint::Percentage(23),
                 Constraint::Percentage(8),
-                Constraint::Percentage(12),
-                Constraint::Percentage(35),
+                Constraint::Percentage(8),
+                Constraint::Percentage(11),
+                Constraint::Percentage(32),
             ],
         )
     };
@@ -951,12 +893,14 @@ fn draw_subscriptions(
         .into_iter()
         .map(|i| {
             let s = &state.subscriptions[i];
+            let pct = open_rate(s.message_count, s.opened_count) * 100.0;
             if state.subscriptions_rank {
                 Row::new(vec![
                     s.sender_name.clone().unwrap_or_default(),
                     s.sender_email.clone(),
                     s.message_count.to_string(),
                     s.opened_count.to_string(),
+                    format!("{pct:.0}%"),
                     s.archived_unread_count.to_string(),
                 ])
             } else {
@@ -964,6 +908,7 @@ fn draw_subscriptions(
                     s.sender_name.clone().unwrap_or_default(),
                     s.sender_email.clone(),
                     s.message_count.to_string(),
+                    format!("{pct:.0}%"),
                     unsubscribe_method_label(&s.unsubscribe).to_string(),
                     s.latest_subject.clone(),
                 ])
@@ -1001,13 +946,17 @@ fn unsubscribe_method_label(method: &mxr_core::types::UnsubscribeMethod) -> &'st
     }
 }
 
-/// Wrapped year-in-review dashboard. A header strip (BigText window
-/// label + window range + totals) sits above two rows of three tiles
-/// — Volume, When, Contacts, Reply discipline, Storage, Newsletters
-/// — and a full-width Superlatives strip. Each tile picks the
-/// widget that fits its data shape (BarChart for Volume + When,
-/// horizontal BarChart for top contacts, percentile bars for reply
-/// discipline, ratio gauges for storage + newsletters share).
+/// Wrapped year-in-review dashboard. A compact header (BigText
+/// window label + window range + totals) sits above two rows of
+/// three tiles — Volume, When, Contacts, Reply discipline, Storage,
+/// Newsletters — and a full-width Superlatives strip. Each tile
+/// answers ONE question with the most direct rendering for that
+/// data shape:
+///   * Volume:  the in:out ratio, not three mismatched bars.
+///   * When:    a smooth 24h sparkline + AM/PM split, not 24 mini-bars.
+///   * Contacts: top-1 with share %, not a stack of bars duplicating the count.
+///   * Reply:   p50/p90 + named fastest/slowest, not a maxed-out gauge.
+///   * Storage / Newsletters: stat lines, with empty state when data is absent.
 /// Tile selection (`wrapped_selected_tile`, 0..=6) draws the focused
 /// border around the selected tile.
 fn draw_wrapped(
@@ -1026,14 +975,15 @@ fn draw_wrapped(
         return;
     };
 
-    // Outer split: header (8 rows) | body (rest).
+    // Compact 5-row header: BigText (3 inner rows) + borders. Frees
+    // ~3 extra rows of tile real estate vs the previous 8-row hero.
     let outer_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(8), Constraint::Min(0)])
+        .constraints([Constraint::Length(5), Constraint::Min(0)])
         .split(area);
     draw_wrapped_header(frame, outer_chunks[0], summary, theme);
 
-    // Body split: row1 | row2 | superlatives.
+    // Body: row1 | row2 | superlatives.
     let body_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -1080,12 +1030,12 @@ fn draw_wrapped_header(
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(area);
-    let label = summary.label.to_uppercase();
-    big_number_card(frame, cols[0], "Wrapped", &label, theme);
+    let label = wrapped_short_label(&summary.label);
+    big_text_banner(frame, cols[0], "Wrapped", &label, PixelSize::Sextant, theme);
 
     let total_msgs =
         summary.volume.inbound_count as u64 + summary.volume.outbound_count as u64;
-    let lines = vec![
+    let info = vec![
         Line::from(Span::styled(
             format!(
                 "{} → {}",
@@ -1094,11 +1044,10 @@ fn draw_wrapped_header(
             ),
             theme.accent_style().add_modifier(Modifier::BOLD),
         )),
-        Line::from(""),
-        Line::from(format!("messages: {}", format_count(total_msgs))),
         Line::from(format!(
-            "threads:  {}",
-            format_count(summary.volume.thread_count as u64)
+            "{} messages · {} threads",
+            format_count(total_msgs),
+            format_count(summary.volume.thread_count as u64),
         )),
     ];
     let block = Block::default()
@@ -1106,11 +1055,21 @@ fn draw_wrapped_header(
         .border_style(theme.muted_style())
         .title(" Window ");
     frame.render_widget(
-        Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false }),
+        Paragraph::new(info).block(block).wrap(Wrap { trim: false }),
         cols[1],
     );
+}
+
+/// Compact label for the BigText banner — `"2026 year-to-date"`
+/// becomes `"2026 YTD"`, `"last 90 days"` becomes `"LAST 90D"`.
+/// Keeps the banner narrow so the header doesn't wrap.
+fn wrapped_short_label(label: &str) -> String {
+    let upper = label.to_uppercase();
+    upper
+        .replace("YEAR-TO-DATE", "YTD")
+        .replace(" DAYS", "D")
+        .trim()
+        .to_string()
 }
 
 fn wrapped_tile_block<'a>(
@@ -1131,15 +1090,75 @@ fn draw_wrapped_volume(
     theme: &crate::theme::Theme,
     focused: bool,
 ) {
+    // Volume's story is the *ratio*, not three bars at mismatched
+    // scales. With in=5214 and out=159 in the same chart, the `out`
+    // bar disappears. Ratio + counts as text answers the actual
+    // question ("am I lurking or participating?").
     let block = wrapped_tile_block("Volume", theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let bars = vec![
-        ("in".to_string(), summary.volume.inbound_count as u64),
-        ("out".to_string(), summary.volume.outbound_count as u64),
-        ("threads".to_string(), summary.volume.thread_count as u64),
+    if inner.height == 0 {
+        return;
+    }
+    let v = &summary.volume;
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(2), Constraint::Min(0)])
+        .split(inner);
+    let ratio_text = ratio_label(v.inbound_count, v.outbound_count);
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                ratio_text,
+                theme.accent_style().add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled("inbound : outbound", theme.muted_style())),
+        ])
+        .alignment(Alignment::Center),
+        chunks[0],
+    );
+    let kv = vec![
+        ("inbound".to_string(), format_count(v.inbound_count as u64)),
+        ("outbound".to_string(), format_count(v.outbound_count as u64)),
+        ("threads".to_string(), format_count(v.thread_count as u64)),
     ];
-    histogram_bar_chart(frame, inner, "", &bars, theme);
+    let label_w = kv.iter().map(|(l, _)| l.len()).max().unwrap_or(0);
+    let lines: Vec<Line> = kv
+        .iter()
+        .map(|(label, value)| {
+            Line::from(vec![
+                Span::styled(format!("{label:<label_w$}"), theme.muted_style()),
+                Span::raw("  "),
+                Span::styled(value.clone(), theme.primary_style().add_modifier(Modifier::BOLD)),
+            ])
+        })
+        .collect();
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: false }),
+        chunks[1],
+    );
+}
+
+/// Pretty-print a ratio between two counts. Big sides get the
+/// scale; equal counts collapse to "1:1". Zero on either side is
+/// rendered explicitly as the count followed by ":0" or "0:" so
+/// the reader doesn't see a confusing infinity.
+fn ratio_label(a: u32, b: u32) -> String {
+    if a == 0 && b == 0 {
+        return "0:0".into();
+    }
+    if b == 0 {
+        return format!("{a}:0");
+    }
+    if a == 0 {
+        return format!("0:{b}");
+    }
+    let ratio = (a as f64) / (b as f64);
+    if ratio >= 1.0 {
+        format!("{:.0}:1", ratio)
+    } else {
+        format!("1:{:.0}", 1.0 / ratio)
+    }
 }
 
 fn draw_wrapped_when(
@@ -1149,25 +1168,78 @@ fn draw_wrapped_when(
     theme: &crate::theme::Theme,
     focused: bool,
 ) {
-    let title = format!(
-        "When · busiest {}",
-        summary
-            .time_patterns
-            .busiest_hour_utc
-            .map(|h| format!("{h:02}:00 UTC"))
-            .unwrap_or_else(|| "—".into())
-    );
+    let pat = &summary.time_patterns;
+    let peak = pat
+        .busiest_hour_utc
+        .map(|h| format!("{h:02}:00 UTC"))
+        .unwrap_or_else(|| "—".into());
+    let title = format!("When · peak {peak}");
+
+    // Smooth 24h sparkline + AM/PM split subtitle. The shape (where
+    // the curve rises/falls across the day) is what tells you
+    // something; 24 individual bars labelled "0 0 0 1 1 2 2" are
+    // just noise. Inline rather than via the sparkline_card helper
+    // so we can preserve focus state on the outer wrapped_tile_block.
     let block = wrapped_tile_block(&title, theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let bars: Vec<(String, u64)> = summary
-        .time_patterns
+    if inner.height == 0 {
+        return;
+    }
+    let data: Vec<u64> = pat
         .hour_distribution
         .iter()
-        .enumerate()
-        .map(|(h, c)| (format!("{h:02}"), *c as u64))
+        .map(|c| *c as u64)
         .collect();
-    histogram_bar_chart(frame, inner, "", &bars, theme);
+    let total: u64 = data.iter().sum();
+    if total == 0 {
+        frame.render_widget(
+            Paragraph::new("(no time-of-day data)").style(theme.muted_style()),
+            inner,
+        );
+        return;
+    }
+    let am_total: u64 = data[0..12].iter().sum();
+    let pm_total: u64 = data[12..24].iter().sum();
+    let evening: u64 = data[18..24].iter().sum();
+    let subtitle = format!(
+        "AM {:.0}% · PM {:.0}% · evening {:.0}%",
+        (am_total as f64) / (total as f64) * 100.0,
+        (pm_total as f64) / (total as f64) * 100.0,
+        (evening as f64) / (total as f64) * 100.0,
+    );
+
+    // Inner split: sparkline | axis | subtitle.
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+    let max = data.iter().copied().max().unwrap_or(1).max(1);
+    frame.render_widget(
+        Sparkline::default()
+            .data(&data)
+            .max(max)
+            .style(theme.accent_style().add_modifier(Modifier::BOLD)),
+        chunks[0],
+    );
+    let axis_w = chunks[1].width as usize;
+    let mut axis = String::with_capacity(axis_w);
+    axis.push_str("00");
+    let pad = axis_w.saturating_sub(4);
+    axis.push_str(&" ".repeat(pad));
+    axis.push_str("23");
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(axis, theme.muted_style()))),
+        chunks[1],
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(subtitle, theme.secondary_style()))),
+        chunks[2],
+    );
 }
 
 fn draw_wrapped_contacts(
@@ -1177,20 +1249,54 @@ fn draw_wrapped_contacts(
     theme: &crate::theme::Theme,
     focused: bool,
 ) {
+    // Top-1 with share % beats listing 5 senders next to bars
+    // that duplicate the count. The interesting fact is the
+    // *concentration* (one sender = X% of inbound), not the
+    // ranking the table already shows.
     let block = wrapped_tile_block("Top inbound", theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let bars: Vec<(String, u64)> = summary
+    if inner.height == 0 {
+        return;
+    }
+    let total_in = summary.volume.inbound_count as u64;
+    let top = summary.top_contacts.most_emailed_to_me.first();
+    let top5_share: u64 = summary
         .top_contacts
         .most_emailed_to_me
         .iter()
         .take(5)
-        .map(|c| {
-            let label: String = c.email.chars().take(22).collect();
-            (format!("{label} ({})", c.count), c.count as u64)
-        })
-        .collect();
-    horizontal_bar_chart(frame, inner, "", &bars, theme, 28);
+        .map(|c| c.count as u64)
+        .sum();
+    let lines = match top {
+        Some(c) => {
+            let pct = share_pct(c.count as u64, total_in);
+            let top5_pct = share_pct(top5_share, total_in);
+            vec![
+                Line::from(Span::styled(
+                    c.email.clone(),
+                    theme.primary_style().add_modifier(Modifier::BOLD),
+                )),
+                Line::from(Span::styled(
+                    format!("{} msgs · {pct:.1}% of inbound", format_count(c.count as u64)),
+                    theme.accent_style(),
+                )),
+                Line::from(""),
+                Line::from(Span::styled(
+                    format!("top 5 = {top5_pct:.0}% of inbound"),
+                    theme.muted_style(),
+                )),
+            ]
+        }
+        None => vec![Line::from(Span::styled(
+            "(no inbound senders)",
+            theme.muted_style(),
+        ))],
+    };
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: false }),
+        inner,
+    );
 }
 
 fn draw_wrapped_reply(
@@ -1200,22 +1306,11 @@ fn draw_wrapped_reply(
     theme: &crate::theme::Theme,
     focused: bool,
 ) {
-    if let Some(reply) = summary.reply_discipline.as_ref() {
-        let max_p90 = reply
-            .clock_p90_seconds
-            .max(reply.business_hours_p90_seconds.unwrap_or(0));
-        let title = format!("Reply discipline · samples {}", reply.sample_count);
-        let block = wrapped_tile_block(&title, theme, focused);
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-        let rows = vec![
-            ("clock p50".to_string(), Some(reply.clock_p50_seconds)),
-            ("clock p90".to_string(), Some(reply.clock_p90_seconds)),
-            ("biz p50".to_string(), reply.business_hours_p50_seconds),
-            ("biz p90".to_string(), reply.business_hours_p90_seconds),
-        ];
-        percentile_bars(frame, inner, "", &rows, max_p90, theme);
-    } else {
+    // p50/p90 as numbers + the named fastest/slowest extremes that
+    // already exist in WrappedReplyDiscipline. Names anchor stats —
+    // "you replied in 12s to bob@x.com" lands harder than a gauge
+    // bar that's 100% full because it's scaled to its own max.
+    let Some(reply) = summary.reply_discipline.as_ref() else {
         let block = wrapped_tile_block("Reply discipline", theme, focused);
         frame.render_widget(
             Paragraph::new("(no reply pairs yet)")
@@ -1223,7 +1318,90 @@ fn draw_wrapped_reply(
                 .block(block),
             area,
         );
+        return;
+    };
+
+    let title = format!(
+        "Reply discipline · samples {}",
+        format_count(reply.sample_count as u64)
+    );
+    let block = wrapped_tile_block(&title, theme, focused);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    if inner.height == 0 {
+        return;
     }
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .split(inner);
+
+    // Top: p50 · p90 (clock and biz on one line each).
+    let p50p90 = vec![
+        Line::from(vec![
+            Span::styled("p50 ", theme.muted_style()),
+            Span::styled(
+                format_duration_seconds(reply.clock_p50_seconds),
+                theme.accent_style().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("   "),
+            Span::styled("p90 ", theme.muted_style()),
+            Span::styled(
+                format_duration_seconds(reply.clock_p90_seconds),
+                theme.accent_style().add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        match (reply.business_hours_p50_seconds, reply.business_hours_p90_seconds) {
+            (Some(p50), Some(p90)) => Line::from(vec![
+                Span::styled("biz p50 ", theme.muted_style()),
+                Span::styled(format_duration_seconds(p50), theme.primary_style()),
+                Span::raw("   "),
+                Span::styled("biz p90 ", theme.muted_style()),
+                Span::styled(format_duration_seconds(p90), theme.primary_style()),
+            ]),
+            _ => Line::from(Span::styled("(business-hours pending)", theme.muted_style())),
+        },
+    ];
+    frame.render_widget(
+        Paragraph::new(p50p90).wrap(Wrap { trim: false }),
+        chunks[0],
+    );
+
+    // Bottom: fastest / slowest with names attached.
+    let mut extremes = Vec::new();
+    if let Some(f) = reply.fastest.as_ref() {
+        extremes.push(Line::from(vec![
+            Span::styled("fastest  ", theme.muted_style()),
+            Span::styled(
+                format_duration_seconds(f.latency_seconds),
+                theme.success_style().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" · "),
+            Span::styled(short_email(&f.counterparty_email).to_string(), theme.primary_style()),
+        ]));
+    }
+    if let Some(s) = reply.slowest.as_ref() {
+        extremes.push(Line::from(vec![
+            Span::styled("slowest  ", theme.muted_style()),
+            Span::styled(
+                format_duration_seconds(s.latency_seconds),
+                theme.error_style().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" · "),
+            Span::styled(short_email(&s.counterparty_email).to_string(), theme.primary_style()),
+        ]));
+    }
+    if extremes.is_empty() {
+        extremes.push(Line::from(Span::styled(
+            "(no extremes recorded)",
+            theme.muted_style(),
+        )));
+    }
+    frame.render_widget(
+        Paragraph::new(extremes).wrap(Wrap { trim: false }),
+        chunks[1],
+    );
 }
 
 fn draw_wrapped_storage(
@@ -1238,33 +1416,58 @@ fn draw_wrapped_storage(
     let block = wrapped_tile_block(&title, theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
-        .split(inner);
-    let (label, ratio) = match storage.top_mimetype.as_ref() {
-        Some(top) => {
-            let r = if storage.total_bytes == 0 {
-                0.0
-            } else {
-                (top.bytes as f64) / (storage.total_bytes as f64)
-            };
-            (format!("{} ({})", top.key, format_bytes(top.bytes)), r)
-        }
-        None => ("(no attachments)".to_string(), 0.0),
-    };
-    ratio_gauge(frame, chunks[0], "Top mime share", &label, ratio, theme);
-    let mut detail = Vec::new();
+    if inner.height == 0 {
+        return;
+    }
+
+    // Empty-state when there's nothing to show — a "Top mime share"
+    // gauge with 0% and no label is just a broken-looking box.
+    let no_top = storage.top_mimetype.is_none();
+    let no_heaviest = storage.heaviest_message.is_none();
+    if no_top && no_heaviest {
+        frame.render_widget(
+            Paragraph::new("(no attachments)").style(theme.muted_style()),
+            inner,
+        );
+        return;
+    }
+
+    let mut lines: Vec<Line> = Vec::new();
+    if let Some(top) = storage.top_mimetype.as_ref() {
+        let pct = share_pct(top.bytes, storage.total_bytes);
+        lines.push(Line::from(vec![
+            Span::styled("top mime  ", theme.muted_style()),
+            Span::styled(
+                top.key.clone(),
+                theme.primary_style().add_modifier(Modifier::BOLD),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("          "),
+            Span::styled(
+                format!("{} · {pct:.1}%", format_bytes(top.bytes)),
+                theme.accent_style(),
+            ),
+        ]));
+        lines.push(Line::from(""));
+    }
     if let Some(heaviest) = storage.heaviest_message.as_ref() {
         let subject: String = heaviest.subject.chars().take(40).collect();
-        detail.push(Line::from(format!(
-            "heaviest: {subject} ({})",
-            format_bytes(heaviest.size_bytes)
-        )));
+        lines.push(Line::from(vec![
+            Span::styled("heaviest  ", theme.muted_style()),
+            Span::styled(subject, theme.primary_style()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("          "),
+            Span::styled(
+                format_bytes(heaviest.size_bytes),
+                theme.accent_style().add_modifier(Modifier::BOLD),
+            ),
+        ]));
     }
     frame.render_widget(
-        Paragraph::new(detail).wrap(Wrap { trim: false }),
-        chunks[1],
+        Paragraph::new(lines).wrap(Wrap { trim: false }),
+        inner,
     );
 }
 
@@ -1276,24 +1479,32 @@ fn draw_wrapped_newsletters(
     focused: bool,
 ) {
     let news = &summary.newsletters;
-    let title = format!("Newsletters · {} lists", news.unique_lists);
+
+    // Empty state instead of an empty `Gauge` and "0 lists" label
+    // when no list-id headers are detected. Renders as muted text,
+    // not a broken-looking box.
+    if news.unique_lists == 0 && news.top_list.is_none() {
+        let block = wrapped_tile_block("Newsletters", theme, focused);
+        frame.render_widget(
+            Paragraph::new("(no list-id headers detected)")
+                .style(theme.muted_style())
+                .block(block),
+            area,
+        );
+        return;
+    }
+
+    let title = format!(
+        "Newsletters · {} lists · {:.1}% of inbound",
+        news.unique_lists, news.list_share_of_inbound_pct
+    );
     let block = wrapped_tile_block(&title, theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
-        .split(inner);
-    let share_ratio = (news.list_share_of_inbound_pct / 100.0).clamp(0.0, 1.0);
-    ratio_gauge(
-        frame,
-        chunks[0],
-        "Share of inbound",
-        &format!("{:.1}%", news.list_share_of_inbound_pct),
-        share_ratio,
-        theme,
-    );
-    let mut detail = Vec::new();
+    if inner.height == 0 {
+        return;
+    }
+    let mut lines: Vec<Line> = Vec::new();
     if let Some(top) = news.top_list.as_ref() {
         let opened_pct = if top.message_count == 0 {
             0.0
@@ -1301,14 +1512,24 @@ fn draw_wrapped_newsletters(
             (top.opened_count as f64) / (top.message_count as f64) * 100.0
         };
         let id: String = top.list_id.chars().take(40).collect();
-        detail.push(Line::from(format!(
-            "top: {id} ({} msgs, {opened_pct:.0}% opened)",
-            top.message_count
-        )));
+        lines.push(Line::from(vec![
+            Span::styled("top list  ", theme.muted_style()),
+            Span::styled(
+                id,
+                theme.primary_style().add_modifier(Modifier::BOLD),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("          "),
+            Span::styled(
+                format!("{} msgs · {opened_pct:.0}% opened", top.message_count),
+                theme.accent_style(),
+            ),
+        ]));
     }
     frame.render_widget(
-        Paragraph::new(detail).wrap(Wrap { trim: false }),
-        chunks[1],
+        Paragraph::new(lines).wrap(Wrap { trim: false }),
+        inner,
     );
 }
 
@@ -1501,13 +1722,14 @@ mod tests {
         );
     }
 
-    /// Response Time view now renders a hero card (clock p50), a
-    /// percentile-bar stack with `clock p50 / p90 / biz p50 / biz p90`
-    /// labels and a `—` sentinel when business-hours percentiles are
-    /// unset, plus a histogram pane labeled "Distribution".
+    /// Response Time view renders a 4-card stat strip (p50, p90,
+    /// samples, scope) and a histogram with p50/p90 callouts in
+    /// the title. No more BigText hero, no more percentile-bar
+    /// block — both were removed because they didn't add info a
+    /// number couldn't carry.
     #[test]
-    fn response_time_view_renders_hero_percentiles_and_histogram() {
-        use mxr_core::types::ResponseTimeBucket;
+    fn response_time_view_renders_stat_strip_and_annotated_histogram() {
+        use mxr_core::types::{ResponseTimeBucket, RESPONSE_TIME_HISTOGRAM_EDGES};
         let mut state = AnalyticsState::default();
         state.view = AnalyticsView::ResponseTime;
         state.response_time = Some(ResponseTimeSummary {
@@ -1517,47 +1739,46 @@ mod tests {
             clock_p90_seconds: 3600,
             business_hours_p50_seconds: None,
             business_hours_p90_seconds: None,
-            histogram: vec![
-                ResponseTimeBucket {
-                    upper_bound_seconds: 60,
-                    count: 5,
-                },
-                ResponseTimeBucket {
-                    upper_bound_seconds: 300,
-                    count: 8,
-                },
-                ResponseTimeBucket {
-                    upper_bound_seconds: u32::MAX,
-                    count: 4,
-                },
-            ],
+            // Production data always has all 8 buckets.
+            histogram: RESPONSE_TIME_HISTOGRAM_EDGES
+                .iter()
+                .enumerate()
+                .map(|(i, &edge)| ResponseTimeBucket {
+                    upper_bound_seconds: edge,
+                    count: if i < 3 { (i as u32 + 1) * 3 } else { 0 },
+                })
+                .collect(),
         });
-        let rendered = render_to_string(120, 30, |frame| {
-            draw(frame, Rect::new(0, 0, 120, 30), &state, &theme());
+        let rendered = render_to_string(160, 30, |frame| {
+            draw(frame, Rect::new(0, 0, 160, 30), &state, &theme());
         });
-        // Direction badge.
+        // Stat strip: card labels.
+        assert!(rendered.contains("p50"), "p50 card missing: {rendered}");
+        assert!(rendered.contains("p90"), "p90 card missing: {rendered}");
         assert!(
-            rendered.contains("I replied"),
-            "direction badge missing: {rendered}"
+            rendered.contains("samples"),
+            "samples card missing: {rendered}"
         );
-        // Sample count somewhere in the meta block.
+        assert!(rendered.contains("scope"), "scope card missing: {rendered}");
+        // Direction phrasing in the samples card.
+        assert!(
+            rendered.contains("you reply"),
+            "direction phrasing missing: {rendered}"
+        );
+        // Sample count.
         assert!(rendered.contains("17"), "sample count missing: {rendered}");
-        // Percentile labels render in the LineGauges.
-        assert!(rendered.contains("p50"), "p50 label missing: {rendered}");
-        assert!(rendered.contains("p90"), "p90 label missing: {rendered}");
-        // Business-hours rows fall back to "—".
-        assert!(
-            rendered.contains("biz p50"),
-            "biz p50 label missing: {rendered}"
-        );
-        assert!(
-            rendered.contains("—"),
-            "business-hours `—` sentinel missing: {rendered}"
-        );
-        // Histogram pane title.
+        // Histogram pane title carries the percentile annotations.
         assert!(
             rendered.contains("Distribution"),
             "histogram pane missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("p50 1m30s"),
+            "p50 annotation missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("p90 1h0m"),
+            "p90 annotation missing: {rendered}"
         );
     }
 

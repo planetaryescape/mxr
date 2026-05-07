@@ -3,6 +3,7 @@
 mod chrome;
 mod envelope_list;
 mod legacy;
+mod middleware;
 mod openapi;
 
 use axum::{
@@ -46,7 +47,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::net::TcpListener;
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
-use tower_http::cors::CorsLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
@@ -57,6 +57,15 @@ static NEXT_BRIDGE_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 pub struct WebServerConfig {
     pub socket_path: PathBuf,
     pub auth_token: String,
+    /// Origins allowed for CORS in addition to the loopback defaults
+    /// (`http://localhost`, `https://localhost`, `http://127.0.0.1`,
+    /// `https://127.0.0.1`). Empty by default. Configurable via
+    /// `[bridge].cors_allowlist` in `~/.config/mxr/config.toml`.
+    pub cors_allowlist: Vec<String>,
+    /// Hostnames allowed in the HTTP `Host` header in addition to the
+    /// loopback defaults. Empty by default; populated only when the
+    /// daemon is intentionally bound to a non-loopback address.
+    pub host_allowlist: Vec<String>,
 }
 
 impl WebServerConfig {
@@ -64,7 +73,19 @@ impl WebServerConfig {
         Self {
             socket_path,
             auth_token,
+            cors_allowlist: Vec::new(),
+            host_allowlist: Vec::new(),
         }
+    }
+
+    pub fn with_cors_allowlist(mut self, origins: Vec<String>) -> Self {
+        self.cors_allowlist = origins;
+        self
+    }
+
+    pub fn with_host_allowlist(mut self, hosts: Vec<String>) -> Self {
+        self.host_allowlist = hosts;
+        self
     }
 }
 
@@ -74,6 +95,17 @@ fn admin_router() -> Router<AppState> {
         .route("/status", get(status))
         .route("/diagnostics", get(diagnostics))
         .route("/diagnostics/bug-report", get(generate_bug_report))
+}
+
+/// Liveness endpoint — unauthenticated. Surfaces just enough for clients
+/// (desktop app, orchestrators) to verify the bridge is up and the
+/// protocol version they expect, before they go acquire the bridge token.
+async fn health() -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "ok",
+        "service": "mxr-bridge",
+        "protocol_version": mxr_protocol::IPC_PROTOCOL_VERSION,
+    }))
 }
 
 /// Routes under `/api/v1/mail/*` — read, search, mutate, sync, compose.
@@ -153,9 +185,12 @@ fn desktop_router() -> Router<AppState> {
 }
 
 pub fn app(config: WebServerConfig) -> Router {
+    let cors = middleware::cors_layer(&config.cors_allowlist);
+    let host_allowlist = std::sync::Arc::new(config.host_allowlist.clone());
     let state = AppState::new(config);
 
     let v1 = Router::new()
+        .route("/health", get(health))
         .nest("/admin", admin_router())
         .nest("/mail", mail_router())
         .nest("/platform", platform_router())
@@ -167,7 +202,11 @@ pub fn app(config: WebServerConfig) -> Router {
         .nest("/api/v1", v1)
         .merge(SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()))
         .layer(axum::middleware::from_fn(legacy::redirect_legacy_paths))
-        .layer(CorsLayer::permissive())
+        .layer(axum::middleware::from_fn_with_state(
+            host_allowlist,
+            middleware::host_allowlist,
+        ))
+        .layer(cors)
 }
 
 pub async fn serve(listener: TcpListener, config: WebServerConfig) -> std::io::Result<()> {
@@ -230,16 +269,54 @@ struct AuthQuery {
     token: Option<String>,
 }
 
+/// Resolve the bridge token from the request, checking each path that
+/// the OpenAPI spec documents:
+///
+/// 1. `Authorization: Bearer <token>` — preferred, what generated SDKs use
+/// 2. `?token=<token>` — fallback for `EventSource` and curl users
+/// 3. `Sec-WebSocket-Protocol: bearer, <token>` — browser WebSocket clients
+///    (browsers cannot set `Authorization` on WS upgrades)
+/// 4. `x-mxr-bridge-token: <token>` — v0.4.x compat, kept for the v0.5
+///    cycle so old desktop installs keep working through the migration
+fn extract_token<'a>(
+    headers: &'a HeaderMap,
+    query_token: Option<&'a str>,
+) -> Option<&'a str> {
+    if let Some(value) = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer ").or_else(|| v.strip_prefix("bearer ")))
+    {
+        return Some(value);
+    }
+    if let Some(token) = query_token {
+        return Some(token);
+    }
+    if let Some(value) = headers
+        .get("sec-websocket-protocol")
+        .and_then(|v| v.to_str().ok())
+    {
+        // browsers join multiple subprotocols with `, ` — e.g.
+        // `bearer, abc123`. The token is the trailing item after the
+        // `bearer` marker.
+        let mut parts = value.split(',').map(|s| s.trim());
+        if parts.clone().any(|p| p == "bearer") {
+            if let Some(candidate) = parts.find(|p| !p.is_empty() && *p != "bearer") {
+                return Some(candidate);
+            }
+        }
+    }
+    headers
+        .get("x-mxr-bridge-token")
+        .and_then(|value| value.to_str().ok())
+}
+
 fn ensure_authorized(
     headers: &HeaderMap,
     query_token: Option<&str>,
     expected_token: &str,
 ) -> Result<(), BridgeError> {
-    let header_token = headers
-        .get("x-mxr-bridge-token")
-        .and_then(|value| value.to_str().ok());
-    let provided = header_token.or(query_token);
-    if provided == Some(expected_token) {
+    if extract_token(headers, query_token) == Some(expected_token) {
         return Ok(());
     }
     Err(BridgeError::Unauthorized)
@@ -1704,6 +1781,19 @@ async fn events(
     {
         return error.into_response();
     }
+    // If the client offered the `bearer` subprotocol (browser auth path),
+    // accept it so the WS handshake completes with a negotiated
+    // subprotocol — RFC 6455 requires that any offered subprotocol be
+    // explicitly accepted or the client may abort.
+    let ws = if headers
+        .get("sec-websocket-protocol")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(',').any(|p| p.trim() == "bearer"))
+    {
+        ws.protocols(["bearer"])
+    } else {
+        ws
+    };
     ws.on_upgrade(move |socket| bridge_events(socket, state.config.socket_path))
 }
 
@@ -2815,6 +2905,219 @@ mod tests {
 
         assert!(text.contains("SyncCompleted"));
         assert!(text.contains("\"messages_synced\":3"));
+    }
+
+    /// Slice 4 — `Authorization: Bearer X` is the preferred auth path
+    /// (matches OpenAPI's bearerAuth security scheme; what generated SDKs
+    /// produce by default).
+    #[tokio::test]
+    async fn auth_accepts_authorization_bearer_header() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            |_| {
+                Some(Response::Ok {
+                    data: ResponseData::Status {
+                        uptime_secs: 1,
+                        accounts: vec![],
+                        total_messages: 0,
+                        daemon_pid: None,
+                        sync_statuses: vec![],
+                        protocol_version: IPC_PROTOCOL_VERSION,
+                        daemon_version: None,
+                        daemon_build_id: None,
+                        repair_required: false,
+                        semantic_runtime: None,
+                    },
+                })
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/api/v1/admin/status"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+    }
+
+    /// Slice 4 — wrong bearer token is rejected (not just missing one).
+    #[tokio::test]
+    async fn auth_rejects_wrong_bearer_token() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/api/v1/admin/status"))
+            .bearer_auth("wrong-token-not-the-one-we-expect")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+    }
+
+    /// Slice 4 — `?token=X` query string still works (EventSource clients
+    /// can't set arbitrary headers, so this is the documented fallback).
+    #[tokio::test]
+    async fn auth_accepts_query_string_token_for_event_source() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_event_server(&socket_path).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        // EventSource is HTTP, so prove the same query-string auth works
+        // for plain HTTP endpoints too (used by tools that can't set
+        // headers — same situation as EventSource).
+        let response = reqwest::get(format!(
+            "http://{addr}/api/v1/admin/status?token={TEST_AUTH_TOKEN}"
+        ))
+        .await
+        .unwrap();
+        // The fake responder returns no payload for GetStatus so the
+        // response is 5xx; what we're testing is that auth let it through
+        // (not 401).
+        assert_ne!(
+            response.status(),
+            reqwest::StatusCode::UNAUTHORIZED,
+            "query-string token must satisfy auth"
+        );
+    }
+
+    /// Slice 4 — WebSocket browser auth via `Sec-WebSocket-Protocol`
+    /// subprotocol header. Browsers cannot set arbitrary headers on WS
+    /// upgrades, so this is the documented browser-friendly path. The
+    /// server must echo back `bearer` so the negotiation succeeds.
+    #[tokio::test]
+    async fn websocket_auth_accepts_sec_websocket_protocol_subprotocol() {
+        use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+        use tokio_tungstenite::tungstenite::http::HeaderValue;
+
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_event_server(&socket_path).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let mut request = format!("ws://{addr}/api/v1/events")
+            .into_client_request()
+            .unwrap();
+        request.headers_mut().insert(
+            "Sec-WebSocket-Protocol",
+            HeaderValue::from_str(&format!("bearer, {TEST_AUTH_TOKEN}")).unwrap(),
+        );
+
+        let (mut stream, response) = tokio_tungstenite::connect_async(request)
+            .await
+            .expect("WS upgrade with subprotocol bearer auth must succeed");
+        assert_eq!(
+            response
+                .headers()
+                .get("sec-websocket-protocol")
+                .map(|v| v.as_bytes()),
+            Some(b"bearer".as_slice()),
+            "server must echo `bearer` as the negotiated subprotocol"
+        );
+        let message = stream.next().await.unwrap().unwrap();
+        assert!(matches!(message, Message::Text(_)));
+    }
+
+    /// Slice 4 — `/api/v1/health` is liveness-only and unauthenticated so
+    /// the desktop app / orchestrators can probe readiness without first
+    /// loading the bridge token.
+    #[tokio::test]
+    async fn health_endpoint_is_unauthenticated() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::get(format!("http://{addr}/api/v1/health"))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["status"], "ok");
+        assert!(
+            json["protocol_version"].as_u64().is_some(),
+            "health response must surface IPC_PROTOCOL_VERSION so clients \
+             can fail-fast on incompat without auth"
+        );
+    }
+
+    /// Slice 4 — Host header allowlist defends against DNS rebinding.
+    /// Loopback names allowed; arbitrary external hostnames rejected.
+    #[tokio::test]
+    async fn host_header_allowlist_rejects_external_hosts() {
+        use reqwest::header::HOST;
+
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        // Send a request with a Host header pointing at an external
+        // domain — this is the shape of a DNS rebinding attack from a
+        // malicious page.
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/api/v1/health"))
+            .header(HOST, "evil.example.com")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::FORBIDDEN,
+            "non-loopback Host header must be rejected with 403"
+        );
     }
 
     /// Slice 3 — every flat path returns a method-preserving permanent

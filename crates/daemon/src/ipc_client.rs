@@ -31,6 +31,26 @@ impl IpcClient {
     }
 
     pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
+        self.request_with_events(req, |_| {}).await
+    }
+
+    /// Like [`request`], but invokes `on_event` for every
+    /// `DaemonEvent` frame that arrives on the connection while
+    /// waiting for the response. Use for long-running operations
+    /// (sync, rebuild-analytics, reindex) where the daemon emits
+    /// `OperationProgress` events the user wants to see live.
+    ///
+    /// `on_event` runs synchronously between frame reads — keep it
+    /// fast (write to stdout/stderr or push into a channel; don't
+    /// block).
+    pub async fn request_with_events<F>(
+        &mut self,
+        req: Request,
+        mut on_event: F,
+    ) -> anyhow::Result<Response>
+    where
+        F: FnMut(DaemonEvent),
+    {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let msg = IpcMessage {
             id,
@@ -40,14 +60,12 @@ impl IpcClient {
 
         loop {
             match self.framed.next().await {
-                Some(Ok(resp_msg)) => {
-                    if resp_msg.id == id {
-                        match resp_msg.payload {
-                            IpcPayload::Response(resp) => return Ok(resp),
-                            _ => continue,
-                        }
-                    }
-                }
+                Some(Ok(resp_msg)) => match resp_msg.payload {
+                    IpcPayload::Response(resp) if resp_msg.id == id => return Ok(resp),
+                    IpcPayload::Event(event) => on_event(event),
+                    // Out-of-id responses or other frames: ignore.
+                    _ => continue,
+                },
                 Some(Err(e)) => anyhow::bail!("{}", describe_ipc_failure(&e.to_string())),
                 None => anyhow::bail!(
                     "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading."

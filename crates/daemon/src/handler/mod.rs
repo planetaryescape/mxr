@@ -12,7 +12,7 @@ mod accounts;
 mod admin;
 mod auth_sessions;
 #[path = "diagnostics/mod.rs"]
-mod diagnostics_impl;
+pub(crate) mod diagnostics_impl;
 mod helpers;
 mod mailbox;
 mod mutations;

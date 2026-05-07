@@ -128,6 +128,15 @@ impl App {
             .find(|label| &label.id == label_id)
     }
 
+    /// True when the active label is the one whose membership the operation
+    /// removes. Used to decide whether removing a message from the current
+    /// list is correct or would just bounce the row when the next sync re-
+    /// fetches the (still-matching) view.
+    pub(super) fn active_label_matches(&self, label_name: &str) -> bool {
+        self.active_label_record()
+            .is_some_and(|label| label.name.eq_ignore_ascii_case(label_name))
+    }
+
     pub(super) fn global_starred_count(&self) -> usize {
         self.mailbox
             .labels
@@ -215,6 +224,14 @@ impl App {
         for id in ids {
             self.queue_body_fetch(id);
         }
+    }
+
+    /// Public-facing entry to `open_envelope` for deep-link
+    /// drill-downs (analytics row Enter, future ID-based jumps).
+    /// Same flow as a normal mailbox row-click: optimistic thread
+    /// list, body fetch queue, thread fetch.
+    pub fn open_envelope_for_drill_down(&mut self, env: Envelope) {
+        self.open_envelope(env);
     }
 
     pub(super) fn open_envelope(&mut self, env: Envelope) {

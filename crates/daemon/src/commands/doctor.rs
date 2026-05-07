@@ -3,12 +3,15 @@ use crate::handler::{dir_size_sync, doctor_data_stats, file_size_sync, recent_lo
 use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{
-    AccountSyncStatus, DaemonHealthClass, DoctorDataStats, DoctorReport, EventLogEntry, Request,
-    Response, ResponseData,
+    AccountSyncStatus, DaemonEvent, DaemonHealthClass, DoctorDataStats, DoctorReport,
+    EventLogEntry, Request, Response, ResponseData,
 };
 use mxr_search::SearchIndex;
 use mxr_store::Store;
+use std::io::{IsTerminal, Write};
+use std::sync::{Arc, Mutex};
 use tokio::net::UnixStream;
+use tokio::time::{interval, Duration};
 
 pub struct DoctorRunOptions {
     pub reindex: bool,
@@ -28,7 +31,16 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
 
     if options.rebuild_analytics {
         let mut client = IpcClient::connect().await?;
-        match client.request(Request::RebuildAnalytics).await? {
+        let json_mode = matches!(fmt, OutputFormat::Json | OutputFormat::Jsonl);
+        let progress = ProgressPrinter::new(json_mode);
+        let on_event = progress.event_callback();
+        let started_at = std::time::Instant::now();
+        let response = client
+            .request_with_events(Request::RebuildAnalytics, on_event)
+            .await?;
+        let duration = started_at.elapsed();
+        progress.finish();
+        match response {
             Response::Ok {
                 data:
                     ResponseData::AnalyticsRebuildSummary {
@@ -38,26 +50,71 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
                         business_hours_backfilled,
                         contacts_rows,
                     },
-            } => match fmt {
-                OutputFormat::Json | OutputFormat::Jsonl => {
-                    let value = serde_json::json!({
-                        "directions_reclassified": directions_reclassified,
-                        "list_ids_backfilled": list_ids_backfilled,
-                        "reply_pairs_resolved": reply_pairs_resolved,
-                        "business_hours_backfilled": business_hours_backfilled,
-                        "contacts_rows": contacts_rows,
-                    });
-                    println!("{}", serde_json::to_string_pretty(&value)?);
+            } => {
+                let backfilled_total = directions_reclassified
+                    + list_ids_backfilled
+                    + reply_pairs_resolved
+                    + business_hours_backfilled;
+                let healthy = backfilled_total == 0;
+                let status = if healthy { "healthy" } else { "rebuilt" };
+                match fmt {
+                    OutputFormat::Json | OutputFormat::Jsonl => {
+                        let value = serde_json::json!({
+                            "status": status,
+                            "duration_ms": duration.as_millis() as u64,
+                            "backfilled_total": backfilled_total,
+                            "directions_reclassified": directions_reclassified,
+                            "list_ids_backfilled": list_ids_backfilled,
+                            "reply_pairs_resolved": reply_pairs_resolved,
+                            "business_hours_backfilled": business_hours_backfilled,
+                            "contacts_rows": contacts_rows,
+                        });
+                        println!("{}", serde_json::to_string_pretty(&value)?);
+                    }
+                    _ => {
+                        let summary = if healthy {
+                            format!(
+                                "Analytics rebuild complete: already healthy, nothing to backfill ({}).",
+                                format_duration(duration)
+                            )
+                        } else {
+                            format!(
+                                "Analytics rebuild complete: backfilled {} item(s) ({}).",
+                                backfilled_total,
+                                format_duration(duration)
+                            )
+                        };
+                        println!("{summary}");
+                        print_rebuild_row(
+                            "directions reclassified",
+                            directions_reclassified,
+                            "all messages already classified",
+                        );
+                        print_rebuild_row(
+                            "list_ids backfilled    ",
+                            list_ids_backfilled,
+                            "all messages already tagged",
+                        );
+                        print_rebuild_row(
+                            "reply pairs resolved   ",
+                            reply_pairs_resolved,
+                            "no pending pairs",
+                        );
+                        print_rebuild_row(
+                            "business-hours backfill",
+                            business_hours_backfilled,
+                            "all latencies computed",
+                        );
+                        // contacts_rows is a *total* (table size after
+                        // refresh), not a delta — flag it differently
+                        // so the user can tell at a glance.
+                        println!(
+                            "  contacts rows refreshed: {:>7}  ↻ total in materialized view",
+                            format_thousands(contacts_rows)
+                        );
+                    }
                 }
-                _ => {
-                    println!("Analytics rebuild complete:");
-                    println!("  directions reclassified  : {directions_reclassified}");
-                    println!("  list_ids backfilled      : {list_ids_backfilled}");
-                    println!("  reply pairs resolved     : {reply_pairs_resolved}");
-                    println!("  business-hours backfilled: {business_hours_backfilled}");
-                    println!("  contacts rows refreshed  : {contacts_rows}");
-                }
-            },
+            }
             Response::Error { message, .. } => anyhow::bail!("{message}"),
             other => anyhow::bail!("Unexpected response: {other:?}"),
         }
@@ -810,6 +867,184 @@ fn semantic_freshness_from_store(
     )
 }
 
+/// One row of the rebuild-analytics summary. Distinguishes
+/// "0 = nothing was wrong" (✓ + interpretive label) from "N = fixed
+/// N items" (← fixed) so the user can tell at a glance which steps
+/// did real work and which were already healthy.
+fn print_rebuild_row(label: &str, count: u32, healthy_hint: &str) {
+    if count == 0 {
+        println!("  {label}: {:>7}  ✓ {healthy_hint}", format_thousands(count));
+    } else {
+        println!("  {label}: {:>7}  ← fixed", format_thousands(count));
+    }
+}
+
+fn format_duration(d: std::time::Duration) -> String {
+    let ms = d.as_millis();
+    if ms < 1000 {
+        format!("{ms}ms")
+    } else if ms < 60_000 {
+        format!("{:.1}s", d.as_secs_f64())
+    } else {
+        let mins = d.as_secs() / 60;
+        let secs = d.as_secs() % 60;
+        format!("{mins}m {secs}s")
+    }
+}
+
+fn format_thousands(n: u32) -> String {
+    let s = n.to_string();
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+    let mut out = String::with_capacity(len + len / 3);
+    for (i, b) in bytes.iter().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(*b as char);
+    }
+    out
+}
+
+/// Prints a live spinner on stderr for long-running operations and
+/// surfaces `OperationProgress` events as they arrive. Spinner runs
+/// only on a TTY and only for human (non-JSON) output, so piped
+/// output stays parseable. JSON callers get the events on stderr in
+/// JSON-Lines so scripts can still see progress without polluting
+/// stdout.
+struct ProgressPrinter {
+    json_mode: bool,
+    tty: bool,
+    label: Arc<Mutex<String>>,
+    spinner_handle: tokio::task::JoinHandle<()>,
+}
+
+impl ProgressPrinter {
+    fn new(json_mode: bool) -> Self {
+        let tty = std::io::stderr().is_terminal();
+        let label = Arc::new(Mutex::new("Working".to_string()));
+        // The spinner only paints when we're on a TTY and not in
+        // JSON mode. Otherwise the JoinHandle holds an idle task that
+        // we abort on `finish` — cheap and avoids two code paths.
+        let label_for_task = label.clone();
+        let active = tty && !json_mode;
+        let spinner_handle = tokio::spawn(async move {
+            if !active {
+                return;
+            }
+            let frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+            let mut idx = 0usize;
+            let mut tick = interval(Duration::from_millis(100));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tick.tick().await;
+                let label = label_for_task.lock().map(|s| s.clone()).unwrap_or_default();
+                let mut stderr = std::io::stderr();
+                let _ = write!(stderr, "\r\x1b[K{} {}", frames[idx % frames.len()], label);
+                let _ = stderr.flush();
+                idx = idx.wrapping_add(1);
+            }
+        });
+        Self {
+            json_mode,
+            tty,
+            label,
+            spinner_handle,
+        }
+    }
+
+    fn event_callback(&self) -> impl FnMut(DaemonEvent) + 'static {
+        let json_mode = self.json_mode;
+        let tty = self.tty;
+        let label = self.label.clone();
+        move |event: DaemonEvent| {
+            let mut stderr = std::io::stderr();
+            // Clear the spinner line before printing so the event
+            // doesn't end up appended to the spinner glyph.
+            if tty && !json_mode {
+                let _ = write!(stderr, "\r\x1b[K");
+            }
+            match &event {
+                DaemonEvent::OperationStarted { message, .. } => {
+                    if json_mode {
+                        if let Ok(s) = serde_json::to_string(&event) {
+                            let _ = writeln!(stderr, "{s}");
+                        }
+                    } else {
+                        let _ = writeln!(stderr, "▶ {message}");
+                    }
+                    if let Ok(mut l) = label.lock() {
+                        *l = message.clone();
+                    }
+                }
+                DaemonEvent::OperationProgress {
+                    current,
+                    total,
+                    message,
+                    ..
+                } => {
+                    let total_str = total
+                        .map(|t| t.to_string())
+                        .unwrap_or_else(|| "?".into());
+                    if json_mode {
+                        if let Ok(s) = serde_json::to_string(&event) {
+                            let _ = writeln!(stderr, "{s}");
+                        }
+                    } else {
+                        let _ = writeln!(stderr, "  [{current}/{total_str}] {message}");
+                    }
+                    if let Ok(mut l) = label.lock() {
+                        *l = format!("[{current}/{total_str}] {message}");
+                    }
+                }
+                DaemonEvent::OperationCompleted { message, .. } => {
+                    if json_mode {
+                        if let Ok(s) = serde_json::to_string(&event) {
+                            let _ = writeln!(stderr, "{s}");
+                        }
+                    } else {
+                        let _ = writeln!(stderr, "✓ {message}");
+                    }
+                }
+                DaemonEvent::OperationFailed {
+                    error, retryable, ..
+                } => {
+                    if json_mode {
+                        if let Ok(s) = serde_json::to_string(&event) {
+                            let _ = writeln!(stderr, "{s}");
+                        }
+                    } else {
+                        let _ = writeln!(
+                            stderr,
+                            "✗ {error}{}",
+                            if *retryable { " (retryable)" } else { "" }
+                        );
+                    }
+                }
+                _ => {}
+            }
+            let _ = stderr.flush();
+        }
+    }
+
+    /// Stops the spinner and clears the spinner line so the final
+    /// stdout output isn't preceded by a stale glyph. Idempotent.
+    fn finish(&self) {
+        self.spinner_handle.abort();
+        if self.tty && !self.json_mode {
+            let mut stderr = std::io::stderr();
+            let _ = write!(stderr, "\r\x1b[K");
+            let _ = stderr.flush();
+        }
+    }
+}
+
+impl Drop for ProgressPrinter {
+    fn drop(&mut self) {
+        self.spinner_handle.abort();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -829,5 +1064,30 @@ mod tests {
             steps,
             vec!["mxr restart".to_string(), "mxr status".to_string()]
         );
+    }
+
+    /// `format_thousands` injects commas every three digits so the
+    /// `contacts_rows: 10673` row displays as `10,673` — much more
+    /// scannable on a populated mailbox where this number is in the
+    /// tens of thousands.
+    #[test]
+    fn format_thousands_inserts_commas_every_three_digits() {
+        assert_eq!(format_thousands(0), "0");
+        assert_eq!(format_thousands(42), "42");
+        assert_eq!(format_thousands(999), "999");
+        assert_eq!(format_thousands(1_000), "1,000");
+        assert_eq!(format_thousands(10_673), "10,673");
+        assert_eq!(format_thousands(1_234_567), "1,234,567");
+    }
+
+    /// `format_duration` switches units across thresholds so the
+    /// rebuild summary reads naturally regardless of how long the
+    /// run took.
+    #[test]
+    fn format_duration_scales_units() {
+        use std::time::Duration;
+        assert_eq!(format_duration(Duration::from_millis(450)), "450ms");
+        assert_eq!(format_duration(Duration::from_millis(1_200)), "1.2s");
+        assert_eq!(format_duration(Duration::from_secs(75)), "1m 15s");
     }
 }

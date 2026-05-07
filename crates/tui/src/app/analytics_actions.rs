@@ -153,14 +153,26 @@ impl App {
                         return;
                     };
                     use mxr_core::types::StorageGroupBy;
-                    let query = match self.analytics.storage_group_by {
-                        StorageGroupBy::Sender => format!("from:{}", row.key),
-                        StorageGroupBy::Mimetype => {
-                            format!("has:attachment mime:{}", row.key)
-                        }
-                        StorageGroupBy::Label => format!("label:{}", row.key),
+                    // The lexical engine doesn't index mime types, so
+                    // the mime drill-down falls back to a generic
+                    // `has:attachment` jump and surfaces the chosen
+                    // mime as a status hint. Sender + label both map
+                    // to real query operators.
+                    let (query, hint) = match self.analytics.storage_group_by {
+                        StorageGroupBy::Sender => (format!("from:{}", row.key), None),
+                        StorageGroupBy::Mimetype => (
+                            "has:attachment".to_string(),
+                            Some(format!(
+                                "Showing all attachments (mime drill-down for {} not indexed)",
+                                row.key
+                            )),
+                        ),
+                        StorageGroupBy::Label => (format!("label:{}", row.key), None),
                     };
                     self.jump_to_search(query);
+                    if let Some(hint) = hint {
+                        self.status_message = Some(hint);
+                    }
                 }
                 StorageMode::LargestMessages => {
                     let Some(row) = self
@@ -170,8 +182,7 @@ impl App {
                     else {
                         return;
                     };
-                    let query = format!("rfc822msgid:{}", row.message_id.as_str());
-                    self.jump_to_search(query);
+                    self.queue_envelope_open(row.message_id.clone());
                 }
             },
             AnalyticsView::StaleThreads => {
@@ -179,8 +190,10 @@ impl App {
                 else {
                     return;
                 };
-                let query = format!("thread:{}", row.thread_id.as_str());
-                self.jump_to_search(query);
+                // Open the latest message in the thread; the runtime's
+                // `open_envelope` flow then triggers the thread fetch
+                // and lands the user on the actual conversation.
+                self.queue_envelope_open(row.latest_message_id.clone());
             }
             AnalyticsView::Contacts => {
                 let email = match self.analytics.contacts_mode {
@@ -207,8 +220,10 @@ impl App {
                 else {
                     return;
                 };
-                let query = format!("from:{}", row.sender_email);
-                self.jump_to_search(query);
+                // Open the latest message from this sender. Same
+                // direct-open flow as Stale Threads / Largest
+                // Messages — bypasses lexical search entirely.
+                self.queue_envelope_open(row.latest_message_id.clone());
             }
             AnalyticsView::ResponseTime => {
                 // ResponseTime is a summary view; no per-row drill.
@@ -229,11 +244,13 @@ impl App {
         match tile {
             4 => {
                 if let Some(heaviest) = summary.storage.heaviest_message.as_ref() {
-                    let id = heaviest.message_id.as_str().to_string();
-                    self.jump_to_search(format!("rfc822msgid:{id}"));
+                    self.queue_envelope_open(heaviest.message_id.clone());
                 }
             }
             6 => {
+                // "Most ghosted" gives an email but no message ID, so
+                // here the from:<email> search is the most precise
+                // surface — the lexical engine indexes from-address.
                 if let Some(g) = summary.superlatives.most_ghosted.as_ref() {
                     let email = g.email.clone();
                     self.jump_to_search(format!("from:{email}"));
@@ -241,6 +258,16 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// Stage a deep-link open of `message_id`. The runtime drains
+    /// `pending_envelope_open`, fires `Request::GetEnvelope`, and on
+    /// the response calls `open_envelope` (same flow as a mailbox
+    /// row-click). Switches to Mailbox happens in the response
+    /// handler so the user only sees the screen change once the
+    /// envelope is ready to render.
+    fn queue_envelope_open(&mut self, message_id: mxr_core::id::MessageId) {
+        self.mailbox.pending_envelope_open = Some(message_id);
     }
 
     /// Slice 6: 'u' on a Subscriptions row populates the existing

@@ -149,6 +149,13 @@ pub struct AppState {
     idle_notifies: ParkingMutex<HashMap<AccountId, Arc<Notify>>>,
     pub event_tx: broadcast::Sender<IpcMessage>,
     pub start_time: Instant,
+    /// Set on the first successful sync after daemon start when the
+    /// one-shot heavy analytics repair (reply_pairs backfill from
+    /// existing messages) has run. Subsequent syncs only run the
+    /// cheap incremental steps. Reset by daemon restart, which is
+    /// the right cadence for "post-upgrade rescan" — a release that
+    /// changes derived columns will start a fresh daemon process.
+    pub analytics_startup_repair_done: std::sync::atomic::AtomicBool,
     config: RwLock<mxr_config::MxrConfig>,
     shutdown_tx: watch::Sender<bool>,
     runtime_tasks: RuntimeTasks,
@@ -225,6 +232,7 @@ impl AppState {
             idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
             start_time: Instant::now(),
+            analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
             runtime_tasks,
@@ -891,6 +899,7 @@ impl AppState {
             idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
             start_time: Instant::now(),
+            analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
             runtime_tasks,
@@ -935,6 +944,7 @@ impl AppState {
             idle_notifies: ParkingMutex::new(HashMap::new()),
             event_tx,
             start_time: Instant::now(),
+            analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
             config: RwLock::new(config),
             shutdown_tx,
             runtime_tasks,
@@ -1005,6 +1015,7 @@ impl AppState {
                 idle_notifies: ParkingMutex::new(HashMap::new()),
                 event_tx,
                 start_time: Instant::now(),
+                analytics_startup_repair_done: std::sync::atomic::AtomicBool::new(false),
                 config: RwLock::new(config),
                 shutdown_tx,
                 runtime_tasks,

@@ -267,6 +267,27 @@ async fn sync_loop_for_account(
                         tracing::error!(account = %account_id, "Rule execution failed: {error}");
                     }
                 }
+
+                // Self-heal analytics derived data inline. Each step
+                // is a no-op when there's nothing to fix, so this
+                // costs near-zero on healthy syncs and silently
+                // backfills on unhealthy ones — eliminating the need
+                // for users to run `mxr doctor --rebuild-analytics`
+                // for ordinary drift.
+                let backfill =
+                    crate::handler::diagnostics_impl::incremental_analytics_backfill(&state)
+                        .await;
+                if backfill.did_work() || backfill.startup_repair_ran {
+                    tracing::info!(
+                        account = %account_id,
+                        directions = backfill.directions_reclassified,
+                        list_ids = backfill.list_ids_backfilled,
+                        reply_pairs = backfill.reply_pairs_resolved,
+                        business_hours = backfill.business_hours_backfilled,
+                        startup_repair = backfill.startup_repair_ran,
+                        "post-sync analytics backfill"
+                    );
+                }
                 tracing::info!(account = %account_id, "Sync completed: {count} messages");
                 let event = IpcMessage {
                     id: 0,

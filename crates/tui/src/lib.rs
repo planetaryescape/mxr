@@ -260,6 +260,38 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
+        if let Some(message_id) = app.mailbox.pending_envelope_open.take() {
+            // Deep-link drill-down (e.g. analytics row Enter): we
+            // know the message ID but not the full Envelope yet.
+            // Fetch via daemon, then `open_envelope` runs the same
+            // flow as a normal mailbox click.
+            let bg = bg.clone();
+            let id_for_response = message_id.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::GetEnvelope {
+                        message_id: message_id.clone(),
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Envelope { envelope },
+                    }) => Ok(envelope),
+                    Ok(Response::Ok { .. }) => {
+                        Err(MxrError::Ipc("unexpected response to GetEnvelope".into()))
+                    }
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                };
+                AsyncResult::OpenEnvelopeResponse {
+                    message_id: id_for_response,
+                    result,
+                }
+            });
+        }
+
         terminal.draw(|frame| app.draw(frame))?;
 
         let timeout = if app.input_pending() {
@@ -1401,6 +1433,29 @@ pub async fn run() -> anyhow::Result<()> {
                             }
                             app.resolve_thread_fetch_error(&thread_id);
                         }
+                        AsyncResult::OpenEnvelopeResponse {
+                            message_id: _,
+                            result: Ok(envelope),
+                        } => {
+                            // Mirror the mailbox row-click flow: switch to
+                            // Mailbox, open the envelope, raise the message
+                            // pane. The drill-down now lands the user on
+                            // the actual thread instead of failing in a
+                            // search box.
+                            app.screen = crate::app::Screen::Mailbox;
+                            app.mailbox.layout_mode = crate::app::LayoutMode::ThreePane;
+                            app.mailbox.active_pane = crate::app::ActivePane::MessageView;
+                            app.open_envelope_for_drill_down(envelope);
+                        }
+                        AsyncResult::OpenEnvelopeResponse {
+                            message_id,
+                            result: Err(e),
+                        } => {
+                            app.report_warn(format!(
+                                "Could not open message {}: {e}",
+                                message_id
+                            ));
+                        }
                         AsyncResult::MutationResult(Ok(effect)) => {
                             app.finish_pending_mutation();
                             let show_completion_status = app.pending_mutation_count == 0;
@@ -1649,6 +1704,44 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             ));
             app.status_message = Some(format!("Sync error: {error}"));
             app.diagnostics.pending_status_refresh = true;
+        }
+        // Surface long-running operation progress (sync, rebuild
+        // analytics, reindex) in the status bar so the user can see
+        // the daemon is actually doing work, not hung.
+        DaemonEvent::OperationStarted {
+            operation, message, ..
+        } => {
+            app.status_message = Some(format!("{operation}: {message}"));
+        }
+        DaemonEvent::OperationProgress {
+            operation,
+            current,
+            total,
+            message,
+            ..
+        } => {
+            let total_str = total
+                .map(|t| t.to_string())
+                .unwrap_or_else(|| "?".into());
+            app.status_message =
+                Some(format!("{operation} [{current}/{total_str}]: {message}"));
+        }
+        DaemonEvent::OperationCompleted {
+            operation, message, ..
+        } => {
+            app.status_message = Some(format!("{operation}: {message}"));
+            // Contacts-related rebuild may have changed analytics
+            // data; nudge the active analytics view to refresh.
+            if operation == "rebuild-analytics"
+                && app.screen == app::Screen::Analytics
+            {
+                app.analytics.refresh_pending = true;
+            }
+        }
+        DaemonEvent::OperationFailed {
+            operation, error, ..
+        } => {
+            app.status_message = Some(format!("{operation} failed: {error}"));
         }
         _ => {}
     }
@@ -7081,6 +7174,90 @@ mod tests {
         assert!(app.analytics.error.is_none());
     }
 
+    /// `OperationProgress` from the daemon must surface in the
+    /// status bar with the operation name, current/total, and
+    /// message — otherwise the user sees nothing while the daemon is
+    /// running long jobs (rebuild-analytics, sync, reindex). Catches
+    /// "we forgot to wire the new event variant into the status bar"
+    /// regressions.
+    #[test]
+    fn operation_progress_event_updates_status_bar_with_step_count() {
+        use mxr_protocol::DaemonEvent;
+        let mut app = App::new();
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::OperationProgress {
+                operation_id: "op-1".into(),
+                operation: "rebuild-analytics".into(),
+                account_id: None,
+                current: 3,
+                total: Some(6),
+                message: "Backfilling reply pairs from messages".into(),
+            },
+        );
+        let status = app
+            .status_message
+            .as_deref()
+            .expect("OperationProgress must set the status bar");
+        assert!(status.contains("rebuild-analytics"), "status: {status}");
+        assert!(status.contains("[3/6]"), "status: {status}");
+        assert!(
+            status.contains("Backfilling reply pairs from messages"),
+            "status: {status}"
+        );
+    }
+
+    /// `OperationProgress` with `total: None` must render `?` rather
+    /// than fail or print "Some(_)". Guards the formatter against an
+    /// `unwrap()` regression on streaming ops with unknown total.
+    #[test]
+    fn operation_progress_event_with_unknown_total_renders_question_mark() {
+        use mxr_protocol::DaemonEvent;
+        let mut app = App::new();
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::OperationProgress {
+                operation_id: "op-1".into(),
+                operation: "sync".into(),
+                account_id: None,
+                current: 42,
+                total: None,
+                message: "Syncing provider".into(),
+            },
+        );
+        let status = app.status_message.as_deref().unwrap_or("");
+        assert!(
+            status.contains("[42/?]"),
+            "expected '[42/?]' fallback for unknown total; got: {status}"
+        );
+    }
+
+    /// `OperationCompleted` for `rebuild-analytics` while on the
+    /// Analytics screen must arm `refresh_pending` so the active
+    /// view re-fetches against the freshly-rebuilt data. Without
+    /// this the user runs the rebuild, sees "complete", but their
+    /// open Analytics view still shows pre-rebuild numbers.
+    #[test]
+    fn operation_completed_for_rebuild_analytics_arms_analytics_refresh() {
+        use mxr_protocol::DaemonEvent;
+        let mut app = App::new();
+        app.screen = crate::app::Screen::Analytics;
+        app.analytics.refresh_pending = false;
+        handle_daemon_event(
+            &mut app,
+            DaemonEvent::OperationCompleted {
+                operation_id: "op-1".into(),
+                operation: "rebuild-analytics".into(),
+                account_id: None,
+                message: "Rebuild complete".into(),
+            },
+        );
+        assert!(
+            app.analytics.refresh_pending,
+            "the rebuild-analytics completion event must trigger an analytics refresh"
+        );
+    }
+
     /// Slice 3 / B3.1: with the Storage view in `LargestMessages`
     /// sub-mode, the request builder must produce
     /// `Request::ListLargestMessages` with the state's `since_days`
@@ -7468,6 +7645,108 @@ mod tests {
         app.apply(Action::AnalyticsRowDrillDown);
         assert!(matches!(app.screen, Screen::Search));
         assert_eq!(app.search.page.query, "from:alice@example.com");
+    }
+
+    /// Stale-thread drill-down must arm `pending_envelope_open` for
+    /// the latest message in the thread, not fire a `thread:<uuid>`
+    /// search query. The lexical engine doesn't index thread IDs as
+    /// queryable fields, so the old behaviour landed the user on a
+    /// "search failed" screen — exactly the bug we're closing here.
+    #[test]
+    fn drill_down_stale_thread_arms_envelope_open_not_search() {
+        use crate::action::Action;
+        use crate::app::{AnalyticsView, Screen};
+        use mxr_core::id::{MessageId, ThreadId};
+        use mxr_core::types::StaleThreadRow;
+        let mut app = App::new();
+        app.screen = Screen::Analytics;
+        app.analytics.view = AnalyticsView::StaleThreads;
+        let latest_id = MessageId::new();
+        app.analytics.stale_rows = vec![StaleThreadRow {
+            thread_id: ThreadId::new(),
+            latest_message_id: latest_id.clone(),
+            latest_subject: "Re: thanks".into(),
+            counterparty_email: "alice@example.com".into(),
+            latest_date: chrono::Utc::now(),
+            days_stale: 12,
+        }];
+        app.analytics.selected_index = 0;
+        app.apply(Action::AnalyticsRowDrillDown);
+        assert_eq!(
+            app.mailbox.pending_envelope_open.as_ref(),
+            Some(&latest_id),
+            "drill-down must queue a GetEnvelope for the latest message id"
+        );
+        // Screen change happens in the response handler (after the
+        // envelope arrives), so the screen stays on Analytics until
+        // then. This avoids the "blank mailbox flash while loading"
+        // regression.
+        assert_eq!(
+            app.screen,
+            Screen::Analytics,
+            "must not jump to mailbox before the envelope is fetched"
+        );
+    }
+
+    /// Largest-messages drill-down must arm `pending_envelope_open`
+    /// rather than fire `rfc822msgid:<internal-uuid>` (the operator
+    /// expects the RFC 822 Message-ID header value, not our internal
+    /// UUIDv7).
+    #[test]
+    fn drill_down_largest_message_arms_envelope_open() {
+        use crate::action::Action;
+        use crate::app::{AnalyticsView, StorageMode};
+        use mxr_core::id::MessageId;
+        use mxr_core::types::LargestMessageRow;
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Storage;
+        app.analytics.storage_mode = StorageMode::LargestMessages;
+        let id = MessageId::new();
+        app.analytics.largest_message_rows = vec![LargestMessageRow {
+            message_id: id.clone(),
+            from_email: "noreply@list.example".into(),
+            subject: "Heavy attachment".into(),
+            size_bytes: 50 * 1024 * 1024,
+            date: chrono::Utc::now(),
+        }];
+        app.analytics.selected_index = 0;
+        app.apply(Action::AnalyticsRowDrillDown);
+        assert_eq!(app.mailbox.pending_envelope_open.as_ref(), Some(&id));
+    }
+
+    /// Subscriptions drill-down opens the latest message from the
+    /// selected sender directly. Mirror of the stale-thread test.
+    #[test]
+    fn drill_down_subscriptions_arms_envelope_open() {
+        use crate::action::Action;
+        use crate::app::AnalyticsView;
+        use mxr_core::id::{AccountId, MessageId, ThreadId};
+        use mxr_core::types::{MessageFlags, SubscriptionSummary, UnsubscribeMethod};
+        let mut app = App::new();
+        app.analytics.view = AnalyticsView::Subscriptions;
+        let latest = MessageId::new();
+        app.analytics.subscriptions = vec![SubscriptionSummary {
+            account_id: AccountId::new(),
+            sender_name: Some("Newsletter".into()),
+            sender_email: "promo@example.com".into(),
+            message_count: 3,
+            latest_message_id: latest.clone(),
+            latest_provider_id: "msg-1".into(),
+            latest_thread_id: ThreadId::new(),
+            latest_subject: "Weekly".into(),
+            latest_snippet: "...".into(),
+            latest_date: chrono::Utc::now(),
+            latest_flags: MessageFlags::READ,
+            latest_has_attachments: false,
+            latest_size_bytes: 1024,
+            unsubscribe: UnsubscribeMethod::None,
+            opened_count: 0,
+            replied_count: 0,
+            archived_unread_count: 0,
+        }];
+        app.analytics.selected_index = 0;
+        app.apply(Action::AnalyticsRowDrillDown);
+        assert_eq!(app.mailbox.pending_envelope_open.as_ref(), Some(&latest));
     }
 
     /// Slice 11 / B11.5: Enter on a Contacts row (either sub-mode)

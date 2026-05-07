@@ -336,43 +336,137 @@ pub(crate) async fn refresh_contacts(state: &AppState) -> HandlerResult {
 
 pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
     use mxr_core::types::AccountAddressLookup;
+    // The handler runs six sequential SQL passes. Each emits an
+    // `OperationProgress` event (with `current`/`total = 6`) so
+    // clients (CLI spinner, TUI status bar, `mxr events` tail) can
+    // show live per-step feedback instead of blocking blind on a
+    // single `AnalyticsRebuildSummary` response.
+    let operation_id = uuid::Uuid::now_v7().to_string();
+    let operation = "rebuild-analytics".to_string();
+    const TOTAL_STEPS: u32 = 6;
+
+    emit_operation_event(
+        state,
+        DaemonEvent::OperationStarted {
+            operation_id: operation_id.clone(),
+            operation: operation.clone(),
+            account_id: None,
+            message: "Starting analytics rebuild".to_string(),
+        },
+    );
+
     // Refresh address cache so reclassification has the latest set.
     state.refresh_account_addresses().await;
     let lookup = state.account_addresses.clone();
-    let directions_reclassified = state
+
+    let progress = |current: u32, message: String| DaemonEvent::OperationProgress {
+        operation_id: operation_id.clone(),
+        operation: operation.clone(),
+        account_id: None,
+        current,
+        total: Some(TOTAL_STEPS),
+        message,
+    };
+    let fail =
+        |error: &str, retryable: bool| DaemonEvent::OperationFailed {
+            operation_id: operation_id.clone(),
+            operation: operation.clone(),
+            account_id: None,
+            error: error.to_string(),
+            retryable,
+        };
+
+    emit_operation_event(state, progress(1, "Reclassifying unknown directions".into()));
+    let directions_reclassified = match state
         .store
         .reclassify_unknown_directions(|email| lookup.is_account_address(email))
         .await
-        .map_err(|e| e.to_string())?;
-    let list_ids_backfilled = state
-        .store
-        .backfill_message_list_ids()
-        .await
-        .map_err(|e| e.to_string())?;
-    // First, backfill reply_pairs from already-stored messages — the sync
-    // hook only fires going forward, so existing data needs a one-time scan.
-    // Then resolve any pending rows whose parent has since arrived.
-    let backfilled = state
-        .store
-        .backfill_reply_pairs_from_messages()
-        .await
-        .map_err(|e| e.to_string())?;
-    let pending_resolved = state
-        .store
-        .reconcile_reply_pair_pending()
-        .await
-        .map_err(|e| e.to_string())?;
+    {
+        Ok(n) => n,
+        Err(e) => {
+            let err = e.to_string();
+            emit_operation_event(state, fail(&err, true));
+            return Err(err);
+        }
+    };
+
+    emit_operation_event(state, progress(2, "Backfilling message list_ids".into()));
+    let list_ids_backfilled = match state.store.backfill_message_list_ids().await {
+        Ok(n) => n,
+        Err(e) => {
+            let err = e.to_string();
+            emit_operation_event(state, fail(&err, true));
+            return Err(err);
+        }
+    };
+
+    // Backfill reply_pairs from already-stored messages — the sync
+    // hook only fires going forward, so existing data needs a
+    // one-time scan.
+    emit_operation_event(
+        state,
+        progress(3, "Backfilling reply pairs from messages".into()),
+    );
+    let backfilled = match state.store.backfill_reply_pairs_from_messages().await {
+        Ok(n) => n,
+        Err(e) => {
+            let err = e.to_string();
+            emit_operation_event(state, fail(&err, true));
+            return Err(err);
+        }
+    };
+
+    emit_operation_event(
+        state,
+        progress(4, "Reconciling pending reply pairs".into()),
+    );
+    let pending_resolved = match state.store.reconcile_reply_pair_pending().await {
+        Ok(n) => n,
+        Err(e) => {
+            let err = e.to_string();
+            emit_operation_event(state, fail(&err, true));
+            return Err(err);
+        }
+    };
     let reply_pairs_resolved = backfilled + pending_resolved;
-    let business_hours_backfilled = state
-        .store
-        .backfill_business_hours_latency()
-        .await
-        .map_err(|e| e.to_string())?;
-    let contacts_rows = state
-        .store
-        .refresh_contacts()
-        .await
-        .map_err(|e| e.to_string())?;
+
+    emit_operation_event(
+        state,
+        progress(5, "Backfilling business-hours latency".into()),
+    );
+    let business_hours_backfilled = match state.store.backfill_business_hours_latency().await {
+        Ok(n) => n,
+        Err(e) => {
+            let err = e.to_string();
+            emit_operation_event(state, fail(&err, true));
+            return Err(err);
+        }
+    };
+
+    emit_operation_event(state, progress(6, "Refreshing contacts table".into()));
+    let contacts_rows = match state.store.refresh_contacts().await {
+        Ok(n) => n,
+        Err(e) => {
+            let err = e.to_string();
+            emit_operation_event(state, fail(&err, true));
+            return Err(err);
+        }
+    };
+
+    emit_operation_event(
+        state,
+        DaemonEvent::OperationCompleted {
+            operation_id,
+            operation,
+            account_id: None,
+            message: format!(
+                "Rebuild complete: {directions_reclassified} directions, \
+                 {list_ids_backfilled} list_ids, {reply_pairs_resolved} reply pairs, \
+                 {business_hours_backfilled} business-hours, {contacts_rows} contacts"
+            ),
+        },
+    );
+
     Ok(ResponseData::AnalyticsRebuildSummary {
         directions_reclassified,
         list_ids_backfilled,
@@ -716,6 +810,95 @@ pub(crate) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -
     Ok(ResponseData::Ack)
 }
 
+/// Summary of what the post-sync incremental backfill actually did.
+/// Used by callers (sync loop) to decide whether to log a line or
+/// stay quiet — we don't want a "did nothing" line on every sync.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct AnalyticsBackfillReport {
+    pub directions_reclassified: u32,
+    pub list_ids_backfilled: u32,
+    pub reply_pairs_resolved: u32,
+    pub business_hours_backfilled: u32,
+    /// Whether the heavier "scan all messages for new reply_pairs"
+    /// step ran — only on the first sync after daemon restart.
+    pub startup_repair_ran: bool,
+}
+
+impl AnalyticsBackfillReport {
+    pub(crate) fn did_work(&self) -> bool {
+        self.directions_reclassified > 0
+            || self.list_ids_backfilled > 0
+            || self.reply_pairs_resolved > 0
+            || self.business_hours_backfilled > 0
+    }
+}
+
+/// Run the cheap incremental analytics backfill steps. Each store
+/// method is `WHERE column IS NULL / = 'unknown'` filtered, so calls
+/// are near-free when there's nothing to do — making the function
+/// itself the cheapest possible probe ("just run it"). On the first
+/// invocation per daemon process, additionally runs the heavier
+/// reply_pairs-from-messages scan to catch cases where a release
+/// added a derived column that needs backfilling — the AtomicBool
+/// guard means subsequent syncs skip it.
+///
+/// Errors are surfaced individually via `tracing::warn` (one bad
+/// step shouldn't block the others) and the report counts only the
+/// successful steps.
+pub(crate) async fn incremental_analytics_backfill(state: &AppState) -> AnalyticsBackfillReport {
+    use mxr_core::types::AccountAddressLookup;
+    use std::sync::atomic::Ordering;
+
+    let mut report = AnalyticsBackfillReport::default();
+
+    // The 4 cheap delta steps. Each filters by NULL / 'unknown' so
+    // is a no-op on healthy data. Refresh address cache once for the
+    // direction reclassifier.
+    state.refresh_account_addresses().await;
+    let lookup = state.account_addresses.clone();
+    match state
+        .store
+        .reclassify_unknown_directions(|email| lookup.is_account_address(email))
+        .await
+    {
+        Ok(n) => report.directions_reclassified = n,
+        Err(e) => tracing::warn!("post-sync reclassify_unknown_directions: {e}"),
+    }
+    match state.store.backfill_message_list_ids().await {
+        Ok(n) => report.list_ids_backfilled = n,
+        Err(e) => tracing::warn!("post-sync backfill_message_list_ids: {e}"),
+    }
+
+    // One-shot heavy step: scan messages for reply_pairs we haven't
+    // captured yet (covers release upgrades adding the table). The
+    // AtomicBool flips on first attempt regardless of outcome — a
+    // failed attempt shouldn't loop forever; the user can `mxr
+    // doctor --rebuild-analytics` to retry explicitly.
+    if !state
+        .analytics_startup_repair_done
+        .swap(true, Ordering::SeqCst)
+    {
+        match state.store.backfill_reply_pairs_from_messages().await {
+            Ok(n) => {
+                report.reply_pairs_resolved += n;
+                report.startup_repair_ran = true;
+            }
+            Err(e) => tracing::warn!("startup backfill_reply_pairs_from_messages: {e}"),
+        }
+    }
+
+    match state.store.reconcile_reply_pair_pending().await {
+        Ok(n) => report.reply_pairs_resolved += n,
+        Err(e) => tracing::warn!("post-sync reconcile_reply_pair_pending: {e}"),
+    }
+    match state.store.backfill_business_hours_latency().await {
+        Ok(n) => report.business_hours_backfilled = n,
+        Err(e) => tracing::warn!("post-sync backfill_business_hours_latency: {e}"),
+    }
+
+    report
+}
+
 fn emit_operation_event(state: &AppState, event: DaemonEvent) {
     let _ = state.event_tx.send(IpcMessage {
         id: 0,
@@ -947,6 +1130,183 @@ fn sane_search_sort_timestamp(timestamp: i64) -> i64 {
         0
     } else {
         timestamp
+    }
+}
+
+/// Tests that don't need the `semantic-local` feature. Kept in their
+/// own module so they run on the default `cargo test` invocation.
+#[cfg(test)]
+mod tests_no_semantic {
+    use super::*;
+    use crate::state::AppState;
+    use std::sync::Arc;
+
+    /// `rebuild_analytics` must broadcast `OperationStarted`, six
+    /// `OperationProgress` events (one per SQL pass) with
+    /// `total: Some(6)` and a stable `operation_id`, then
+    /// `OperationCompleted` — all carrying the operation name
+    /// `"rebuild-analytics"`. Without this the CLI/TUI spinner has
+    /// nothing to show during the seconds-to-minutes-long handler
+    /// and the user sees a hung process.
+    /// `incremental_analytics_backfill` runs the heavy
+    /// `backfill_reply_pairs_from_messages` step exactly once per
+    /// daemon process — the `analytics_startup_repair_done` flag
+    /// flips on the first call and gates subsequent calls. Without
+    /// this gate every sync would re-scan the entire messages table
+    /// for reply pairs, which is O(n) on a populated mailbox.
+    #[tokio::test]
+    async fn incremental_backfill_runs_startup_repair_only_on_first_call() {
+        use std::sync::atomic::Ordering;
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+
+        assert!(
+            !state.analytics_startup_repair_done.load(Ordering::SeqCst),
+            "guard must start unset — fresh daemon hasn't repaired yet"
+        );
+
+        let first = incremental_analytics_backfill(&state).await;
+        assert!(
+            first.startup_repair_ran,
+            "first call must run the heavy startup repair"
+        );
+        assert!(
+            state.analytics_startup_repair_done.load(Ordering::SeqCst),
+            "first call must flip the guard"
+        );
+
+        let second = incremental_analytics_backfill(&state).await;
+        assert!(
+            !second.startup_repair_ran,
+            "second call must skip the heavy repair — sync loop runs this every \
+             sync and re-scanning every time would be O(messages)"
+        );
+    }
+
+    /// On a fresh in-memory store there are no `Unknown` directions,
+    /// `NULL` list_ids, or pending reply pairs to fix, so the cheap
+    /// delta steps must all return 0. This pins the "no work" path
+    /// — the post-sync hook fires every sync and we want it to be a
+    /// silent no-op when data is healthy (no log spam, no perf
+    /// regression).
+    #[tokio::test]
+    async fn incremental_backfill_returns_zeros_on_healthy_empty_store() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        // Pre-flip the guard so we observe only the cheap-delta
+        // behaviour (the heavy path is covered by the test above).
+        state
+            .analytics_startup_repair_done
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+
+        let report = incremental_analytics_backfill(&state).await;
+        assert_eq!(report.directions_reclassified, 0);
+        assert_eq!(report.list_ids_backfilled, 0);
+        assert_eq!(report.reply_pairs_resolved, 0);
+        assert_eq!(report.business_hours_backfilled, 0);
+        assert!(
+            !report.did_work(),
+            "did_work() must be false so the sync loop stays silent"
+        );
+        assert!(!report.startup_repair_ran);
+    }
+
+    #[tokio::test]
+    async fn rebuild_analytics_emits_started_progress_completed_event_sequence() {
+        use mxr_protocol::{DaemonEvent, IpcPayload};
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        // Subscribe before triggering so we don't lose the leading
+        // `OperationStarted` to a race.
+        let mut rx = state.event_tx.subscribe();
+
+        let result = rebuild_analytics(&state).await;
+        assert!(
+            matches!(result, Ok(ResponseData::AnalyticsRebuildSummary { .. })),
+            "handler must succeed against the in-memory store; got {result:?}"
+        );
+
+        let mut events: Vec<DaemonEvent> = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            if let IpcPayload::Event(event) = msg.payload {
+                events.push(event);
+            }
+        }
+
+        let started = events
+            .iter()
+            .find(|e| matches!(e, DaemonEvent::OperationStarted { .. }))
+            .expect("must emit OperationStarted");
+        let started_op_id = match started {
+            DaemonEvent::OperationStarted {
+                operation,
+                operation_id,
+                ..
+            } => {
+                assert_eq!(operation, "rebuild-analytics");
+                operation_id.clone()
+            }
+            _ => unreachable!(),
+        };
+
+        let progress: Vec<&DaemonEvent> = events
+            .iter()
+            .filter(|e| matches!(e, DaemonEvent::OperationProgress { .. }))
+            .collect();
+        assert_eq!(
+            progress.len(),
+            6,
+            "must emit one progress event per SQL pass (got {})",
+            progress.len()
+        );
+        for (i, ev) in progress.iter().enumerate() {
+            match ev {
+                DaemonEvent::OperationProgress {
+                    operation,
+                    operation_id,
+                    current,
+                    total,
+                    ..
+                } => {
+                    assert_eq!(operation, "rebuild-analytics");
+                    assert_eq!(
+                        operation_id, &started_op_id,
+                        "operation_id must be stable across the run"
+                    );
+                    assert_eq!(
+                        *current,
+                        (i as u32) + 1,
+                        "step counter must be 1-indexed and contiguous"
+                    );
+                    assert_eq!(
+                        *total,
+                        Some(6),
+                        "total must pin to 6 so clients can render N/6"
+                    );
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        let completed = events
+            .iter()
+            .find(|e| matches!(e, DaemonEvent::OperationCompleted { .. }))
+            .expect("must emit OperationCompleted on success");
+        match completed {
+            DaemonEvent::OperationCompleted {
+                operation,
+                operation_id,
+                ..
+            } => {
+                assert_eq!(operation, "rebuild-analytics");
+                assert_eq!(operation_id, &started_op_id);
+            }
+            _ => unreachable!(),
+        }
+
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, DaemonEvent::OperationFailed { .. })),
+            "no failure events on the happy path"
+        );
     }
 }
 

@@ -2,6 +2,7 @@
 
 mod chrome;
 mod envelope_list;
+mod legacy;
 mod openapi;
 
 use axum::{
@@ -67,14 +68,40 @@ impl WebServerConfig {
     }
 }
 
-pub fn app(_config: WebServerConfig) -> Router {
+/// Routes under `/api/v1/admin/*` — daemon health, diagnostics, status.
+fn admin_router() -> Router<AppState> {
     Router::new()
         .route("/status", get(status))
-        .route("/shell", get(shell))
+        .route("/diagnostics", get(diagnostics))
+        .route("/diagnostics/bug-report", get(generate_bug_report))
+}
+
+/// Routes under `/api/v1/mail/*` — read, search, mutate, sync, compose.
+fn mail_router() -> Router<AppState> {
+    Router::new()
         .route("/mailbox", get(mailbox))
         .route("/search", get(search))
-        .route("/thread/{thread_id}", get(thread))
-        .route("/thread/{thread_id}/export", get(export_thread))
+        .route("/threads/{thread_id}", get(thread))
+        .route("/threads/{thread_id}/export", get(export_thread))
+        .route("/drafts", get(list_drafts))
+        .route("/snoozed", get(list_snoozed))
+        .route("/sync", post(trigger_sync))
+        .route("/mutations/archive", post(archive))
+        .route("/mutations/trash", post(trash))
+        .route("/mutations/spam", post(spam))
+        .route("/mutations/star", post(star))
+        .route("/mutations/read", post(mark_read))
+        .route("/mutations/read-and-archive", post(mark_read_and_archive))
+        .route("/mutations/labels", post(modify_labels))
+        .route("/mutations/move", post(move_messages))
+        .route("/actions/snooze/presets", get(snooze_presets))
+        .route("/actions/snooze", post(snooze))
+        .route("/actions/unsubscribe", post(unsubscribe))
+        .route("/attachments/open", post(open_attachment))
+        .route("/attachments/download", post(download_attachment))
+        .route("/labels/create", post(create_label))
+        .route("/labels/rename", post(rename_label))
+        .route("/labels/delete", post(delete_label))
         .route("/compose/session", post(start_compose_session))
         .route("/compose/session/refresh", post(refresh_compose_session))
         .route("/compose/session/restore", post(restore_compose_session))
@@ -82,6 +109,12 @@ pub fn app(_config: WebServerConfig) -> Router {
         .route("/compose/session/send", post(send_compose_session))
         .route("/compose/session/save", post(save_compose_session))
         .route("/compose/session/discard", post(discard_compose_session))
+}
+
+/// Routes under `/api/v1/platform/*` — accounts, rules, saved searches,
+/// subscriptions, semantic.
+fn platform_router() -> Router<AppState> {
+    Router::new()
         .route("/rules", get(rules))
         .route("/rules/detail", get(rule_detail))
         .route("/rules/form", get(rule_form))
@@ -104,35 +137,36 @@ pub fn app(_config: WebServerConfig) -> Router {
             "/auth/sessions/{session_id}/complete",
             post(complete_auth_session),
         )
-        .route("/diagnostics", get(diagnostics))
-        .route("/diagnostics/bug-report", get(generate_bug_report))
-        .route("/mutations/archive", post(archive))
-        .route("/mutations/trash", post(trash))
-        .route("/mutations/spam", post(spam))
-        .route("/mutations/star", post(star))
-        .route("/mutations/read", post(mark_read))
-        .route("/mutations/read-and-archive", post(mark_read_and_archive))
-        .route("/mutations/labels", post(modify_labels))
-        .route("/mutations/move", post(move_messages))
-        .route("/actions/snooze/presets", get(snooze_presets))
-        .route("/actions/snooze", post(snooze))
-        .route("/actions/unsubscribe", post(unsubscribe))
-        .route("/attachments/open", post(open_attachment))
-        .route("/attachments/download", post(download_attachment))
-        .route("/subscriptions", get(list_subscriptions))
         .route("/saved-searches/create", post(create_saved_search))
         .route("/saved-searches/delete", post(delete_saved_search))
-        .route("/labels/create", post(create_label))
-        .route("/labels/rename", post(rename_label))
-        .route("/labels/delete", post(delete_label))
-        .route("/drafts", get(list_drafts))
-        .route("/snoozed", get(list_snoozed))
-        .route("/sync", post(trigger_sync))
+        .route("/subscriptions", get(list_subscriptions))
         .route("/semantic/status", get(get_semantic_status))
         .route("/semantic/reindex", post(trigger_semantic_reindex))
+}
+
+/// Desktop / client-specific UI shaping. Per CLAUDE.md the
+/// `client-specific` IPC bucket is not part of the core HTTP surface, so
+/// this lives under its own prefix; it stays for the desktop app's
+/// transition window and may move into the desktop process in v0.6.
+fn desktop_router() -> Router<AppState> {
+    Router::new().route("/shell", get(shell))
+}
+
+pub fn app(config: WebServerConfig) -> Router {
+    let state = AppState::new(config);
+
+    let v1 = Router::new()
+        .nest("/admin", admin_router())
+        .nest("/mail", mail_router())
+        .nest("/platform", platform_router())
+        .nest("/desktop", desktop_router())
         .route("/events", get(events))
-        .with_state(AppState::new(_config))
+        .with_state(state);
+
+    Router::new()
+        .nest("/api/v1", v1)
         .merge(SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()))
+        .layer(axum::middleware::from_fn(legacy::redirect_legacy_paths))
         .layer(CorsLayer::permissive())
 }
 
@@ -2768,10 +2802,11 @@ mod tests {
         .await
         .unwrap();
 
-        let (mut stream, _) =
-            tokio_tungstenite::connect_async(format!("ws://{addr}/events?token={TEST_AUTH_TOKEN}"))
-                .await
-                .unwrap();
+        let (mut stream, _) = tokio_tungstenite::connect_async(format!(
+            "ws://{addr}/api/v1/events?token={TEST_AUTH_TOKEN}"
+        ))
+        .await
+        .unwrap();
         let message = stream.next().await.unwrap().unwrap();
         let text = match message {
             Message::Text(text) => text.to_string(),
@@ -2780,6 +2815,120 @@ mod tests {
 
         assert!(text.contains("SyncCompleted"));
         assert!(text.contains("\"messages_synced\":3"));
+    }
+
+    /// Slice 3 — every flat path returns a method-preserving permanent
+    /// redirect (308) with a Location header pointing at the new bucketed
+    /// v1 path. Sampled across each bucket so a typo in any single redirect
+    /// doesn't slip past CI.
+    ///
+    /// 308 (not 301) is intentional: the bridge has POST endpoints
+    /// (mutations, compose, etc.) and 301 historically downgrades POST→GET
+    /// in some clients. 308 preserves the method.
+    #[tokio::test]
+    async fn legacy_paths_return_permanent_redirect_to_v1() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+
+        let cases = [
+            ("/status", "/api/v1/admin/status"),
+            ("/diagnostics", "/api/v1/admin/diagnostics"),
+            ("/diagnostics/bug-report", "/api/v1/admin/diagnostics/bug-report"),
+            ("/mailbox", "/api/v1/mail/mailbox"),
+            ("/search", "/api/v1/mail/search"),
+            ("/drafts", "/api/v1/mail/drafts"),
+            ("/snoozed", "/api/v1/mail/snoozed"),
+            ("/rules", "/api/v1/platform/rules"),
+            ("/accounts", "/api/v1/platform/accounts"),
+            ("/subscriptions", "/api/v1/platform/subscriptions"),
+            ("/semantic/status", "/api/v1/platform/semantic/status"),
+        ];
+
+        for (old, new) in cases {
+            let response = client
+                .get(format!("http://{addr}{old}"))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                reqwest::StatusCode::PERMANENT_REDIRECT,
+                "old path {old} must 308 to {new} (method-preserving)"
+            );
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .expect("301 must include Location header");
+            assert_eq!(location, new, "Location header for {old} should be {new}");
+        }
+    }
+
+    /// Slice 3 — the new bucketed v1 path serves the same response as the
+    /// flat legacy path used to (asserted via response shape, not just
+    /// status — per rubric dim 6).
+    #[tokio::test]
+    async fn v1_status_endpoint_returns_same_payload_as_legacy() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            |request| match request {
+                Request::GetStatus => Some(Response::Ok {
+                    data: ResponseData::Status {
+                        uptime_secs: 99,
+                        accounts: vec!["work".into()],
+                        total_messages: 7,
+                        daemon_pid: Some(42),
+                        sync_statuses: Vec::new(),
+                        protocol_version: IPC_PROTOCOL_VERSION,
+                        daemon_version: Some("0.5.0".into()),
+                        daemon_build_id: Some("v1-test".into()),
+                        repair_required: false,
+                        semantic_runtime: None,
+                    },
+                }),
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/api/v1/admin/status"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["protocol_version"], IPC_PROTOCOL_VERSION);
+        assert_eq!(json["daemon_version"], "0.5.0");
+        assert_eq!(json["total_messages"], 7);
+        assert_eq!(json["uptime_secs"], 99);
     }
 
     /// Slice 2 — utoipa scaffold: spec is served at /api/v1/openapi.json,

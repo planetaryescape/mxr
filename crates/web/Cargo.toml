@@ -15,9 +15,9 @@ workspace = true
 [dependencies]
 mxr-compose = { workspace = true }
 mxr-config = { workspace = true }
-mxr-core = { workspace = true }
+mxr-core = { workspace = true, features = ["openapi"] }
 mxr-mail-parse = { workspace = true }
-mxr-protocol = { workspace = true }
+mxr-protocol = { workspace = true, features = ["openapi"] }
 axum = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
@@ -28,9 +28,13 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }
+utoipa = { workspace = true }
+utoipa-axum = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+insta = { workspace = true, features = ["json"] }
 reqwest = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }

@@ -2,6 +2,7 @@
 
 mod chrome;
 mod envelope_list;
+mod openapi;
 
 use axum::{
     extract::ws::{Message as WebSocketMessage, WebSocket, WebSocketUpgrade},
@@ -45,6 +46,8 @@ use tokio::net::TcpListener;
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
 use tower_http::cors::CorsLayer;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
 static NEXT_BRIDGE_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -129,6 +132,7 @@ pub fn app(_config: WebServerConfig) -> Router {
         .route("/semantic/reindex", post(trigger_semantic_reindex))
         .route("/events", get(events))
         .with_state(AppState::new(_config))
+        .merge(SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()))
         .layer(CorsLayer::permissive())
 }
 
@@ -2776,6 +2780,132 @@ mod tests {
 
         assert!(text.contains("SyncCompleted"));
         assert!(text.contains("\"messages_synced\":3"));
+    }
+
+    /// Slice 2 — utoipa scaffold: spec is served at /api/v1/openapi.json,
+    /// is valid OpenAPI 3.1, and includes the metadata + bearer security
+    /// scheme that downstream tooling (Swagger UI, openapi-typescript-codegen,
+    /// Schemathesis) needs to discover.
+    #[tokio::test]
+    async fn openapi_spec_is_served_at_api_v1_path() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::get(format!("http://{addr}/api/v1/openapi.json"))
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::OK,
+            "openapi.json must be served unauthenticated for discovery"
+        );
+
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(
+            json["openapi"], "3.1.0",
+            "spec must declare OpenAPI 3.1 (utoipa 5+); got {json:?}"
+        );
+
+        let info = &json["info"];
+        assert_eq!(info["title"], "mxr HTTP Bridge");
+        assert!(
+            info["version"].is_string(),
+            "info.version must be a string"
+        );
+
+        let bearer = json
+            .pointer("/components/securitySchemes/bearer")
+            .expect("bearer security scheme must be registered");
+        assert_eq!(bearer["type"], "http");
+        assert_eq!(bearer["scheme"], "bearer");
+    }
+
+    /// Slice 2 — capture the served spec via insta snapshot so any future
+    /// schema/route drift forces an explicit review (`cargo insta review`).
+    #[tokio::test]
+    async fn openapi_spec_snapshot() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let json: serde_json::Value = reqwest::get(format!("http://{addr}/api/v1/openapi.json"))
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        // Snapshot a stable subset (top-level metadata + security scheme +
+        // schema names). Snapshotting the full spec is too noisy across
+        // utoipa version bumps; snapshotting nothing means drift slips by.
+        let mut schema_names: Vec<&str> = json
+            .pointer("/components/schemas")
+            .and_then(|v| v.as_object())
+            .map(|m| m.keys().map(|k| k.as_str()).collect())
+            .unwrap_or_default();
+        schema_names.sort();
+
+        let summary = serde_json::json!({
+            "openapi": json["openapi"],
+            "info_title": json["info"]["title"],
+            "security_schemes": json["components"]["securitySchemes"],
+            "schema_names": schema_names,
+        });
+
+        insta::assert_json_snapshot!("openapi_spec_summary", summary);
+    }
+
+    /// Slice 2 — Swagger UI is served so newcomers can explore the API
+    /// interactively without leaving the daemon host.
+    #[tokio::test]
+    async fn swagger_ui_is_served_at_api_v1_docs() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::default())
+            .build()
+            .unwrap()
+            .get(format!("http://{addr}/api/v1/docs/"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+        let body = response.text().await.unwrap();
+        // utoipa-swagger-ui ships an index.html that references swagger-ui
+        // assets and points at /api/v1/openapi.json by default.
+        assert!(
+            body.contains("swagger-ui"),
+            "Swagger UI HTML must mention swagger-ui assets; got first 200: {}",
+            &body.chars().take(200).collect::<String>()
+        );
     }
 
     #[tokio::test]

@@ -30,26 +30,51 @@ mxr accounts addresses add aliased@you-own.com   # repeat for each alias
 mxr accounts addresses list
 
 # 3. One-shot rebuild against existing data. Idempotent — safe to rerun.
+#    Usually unnecessary: the daemon self-heals after each sync (see below).
 mxr doctor --rebuild-analytics
 ```
 
-`--rebuild-analytics` performs five steps in order:
+`--rebuild-analytics` performs six steps in order, streaming live
+progress:
 
 1. **Reclassify directions** — every `direction='unknown'` row gets
    inbound/outbound based on the address set.
 2. **Backfill `list_id`** — promotes `List-Id` from cached body metadata
    into an indexed column.
-3. **Backfill reply pairs** — scans every classified message with
-   `in_reply_to` and pairs it with its parent in the local store.
-4. **Backfill business-hours latency** — fills the working-hours latency
+3. **Backfill reply pairs from messages** — scans every classified
+   message with `in_reply_to` and pairs it with its parent in the
+   local store.
+4. **Reconcile pending reply pairs** — resolves orphan pairs whose
+   parent has since arrived.
+5. **Backfill business-hours latency** — fills the working-hours latency
    column on every reply pair (M-F 09-17 UTC).
-5. **Refresh contacts** — rebuilds the materialized `contacts` table.
+6. **Refresh contacts** — rebuilds the materialized `contacts` table.
 
-The output reports per-step row counts.
+Each step emits an `OperationProgress` event the CLI prints as
+`[N/6] message` while a Unicode spinner ticks between steps. The
+final summary reports `already healthy` (when nothing needed
+backfilling) or `backfilled N items`, with per-row markers: `✓` for
+"already correct", `← fixed` for real work, `↻` for the contacts
+table size (a *total*, not a delta). JSON output adds
+`status: "healthy" | "rebuilt"` and `duration_ms` so scripts can
+branch on the outcome.
 
-After bootstrap, mxr keeps the materialized analytics current via two
-background loops: a 60-second reply-pair reconciler and a 5-minute
-contacts refresher. Both shut down cleanly with the daemon.
+### Self-healing
+
+The daemon now runs the four cheap delta steps (1, 2, 4, 5) after
+each sync — they're no-ops on healthy data so the cost is near-zero,
+but any drift fixes itself within one sync cycle. The heavier reply-
+pair scan (step 3) runs once per daemon process to cover post-upgrade
+rescans where a release adds a derived column.
+
+Result: you almost never need to run `mxr doctor --rebuild-analytics`
+manually. It stays as the sledgehammer for "I don't trust the local
+state, redo everything from scratch" — useful after restoring from
+backup, importing a foreign mailbox, or debugging a suspect query.
+
+After bootstrap, mxr also keeps the materialized analytics current
+via two background loops: a 60-second reply-pair reconciler and a
+5-minute contacts refresher. Both shut down cleanly with the daemon.
 
 ## Commands
 
@@ -231,18 +256,23 @@ the daemon and refreshed after every mutation.
 
 ### Doctor
 
-Maintenance entry points.
+Maintenance entry points. Both are idempotent.
 
 ```bash
-mxr doctor --rebuild-analytics   # full rebuild, idempotent
+mxr doctor --rebuild-analytics   # full 6-step rebuild with live progress
 mxr doctor --refresh-contacts    # only the contacts table
 ```
 
-Run `--rebuild-analytics` after:
+The daemon self-heals analytics after each sync, so manual
+`--rebuild-analytics` is rarely needed. Run it as the sledgehammer
+when you want to be sure:
 
-- Adding/removing account addresses (so direction reclassifies)
-- A schema migration (so list_ids backfill into the indexed column)
-- A long offline period (so reply pairs catch up across out-of-order arrivals)
+- After restoring from backup or importing from another tool
+- When debugging a suspect analytics result
+- After a release that warns about a one-time rescan
+
+Adding/removing account addresses, schema changes, and long offline
+periods are all covered by the post-sync hook automatically.
 
 ## Output formats
 

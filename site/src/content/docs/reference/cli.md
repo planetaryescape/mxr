@@ -311,7 +311,8 @@ mxr response-time --theirs
 mxr response-time --counterparty alice@example.com --since-days 90
 mxr response-time --since-days 30 --format json   # both clock and business-hours rows
 
-mxr doctor --rebuild-analytics    # one-shot rebuild after schema changes
+mxr doctor --rebuild-analytics    # 6-step rebuild with live progress
+                                  # (rarely needed: daemon self-heals post-sync)
 mxr doctor --refresh-contacts     # contacts table only
 ```
 

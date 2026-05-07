@@ -5,15 +5,18 @@ description: Reference for screens, panes, modals, and interaction model in the 
 
 ## Screens
 
-The TUI has five top-level screens:
+The TUI has six top-level screens:
 
 - Mailbox
 - Search
 - Rules
 - Accounts
 - Diagnostics
+- Analytics
 
-Open them with `1`-`5` or from the command palette with `Ctrl-p`.
+Open them with `1`-`6` or from the command palette with `Ctrl-p`. The
+chord `g A` (capital) also opens Analytics from anywhere; lowercase
+`g a` retains its Gmail meaning (go to All Mail).
 
 ## Mailbox screen
 
@@ -67,6 +70,41 @@ Behavior:
 - Edit config without leaving the TUI
 - Inspect runtime-only accounts such as browser-auth Gmail setups
 
+## Analytics screen
+
+Same surface as the CLI analytics commands (`mxr storage`,
+`mxr contacts`, `mxr stale`, `mxr response-time`, `mxr subscriptions`,
+`mxr wrapped`), without leaving the TUI. Cycle views with
+`Tab` / `Shift-Tab`; refresh the active view with `r`.
+
+Six views:
+
+- **Storage** — sender / mimetype / label rollups (`m` toggles to
+  Largest Messages mode; `g` cycles `group_by` while in Breakdown).
+- **Stale Threads** — threads waiting on a reply (`p` toggles
+  perspective, `[`/`]` adjusts `older_than_days`, `{`/`}` adjusts
+  `within_days`).
+- **Contacts** — asymmetry vs decay (`m` toggles sub-mode, `R`
+  refreshes the materialized contacts table).
+- **Response Time** — reply-latency percentiles (`d` toggles
+  direction).
+- **Subscriptions** — list-sender ROI table (`o` toggles open-rate
+  ranking; `u` opens the unsubscribe-confirm modal for the selected
+  row).
+- **Wrapped** — Spotify-style yearly summary as a 7-tile dashboard
+  grid (`h`/`j`/`k`/`l` move between tiles, `y`/`Y` step year,
+  `t` cycles window kind: YTD → Year → SinceDays).
+
+Two cross-view interactions:
+
+- `Enter` drills down. Storage senders/labels and Contacts emails
+  jump to a Search filter; Stale Threads, Largest Messages, and
+  Subscriptions rows open the underlying conversation directly via
+  `Request::GetEnvelope` (no search round-trip).
+- `f` opens the **filter modal** — a per-view form with all CLI
+  flags exposed as editable fields. `Tab`/`Shift-Tab` to navigate,
+  `Enter` to apply, `Esc` to cancel.
+
 ## Modals and overlays
 
 - Command palette
@@ -76,6 +114,8 @@ Behavior:
 - Bulk confirmation
 - Attachment modal
 - Snooze modal
+- Unsubscribe confirmation
+- Analytics filter modal
 
 ## Mailbox semantics
 

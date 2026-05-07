@@ -12,6 +12,12 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = []
+# Enables utoipa::ToSchema derives on every IPC payload type. The bridge
+# crate (`mxr-web`) turns this on; TUI/CLI clients don't need it.
+openapi = ["dep:utoipa", "mxr-core/openapi"]
+
 [dependencies]
 mxr-core = { workspace = true }
 bytes = { workspace = true }
@@ -19,6 +25,7 @@ chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio-util = { workspace = true }
+utoipa = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = "1"

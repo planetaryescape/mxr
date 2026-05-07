@@ -10,6 +10,8 @@ const MXR_NAMESPACE: Uuid = Uuid::from_bytes([
 macro_rules! typed_id {
     ($name:ident) => {
         #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+        #[cfg_attr(feature = "openapi", schema(value_type = String, format = Uuid))]
         #[serde(transparent)]
         pub struct $name(pub Uuid);
 

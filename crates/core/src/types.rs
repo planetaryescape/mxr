@@ -42,6 +42,7 @@ pub mod system_labels {
 // -- Address ------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Address {
     pub name: Option<String>,
     pub email: String,
@@ -50,6 +51,7 @@ pub struct Address {
 // -- Account ------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Account {
     pub id: AccountId,
     pub name: String,
@@ -60,6 +62,7 @@ pub struct Account {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BackendRef {
     pub provider_kind: ProviderKind,
     pub config_key: String,
@@ -68,6 +71,7 @@ pub struct BackendRef {
 /// One owned email address per account. Direction inference compares
 /// `messages.from_email` against this set to decide inbound vs outbound.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AccountAddress {
     pub account_id: AccountId,
     pub email: String,
@@ -81,6 +85,7 @@ pub struct AccountAddress {
 /// Named `MessageDirection` rather than `Direction` to avoid colliding with
 /// ratatui's `Direction` in clients that glob-import this module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum MessageDirection {
     Inbound,
@@ -172,6 +177,7 @@ impl AccountAddressLookup for InMemoryAccountAddressLookup {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ProviderKind {
     Gmail,
     Imap,
@@ -184,6 +190,7 @@ pub enum ProviderKind {
 // -- Label --------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Label {
     pub id: LabelId,
     pub account_id: AccountId,
@@ -196,6 +203,7 @@ pub struct Label {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum LabelKind {
     System,
     Folder,
@@ -224,6 +232,7 @@ bitflags! {
 /// store mutation so analytics can distinguish user actions from rule-driven,
 /// sync-driven, or reconciler-driven changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum EventSource {
     /// User action via CLI, TUI, or web client.
@@ -273,6 +282,7 @@ impl EventSource {
 /// it?", "what fraction of inbound messages from sender X get replied to?")
 /// that the snapshot in `messages.flags` cannot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum MessageEventType {
     Read,
@@ -351,6 +361,7 @@ impl MessageEventType {
 /// biggest emails (the 250 MB attachment from a courier service, the
 /// massive zip a colleague sent in 2017) instead of just the bucket totals.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LargestMessageRow {
     pub message_id: MessageId,
     pub from_email: String,
@@ -365,6 +376,7 @@ pub struct LargestMessageRow {
 /// time-pattern, contact, reply-discipline, storage, newsletter, and
 /// superlative sections so the CLI can render a single narrative panel.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedSummary {
     pub window_start: DateTime<Utc>,
     pub window_end: DateTime<Utc>,
@@ -379,6 +391,7 @@ pub struct WrappedSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedVolume {
     pub inbound_count: u32,
     pub outbound_count: u32,
@@ -386,6 +399,7 @@ pub struct WrappedVolume {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedTimePatterns {
     /// Day name and message count for the busiest day-of-week (Mon–Sun).
     pub busiest_day_of_week: Option<String>,
@@ -399,6 +413,7 @@ pub struct WrappedTimePatterns {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedTopContacts {
     /// Top 5 senders to me by inbound count.
     pub most_emailed_to_me: Vec<WrappedContactRank>,
@@ -409,6 +424,7 @@ pub struct WrappedTopContacts {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedContactRank {
     pub email: String,
     pub display_name: Option<String>,
@@ -416,6 +432,7 @@ pub struct WrappedContactRank {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedReplyDiscipline {
     pub sample_count: u32,
     pub clock_p50_seconds: u32,
@@ -430,6 +447,7 @@ pub struct WrappedReplyDiscipline {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedReplyExtreme {
     pub counterparty_email: String,
     pub latency_seconds: u32,
@@ -437,6 +455,7 @@ pub struct WrappedReplyExtreme {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedStorage {
     pub total_bytes: u64,
     pub top_mimetype: Option<WrappedStorageBucket>,
@@ -444,6 +463,7 @@ pub struct WrappedStorage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedStorageBucket {
     pub key: String,
     pub bytes: u64,
@@ -451,6 +471,7 @@ pub struct WrappedStorageBucket {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedNewsletters {
     pub unique_lists: u32,
     pub top_list: Option<WrappedTopList>,
@@ -459,6 +480,7 @@ pub struct WrappedNewsletters {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedTopList {
     pub list_id: String,
     pub message_count: u32,
@@ -466,12 +488,14 @@ pub struct WrappedTopList {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedSuperlatives {
     pub longest_thread: Option<WrappedLongestThread>,
     pub most_ghosted: Option<WrappedMostGhosted>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedLongestThread {
     pub thread_id: ThreadId,
     pub subject: String,
@@ -479,6 +503,7 @@ pub struct WrappedLongestThread {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WrappedMostGhosted {
     pub email: String,
     pub inbound_count: u32,
@@ -491,6 +516,7 @@ pub struct WrappedMostGhosted {
 /// seconds; business-hours percentiles are `None` until the reconciler has
 /// backfilled the relevant rows.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ResponseTimeSummary {
     pub direction: ResponseTimeDirection,
     pub sample_count: u32,
@@ -501,6 +527,7 @@ pub struct ResponseTimeSummary {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseTimeDirection {
     /// I replied to inbound (`'i_replied'` rows in reply_pairs).
@@ -523,6 +550,7 @@ impl ResponseTimeDirection {
 /// Materialized per-account contact row. Source of truth for `mxr contacts
 /// asymmetry` and `mxr contacts decay`. Refreshed periodically.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ContactRow {
     pub account_id: AccountId,
     pub email: String,
@@ -538,6 +566,7 @@ pub struct ContactRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ContactAsymmetryRow {
     pub email: String,
     pub display_name: Option<String>,
@@ -550,6 +579,7 @@ pub struct ContactAsymmetryRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ContactDecayRow {
     pub email: String,
     pub display_name: Option<String>,
@@ -564,6 +594,7 @@ pub struct ContactDecayRow {
 /// Single row of `mxr stale` output: a thread whose latest message points
 /// at one party and has been silent past the threshold.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StaleThreadRow {
     pub thread_id: ThreadId,
     pub latest_message_id: MessageId,
@@ -574,6 +605,7 @@ pub struct StaleThreadRow {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum StaleBallInCourt {
     /// Latest message is inbound; ball is in MY court (I owe a reply).
@@ -596,6 +628,7 @@ impl StaleBallInCourt {
 /// Single row of `mxr storage` output: how many bytes / how many items
 /// rolled up under a particular grouping key (sender, mimetype, label).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StorageBucket {
     pub key: String,
     pub bytes: u64,
@@ -603,6 +636,7 @@ pub struct StorageBucket {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum StorageGroupBy {
     /// Group attachments by `mime_type`.
@@ -619,6 +653,7 @@ pub enum StorageGroupBy {
 /// A single per-message state-transition event. Ordered by `occurred_at` ASC
 /// when read back; analytics consumers should not assume monotonic IDs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessageEvent {
     pub message_id: MessageId,
     pub account_id: AccountId,
@@ -636,6 +671,7 @@ pub struct MessageEvent {
 // -- Envelope -----------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Envelope {
     pub id: MessageId,
     pub account_id: AccountId,
@@ -654,6 +690,7 @@ pub struct Envelope {
     pub bcc: Vec<Address>,
     pub subject: String,
     pub date: DateTime<Utc>,
+    #[cfg_attr(feature = "openapi", schema(value_type = u32))]
     pub flags: MessageFlags,
     pub snippet: String,
     pub has_attachments: bool,
@@ -668,6 +705,7 @@ pub struct Envelope {
 // -- UnsubscribeMethod --------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum UnsubscribeMethod {
     OneClick {
         url: String,
@@ -688,6 +726,7 @@ pub enum UnsubscribeMethod {
 // -- ReplyHeaders ------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReplyHeaders {
     pub in_reply_to: String,
     #[serde(default)]
@@ -701,6 +740,7 @@ pub struct ReplyHeaders {
 // -- MessageMetadata ---------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessageMetadata {
     pub list_id: Option<String>,
     #[serde(default)]
@@ -715,6 +755,7 @@ pub struct MessageMetadata {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum BodyPartSource {
     Exact,
@@ -724,12 +765,14 @@ pub enum BodyPartSource {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum TextPlainFormat {
     Fixed,
     Flowed { delsp: bool },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CalendarMetadata {
     pub method: Option<String>,
     pub summary: Option<String>,
@@ -738,6 +781,7 @@ pub struct CalendarMetadata {
 // -- MessageBody --------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MessageBody {
     pub message_id: MessageId,
     pub text_plain: Option<String>,
@@ -838,6 +882,7 @@ impl MessageBody {
 // -- AttachmentMeta -----------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AttachmentMeta {
     pub id: AttachmentId,
     pub message_id: MessageId,
@@ -848,6 +893,7 @@ pub struct AttachmentMeta {
     pub content_id: Option<String>,
     pub content_location: Option<String>,
     pub size_bytes: u64,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub local_path: Option<PathBuf>,
     pub provider_id: String,
 }
@@ -890,6 +936,7 @@ impl AttachmentMeta {
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AttachmentDisposition {
     Attachment,
@@ -899,16 +946,19 @@ pub enum AttachmentDisposition {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct HtmlImageAsset {
     pub source: String,
     pub kind: HtmlImageSourceKind,
     pub status: HtmlImageAssetStatus,
     pub mime_type: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub path: Option<PathBuf>,
     pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum HtmlImageSourceKind {
     Cid,
@@ -919,6 +969,7 @@ pub enum HtmlImageSourceKind {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum HtmlImageAssetStatus {
     Ready,
@@ -931,6 +982,7 @@ pub enum HtmlImageAssetStatus {
 // -- Thread -------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Thread {
     pub id: ThreadId,
     pub account_id: AccountId,
@@ -945,6 +997,7 @@ pub struct Thread {
 // -- Draft --------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Draft {
     pub id: DraftId,
     pub account_id: AccountId,
@@ -954,12 +1007,14 @@ pub struct Draft {
     pub bcc: Vec<Address>,
     pub subject: String,
     pub body_markdown: String,
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>))]
     pub attachments: Vec<PathBuf>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum DraftStatus {
     #[default]
@@ -990,6 +1045,7 @@ impl DraftStatus {
 // -- SavedSearch --------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum SearchMode {
     #[default]
@@ -1013,6 +1069,7 @@ impl SearchMode {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum SemanticProfile {
     #[default]
     #[serde(rename = "bge-small-en-v1.5")]
@@ -1034,6 +1091,7 @@ impl SemanticProfile {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum SemanticProfileStatus {
     #[default]
@@ -1044,6 +1102,7 @@ pub enum SemanticProfileStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum SemanticChunkSourceKind {
     Header,
@@ -1053,6 +1112,7 @@ pub enum SemanticChunkSourceKind {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum SemanticEmbeddingStatus {
     #[default]
@@ -1062,6 +1122,7 @@ pub enum SemanticEmbeddingStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SemanticProfileRecord {
     pub id: SemanticProfileId,
     pub profile: SemanticProfile,
@@ -1078,6 +1139,7 @@ pub struct SemanticProfileRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SemanticChunkRecord {
     pub id: SemanticChunkId,
     pub message_id: MessageId,
@@ -1090,6 +1152,7 @@ pub struct SemanticChunkRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SemanticEmbeddingRecord {
     pub chunk_id: SemanticChunkId,
     pub profile_id: SemanticProfileId,
@@ -1102,6 +1165,7 @@ pub struct SemanticEmbeddingRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SemanticStatusSnapshot {
     pub enabled: bool,
     pub active_profile: SemanticProfile,
@@ -1111,6 +1175,7 @@ pub struct SemanticStatusSnapshot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SemanticRuntimeMetrics {
     #[serde(default)]
     pub queue_depth: u32,
@@ -1127,6 +1192,7 @@ pub struct SemanticRuntimeMetrics {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SavedSearch {
     pub id: SavedSearchId,
     pub account_id: Option<AccountId>,
@@ -1143,6 +1209,7 @@ pub struct SavedSearch {
 // -- Subscriptions ------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SubscriptionSummary {
     pub account_id: AccountId,
     pub sender_name: Option<String>,
@@ -1154,6 +1221,7 @@ pub struct SubscriptionSummary {
     pub latest_subject: String,
     pub latest_snippet: String,
     pub latest_date: DateTime<Utc>,
+    #[cfg_attr(feature = "openapi", schema(value_type = u32))]
     pub latest_flags: MessageFlags,
     pub latest_has_attachments: bool,
     pub latest_size_bytes: u64,
@@ -1173,6 +1241,7 @@ pub struct SubscriptionSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum SortOrder {
     DateDesc,
     DateAsc,
@@ -1182,6 +1251,7 @@ pub enum SortOrder {
 // -- Snoozed ------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Snoozed {
     pub message_id: MessageId,
     pub account_id: AccountId,
@@ -1193,6 +1263,7 @@ pub struct Snoozed {
 // -- Sync types ---------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ImapMailboxCursor {
     pub mailbox: String,
     pub uid_validity: u32,
@@ -1202,6 +1273,7 @@ pub struct ImapMailboxCursor {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ImapCapabilityState {
     pub move_ext: bool,
     pub uidplus: bool,
@@ -1215,6 +1287,7 @@ pub struct ImapCapabilityState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum SyncCursor {
     Gmail {
         history_id: u64,
@@ -1239,12 +1312,14 @@ pub enum SyncCursor {
 /// A message with both envelope and body, returned by sync.
 /// Bodies are always fetched eagerly during sync — no lazy hydration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SyncedMessage {
     pub envelope: Envelope,
     pub body: MessageBody,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SyncBatch {
     pub upserted: Vec<SyncedMessage>,
     pub deleted_provider_ids: Vec<String>,
@@ -1253,6 +1328,7 @@ pub struct SyncBatch {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabelChange {
     pub provider_message_id: String,
     pub added_labels: Vec<String>,
@@ -1262,6 +1338,7 @@ pub struct LabelChange {
 // -- Export -------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum ExportFormat {
     Markdown,
     Json,
@@ -1272,6 +1349,7 @@ pub enum ExportFormat {
 // -- ProviderMeta -------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ProviderMeta {
     /// Reserved provider-truth escape hatch.
     ///
@@ -1291,6 +1369,7 @@ pub struct ProviderMeta {
 // -- SyncCapabilities ---------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SyncCapabilities {
     /// True only for providers with stable multi-assign label semantics.
     /// False means placement is folder/mailbox-based, even if `sync_labels()` exposes folders
@@ -1306,6 +1385,7 @@ pub struct SyncCapabilities {
 // -- SendReceipt --------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SendReceipt {
     pub provider_message_id: Option<String>,
     pub sent_at: DateTime<Utc>,

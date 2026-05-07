@@ -245,6 +245,11 @@ assert_cmd = "2"
 predicates = "3"
 proptest = "1"
 
+# OpenAPI / HTTP bridge
+utoipa = { version = "5", features = ["chrono", "uuid"] }
+utoipa-axum = "0.2"
+utoipa-swagger-ui = { version = "9", features = ["axum", "vendored"] }
+
 [dependencies]
 mxr-compose = { workspace = true }
 mxr-config = { workspace = true }

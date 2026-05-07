@@ -12,6 +12,13 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = []
+# Enable utoipa::ToSchema derives on every public type. Off by default so
+# clients that don't speak HTTP (TUI, CLI core flow) don't pull utoipa into
+# their compile graph.
+openapi = ["dep:utoipa"]
+
 [dependencies]
 async-trait = { workspace = true }
 bitflags = { workspace = true }
@@ -20,6 +27,7 @@ serde = { workspace = true }
 serde_bytes = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+utoipa = { workspace = true, optional = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

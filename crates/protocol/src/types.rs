@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Provider-specific adaptation happens below this layer in adapter crates.
 /// Client-specific shaping and view state belong in clients such as the TUI and web bridge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "kebab-case")]
 pub enum IpcCategory {
     CoreMail,
@@ -17,12 +18,14 @@ pub enum IpcCategory {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct IpcMessage {
     pub id: u64,
     pub payload: IpcPayload,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type")]
 #[allow(clippy::large_enum_variant)]
 pub enum IpcPayload {
@@ -32,6 +35,7 @@ pub enum IpcPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "cmd")]
 pub enum Request {
     // Core mail/runtime. This is the most stable bucket.
@@ -280,6 +284,7 @@ pub enum Request {
     },
     SetFlags {
         message_id: MessageId,
+        #[cfg_attr(feature = "openapi", schema(value_type = u32))]
         flags: MessageFlags,
     },
     Count {
@@ -445,6 +450,7 @@ impl Request {
 
 /// Mutation commands for modifying messages.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "mutation")]
 pub enum MutationCommand {
     Archive {
@@ -480,6 +486,7 @@ pub enum MutationCommand {
 
 /// Reply context returned by PrepareReply.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReplyContext {
     pub account_id: AccountId,
     pub in_reply_to: String,
@@ -496,6 +503,7 @@ pub struct ReplyContext {
 
 /// Forward context returned by PrepareForward.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ForwardContext {
     pub account_id: AccountId,
     pub subject: String,
@@ -504,6 +512,7 @@ pub struct ForwardContext {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AccountMutationResultData {
     pub account_id: AccountId,
     pub account_name: String,
@@ -514,6 +523,7 @@ pub struct AccountMutationResultData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MutationResultData {
     pub requested: u32,
     pub succeeded: u32,
@@ -530,6 +540,7 @@ pub struct MutationResultData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "status")]
 #[allow(clippy::large_enum_variant)]
 pub enum Response {
@@ -576,6 +587,7 @@ impl Response {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum IpcErrorKind {
     InvalidRequest,
@@ -647,6 +659,7 @@ fn error_looks_retryable(message: &str) -> bool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "kind")]
 #[allow(clippy::large_enum_variant)]
 pub enum ResponseData {
@@ -899,6 +912,7 @@ impl ResponseData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SearchResultItem {
     pub message_id: MessageId,
     pub account_id: AccountId,
@@ -908,12 +922,14 @@ pub struct SearchResultItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BodyFailure {
     pub message_id: MessageId,
     pub error: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SearchExplain {
     pub requested_mode: SearchMode,
     pub executed_mode: SearchMode,
@@ -929,6 +945,7 @@ pub struct SearchExplain {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SearchExplainResult {
     pub rank: u32,
     pub message_id: MessageId,
@@ -940,6 +957,7 @@ pub struct SearchExplainResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AttachmentFile {
     pub attachment_id: AttachmentId,
     pub filename: String,
@@ -947,6 +965,7 @@ pub struct AttachmentFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EventLogEntry {
     pub timestamp: i64,
     pub level: String,
@@ -959,6 +978,7 @@ pub struct EventLogEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum DaemonHealthClass {
     #[default]
@@ -980,6 +1000,7 @@ impl DaemonHealthClass {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum IndexFreshness {
     #[default]
@@ -1007,6 +1028,7 @@ impl IndexFreshness {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AccountSyncStatus {
     pub account_id: AccountId,
     pub account_name: String,
@@ -1023,6 +1045,7 @@ pub struct AccountSyncStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DoctorReport {
     pub healthy: bool,
     #[serde(default)]
@@ -1076,6 +1099,7 @@ pub struct DoctorReport {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DoctorDataStats {
     pub accounts: u32,
     pub labels: u32,
@@ -1100,6 +1124,7 @@ pub struct DoctorDataStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RuleFormData {
     pub id: Option<String>,
     pub name: String,
@@ -1110,6 +1135,7 @@ pub struct RuleFormData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AccountConfigData {
     pub key: String,
     pub name: String,
@@ -1122,9 +1148,11 @@ pub struct AccountConfigData {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AuthSessionId(pub String);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AuthFlowData {
     #[default]
@@ -1134,6 +1162,7 @@ pub enum AuthFlowData {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AuthSessionStateData {
     Starting,
@@ -1144,6 +1173,7 @@ pub enum AuthSessionStateData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AuthSessionData {
     pub session_id: AuthSessionId,
     pub state: AuthSessionStateData,
@@ -1170,6 +1200,7 @@ fn default_account_enabled() -> bool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AccountSourceData {
     Runtime,
@@ -1178,6 +1209,7 @@ pub enum AccountSourceData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AccountEditModeData {
     Full,
@@ -1185,6 +1217,7 @@ pub enum AccountEditModeData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AccountSummaryData {
     pub account_id: AccountId,
     pub key: Option<String>,
@@ -1204,6 +1237,7 @@ pub struct AccountSummaryData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AccountCapabilitiesData {
     pub labels: bool,
     pub server_search: bool,
@@ -1247,6 +1281,7 @@ impl From<SyncCapabilities> for AccountCapabilitiesData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum GmailCredentialSourceData {
     #[default]
@@ -1255,6 +1290,7 @@ pub enum GmailCredentialSourceData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AccountSyncConfigData {
     Gmail {
@@ -1287,12 +1323,14 @@ pub enum AccountSyncConfigData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AccountOperationStep {
     pub ok: bool,
     pub detail: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AccountOperationResult {
     pub ok: bool,
     pub summary: String,
@@ -1307,6 +1345,7 @@ pub struct AccountOperationResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AccountSendConfigData {
     Gmail,
@@ -1339,6 +1378,7 @@ fn default_auth_required() -> bool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "event")]
 pub enum DaemonEvent {
     // Core mail/runtime events.
@@ -1412,6 +1452,7 @@ impl DaemonEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabelCount {
     pub label_id: LabelId,
     pub unread_count: u32,

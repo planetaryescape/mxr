@@ -14,6 +14,11 @@ export async function fetchJson<T>(
   const requestId = bridgeRequestId();
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
+  // v0.5+ — preferred path. Generated SDKs from the OpenAPI spec
+  // emit this same header. v0.4.x daemons ignore it.
+  headers.set("Authorization", `Bearer ${authToken}`);
+  // v0.4.x compat. The bridge accepts both for the v0.5 cycle and
+  // will drop this header in v0.6.
   headers.set("x-mxr-bridge-token", authToken);
   headers.set("x-mxr-request-id", requestId);
 

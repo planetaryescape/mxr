@@ -7,5 +7,7 @@ Start the daemon explicitly
 Usage: mxr daemon [OPTIONS]
 
 Options:
-      --foreground  Run in foreground (for debugging / systemd)
-  -h, --help        Print help
+      --foreground                 Run in foreground (for debugging / systemd)
+      --no-bridge                  Disable the HTTP bridge for this daemon run, regardless of config
+      --bridge-port <BRIDGE_PORT>  Override the bridge port. Useful for tests and ephemeral bridges
+  -h, --help                       Print help

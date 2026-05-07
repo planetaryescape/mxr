@@ -40,6 +40,7 @@ struct RuntimeTasks {
     reply_pair_reconciler: ParkingMutex<Option<JoinHandle<()>>>,
     contacts_refresher: ParkingMutex<Option<JoinHandle<()>>>,
     startup_maintenance: ParkingMutex<Option<JoinHandle<()>>>,
+    bridge_loop: ParkingMutex<Option<JoinHandle<()>>>,
 }
 
 impl RuntimeTasks {
@@ -73,6 +74,10 @@ impl RuntimeTasks {
 
     fn set_startup_maintenance(&self, handle: JoinHandle<()>) {
         *self.startup_maintenance.lock() = Some(handle);
+    }
+
+    fn set_bridge_loop(&self, handle: JoinHandle<()>) {
+        *self.bridge_loop.lock() = Some(handle);
     }
 
     fn take_all(&self) -> Vec<NamedTaskHandle> {
@@ -111,6 +116,12 @@ impl RuntimeTasks {
         if let Some(handle) = self.startup_maintenance.lock().take() {
             handles.push(NamedTaskHandle {
                 name: "startup_maintenance".to_string(),
+                handle,
+            });
+        }
+        if let Some(handle) = self.bridge_loop.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "bridge_loop".to_string(),
                 handle,
             });
         }
@@ -632,6 +643,10 @@ impl AppState {
 
     pub fn register_startup_maintenance(&self, handle: JoinHandle<()>) {
         self.runtime_tasks.set_startup_maintenance(handle);
+    }
+
+    pub fn register_bridge_loop(&self, handle: JoinHandle<()>) {
+        self.runtime_tasks.set_bridge_loop(handle);
     }
 
     pub async fn shutdown_runtime_tasks(&self, timeout: Duration) {

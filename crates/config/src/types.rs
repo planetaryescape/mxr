@@ -22,6 +22,56 @@ pub struct MxrConfig {
     pub snooze: SnoozeConfig,
     pub logging: LoggingConfig,
     pub appearance: AppearanceConfig,
+    pub bridge: BridgeConfig,
+}
+
+/// HTTP bridge configuration. The bridge runs as a managed task inside
+/// `mxr daemon` by default and binds to loopback only.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BridgeConfig {
+    /// When true (default), `mxr daemon` automatically starts the bridge.
+    /// Disable with `enabled = false` or `mxr daemon --no-bridge`.
+    pub enabled: bool,
+    /// Bind address. Defaults to `127.0.0.1`. Setting this to a non-loopback
+    /// address requires explicit operator opt-in and additional safeguards
+    /// (see `mxr-web`'s startup checks).
+    pub bind: String,
+    /// TCP port. Default `7777` — mnemonic, easy to type, low collision.
+    pub port: u16,
+    /// Origins additive to the loopback CORS defaults. Empty by default.
+    pub cors_allowlist: Vec<String>,
+    /// Hostnames additive to the loopback Host-header defaults. Empty
+    /// by default; populated only when binding to a non-loopback address.
+    pub host_allowlist: Vec<String>,
+    /// Path to the bridge token file. Defaults to
+    /// `~/.config/mxr/bridge-token` (resolved at runtime when `None`).
+    /// File is mode 0600, generated on first daemon start.
+    pub token_path: Option<PathBuf>,
+}
+
+impl Default for BridgeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            bind: "127.0.0.1".into(),
+            port: 7777,
+            cors_allowlist: Vec::new(),
+            host_allowlist: Vec::new(),
+            token_path: None,
+        }
+    }
+}
+
+impl BridgeConfig {
+    /// True iff `bind` is one of the loopback addresses. Used by the
+    /// daemon's startup checks to refuse non-loopback binds without TLS.
+    pub fn is_loopback_bind(&self) -> bool {
+        matches!(
+            self.bind.as_str(),
+            "127.0.0.1" | "::1" | "[::1]" | "localhost"
+        )
+    }
 }
 
 /// General application settings.

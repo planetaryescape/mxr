@@ -29,6 +29,12 @@ pub enum Command {
         /// Hidden instance marker used by daemon autostart to identify the child process.
         #[arg(long, hide = true)]
         instance: Option<String>,
+        /// Disable the HTTP bridge for this daemon run, regardless of config.
+        #[arg(long)]
+        no_bridge: bool,
+        /// Override the bridge port. Useful for tests and ephemeral bridges.
+        #[arg(long)]
+        bridge_port: Option<u16>,
     },
     /// Restart the daemon with the current binary
     Restart,

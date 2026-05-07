@@ -30,7 +30,19 @@ const SOCKET_PROBE_ATTEMPTS: usize = 5;
 const SOCKET_PROBE_DELAY: Duration = Duration::from_millis(100);
 const ORPHAN_DAEMON_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// CLI-time overrides for the HTTP bridge. Always merged on top of the
+/// `[bridge]` section in `~/.config/mxr/config.toml`.
+#[derive(Debug, Clone, Default)]
+pub struct BridgeOverrides {
+    pub disabled: bool,
+    pub port: Option<u16>,
+}
+
 pub async fn run_daemon() -> anyhow::Result<()> {
+    run_daemon_with_overrides(BridgeOverrides::default()).await
+}
+
+pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> anyhow::Result<()> {
     let sock_path = AppState::socket_path();
     if let Some(parent) = sock_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -92,6 +104,25 @@ pub async fn run_daemon() -> anyhow::Result<()> {
         loops::contacts_refresher_loop(contacts_state, shutdown_rx).await;
     });
     state.register_contacts_refresher(contacts_handle);
+
+    // Managed HTTP bridge. Reads [bridge] from config, applies CLI
+    // overrides, refuses to start non-loopback binds without operator
+    // intent.
+    if !bridge_overrides.disabled {
+        match crate::bridge::spawn_bridge_loop(state.clone(), &bridge_overrides).await {
+            Ok(Some(handle)) => {
+                state.register_bridge_loop(handle);
+            }
+            Ok(None) => {
+                tracing::info!("bridge disabled by config");
+            }
+            Err(error) => {
+                anyhow::bail!("bridge startup failed: {error}");
+            }
+        }
+    } else {
+        tracing::info!("bridge disabled by --no-bridge flag");
+    }
 
     let mut shutdown_rx = state.shutdown_receiver();
     let mut connections = JoinSet::new();

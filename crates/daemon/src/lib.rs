@@ -1,3 +1,4 @@
+pub(crate) mod bridge;
 pub mod cli;
 pub mod commands;
 #[doc(hidden)]
@@ -34,8 +35,16 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
     init_tracing(is_foreground)?;
 
     match cli.command {
-        Some(Command::Daemon { .. }) => {
-            crate::server::run_daemon().await?;
+        Some(Command::Daemon {
+            no_bridge,
+            bridge_port,
+            ..
+        }) => {
+            crate::server::run_daemon_with_overrides(crate::server::BridgeOverrides {
+                disabled: no_bridge,
+                port: bridge_port,
+            })
+            .await?;
         }
         Some(Command::Restart) => {
             crate::server::restart_daemon().await?;

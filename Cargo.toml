@@ -96,7 +96,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.88"
@@ -115,28 +115,28 @@ panic = "warn"
 todo = "warn"
 
 [workspace.dependencies]
-mxr-compose = { path = "crates/compose", version = "0.5.1" }
-mxr-config = { path = "crates/config", version = "0.5.1" }
-mxr-core = { path = "crates/core", version = "0.5.1" }
-mxr-export = { path = "crates/export", version = "0.5.1" }
-mxr-keychain = { path = "crates/keychain", version = "0.5.1" }
-mxr-mail-parse = { path = "crates/mail-parse", version = "0.5.1" }
-mxr-outbound = { path = "crates/outbound", version = "0.5.1" }
-mxr-protocol = { path = "crates/protocol", version = "0.5.1" }
-mxr-provider-fake = { path = "crates/provider-fake", version = "0.5.1" }
-mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.5.1" }
-mxr-provider-imap = { path = "crates/provider-imap", version = "0.5.1" }
-mxr-provider-outlook = { path = "crates/provider-outlook", version = "0.5.1" }
-mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.5.1" }
-mxr-reader = { path = "crates/reader", version = "0.5.1" }
-mxr-rules = { path = "crates/rules", version = "0.5.1" }
-mxr-search = { path = "crates/search", version = "0.5.1" }
-mxr-semantic = { path = "crates/semantic", version = "0.5.1" }
-mxr-store = { path = "crates/store", version = "0.5.1" }
-mxr-sync = { path = "crates/sync", version = "0.5.1" }
-mxr-test-support = { path = "crates/test-support", version = "0.5.1" }
-mxr-tui = { path = "crates/tui", version = "0.5.1" }
-mxr-web = { path = "crates/web", version = "0.5.1" }
+mxr-compose = { path = "crates/compose", version = "0.5.2" }
+mxr-config = { path = "crates/config", version = "0.5.2" }
+mxr-core = { path = "crates/core", version = "0.5.2" }
+mxr-export = { path = "crates/export", version = "0.5.2" }
+mxr-keychain = { path = "crates/keychain", version = "0.5.2" }
+mxr-mail-parse = { path = "crates/mail-parse", version = "0.5.2" }
+mxr-outbound = { path = "crates/outbound", version = "0.5.2" }
+mxr-protocol = { path = "crates/protocol", version = "0.5.2" }
+mxr-provider-fake = { path = "crates/provider-fake", version = "0.5.2" }
+mxr-provider-gmail = { path = "crates/provider-gmail", version = "0.5.2" }
+mxr-provider-imap = { path = "crates/provider-imap", version = "0.5.2" }
+mxr-provider-outlook = { path = "crates/provider-outlook", version = "0.5.2" }
+mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.5.2" }
+mxr-reader = { path = "crates/reader", version = "0.5.2" }
+mxr-rules = { path = "crates/rules", version = "0.5.2" }
+mxr-search = { path = "crates/search", version = "0.5.2" }
+mxr-semantic = { path = "crates/semantic", version = "0.5.2" }
+mxr-store = { path = "crates/store", version = "0.5.2" }
+mxr-sync = { path = "crates/sync", version = "0.5.2" }
+mxr-test-support = { path = "crates/test-support", version = "0.5.2" }
+mxr-tui = { path = "crates/tui", version = "0.5.2" }
+mxr-web = { path = "crates/web", version = "0.5.2" }
 
 glob-match = "0.2"
 shell-words = "1.1"

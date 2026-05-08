@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT send_at FROM drafts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "send_at",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "1e098a0ba3f9f48f25b34141dd7395f056384647570e17ad652a8ad038196b95"
+}

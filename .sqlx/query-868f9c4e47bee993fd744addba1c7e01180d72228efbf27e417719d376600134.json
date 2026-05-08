@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE auto_reminders\n               SET cancelled_at = ?\n               WHERE sent_message_id = ? AND cancelled_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "868f9c4e47bee993fd744addba1c7e01180d72228efbf27e417719d376600134"
+}

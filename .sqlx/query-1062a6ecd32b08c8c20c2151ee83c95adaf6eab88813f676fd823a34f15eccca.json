@@ -1,0 +1,92 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT account_id as \"account_id!\", email as \"email!\",\n                      display_name, first_seen_at as \"first_seen_at!\",\n                      last_seen_at as \"last_seen_at!\",\n                      last_inbound_at, last_outbound_at,\n                      total_inbound as \"total_inbound!\",\n                      total_outbound as \"total_outbound!\",\n                      replied_count as \"replied_count!\",\n                      cadence_days_p50,\n                      is_list_sender as \"is_list_sender!\",\n                      list_id\n               FROM contacts\n               WHERE account_id = ? AND email = ? COLLATE NOCASE",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "email!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "display_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "first_seen_at!",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "last_seen_at!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "last_inbound_at",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "last_outbound_at",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "total_inbound!",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "total_outbound!",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "replied_count!",
+        "ordinal": 9,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cadence_days_p50",
+        "ordinal": 10,
+        "type_info": "Float"
+      },
+      {
+        "name": "is_list_sender!",
+        "ordinal": 11,
+        "type_info": "Integer"
+      },
+      {
+        "name": "list_id",
+        "ordinal": 12,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "1062a6ecd32b08c8c20c2151ee83c95adaf6eab88813f676fd823a34f15eccca"
+}

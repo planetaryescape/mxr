@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Delete a snippet by name
+
+Usage: mxr snippets remove <NAME>
+
+Arguments:
+  <NAME>
+
+Options:
+  -h, --help  Print help

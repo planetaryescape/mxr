@@ -2,6 +2,10 @@ use crate::action::{action_allowed_in_context, Action, UiContext};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+/// Maximum number of recently-used commands the palette tracks for
+/// adaptive ranking. Older entries are evicted FIFO.
+pub const RECENT_COMMAND_CAPACITY: usize = 8;
+
 #[derive(Debug, Clone)]
 pub struct PaletteCommand {
     pub label: String,
@@ -17,13 +21,17 @@ pub struct CommandPalette {
     pub filtered: Vec<usize>,
     pub selected: usize,
     pub context: UiContext,
+    /// Most-recent-first list of actions the user has confirmed. Used to
+    /// bias filtered results toward muscle-memory commands.
+    pub recent_actions: Vec<Action>,
 }
 
 impl Default for CommandPalette {
     fn default() -> Self {
         let commands = default_commands();
         let context = UiContext::MailboxList;
-        let filtered = filtered_indices(&commands, context, "");
+        let recent_actions: Vec<Action> = Vec::new();
+        let filtered = filtered_indices(&commands, context, "", &recent_actions);
         Self {
             visible: false,
             input: String::new(),
@@ -31,6 +39,7 @@ impl Default for CommandPalette {
             filtered,
             selected: 0,
             context,
+            recent_actions,
         }
     }
 }
@@ -76,9 +85,22 @@ impl CommandPalette {
     pub fn confirm(&mut self) -> Option<Action> {
         if let Some(&idx) = self.filtered.get(self.selected) {
             self.visible = false;
-            Some(self.commands[idx].action.clone())
+            let action = self.commands[idx].action.clone();
+            self.record_recent(action.clone());
+            Some(action)
         } else {
             None
+        }
+    }
+
+    /// Record a confirmed action as most-recent. Existing occurrences are
+    /// removed first so the same action can't appear twice; the list is
+    /// then capped at [`RECENT_COMMAND_CAPACITY`].
+    fn record_recent(&mut self, action: Action) {
+        self.recent_actions.retain(|existing| existing != &action);
+        self.recent_actions.insert(0, action);
+        if self.recent_actions.len() > RECENT_COMMAND_CAPACITY {
+            self.recent_actions.truncate(RECENT_COMMAND_CAPACITY);
         }
     }
 
@@ -86,6 +108,39 @@ impl CommandPalette {
         self.filtered
             .iter()
             .filter_map(|&index| self.commands.get(index))
+    }
+
+    /// Re-hydrate the recents list from persisted labels. Labels that
+    /// don't match a current command (renamed/removed) are silently
+    /// skipped. Capped at [`RECENT_COMMAND_CAPACITY`] so a corrupted
+    /// state file can't grow the in-memory list unbounded.
+    pub fn restore_recents_from_labels(&mut self, labels: &[String]) {
+        self.recent_actions.clear();
+        for label in labels.iter().take(RECENT_COMMAND_CAPACITY) {
+            if let Some(action) = self
+                .commands
+                .iter()
+                .find(|cmd| &cmd.label == label)
+                .map(|cmd| cmd.action.clone())
+            {
+                self.recent_actions.push(action);
+            }
+        }
+        self.update_filtered(None);
+    }
+
+    /// Snapshot the current recents list as labels for persistence.
+    /// Labels are stable across versions; the `Action` enum is not.
+    pub fn recent_labels_snapshot(&self) -> Vec<String> {
+        self.recent_actions
+            .iter()
+            .filter_map(|action| {
+                self.commands
+                    .iter()
+                    .find(|cmd| &cmd.action == action)
+                    .map(|cmd| cmd.label.clone())
+            })
+            .collect()
     }
 
     fn selected_action(&self) -> Option<&Action> {
@@ -96,7 +151,12 @@ impl CommandPalette {
     }
 
     fn update_filtered(&mut self, preferred_action: Option<Action>) {
-        self.filtered = filtered_indices(&self.commands, self.context, &self.input);
+        self.filtered = filtered_indices(
+            &self.commands,
+            self.context,
+            &self.input,
+            &self.recent_actions,
+        );
         if let Some(action) = preferred_action {
             if let Some(index) = self
                 .filtered
@@ -118,20 +178,60 @@ pub fn commands_for_context(context: UiContext) -> Vec<PaletteCommand> {
         .collect()
 }
 
-fn filtered_indices(commands: &[PaletteCommand], context: UiContext, input: &str) -> Vec<usize> {
+fn filtered_indices(
+    commands: &[PaletteCommand],
+    context: UiContext,
+    input: &str,
+    recent_actions: &[Action],
+) -> Vec<usize> {
     let query = input.to_lowercase();
-    commands
+    let recent_position = |action: &Action| -> usize {
+        recent_actions
+            .iter()
+            .position(|recent| recent == action)
+            .unwrap_or(usize::MAX)
+    };
+    let mut scored: Vec<(usize, u8, usize)> = commands
         .iter()
         .enumerate()
-        .filter(|(_, command)| {
-            action_allowed_in_context(&command.action, context)
-                && (query.is_empty()
-                    || command.label.to_lowercase().contains(&query)
-                    || command.shortcut.to_lowercase().contains(&query)
-                    || command.category.to_lowercase().contains(&query))
+        .filter(|(_, command)| action_allowed_in_context(&command.action, context))
+        .filter_map(|(index, command)| {
+            match_score(command, &query)
+                .map(|score| (index, score, recent_position(&command.action)))
         })
-        .map(|(index, _)| index)
-        .collect()
+        .collect();
+    // Sort by (match score, recency, registration order). Match strength
+    // dominates, so a strong query match still wins over a recent
+    // command that doesn't match the query well.
+    scored.sort_by_key(|(index, score, recency)| (*score, *recency, *index));
+    scored.into_iter().map(|(index, _, _)| index).collect()
+}
+
+/// Score a command against a query. Lower scores rank higher. `None`
+/// means no match. Empty query matches every command at the same score.
+fn match_score(command: &PaletteCommand, query: &str) -> Option<u8> {
+    if query.is_empty() {
+        return Some(0);
+    }
+    let label = command.label.to_lowercase();
+    if label == query {
+        return Some(0);
+    }
+    if label.starts_with(query) {
+        return Some(1);
+    }
+    if label.split_whitespace().any(|word| word.starts_with(query)) {
+        return Some(2);
+    }
+    if label.contains(query) {
+        return Some(3);
+    }
+    let shortcut = command.shortcut.to_lowercase();
+    let category = command.category.to_lowercase();
+    if shortcut.contains(query) || category.contains(query) {
+        return Some(4);
+    }
+    None
 }
 
 pub fn default_commands() -> Vec<PaletteCommand> {
@@ -219,6 +319,42 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             shortcut: "Z".into(),
             action: Action::Snooze,
             category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "Bookmark for Reply Later".into(),
+            shortcut: "b".into(),
+            action: Action::FlagReplyLater,
+            category: "Triage".into(),
+        },
+        PaletteCommand {
+            label: "Reply Queue".into(),
+            shortcut: String::new(),
+            action: Action::OpenReplyQueue,
+            category: "Triage".into(),
+        },
+        PaletteCommand {
+            label: "Screener Queue".into(),
+            shortcut: String::new(),
+            action: Action::OpenScreenerQueue,
+            category: "Triage".into(),
+        },
+        PaletteCommand {
+            label: "Sender View".into(),
+            shortcut: String::new(),
+            action: Action::OpenSenderView,
+            category: "Mail".into(),
+        },
+        PaletteCommand {
+            label: "Summarize Thread".into(),
+            shortcut: String::new(),
+            action: Action::SummarizeCurrentThread,
+            category: "AI".into(),
+        },
+        PaletteCommand {
+            label: "Snippets".into(),
+            shortcut: String::new(),
+            action: Action::OpenSnippets,
+            category: "Compose".into(),
         },
         PaletteCommand {
             label: "Unsubscribe".into(),
@@ -795,6 +931,59 @@ mod tests {
         assert!(labels.contains(&"New Rule".to_string()));
         assert!(!labels.contains(&"Apply Label".to_string()));
         assert!(!labels.contains(&"Archive".to_string()));
+    }
+
+    #[test]
+    fn restore_recents_round_trip_preserves_order_and_skips_unknown_labels() {
+        let mut palette = CommandPalette::default();
+        // Confirm three real commands so we have known recents to snapshot.
+        palette.toggle(UiContext::MailboxList);
+        palette.input = "archive".to_string();
+        palette.update_filtered(None);
+        palette.confirm().expect("archive command should exist");
+        palette.toggle(UiContext::MailboxList);
+        palette.input = "reply all".to_string();
+        palette.update_filtered(None);
+        palette.confirm().expect("reply all command should exist");
+        palette.toggle(UiContext::MailboxList);
+        palette.input = "star".to_string();
+        palette.update_filtered(None);
+        palette.confirm().expect("star command should exist");
+
+        let snapshot = palette.recent_labels_snapshot();
+        // Most-recent-first: Star, Reply All, Archive
+        assert_eq!(
+            snapshot,
+            vec![
+                "Star / Unstar".to_string(),
+                "Reply All".to_string(),
+                "Archive".to_string(),
+            ],
+            "snapshot order must match record_recent semantics"
+        );
+
+        // Restore on a fresh palette, with a label that no longer exists
+        // in the middle. The unknown label must be dropped silently while
+        // the surrounding entries survive in order.
+        let persisted = vec![
+            "Star / Unstar".to_string(),
+            "RemovedInThisVersion".to_string(),
+            "Reply All".to_string(),
+            "Archive".to_string(),
+        ];
+        let mut fresh = CommandPalette::default();
+        fresh.restore_recents_from_labels(&persisted);
+
+        let restored_snapshot = fresh.recent_labels_snapshot();
+        assert_eq!(
+            restored_snapshot,
+            vec![
+                "Star / Unstar".to_string(),
+                "Reply All".to_string(),
+                "Archive".to_string(),
+            ],
+            "restored recents must skip unknown labels and preserve order"
+        );
     }
 
     #[test]

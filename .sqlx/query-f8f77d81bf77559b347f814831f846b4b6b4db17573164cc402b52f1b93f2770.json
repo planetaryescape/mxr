@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM screener_decisions WHERE account_id = ? AND sender_email = ? COLLATE NOCASE",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f8f77d81bf77559b347f814831f846b4b6b4db17573164cc402b52f1b93f2770"
+}

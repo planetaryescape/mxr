@@ -53,6 +53,37 @@ impl App {
         }
     }
 
+    /// Apply a screener disposition to the currently-focused queue
+    /// entry. Optimistically removes the entry and queues the IPC; the
+    /// runtime fires `Request::SetScreenerDecision` and refreshes the
+    /// queue on success. No-op when the modal is empty.
+    pub(super) fn dispatch_screener_disposition(
+        &mut self,
+        disposition: mxr_protocol::ScreenerDispositionData,
+    ) {
+        let Some(account_id) = self.modals.screener.account_id.clone() else {
+            return;
+        };
+        let Some(removed) = self.modals.screener.remove_selected() else {
+            self.status_message = Some("Screener queue is empty".into());
+            return;
+        };
+        let pretty = match disposition {
+            mxr_protocol::ScreenerDispositionData::Allow => "allow",
+            mxr_protocol::ScreenerDispositionData::Deny => "deny",
+            mxr_protocol::ScreenerDispositionData::Feed => "feed",
+            mxr_protocol::ScreenerDispositionData::PaperTrail => "paper-trail",
+            mxr_protocol::ScreenerDispositionData::Unknown => "unknown",
+        };
+        self.status_message = Some(format!("Screener: {pretty} {}", removed.sender_email));
+        self.pending_screener_decisions
+            .push(PendingScreenerDecision {
+                account_id,
+                sender_email: removed.sender_email,
+                disposition,
+            });
+    }
+
     pub(super) fn context_envelope(&self) -> Option<&Envelope> {
         if self.screen == Screen::Search {
             // In the results pane, prefer the selected search result so that
@@ -313,9 +344,9 @@ impl App {
     }
 
     pub(super) fn has_pending_set_read(&self, message_id: &MessageId, read: bool) -> bool {
-        self.pending_mutation_queue.iter().any(|(request, _)| {
+        self.pending_mutation_queue.iter().any(|queued| {
             matches!(
-                request,
+                &queued.request,
                 Request::Mutation(MutationCommand::SetRead { message_ids, read: queued_read })
                     if *queued_read == read
                         && message_ids.len() == 1

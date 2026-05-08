@@ -73,6 +73,7 @@ import {
   useContextMenu,
   ContextMenuOverlay,
 } from "./lib/context-menu";
+import { BrowserDialogs } from "./dialogs/BrowserDialogs";
 import { DesktopDialogs } from "./surfaces/DesktopDialogs";
 import {
   BridgeErrorView,
@@ -335,6 +336,8 @@ export default function App() {
     setAccountFormBusy,
     accountDraftJson,
     setAccountDraftJson,
+    browserDialog,
+    setBrowserDialog,
     modalOpen,
     closeAllDialogs,
   } = useDesktopAppState();
@@ -442,6 +445,17 @@ export default function App() {
       ) ?? null,
     [accountsState.accounts, selectedAccountId],
   );
+  // Default account for IPC requests that need an account_id but don't
+  // have a focused message handy (screener queue, sender lookup before
+  // any message is selected). Falls back to the first available account.
+  const primaryAccountId = useMemo<string | null>(() => {
+    const defaultAccount = accountsState.accounts.find((account) => account.is_default);
+    return (
+      defaultAccount?.account_id ??
+      accountsState.accounts[0]?.account_id ??
+      null
+    );
+  }, [accountsState.accounts]);
   const composeCanSend = useMemo(() => {
     if (!composeSession) {
       return true;
@@ -1391,6 +1405,8 @@ export default function App() {
     composeSession,
     setComposeSession,
     setComposeDraft,
+    setBrowserDialog,
+    primaryAccountId,
   });
 
   useDesktopKeyboardShortcuts({
@@ -1674,6 +1690,10 @@ export default function App() {
     saveAccountDraft,
     eventStreamStatus,
     contextMenu,
+    bridge,
+    showNotice,
+    browserDialog,
+    setBrowserDialog,
   });
 }
 
@@ -1942,6 +1962,10 @@ function renderDesktopWorkbench(props: {
   setAccountFormOpen: StateSetter<boolean>;
   setAccountDraftJson: StateSetter<string>;
   saveAccountDraft: () => Promise<void>;
+  bridge: BridgeState;
+  showNotice: (message: string) => void;
+  browserDialog: import("./dialogs/BrowserDialogs").BrowserDialogState;
+  setBrowserDialog: StateSetter<import("./dialogs/BrowserDialogs").BrowserDialogState>;
 }) {
   const shortcut = (
     action: string,
@@ -2498,6 +2522,12 @@ function renderDesktopWorkbench(props: {
         onAccountDraftChange={props.setAccountDraftJson}
         onTestAccount={() => void props.testCurrentAccount()}
         onSaveAccount={() => void props.saveAccountDraft()}
+      />
+      <BrowserDialogs
+        bridge={props.bridge.kind === "ready" ? props.bridge : null}
+        state={props.browserDialog}
+        onClose={() => props.setBrowserDialog(null)}
+        onShowNotice={props.showNotice}
       />
       <ContextMenuOverlay
         menu={props.contextMenu.menu}

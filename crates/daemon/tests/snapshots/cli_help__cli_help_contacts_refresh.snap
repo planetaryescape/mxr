@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Force a full refresh of the materialized `contacts` table
+
+Usage: mxr contacts refresh
+
+Options:
+  -h, --help  Print help

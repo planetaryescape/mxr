@@ -4,13 +4,14 @@ expression: stdout
 ---
 Archive a message (remove from inbox)
 
-Usage: mxr archive [OPTIONS] [MESSAGE_ID]
+Usage: mxr archive [OPTIONS] [MESSAGE_ID]...
 
 Arguments:
-  [MESSAGE_ID]  Message ID
+  [MESSAGE_ID]...  Message ID(s). If omitted, reads IDs from stdin when stdin is piped
 
 Options:
       --search <SEARCH>  Operate on messages matching search query
       --yes              Skip confirmation
       --dry-run          Show what would happen
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
   -h, --help             Print help

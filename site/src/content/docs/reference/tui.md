@@ -7,16 +7,24 @@ description: Reference for screens, panes, modals, and interaction model in the 
 
 The TUI has six top-level screens:
 
-- Mailbox
-- Search
-- Rules
-- Accounts
-- Diagnostics
-- Analytics
+- Mailbox (`1`)
+- Search (`2`)
+- Rules (`3`)
+- Accounts (`4`)
+- Diagnostics (`5`)
+- Analytics (no digit; open via `Ctrl-p` → "Analytics")
 
-Open them with `1`-`6` or from the command palette with `Ctrl-p`. The
-chord `g A` (capital) also opens Analytics from anywhere; lowercase
-`g a` retains its Gmail meaning (go to All Mail).
+Open the first five with `1`-`5`. Analytics has no default digit key today — open it from the command palette (`Ctrl-p` then type "Analytics") or rebind the open action in `~/.config/mxr/keys.toml` (see [Custom keybindings](/reference/config/#custom-keybindings)).
+
+## Discoverability
+
+Three places to find a key without memorising:
+
+- **`?`** opens the help modal — context-aware, shows every key bound in the current view.
+- **`Ctrl-p`** opens the command palette — fuzzy-matches every action by name.
+- **The hint bar at the bottom** of every screen surfaces the most relevant shortcuts for the current selection.
+
+The keybindings reference page lists every default; the help modal is faster while you're using the TUI.
 
 ## Mailbox screen
 
@@ -113,9 +121,26 @@ Two cross-view interactions:
 - Compose confirmation
 - Bulk confirmation
 - Attachment modal
-- Snooze modal
+- Snooze modal — preset list plus a **Custom…** entry that opens a
+  text prompt parsed by the same `in 2h` / `tomorrow 9am` /
+  `monday 17:00` / RFC3339 grammar as `mxr snooze --until`
 - Unsubscribe confirmation
 - Analytics filter modal
+- Reply-later queue browser — list of flagged messages, opened with
+  `Ctrl-p → Reply Queue`
+- Snippets browser — read-only list with body preview; CRUD flows
+  through `mxr snippets`
+- Sender profile — volume, cadence, open commitments for the focused
+  message's sender, opened with `Ctrl-p → Sender View`
+- Screener queue — triage list with `a`/`d`/`f`/`p` disposition keys
+  (allow / deny / feed / paper-trail) wired to `Request::SetScreenerDecision`
+- Thread summary — LLM-generated 2-3 sentence summary, opened with
+  `Ctrl-p → Summarize Thread`
+- Welcome / setup — first-launch modal with `d` (demo), `g` (Gmail),
+  `i` (IMAP) shortcuts; `Enter` opens the new-account form
+- Doctor findings — surfaced inside the Diagnostics Status pane with
+  per-finding glyph (`✗` / `!` / `·`), category, message, and indented
+  remediation commands
 
 ## Mailbox semantics
 

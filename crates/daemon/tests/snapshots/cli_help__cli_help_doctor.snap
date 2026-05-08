@@ -7,13 +7,13 @@ Run diagnostics
 Usage: mxr doctor [OPTIONS]
 
 Options:
-      --reindex            
-      --reindex-semantic   
-      --check              
-      --semantic-status    
-      --verbose            
-      --index-stats        
-      --store-stats        
+      --reindex
+      --reindex-semantic
+      --check
+      --semantic-status
+      --verbose
+      --index-stats
+      --store-stats
       --rebuild-analytics  Reclassify Unknown directions, backfill list_ids, resolve reply pair pending, refresh contacts, fill business-hours latency. Idempotent
       --refresh-contacts   Force a full refresh of the materialized contacts table
       --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]

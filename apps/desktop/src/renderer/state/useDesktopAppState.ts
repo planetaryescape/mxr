@@ -11,6 +11,7 @@ import type {
   SnoozePreset,
 } from "../../shared/types";
 import type { PendingBinding } from "../lib/keymap";
+import type { BrowserDialogState } from "../dialogs/BrowserDialogs";
 import { objectStateReducer, updateField } from "./objectState";
 
 export type PendingMutationState = {
@@ -72,6 +73,10 @@ type DialogState = {
   reportOpen: boolean;
   reportTitle: string;
   reportContent: string;
+  /// Discriminated open-state for the read-only browser dialogs
+  /// (snippets / reply queue / sender / screener). `null` when none
+  /// are open. Action keys set this; Esc / Close clears it.
+  browserDialog: BrowserDialogState;
 };
 
 type RulesState = {
@@ -149,6 +154,7 @@ const INITIAL_DIALOG_STATE: DialogState = {
   reportOpen: false,
   reportTitle: "",
   reportContent: "",
+  browserDialog: null,
 };
 
 const INITIAL_RULES_STATE: RulesState = {
@@ -217,6 +223,7 @@ export function useDesktopAppState() {
     dialogState.attachmentDialogOpen ||
     dialogState.linksDialogOpen ||
     dialogState.reportOpen ||
+    dialogState.browserDialog !== null ||
     rulesState.ruleFormOpen ||
     accountsState.accountFormOpen;
 
@@ -233,6 +240,7 @@ export function useDesktopAppState() {
         attachmentDialogOpen: false,
         linksDialogOpen: false,
         reportOpen: false,
+        browserDialog: null,
       },
     });
     updateField(dispatchUiChrome, "onboardingOpen", false);
@@ -325,6 +333,9 @@ export function useDesktopAppState() {
     labelDialogOpen: dialogState.labelDialogOpen,
     setLabelDialogOpen: (updater: SetStateAction<boolean>) =>
       updateField(dispatchDialogState, "labelDialogOpen", updater),
+    browserDialog: dialogState.browserDialog,
+    setBrowserDialog: (updater: SetStateAction<BrowserDialogState>) =>
+      updateField(dispatchDialogState, "browserDialog", updater),
     selectedLabels: dialogState.selectedLabels,
     setSelectedLabels: (updater: SetStateAction<string[]>) =>
       updateField(dispatchDialogState, "selectedLabels", updater),

@@ -19,30 +19,19 @@ hero:
       variant: minimal
 ---
 
-<nav class="docs-nav" aria-label="Documentation">
-  <div class="docs-nav-inner">
-    <a href="/getting-started/install/">install</a>
-    <span class="docs-nav-sep">◈</span>
-    <a href="/getting-started/quick-start/">quick start</a>
-    <span class="docs-nav-sep">◈</span>
-    <a href="/guides/why-mxr/">guides</a>
-    <span class="docs-nav-sep">◈</span>
-    <a href="/reference/cli/">cli</a>
-    <span class="docs-nav-sep">◈</span>
-    <a href="/reference/tui/">tui</a>
-    <span class="docs-nav-sep">◈</span>
-    <a href="/guides/for-agents/">for agents</a>
-    <span class="docs-nav-sep">◈</span>
-    <a href="/guides/architecture/">architecture</a>
-    <span class="docs-nav-sep">◈</span>
-    <a href="/guides/analytics/">analytics</a>
-  </div>
-</nav>
-
-<div class="bullet-strip" aria-hidden="true">
-<div>
-<span>Gmail</span><span class="bullet">◈</span><span>IMAP</span><span class="bullet">◈</span><span>SMTP</span><span class="bullet">◈</span><span>Fastmail</span><span class="bullet">◈</span><span>Migadu</span><span class="bullet">◈</span><span>Proton Bridge</span><span class="bullet">◈</span><span>Custom adapters</span><span class="bullet">◈</span><span>Gmail</span><span class="bullet">◈</span><span>IMAP</span><span class="bullet">◈</span><span>SMTP</span><span class="bullet">◈</span><span>Fastmail</span><span class="bullet">◈</span><span>Migadu</span><span class="bullet">◈</span><span>Proton Bridge</span><span class="bullet">◈</span><span>Custom adapters</span><span class="bullet">◈</span>
+<div class="hero-pronounce" aria-label="Pronunciation">
+  <code>mxr</code> <span class="hero-pronounce-sep">◈</span> say it <strong>Mixer</strong>
 </div>
+
+<div class="hero-install" aria-label="Install one-liner">
+  <span class="hero-install-prompt">$</span>
+  <code class="hero-install-cmd" id="install-cmd">brew install planetaryescape/mxr/mxr</code>
+  <button class="hero-install-copy" type="button" data-copy-target="install-cmd" aria-label="Copy install command">copy</button>
+  <span class="hero-install-alt">cargo and binary methods <a href="#install">below</a></span>
+</div>
+
+<div class="provider-line" aria-label="Supported providers">
+  <span>works with</span> <strong>Gmail</strong>, any <strong>IMAP</strong> server, any <strong>SMTP</strong> relay <span class="provider-line-sep">◈</span> <span>tested with</span> Fastmail, Migadu, Proton Bridge
 </div>
 
 <div class="landing-section install-section" id="install" data-folio="01">
@@ -54,16 +43,15 @@ hero:
 
 <div class="install-flow">
   <div class="install-method">
-    <h4>Homebrew</h4>
+    <h3>Homebrew</h3>
 
 ```bash
-brew tap planetaryescape/mxr
-brew install mxr
+brew install planetaryescape/mxr/mxr
 ```
 
   </div>
   <div class="install-method">
-    <h4>Cargo</h4>
+    <h3>Cargo</h3>
 
 ```bash
 cargo install --git \
@@ -73,7 +61,7 @@ cargo install --git \
 
   </div>
   <div class="install-method">
-    <h4>Binaries</h4>
+    <h3>Binaries</h3>
 
 <p>macOS Intel + Apple Silicon · Linux x86_64</p>
 
@@ -125,7 +113,6 @@ cargo install --git \
 <div class="search-event">
   <span class="search-prompt">$</span>
   <span><span class="search-cmd">mxr search </span><span class="search-string">"from:supplier subject:contract has:attachment after:2019"</span></span>
-  <span class="search-timing">12 ms ◈ 47 213 indexed</span>
 </div>
 
 <div class="search-results">
@@ -162,7 +149,7 @@ cargo install --git \
 mxr storage --by sender --limit 20
 mxr stale --mine --older-than-days 14
 mxr wrapped --year 2025
-mxr search "subject:invoice" --format json | jq '.[].from.email' | sort -u
+mxr search "subject:invoice" --format json | jq -r '.[].from' | sort -u
 ```
 
 </div>
@@ -191,24 +178,45 @@ mxr search "subject:invoice" --format json | jq '.[].from.email' | sort -u
     <div class="agent-prompt">I'm prepping for my 1-on-1 with Sarah. Pull all email threads between us from the last two weeks, summarise the open items, draft an agenda.</div>
     <div class="agent-runs">
       <code>mxr search "from:sarah OR to:sarah after:2026-04-23" --format json</code>
-      <code>mxr compose --to sarah --draft</code>
+      <code>mxr draft-assist &lt;thread-id&gt; "1:1 agenda"</code>
     </div>
-    <div class="agent-result">7 threads, 4 with open asks ◈<span class="agent-ok">draft saved to ~/.mxr/drafts/agenda.md.</span></div>
+    <div class="agent-result">7 threads, 4 with open asks ◈<span class="agent-ok">draft body generated.</span></div>
   </div>
 
   <div class="agent-turn">
     <div class="agent-label">◈ prompt</div>
     <div class="agent-prompt">Find every CI failure email from last week. Cross-reference with my recent commits and archive the ones whose tests have since been fixed.</div>
     <div class="agent-runs">
-      <code>mxr search "from:ci@github.com after:2026-04-30" --format json</code>
+      <code>mxr search "from:ci@github.com after:2026-04-30" --format ids</code>
       <code>git log --since=1.week --pretty=%H %s</code>
-      <code>mxr archive --search "&lt;ids&gt;"</code>
+      <code>echo &lt;ids&gt; | xargs mxr archive --yes</code>
     </div>
     <div class="agent-result">23 failures, 18 since fixed ◈<span class="agent-ok">18 archived, 5 left for review.</span></div>
   </div>
 </div>
 
-<p>This works because mxr isn't a GUI with an API bolted on. The CLI <strong>is</strong> the interface. Every operation supports <code>--format json</code>, every mutation has a <code>--dry-run</code>, every search composes with the rest of your shell. Your agent doesn't need browser automation, screen scraping, or a provider-specific SDK.</p>
+<p>This works because mxr isn't a GUI with an API bolted on. The CLI <strong>is</strong> the interface. Most reads return <code>--format json</code>, mutations support <code>--dry-run</code> and accept piped IDs, and every command composes with the rest of your shell. Your agent doesn't need browser automation, screen scraping, or a provider-specific SDK.</p>
+
+<div class="agent-json-peek">
+  <div class="agent-json-label">◈ what your agent sees</div>
+
+```bash
+mxr search "from:sarah after:2026-04-23" --format json | jq '.[0]'
+```
+
+```json
+{
+  "message_id": "01JFQ7K3M2X8N5R0VYZA9CTBPE",
+  "from": "Sarah Chen <sarah@example.com>",
+  "subject": "1:1 prep, Friday",
+  "date": "2026-04-30T15:42:11+00:00",
+  "read": false,
+  "starred": false,
+  "score": 12.4
+}
+```
+
+</div>
 
 <p><a href="/guides/agent-skill/">Install the mxr skill →</a></p>
 
@@ -278,9 +286,8 @@ mxr search "subject:invoice" --format json | jq '.[].from.email' | sort -u
     <p>The TUI, CLI, and HTTP bridge are clients of the same process. Sync, indexing, rules, snoozing, and analytics self-healing run in the background. Close the TUI; nothing stops.</p>
   </div>
   <div class="principle-margin">
-    <pre><code>{`mxr daemon &
-mxr             # TUI
-mxr search ... # CLI
+    <pre><code>{`mxr             # TUI (auto-starts daemon)
+mxr search ...  # CLI
 mxr web         # HTTP bridge`}</code></pre>
   </div>
 </div>
@@ -343,8 +350,8 @@ L     open links picker`}</code></pre>
 
 <div class="principle principle-flip">
   <div class="principle-text">
-    <h3>Pipeable everything.</h3>
-    <p>--format json, --format jsonl, --format ids, --dry-run, --search for batch ops. Every command emits structured output by default when piped. Compose mxr with the rest of your shell.</p>
+    <h3>Pipeable by default.</h3>
+    <p>Reads support <code>--format json|jsonl|ids|csv|table</code>. Mutations support <code>--dry-run</code>, <code>--search</code> for batch ops, and accept piped IDs from stdin. See the <a href="/guides/automation-contract/">automation contract</a> for per-command capabilities.</p>
   </div>
   <div class="principle-margin">
     <pre><code>{`mxr search "from:noreply" --format ids \\
@@ -371,7 +378,7 @@ mxr stale --mine --format json \\
     </div>
     <div class="surface-body">
       <p>Vim-native keys, Gmail-style chords. Six top-level screens including a full Analytics view (storage, contacts, stale, response-time, subscriptions, wrapped). Compose in $EDITOR.</p>
-      <pre class="surface-snippet"><code>$ mxr</code></pre>
+      <pre class="surface-snippet"><code>mxr</code></pre>
     </div>
   </div>
 
@@ -382,7 +389,7 @@ mxr stale --mine --format json \\
     </div>
     <div class="surface-body">
       <p>Every TUI action has a CLI equivalent. Pipe through jq, xargs, anything Unix. Use it from a shell, a Makefile, your prompt, your editor, your agent.</p>
-      <pre class="surface-snippet"><code>{`$ mxr archive --search "from:noreply older:30d" --dry-run
+      <pre class="surface-snippet"><code>{`mxr archive --search "from:noreply older:30d" --dry-run
 would archive 142 messages.`}</code></pre>
     </div>
   </div>
@@ -394,9 +401,9 @@ would archive 142 messages.`}</code></pre>
     </div>
     <div class="surface-body">
       <p><code>mxr web</code> exposes the daemon over HTTP and WebSocket. Bearer-token auth, OpenAPI-described, generates typed SDK clients. Use the browser app we ship, or build your own client against the same API.</p>
-      <pre class="surface-snippet"><code>{`$ curl -H "Authorization: Bearer $TOKEN" \\
-    http://127.0.0.1:7777/api/v1/mail/threads/recent
-{"threads": [...]}`}</code></pre>
+      <pre class="surface-snippet"><code>{`curl -H "Authorization: Bearer $TOKEN" \\
+    "http://127.0.0.1:7777/api/v1/mail/search?q=is:unread"
+{"results": [...]}`}</code></pre>
     </div>
   </div>
 
@@ -561,3 +568,5 @@ would archive 142 messages.`}</code></pre>
 </div>
 
 </div>
+
+<script src="/install-copy.js" is:inline></script>

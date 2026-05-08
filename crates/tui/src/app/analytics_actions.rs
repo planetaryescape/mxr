@@ -16,9 +16,7 @@ impl App {
                 self.mailbox.pending_preview_read = None;
                 self.screen = Screen::Analytics;
                 let view = self.analytics.view;
-                if !self.analytics.has_data_for_view(view)
-                    || !self.analytics.cache_is_fresh(view)
-                {
+                if !self.analytics.has_data_for_view(view) || !self.analytics.cache_is_fresh(view) {
                     self.analytics.refresh_pending = true;
                 }
             }
@@ -28,9 +26,7 @@ impl App {
                 self.analytics.view = view;
                 self.analytics.selected_index = 0;
                 self.analytics.error = None;
-                if !self.analytics.has_data_for_view(view)
-                    || !self.analytics.cache_is_fresh(view)
-                {
+                if !self.analytics.has_data_for_view(view) || !self.analytics.cache_is_fresh(view) {
                     self.analytics.refresh_pending = true;
                 }
             }
@@ -43,9 +39,7 @@ impl App {
                 // destination view has no cached data or its cache has
                 // gone stale. Manual `r` and filter changes still
                 // refresh unconditionally.
-                if !self.analytics.has_data_for_view(next)
-                    || !self.analytics.cache_is_fresh(next)
-                {
+                if !self.analytics.has_data_for_view(next) || !self.analytics.cache_is_fresh(next) {
                     self.analytics.refresh_pending = true;
                 }
             }
@@ -54,9 +48,7 @@ impl App {
                 self.analytics.view = prev;
                 self.analytics.selected_index = 0;
                 self.analytics.error = None;
-                if !self.analytics.has_data_for_view(prev)
-                    || !self.analytics.cache_is_fresh(prev)
-                {
+                if !self.analytics.has_data_for_view(prev) || !self.analytics.cache_is_fresh(prev) {
                     self.analytics.refresh_pending = true;
                 }
             }
@@ -116,11 +108,11 @@ impl App {
             }
             Action::ToggleResponseTimeDirection => {
                 use mxr_core::types::ResponseTimeDirection;
-                self.analytics.response_time_direction = match self.analytics.response_time_direction
-                {
-                    ResponseTimeDirection::IReplied => ResponseTimeDirection::TheyReplied,
-                    ResponseTimeDirection::TheyReplied => ResponseTimeDirection::IReplied,
-                };
+                self.analytics.response_time_direction =
+                    match self.analytics.response_time_direction {
+                        ResponseTimeDirection::IReplied => ResponseTimeDirection::TheyReplied,
+                        ResponseTimeDirection::TheyReplied => ResponseTimeDirection::IReplied,
+                    };
                 self.analytics.refresh_pending = true;
             }
             Action::ToggleSubscriptionsRank => {
@@ -216,8 +208,7 @@ impl App {
                 }
             },
             AnalyticsView::StaleThreads => {
-                let Some(row) = self.analytics.stale_rows.get(self.analytics.selected_index)
-                else {
+                let Some(row) = self.analytics.stale_rows.get(self.analytics.selected_index) else {
                     return;
                 };
                 // Open the latest message in the thread; the runtime's
@@ -438,16 +429,14 @@ fn filter_modal_for_view(state: &AnalyticsState) -> AnalyticsFilterModalState {
     use crate::app::AnalyticsView;
     let fields = match state.view {
         AnalyticsView::Storage => match state.storage_mode {
-            StorageMode::Breakdown => vec![
-                AnalyticsFilterField {
-                    label: "group_by (sender|mimetype|label)".into(),
-                    value: match state.storage_group_by {
-                        mxr_core::types::StorageGroupBy::Sender => "sender".into(),
-                        mxr_core::types::StorageGroupBy::Mimetype => "mimetype".into(),
-                        mxr_core::types::StorageGroupBy::Label => "label".into(),
-                    },
+            StorageMode::Breakdown => vec![AnalyticsFilterField {
+                label: "group_by (sender|mimetype|label)".into(),
+                value: match state.storage_group_by {
+                    mxr_core::types::StorageGroupBy::Sender => "sender".into(),
+                    mxr_core::types::StorageGroupBy::Mimetype => "mimetype".into(),
+                    mxr_core::types::StorageGroupBy::Label => "label".into(),
                 },
-            ],
+            }],
             StorageMode::LargestMessages => vec![
                 AnalyticsFilterField {
                     label: "limit".into(),
@@ -608,11 +597,7 @@ fn apply_filter_modal_fields(
                 other => return Err(format!("invalid direction: {other}")),
             };
             let cp = get(1).trim();
-            state.response_time_counterparty = if cp.is_empty() {
-                None
-            } else {
-                Some(cp.into())
-            };
+            state.response_time_counterparty = if cp.is_empty() { None } else { Some(cp.into()) };
             state.response_time_since_days = parse_optional_u32(get(2), "since_days")?;
         }
         AnalyticsView::Subscriptions => {

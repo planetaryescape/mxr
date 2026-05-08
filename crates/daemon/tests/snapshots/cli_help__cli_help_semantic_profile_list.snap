@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List known semantic profiles
+
+Usage: mxr semantic profile list
+
+Options:
+  -h, --help  Print help

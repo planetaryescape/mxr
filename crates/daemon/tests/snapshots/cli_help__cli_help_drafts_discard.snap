@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 13
+expression: stdout
+---
+Permanently delete a draft. Use this when a recovered draft is no longer wanted instead of leaving it in the drafts list
+
+Usage: mxr drafts discard <DRAFT_ID>
+
+Arguments:
+  <DRAFT_ID>  Draft ID to delete
+
+Options:
+  -h, --help  Print help

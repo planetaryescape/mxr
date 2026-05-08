@@ -2,6 +2,12 @@
 
 > A local-first, open-source, keyboard-native email client for terminal users, built around a daemon, a clean provider-agnostic model, and a programmable core.
 
+## Name
+
+- Write: `mxr` (lowercase, in code-font when inline).
+- Package / repo / binary: `mxr`.
+- Say it: "Mixer". When speaking about the project out loud or generating spoken-language audio, pronounce it "Mixer", not "em-ex-arr".
+
 ## Language & Stack
 
 - **Language**: Rust (edition 2021)

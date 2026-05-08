@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT sent_message_id as \"sent_message_id!\",\n                      account_id as \"account_id!\",\n                      remind_at as \"remind_at!\",\n                      set_at as \"set_at!\",\n                      triggered_at,\n                      cancelled_at\n               FROM auto_reminders\n               WHERE triggered_at IS NULL\n                 AND cancelled_at IS NULL\n                 AND remind_at <= ?\n               ORDER BY remind_at ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "sent_message_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "remind_at!",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "set_at!",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "triggered_at",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cancelled_at",
+        "ordinal": 5,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "60c08f3d561c56cc86ce7cad79f7ac4a6d3fc463d76721ef8a991c4d120a93a3"
+}

@@ -7,8 +7,8 @@ Show persisted event history
 Usage: mxr history [OPTIONS]
 
 Options:
-      --category <CATEGORY>  
-      --level <LEVEL>        
+      --category <CATEGORY>
+      --level <LEVEL>
       --limit <LIMIT>        [default: 50]
       --format <FORMAT>      [possible values: table, json, jsonl, csv, ids]
   -h, --help                 Print help

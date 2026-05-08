@@ -4,12 +4,13 @@ expression: stdout
 ---
 Unsnooze a message
 
-Usage: mxr unsnooze [OPTIONS] [MESSAGE_ID]
+Usage: mxr unsnooze [OPTIONS] [MESSAGE_ID]...
 
 Arguments:
-  [MESSAGE_ID]  
+  [MESSAGE_ID]...
 
 Options:
-      --all      Unsnooze all
-      --dry-run  Show which messages would be unsnoozed without performing the mutation
-  -h, --help     Print help
+      --all              Unsnooze all
+      --dry-run          Show which messages would be unsnoozed without performing the mutation
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

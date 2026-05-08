@@ -37,6 +37,8 @@ struct RuntimeTasks {
     semantic_worker: ParkingMutex<Option<JoinHandle<()>>>,
     sync_loops: ParkingMutex<HashMap<AccountId, JoinHandle<()>>>,
     snooze_loop: ParkingMutex<Option<JoinHandle<()>>>,
+    auto_reminders_loop: ParkingMutex<Option<JoinHandle<()>>>,
+    scheduled_sends_loop: ParkingMutex<Option<JoinHandle<()>>>,
     reply_pair_reconciler: ParkingMutex<Option<JoinHandle<()>>>,
     contacts_refresher: ParkingMutex<Option<JoinHandle<()>>>,
     startup_maintenance: ParkingMutex<Option<JoinHandle<()>>>,
@@ -62,6 +64,14 @@ impl RuntimeTasks {
 
     fn set_snooze_loop(&self, handle: JoinHandle<()>) {
         *self.snooze_loop.lock() = Some(handle);
+    }
+
+    fn set_auto_reminders_loop(&self, handle: JoinHandle<()>) {
+        *self.auto_reminders_loop.lock() = Some(handle);
+    }
+
+    fn set_scheduled_sends_loop(&self, handle: JoinHandle<()>) {
+        *self.scheduled_sends_loop.lock() = Some(handle);
     }
 
     fn set_reply_pair_reconciler(&self, handle: JoinHandle<()>) {
@@ -101,6 +111,18 @@ impl RuntimeTasks {
                 handle,
             });
         }
+        if let Some(handle) = self.auto_reminders_loop.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "auto_reminders_loop".to_string(),
+                handle,
+            });
+        }
+        if let Some(handle) = self.scheduled_sends_loop.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "scheduled_sends_loop".to_string(),
+                handle,
+            });
+        }
         if let Some(handle) = self.reply_pair_reconciler.lock().take() {
             handles.push(NamedTaskHandle {
                 name: "reply_pair_reconciler".to_string(),
@@ -137,6 +159,33 @@ impl RuntimeTasks {
     }
 }
 
+/// Build the configured LLM provider. Returns a `NoopProvider` when
+/// LLM is disabled in config, or an `OpenAiCompatibleProvider`
+/// pointed at the configured `base_url` (Ollama / LM Studio / OpenAI
+/// / etc.) when enabled. The API key is read from `api_key_env` —
+/// keeping the secret out of the config file itself.
+fn build_llm_provider(config: &mxr_config::LlmConfig) -> Arc<dyn mxr_llm::LlmProvider> {
+    if !config.enabled {
+        return Arc::new(mxr_llm::NoopProvider);
+    }
+    let api_key = if config.api_key_env.is_empty() {
+        None
+    } else {
+        std::env::var(&config.api_key_env)
+            .ok()
+            .filter(|s| !s.is_empty())
+    };
+    Arc::new(mxr_llm::OpenAiCompatibleProvider::new(
+        mxr_llm::OpenAiCompatibleConfig {
+            base_url: config.base_url.clone(),
+            api_key,
+            model: config.model.clone(),
+            context_window: config.context_window,
+            request_timeout: std::time::Duration::from_secs(config.request_timeout_secs),
+        },
+    ))
+}
+
 /// Key for the in-memory `Wrapped` summary cache. Disambiguates by
 /// account scope (`None` = "all accounts"), the requested time
 /// window in unix seconds, and the human label (so "year-to-date"
@@ -162,6 +211,11 @@ pub struct AppState {
     pub store: Arc<Store>,
     pub search: SearchServiceHandle,
     pub semantic: SemanticServiceHandle,
+    /// LLM provider for thread summarisation and draft assist. Always
+    /// present; defaults to `NoopProvider` when LLM is disabled in
+    /// config so callers can return `LlmDisabled` without `Option`
+    /// gymnastics.
+    pub llm: Arc<dyn mxr_llm::LlmProvider>,
     pub sync_engine: Arc<SyncEngine>,
     /// Account-owned address cache. SyncEngine consults this for direction
     /// classification; handlers refresh it after every mutation through
@@ -250,10 +304,13 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
+        let llm = build_llm_provider(&config.llm);
+
         Ok(Self {
             store,
             search,
             semantic,
+            llm,
             sync_engine,
             account_addresses,
             runtime: RwLock::new(ProviderRuntime {
@@ -694,6 +751,14 @@ impl AppState {
         self.runtime_tasks.set_snooze_loop(handle);
     }
 
+    pub fn register_auto_reminders_loop(&self, handle: JoinHandle<()>) {
+        self.runtime_tasks.set_auto_reminders_loop(handle);
+    }
+
+    pub fn register_scheduled_sends_loop(&self, handle: JoinHandle<()>) {
+        self.runtime_tasks.set_scheduled_sends_loop(handle);
+    }
+
     pub fn register_startup_maintenance(&self, handle: JoinHandle<()>) {
         self.runtime_tasks.set_startup_maintenance(handle);
     }
@@ -950,10 +1015,13 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
+        let llm = build_llm_provider(&config.llm);
+
         Ok(Self {
             store,
             search,
             semantic,
+            llm,
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             runtime: RwLock::new(ProviderRuntime {
@@ -996,10 +1064,13 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
+        let llm = build_llm_provider(&config.llm);
+
         Ok(Self {
             store,
             search,
             semantic,
+            llm,
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
             runtime: RwLock::new(ProviderRuntime {
@@ -1067,11 +1138,14 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
+        let llm = build_llm_provider(&mxr_config::LlmConfig::default());
+
         Ok((
             Self {
                 store,
                 search,
                 semantic,
+                llm,
                 sync_engine,
                 account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
                 runtime: RwLock::new(ProviderRuntime {

@@ -316,6 +316,96 @@ pub enum Request {
         message_id: MessageId,
     },
     ListSnoozed,
+    /// Toggle the reply-later flag on a message. Local-only metadata —
+    /// never roundtrips to the provider. Setting a flag that is already
+    /// set refreshes the timestamp, surfacing the message to the top of
+    /// the queue.
+    SetReplyLater {
+        message_id: MessageId,
+        flag: bool,
+    },
+    /// List messages currently flagged for reply-later, ordered by most
+    /// recently flagged first.
+    ListReplyQueue,
+    /// Schedule a reminder for an outbound message: "remind me if no
+    /// reply by `remind_at`." Re-sending overwrites any prior reminder
+    /// on the same message.
+    SetAutoReminder {
+        sent_message_id: MessageId,
+        remind_at: chrono::DateTime<chrono::Utc>,
+    },
+    /// Cancel a pending reminder.
+    CancelAutoReminder {
+        sent_message_id: MessageId,
+    },
+    /// Schedule an existing draft to be sent at `send_at`. The flusher
+    /// loop scans due rows on a 60-second cadence and runs them through
+    /// the same `send_stored_draft` pipeline that interactive sends use.
+    ScheduleSend {
+        draft_id: DraftId,
+        send_at: chrono::DateTime<chrono::Utc>,
+    },
+    /// Cancel a pending scheduled send (the draft itself is preserved).
+    CancelScheduledSend {
+        draft_id: DraftId,
+    },
+    /// List all snippets, alphabetically by name.
+    ListSnippets,
+    /// Create or update a snippet by name.
+    SetSnippet {
+        name: String,
+        body: String,
+        vars: Vec<String>,
+    },
+    /// Delete a snippet by name. No-op if absent.
+    DeleteSnippet {
+        name: String,
+    },
+    /// Per-sender relationship aggregates: volume, response cadence,
+    /// open threads. Returns `None` (via `Ok`/`SenderProfileData` with
+    /// `present=false`) if the contact is unknown.
+    GetSenderProfile {
+        account_id: AccountId,
+        email: String,
+    },
+    /// List senders who've sent inbound messages but don't have a
+    /// screener decision yet.
+    ListScreenerQueue {
+        account_id: AccountId,
+        #[serde(default = "default_screener_limit")]
+        limit: u32,
+    },
+    /// All screener decisions for an account.
+    ListScreenerDecisions {
+        account_id: AccountId,
+    },
+    /// Set or update the screener disposition for one sender.
+    SetScreenerDecision {
+        account_id: AccountId,
+        sender_email: String,
+        disposition: ScreenerDispositionData,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        route_label: Option<String>,
+    },
+    /// Clear an existing screener decision (returns the sender to
+    /// "no decision yet" state).
+    ClearScreenerDecision {
+        account_id: AccountId,
+        sender_email: String,
+    },
+    /// Generate a 2-3 sentence summary of a thread using the configured
+    /// LLM. Returns `LlmDisabled` error when LLM is not configured.
+    SummarizeThread {
+        thread_id: ThreadId,
+    },
+    /// Generate a draft reply grounded on the user's prior sent
+    /// messages and the current thread context. Caller is responsible
+    /// for opening the result in `$EDITOR` for review — the result is
+    /// never auto-sent.
+    DraftAssist {
+        thread_id: ThreadId,
+        instruction: String,
+    },
     PrepareReply {
         message_id: MessageId,
         reply_all: bool,
@@ -340,6 +430,17 @@ pub enum Request {
         draft: Draft,
     },
     ListDrafts,
+    /// List drafts that look orphaned mid-send: status `'sending'` with
+    /// a stale `last_heartbeat_at` (or `status_updated_at` fallback)
+    /// older than 1h. Surfaces what the daemon-startup recovery loop
+    /// would also auto-reset.
+    ListOrphanedDrafts,
+    /// Force-reset an orphaned `'sending'` draft back to `'draft'` so
+    /// the user can retry the send. Idempotent: already-`'draft'` rows
+    /// return the no-op variant. `'sent'` rows refuse.
+    ResetOrphanedDraft {
+        draft_id: DraftId,
+    },
     ExportThread {
         thread_id: ThreadId,
         format: ExportFormat,
@@ -384,6 +485,22 @@ impl Request {
             | Self::Snooze { .. }
             | Self::Unsnooze { .. }
             | Self::ListSnoozed
+            | Self::SetReplyLater { .. }
+            | Self::ListReplyQueue
+            | Self::SetAutoReminder { .. }
+            | Self::CancelAutoReminder { .. }
+            | Self::ScheduleSend { .. }
+            | Self::CancelScheduledSend { .. }
+            | Self::ListSnippets
+            | Self::SetSnippet { .. }
+            | Self::DeleteSnippet { .. }
+            | Self::GetSenderProfile { .. }
+            | Self::ListScreenerQueue { .. }
+            | Self::ListScreenerDecisions { .. }
+            | Self::SetScreenerDecision { .. }
+            | Self::ClearScreenerDecision { .. }
+            | Self::SummarizeThread { .. }
+            | Self::DraftAssist { .. }
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }
             | Self::SendDraft { .. }
@@ -392,6 +509,8 @@ impl Request {
             | Self::DeleteDraft { .. }
             | Self::SaveDraftToServer { .. }
             | Self::ListDrafts
+            | Self::ListOrphanedDrafts
+            | Self::ResetOrphanedDraft { .. }
             | Self::ExportThread { .. }
             | Self::ExportSearch { .. } => IpcCategory::CoreMail,
             Self::ListAccounts
@@ -727,6 +846,33 @@ pub enum ResponseData {
     SnoozedMessages {
         snoozed: Vec<Snoozed>,
     },
+    /// List of messages currently flagged for reply-later.
+    ReplyQueue {
+        messages: Vec<Envelope>,
+    },
+    Snippets {
+        snippets: Vec<SnippetData>,
+    },
+    SnippetData {
+        snippet: SnippetData,
+    },
+    SenderProfile {
+        profile: Option<SenderProfileData>,
+    },
+    ScreenerQueue {
+        entries: Vec<ScreenerQueueEntryData>,
+    },
+    ScreenerDecisions {
+        decisions: Vec<ScreenerDecisionData>,
+    },
+    ThreadSummary {
+        text: String,
+        model: String,
+    },
+    DraftSuggestion {
+        body: String,
+        model: String,
+    },
     ExportResult {
         content: String,
     },
@@ -874,6 +1020,14 @@ impl ResponseData {
             | Self::ForwardContext { .. }
             | Self::Drafts { .. }
             | Self::SnoozedMessages { .. }
+            | Self::ReplyQueue { .. }
+            | Self::Snippets { .. }
+            | Self::SnippetData { .. }
+            | Self::SenderProfile { .. }
+            | Self::ScreenerQueue { .. }
+            | Self::ScreenerDecisions { .. }
+            | Self::ThreadSummary { .. }
+            | Self::DraftSuggestion { .. }
             | Self::ExportResult { .. }
             | Self::MutationResult { .. }
             | Self::SendReceipt { .. } => IpcCategory::CoreMail,
@@ -1044,6 +1198,124 @@ pub struct AccountSyncStatus {
     pub healthy: bool,
 }
 
+/// Default limit for `ListScreenerQueue`.
+const fn default_screener_limit() -> u32 {
+    100
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ScreenerDispositionData {
+    Allow,
+    Deny,
+    Feed,
+    PaperTrail,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ScreenerDecisionData {
+    pub account_id: AccountId,
+    pub sender_email: String,
+    pub disposition: ScreenerDispositionData,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_label: Option<String>,
+    pub decided_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ScreenerQueueEntryData {
+    pub sender_email: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub message_count: u32,
+    pub latest_subject: String,
+    pub latest_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Severity of a doctor finding. Drives whether the CLI exits non-zero
+/// (`Error`) and how the TUI styles the entry.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DoctorFindingSeverity {
+    #[default]
+    Info,
+    Warning,
+    Error,
+}
+
+/// Coarse category of a doctor finding. Lets clients group related
+/// issues without parsing free text.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DoctorFindingCategory {
+    #[default]
+    Generic,
+    Sync,
+    OAuth,
+    Network,
+    SearchIndex,
+    Semantic,
+    SqliteLock,
+    Storage,
+    Daemon,
+}
+
+/// One actionable issue identified by `mxr doctor`. Combines a short
+/// human-readable message with optional shell commands the user can
+/// run to remediate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DoctorFinding {
+    pub category: DoctorFindingCategory,
+    pub severity: DoctorFindingSeverity,
+    pub message: String,
+    /// Shell-runnable suggestions the user can copy-paste. Empty when
+    /// no automated remediation is available.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remediation: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SenderProfileData {
+    pub account_id: AccountId,
+    pub email: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub first_seen_at: chrono::DateTime<chrono::Utc>,
+    pub last_seen_at: chrono::DateTime<chrono::Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_inbound_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_outbound_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub total_inbound: u32,
+    pub total_outbound: u32,
+    pub replied_count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cadence_days_p50: Option<f64>,
+    pub is_list_sender: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_id: Option<String>,
+    pub open_thread_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SnippetData {
+    pub name: String,
+    pub body: String,
+    #[serde(default)]
+    pub vars: Vec<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DoctorReport {
@@ -1096,6 +1368,13 @@ pub struct DoctorReport {
     pub recent_sync_events: Vec<EventLogEntry>,
     pub recent_error_logs: Vec<String>,
     pub recommended_next_steps: Vec<String>,
+    /// Structured findings: per-issue category, severity, and
+    /// shell-runnable remediation steps. Replaces the freeform
+    /// `recommended_next_steps` for clients that want to reason about
+    /// individual problems (TUI, future agent integrations). The
+    /// freeform field is preserved for backwards-compatibility.
+    #[serde(default)]
+    pub findings: Vec<DoctorFinding>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1396,6 +1675,12 @@ pub enum DaemonEvent {
     MessageUnsnoozed {
         message_id: MessageId,
     },
+    /// A pending auto-reminder fired because its window elapsed without
+    /// a reply being detected. Carries the original outbound message
+    /// the user wanted to be nudged about.
+    ReminderTriggered {
+        sent_message_id: MessageId,
+    },
     LabelCountsUpdated {
         counts: Vec<LabelCount>,
     },
@@ -1441,6 +1726,7 @@ impl DaemonEvent {
             | Self::SyncError { .. }
             | Self::NewMessages { .. }
             | Self::MessageUnsnoozed { .. }
+            | Self::ReminderTriggered { .. }
             | Self::LabelCountsUpdated { .. } => IpcCategory::CoreMail,
             Self::OperationStarted { .. }
             | Self::OperationProgress { .. }

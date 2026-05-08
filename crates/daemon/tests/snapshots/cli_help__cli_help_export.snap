@@ -7,10 +7,10 @@ Export a thread or matching search results
 Usage: mxr export [OPTIONS] [THREAD_ID]
 
 Arguments:
-  [THREAD_ID]  
+  [THREAD_ID]
 
 Options:
-      --search <SEARCH>  
+      --search <SEARCH>
       --format <FORMAT>  [default: markdown]
-      --output <OUTPUT>  
+      --output <OUTPUT>
   -h, --help             Print help

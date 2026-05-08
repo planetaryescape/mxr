@@ -15,6 +15,7 @@ mod message_actions;
 mod modal_actions;
 mod mutation_actions;
 mod mutation_helpers;
+pub mod mutation_snapshot;
 mod recorder;
 mod rule_actions;
 mod runtime_helpers;
@@ -48,6 +49,9 @@ use throbber_widgets_tui::ThrobberState;
 use tui_textarea::TextArea;
 
 pub(in crate::app) use crate::ui::label_picker::LabelPickerMode;
+pub use mutation_snapshot::{
+    MutationId, MutationIdGenerator, MutationSnapshot, MutationSnapshotStore, QueuedMutation,
+};
 use state::PendingPreviewRead;
 pub use state::*;
 
@@ -138,6 +142,15 @@ pub struct PendingUndo {
     pub applied_at: std::time::Instant,
 }
 
+/// Pending `SetScreenerDecision` request queued by the screener
+/// modal. Drained by the runtime each tick.
+#[derive(Debug, Clone)]
+pub struct PendingScreenerDecision {
+    pub account_id: mxr_core::AccountId,
+    pub sender_email: String,
+    pub disposition: mxr_protocol::ScreenerDispositionData,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SidebarGroup {
     SystemLabels,
@@ -169,11 +182,32 @@ pub struct App {
     pub status_message: Option<String>,
     pub pending_mutation_count: usize,
     pub pending_mutation_status: Option<String>,
-    pub pending_mutation_queue: Vec<(Request, MutationEffect)>,
+    pub pending_mutation_queue: Vec<QueuedMutation>,
+    pub mutation_snapshots: MutationSnapshotStore,
+    pub mutation_id_generator: MutationIdGenerator,
     pub connection_state: ConnectionState,
     /// Set by the input handler when the user presses "retry now" while the
     /// connection-error modal is open. The IPC worker drains and clears it.
     pub pending_connection_retry: bool,
+    /// Set when the snippets browser modal opens; the runtime drains
+    /// this flag and dispatches a `Request::ListSnippets`.
+    pub pending_snippets_refresh: bool,
+    /// Set when the reply-later queue modal opens; the runtime drains
+    /// this flag and dispatches a `Request::ListReplyQueue`.
+    pub pending_reply_queue_refresh: bool,
+    /// Pending sender-view request — `Some((account_id, email))`
+    /// triggers a `Request::GetSenderProfile`. Drained by the runtime
+    /// after dispatch.
+    pub pending_sender_profile_request: Option<(mxr_core::AccountId, String)>,
+    /// Pending thread-summary request — `Some(thread_id)` triggers a
+    /// `Request::SummarizeThread`. Drained by the runtime.
+    pub pending_summary_request: Option<mxr_core::ThreadId>,
+    /// Pending screener queue refresh — set when the modal opens or
+    /// after a disposition lands so the runtime re-fetches the queue.
+    pub pending_screener_refresh: Option<mxr_core::AccountId>,
+    /// Queue of screener-decision IPCs to dispatch. Populated by the
+    /// disposition keypaths (a/d/f/p) and drained by the runtime.
+    pub pending_screener_decisions: Vec<PendingScreenerDecision>,
     /// Recent undoable mutation, if any. Cleared by `tick_pending_undo`
     /// once the daemon-side window expires.
     pub pending_undo: Option<PendingUndo>,
@@ -249,8 +283,16 @@ impl App {
             pending_mutation_count: 0,
             pending_mutation_status: None,
             pending_mutation_queue: Vec::new(),
+            mutation_snapshots: MutationSnapshotStore::default(),
+            mutation_id_generator: MutationIdGenerator::default(),
             connection_state: ConnectionState::Connecting,
             pending_connection_retry: false,
+            pending_snippets_refresh: false,
+            pending_reply_queue_refresh: false,
+            pending_sender_profile_request: None,
+            pending_summary_request: None,
+            pending_screener_refresh: None,
+            pending_screener_decisions: Vec::new(),
             pending_undo: None,
             recorder: ActionRecorder::new(1000),
             input: InputHandler::new(),

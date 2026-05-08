@@ -427,6 +427,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         recent_sync_events,
         recent_error_logs,
         recommended_next_steps,
+        findings: Vec::new(),
     })
 }
 
@@ -633,6 +634,21 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
                 } else {
                     for line in &report.recent_error_logs {
                         println!("  {line}");
+                    }
+                }
+            }
+
+            if !report.findings.is_empty() {
+                println!("\nFindings:");
+                for finding in &report.findings {
+                    let icon = match finding.severity {
+                        mxr_protocol::DoctorFindingSeverity::Error => "✗",
+                        mxr_protocol::DoctorFindingSeverity::Warning => "!",
+                        mxr_protocol::DoctorFindingSeverity::Info => "·",
+                    };
+                    println!("  {icon} [{:?}] {}", finding.category, finding.message);
+                    for step in &finding.remediation {
+                        println!("      → {step}");
                     }
                 }
             }
@@ -873,7 +889,10 @@ fn semantic_freshness_from_store(
 /// did real work and which were already healthy.
 fn print_rebuild_row(label: &str, count: u32, healthy_hint: &str) {
     if count == 0 {
-        println!("  {label}: {:>7}  ✓ {healthy_hint}", format_thousands(count));
+        println!(
+            "  {label}: {:>7}  ✓ {healthy_hint}",
+            format_thousands(count)
+        );
     } else {
         println!("  {label}: {:>7}  ← fixed", format_thousands(count));
     }
@@ -983,9 +1002,7 @@ impl ProgressPrinter {
                     message,
                     ..
                 } => {
-                    let total_str = total
-                        .map(|t| t.to_string())
-                        .unwrap_or_else(|| "?".into());
+                    let total_str = total.map(|t| t.to_string()).unwrap_or_else(|| "?".into());
                     if json_mode {
                         if let Ok(s) = serde_json::to_string(&event) {
                             let _ = writeln!(stderr, "{s}");

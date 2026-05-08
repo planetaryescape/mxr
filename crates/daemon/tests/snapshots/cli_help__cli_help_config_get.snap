@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Get a config value
+
+Usage: mxr config get <KEY>
+
+Arguments:
+  <KEY>  Dotted key path (e.g. general.sync_interval, appearance.theme)
+
+Options:
+  -h, --help  Print help

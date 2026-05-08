@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Switch to a semantic profile and rebuild its index
+
+Usage: mxr semantic profile use <PROFILE>
+
+Arguments:
+  <PROFILE>  [possible values: bge-small-en-v1.5, multilingual-e5-small, bge-m3]
+
+Options:
+  -h, --help  Print help

@@ -1,6 +1,80 @@
 use super::*;
 
 impl App {
+    /// Resolve the user's selection in the snooze panel into a wake-at
+    /// instant and queue the snooze mutation. Handles both the preset
+    /// rows and the trailing `Custom...` text-entry row. Custom-mode
+    /// parser errors stay in the modal so the user can fix them
+    /// without losing context.
+    pub(super) fn handle_snooze_panel_confirm(&mut self) {
+        // Custom-time text-entry path: parse the buffer and either snooze
+        // or surface the error in-modal.
+        if let Some(buffer) = self.modals.snooze_panel.custom_input.clone() {
+            let trimmed = buffer.trim();
+            if trimmed.is_empty() {
+                self.modals.snooze_panel.custom_error =
+                    Some("Type a time, e.g. `tomorrow 9am` or `in 2h`".into());
+                return;
+            }
+            match mxr_core::time_parse::parse_relative_time(trimmed, chrono::Utc::now()) {
+                Ok(wake_at) => {
+                    if let Some(env) = self.context_envelope() {
+                        let id = env.id.clone();
+                        self.queue_mutation(
+                            Request::Snooze {
+                                message_id: id,
+                                wake_at,
+                            },
+                            MutationEffect::StatusOnly(format!(
+                                "Snoozed until {}",
+                                wake_at
+                                    .with_timezone(&chrono::Local)
+                                    .format("%a %b %e %H:%M")
+                            )),
+                            "Snoozing...".into(),
+                        );
+                    }
+                    self.modals.snooze_panel.visible = false;
+                    self.modals.snooze_panel.custom_input = None;
+                    self.modals.snooze_panel.custom_error = None;
+                }
+                Err(e) => {
+                    self.modals.snooze_panel.custom_error = Some(e.to_string());
+                }
+            }
+            return;
+        }
+
+        // Preset list path. The trailing index is the "Custom..." entry
+        // — confirming it switches the panel into text-entry mode rather
+        // than queueing a snooze.
+        let selected = self.modals.snooze_panel.selected_index;
+        let presets = snooze_presets();
+        if selected >= presets.len() {
+            self.modals.snooze_panel.custom_input = Some(String::new());
+            self.modals.snooze_panel.custom_error = None;
+            return;
+        }
+        if let Some(env) = self.context_envelope() {
+            let wake_at = resolve_snooze_preset(presets[selected], &self.modals.snooze_config);
+            let id = env.id.clone();
+            self.queue_mutation(
+                Request::Snooze {
+                    message_id: id,
+                    wake_at,
+                },
+                MutationEffect::StatusOnly(format!(
+                    "Snoozed until {}",
+                    wake_at
+                        .with_timezone(&chrono::Local)
+                        .format("%a %b %e %H:%M")
+                )),
+                "Snoozing...".into(),
+            );
+        }
+        self.modals.snooze_panel.visible = false;
+    }
+
     pub fn apply_local_label_refs(
         &mut self,
         message_ids: &[MessageId],
@@ -179,11 +253,124 @@ impl App {
         request: Request,
         effect: MutationEffect,
         status_message: String,
-    ) {
-        self.pending_mutation_queue.push((request, effect));
+    ) -> MutationId {
+        let id = self.mutation_id_generator.next_id();
+        self.pending_mutation_queue.push(QueuedMutation {
+            id,
+            request,
+            effect,
+        });
         self.pending_mutation_count += 1;
         self.pending_mutation_status = Some(status_message.clone());
         self.status_message = Some(status_message);
+        id
+    }
+
+    /// Capture a snapshot of the state about to change, suitable for
+    /// reversing the optimistic effect on reconciliation failure.
+    ///
+    /// Snapshots are read from the current envelope state. Effects without
+    /// rollback semantics (`RefreshList`, `StatusOnly`, `SentSuccess`)
+    /// produce a `None` snapshot.
+    pub(super) fn snapshot_for_effect(&self, effect: &MutationEffect) -> MutationSnapshot {
+        match effect {
+            MutationEffect::UpdateFlags { message_id, .. } => {
+                let prior = self
+                    .message_flags(message_id)
+                    .map(|flags| (message_id.clone(), flags));
+                MutationSnapshot::Flags(prior.into_iter().collect())
+            }
+            MutationEffect::UpdateFlagsMany { updates } => {
+                let prior = updates
+                    .iter()
+                    .filter_map(|(id, _new)| {
+                        self.message_flags(id).map(|flags| (id.clone(), flags))
+                    })
+                    .collect();
+                MutationSnapshot::Flags(prior)
+            }
+            MutationEffect::ModifyLabels { message_ids, .. } => {
+                let prior = message_ids
+                    .iter()
+                    .filter_map(|id| {
+                        self.label_provider_ids_for(id)
+                            .map(|labels| (id.clone(), labels))
+                    })
+                    .collect();
+                MutationSnapshot::Labels(prior)
+            }
+            MutationEffect::RemoveFromList(_)
+            | MutationEffect::RemoveFromListMany(_)
+            | MutationEffect::RefreshList
+            | MutationEffect::StatusOnly(_)
+            | MutationEffect::SentSuccess { .. } => MutationSnapshot::None,
+        }
+    }
+
+    /// Apply the daemon's reconciliation-failed signal for a previously
+    /// queued mutation: replay the captured snapshot to restore the
+    /// affected envelopes' pre-mutation state. If the snapshot has been
+    /// evicted (capacity reached), this is a no-op — the higher-level
+    /// failure UX still surfaces the error and the next sync reconciles.
+    pub fn handle_mutation_reconciliation_failed(&mut self, id: MutationId) {
+        let Some(snapshot) = self.mutation_snapshots.take(id) else {
+            return;
+        };
+        match snapshot {
+            MutationSnapshot::Flags(prior) => {
+                for (message_id, flags) in prior {
+                    self.apply_local_flags(&message_id, flags);
+                }
+            }
+            MutationSnapshot::Labels(prior) => {
+                for (message_id, label_provider_ids) in prior {
+                    self.set_local_label_provider_ids(&message_id, &label_provider_ids);
+                }
+            }
+            MutationSnapshot::None => {}
+        }
+    }
+
+    fn label_provider_ids_for(&self, message_id: &MessageId) -> Option<Vec<String>> {
+        self.mailbox
+            .envelopes
+            .iter()
+            .chain(self.mailbox.all_envelopes.iter())
+            .chain(self.search.page.results.iter())
+            .chain(self.mailbox.viewed_thread_messages.iter())
+            .find(|envelope| &envelope.id == message_id)
+            .map(|envelope| envelope.label_provider_ids.clone())
+            .or_else(|| {
+                self.mailbox
+                    .viewing_envelope
+                    .as_ref()
+                    .filter(|envelope| &envelope.id == message_id)
+                    .map(|envelope| envelope.label_provider_ids.clone())
+            })
+    }
+
+    fn set_local_label_provider_ids(
+        &mut self,
+        message_id: &MessageId,
+        label_provider_ids: &[String],
+    ) {
+        for envelopes in [
+            &mut self.mailbox.envelopes,
+            &mut self.mailbox.all_envelopes,
+            &mut self.search.page.results,
+            &mut self.mailbox.viewed_thread_messages,
+        ] {
+            for envelope in envelopes {
+                if &envelope.id == message_id {
+                    envelope.label_provider_ids = label_provider_ids.to_vec();
+                }
+            }
+        }
+        if let Some(envelope) = self.mailbox.viewing_envelope.as_mut() {
+            if &envelope.id == message_id {
+                envelope.label_provider_ids = label_provider_ids.to_vec();
+            }
+        }
     }
 
     pub fn finish_pending_mutation(&mut self) {
@@ -346,12 +533,32 @@ impl App {
 
     pub(super) fn mutation_target_ids(&self) -> Vec<MessageId> {
         if !self.mailbox.selected_set.is_empty() {
-            self.mailbox.selected_set.iter().cloned().collect()
-        } else if let Some(env) = self.context_envelope() {
-            vec![env.id.clone()]
-        } else {
-            vec![]
+            return self.mailbox.selected_set.iter().cloned().collect();
         }
+        let Some(env) = self.context_envelope() else {
+            return vec![];
+        };
+        if self.mailbox.mail_list_mode != MailListMode::Threads {
+            return vec![env.id.clone()];
+        }
+        // In Threads mode, a row represents the whole conversation. Mutations
+        // operate on every visible message in that thread to match Gmail's
+        // thread-level archive/trash/star semantics.
+        let source: &[Envelope] = if self.screen == Screen::Search {
+            &self.search.page.results
+        } else {
+            &self.mailbox.envelopes
+        };
+        let tid = env.thread_id.clone();
+        let mut ids: Vec<MessageId> = source
+            .iter()
+            .filter(|candidate| candidate.thread_id == tid)
+            .map(|candidate| candidate.id.clone())
+            .collect();
+        if ids.is_empty() {
+            ids.push(env.id.clone());
+        }
+        ids
     }
 
     pub(super) fn clear_selection(&mut self) {
@@ -384,10 +591,16 @@ impl App {
                 status_message,
             });
         } else {
+            let snapshot = optimistic_effect
+                .as_ref()
+                .map(|effect| self.snapshot_for_effect(effect));
             if let Some(effect) = optimistic_effect.as_ref() {
                 self.apply_local_mutation_effect(effect);
             }
-            self.queue_mutation(request, effect, status_message);
+            let id = self.queue_mutation(request, effect, status_message);
+            if let Some(snapshot) = snapshot {
+                self.mutation_snapshots.insert(id, snapshot);
+            }
             self.clear_selection();
         }
     }

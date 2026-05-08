@@ -729,25 +729,73 @@ fn mask(value: &str) -> String {
 }
 
 pub fn draw_account_setup_onboarding(frame: &mut Frame, area: Rect, theme: &crate::theme::Theme) {
-    let popup = centered_rect(54, 28, area);
+    let popup = centered_rect(64, 60, area);
     frame.render_widget(Clear, popup);
 
+    let label_style = Style::default().fg(theme.accent).bold();
+    let dim_style = Style::default().fg(theme.text_secondary);
+
     let lines = vec![
-        Line::from("You need to set up an account first"),
-        Line::from("before you can use mxr."),
+        Line::from(Span::styled(
+            "Welcome to mxr",
+            Style::default().fg(theme.text_primary).bold(),
+        )),
         Line::from(""),
-        Line::from("Press Enter to continue to the account form."),
+        Line::from("Pick a setup path:"),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" d ", label_style),
+            Span::raw(" "),
+            Span::styled("Try the demo (in-memory fake provider)", dim_style),
+        ]),
+        Line::from(vec![
+            Span::styled("   ", Style::default()),
+            Span::styled("   ", Style::default()),
+            Span::styled(
+                "→ runs `mxr setup --demo` for you",
+                Style::default().fg(theme.text_muted),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" g ", label_style),
+            Span::raw(" "),
+            Span::styled("Connect a Gmail account", dim_style),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" i ", label_style),
+            Span::raw(" "),
+            Span::styled("Connect an IMAP / SMTP account", dim_style),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" Enter ", label_style),
+            Span::raw(" "),
+            Span::styled("Open the account form (defaults)", dim_style),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" Esc ", label_style),
+            Span::raw(" "),
+            Span::styled("Dismiss (you'll see this on next launch)", dim_style),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "All paths land in `mxr accounts`. The demo path is local-only.",
+            Style::default().fg(theme.text_muted),
+        )),
     ];
 
     let paragraph = Paragraph::new(lines)
         .block(
             Block::default()
-                .title(" Welcome ")
+                .title(" Setup ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.accent))
                 .style(Style::default().bg(theme.modal_bg)),
         )
-        .alignment(Alignment::Center)
+        .alignment(Alignment::Left)
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, popup);
 }
@@ -825,10 +873,33 @@ fn centered_rect(percent_x: u16, percent_y: u16, rect: Rect) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::{account_field_help_text, draw, server_result_hint};
+    use super::{account_field_help_text, draw, draw_account_setup_onboarding, server_result_hint};
     use crate::app::AccountsPageState;
     use mxr_test_support::render_to_string;
     use ratatui::layout::Rect;
+
+    #[test]
+    fn account_setup_onboarding_lists_three_paths() {
+        let snapshot = render_to_string(80, 28, |frame| {
+            draw_account_setup_onboarding(
+                frame,
+                Rect::new(0, 0, 80, 28),
+                &crate::theme::Theme::default(),
+            );
+        });
+        assert!(
+            snapshot.contains("Try the demo"),
+            "demo path must be listed; got:\n{snapshot}",
+        );
+        assert!(
+            snapshot.contains("Gmail"),
+            "Gmail path must be listed; got:\n{snapshot}",
+        );
+        assert!(
+            snapshot.contains("IMAP"),
+            "IMAP path must be listed; got:\n{snapshot}",
+        );
+    }
 
     fn fake_account(name: &str) -> mxr_protocol::AccountSummaryData {
         mxr_protocol::AccountSummaryData {

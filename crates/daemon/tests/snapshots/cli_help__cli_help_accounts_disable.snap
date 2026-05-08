@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Disable an account without deleting local cached mail
+
+Usage: mxr accounts disable [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>
+
+Options:
+      --format <FORMAT>  Output format for `accounts` (the no-subcommand listing) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

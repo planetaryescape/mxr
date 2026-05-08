@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Clear the reply-later flag on a message
+
+Usage: mxr replies remove <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>
+
+Options:
+  -h, --help  Print help

@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Show config file path
+
+Usage: mxr config path
+
+Options:
+  -h, --help  Print help

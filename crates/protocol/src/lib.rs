@@ -746,6 +746,7 @@ mod tests {
                         recent_sync_events: Vec::new(),
                         recent_error_logs: Vec::new(),
                         recommended_next_steps: Vec::new(),
+                        findings: Vec::new(),
                     },
                 },
                 IpcCategory::AdminMaintenance,

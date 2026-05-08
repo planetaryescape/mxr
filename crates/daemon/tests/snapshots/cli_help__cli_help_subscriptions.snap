@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List senders with unsubscribe support
+
+Usage: mxr subscriptions [OPTIONS]
+
+Options:
+      --limit <LIMIT>    [default: 200]
+      --rank             Rank by newsletter ROI: lowest open-rate first, ties broken by archived-unread descending. Highlights the lists most worth dropping
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

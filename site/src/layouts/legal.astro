@@ -2,11 +2,19 @@
 const { frontmatter } = Astro.props;
 ---
 <!doctype html>
-<html>
-<head><title>{frontmatter.title} - mxr</title></head>
-<body style="max-width: 800px; margin: 0 auto; padding: 2rem; font-family: system-ui;">
-<h1>{frontmatter.title}</h1>
-<slot />
-<p><a href="/">Back to docs</a></p>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0d0d0c" />
+  <title>{frontmatter.title} - mxr</title>
+</head>
+<body style="max-width: 800px; margin: 0 auto; padding: 2rem; font-family: system-ui; line-height: 1.6;">
+<a href="#main" style="position:absolute;left:-999px;top:auto;width:1px;height:1px;overflow:hidden;">Skip to content</a>
+<main id="main">
+  <h1>{frontmatter.title}</h1>
+  <slot />
+  <p><a href="/">Back to docs</a></p>
+</main>
 </body>
 </html>

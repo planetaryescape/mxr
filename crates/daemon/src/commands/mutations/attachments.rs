@@ -1,14 +1,52 @@
+use crate::commands::selection::{resolve_message_ids, SelectionLimit};
 use crate::ipc_client::IpcClient;
+use mxr_core::MessageId;
 use mxr_protocol::*;
 use std::path::PathBuf;
 
 use super::helpers::{
-    attachment_by_index, format_bytes, load_attachments, parse_message_id, request_attachment_file,
+    attachment_by_index, format_bytes, load_attachments, parse_message_id as parse_id_for_legacy,
+    request_attachment_file,
 };
 
-pub async fn attachments_list(message_id: String) -> anyhow::Result<()> {
-    let id = parse_message_id(&message_id)?;
+// `parse_id_for_legacy` is kept around for the download/open paths
+// that still take a single positional string. The list path now
+// resolves through the shared `selection` module.
+
+pub async fn attachments_list(
+    message_id: Option<String>,
+    search: Option<String>,
+    first: bool,
+    limit: Option<u32>,
+) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
+    let ids = resolve_message_ids(
+        &mut client,
+        message_id.into_iter().collect(),
+        search,
+        SelectionLimit::from_flags(first, limit),
+    )
+    .await?;
+    if ids.is_empty() {
+        anyhow::bail!("No messages matched");
+    }
+
+    for (index, id) in ids.iter().enumerate() {
+        if ids.len() > 1 {
+            if index > 0 {
+                println!();
+            }
+            println!("--- {} ---", id.as_str());
+        }
+        print_one_message_attachments(&mut client, id.clone()).await?;
+    }
+    Ok(())
+}
+
+async fn print_one_message_attachments(
+    client: &mut IpcClient,
+    id: MessageId,
+) -> anyhow::Result<()> {
     let resp = client.request(Request::GetBody { message_id: id }).await?;
     match resp {
         Response::Ok {
@@ -45,7 +83,7 @@ pub async fn attachments_download(
     index: Option<usize>,
     dir: Option<PathBuf>,
 ) -> anyhow::Result<()> {
-    let id = parse_message_id(&message_id)?;
+    let id = parse_id_for_legacy(&message_id)?;
     let mut client = IpcClient::connect().await?;
     let attachments = load_attachments(&mut client, &id).await?;
 
@@ -87,7 +125,7 @@ pub async fn attachments_download(
 }
 
 pub async fn attachments_open(message_id: String, index: usize) -> anyhow::Result<()> {
-    let id = parse_message_id(&message_id)?;
+    let id = parse_id_for_legacy(&message_id)?;
     let mut client = IpcClient::connect().await?;
     let attachments = load_attachments(&mut client, &id).await?;
     let attachment = attachment_by_index(&attachments, index)?;

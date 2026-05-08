@@ -133,6 +133,18 @@ impl InputHandler {
                 self.state = KeyState::Normal;
                 Some(Action::OpenAnalyticsScreen)
             }
+            // g <0-9>: jump to a saved-search tab by index. `g 0` returns
+            // to the default inbox view; `g N` (1..=9) targets the Nth
+            // saved search. Out-of-range indices are no-ops.
+            (
+                KeyState::WaitingForSecond { first: 'g', .. },
+                KeyCode::Char(c),
+                KeyModifiers::NONE,
+            ) if c.is_ascii_digit() => {
+                self.state = KeyState::Normal;
+                let index = c.to_digit(10).unwrap_or(0) as usize;
+                Some(Action::OpenSavedSearchByIndex(index))
+            }
 
             // Multi-key: zz
             (KeyState::Normal, KeyCode::Char('z'), KeyModifiers::NONE) => {
@@ -180,6 +192,11 @@ impl InputHandler {
             }
             (KeyState::Normal, KeyCode::Esc, _) => Some(Action::Back),
             (KeyState::Normal, KeyCode::Char('q'), _) => Some(Action::QuitView),
+            // Reply-later quick-mark: `b` for "bookmark for reply later".
+            // Local-only intent — never roundtrips to the provider.
+            (KeyState::Normal, KeyCode::Char('b'), KeyModifiers::NONE) => {
+                Some(Action::FlagReplyLater)
+            }
             (KeyState::Normal, KeyCode::Char('1'), KeyModifiers::NONE) => Some(Action::OpenTab1),
             (KeyState::Normal, KeyCode::Char('2'), KeyModifiers::NONE) => Some(Action::OpenTab2),
             (KeyState::Normal, KeyCode::Char('3'), KeyModifiers::NONE) => Some(Action::OpenTab3),
@@ -278,5 +295,43 @@ mod tests {
         let _ = input.handle_key(key(KeyCode::Char('g')));
         let action = input.handle_key(key(KeyCode::Char('a')));
         assert_eq!(action, Some(Action::GoToAllMail));
+    }
+
+    /// `g <digit>` jumps to the corresponding saved-search tab. `g 1`
+    /// targets the first saved search, `g 9` the ninth. The action is
+    /// 1-indexed; `g 0` is reserved for "return to default inbox".
+    #[test]
+    fn chord_g_then_digit_one_through_nine_jumps_to_saved_search() {
+        for digit in 1..=9 {
+            let mut input = InputHandler::new();
+            let _ = input.handle_key(key(KeyCode::Char('g')));
+            let action = input.handle_key(key(KeyCode::Char(char::from_digit(digit, 10).unwrap())));
+            assert_eq!(
+                action,
+                Some(Action::OpenSavedSearchByIndex(digit as usize)),
+                "g {digit} should target saved-search index {digit}"
+            );
+        }
+    }
+
+    /// `g 0` returns to the default inbox view, clearing any active
+    /// saved-search filter. Mirrors Apple Mail / Gmail "g 0 = inbox" muscle
+    /// memory while staying inside the `g`-prefix family.
+    #[test]
+    fn chord_g_then_zero_returns_to_default_inbox() {
+        let mut input = InputHandler::new();
+        let _ = input.handle_key(key(KeyCode::Char('g')));
+        let action = input.handle_key(key(KeyCode::Char('0')));
+        assert_eq!(action, Some(Action::OpenSavedSearchByIndex(0)));
+    }
+
+    /// Bare digits keep their existing meaning (screen tabs). The
+    /// chord-prefix is required for saved-search navigation. Guards
+    /// against stealing the existing `1`-`6` screen-tab muscle memory.
+    #[test]
+    fn bare_digit_still_opens_screen_tab_not_saved_search() {
+        let mut input = InputHandler::new();
+        let action = input.handle_key(key(KeyCode::Char('1')));
+        assert_eq!(action, Some(Action::OpenTab1));
     }
 }

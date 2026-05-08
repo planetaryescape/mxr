@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO message_flags (message_id, reply_later, reply_later_set_at, reply_later_dismissed_at)\n               VALUES (?, 1, ?, NULL)\n               ON CONFLICT(message_id) DO UPDATE SET\n                   reply_later = 1,\n                   reply_later_set_at = excluded.reply_later_set_at,\n                   reply_later_dismissed_at = NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "2db3da5220d33dd9be8bcf73168749a769d60e349fae7a3b77388457b098d371"
+}

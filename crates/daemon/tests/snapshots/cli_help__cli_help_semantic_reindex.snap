@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Reindex the active semantic profile
+
+Usage: mxr semantic reindex
+
+Options:
+  -h, --help  Print help

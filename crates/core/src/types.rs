@@ -567,16 +567,8 @@ pub struct ResponseTimeBucket {
 /// email reply latency: <1m, <5m, <30m, <1h, <6h, <1d, <3d, ≥3d.
 /// Edges are exclusive upper bounds; the final bucket uses
 /// `u32::MAX` to capture everything ≥ 3 days.
-pub const RESPONSE_TIME_HISTOGRAM_EDGES: [u32; 8] = [
-    60,
-    300,
-    1800,
-    3600,
-    21_600,
-    86_400,
-    259_200,
-    u32::MAX,
-];
+pub const RESPONSE_TIME_HISTOGRAM_EDGES: [u32; 8] =
+    [60, 300, 1800, 3600, 21_600, 86_400, 259_200, u32::MAX];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

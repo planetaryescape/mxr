@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Delete a saved search
+
+Usage: mxr saved delete <NAME>
+
+Arguments:
+  <NAME>
+
+Options:
+  -h, --help  Print help

@@ -1,7 +1,5 @@
 use crate::app::{AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow};
-use crate::ui::analytics_widgets::{
-    big_text_banner, format_count, histogram_bar_chart, stat_card,
-};
+use crate::ui::analytics_widgets::{big_text_banner, format_count, histogram_bar_chart, stat_card};
 use mxr_core::types::{ResponseTimeDirection, StaleBallInCourt, StorageGroupBy};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -87,7 +85,9 @@ fn draw_header(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cr
                 ""
             }
         ),
-        AnalyticsView::Wrapped => format!("Wrapped  [{}]", wrapped_window_label(state.wrapped_window)),
+        AnalyticsView::Wrapped => {
+            format!("Wrapped  [{}]", wrapped_window_label(state.wrapped_window))
+        }
     };
     let mut full_title = format!(" {title} ");
     if state.is_refreshing_with_data() {
@@ -230,8 +230,22 @@ fn draw_storage(
 
     let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
-    stat_card(frame, cards[0], "Total", &format_bytes(total_bytes), theme, true);
-    stat_card(frame, cards[1], "Items", &format_count(total_count), theme, false);
+    stat_card(
+        frame,
+        cards[0],
+        "Total",
+        &format_bytes(total_bytes),
+        theme,
+        true,
+    );
+    stat_card(
+        frame,
+        cards[1],
+        "Items",
+        &format_count(total_count),
+        theme,
+        false,
+    );
     stat_card(
         frame,
         cards[2],
@@ -306,8 +320,22 @@ fn draw_stale(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
     let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
     stat_card(frame, cards[0], "Stale", &format_count(count), theme, true);
-    stat_card(frame, cards[1], "Oldest", &format!("{oldest}d"), theme, false);
-    stat_card(frame, cards[2], "Median", &format!("{median}d"), theme, false);
+    stat_card(
+        frame,
+        cards[1],
+        "Oldest",
+        &format!("{oldest}d"),
+        theme,
+        false,
+    );
+    stat_card(
+        frame,
+        cards[2],
+        "Median",
+        &format!("{median}d"),
+        theme,
+        false,
+    );
 
     // No age-distribution histogram: the active filter
     // (older_than_days .. within_days) collapses every row into a
@@ -380,7 +408,14 @@ fn draw_asymmetry(
 
     let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
-    stat_card(frame, cards[0], "Contacts", &format_count(count), theme, true);
+    stat_card(
+        frame,
+        cards[0],
+        "Contacts",
+        &format_count(count),
+        theme,
+        true,
+    );
     stat_card(
         frame,
         cards[1],
@@ -650,9 +685,30 @@ fn draw_largest_messages(
 
     let (strip, table) = strip_and_table(area);
     let cards = three_up(strip);
-    stat_card(frame, cards[0], "Sum", &format_bytes(total_bytes), theme, true);
-    stat_card(frame, cards[1], "Messages", &format_count(count), theme, false);
-    stat_card(frame, cards[2], "Biggest", &format_bytes(biggest), theme, false);
+    stat_card(
+        frame,
+        cards[0],
+        "Sum",
+        &format_bytes(total_bytes),
+        theme,
+        true,
+    );
+    stat_card(
+        frame,
+        cards[1],
+        "Messages",
+        &format_count(count),
+        theme,
+        false,
+    );
+    stat_card(
+        frame,
+        cards[2],
+        "Biggest",
+        &format_bytes(biggest),
+        theme,
+        false,
+    );
 
     let header = Row::new(vec!["Subject", "From", "Size", "Date"])
         .style(Style::default().fg(theme.text_muted).bold());
@@ -693,12 +749,7 @@ fn draw_largest_messages(
 /// silent `unwrap_or(0)` rendering "0 days" for never-replied).
 fn draw_decay(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
     if state.decay_rows.is_empty() {
-        empty_state(
-            frame,
-            area,
-            "No decaying contacts in this window.",
-            theme,
-        );
+        empty_state(frame, area, "No decaying contacts in this window.", theme);
         return;
     }
 
@@ -710,16 +761,41 @@ fn draw_decay(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         .max()
         .unwrap_or(0);
     let median = {
-        let mut ds: Vec<u32> = state.decay_rows.iter().map(|r| r.days_since_inbound).collect();
+        let mut ds: Vec<u32> = state
+            .decay_rows
+            .iter()
+            .map(|r| r.days_since_inbound)
+            .collect();
         ds.sort_unstable();
         ds.get(ds.len() / 2).copied().unwrap_or(0)
     };
 
     let (strip, chart, table) = strip_chart_table(area, 10);
     let cards = three_up(strip);
-    stat_card(frame, cards[0], "Cold contacts", &format_count(count), theme, true);
-    stat_card(frame, cards[1], "Longest gap", &format!("{longest}d"), theme, false);
-    stat_card(frame, cards[2], "Median gap", &format!("{median}d"), theme, false);
+    stat_card(
+        frame,
+        cards[0],
+        "Cold contacts",
+        &format_count(count),
+        theme,
+        true,
+    );
+    stat_card(
+        frame,
+        cards[1],
+        "Longest gap",
+        &format!("{longest}d"),
+        theme,
+        false,
+    );
+    stat_card(
+        frame,
+        cards[2],
+        "Median gap",
+        &format!("{median}d"),
+        theme,
+        false,
+    );
 
     // Decay buckets ARE genuinely a distribution (the threshold is
     // a floor, not a window — gaps spread across a long tail).
@@ -804,13 +880,19 @@ fn draw_subscriptions(
         .map(|s| s.message_count as u64)
         .sum();
     let avg_open = {
-        let (sum, n) = state.subscriptions.iter().fold((0.0_f64, 0u32), |(s, n), r| {
-            if r.message_count == 0 {
-                (s, n)
-            } else {
-                (s + (r.opened_count as f64) / (r.message_count as f64), n + 1)
-            }
-        });
+        let (sum, n) = state
+            .subscriptions
+            .iter()
+            .fold((0.0_f64, 0u32), |(s, n), r| {
+                if r.message_count == 0 {
+                    (s, n)
+                } else {
+                    (
+                        s + (r.opened_count as f64) / (r.message_count as f64),
+                        n + 1,
+                    )
+                }
+            });
         if n == 0 {
             0.0
         } else {
@@ -828,7 +910,14 @@ fn draw_subscriptions(
         theme,
         true,
     );
-    stat_card(frame, cards[1], "Messages", &format_count(total_msgs), theme, false);
+    stat_card(
+        frame,
+        cards[1],
+        "Messages",
+        &format_count(total_msgs),
+        theme,
+        false,
+    );
     stat_card(
         frame,
         cards[2],
@@ -864,8 +953,15 @@ fn draw_subscriptions(
     // inline against the message count, where the answer lives.
     let (header, widths): (Row<'_>, [Constraint; 6]) = if state.subscriptions_rank {
         (
-            Row::new(vec!["Sender", "Email", "Count", "Opened", "Open %", "Arch/Unrd"])
-                .style(Style::default().fg(theme.text_muted).bold()),
+            Row::new(vec![
+                "Sender",
+                "Email",
+                "Count",
+                "Opened",
+                "Open %",
+                "Arch/Unrd",
+            ])
+            .style(Style::default().fg(theme.text_muted).bold()),
             [
                 Constraint::Percentage(22),
                 Constraint::Percentage(30),
@@ -877,8 +973,15 @@ fn draw_subscriptions(
         )
     } else {
         (
-            Row::new(vec!["Sender", "Email", "Count", "Open %", "Method", "Latest Subject"])
-                .style(Style::default().fg(theme.text_muted).bold()),
+            Row::new(vec![
+                "Sender",
+                "Email",
+                "Count",
+                "Open %",
+                "Method",
+                "Latest Subject",
+            ])
+            .style(Style::default().fg(theme.text_muted).bold()),
             [
                 Constraint::Percentage(18),
                 Constraint::Percentage(23),
@@ -1033,8 +1136,7 @@ fn draw_wrapped_header(
     let label = wrapped_short_label(&summary.label);
     big_text_banner(frame, cols[0], "Wrapped", &label, PixelSize::Sextant, theme);
 
-    let total_msgs =
-        summary.volume.inbound_count as u64 + summary.volume.outbound_count as u64;
+    let total_msgs = summary.volume.inbound_count as u64 + summary.volume.outbound_count as u64;
     let info = vec![
         Line::from(Span::styled(
             format!(
@@ -1072,11 +1174,7 @@ fn wrapped_short_label(label: &str) -> String {
         .to_string()
 }
 
-fn wrapped_tile_block<'a>(
-    title: &'a str,
-    theme: &crate::theme::Theme,
-    focused: bool,
-) -> Block<'a> {
+fn wrapped_tile_block<'a>(title: &'a str, theme: &crate::theme::Theme, focused: bool) -> Block<'a> {
     Block::default()
         .borders(Borders::ALL)
         .border_style(theme.border_style(focused))
@@ -1119,7 +1217,10 @@ fn draw_wrapped_volume(
     );
     let kv = vec![
         ("inbound".to_string(), format_count(v.inbound_count as u64)),
-        ("outbound".to_string(), format_count(v.outbound_count as u64)),
+        (
+            "outbound".to_string(),
+            format_count(v.outbound_count as u64),
+        ),
         ("threads".to_string(), format_count(v.thread_count as u64)),
     ];
     let label_w = kv.iter().map(|(l, _)| l.len()).max().unwrap_or(0);
@@ -1129,14 +1230,14 @@ fn draw_wrapped_volume(
             Line::from(vec![
                 Span::styled(format!("{label:<label_w$}"), theme.muted_style()),
                 Span::raw("  "),
-                Span::styled(value.clone(), theme.primary_style().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    value.clone(),
+                    theme.primary_style().add_modifier(Modifier::BOLD),
+                ),
             ])
         })
         .collect();
-    frame.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        chunks[1],
-    );
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), chunks[1]);
 }
 
 /// Pretty-print a ratio between two counts. Big sides get the
@@ -1186,11 +1287,7 @@ fn draw_wrapped_when(
     if inner.height == 0 {
         return;
     }
-    let data: Vec<u64> = pat
-        .hour_distribution
-        .iter()
-        .map(|c| *c as u64)
-        .collect();
+    let data: Vec<u64> = pat.hour_distribution.iter().map(|c| *c as u64).collect();
     let total: u64 = data.iter().sum();
     if total == 0 {
         frame.render_widget(
@@ -1278,7 +1375,10 @@ fn draw_wrapped_contacts(
                     theme.primary_style().add_modifier(Modifier::BOLD),
                 )),
                 Line::from(Span::styled(
-                    format!("{} msgs · {pct:.1}% of inbound", format_count(c.count as u64)),
+                    format!(
+                        "{} msgs · {pct:.1}% of inbound",
+                        format_count(c.count as u64)
+                    ),
                     theme.accent_style(),
                 )),
                 Line::from(""),
@@ -1293,10 +1393,7 @@ fn draw_wrapped_contacts(
             theme.muted_style(),
         ))],
     };
-    frame.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
 fn draw_wrapped_reply(
@@ -1352,7 +1449,10 @@ fn draw_wrapped_reply(
                 theme.accent_style().add_modifier(Modifier::BOLD),
             ),
         ]),
-        match (reply.business_hours_p50_seconds, reply.business_hours_p90_seconds) {
+        match (
+            reply.business_hours_p50_seconds,
+            reply.business_hours_p90_seconds,
+        ) {
             (Some(p50), Some(p90)) => Line::from(vec![
                 Span::styled("biz p50 ", theme.muted_style()),
                 Span::styled(format_duration_seconds(p50), theme.primary_style()),
@@ -1360,13 +1460,13 @@ fn draw_wrapped_reply(
                 Span::styled("biz p90 ", theme.muted_style()),
                 Span::styled(format_duration_seconds(p90), theme.primary_style()),
             ]),
-            _ => Line::from(Span::styled("(business-hours pending)", theme.muted_style())),
+            _ => Line::from(Span::styled(
+                "(business-hours pending)",
+                theme.muted_style(),
+            )),
         },
     ];
-    frame.render_widget(
-        Paragraph::new(p50p90).wrap(Wrap { trim: false }),
-        chunks[0],
-    );
+    frame.render_widget(Paragraph::new(p50p90).wrap(Wrap { trim: false }), chunks[0]);
 
     // Bottom: fastest / slowest with names attached.
     let mut extremes = Vec::new();
@@ -1378,7 +1478,10 @@ fn draw_wrapped_reply(
                 theme.success_style().add_modifier(Modifier::BOLD),
             ),
             Span::raw(" · "),
-            Span::styled(short_email(&f.counterparty_email).to_string(), theme.primary_style()),
+            Span::styled(
+                short_email(&f.counterparty_email).to_string(),
+                theme.primary_style(),
+            ),
         ]));
     }
     if let Some(s) = reply.slowest.as_ref() {
@@ -1389,7 +1492,10 @@ fn draw_wrapped_reply(
                 theme.error_style().add_modifier(Modifier::BOLD),
             ),
             Span::raw(" · "),
-            Span::styled(short_email(&s.counterparty_email).to_string(), theme.primary_style()),
+            Span::styled(
+                short_email(&s.counterparty_email).to_string(),
+                theme.primary_style(),
+            ),
         ]));
     }
     if extremes.is_empty() {
@@ -1465,10 +1571,7 @@ fn draw_wrapped_storage(
             ),
         ]));
     }
-    frame.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
 fn draw_wrapped_newsletters(
@@ -1514,10 +1617,7 @@ fn draw_wrapped_newsletters(
         let id: String = top.list_id.chars().take(40).collect();
         lines.push(Line::from(vec![
             Span::styled("top list  ", theme.muted_style()),
-            Span::styled(
-                id,
-                theme.primary_style().add_modifier(Modifier::BOLD),
-            ),
+            Span::styled(id, theme.primary_style().add_modifier(Modifier::BOLD)),
         ]));
         lines.push(Line::from(vec![
             Span::raw("          "),
@@ -1527,10 +1627,7 @@ fn draw_wrapped_newsletters(
             ),
         ]));
     }
-    frame.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
 fn draw_wrapped_superlatives(
@@ -1558,7 +1655,10 @@ fn draw_wrapped_superlatives(
             vec![
                 Line::from(Span::styled("longest thread", muted)),
                 Line::from(Span::styled(subject, theme.primary_style())),
-                Line::from(Span::styled(format!("{} messages", t.message_count), accent)),
+                Line::from(Span::styled(
+                    format!("{} messages", t.message_count),
+                    accent,
+                )),
             ]
         }
         None => vec![Line::from(Span::styled("(no longest thread)", muted))],

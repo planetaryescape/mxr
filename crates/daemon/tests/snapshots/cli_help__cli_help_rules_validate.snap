@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Usage: mxr rules validate --when <CONDITION> --then <ACTION>
+
+Options:
+      --when <CONDITION>
+      --then <ACTION>
+  -h, --help              Print help

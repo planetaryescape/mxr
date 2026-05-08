@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Clear an existing decision
+
+Usage: mxr screener clear <SENDER_EMAIL>
+
+Arguments:
+  <SENDER_EMAIL>
+
+Options:
+  -h, --help  Print help

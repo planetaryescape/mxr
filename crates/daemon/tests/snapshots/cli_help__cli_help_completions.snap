@@ -7,7 +7,7 @@ Generate shell completions
 Usage: mxr completions <SHELL>
 
 Arguments:
-  <SHELL>  
+  <SHELL>
 
 Options:
   -h, --help  Print help

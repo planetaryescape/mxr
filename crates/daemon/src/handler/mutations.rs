@@ -132,7 +132,7 @@ pub(super) async fn mutation(state: &AppState, cmd: &MutationCommand) -> Handler
                 }
                 Err(error) => {
                     account_result.skipped += (envelopes.len() - index) as u32;
-                    account_result.error = Some(format!("account unavailable: {error}"));
+                    account_result.error = Some(error);
                     break;
                 }
             }
@@ -704,6 +704,42 @@ pub(super) async fn list_drafts(state: &AppState) -> HandlerResult {
     Ok(ResponseData::Drafts { drafts })
 }
 
+/// List drafts presumed orphaned mid-send. Mirrors the cutoff used by
+/// the daemon's startup recovery loop (1h since last activity) so the
+/// CLI surfaces what would be auto-reset, only earlier.
+pub(super) async fn list_orphaned_drafts(state: &AppState) -> HandlerResult {
+    let cutoff = chrono::Utc::now() - chrono::Duration::hours(1);
+    let orphan_ids = state
+        .store
+        .list_orphaned_sending_drafts(cutoff)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut drafts = Vec::with_capacity(orphan_ids.len());
+    for id in &orphan_ids {
+        if let Some(draft) = state.store.get_draft(id).await.map_err(|e| e.to_string())? {
+            drafts.push(draft);
+        }
+    }
+    drafts.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    Ok(ResponseData::Drafts { drafts })
+}
+
+/// Force-reset an orphaned draft from `'sending'` to `'draft'`.
+/// Idempotent: the underlying CAS returns `false` when the draft is
+/// already in `'draft'`, which we surface as an `Ack` rather than an
+/// error so scripts can call this safely.
+pub(super) async fn reset_orphaned_draft(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+) -> HandlerResult {
+    state
+        .store
+        .reset_orphaned_draft(draft_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Ack)
+}
+
 pub(super) async fn save_draft(state: &AppState, draft: &Draft) -> HandlerResult {
     state
         .store
@@ -868,7 +904,32 @@ pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult
     })
 }
 
-pub(super) async fn send_stored_draft(
+pub(super) async fn schedule_send(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+    send_at: chrono::DateTime<chrono::Utc>,
+) -> HandlerResult {
+    state
+        .store
+        .schedule_send(draft_id, send_at)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Ack)
+}
+
+pub(super) async fn cancel_scheduled_send(
+    state: &AppState,
+    draft_id: &mxr_core::DraftId,
+) -> HandlerResult {
+    state
+        .store
+        .cancel_scheduled_send(draft_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Ack)
+}
+
+pub(crate) async fn send_stored_draft(
     state: &AppState,
     draft_id: &mxr_core::DraftId,
 ) -> HandlerResult {
@@ -902,6 +963,14 @@ pub(super) async fn send_stored_draft(
             DraftStatus::Draft => "draft state mismatch; retry".to_string(),
         });
     }
+
+    // Mark the draft as actively in-flight so the 1h startup-recovery cutoff
+    // doesn't re-claim a long but legitimate send. Failures here are
+    // non-fatal — orphan recovery falls back to `status_updated_at`.
+    let _ = state
+        .store
+        .touch_draft_heartbeat(draft_id, chrono::Utc::now())
+        .await;
 
     let sender = match state.send_provider_for_account(&draft.account_id) {
         Ok(s) => s,

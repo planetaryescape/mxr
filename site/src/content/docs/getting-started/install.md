@@ -14,9 +14,10 @@ SQLite is bundled, no separate install needed. Rust is only needed if building f
 ## Homebrew (macOS / Linux)
 
 ```bash
-brew tap planetaryescape/mxr
-brew install mxr
+brew install planetaryescape/mxr/mxr
 ```
+
+Equivalent to `brew tap planetaryescape/mxr && brew install mxr` if you prefer to tap explicitly.
 
 ## Pre-built binaries
 

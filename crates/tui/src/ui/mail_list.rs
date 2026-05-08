@@ -97,13 +97,26 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         }
     }
 
+    // Compute the subject column's effective character width so
+    // `format_subject_line` can decide whether there's room for the
+    // snippet preview. Sum of fixed column widths + 7 inter-column
+    // spaces (Table::column_spacing(1) between 8 cells) + 2 border
+    // chars. The attachment chip widened to 8 to fit "📎 99K".
+    let fixed_columns_width = 4 + 1 + 2 + 2 + 22 + 8 + 8;
+    let column_spacing_total: u16 = 7; // 8 cells, 7 gaps × 1 char
+    let border_total: u16 = 2;
+    let subject_max_width = u16::from(area.width)
+        .saturating_sub(fixed_columns_width)
+        .saturating_sub(column_spacing_total)
+        .saturating_sub(border_total) as usize;
+
     let table_rows: Vec<Row> = view
         .rows
         .iter()
         .enumerate()
         .skip(view.scroll_offset)
         .take(visible_height)
-        .map(|(i, row)| build_row(view, row, i, theme))
+        .map(|(i, row)| build_row(view, row, i, theme, subject_max_width))
         .collect();
 
     let widths = [
@@ -112,9 +125,9 @@ pub fn draw_view(frame: &mut Frame, area: Rect, view: &MailListView<'_>, theme: 
         Constraint::Length(2),  // star
         Constraint::Length(2),  // unsubscribe
         Constraint::Length(22), // sender
-        Constraint::Fill(1),    // subject (+ thread count badge)
+        Constraint::Fill(1),    // subject (+ snippet preview)
         Constraint::Length(8),  // date
-        Constraint::Length(2),  // attachment icon
+        Constraint::Length(8),  // attachment chip ("📎 99K")
     ];
 
     let table = Table::new(table_rows, widths)
@@ -154,6 +167,7 @@ fn build_row<'a>(
     row: &MailListRow,
     index: usize,
     theme: &Theme,
+    subject_max_width: usize,
 ) -> Row<'a> {
     let env = &row.representative;
     let is_selected = index == view.selected_index;
@@ -229,18 +243,37 @@ fn build_row<'a>(
     };
     let sender_cell = Cell::from(Line::from(sender_spans));
 
-    // Subject
-    let subject_cell = Cell::from(Span::raw(env.subject.clone()));
+    // Subject + inline snippet preview. format_subject_line drops the
+    // snippet automatically when the column is too narrow.
+    let (subject_text, snippet_preview) =
+        format_subject_line(&env.subject, &env.snippet, subject_max_width);
+    let subject_cell = if let Some(snippet) = snippet_preview {
+        Cell::from(Line::from(vec![
+            Span::styled(subject_text, Style::default().fg(row_secondary_fg)),
+            Span::styled(" · ", Style::default().fg(row_muted_fg)),
+            Span::styled(snippet, Style::default().fg(row_muted_fg)),
+        ]))
+    } else {
+        Cell::from(Span::styled(
+            subject_text,
+            Style::default().fg(row_secondary_fg),
+        ))
+    };
 
     // Date
     let date_str = format_date(&env.date);
     let date_cell = Cell::from(Span::styled(date_str, Style::default().fg(row_muted_fg)));
 
-    // Attachment
-    let attach_cell = Cell::from(Span::styled(
-        attachment_marker(env.has_attachments),
-        Style::default().fg(row_fg),
-    ));
+    // Attachment chip: paperclip + size readout when present.
+    let attach_text = format_attachment_chip(
+        env.has_attachments,
+        u32::try_from(env.size_bytes).unwrap_or(u32::MAX),
+    );
+    let attach_cell = if attach_text.is_empty() {
+        Cell::from(Span::styled("  ", Style::default().fg(row_fg)))
+    } else {
+        Cell::from(Span::styled(attach_text, Style::default().fg(row_fg)))
+    };
 
     Row::new(vec![
         line_num_cell,
@@ -370,38 +403,156 @@ fn indexed_color_rgb(idx: u8) -> (u8, u8, u8) {
     }
 }
 fn sender_parts(row: &MailListRow, mode: MailListMode) -> (String, Option<usize>) {
-    let from_raw = row
-        .representative
-        .from
-        .name
-        .as_deref()
-        .unwrap_or(&row.representative.from.email);
+    // Reserve trailing chars in the 22-char sender column for the
+    // thread-count badge (" 99" worst case = 3 chars + leading space).
+    // Without the reservation a long display name would visually collide
+    // with the badge.
+    let max_width = match mode {
+        MailListMode::Threads if row.message_count > 1 => 18,
+        _ => 22,
+    };
+    let from_text = format_sender(&row.representative.from, max_width);
     match mode {
-        MailListMode::Threads if row.message_count > 1 => {
-            (from_raw.to_string(), Some(row.message_count))
-        }
-        _ => (from_raw.to_string(), None),
+        MailListMode::Threads if row.message_count > 1 => (from_text, Some(row.message_count)),
+        _ => (from_text, None),
     }
 }
 
 fn format_date(date: &chrono::DateTime<Utc>) -> String {
-    let local = date.with_timezone(&Local);
-    let now = Local::now();
+    format_date_relative(date, &Utc::now())
+}
 
-    if local.date_naive() == now.date_naive() {
-        local.format("%I:%M%p").to_string()
-    } else if local.year() == now.year() {
-        local.format("%b %d").to_string()
+/// Format a sender address for the inbox row. Prefers the display name
+/// when present and non-empty; otherwise falls back to the email
+/// address. Truncates to `max_width` characters with a trailing ellipsis
+/// when the text is longer.
+pub fn format_sender(address: &mxr_core::types::Address, max_width: usize) -> String {
+    let raw = match address.name.as_deref() {
+        Some(name) if !name.trim().is_empty() => name,
+        _ => address.email.as_str(),
+    };
+    truncate_with_ellipsis(raw, max_width)
+}
+
+fn truncate_with_ellipsis(text: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    let char_count = text.chars().count();
+    if char_count <= max_width {
+        return text.to_string();
+    }
+    if max_width == 1 {
+        return "…".to_string();
+    }
+    let mut result: String = text.chars().take(max_width - 1).collect();
+    result.push('…');
+    result
+}
+
+/// Format the attachment chip for the inbox row. Returns an empty string
+/// when there are no attachments, otherwise a paperclip glyph followed
+/// by a short size readout (`"📎 45K"`).
+///
+/// The size is the message's total size — a reasonable proxy for the
+/// attachment heft, since envelopes with attachments are dominated by
+/// attachment bytes.
+pub fn format_attachment_chip(has_attachments: bool, size_bytes: u32) -> String {
+    if !has_attachments {
+        return String::new();
+    }
+    format!("📎 {}", format_byte_size(size_bytes))
+}
+
+fn format_byte_size(bytes: u32) -> String {
+    const KIB: u32 = 1024;
+    const MIB: u32 = 1024 * 1024;
+    if bytes >= MIB {
+        format!("{}M", bytes / MIB)
+    } else if bytes >= KIB {
+        format!("{}K", bytes / KIB)
     } else {
-        local.format("%m/%d/%y").to_string()
+        format!("{}B", bytes)
     }
 }
 
-fn attachment_marker(has_attachments: bool) -> &'static str {
-    if has_attachments {
-        "📎"
+/// Compose the subject line with an inline snippet preview, fit to
+/// `max_width` characters. Returns `(subject_text, Option<snippet_text>)`
+/// so the renderer can style each part differently (subject prominent,
+/// snippet dim).
+///
+/// The snippet is omitted entirely when the row doesn't have enough
+/// horizontal space to display something useful — preferring "no
+/// snippet" over "·" with one truncated character.
+pub fn format_subject_line(
+    subject: &str,
+    snippet: &str,
+    max_width: usize,
+) -> (String, Option<String>) {
+    if max_width == 0 {
+        return (String::new(), None);
+    }
+    let subject_chars = subject.chars().count();
+    if snippet.trim().is_empty() {
+        return (truncate_with_ellipsis(subject, max_width), None);
+    }
+    if subject_chars >= max_width {
+        return (truncate_with_ellipsis(subject, max_width), None);
+    }
+    // Reserve room for the " · " separator (3 chars) plus a meaningful
+    // snippet head — at least 4 chars of snippet text.
+    const SEPARATOR_WIDTH: usize = 3;
+    const MIN_SNIPPET_WIDTH: usize = 4;
+    let after_subject = max_width - subject_chars;
+    if after_subject < SEPARATOR_WIDTH + MIN_SNIPPET_WIDTH {
+        return (subject.to_string(), None);
+    }
+    let snippet_room = after_subject - SEPARATOR_WIDTH;
+    let snippet_text = truncate_with_ellipsis(snippet.trim(), snippet_room);
+    (subject.to_string(), Some(snippet_text))
+}
+
+/// Format an email date relative to `now`. Used by the inbox row to give
+/// the user a "how long ago?" hint at a glance — a relative time ladder
+/// rather than a wall-clock or locale-formatted timestamp.
+///
+/// Ladder:
+/// - within the last minute: `"now"`
+/// - within the last hour: `"5m"`
+/// - within the last 24 hours: `"3h"`
+/// - within the last 7 days: short weekday name (`"Tue"`)
+/// - same year, older: month + day (`"Mar 4"`)
+/// - different year (or future date): month/day/year (`"03/04/23"`)
+pub fn format_date_relative(date: &chrono::DateTime<Utc>, now: &chrono::DateTime<Utc>) -> String {
+    let elapsed = now.signed_duration_since(*date);
+    if elapsed.num_seconds() < 0 {
+        // Future date — defer to absolute formatting; relative tense
+        // doesn't apply.
+        return date.with_timezone(&Local).format("%m/%d/%y").to_string();
+    }
+    let seconds = elapsed.num_seconds();
+    let minutes = elapsed.num_minutes();
+    let hours = elapsed.num_hours();
+    let days = elapsed.num_days();
+
+    if seconds < 60 {
+        return "now".to_string();
+    }
+    if minutes < 60 {
+        return format!("{}m", minutes);
+    }
+    if hours < 24 {
+        return format!("{}h", hours);
+    }
+    if days < 7 {
+        return date.with_timezone(&Local).format("%a").to_string();
+    }
+    let local = date.with_timezone(&Local);
+    let now_local = now.with_timezone(&Local);
+    if local.year() == now_local.year() {
+        local.format("%b %-d").to_string()
     } else {
-        "  "
+        local.format("%m/%d/%y").to_string()
     }
 }
 
@@ -500,10 +651,95 @@ mod tests {
         assert_eq!(truncate_display("abcdefghij", 6), "abc...");
     }
 
+    /// build_row should compose subjects with `format_subject_line`
+    /// (snippet preview after a separator) and attachments with
+    /// `format_attachment_chip` (paperclip + size). Reachable through the
+    /// rendered string of a focused row.
     #[test]
-    fn attachment_marker_uses_clip_icon() {
-        assert_eq!(attachment_marker(true), "📎");
-        assert_eq!(attachment_marker(false), "  ");
+    fn row_renders_snippet_preview_and_attachment_chip() {
+        use mxr_test_support::render_to_string;
+        use std::collections::HashSet;
+
+        let mut row = row(1, true);
+        // Use a short subject so there's room for the snippet preview at
+        // 120-col width.
+        row.representative.subject = "Status update".into();
+        row.representative.snippet = "Shipping plan ready for review".into();
+        // 2.5 MiB → format_attachment_chip emits "📎 2M".
+        row.representative.size_bytes = 2 * 1024 * 1024 + 512 * 1024;
+        let rows = vec![row];
+
+        let snapshot = render_to_string(120, 6, |frame| {
+            draw_view(
+                frame,
+                Rect::new(0, 0, 120, 6),
+                &MailListView {
+                    rows: &rows,
+                    selected_index: 0,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MailList,
+                    title: "Inbox",
+                    selected_set: &HashSet::new(),
+                    mode: MailListMode::Threads,
+                    loading_message: None,
+                    loading_throbber: None,
+                },
+                &Theme::default(),
+            );
+        });
+
+        assert!(
+            snapshot.contains("Shipping plan"),
+            "row must surface the snippet preview when there's room; got:\n{snapshot}",
+        );
+        assert!(
+            snapshot.contains(" · "),
+            "row must use the ' · ' separator from format_subject_line; got:\n{snapshot}",
+        );
+        assert!(
+            snapshot.contains("2M"),
+            "row must surface the size chip from format_attachment_chip; got:\n{snapshot}",
+        );
+    }
+
+    /// Narrow renders should fall back gracefully — no snippet, no panic.
+    /// The subject still appears, attachment chip still renders the
+    /// paperclip but may drop the size depending on column width.
+    #[test]
+    fn row_omits_snippet_when_terminal_too_narrow() {
+        use mxr_test_support::render_to_string;
+        use std::collections::HashSet;
+
+        let mut row = row(1, false);
+        row.representative.subject = "Hello".into();
+        row.representative.snippet = "this snippet should not appear".into();
+        let rows = vec![row];
+
+        // 60 cols is the narrow case the formatter is designed to drop
+        // the snippet for, leaving the subject alone.
+        let snapshot = render_to_string(60, 6, |frame| {
+            draw_view(
+                frame,
+                Rect::new(0, 0, 60, 6),
+                &MailListView {
+                    rows: &rows,
+                    selected_index: 0,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MailList,
+                    title: "Inbox",
+                    selected_set: &HashSet::new(),
+                    mode: MailListMode::Threads,
+                    loading_message: None,
+                    loading_throbber: None,
+                },
+                &Theme::default(),
+            );
+        });
+
+        assert!(
+            !snapshot.contains("this snippet"),
+            "narrow row must drop the snippet preview; got:\n{snapshot}",
+        );
     }
 
     #[test]

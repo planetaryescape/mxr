@@ -15,12 +15,12 @@ Options:
           - mimetype
           - label
           - message:  Per-message ranking: returns the single biggest emails with their IDs, so the output can drive `mxr search`/`mxr trash`/etc directly
-          
+
           [default: sender]
 
       --limit <LIMIT>
           Maximum buckets to return
-          
+
           [default: 50]
 
       --account <ACCOUNT>

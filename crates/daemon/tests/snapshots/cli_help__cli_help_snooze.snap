@@ -4,14 +4,15 @@ expression: stdout
 ---
 Snooze a message until a specified time
 
-Usage: mxr snooze [OPTIONS] --until <UNTIL> [MESSAGE_ID]
+Usage: mxr snooze [OPTIONS] --until <UNTIL> [MESSAGE_ID]...
 
 Arguments:
-  [MESSAGE_ID]  
+  [MESSAGE_ID]...
 
 Options:
-      --until <UNTIL>    When to resurface: tomorrow|monday|weekend|tonight|ISO8601
-      --search <SEARCH>  
-      --yes              
-      --dry-run          
+      --until <UNTIL>    When to resurface. Accepts: configured presets (tomorrow|monday|weekend|tonight), conversational forms (`in 2h`, `monday 5pm`, `tomorrow 9am`), and RFC3339 timestamps (`2026-06-01T15:00:00Z`)
+      --search <SEARCH>
+      --yes
+      --dry-run
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
   -h, --help             Print help

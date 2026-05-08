@@ -166,6 +166,18 @@ impl App {
                     self.complete_account_setup_onboarding();
                     None
                 }
+                (KeyCode::Char('d'), _) => {
+                    self.pick_demo_setup_path();
+                    None
+                }
+                (KeyCode::Char('g'), _) => {
+                    self.pick_form_setup_path("Gmail");
+                    None
+                }
+                (KeyCode::Char('i'), _) => {
+                    self.pick_form_setup_path("IMAP + SMTP");
+                    None
+                }
                 (KeyCode::Char('q'), _) => Some(Action::QuitView),
                 (KeyCode::Esc, _) => {
                     self.accounts.page.onboarding_modal_open = false;
@@ -228,6 +240,51 @@ impl App {
             };
         }
 
+        if self.modals.snippets.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseSnippetsModal),
+                (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::SnippetsModalNext),
+                (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::SnippetsModalPrev),
+                _ => None,
+            };
+        }
+
+        if self.modals.summary.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseSummaryModal),
+                _ => None,
+            };
+        }
+
+        if self.modals.sender_profile.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseSenderViewModal),
+                _ => None,
+            };
+        }
+
+        if self.modals.reply_queue.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseReplyQueueModal),
+                (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::ReplyQueueModalNext),
+                (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::ReplyQueueModalPrev),
+                _ => None,
+            };
+        }
+
+        if self.modals.screener.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc, _) => Some(Action::CloseScreenerModal),
+                (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::ScreenerModalNext),
+                (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::ScreenerModalPrev),
+                (KeyCode::Char('a'), _) => Some(Action::ScreenerDisposeAllow),
+                (KeyCode::Char('d'), _) => Some(Action::ScreenerDisposeDeny),
+                (KeyCode::Char('f'), _) => Some(Action::ScreenerDisposeFeed),
+                (KeyCode::Char('p'), _) => Some(Action::ScreenerDisposePaperTrail),
+                _ => None,
+            };
+        }
+
         if self.modals.onboarding.visible {
             return match (key.code, key.modifiers) {
                 (KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l'), _) => {
@@ -273,7 +330,15 @@ impl App {
 
         if self.command_palette.palette.visible {
             match (key.code, key.modifiers) {
-                (KeyCode::Enter, _) => return self.command_palette.palette.confirm(),
+                (KeyCode::Enter, _) => {
+                    let action = self.command_palette.palette.confirm();
+                    if action.is_some() {
+                        // Recents changed; flag for async save by the
+                        // local-IO worker on the next tick.
+                        self.pending_local_state_save = true;
+                    }
+                    return action;
+                }
                 (KeyCode::Esc, _) => return Some(Action::CloseCommandPalette),
                 (KeyCode::Backspace, _) => {
                     self.command_palette.palette.on_backspace();
@@ -465,6 +530,37 @@ impl App {
         }
 
         if self.modals.snooze_panel.visible {
+            // Custom-input mode: text-entry takes precedence over list navigation.
+            if self.modals.snooze_panel.custom_input.is_some() {
+                match (key.code, key.modifiers) {
+                    (KeyCode::Enter, _) => return Some(Action::Snooze),
+                    (KeyCode::Esc, _) => {
+                        // Back to preset list — preserves the panel.
+                        self.modals.snooze_panel.custom_input = None;
+                        self.modals.snooze_panel.custom_error = None;
+                        return None;
+                    }
+                    (KeyCode::Backspace, _) => {
+                        if let Some(buffer) = self.modals.snooze_panel.custom_input.as_mut() {
+                            buffer.pop();
+                            self.modals.snooze_panel.custom_error = None;
+                        }
+                        return None;
+                    }
+                    (KeyCode::Char(c), modifiers)
+                        if !modifiers.contains(KeyModifiers::CONTROL)
+                            && !modifiers.contains(KeyModifiers::ALT) =>
+                    {
+                        if let Some(buffer) = self.modals.snooze_panel.custom_input.as_mut() {
+                            buffer.push(c);
+                            self.modals.snooze_panel.custom_error = None;
+                        }
+                        return None;
+                    }
+                    _ => return None,
+                }
+            }
+            let total = crate::ui::snooze_modal::rows_count();
             match (key.code, key.modifiers) {
                 (KeyCode::Enter, _) => return Some(Action::Snooze),
                 (KeyCode::Esc, _) => {
@@ -473,7 +569,7 @@ impl App {
                 }
                 (KeyCode::Char('j') | KeyCode::Down, _) => {
                     self.modals.snooze_panel.selected_index =
-                        (self.modals.snooze_panel.selected_index + 1) % snooze_presets().len();
+                        (self.modals.snooze_panel.selected_index + 1) % total;
                     return None;
                 }
                 (KeyCode::Char('k') | KeyCode::Up, _) => {
@@ -482,7 +578,7 @@ impl App {
                         .snooze_panel
                         .selected_index
                         .checked_sub(1)
-                        .unwrap_or(snooze_presets().len() - 1);
+                        .unwrap_or(total - 1);
                     return None;
                 }
                 _ => return None,
@@ -916,7 +1012,13 @@ impl App {
             }
             (KeyCode::Char('k') | KeyCode::Up, _) => {
                 let curr = self.analytics.wrapped_selected_tile;
-                let next = if curr == 6 { 4 } else if curr >= 3 { curr - 3 } else { curr };
+                let next = if curr == 6 {
+                    4
+                } else if curr >= 3 {
+                    curr - 3
+                } else {
+                    curr
+                };
                 self.analytics.wrapped_selected_tile = next;
                 None
             }

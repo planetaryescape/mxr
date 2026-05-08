@@ -196,11 +196,10 @@ async fn websocket_relays_every_daemon_event_variant() {
     let _server = spawn_fake(&socket, |_| None, events.clone());
     let addr = boot_bridge(socket).await;
 
-    let (mut stream, _) = tokio_tungstenite::connect_async(format!(
-        "ws://{addr}/api/v1/events?token={TEST_TOKEN}"
-    ))
-    .await
-    .unwrap();
+    let (mut stream, _) =
+        tokio_tungstenite::connect_async(format!("ws://{addr}/api/v1/events?token={TEST_TOKEN}"))
+            .await
+            .unwrap();
 
     let expected_tags = [
         "SyncCompleted",

@@ -20,11 +20,11 @@ use axum::{
     Json, Router,
 };
 use mxr_core::{
-    id::{AccountId, MessageId},
+    id::{AccountId, DraftId, MessageId, ThreadId},
     types::{ResponseTimeDirection, SemanticProfile, StaleBallInCourt, StorageGroupBy},
     SearchMode,
 };
-use mxr_protocol::{Request, ResponseData};
+use mxr_protocol::{Request, ResponseData, ScreenerDispositionData};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::str::FromStr;
@@ -441,9 +441,7 @@ async fn analytics_response_time(
         None | Some("they_replied") | Some("they-replied") | Some("outgoing") => {
             ResponseTimeDirection::TheyReplied
         }
-        Some("i_replied") | Some("i-replied") | Some("incoming") => {
-            ResponseTimeDirection::IReplied
-        }
+        Some("i_replied") | Some("i-replied") | Some("incoming") => ResponseTimeDirection::IReplied,
         Some(other) => {
             return Err(BridgeError::Ipc(format!("unknown direction={other}")));
         }
@@ -880,6 +878,387 @@ async fn unsnooze(
 }
 
 // ---------------------------------------------------------------------------
+// reply-later, auto-reminders, send-later, snippets, sender, screener,
+// summarize, draft-assist — bridge surface for the v0.5+ delight features.
+
+#[derive(Debug, Deserialize)]
+struct SetReplyLaterBody {
+    flag: bool,
+}
+
+async fn set_reply_later(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<SetReplyLaterBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = MessageId::from_str(&message_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SetReplyLater {
+            message_id: id,
+            flag: body.flag,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn list_reply_queue(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ListReplyQueue,
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct SetAutoReminderBody {
+    sent_message_id: String,
+    remind_at: chrono::DateTime<chrono::Utc>,
+}
+
+async fn set_auto_reminder(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<SetAutoReminderBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = MessageId::from_str(&body.sent_message_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid sent_message_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SetAutoReminder {
+            sent_message_id: id,
+            remind_at: body.remind_at,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn cancel_auto_reminder(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = MessageId::from_str(&message_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::CancelAutoReminder {
+            sent_message_id: id,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct ScheduleSendBody {
+    draft_id: String,
+    send_at: chrono::DateTime<chrono::Utc>,
+}
+
+async fn schedule_send(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<ScheduleSendBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = DraftId::from_str(&body.draft_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ScheduleSend {
+            draft_id: id,
+            send_at: body.send_at,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn cancel_scheduled_send(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = DraftId::from_str(&draft_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::CancelScheduledSend { draft_id: id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn list_snippets(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ListSnippets,
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct SetSnippetBody {
+    name: String,
+    body: String,
+    #[serde(default)]
+    vars: Vec<String>,
+}
+
+async fn set_snippet(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<SetSnippetBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SetSnippet {
+            name: body.name,
+            body: body.body,
+            vars: body.vars,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn delete_snippet(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::DeleteSnippet { name },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct SenderProfileQuery {
+    #[serde(default)]
+    token: Option<String>,
+    account_id: String,
+    email: String,
+}
+
+async fn get_sender_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<SenderProfileQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&query.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetSenderProfile {
+            account_id,
+            email: query.email,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct ScreenerQueueQuery {
+    #[serde(default)]
+    token: Option<String>,
+    account_id: String,
+    #[serde(default = "default_screener_limit")]
+    limit: u32,
+}
+
+fn default_screener_limit() -> u32 {
+    100
+}
+
+async fn list_screener_queue(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ScreenerQueueQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&query.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::ListScreenerQueue {
+            account_id,
+            limit: query.limit,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct AccountQuery {
+    #[serde(default)]
+    token: Option<String>,
+    account_id: String,
+}
+
+async fn list_screener_decisions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AccountQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&query.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::ListScreenerDecisions { account_id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct SetScreenerDecisionBody {
+    account_id: String,
+    sender_email: String,
+    disposition: ScreenerDispositionData,
+    #[serde(default)]
+    route_label: Option<String>,
+}
+
+async fn set_screener_decision(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<SetScreenerDecisionBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&body.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SetScreenerDecision {
+            account_id,
+            sender_email: body.sender_email,
+            disposition: body.disposition,
+            route_label: body.route_label,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct ClearScreenerDecisionBody {
+    account_id: String,
+    sender_email: String,
+}
+
+async fn clear_screener_decision(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<ClearScreenerDecisionBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&body.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ClearScreenerDecision {
+            account_id,
+            sender_email: body.sender_email,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn summarize_thread(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(thread_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = ThreadId::from_str(&thread_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid thread_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SummarizeThread { thread_id: id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct DraftAssistBody {
+    thread_id: String,
+    instruction: String,
+}
+
+async fn draft_assist(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<DraftAssistBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = ThreadId::from_str(&body.thread_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid thread_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::DraftAssist {
+            thread_id: id,
+            instruction: body.instruction,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+// ---------------------------------------------------------------------------
 // router builders — extend the bucket sub-routers in lib.rs
 
 pub fn extend_admin(router: Router<AppState>) -> Router<AppState> {
@@ -896,6 +1275,31 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/count", get(count_messages))
         .route("/sync/status", get(sync_status))
         .route("/snoozed/{message_id}/wake", post(unsnooze))
+        // reply-later
+        .route("/reply-later/{message_id}", post(set_reply_later))
+        .route("/reply-later", get(list_reply_queue))
+        // auto-reminders
+        .route("/reminders", post(set_auto_reminder))
+        .route("/reminders/{message_id}", delete(cancel_auto_reminder))
+        // send-later (scheduled drafts)
+        .route("/scheduled-sends", post(schedule_send))
+        .route("/scheduled-sends/{draft_id}", delete(cancel_scheduled_send))
+        // snippets
+        .route("/snippets", get(list_snippets).post(set_snippet))
+        .route("/snippets/{name}", delete(delete_snippet))
+        // sender view
+        .route("/sender", get(get_sender_profile))
+        // screener
+        .route("/screener/queue", get(list_screener_queue))
+        .route(
+            "/screener/decisions",
+            get(list_screener_decisions)
+                .post(set_screener_decision)
+                .delete(clear_screener_decision),
+        )
+        // LLM features
+        .route("/threads/{thread_id}/summarize", post(summarize_thread))
+        .route("/threads/draft-assist", post(draft_assist))
 }
 
 pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
@@ -934,7 +1338,10 @@ pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
             "/accounts/{account_id}/addresses",
             get(list_account_addresses),
         )
-        .route("/accounts/{account_id}/addresses", post(add_account_address))
+        .route(
+            "/accounts/{account_id}/addresses",
+            post(add_account_address),
+        )
         .route(
             "/accounts/{account_id}/addresses/remove",
             post(remove_account_address),
@@ -945,10 +1352,6 @@ pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
         )
         // semantic
         .route("/semantic/enable", post(semantic_enable))
-        .route(
-            "/semantic/profiles/install",
-            post(semantic_install_profile),
-        )
+        .route("/semantic/profiles/install", post(semantic_install_profile))
         .route("/semantic/profiles/use", post(semantic_use_profile))
 }
-

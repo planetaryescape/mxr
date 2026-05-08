@@ -1,0 +1,51 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'API Explorer',
+    description: 'Interactive reference for the mxr HTTP bridge. Try requests against your local daemon at http://127.0.0.1:7777.',
+    template: 'splash',
+    pagefind: false,
+  }}
+>
+  <p>
+    The mxr daemon serves an OpenAPI 3.1 spec at <code>/api/v1/openapi.json</code> when
+    <code>[bridge]&nbsp;enabled&nbsp;=&nbsp;true</code> in your config (default). The explorer below
+    is rendered from the spec generated during this site's build.
+  </p>
+
+  <p>
+    To try requests, start the daemon (<code>mxr</code> or <code>mxr daemon</code>), grab your
+    bearer token from <code>~/.config/mxr/bridge-token</code>, and click <strong>Authorize</strong>
+    in the explorer.
+  </p>
+
+  <p>
+    If the embedded explorer does not load, open the raw spec at
+    <a href="/openapi.json"><code>/openapi.json</code></a>.
+  </p>
+
+  <noscript>
+    <p>
+      The interactive explorer requires JavaScript. The raw spec is at
+      <a href="/openapi.json"><code>/openapi.json</code></a>.
+    </p>
+  </noscript>
+
+  <div id="scalar-api-reference" style="margin-top: 2rem; min-height: 80vh;">
+    <p>Loading API Explorer...</p>
+  </div>
+
+  <script
+    is:inline
+    id="api-reference"
+    data-url="/openapi.json"
+    data-configuration='{"theme":"default","darkMode":true,"hideClientButton":false,"servers":[{"url":"http://127.0.0.1:7777","description":"Local mxr daemon"}]}'
+  ></script>
+  <script
+    is:inline
+    src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.55.1"
+  ></script>
+</StarlightPage>

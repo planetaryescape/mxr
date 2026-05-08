@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Show semantic status
+
+Usage: mxr semantic status
+
+Options:
+  -h, --help  Print help

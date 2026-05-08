@@ -554,3 +554,24 @@ query against `~/Library/Application Support/mxr/mxr.db` directly.
 - **No vanity counters.** "You sent 12,847 emails this year" is one-shot
   novelty, not a decision driver.
 - **No cross-device telemetry.** Everything stays in your local SQLite.
+
+## Agent prompts that work
+
+```text
+"Help me cut storage. Run `mxr storage --by sender --format json`,
+identify the top 5 noise senders, show me how many messages each has,
+and propose an `mxr search ... --format ids | mxr archive --dry-run`
+pipeline for each. Show the dry-run first."
+```
+
+```text
+"Who am I going cold on? `mxr contacts decay --threshold-days 60
+--format json` then for each result show me the latest 3 inbound
+subjects so I can decide whether to follow up."
+```
+
+## See also
+
+- [Recipes — bulk operations](/guides/recipes/#with-xargs--bulk-operations)
+- [Sender view (CLI)](/reference/cli/#sender-view)
+- [Triage flow](/guides/triage-flow/)

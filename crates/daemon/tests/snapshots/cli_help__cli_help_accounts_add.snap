@@ -24,7 +24,7 @@ Options:
 
       --gmail-bundled <GMAIL_BUNDLED>
           Use the bundled OAuth client (true) or supply your own (false)
-          
+
           [possible values: true, false]
 
       --gmail-client-id <GMAIL_CLIENT_ID>
@@ -34,11 +34,11 @@ Options:
           Custom Gmail OAuth client secret
 
       --imap-host <IMAP_HOST>
-          
+
 
       --format <FORMAT>
           Output format for `accounts` (the no-subcommand listing)
-          
+
           [possible values: table, json, jsonl, csv, ids]
 
       --imap-port <IMAP_PORT>
@@ -48,22 +48,22 @@ Options:
           IMAP requires authentication. Default true
 
       --imap-username <IMAP_USERNAME>
-          
+
 
       --imap-password <IMAP_PASSWORD>
           IMAP password (or set `MXR_IMAP_PASSWORD`)
 
       --smtp-host <SMTP_HOST>
-          
+
 
       --smtp-port <SMTP_PORT>
           [default: 587]
 
       --smtp-no-auth
-          
+
 
       --smtp-username <SMTP_USERNAME>
-          
+
 
       --smtp-password <SMTP_PASSWORD>
           SMTP password (or set `MXR_SMTP_PASSWORD`)

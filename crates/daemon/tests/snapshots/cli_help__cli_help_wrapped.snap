@@ -10,6 +10,6 @@ Options:
       --ytd                      Year-to-date (default if no window flag given): Jan 1 → now
       --year <YEAR>              Specific calendar year (Jan 1 → Dec 31 UTC)
       --since-days <SINCE_DAYS>  Last N days. Useful for quarterly or ad-hoc reviews
-      --account <ACCOUNT>        
+      --account <ACCOUNT>
       --format <FORMAT>          [possible values: table, json, jsonl, csv, ids]
   -h, --help                     Print help

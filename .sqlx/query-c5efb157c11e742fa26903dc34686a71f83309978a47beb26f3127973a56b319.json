@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!\"\n               FROM drafts\n               WHERE status = 'draft'\n                 AND send_at IS NOT NULL\n                 AND send_at <= ?\n               ORDER BY send_at ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "c5efb157c11e742fa26903dc34686a71f83309978a47beb26f3127973a56b319"
+}

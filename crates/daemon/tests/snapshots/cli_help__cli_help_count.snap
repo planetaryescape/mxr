@@ -7,7 +7,7 @@ Count matching messages
 Usage: mxr count [OPTIONS] <QUERY>
 
 Arguments:
-  <QUERY>  
+  <QUERY>
 
 Options:
       --mode <MODE>      [possible values: lexical, hybrid, semantic]

@@ -99,6 +99,9 @@ pub async fn run() -> anyhow::Result<()> {
 
     let mut app = App::from_config(&config);
     app.modals.onboarding.seen = local_state.onboarding_seen;
+    app.command_palette
+        .palette
+        .restore_recents_from_labels(&local_state.recent_action_labels);
     if config.accounts.is_empty() {
         app.accounts.page.refresh_pending = true;
     } else {
@@ -393,6 +396,148 @@ pub async fn run() -> anyhow::Result<()> {
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
                 AsyncResult::Rules(result)
+            });
+        }
+
+        if app.pending_snippets_refresh {
+            app.pending_snippets_refresh = false;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, Request::ListSnippets).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::Snippets { snippets },
+                    }) => Ok(snippets),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::SnippetsList(result)
+            });
+        }
+
+        if app.pending_reply_queue_refresh {
+            app.pending_reply_queue_refresh = false;
+            let bg = bg.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, Request::ListReplyQueue).await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::ReplyQueue { messages },
+                    }) => Ok(messages),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::ReplyQueueList(result)
+            });
+        }
+
+        if let Some(account_id) = app.pending_screener_refresh.take() {
+            let bg = bg.clone();
+            let captured_account = account_id.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::ListScreenerQueue {
+                        account_id: account_id.clone(),
+                        limit: 100,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::ScreenerQueue { entries },
+                    }) => Ok(entries),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::ScreenerQueueLoaded {
+                    account_id: captured_account,
+                    result,
+                }
+            });
+        }
+
+        for decision in std::mem::take(&mut app.pending_screener_decisions) {
+            let bg = bg.clone();
+            let captured_account = decision.account_id.clone();
+            let captured_email = decision.sender_email.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::SetScreenerDecision {
+                        account_id: decision.account_id,
+                        sender_email: decision.sender_email,
+                        disposition: decision.disposition,
+                        route_label: None,
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok { .. }) => Ok(()),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                };
+                AsyncResult::ScreenerDecisionApplied {
+                    account_id: captured_account,
+                    sender_email: captured_email,
+                    result,
+                }
+            });
+        }
+
+        if let Some((account_id, email)) = app.pending_sender_profile_request.take() {
+            let bg = bg.clone();
+            let captured_email = email.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::GetSenderProfile {
+                        account_id,
+                        email: email.clone(),
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::SenderProfile { profile },
+                    }) => Ok(profile),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::SenderProfileLoaded {
+                    email: captured_email,
+                    result,
+                }
+            });
+        }
+
+        if let Some(thread_id) = app.pending_summary_request.take() {
+            let bg = bg.clone();
+            let captured_id = thread_id.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(
+                    &bg,
+                    Request::SummarizeThread {
+                        thread_id: thread_id.clone(),
+                    },
+                )
+                .await;
+                let result = match resp {
+                    Ok(Response::Ok {
+                        data: ResponseData::ThreadSummary { text, model },
+                    }) => Ok((text, model)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                    _ => Err(MxrError::Ipc("unexpected response".into())),
+                };
+                AsyncResult::ThreadSummaryLoaded {
+                    thread_id: captured_id,
+                    result,
+                }
             });
         }
 
@@ -755,9 +900,9 @@ pub async fn run() -> anyhow::Result<()> {
                         }) => Ok(crate::async_result::AnalyticsResultPayload::Storage(rows)),
                         Ok(Response::Ok {
                             data: ResponseData::LargestMessages { rows },
-                        }) => Ok(crate::async_result::AnalyticsResultPayload::LargestMessages(
-                            rows,
-                        )),
+                        }) => {
+                            Ok(crate::async_result::AnalyticsResultPayload::LargestMessages(rows))
+                        }
                         Ok(Response::Ok {
                             data: ResponseData::StaleThreads { rows },
                         }) => Ok(crate::async_result::AnalyticsResultPayload::Stale(rows)),
@@ -779,7 +924,9 @@ pub async fn run() -> anyhow::Result<()> {
                         )),
                         Ok(Response::Ok {
                             data: ResponseData::Wrapped { summary },
-                        }) => Ok(crate::async_result::AnalyticsResultPayload::Wrapped(summary)),
+                        }) => Ok(crate::async_result::AnalyticsResultPayload::Wrapped(
+                            summary,
+                        )),
                         Ok(Response::Ok {
                             data: ResponseData::RefreshedContacts { rows },
                         }) => Ok(
@@ -908,13 +1055,18 @@ pub async fn run() -> anyhow::Result<()> {
         }
 
         // Drain pending mutations
-        for (req, effect) in app.pending_mutation_queue.drain(..) {
+        for queued_mutation in app.pending_mutation_queue.drain(..) {
+            let app::QueuedMutation {
+                id: mutation_id,
+                request: req,
+                effect,
+            } = queued_mutation;
             let bg = bg.clone();
             let result_tx_inner = result_tx.clone();
             let _ = submit_task(&queued, async move {
                 let verb = mutation_verb_past(&req);
                 let resp = ipc_call(&bg, req).await;
-                let result = match resp {
+                let outcome = match resp {
                     Ok(Response::Ok {
                         data: ResponseData::Ack,
                     }) => Ok(effect),
@@ -924,10 +1076,10 @@ pub async fn run() -> anyhow::Result<()> {
                     Ok(Response::Ok {
                         data: ResponseData::MutationResult { result },
                     }) if result.succeeded > 0 => {
-                        if let Some(mutation_id) = result.mutation_id.clone() {
+                        if let Some(daemon_mutation_id) = result.mutation_id.clone() {
                             let _ =
                                 result_tx_inner.send(AsyncResult::UndoCaptured(app::PendingUndo {
-                                    mutation_id,
+                                    mutation_id: daemon_mutation_id,
                                     verb_past: verb.into(),
                                     count: result.succeeded,
                                     applied_at: std::time::Instant::now(),
@@ -942,7 +1094,10 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                     _ => Err(MxrError::Ipc("unexpected response".into())),
                 };
-                AsyncResult::MutationResult(result)
+                AsyncResult::MutationResult {
+                    id: mutation_id,
+                    outcome,
+                }
             });
         }
 
@@ -1087,6 +1242,117 @@ pub async fn run() -> anyhow::Result<()> {
                         }
                         AsyncResult::Rules(Err(e)) => {
                             app.rules.page.status = Some(format!("Rules error: {e}"));
+                        }
+                        AsyncResult::SnippetsList(Ok(snippets)) => {
+                            let count = snippets.len();
+                            app.modals.snippets.set_snippets(snippets);
+                            app.status_message = Some(if count == 0 {
+                                "No snippets yet — see `mxr snippets set` to create one".into()
+                            } else {
+                                format!("{count} snippet(s)")
+                            });
+                        }
+                        AsyncResult::SnippetsList(Err(e)) => {
+                            app.modals.snippets.set_error(e.to_string());
+                            app.status_message = Some(format!("Snippets load failed: {e}"));
+                        }
+                        AsyncResult::ReplyQueueList(Ok(messages)) => {
+                            let count = messages.len();
+                            app.modals.reply_queue.set_messages(messages);
+                            app.status_message = Some(if count == 0 {
+                                "Reply queue is empty".into()
+                            } else {
+                                format!("{count} message(s) flagged for reply later")
+                            });
+                        }
+                        AsyncResult::ReplyQueueList(Err(e)) => {
+                            app.modals.reply_queue.set_error(e.to_string());
+                            app.status_message = Some(format!("Reply queue load failed: {e}"));
+                        }
+                        AsyncResult::ScreenerQueueLoaded { account_id, result } => {
+                            let still_relevant = app
+                                .modals
+                                .screener
+                                .account_id
+                                .as_ref()
+                                .map(|current| current == &account_id)
+                                .unwrap_or(false);
+                            if !still_relevant {
+                                continue;
+                            }
+                            match result {
+                                Ok(entries) => {
+                                    let count = entries.len();
+                                    app.modals.screener.set_entries(entries);
+                                    app.status_message = Some(format!(
+                                        "Screener queue: {count} sender(s)",
+                                    ));
+                                }
+                                Err(e) => {
+                                    app.modals.screener.set_error(e.to_string());
+                                    app.status_message =
+                                        Some(format!("Screener load failed: {e}"));
+                                }
+                            }
+                        }
+                        AsyncResult::ScreenerDecisionApplied {
+                            account_id,
+                            sender_email,
+                            result,
+                        } => {
+                            if let Err(e) = result {
+                                app.status_message = Some(format!(
+                                    "Screener disposition for {sender_email} failed: {e}"
+                                ));
+                                // Re-fetch to recover from optimistic removal.
+                                app.pending_screener_refresh = Some(account_id);
+                            }
+                        }
+                        AsyncResult::SenderProfileLoaded { email, result } => {
+                            // Drop late responses for a sender other than
+                            // the one currently shown in the modal.
+                            let still_relevant = app
+                                .modals
+                                .sender_profile
+                                .email
+                                .as_deref()
+                                .map(|current| current == email)
+                                .unwrap_or(false);
+                            if !still_relevant {
+                                continue;
+                            }
+                            match result {
+                                Ok(profile) => {
+                                    app.modals.sender_profile.set_profile(profile);
+                                }
+                                Err(e) => {
+                                    app.modals.sender_profile.set_error(e.to_string());
+                                    app.status_message =
+                                        Some(format!("Sender profile failed: {e}"));
+                                }
+                            }
+                        }
+                        AsyncResult::ThreadSummaryLoaded { thread_id, result } => {
+                            let still_relevant = app
+                                .modals
+                                .summary
+                                .thread_id
+                                .as_ref()
+                                .map(|current| current == &thread_id)
+                                .unwrap_or(false);
+                            if !still_relevant {
+                                continue;
+                            }
+                            match result {
+                                Ok((text, model)) => {
+                                    app.modals.summary.set_summary(text, model);
+                                    app.status_message = Some("Summary ready".into());
+                                }
+                                Err(e) => {
+                                    app.modals.summary.set_error(e.to_string());
+                                    app.status_message = Some(format!("Summarize failed: {e}"));
+                                }
+                            }
                         }
                         AsyncResult::RuleDetail {
                             request_id,
@@ -1453,13 +1719,25 @@ pub async fn run() -> anyhow::Result<()> {
                                 message_id
                             ));
                         }
-                        AsyncResult::MutationResult(Ok(effect)) => {
+                        AsyncResult::MutationResult {
+                            id,
+                            outcome: Ok(effect),
+                        } => {
                             app.finish_pending_mutation();
+                            // Daemon ack'd the mutation: discard the rollback
+                            // snapshot — there's no longer anything to revert.
+                            let _ = app.mutation_snapshots.take(id);
                             let show_completion_status = app.pending_mutation_count == 0;
                             app.apply_mutation_completion(effect, show_completion_status);
                         }
-                        AsyncResult::MutationResult(Err(e)) => {
+                        AsyncResult::MutationResult {
+                            id,
+                            outcome: Err(e),
+                        } => {
                             app.finish_pending_mutation();
+                            // Replay the snapshot to revert the optimistic change
+                            // before surfacing the error UX.
+                            app.handle_mutation_reconciliation_failed(id);
                             app.refresh_mailbox_after_mutation_failure();
                             app.show_mutation_failure(&e);
                         }
@@ -1739,11 +2017,8 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             message,
             ..
         } => {
-            let total_str = total
-                .map(|t| t.to_string())
-                .unwrap_or_else(|| "?".into());
-            app.status_message =
-                Some(format!("{operation} [{current}/{total_str}]: {message}"));
+            let total_str = total.map(|t| t.to_string()).unwrap_or_else(|| "?".into());
+            app.status_message = Some(format!("{operation} [{current}/{total_str}]: {message}"));
         }
         DaemonEvent::OperationCompleted {
             operation, message, ..
@@ -1751,9 +2026,7 @@ fn handle_daemon_event(app: &mut App, event: DaemonEvent) {
             app.status_message = Some(format!("{operation}: {message}"));
             // Contacts-related rebuild may have changed analytics
             // data; nudge the active analytics view to refresh.
-            if operation == "rebuild-analytics"
-                && app.screen == app::Screen::Analytics
-            {
+            if operation == "rebuild-analytics" && app.screen == app::Screen::Analytics {
                 app.analytics.refresh_pending = true;
             }
         }
@@ -3441,7 +3714,7 @@ mod tests {
         assert!(app.mailbox.envelopes.is_empty());
         assert!(app.mailbox.all_envelopes.is_empty());
         assert_eq!(app.pending_mutation_queue.len(), 1);
-        match &app.pending_mutation_queue[0].0 {
+        match &app.pending_mutation_queue[0].request {
             Request::Mutation(MutationCommand::ReadAndArchive { message_ids }) => {
                 assert_eq!(message_ids, &vec![message_id]);
             }
@@ -3518,7 +3791,10 @@ mod tests {
             }],
             mutation_id: None,
         };
-        assert_eq!(format_mutation_failure(&bare), "mutation skipped 1 message(s)");
+        assert_eq!(
+            format_mutation_failure(&bare),
+            "mutation skipped 1 message(s)"
+        );
 
         let with_error = MutationResultData {
             accounts: vec![
@@ -3600,7 +3876,7 @@ mod tests {
         // The pending_mutation_queue is empty — Archive wasn't pressed yet
         // Press archive while viewing
         app.apply(Action::Archive);
-        let (_, effect) = app.pending_mutation_queue.remove(0);
+        let effect = app.pending_mutation_queue.remove(0).effect;
         // Verify the effect targets the viewing envelope
         match &effect {
             MutationEffect::RemoveFromList(id) => {
@@ -3865,7 +4141,7 @@ mod tests {
             .flags
             .contains(MessageFlags::READ));
         assert_eq!(app.pending_mutation_queue.len(), 1);
-        match &app.pending_mutation_queue[0].0 {
+        match &app.pending_mutation_queue[0].request {
             Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
                 assert!(*read);
                 assert_eq!(message_ids, &vec![app.mailbox.envelopes[0].id.clone()]);
@@ -4008,7 +4284,7 @@ mod tests {
             .flags
             .contains(MessageFlags::READ));
         assert_eq!(app.pending_mutation_queue.len(), 1);
-        match &app.pending_mutation_queue[0].0 {
+        match &app.pending_mutation_queue[0].request {
             Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
                 assert!(*read);
                 assert_eq!(message_ids, &vec![app.mailbox.envelopes[0].id.clone()]);
@@ -4042,7 +4318,7 @@ mod tests {
         assert!(!app.mailbox.envelopes[0].flags.contains(MessageFlags::READ));
         assert!(app.mailbox.envelopes[1].flags.contains(MessageFlags::READ));
         assert_eq!(app.pending_mutation_queue.len(), 1);
-        match &app.pending_mutation_queue[0].0 {
+        match &app.pending_mutation_queue[0].request {
             Request::Mutation(MutationCommand::SetRead { message_ids, read }) => {
                 assert!(*read);
                 assert_eq!(message_ids, &vec![app.mailbox.envelopes[1].id.clone()]);
@@ -4635,7 +4911,7 @@ mod tests {
             .flags
             .contains(MessageFlags::STARRED));
         assert_eq!(app.pending_mutation_queue.len(), 1);
-        match &app.pending_mutation_queue[0].0 {
+        match &app.pending_mutation_queue[0].request {
             Request::Mutation(MutationCommand::Star {
                 message_ids,
                 starred,
@@ -5679,8 +5955,12 @@ mod tests {
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));
 
-        match app.pending_mutation_queue.first() {
-            Some((Request::SendDraft { draft }, _)) => {
+        match app
+            .pending_mutation_queue
+            .first()
+            .map(|queued| &queued.request)
+        {
+            Some(Request::SendDraft { draft }) => {
                 assert_eq!(draft.account_id, pending_account_id);
             }
             other => panic!("Expected SendDraft request, got {other:?}"),
@@ -5838,8 +6118,10 @@ mod tests {
 
         assert!(app.compose.pending_send_confirm.is_none());
         assert!(matches!(
-            app.pending_mutation_queue.first(),
-            Some((Request::SaveDraftToServer { .. }, _))
+            app.pending_mutation_queue
+                .first()
+                .map(|queued| &queued.request),
+            Some(Request::SaveDraftToServer { .. })
         ));
     }
 
@@ -6179,7 +6461,7 @@ mod tests {
         app.apply(Action::Snooze);
         assert!(!app.modals.snooze_panel.visible);
         assert_eq!(app.pending_mutation_queue.len(), 1);
-        match &app.pending_mutation_queue[0].0 {
+        match &app.pending_mutation_queue[0].request {
             Request::Snooze {
                 message_id,
                 wake_at,
@@ -7547,8 +7829,14 @@ mod tests {
         let mut app = App::new();
         app.analytics.view = AnalyticsView::Wrapped;
         app.analytics.wrapped_window = WrappedWindow::Year(2025);
-        let expected_start = Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap().timestamp();
-        let expected_end = Utc.with_ymd_and_hms(2025, 12, 31, 23, 59, 59).unwrap().timestamp();
+        let expected_start = Utc
+            .with_ymd_and_hms(2025, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        let expected_end = Utc
+            .with_ymd_and_hms(2025, 12, 31, 23, 59, 59)
+            .unwrap()
+            .timestamp();
         match app.analytics_request_for_active_view() {
             mxr_protocol::Request::Wrapped {
                 since_unix,
@@ -7903,9 +8191,7 @@ mod tests {
     /// `contacts asymmetry`, `subscriptions`, `wrapped --ytd`).
     #[test]
     fn default_analytics_state_uses_documented_defaults() {
-        use crate::app::{
-            AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow,
-        };
+        use crate::app::{AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow};
         let s = AnalyticsState::default();
         assert_eq!(s.view, AnalyticsView::Storage);
         assert_eq!(s.storage_mode, StorageMode::Breakdown);

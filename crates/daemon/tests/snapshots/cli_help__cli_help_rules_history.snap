@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Usage: mxr rules history [OPTIONS] [RULE]
+
+Arguments:
+  [RULE]
+
+Options:
+      --limit <LIMIT>  [default: 50]
+  -h, --help           Print help

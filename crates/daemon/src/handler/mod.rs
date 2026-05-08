@@ -13,13 +13,19 @@ mod admin;
 mod auth_sessions;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
+mod draft_assist;
 mod helpers;
 mod mailbox;
 mod mutations;
 mod platform;
+mod reply_later;
 mod rules;
 mod runtime;
+mod screener;
+mod sender_view;
+mod snippets;
 mod status_helpers;
+mod summarize;
 
 use crate::state::AppState;
 use mxr_config::SafetyPolicy;
@@ -38,6 +44,7 @@ use tracing::Instrument;
 pub(crate) use helpers::{
     dir_size_sync, file_size_sync, recent_log_lines_sync, should_fallback_to_tantivy,
 };
+pub(crate) use mutations::send_stored_draft;
 pub(crate) use status_helpers::{doctor_data_stats, latest_successful_sync_at};
 
 type HandlerResult = Result<ResponseData, String>;
@@ -370,7 +377,68 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         } => mutations::snooze(state, message_id, wake_at).await,
         Request::Unsnooze { message_id } => mutations::unsnooze(state, message_id).await,
         Request::ListSnoozed => mutations::list_snoozed(state).await,
+        Request::SetReplyLater { message_id, flag } => {
+            reply_later::set_reply_later(state, message_id, *flag).await
+        }
+        Request::ListReplyQueue => reply_later::list_reply_queue(state).await,
+        Request::SetAutoReminder {
+            sent_message_id,
+            remind_at,
+        } => reply_later::set_auto_reminder(state, sent_message_id, *remind_at).await,
+        Request::CancelAutoReminder { sent_message_id } => {
+            reply_later::cancel_auto_reminder(state, sent_message_id).await
+        }
+        Request::ScheduleSend { draft_id, send_at } => {
+            mutations::schedule_send(state, draft_id, *send_at).await
+        }
+        Request::CancelScheduledSend { draft_id } => {
+            mutations::cancel_scheduled_send(state, draft_id).await
+        }
+        Request::ListSnippets => snippets::list_snippets(state).await,
+        Request::SetSnippet { name, body, vars } => {
+            snippets::set_snippet(state, name.clone(), body.clone(), vars.clone()).await
+        }
+        Request::DeleteSnippet { name } => snippets::delete_snippet(state, name).await,
+        Request::GetSenderProfile { account_id, email } => {
+            sender_view::get_sender_profile(state, account_id, email).await
+        }
+        Request::ListScreenerQueue { account_id, limit } => {
+            screener::list_queue(state, account_id, *limit).await
+        }
+        Request::ListScreenerDecisions { account_id } => {
+            screener::list_decisions(state, account_id).await
+        }
+        Request::SetScreenerDecision {
+            account_id,
+            sender_email,
+            disposition,
+            route_label,
+        } => {
+            screener::set_decision(
+                state,
+                account_id,
+                sender_email.clone(),
+                *disposition,
+                route_label.clone(),
+            )
+            .await
+        }
+        Request::ClearScreenerDecision {
+            account_id,
+            sender_email,
+        } => screener::clear_decision(state, account_id, sender_email).await,
+        Request::SummarizeThread { thread_id } => {
+            summarize::summarize_thread(state, thread_id).await
+        }
+        Request::DraftAssist {
+            thread_id,
+            instruction,
+        } => draft_assist::draft_assist(state, thread_id, instruction).await,
         Request::ListDrafts => mutations::list_drafts(state).await,
+        Request::ListOrphanedDrafts => mutations::list_orphaned_drafts(state).await,
+        Request::ResetOrphanedDraft { draft_id } => {
+            mutations::reset_orphaned_draft(state, draft_id).await
+        }
         Request::PrepareReply {
             message_id,
             reply_all,
@@ -483,7 +551,14 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::GetHeaders { .. }
             | Request::ListRuleHistory { .. }
             | Request::ListSnoozed
+            | Request::ListReplyQueue
+            | Request::ListSnippets
+            | Request::GetSenderProfile { .. }
+            | Request::ListScreenerQueue { .. }
+            | Request::ListScreenerDecisions { .. }
+            | Request::SummarizeThread { .. }
             | Request::ListDrafts
+            | Request::ListOrphanedDrafts
             | Request::PrepareReply { .. }
             | Request::PrepareForward { .. }
             | Request::ExportThread { .. }
@@ -568,6 +643,22 @@ fn request_kind(req: &Request) -> &'static str {
         Request::Snooze { .. } => "snooze",
         Request::Unsnooze { .. } => "unsnooze",
         Request::ListSnoozed => "list_snoozed",
+        Request::SetReplyLater { .. } => "set_reply_later",
+        Request::ListReplyQueue => "list_reply_queue",
+        Request::SetAutoReminder { .. } => "set_auto_reminder",
+        Request::CancelAutoReminder { .. } => "cancel_auto_reminder",
+        Request::ScheduleSend { .. } => "schedule_send",
+        Request::CancelScheduledSend { .. } => "cancel_scheduled_send",
+        Request::ListSnippets => "list_snippets",
+        Request::SetSnippet { .. } => "set_snippet",
+        Request::DeleteSnippet { .. } => "delete_snippet",
+        Request::GetSenderProfile { .. } => "get_sender_profile",
+        Request::ListScreenerQueue { .. } => "list_screener_queue",
+        Request::ListScreenerDecisions { .. } => "list_screener_decisions",
+        Request::SetScreenerDecision { .. } => "set_screener_decision",
+        Request::ClearScreenerDecision { .. } => "clear_screener_decision",
+        Request::SummarizeThread { .. } => "summarize_thread",
+        Request::DraftAssist { .. } => "draft_assist",
         Request::PrepareReply { .. } => "prepare_reply",
         Request::PrepareForward { .. } => "prepare_forward",
         Request::SendDraft { .. } => "send_draft",
@@ -576,6 +667,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::DeleteDraft { .. } => "delete_draft",
         Request::SaveDraftToServer { .. } => "save_draft_to_server",
         Request::ListDrafts => "list_drafts",
+        Request::ListOrphanedDrafts => "list_orphaned_drafts",
+        Request::ResetOrphanedDraft { .. } => "reset_orphaned_draft",
         Request::ExportThread { .. } => "export_thread",
         Request::ExportSearch { .. } => "export_search",
         Request::GetStatus => "get_status",
@@ -5065,6 +5158,366 @@ mod tests {
         let _ = std::fs::remove_dir_all(state.attachment_dir());
     }
 
+    #[tokio::test]
+    async fn dispatch_set_reply_later_persists_flag_visible_in_queue() {
+        // Behavior: marking a message reply-later via IPC persists the flag,
+        // and subsequent `ListReplyQueue` requests return the envelope.
+        // Clearing the flag removes it from the queue.
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let id = sync_and_get_first_id(&state).await;
+
+        // Initially the queue is empty.
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 200,
+                payload: IpcPayload::Request(Request::ListReplyQueue),
+            },
+        )
+        .await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::ReplyQueue { messages },
+            }) => assert!(messages.is_empty(), "fresh queue is empty"),
+            other => panic!("expected ReplyQueue, got {other:?}"),
+        }
+
+        // Set the flag.
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 201,
+                payload: IpcPayload::Request(Request::SetReplyLater {
+                    message_id: id.clone(),
+                    flag: true,
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+
+        // Queue now contains the flagged envelope.
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 202,
+                payload: IpcPayload::Request(Request::ListReplyQueue),
+            },
+        )
+        .await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::ReplyQueue { messages },
+            }) => {
+                assert_eq!(messages.len(), 1, "one flagged message");
+                assert_eq!(messages[0].id, id);
+            }
+            other => panic!("expected ReplyQueue, got {other:?}"),
+        }
+
+        // Clear the flag.
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 203,
+                payload: IpcPayload::Request(Request::SetReplyLater {
+                    message_id: id.clone(),
+                    flag: false,
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+
+        // Queue is empty again.
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 204,
+                payload: IpcPayload::Request(Request::ListReplyQueue),
+            },
+        )
+        .await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::ReplyQueue { messages },
+            }) => assert!(messages.is_empty(), "queue empty after clear"),
+            other => panic!("expected ReplyQueue, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_set_auto_reminder_persists_and_loop_fires_when_due() {
+        // End-to-end: setting a reminder via IPC persists it; the
+        // background-loop function fires it once `now >= remind_at` and
+        // emits a `ReminderTriggered` event.
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let id = sync_and_get_first_id(&state).await;
+        let mut events = state.event_tx.subscribe();
+
+        // Set the reminder for "1 hour ago" so it's already due.
+        let remind_at = chrono::Utc::now() - chrono::Duration::hours(1);
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 300,
+                payload: IpcPayload::Request(Request::SetAutoReminder {
+                    sent_message_id: id.clone(),
+                    remind_at,
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+
+        // Run one tick of the loop with `now` past the reminder.
+        let fired = crate::loops::process_due_reminders(&state, chrono::Utc::now())
+            .await
+            .unwrap();
+        assert_eq!(fired, 1, "one due reminder fires");
+
+        // Expect a ReminderTriggered event for the right message.
+        let received = events.try_recv().expect("event published");
+        match received.payload {
+            IpcPayload::Event(DaemonEvent::ReminderTriggered { sent_message_id }) => {
+                assert_eq!(sent_message_id, id);
+            }
+            other => panic!("expected ReminderTriggered event, got {other:?}"),
+        }
+
+        // Second tick: nothing fires (already-triggered reminders are
+        // excluded).
+        let fired_again = crate::loops::process_due_reminders(&state, chrono::Utc::now())
+            .await
+            .unwrap();
+        assert_eq!(fired_again, 0, "fired reminders are not re-fired");
+    }
+
+    #[tokio::test]
+    async fn dispatch_cancel_auto_reminder_prevents_firing() {
+        // Setting then cancelling a reminder leaves no due rows for
+        // the loop to fire.
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let id = sync_and_get_first_id(&state).await;
+
+        let remind_at = chrono::Utc::now() - chrono::Duration::hours(1);
+        let _ = handle_request(
+            &state,
+            &IpcMessage {
+                id: 310,
+                payload: IpcPayload::Request(Request::SetAutoReminder {
+                    sent_message_id: id.clone(),
+                    remind_at,
+                }),
+            },
+        )
+        .await;
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 311,
+                payload: IpcPayload::Request(Request::CancelAutoReminder {
+                    sent_message_id: id.clone(),
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+
+        let fired = crate::loops::process_due_reminders(&state, chrono::Utc::now())
+            .await
+            .unwrap();
+        assert_eq!(fired, 0, "cancelled reminders never fire");
+    }
+
+    #[tokio::test]
+    async fn dispatch_schedule_send_persists_and_loop_flushes_when_due() {
+        // End-to-end: schedule an existing draft for a past send_at,
+        // run one tick of the loop, expect the send pipeline to fire
+        // and the draft's status to advance past 'draft'.
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let _ = sync_and_get_first_id(&state).await;
+
+        // Insert a draft for the synthetic account.
+        let account = state
+            .store
+            .list_accounts()
+            .await
+            .unwrap()
+            .first()
+            .unwrap()
+            .clone();
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::id::DraftId::new(),
+            account_id: account.id.clone(),
+            reply_headers: None,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "you@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "scheduled".into(),
+            body_markdown: "Body".into(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        state.store.insert_draft(&draft).await.unwrap();
+
+        // Schedule for "1 hour ago" — already due.
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 400,
+                payload: IpcPayload::Request(Request::ScheduleSend {
+                    draft_id: draft.id.clone(),
+                    send_at: chrono::Utc::now() - chrono::Duration::hours(1),
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+        assert_eq!(
+            state
+                .store
+                .get_scheduled_send(&draft.id)
+                .await
+                .unwrap()
+                .is_some(),
+            true,
+            "send_at persisted"
+        );
+
+        // Run a tick of the flusher.
+        let fired = crate::loops::process_due_scheduled_sends(&state, chrono::Utc::now())
+            .await
+            .unwrap();
+        assert_eq!(fired, 1);
+
+        // Draft no longer needs sending: either advanced past `draft`
+        // status (FakeProvider may delete on success) or is gone entirely.
+        let status = state.store.get_draft_status(&draft.id).await.unwrap();
+        assert!(
+            !matches!(status, Some(mxr_core::types::DraftStatus::Draft)),
+            "draft no longer in 'draft' status: {status:?}"
+        );
+
+        // The schedule entry is cleared (the row may be gone too) so a
+        // second tick won't try to re-flush it.
+        assert!(state
+            .store
+            .get_scheduled_send(&draft.id)
+            .await
+            .unwrap()
+            .is_none());
+        let fired_again = crate::loops::process_due_scheduled_sends(&state, chrono::Utc::now())
+            .await
+            .unwrap();
+        assert_eq!(fired_again, 0);
+    }
+
+    #[tokio::test]
+    async fn dispatch_cancel_scheduled_send_prevents_flush() {
+        let (state, _) = AppState::in_memory_with_fake().await.unwrap();
+        let state = Arc::new(state);
+        let _ = sync_and_get_first_id(&state).await;
+
+        let account = state
+            .store
+            .list_accounts()
+            .await
+            .unwrap()
+            .first()
+            .unwrap()
+            .clone();
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::id::DraftId::new(),
+            account_id: account.id.clone(),
+            reply_headers: None,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "you@example.com".into(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "scheduled-then-cancelled".into(),
+            body_markdown: "Body".into(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        state.store.insert_draft(&draft).await.unwrap();
+
+        let _ = handle_request(
+            &state,
+            &IpcMessage {
+                id: 410,
+                payload: IpcPayload::Request(Request::ScheduleSend {
+                    draft_id: draft.id.clone(),
+                    send_at: chrono::Utc::now() - chrono::Duration::hours(1),
+                }),
+            },
+        )
+        .await;
+        let resp = handle_request(
+            &state,
+            &IpcMessage {
+                id: 411,
+                payload: IpcPayload::Request(Request::CancelScheduledSend {
+                    draft_id: draft.id.clone(),
+                }),
+            },
+        )
+        .await;
+        assert!(matches!(
+            resp.payload,
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::Ack
+            })
+        ));
+
+        let fired = crate::loops::process_due_scheduled_sends(&state, chrono::Utc::now())
+            .await
+            .unwrap();
+        assert_eq!(fired, 0);
+
+        // Draft remains in 'draft' status — never sent.
+        assert_eq!(
+            state.store.get_draft_status(&draft.id).await.unwrap(),
+            Some(mxr_core::types::DraftStatus::Draft)
+        );
+    }
+
     /// Helper: sync, list envelopes, return first envelope's id.
     async fn sync_and_get_first_id(state: &Arc<AppState>) -> mxr_core::MessageId {
         state
@@ -6579,6 +7032,87 @@ mod tests {
 
         assert_eq!(fake.sent_drafts().len(), 1);
         assert!(state.store.get_draft(&draft.id).await.unwrap().is_none());
+    }
+
+    /// The live send pipeline must touch `last_heartbeat_at` once it has
+    /// CAS'd a draft into `Sending`. Otherwise, a long-running send (large
+    /// attachment, slow OAuth refresh) could be misidentified as orphaned
+    /// by the 1h startup recovery cutoff. We verify this by exercising the
+    /// failure path: with no send provider configured, `send_stored_draft`
+    /// CAS's into `Sending`, touches the heartbeat, then reverts to
+    /// `Draft` when provider lookup fails — leaving a fresh heartbeat we
+    /// can read back.
+    #[tokio::test]
+    async fn send_stored_draft_touches_heartbeat_after_cas() {
+        let account_id = mxr_core::AccountId::new();
+        let account = crate::test_fixtures::test_account_with_id(account_id.clone());
+        let fake = Arc::new(mxr_provider_fake::FakeProvider::new(account_id.clone()));
+        let sync_provider: Arc<dyn mxr_core::MailSyncProvider> = fake.clone();
+        // No send provider — `send_provider_for_account` will fail.
+        let state = Arc::new(
+            AppState::in_memory_with_sync_provider(account, sync_provider, None)
+                .await
+                .unwrap(),
+        );
+
+        let draft = mxr_core::types::Draft {
+            id: mxr_core::DraftId::new(),
+            account_id,
+            reply_headers: None,
+            to: vec![mxr_core::types::Address {
+                name: None,
+                email: "test@example.com".to_string(),
+            }],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Heartbeat probe".to_string(),
+            body_markdown: "Body".to_string(),
+            attachments: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        state.store.insert_draft(&draft).await.unwrap();
+        // Pre-condition: a brand-new draft has no heartbeat.
+        assert_eq!(
+            state.store.get_draft_heartbeat(&draft.id).await.unwrap(),
+            None,
+            "fresh draft must have NULL last_heartbeat_at"
+        );
+
+        let before = chrono::Utc::now();
+        let send_msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::SendStoredDraft {
+                draft_id: draft.id.clone(),
+            }),
+        };
+        let send_resp = handle_request(&state, &send_msg).await;
+        assert!(
+            matches!(
+                send_resp.payload,
+                IpcPayload::Response(Response::Error { .. })
+            ),
+            "send_stored_draft without a send provider must error, got {:?}",
+            send_resp.payload
+        );
+
+        // Post-condition: heartbeat was set during the CAS-to-Sending phase
+        // and survives the revert-to-Draft on provider-lookup failure.
+        let heartbeat = state
+            .store
+            .get_draft_heartbeat(&draft.id)
+            .await
+            .unwrap()
+            .expect("send_stored_draft must touch the heartbeat after CAS");
+        let after = chrono::Utc::now();
+        assert!(
+            heartbeat >= before - chrono::Duration::seconds(1),
+            "heartbeat {heartbeat} must not predate test start {before}"
+        );
+        assert!(
+            heartbeat <= after + chrono::Duration::seconds(1),
+            "heartbeat {heartbeat} must not postdate test end {after}"
+        );
     }
 
     #[tokio::test]

@@ -306,6 +306,8 @@ impl GmailClient {
             .http
             .post(&url)
             .header("Authorization", self.auth_header().await?)
+            .header(reqwest::header::CONTENT_LENGTH, "0")
+            .body(Vec::new())
             .send()
             .await?;
 
@@ -605,7 +607,7 @@ mod tests {
     use futures::FutureExt;
     use std::any::Any;
     use std::panic::AssertUnwindSafe;
-    use wiremock::matchers::{method, path, query_param, query_param_is_missing};
+    use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     // For tests, we need a GmailClient that doesn't need real OAuth.
@@ -895,6 +897,29 @@ mod tests {
         let bytes = client.get_attachment("msg-123", "att-1").await.unwrap();
 
         assert_eq!(bytes, b"%PDF");
+    }
+
+    #[tokio::test]
+    async fn trash_message_sends_empty_post_with_content_length() {
+        let Some(server) = start_mock_server().await else {
+            return;
+        };
+
+        Mock::given(method("POST"))
+            .and(path("/messages/msg-123/trash"))
+            .and(header("content-length", "0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg-123",
+                "threadId": "thread-1"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client =
+            GmailClient::new(GmailAuth::for_test_token("test-token")).with_base_url(server.uri());
+
+        client.trash_message("msg-123").await.unwrap();
     }
 
     #[tokio::test]

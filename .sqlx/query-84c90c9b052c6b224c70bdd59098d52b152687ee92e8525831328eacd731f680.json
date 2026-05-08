@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) as \"count!: i64\"\n               FROM (\n                   SELECT thread_id, MAX(date) AS latest_date\n                   FROM messages\n                   WHERE account_id = ?\n                   GROUP BY thread_id\n               ) t\n               JOIN messages m\n                 ON m.account_id = ? AND m.thread_id = t.thread_id AND m.date = t.latest_date\n               WHERE LOWER(m.from_email) = LOWER(?)\n                 AND NOT EXISTS (\n                     SELECT 1 FROM messages om\n                     WHERE om.account_id = ? AND om.thread_id = m.thread_id\n                       AND om.direction = 'outbound' AND om.date >= m.date\n                 )",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "84c90c9b052c6b224c70bdd59098d52b152687ee92e8525831328eacd731f680"
+}

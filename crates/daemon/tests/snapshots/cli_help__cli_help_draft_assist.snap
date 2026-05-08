@@ -1,0 +1,38 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 13
+expression: stdout
+---
+Generate a draft reply for a thread, grounded on the thread context plus the user's instruction. Output goes to stdout — pipe it into `$EDITOR` or your scratch buffer. Never auto-sends. Two equivalent forms:
+
+- `mxr draft-assist THREAD_ID "decline politely"` (legacy positional) - `mxr draft-assist --search 'from:acme' --first --instruct "..."` (search)
+
+The instruction can be a positional second argument OR provided via `--instruct` — pick whichever composes better. `--search` requires `--instruct`.
+
+Usage: mxr draft-assist [OPTIONS] [THREAD_ID] [INSTRUCTION]
+
+Arguments:
+  [THREAD_ID]
+          Thread ID to reply to
+
+  [INSTRUCTION]
+          Plain-language instruction (e.g. `"decline politely"`). Required unless `--instruct` is provided
+
+Options:
+      --search <SEARCH>
+          Resolve target thread by query instead of a positional ID
+
+      --first
+          Use only the most recent matching thread
+
+      --limit <LIMIT>
+          Cap the number of threads drafted for when --search is used
+
+      --instruct <TEXT>
+          Long form of the positional instruction. Required when `--search` is used (no positional fallback)
+
+      --format <FORMAT>
+          [possible values: table, json, jsonl, csv, ids]
+
+  -h, --help
+          Print help (see a summary with '-h')

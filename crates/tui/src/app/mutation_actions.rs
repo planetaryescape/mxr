@@ -6,15 +6,31 @@ impl App {
             Action::Archive => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
-                    let effect = remove_from_list_effect(&ids);
+                    // Archive removes INBOX. The list should hide the row only
+                    // when we're viewing INBOX; in Starred / All Mail / custom
+                    // labels the message still belongs in the current view, so
+                    // an optimistic removal would just flicker until the next
+                    // sync put it back.
+                    let removes_from_view = self.active_label_matches("INBOX");
+                    let completion_effect = if removes_from_view {
+                        remove_from_list_effect(&ids)
+                    } else {
+                        MutationEffect::StatusOnly(format!(
+                            "Archived {} {}",
+                            ids.len(),
+                            pluralize_messages(ids.len())
+                        ))
+                    };
+                    let optimistic_effect =
+                        removes_from_view.then(|| remove_from_list_effect(&ids));
                     self.queue_or_confirm_bulk_action(
                         "Archive messages",
                         bulk_message_detail("archive", ids.len()),
                         Request::Mutation(MutationCommand::Archive {
                             message_ids: ids.clone(),
                         }),
-                        effect.clone(),
-                        Some(effect),
+                        completion_effect,
+                        optimistic_effect,
                         "Archiving...".into(),
                         ids.len(),
                     );
@@ -23,15 +39,26 @@ impl App {
             Action::MarkReadAndArchive => {
                 let ids = self.mutation_target_ids();
                 if !ids.is_empty() {
-                    let effect = remove_from_list_effect(&ids);
+                    let removes_from_view = self.active_label_matches("INBOX");
+                    let completion_effect = if removes_from_view {
+                        remove_from_list_effect(&ids)
+                    } else {
+                        MutationEffect::StatusOnly(format!(
+                            "Marked {} {} as read and archived",
+                            ids.len(),
+                            pluralize_messages(ids.len())
+                        ))
+                    };
+                    let optimistic_effect =
+                        removes_from_view.then(|| remove_from_list_effect(&ids));
                     self.queue_or_confirm_bulk_action(
                         "Mark messages as read and archive",
                         bulk_message_detail("mark as read and archive", ids.len()),
                         Request::Mutation(MutationCommand::ReadAndArchive {
                             message_ids: ids.clone(),
                         }),
-                        effect.clone(),
-                        Some(effect),
+                        completion_effect,
+                        optimistic_effect,
                         format!(
                             "Marking {} {} as read and archiving...",
                             ids.len(),
@@ -221,6 +248,12 @@ impl App {
                     // Label picker confirmed — dispatch mutation
                     let ids = self.mutation_target_ids();
                     if !ids.is_empty() {
+                        let optimistic_effect = MutationEffect::ModifyLabels {
+                            message_ids: ids.clone(),
+                            add: vec![label_name.clone()],
+                            remove: vec![],
+                            status: String::new(),
+                        };
                         self.queue_or_confirm_bulk_action(
                             "Apply label",
                             format!(
@@ -240,7 +273,7 @@ impl App {
                                 remove: vec![],
                                 status: format!("Applied label '{}'", label_name),
                             },
-                            None,
+                            Some(optimistic_effect),
                             format!("Applying label '{}'...", label_name),
                             ids.len(),
                         );
@@ -257,6 +290,7 @@ impl App {
                     // Label picker confirmed — dispatch move
                     let ids = self.mutation_target_ids();
                     if !ids.is_empty() {
+                        let optimistic_effect = remove_from_list_effect(&ids);
                         self.queue_or_confirm_bulk_action(
                             "Move messages",
                             format!(
@@ -270,7 +304,7 @@ impl App {
                                 target_label: label_name.clone(),
                             }),
                             remove_from_list_effect(&ids),
-                            None,
+                            Some(optimistic_effect),
                             format!("Moving to '{}'...", label_name),
                             ids.len(),
                         );
@@ -335,29 +369,12 @@ impl App {
             }
             Action::Snooze => {
                 if self.modals.snooze_panel.visible {
-                    if let Some(env) = self.context_envelope() {
-                        let wake_at = resolve_snooze_preset(
-                            snooze_presets()[self.modals.snooze_panel.selected_index],
-                            &self.modals.snooze_config,
-                        );
-                        self.queue_mutation(
-                            Request::Snooze {
-                                message_id: env.id.clone(),
-                                wake_at,
-                            },
-                            MutationEffect::StatusOnly(format!(
-                                "Snoozed until {}",
-                                wake_at
-                                    .with_timezone(&chrono::Local)
-                                    .format("%a %b %e %H:%M")
-                            )),
-                            "Snoozing...".into(),
-                        );
-                    }
-                    self.modals.snooze_panel.visible = false;
+                    self.handle_snooze_panel_confirm();
                 } else if self.context_envelope().is_some() {
                     self.modals.snooze_panel.visible = true;
                     self.modals.snooze_panel.selected_index = 0;
+                    self.modals.snooze_panel.custom_input = None;
+                    self.modals.snooze_panel.custom_error = None;
                 } else {
                     self.status_message = Some("No message selected".into());
                 }

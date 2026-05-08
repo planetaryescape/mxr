@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO auto_reminders\n                   (sent_message_id, account_id, remind_at, set_at,\n                    triggered_at, cancelled_at)\n               VALUES (?, ?, ?, ?, NULL, NULL)\n               ON CONFLICT(sent_message_id) DO UPDATE SET\n                   account_id = excluded.account_id,\n                   remind_at = excluded.remind_at,\n                   set_at = excluded.set_at,\n                   triggered_at = NULL,\n                   cancelled_at = NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "f9e62da713ea4f69475ffb359d42a7e344247e0a66eec8679185ff424f37dd92"
+}

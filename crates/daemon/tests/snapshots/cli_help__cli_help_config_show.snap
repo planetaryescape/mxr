@@ -1,0 +1,11 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Print the resolved config (default)
+
+Usage: mxr config show [OPTIONS]
+
+Options:
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

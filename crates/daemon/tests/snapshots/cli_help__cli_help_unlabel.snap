@@ -4,14 +4,15 @@ expression: stdout
 ---
 Remove a label from a message
 
-Usage: mxr unlabel [OPTIONS] <NAME> [MESSAGE_ID]
+Usage: mxr unlabel [OPTIONS] <NAME> [MESSAGE_ID]...
 
 Arguments:
-  <NAME>        Label name
-  [MESSAGE_ID]  Message ID
+  <NAME>           Label name
+  [MESSAGE_ID]...  Message ID(s). If omitted, reads IDs from stdin when stdin is piped
 
 Options:
-      --search <SEARCH>  
-      --yes              
-      --dry-run          
+      --search <SEARCH>
+      --yes
+      --dry-run
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
   -h, --help             Print help

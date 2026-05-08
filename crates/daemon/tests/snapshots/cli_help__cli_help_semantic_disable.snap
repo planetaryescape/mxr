@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Disable semantic search
+
+Usage: mxr semantic disable
+
+Options:
+  -h, --help  Print help

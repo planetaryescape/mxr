@@ -1,0 +1,59 @@
+# mxr
+
+> Local-first, keyboard-native email client. Daemon-backed
+> (Rust + SQLite + Tantivy). Provider-agnostic core; first-party
+> Gmail, IMAP, and SMTP adapters. CLI is the canonical surface
+> and emits JSON for piping into agents/scripts. TUI is one
+> client of the daemon. HTTP bridge serves an OpenAPI 3.1 spec
+> at /api/v1/openapi.json. Pronounced "Mixer".
+
+## Getting started
+
+- [Quick start](https://mxr-mail.vercel.app/getting-started/quick-start.md): install → first email in five minutes
+- [Installation](https://mxr-mail.vercel.app/getting-started/install.md): Homebrew, cargo, or pre-built binaries
+- [Gmail setup](https://mxr-mail.vercel.app/getting-started/gmail-setup.md): OAuth flow plus SSH-friendly fallbacks
+- [IMAP / SMTP setup](https://mxr-mail.vercel.app/getting-started/imap-smtp-setup.md): Fastmail, Migadu, ProtonMail Bridge, Outlook, Yahoo, self-hosted
+- [First sync](https://mxr-mail.vercel.app/getting-started/first-sync.md): from installed binary to a working local mailbox
+
+## Reference
+
+- [CLI overview](https://mxr-mail.vercel.app/reference/cli/index.md): every subcommand, auto-generated from `--help` snapshots
+- [CLI concepts](https://mxr-mail.vercel.app/reference/cli/concepts.md): query operators, search modes, output formats, IPC buckets
+- [JSON output schemas](https://mxr-mail.vercel.app/reference/json-output.md): canonical field names returned by `mxr ... --format json`
+- [Keybindings](https://mxr-mail.vercel.app/reference/keybindings.md): default TUI bindings; vim-native nav + Gmail email actions
+- [TUI](https://mxr-mail.vercel.app/reference/tui.md): six top-level screens, modals, panes
+- [Config](https://mxr-mail.vercel.app/reference/config.md): TOML schema for ~/.config/mxr/config.toml + custom keybindings
+- [HTTP bridge](https://mxr-mail.vercel.app/reference/bridge.md): endpoints, auth, curl recipes
+- [API explorer](https://mxr-mail.vercel.app/api/bridge/): interactive Scalar reference (requires JS)
+
+## Working with mxr
+
+- [Recipes](https://mxr-mail.vercel.app/guides/recipes.md): pipelines combining mxr with fzf, jq, xargs, watch, cron, $EDITOR
+- [Triage flow](https://mxr-mail.vercel.app/guides/triage-flow.md): the canonical inbox-zero loop
+- [Search workflow](https://mxr-mail.vercel.app/guides/search.md): saved searches, query operators, hybrid retrieval
+- [Compose](https://mxr-mail.vercel.app/guides/compose.md): `$EDITOR` workflow with markdown + YAML frontmatter
+- [Rules](https://mxr-mail.vercel.app/guides/rules.md): deterministic filing, dry-run before commit
+- [Sender view](https://mxr-mail.vercel.app/guides/sender-view.md): per-sender relationship aggregates
+- [Snippets](https://mxr-mail.vercel.app/guides/snippets.md): `;name` expansion in compose
+- [Analytics](https://mxr-mail.vercel.app/guides/analytics.md): storage, contacts, stale, response-time, subscriptions, Wrapped
+
+## Agents and automation
+
+- [For agents](https://mxr-mail.vercel.app/guides/for-agents.md): three worked examples (newsletter prune, meeting prep, CI cleanup) with prompts, tool calls, and JSON
+- [Agent skill](https://mxr-mail.vercel.app/guides/agent-skill.md): install paths for Claude Code, Cursor, Continue, Aider, generic LLM
+- [Automation contract](https://mxr-mail.vercel.app/guides/automation-contract.md): which commands return JSON, which support `--dry-run`, which accept piped IDs
+
+## Concepts
+
+- [Why mxr](https://mxr-mail.vercel.app/guides/why-mxr.md): the design pitch
+- [Architecture](https://mxr-mail.vercel.app/guides/architecture.md): daemon-backed, provider-agnostic, IPC bucket model
+- [Glossary](https://mxr-mail.vercel.app/guides/glossary.md): plain-language definitions of the terms scattered across docs
+- [Security & privacy](https://mxr-mail.vercel.app/guides/security-and-privacy.md): what stays local, what doesn't
+
+## Optional
+
+- [Decision log](https://github.com/planetaryescape/mxr/blob/main/docs/blueprint/15-decision-log.md): D001-D048 settled choices
+- [Adapter development](https://mxr-mail.vercel.app/guides/adapter-development.md): writing a new provider adapter
+- [Conformance tests](https://mxr-mail.vercel.app/reference/conformance.md): the suite every adapter must pass
+- [Bug reports](https://mxr-mail.vercel.app/reference/bug-report.md): how to file something useful
+- [Troubleshooting](https://mxr-mail.vercel.app/troubleshooting.md): common fixes

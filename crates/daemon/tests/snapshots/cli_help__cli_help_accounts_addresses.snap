@@ -1,0 +1,18 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Manage owned addresses (aliases) for an account. Direction inference uses these to classify inbound vs outbound mail
+
+Usage: mxr accounts addresses [OPTIONS] <COMMAND>
+
+Commands:
+  list         List addresses owned by an account
+  add          Add an address as an alias on an account
+  remove       Remove an alias from an account
+  set-primary  Promote an existing alias to primary (demoting the previous primary)
+  help         Print this message or the help of the given subcommand(s)
+
+Options:
+      --format <FORMAT>  Output format for `accounts` (the no-subcommand listing) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

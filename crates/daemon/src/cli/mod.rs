@@ -13,7 +13,11 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "mxr", about = "Terminal email client", version)]
+#[command(
+    name = "mxr",
+    about = "Terminal email client (pronounced \"Mixer\")",
+    version = concat!(env!("CARGO_PKG_VERSION"), " (Mixer)"),
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -60,9 +64,22 @@ pub enum Command {
         #[arg(long, value_enum)]
         format: Option<OutputFormat>,
     },
-    /// Display a message
+    /// Display a message. Pass a positional ID, pipe IDs on stdin, or
+    /// resolve a list with `--search QUERY` (then `--first` for the
+    /// most recent match or `--limit N` for the top N).
     Cat {
-        message_id: String,
+        /// Message ID (or omit when piping IDs / using --search).
+        message_id: Option<String>,
+        /// Resolve target(s) by query instead of a positional ID. Iterates
+        /// over each match with a separator.
+        #[arg(long, conflicts_with = "message_id")]
+        search: Option<String>,
+        /// Only display the most recent match (when --search is used).
+        #[arg(long, requires = "search", conflicts_with = "limit")]
+        first: bool,
+        /// Cap the number of matches displayed (when --search is used).
+        #[arg(long, requires = "search")]
+        limit: Option<u32>,
         #[arg(long, value_enum)]
         view: Option<BodyViewArg>,
         #[arg(
@@ -81,9 +98,16 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
-    /// Display a thread
+    /// Display a thread. Pass a positional ID, pipe IDs on stdin, or
+    /// resolve a list with `--search QUERY` (deduplicated by thread).
     Thread {
-        thread_id: String,
+        thread_id: Option<String>,
+        #[arg(long, conflicts_with = "thread_id")]
+        search: Option<String>,
+        #[arg(long, requires = "search", conflicts_with = "limit")]
+        first: bool,
+        #[arg(long, requires = "search")]
+        limit: Option<u32>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -97,9 +121,16 @@ pub enum Command {
         #[arg(long)]
         output: Option<PathBuf>,
     },
-    /// Show message headers
+    /// Show message headers. Pass a positional ID, pipe IDs on stdin,
+    /// or resolve a list with `--search QUERY`.
     Headers {
-        message_id: String,
+        message_id: Option<String>,
+        #[arg(long, conflicts_with = "message_id")]
+        search: Option<String>,
+        #[arg(long, requires = "search", conflicts_with = "limit")]
+        first: bool,
+        #[arg(long, requires = "search")]
+        limit: Option<u32>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -109,6 +140,132 @@ pub enum Command {
         action: Option<SavedAction>,
         #[arg(long)]
         format: Option<OutputFormat>,
+    },
+    /// Manage the reply-later queue
+    Replies {
+        #[command(subcommand)]
+        action: Option<RepliesAction>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Summarise an email thread using the configured LLM (Ollama, LM
+    /// Studio, OpenAI, etc.). Requires `[llm] enabled = true` in config.
+    /// Pass a positional thread ID or use `--search QUERY` plus `--first`
+    /// (most recent match) or `--limit N` to summarize multiple threads
+    /// in one go. Multi-summary output is separated by `--- THREAD_ID ---`.
+    Summarize {
+        /// Thread ID to summarise.
+        thread_id: Option<String>,
+        #[arg(long, conflicts_with = "thread_id")]
+        search: Option<String>,
+        /// Summarize only the most recent matching thread.
+        #[arg(long, requires = "search", conflicts_with = "limit")]
+        first: bool,
+        /// Cap the number of threads summarized when --search is used.
+        /// Each summary is an LLM call — keep this low when targeting
+        /// metered cloud endpoints.
+        #[arg(long, requires = "search")]
+        limit: Option<u32>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Generate a draft reply for a thread, grounded on the thread
+    /// context plus the user's instruction. Output goes to stdout — pipe
+    /// it into `$EDITOR` or your scratch buffer. Never auto-sends.
+    /// Two equivalent forms:
+    ///
+    ///   - `mxr draft-assist THREAD_ID "decline politely"` (legacy positional)
+    ///   - `mxr draft-assist --search 'from:acme' --first --instruct "..."` (search)
+    ///
+    /// The instruction can be a positional second argument OR provided
+    /// via `--instruct` — pick whichever composes better. `--search`
+    /// requires `--instruct`.
+    DraftAssist {
+        /// Thread ID to reply to.
+        thread_id: Option<String>,
+        /// Plain-language instruction (e.g. `"decline politely"`).
+        /// Required unless `--instruct` is provided.
+        instruction: Option<String>,
+        /// Resolve target thread by query instead of a positional ID.
+        #[arg(long, conflicts_with = "thread_id")]
+        search: Option<String>,
+        /// Use only the most recent matching thread.
+        #[arg(long, requires = "search", conflicts_with = "limit")]
+        first: bool,
+        /// Cap the number of threads drafted for when --search is used.
+        #[arg(long, requires = "search")]
+        limit: Option<u32>,
+        /// Long form of the positional instruction. Required when
+        /// `--search` is used (no positional fallback).
+        #[arg(long = "instruct", value_name = "TEXT")]
+        instruct: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// First-run setup. Without flags, prints quick-start guidance for
+    /// configuring a Gmail or IMAP account. With `--demo`, configures
+    /// an in-memory fake-provider account so you can try the TUI/CLI
+    /// without touching any real mail credentials.
+    Setup {
+        /// Drop a fake-provider account into your config so you can
+        /// poke around without real mail. The daemon's existing
+        /// FakeProvider seeds synthetic messages on first sync.
+        #[arg(long)]
+        demo: bool,
+        /// Account key to use when writing the demo entry. Defaults to
+        /// `demo`. Used to namespace the entry — handy if you want to
+        /// keep a real account configured alongside.
+        #[arg(long, default_value = "demo")]
+        key: String,
+        /// Skip the safety check that refuses to overwrite an existing
+        /// account with the same key.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Triage unknown senders: classify them as allow / deny / feed /
+    /// paper-trail. Local-only consent metadata; never roundtrips to
+    /// the provider.
+    Screener {
+        #[command(subcommand)]
+        action: Option<ScreenerAction>,
+        /// Restrict to a specific account.
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Show per-sender relationship aggregates: volume, response cadence,
+    /// open threads. The unfair advantage of having local SQLite — every
+    /// other email tool reasons over messages, not people.
+    Sender {
+        /// Email address (must match an existing contact).
+        email: String,
+        /// Restrict to a specific account; defaults to the only-or-default
+        /// account if exactly one is configured.
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Manage compose snippets (`;name` expansions)
+    Snippets {
+        #[command(subcommand)]
+        action: Option<SnippetsAction>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Set or cancel a follow-up reminder on an outbound message.
+    /// Reminders fire if no reply has arrived by the given time —
+    /// surfacing the message back to the user as a follow-up.
+    Remind {
+        message_id: String,
+        /// When to fire the reminder. Same forms accepted by `mxr snooze --until`:
+        /// `in 2h`, `in 5d`, `tomorrow 9am`, `monday 17:00`, RFC3339.
+        #[arg(long, conflicts_with = "cancel")]
+        when: Option<String>,
+        /// Cancel an existing reminder on this message.
+        #[arg(long)]
+        cancel: bool,
     },
     /// Manage semantic search profiles and indexing
     Semantic {
@@ -466,8 +623,11 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
-    /// List drafts
+    /// Manage drafts: list (default), recover orphaned in-flight sends,
+    /// resume one for retry, or discard recovered drafts.
     Drafts {
+        #[command(subcommand)]
+        action: Option<DraftsAction>,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -478,13 +638,24 @@ pub enum Command {
         /// Show what would be sent (sender, recipients, subject, byte count) without sending
         #[arg(long)]
         dry_run: bool,
+        /// Schedule the draft to be sent later instead of sending now.
+        /// Same forms as `mxr snooze --until`: `in 2h`, `tomorrow 9am`,
+        /// `monday 17:00`, RFC3339. Use `mxr unsend <draft-id>` to cancel.
+        #[arg(long, value_name = "TIME", conflicts_with = "dry_run")]
+        at: Option<String>,
+    },
+    /// Cancel a previously-scheduled send. The draft itself is preserved.
+    Unsend {
+        /// Draft ID with a scheduled send to cancel
+        draft_id: String,
     },
 
     // --- Phase 2: Mutations ---
     /// Archive a message (remove from inbox)
     Archive {
-        /// Message ID
-        message_id: Option<String>,
+        /// Message ID(s). If omitted, reads IDs from stdin when stdin is piped.
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         /// Operate on messages matching search query
         #[arg(long)]
         search: Option<String>,
@@ -494,130 +665,173 @@ pub enum Command {
         /// Show what would happen
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Mark message as read and archive it
     #[command(name = "read-archive")]
     ReadArchive {
-        message_id: Option<String>,
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Move message to trash
     Trash {
-        message_id: Option<String>,
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Report message as spam
     Spam {
-        message_id: Option<String>,
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Star a message
     Star {
-        message_id: Option<String>,
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Unstar a message
     Unstar {
-        message_id: Option<String>,
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Mark message as read
     #[command(name = "read")]
     MarkRead {
-        message_id: Option<String>,
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Mark message as unread
     Unread {
-        message_id: Option<String>,
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Apply a label to a message
     Label {
         /// Label name
         name: String,
-        /// Message ID
-        message_id: Option<String>,
+        /// Message ID(s). If omitted, reads IDs from stdin when stdin is piped.
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Remove a label from a message
     Unlabel {
         /// Label name
         name: String,
-        /// Message ID
-        message_id: Option<String>,
+        /// Message ID(s). If omitted, reads IDs from stdin when stdin is piped.
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Move message to a label/folder
     #[command(name = "move")]
     MoveMsg {
         /// Target label
         label: String,
-        /// Message ID
-        message_id: Option<String>,
+        /// Message ID(s). If omitted, reads IDs from stdin when stdin is piped.
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
 
     /// Undo a recent destructive mutation by its id (~60s window).
     /// The mutation id is printed by `archive`, `trash`, `spam`,
     /// `mark-read`, and `read-archive`; copy it from there.
-    Undo { mutation_id: String },
+    Undo {
+        mutation_id: String,
+        /// Show which undo would run without mutating state.
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
 
     // --- Phase 2: Snooze ---
     /// Snooze a message until a specified time
     Snooze {
-        message_id: Option<String>,
-        /// When to resurface: tomorrow|monday|weekend|tonight|ISO8601
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
+        /// When to resurface. Accepts: configured presets
+        /// (tomorrow|monday|weekend|tonight), conversational forms
+        /// (`in 2h`, `monday 5pm`, `tomorrow 9am`), and RFC3339 timestamps
+        /// (`2026-06-01T15:00:00Z`).
         #[arg(long)]
         until: String,
         #[arg(long)]
@@ -626,16 +840,21 @@ pub enum Command {
         yes: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// Unsnooze a message
     Unsnooze {
-        message_id: Option<String>,
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "all")]
+        message_ids: Vec<String>,
         /// Unsnooze all
         #[arg(long)]
         all: bool,
         /// Show which messages would be unsnoozed without performing the mutation
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
     /// List snoozed messages
     Snoozed {
@@ -646,17 +865,34 @@ pub enum Command {
     // --- Phase 2: Unsubscribe ---
     /// Unsubscribe from a mailing list
     Unsubscribe {
-        message_id: Option<String>,
+        #[arg(value_name = "MESSAGE_ID", conflicts_with = "search")]
+        message_ids: Vec<String>,
         #[arg(long)]
         yes: bool,
         #[arg(long)]
         search: Option<String>,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
     },
 
-    /// Open message in browser
-    Open { message_id: String },
+    /// Open message in browser. Pass a positional ID or `--search QUERY`
+    /// (with `--first` for the latest match, or `--limit N` plus `--yes`
+    /// to open many tabs at once).
+    Open {
+        message_id: Option<String>,
+        #[arg(long, conflicts_with = "message_id")]
+        search: Option<String>,
+        #[arg(long, requires = "search", conflicts_with = "limit")]
+        first: bool,
+        #[arg(long, requires = "search")]
+        limit: Option<u32>,
+        /// Required when `--search` resolves to more than one match.
+        /// Confirms you actually want N browser tabs.
+        #[arg(long)]
+        yes: bool,
+    },
 
     /// Manage message attachments
     Attachments {
@@ -689,6 +925,95 @@ pub enum SavedAction {
     Delete { name: String },
     /// Run a saved search
     Run { name: String },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ScreenerAction {
+    /// Show senders waiting for a decision (default if no subcommand)
+    Queue {
+        #[arg(long, default_value = "100")]
+        limit: u32,
+    },
+    /// List all existing decisions
+    List,
+    /// Allow this sender into the inbox
+    Allow {
+        sender_email: String,
+        /// Optional provider label to apply on ingest
+        #[arg(long)]
+        label: Option<String>,
+    },
+    /// Auto-trash and mark-read this sender's mail on ingest
+    Deny {
+        sender_email: String,
+        #[arg(long)]
+        label: Option<String>,
+    },
+    /// Route to a feed (skip inbox)
+    Feed {
+        sender_email: String,
+        #[arg(long)]
+        label: Option<String>,
+    },
+    /// Route to paper trail (archive on ingest)
+    PaperTrail {
+        sender_email: String,
+        #[arg(long)]
+        label: Option<String>,
+    },
+    /// Clear an existing decision
+    Clear { sender_email: String },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum DraftsAction {
+    /// Show all drafts (default if no subcommand)
+    List,
+    /// Show drafts that look orphaned mid-send (status `'sending'`,
+    /// stale heartbeat). The startup loop already auto-resets these
+    /// after 1h; this surfaces them earlier so you can act now.
+    Recover,
+    /// Force-reset an orphaned draft to `'draft'` status so it can be
+    /// re-sent via the normal pipeline. No-op if the draft is already
+    /// in `'draft'`.
+    Resume {
+        /// Draft ID to resume.
+        draft_id: String,
+    },
+    /// Permanently delete a draft. Use this when a recovered draft is
+    /// no longer wanted instead of leaving it in the drafts list.
+    Discard {
+        /// Draft ID to delete.
+        draft_id: String,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum SnippetsAction {
+    /// List all snippets (default if no subcommand)
+    List,
+    /// Create or update a snippet inline
+    Set {
+        /// Short keyword (no spaces). Used after `;` in compose.
+        name: String,
+        /// Snippet body. Use `{var_name}` for placeholders.
+        body: String,
+        /// Comma-separated list of declared `{var}` placeholders.
+        #[arg(long)]
+        vars: Option<String>,
+    },
+    /// Delete a snippet by name
+    Remove { name: String },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum RepliesAction {
+    /// List messages flagged for reply-later (default if no subcommand given)
+    List,
+    /// Mark a message for reply-later
+    Add { message_id: String },
+    /// Clear the reply-later flag on a message
+    Remove { message_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
@@ -1020,5 +1345,181 @@ mod tests {
     fn parses_restart_subcommand() {
         let cli = Cli::parse_from(["mxr", "restart"]);
         assert!(matches!(cli.command, Some(Command::Restart)));
+    }
+
+    #[test]
+    fn message_mutations_accept_dry_run_format_and_stdin_mode() {
+        let cases: &[&[&str]] = &[
+            &["mxr", "archive", "--dry-run", "--format", "json"],
+            &["mxr", "read-archive", "--dry-run", "--format", "json"],
+            &["mxr", "trash", "--dry-run", "--format", "json"],
+            &["mxr", "spam", "--dry-run", "--format", "json"],
+            &["mxr", "star", "--dry-run", "--format", "json"],
+            &["mxr", "unstar", "--dry-run", "--format", "json"],
+            &["mxr", "read", "--dry-run", "--format", "json"],
+            &["mxr", "unread", "--dry-run", "--format", "json"],
+            &["mxr", "label", "FollowUp", "--dry-run", "--format", "json"],
+            &[
+                "mxr",
+                "unlabel",
+                "FollowUp",
+                "--dry-run",
+                "--format",
+                "json",
+            ],
+            &["mxr", "move", "Done", "--dry-run", "--format", "json"],
+            &[
+                "mxr",
+                "snooze",
+                "--until",
+                "tomorrow",
+                "--dry-run",
+                "--format",
+                "json",
+            ],
+            &["mxr", "unsnooze", "--dry-run", "--format", "json"],
+            &["mxr", "unsubscribe", "--dry-run", "--format", "json"],
+        ];
+
+        for args in cases {
+            let cli = Cli::try_parse_from(*args)
+                .unwrap_or_else(|error| panic!("{args:?} should parse: {error}"));
+            match cli.command {
+                Some(Command::Archive {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::ReadArchive {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::Trash {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::Spam {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::Star {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::Unstar {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::MarkRead {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::Unread {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::Label {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::Unlabel {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::MoveMsg {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::Snooze {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::Unsnooze {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                })
+                | Some(Command::Unsubscribe {
+                    message_ids,
+                    dry_run,
+                    format,
+                    ..
+                }) => {
+                    assert!(message_ids.is_empty(), "{args:?} should allow stdin IDs");
+                    assert!(dry_run, "{args:?} should set dry_run");
+                    assert_eq!(
+                        format,
+                        Some(OutputFormat::Json),
+                        "{args:?} should parse JSON"
+                    );
+                }
+                other => panic!(
+                    "unexpected command for {args:?}: {:?}",
+                    other.map(|_| "command")
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn message_mutations_accept_multiple_positional_ids() {
+        let id1 = uuid::Uuid::now_v7().to_string();
+        let id2 = uuid::Uuid::now_v7().to_string();
+        let cli = Cli::parse_from(["mxr", "archive", &id1, &id2, "--dry-run", "--format", "ids"]);
+
+        match cli.command {
+            Some(Command::Archive {
+                message_ids,
+                dry_run,
+                format,
+                ..
+            }) => {
+                assert_eq!(message_ids, vec![id1, id2]);
+                assert!(dry_run);
+                assert_eq!(format, Some(OutputFormat::Ids));
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn undo_accepts_dry_run_and_format() {
+        let cli = Cli::parse_from(["mxr", "undo", "mut_123", "--dry-run", "--format", "json"]);
+        match cli.command {
+            Some(Command::Undo {
+                mutation_id,
+                dry_run,
+                format,
+            }) => {
+                assert_eq!(mutation_id, "mut_123");
+                assert!(dry_run);
+                assert_eq!(format, Some(OutputFormat::Json));
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
     }
 }

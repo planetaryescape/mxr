@@ -8,7 +8,12 @@ use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
-pub fn draw(frame: &mut Frame, area: Rect, state: Option<&AnalyticsFilterModalState>, theme: &Theme) {
+pub fn draw(
+    frame: &mut Frame,
+    area: Rect,
+    state: Option<&AnalyticsFilterModalState>,
+    theme: &Theme,
+) {
     let Some(state) = state else { return };
 
     let popup_area = centered_rect(60, 60, area);

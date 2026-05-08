@@ -18,7 +18,7 @@ Options:
       --limit <LIMIT>
           [default: 100]
       --account <ACCOUNT>
-          
+
       --format <FORMAT>
           [possible values: table, json, jsonl, csv, ids]
   -h, --help

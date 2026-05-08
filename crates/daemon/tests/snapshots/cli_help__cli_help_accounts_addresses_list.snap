@@ -1,0 +1,12 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List addresses owned by an account
+
+Usage: mxr accounts addresses list [OPTIONS]
+
+Options:
+      --account <ACCOUNT>  Account name or id. Defaults to the configured default account
+      --format <FORMAT>    Output format for `accounts` (the no-subcommand listing) [possible values: table, json, jsonl, csv, ids]
+  -h, --help               Print help

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT reply_later as \"reply_later!: i64\"\n               FROM message_flags\n               WHERE message_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "reply_later!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ca1f47f5e4c53bd0ac5ada6dd5e7ad3341334cd1d57c526bfddf5a871a402421"
+}

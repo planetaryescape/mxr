@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Restart the daemon with the current binary
+
+Usage: mxr restart
+
+Options:
+  -h, --help  Print help

@@ -379,16 +379,18 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         total: Some(TOTAL_STEPS),
         message,
     };
-    let fail =
-        |error: &str, retryable: bool| DaemonEvent::OperationFailed {
-            operation_id: operation_id.clone(),
-            operation: operation.clone(),
-            account_id: None,
-            error: error.to_string(),
-            retryable,
-        };
+    let fail = |error: &str, retryable: bool| DaemonEvent::OperationFailed {
+        operation_id: operation_id.clone(),
+        operation: operation.clone(),
+        account_id: None,
+        error: error.to_string(),
+        retryable,
+    };
 
-    emit_operation_event(state, progress(1, "Reclassifying unknown directions".into()));
+    emit_operation_event(
+        state,
+        progress(1, "Reclassifying unknown directions".into()),
+    );
     let directions_reclassified = match state
         .store
         .reclassify_unknown_directions(|email| lookup.is_account_address(email))
@@ -428,10 +430,7 @@ pub(crate) async fn rebuild_analytics(state: &AppState) -> HandlerResult {
         }
     };
 
-    emit_operation_event(
-        state,
-        progress(4, "Reconciling pending reply pairs".into()),
-    );
+    emit_operation_event(state, progress(4, "Reconciling pending reply pairs".into()));
     let pending_resolved = match state.store.reconcile_reply_pair_pending().await {
         Ok(n) => n,
         Err(e) => {

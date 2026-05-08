@@ -14,6 +14,7 @@ import type {
   ThreadResponse,
   WorkbenchScreen,
 } from "../../shared/types";
+import type { BrowserDialogState } from "../dialogs/BrowserDialogs";
 import type { DesktopAction } from "../lib/tui-manifest";
 import type { FlattenedEntry } from "../surfaces/types";
 
@@ -121,6 +122,8 @@ export type DesktopActionContext = {
   openRuleHistory: () => Promise<void>;
   deleteSelectedRule: () => Promise<void>;
   openAccountForm: () => void;
+  setBrowserDialog: Dispatch<SetStateAction<BrowserDialogState>>;
+  primaryAccountId: string | null;
   testCurrentAccount: () => Promise<void>;
   makeSelectedAccountDefault: () => Promise<void>;
   formatPendingMutationLabel: (
@@ -814,6 +817,62 @@ export function runDesktopAction(
     case "set_default_account":
       void context.makeSelectedAccountDefault();
       return;
+    case "open_snippets":
+      context.setBrowserDialog({ kind: "snippets" });
+      return;
+    case "open_reply_queue":
+      context.setBrowserDialog({ kind: "reply_queue" });
+      return;
+    case "open_screener_queue":
+      if (!context.primaryAccountId) {
+        context.showNotice(
+          "Configure an account before opening the screener queue.",
+        );
+        return;
+      }
+      context.setBrowserDialog({
+        kind: "screener",
+        accountId: context.primaryAccountId,
+      });
+      return;
+    case "open_sender_view": {
+      const senderEmail =
+        context.selectedRow?.sender_detail ?? context.selectedRow?.sender ?? null;
+      if (!senderEmail) {
+        context.showNotice("No message selected to look up sender for.");
+        return;
+      }
+      if (!context.primaryAccountId) {
+        context.showNotice(
+          "Configure an account before opening the sender view.",
+        );
+        return;
+      }
+      context.setBrowserDialog({
+        kind: "sender",
+        accountId: context.primaryAccountId,
+        email: senderEmail,
+      });
+      return;
+    }
+    case "summarize_current_thread": {
+      const threadId = context.selectedRow?.thread_id ?? null;
+      if (!threadId) {
+        context.showNotice("Select a thread to summarize first.");
+        return;
+      }
+      context.setBrowserDialog({ kind: "summary", threadId });
+      return;
+    }
+    case "draft_assist_current_thread": {
+      const threadId = context.selectedRow?.thread_id ?? null;
+      if (!threadId) {
+        context.showNotice("Select a thread to draft a reply for first.");
+        return;
+      }
+      context.setBrowserDialog({ kind: "draft_assist", threadId });
+      return;
+    }
     default:
       // Dynamic actions like switch_account:key
       if (action.startsWith("switch_account:")) {

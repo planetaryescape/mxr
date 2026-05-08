@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Enable semantic search using the active profile
+
+Usage: mxr semantic enable
+
+Options:
+  -h, --help  Print help

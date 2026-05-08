@@ -91,6 +91,20 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     });
     state.register_snooze_loop(snooze_handle);
 
+    let reminders_state = state.clone();
+    let reminders_handle = tokio::spawn(async move {
+        let shutdown_rx = reminders_state.shutdown_receiver();
+        loops::auto_reminders_loop(reminders_state, shutdown_rx).await;
+    });
+    state.register_auto_reminders_loop(reminders_handle);
+
+    let sends_state = state.clone();
+    let sends_handle = tokio::spawn(async move {
+        let shutdown_rx = sends_state.shutdown_receiver();
+        loops::scheduled_sends_loop(sends_state, shutdown_rx).await;
+    });
+    state.register_scheduled_sends_loop(sends_handle);
+
     let reconciler_state = state.clone();
     let reconciler_handle = tokio::spawn(async move {
         let shutdown_rx = reconciler_state.shutdown_receiver();
@@ -844,6 +858,33 @@ fn spawn_startup_maintenance(state: Arc<AppState>) -> tokio::task::JoinHandle<()
 }
 
 async fn run_startup_maintenance(state: Arc<AppState>) -> anyhow::Result<()> {
+    // Crash-safe drafts: any draft in `'sending'` whose most-recent
+    // activity is older than 1 hour is presumed orphaned (daemon died
+    // mid-send). Reset back to `'draft'` so the user can retry. The
+    // 1-hour cutoff is generous — a real send rarely takes >30s, but a
+    // brief OAuth refresh or large attachment could.
+    let orphan_cutoff = chrono::Utc::now() - chrono::Duration::hours(1);
+    if let Ok(orphans) = state
+        .store
+        .list_orphaned_sending_drafts(orphan_cutoff)
+        .await
+    {
+        for draft_id in &orphans {
+            if let Err(e) = state.store.reset_orphaned_draft(draft_id).await {
+                tracing::warn!(
+                    draft_id = %draft_id,
+                    "startup: failed to reset orphaned sending draft: {e}"
+                );
+            }
+        }
+        if !orphans.is_empty() {
+            tracing::info!(
+                recovered = orphans.len(),
+                "startup: reset orphaned 'sending' drafts back to 'draft' for retry"
+            );
+        }
+    }
+
     let total_messages = state.store.count_all_messages().await.unwrap_or_default();
     if total_messages == 0 {
         return Ok(());

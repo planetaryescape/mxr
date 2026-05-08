@@ -134,10 +134,7 @@ fn target_uri(target_path: &str, original: &Uri) -> String {
 
 /// Axum middleware: 301-redirect known v0.4.x paths to their v0.5
 /// equivalent. Pass through everything else to the next layer.
-pub async fn redirect_legacy_paths(
-    request: Request,
-    next: axum::middleware::Next,
-) -> Response {
+pub async fn redirect_legacy_paths(request: Request, next: axum::middleware::Next) -> Response {
     let uri = request.uri().clone();
     let path = uri.path();
 

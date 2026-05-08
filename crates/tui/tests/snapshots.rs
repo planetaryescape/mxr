@@ -663,6 +663,7 @@ fn diagnostics_page_snapshot() {
             recent_sync_events: vec![],
             recent_error_logs: vec![],
             recommended_next_steps: vec!["mxr status".into()],
+            findings: vec![],
         }),
         events: vec![EventLogEntry {
             timestamp: 1710495000,

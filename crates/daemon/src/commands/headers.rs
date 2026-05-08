@@ -1,55 +1,111 @@
 use crate::cli::OutputFormat;
 use crate::commands::expect_response;
+use crate::commands::selection::{resolve_message_ids, SelectionLimit};
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::MessageId;
 use mxr_protocol::*;
 
-pub async fn run(message_id: String, format: Option<OutputFormat>) -> anyhow::Result<()> {
-    let mid = MessageId::from_uuid(uuid::Uuid::parse_str(&message_id)?);
+pub async fn run(
+    message_id: Option<String>,
+    search: Option<String>,
+    first: bool,
+    limit: Option<u32>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let resp = client
-        .request(Request::GetHeaders { message_id: mid })
-        .await?;
+    let ids = resolve_message_ids(
+        &mut client,
+        message_id.into_iter().collect(),
+        search,
+        SelectionLimit::from_flags(first, limit),
+    )
+    .await?;
+    if ids.is_empty() {
+        anyhow::bail!("No messages matched");
+    }
 
-    let headers = expect_response(resp, |r| match r {
-        Response::Ok {
-            data: ResponseData::Headers { headers },
-        } => Some(headers),
-        _ => None,
-    })?;
-    match resolve_format(format) {
-        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&headers)?),
+    let fmt = resolve_format(format);
+    match fmt {
+        OutputFormat::Json => {
+            let mut payloads = Vec::with_capacity(ids.len());
+            for id in &ids {
+                let headers = fetch_headers(&mut client, id.clone()).await?;
+                payloads.push(serde_json::json!({
+                    "message_id": id.as_str(),
+                    "headers": headers
+                        .into_iter()
+                        .map(|(k, v)| serde_json::json!({"name": k, "value": v}))
+                        .collect::<Vec<_>>(),
+                }));
+            }
+            if ids.len() == 1 {
+                println!("{}", serde_json::to_string_pretty(&payloads[0])?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&payloads)?);
+            }
+        }
         OutputFormat::Jsonl => {
-            let rows = headers
-                .iter()
-                .map(|(name, value)| {
-                    serde_json::json!({
-                        "name": name,
-                        "value": value,
+            for id in &ids {
+                let headers = fetch_headers(&mut client, id.clone()).await?;
+                let rows: Vec<_> = headers
+                    .iter()
+                    .map(|(name, value)| {
+                        serde_json::json!({
+                            "message_id": id.as_str(),
+                            "name": name,
+                            "value": value,
+                        })
                     })
-                })
-                .collect::<Vec<_>>();
-            println!("{}", jsonl(&rows)?);
+                    .collect();
+                println!("{}", jsonl(&rows)?);
+            }
         }
         OutputFormat::Csv => {
             let mut writer = csv::Writer::from_writer(Vec::new());
-            writer.write_record(["name", "value"])?;
-            for (name, value) in &headers {
-                writer.write_record([name, value])?;
+            writer.write_record(["message_id", "name", "value"])?;
+            for id in &ids {
+                let headers = fetch_headers(&mut client, id.clone()).await?;
+                for (name, value) in &headers {
+                    writer.write_record(&[id.as_str().to_string(), name.clone(), value.clone()])?;
+                }
             }
             println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
         }
         OutputFormat::Ids => {
-            for (key, _) in &headers {
-                println!("{key}");
+            for id in &ids {
+                println!("{id}");
             }
         }
         OutputFormat::Table => {
-            for (key, value) in &headers {
-                println!("{key}: {value}");
+            for (index, id) in ids.iter().enumerate() {
+                if ids.len() > 1 {
+                    if index > 0 {
+                        println!();
+                    }
+                    println!("--- {} ---", id.as_str());
+                }
+                let headers = fetch_headers(&mut client, id.clone()).await?;
+                for (key, value) in &headers {
+                    println!("{key}: {value}");
+                }
             }
         }
     }
     Ok(())
+}
+
+async fn fetch_headers(
+    client: &mut IpcClient,
+    id: MessageId,
+) -> anyhow::Result<Vec<(String, String)>> {
+    let resp = client
+        .request(Request::GetHeaders { message_id: id })
+        .await?;
+    expect_response(resp, |r| match r {
+        Response::Ok {
+            data: ResponseData::Headers { headers },
+        } => Some(headers),
+        _ => None,
+    })
 }

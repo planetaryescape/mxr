@@ -3,22 +3,36 @@ mod compose;
 mod helpers;
 
 pub use attachments::{attachments_download, attachments_list, attachments_open};
-pub use compose::{compose, drafts, forward, reply, reply_all, send_draft, ComposeOptions};
+pub use compose::{
+    cancel_scheduled_send, compose, drafts, drafts_discard, drafts_recover, drafts_resume, forward,
+    reply, reply_all, schedule_send, send_draft, ComposeOptions,
+};
 
 /// CLI surface for `mxr undo <mutation_id>`.
 ///
 /// Sends `Request::UndoMutation` and prints the success message or the
 /// daemon's specific failure (NotFound / WindowExpired / Irreversible).
-pub async fn undo(mutation_id: String) -> anyhow::Result<()> {
+pub async fn undo(
+    mutation_id: String,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    if dry_run {
+        print_undo_output(&mutation_id, true, format)?;
+        return Ok(());
+    }
+
     let mut client = IpcClient::connect().await?;
     let resp = client
-        .request(Request::UndoMutation { mutation_id })
+        .request(Request::UndoMutation {
+            mutation_id: mutation_id.clone(),
+        })
         .await?;
     match resp {
         Response::Ok {
             data: ResponseData::Ack,
         } => {
-            println!("Undone");
+            print_undo_output(&mutation_id, false, format)?;
             Ok(())
         }
         Response::Error { message, .. } => anyhow::bail!("{message}"),
@@ -30,25 +44,79 @@ use crate::cli::OutputFormat;
 use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use helpers::{
-    confirm_action, parse_message_id, parse_snooze_until, print_selection_preview,
-    requires_confirmation, resolve_mutation_selection, run_simple_mutation, MutationRunOptions,
+    confirm_action, parse_snooze_until, print_batch_mutation_output, print_dry_run_output,
+    requires_confirmation, resolve_mutation_selection, run_simple_mutation, BatchMutationError,
+    MutationRunOptions,
 };
 use mxr_protocol::*;
+use serde::Serialize;
 
 const BROWSER_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
+
+#[derive(Serialize)]
+struct UndoOutput<'a> {
+    mutation_id: &'a str,
+    dry_run: bool,
+    undone: bool,
+}
+
+fn print_undo_output(
+    mutation_id: &str,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    match resolve_format(format) {
+        OutputFormat::Table => {
+            if dry_run {
+                println!("Would undo mutation {mutation_id}");
+            } else {
+                println!("Undone");
+            }
+        }
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&UndoOutput {
+                mutation_id,
+                dry_run,
+                undone: !dry_run,
+            })?
+        ),
+        OutputFormat::Jsonl => println!(
+            "{}",
+            serde_json::to_string(&UndoOutput {
+                mutation_id,
+                dry_run,
+                undone: !dry_run,
+            })?
+        ),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["mutation_id", "dry_run", "undone"])?;
+            writer.write_record([
+                mutation_id,
+                if dry_run { "true" } else { "false" },
+                if dry_run { "false" } else { "true" },
+            ])?;
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => println!("{mutation_id}"),
+    }
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // Simple mutations
 // ---------------------------------------------------------------------------
 
 pub async fn archive(
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -57,6 +125,7 @@ pub async fn archive(
             success_message: "Archived",
             yes,
             dry_run,
+            format,
             destructive: false,
         },
         |ids| Request::Mutation(MutationCommand::Archive { message_ids: ids }),
@@ -65,13 +134,14 @@ pub async fn archive(
 }
 
 pub async fn read_archive(
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -80,6 +150,7 @@ pub async fn read_archive(
             success_message: "Marked as read and archived",
             yes,
             dry_run,
+            format,
             destructive: false,
         },
         |ids| Request::Mutation(MutationCommand::ReadAndArchive { message_ids: ids }),
@@ -88,13 +159,14 @@ pub async fn read_archive(
 }
 
 pub async fn trash(
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -103,6 +175,7 @@ pub async fn trash(
             success_message: "Trashed",
             yes,
             dry_run,
+            format,
             destructive: true,
         },
         |ids| Request::Mutation(MutationCommand::Trash { message_ids: ids }),
@@ -111,13 +184,14 @@ pub async fn trash(
 }
 
 pub async fn spam(
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -126,6 +200,7 @@ pub async fn spam(
             success_message: "Marked as spam",
             yes,
             dry_run,
+            format,
             destructive: true,
         },
         |ids| Request::Mutation(MutationCommand::Spam { message_ids: ids }),
@@ -134,13 +209,14 @@ pub async fn spam(
 }
 
 pub async fn star(
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -149,6 +225,7 @@ pub async fn star(
             success_message: "Starred",
             yes,
             dry_run,
+            format,
             destructive: false,
         },
         |ids| {
@@ -162,13 +239,14 @@ pub async fn star(
 }
 
 pub async fn unstar(
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -177,6 +255,7 @@ pub async fn unstar(
             success_message: "Unstarred",
             yes,
             dry_run,
+            format,
             destructive: false,
         },
         |ids| {
@@ -190,13 +269,14 @@ pub async fn unstar(
 }
 
 pub async fn mark_read(
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -205,6 +285,7 @@ pub async fn mark_read(
             success_message: "Marked as read",
             yes,
             dry_run,
+            format,
             destructive: false,
         },
         |ids| {
@@ -218,13 +299,14 @@ pub async fn mark_read(
 }
 
 pub async fn unread(
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -233,6 +315,7 @@ pub async fn unread(
             success_message: "Marked as unread",
             yes,
             dry_run,
+            format,
             destructive: false,
         },
         |ids| {
@@ -251,13 +334,14 @@ pub async fn unread(
 
 pub async fn label(
     name: String,
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -266,6 +350,7 @@ pub async fn label(
             success_message: &format!("Added label '{name}'"),
             yes,
             dry_run,
+            format,
             destructive: false,
         },
         |ids| {
@@ -281,13 +366,14 @@ pub async fn label(
 
 pub async fn unlabel(
     name: String,
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -296,6 +382,7 @@ pub async fn unlabel(
             success_message: &format!("Removed label '{name}'"),
             yes,
             dry_run,
+            format,
             destructive: false,
         },
         |ids| {
@@ -311,13 +398,14 @@ pub async fn unlabel(
 
 pub async fn move_msg(
     target_label: String,
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     run_simple_mutation(
         &mut client,
         selection,
@@ -326,6 +414,7 @@ pub async fn move_msg(
             success_message: &format!("Moved to '{target_label}'"),
             yes,
             dry_run,
+            format,
             destructive: false,
         },
         |ids| {
@@ -343,33 +432,29 @@ pub async fn move_msg(
 // ---------------------------------------------------------------------------
 
 pub async fn snooze(
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     until: String,
     search: Option<String>,
     yes: bool,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let wake_at = parse_snooze_until(&until)?;
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     if selection.ids.is_empty() {
         anyhow::bail!("No messages matched");
     }
+    let action = format!("snooze until {}", wake_at.to_rfc3339());
     if dry_run {
-        print_selection_preview(
-            &format!("snooze until {}", wake_at.to_rfc3339()),
-            &selection,
-        );
+        print_dry_run_output(&action, &selection, format)?;
         return Ok(());
     }
     if requires_confirmation(false, selection.used_search, selection.ids.len(), yes) {
-        confirm_action(
-            &format!("snooze until {}", wake_at.to_rfc3339()),
-            &selection,
-        )?;
+        confirm_action(&action, &selection)?;
     }
     let mut succeeded = 0usize;
-    let mut failed = 0usize;
+    let mut errors = Vec::new();
     for id in &selection.ids {
         let resp = client
             .request(Request::Snooze {
@@ -382,27 +467,46 @@ pub async fn snooze(
                 data: ResponseData::Ack,
             } => succeeded += 1,
             Response::Error { message, .. } => {
-                failed += 1;
                 eprintln!("Skipped {} ({message})", id.as_str());
+                errors.push(BatchMutationError {
+                    message_id: id.as_str().to_owned(),
+                    error: message,
+                });
             }
             _ => {
-                failed += 1;
                 eprintln!("Skipped {} (unexpected response)", id.as_str());
+                errors.push(BatchMutationError {
+                    message_id: id.as_str().to_owned(),
+                    error: "unexpected response".to_owned(),
+                });
             }
         }
     }
-    if succeeded == 0 {
-        anyhow::bail!("No messages snoozed ({} failed)", failed);
-    }
-    println!(
-        "Snoozed {} message(s) until {}",
+    print_batch_mutation_output(
+        "snooze",
+        false,
+        &format!(
+            "Snoozed {} message(s) until {}",
+            succeeded,
+            wake_at.to_rfc3339()
+        ),
+        &selection.ids,
         succeeded,
-        wake_at.to_rfc3339()
-    );
+        errors.clone(),
+        format,
+    )?;
+    if succeeded == 0 {
+        anyhow::bail!("No messages snoozed ({} failed)", errors.len());
+    }
     Ok(())
 }
 
-pub async fn unsnooze(message_id: Option<String>, all: bool, dry_run: bool) -> anyhow::Result<()> {
+pub async fn unsnooze(
+    message_ids: Vec<String>,
+    all: bool,
+    dry_run: bool,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     if all {
         let resp = client.request(Request::ListSnoozed).await?;
@@ -410,19 +514,40 @@ pub async fn unsnooze(message_id: Option<String>, all: bool, dry_run: bool) -> a
             Response::Ok {
                 data: ResponseData::SnoozedMessages { snoozed },
             } => {
+                let ids: Vec<_> = snoozed.iter().map(|s| s.message_id.clone()).collect();
                 if snoozed.is_empty() {
-                    println!("No snoozed messages");
+                    print_batch_mutation_output(
+                        "unsnooze",
+                        dry_run,
+                        "No snoozed messages",
+                        &ids,
+                        0,
+                        Vec::new(),
+                        format,
+                    )?;
                     return Ok(());
                 }
                 if dry_run {
-                    println!("DRY-RUN — would unsnooze {} message(s):", snoozed.len());
-                    for s in &snoozed {
-                        println!("  {} (wakes {})", s.message_id, s.wake_at.to_rfc3339());
+                    if matches!(resolve_format(format.clone()), OutputFormat::Table) {
+                        println!("DRY-RUN — would unsnooze {} message(s):", snoozed.len());
+                        for s in &snoozed {
+                            println!("  {} (wakes {})", s.message_id, s.wake_at.to_rfc3339());
+                        }
+                    } else {
+                        print_batch_mutation_output(
+                            "unsnooze",
+                            true,
+                            &format!("Would unsnooze {} message(s)", ids.len()),
+                            &ids,
+                            0,
+                            Vec::new(),
+                            format,
+                        )?;
                     }
                     return Ok(());
                 }
                 let mut succeeded = 0usize;
-                let mut failed = 0usize;
+                let mut errors = Vec::new();
                 for s in &snoozed {
                     let resp = client
                         .request(Request::Unsnooze {
@@ -434,37 +559,81 @@ pub async fn unsnooze(message_id: Option<String>, all: bool, dry_run: bool) -> a
                             data: ResponseData::Ack,
                         } => succeeded += 1,
                         Response::Error { message, .. } => {
-                            failed += 1;
                             eprintln!("Failed to unsnooze {}: {message}", s.message_id);
+                            errors.push(BatchMutationError {
+                                message_id: s.message_id.as_str().to_owned(),
+                                error: message,
+                            });
                         }
                         _ => {
-                            failed += 1;
                             eprintln!("Failed to unsnooze {}: unexpected response", s.message_id);
+                            errors.push(BatchMutationError {
+                                message_id: s.message_id.as_str().to_owned(),
+                                error: "unexpected response".to_owned(),
+                            });
                         }
                     }
                 }
-                if succeeded == 0 && failed > 0 {
-                    anyhow::bail!("No messages unsnoozed ({} failed)", failed);
+                print_batch_mutation_output(
+                    "unsnooze",
+                    false,
+                    &format!("Unsnoozed {} message(s)", succeeded),
+                    &ids,
+                    succeeded,
+                    errors.clone(),
+                    format,
+                )?;
+                if succeeded == 0 && !errors.is_empty() {
+                    anyhow::bail!("No messages unsnoozed ({} failed)", errors.len());
                 }
-                println!("Unsnoozed {} message(s)", succeeded);
             }
             Response::Error { message, .. } => anyhow::bail!("{message}"),
             _ => anyhow::bail!("Unexpected response"),
         }
     } else {
-        let id_str = message_id.ok_or_else(|| anyhow::anyhow!("Provide a message ID or --all"))?;
-        let id = parse_message_id(&id_str)?;
+        let selection = resolve_mutation_selection(&mut client, message_ids, None).await?;
+        if selection.ids.is_empty() {
+            anyhow::bail!("No messages matched");
+        }
         if dry_run {
-            println!("DRY-RUN — would unsnooze {id}");
+            print_dry_run_output("unsnooze", &selection, format)?;
             return Ok(());
         }
-        let resp = client.request(Request::Unsnooze { message_id: id }).await?;
-        match resp {
-            Response::Ok {
-                data: ResponseData::Ack,
-            } => println!("Unsnoozed"),
-            Response::Error { message, .. } => anyhow::bail!("{message}"),
-            _ => anyhow::bail!("Unexpected response"),
+        let mut succeeded = 0usize;
+        let mut errors = Vec::new();
+        for id in &selection.ids {
+            let resp = client
+                .request(Request::Unsnooze {
+                    message_id: id.clone(),
+                })
+                .await?;
+            match resp {
+                Response::Ok {
+                    data: ResponseData::Ack,
+                } => succeeded += 1,
+                Response::Error { message, .. } => {
+                    errors.push(BatchMutationError {
+                        message_id: id.as_str().to_owned(),
+                        error: message,
+                    });
+                }
+                _ => errors.push(BatchMutationError {
+                    message_id: id.as_str().to_owned(),
+                    error: "unexpected response".to_owned(),
+                }),
+            }
+        }
+        print_batch_mutation_output(
+            "unsnooze",
+            false,
+            &format!("Unsnoozed {} message(s)", succeeded),
+            &selection.ids,
+            succeeded,
+            errors.clone(),
+            format,
+        )?;
+        if succeeded == 0 {
+            anyhow::bail!("No messages unsnoozed ({} failed)", errors.len());
         }
     }
     Ok(())
@@ -529,25 +698,26 @@ pub async fn snoozed(format: Option<OutputFormat>) -> anyhow::Result<()> {
 // ---------------------------------------------------------------------------
 
 pub async fn unsubscribe(
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     yes: bool,
     search: Option<String>,
     dry_run: bool,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
-    let selection = resolve_mutation_selection(&mut client, message_id, search).await?;
+    let selection = resolve_mutation_selection(&mut client, message_ids, search).await?;
     if selection.ids.is_empty() {
         anyhow::bail!("No messages matched");
     }
     if dry_run {
-        print_selection_preview("unsubscribe", &selection);
+        print_dry_run_output("unsubscribe", &selection, format)?;
         return Ok(());
     }
     if requires_confirmation(true, selection.used_search, selection.ids.len(), yes) {
         confirm_action("unsubscribe", &selection)?;
     }
     let mut succeeded = 0usize;
-    let mut failed = 0usize;
+    let mut errors = Vec::new();
     for id in &selection.ids {
         let resp = client
             .request(Request::Unsubscribe {
@@ -559,53 +729,91 @@ pub async fn unsubscribe(
                 data: ResponseData::Ack,
             } => succeeded += 1,
             Response::Error { message, .. } => {
-                failed += 1;
                 eprintln!("Skipped {} ({message})", id.as_str());
+                errors.push(BatchMutationError {
+                    message_id: id.as_str().to_owned(),
+                    error: message,
+                });
             }
             _ => {
-                failed += 1;
                 eprintln!("Skipped {} (unexpected response)", id.as_str());
+                errors.push(BatchMutationError {
+                    message_id: id.as_str().to_owned(),
+                    error: "unexpected response".to_owned(),
+                });
             }
         }
     }
+    print_batch_mutation_output(
+        "unsubscribe",
+        false,
+        &format!("Unsubscribed from {} message(s)", succeeded),
+        &selection.ids,
+        succeeded,
+        errors.clone(),
+        format,
+    )?;
     if succeeded == 0 {
-        anyhow::bail!("No messages unsubscribed ({} failed)", failed);
+        anyhow::bail!("No messages unsubscribed ({} failed)", errors.len());
     }
-    println!("Unsubscribed from {} message(s)", succeeded);
     Ok(())
 }
 
-pub async fn open_in_browser(message_id: String) -> anyhow::Result<()> {
-    let id = parse_message_id(&message_id)?;
-    let dir = browser_cache_dir();
-    let path = browser_cache_path(&dir, &id);
-    if path.exists() {
-        open_browser_path(&path)?;
-        maybe_cleanup_browser_cache(&dir, &path);
-        println!("Opened in browser: {}", path.display());
-        return Ok(());
+pub async fn open_in_browser(
+    message_id: Option<String>,
+    search: Option<String>,
+    first: bool,
+    limit: Option<u32>,
+    yes: bool,
+) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let ids = crate::commands::selection::resolve_message_ids(
+        &mut client,
+        message_id.into_iter().collect(),
+        search,
+        crate::commands::selection::SelectionLimit::from_flags(first, limit),
+    )
+    .await?;
+    if ids.is_empty() {
+        anyhow::bail!("No messages matched");
+    }
+    if ids.len() > 1 && !yes {
+        anyhow::bail!(
+            "{} messages matched — pass `--yes` to open all of them in your browser",
+            ids.len()
+        );
     }
 
-    let mut client = IpcClient::connect().await?;
-    let resp = client
-        .request(Request::GetBody {
-            message_id: id.clone(),
-        })
-        .await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Body { body },
-        } => {
-            let Some(document) = browser_document(&body) else {
-                anyhow::bail!("No readable body available for {}", id.as_str());
-            };
-            ensure_browser_cache_file(&dir, &id, &document)?;
+    let dir = browser_cache_dir();
+    for id in &ids {
+        let path = browser_cache_path(&dir, id);
+        if path.exists() {
             open_browser_path(&path)?;
             maybe_cleanup_browser_cache(&dir, &path);
             println!("Opened in browser: {}", path.display());
+            continue;
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response"),
+
+        let resp = client
+            .request(Request::GetBody {
+                message_id: id.clone(),
+            })
+            .await?;
+        match resp {
+            Response::Ok {
+                data: ResponseData::Body { body },
+            } => {
+                let Some(document) = browser_document(&body) else {
+                    anyhow::bail!("No readable body available for {}", id.as_str());
+                };
+                ensure_browser_cache_file(&dir, id, &document)?;
+                open_browser_path(&path)?;
+                maybe_cleanup_browser_cache(&dir, &path);
+                println!("Opened in browser: {}", path.display());
+            }
+            Response::Error { message, .. } => anyhow::bail!("{message}"),
+            _ => anyhow::bail!("Unexpected response"),
+        }
     }
     Ok(())
 }

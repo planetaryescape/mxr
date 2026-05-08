@@ -1,7 +1,8 @@
 use super::super::MutationEffect;
 use crate::ui::label_picker::{LabelPicker, LabelPickerMode};
 use mxr_core::id::{AccountId, MessageId};
-use mxr_protocol::Request;
+use mxr_core::Envelope;
+use mxr_protocol::{Request, ScreenerQueueEntryData, SenderProfileData, SnippetData};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
@@ -42,6 +43,12 @@ pub use mxr_config::snooze::{SnoozeOption as SnoozePreset, SNOOZE_PRESETS};
 pub struct SnoozePanelState {
     pub visible: bool,
     pub selected_index: usize,
+    /// `Some(buffer)` while the user is typing a custom-time expression
+    /// in the panel. `None` means the preset list is the active surface.
+    pub custom_input: Option<String>,
+    /// Most recent parser error for the custom input, surfaced in the
+    /// modal so the user can correct without leaving the prompt.
+    pub custom_error: Option<String>,
 }
 
 #[derive(Default)]
@@ -85,6 +92,323 @@ pub struct ModalsState {
     /// parameters in one form. Populated when the user presses `f`
     /// inside the Analytics screen; cleared on Esc/Enter.
     pub analytics_filter: Option<AnalyticsFilterModalState>,
+    /// Browser modal listing the user's compose snippets. Read-only:
+    /// add/edit/delete still flow through `mxr snippets` CLI; the modal
+    /// surfaces the list so users discover what's available without
+    /// leaving the TUI.
+    pub snippets: SnippetsModalState,
+    /// Browser modal showing per-sender relationship aggregates
+    /// (volume, response cadence, open commitments). Surfaced via the
+    /// command palette so users can drill into a sender without
+    /// leaving the inbox.
+    pub sender_profile: SenderProfileModalState,
+    /// Triage queue modal listing senders awaiting a screener
+    /// decision. Supports three-key disposition (allow / deny / feed /
+    /// paper-trail) that fires `SetScreenerDecision`.
+    pub screener: ScreenerModalState,
+    /// Reply-later queue modal listing flagged messages so the user
+    /// can walk them. Read-only: actually replying still uses the
+    /// regular reply flow once the user opens the focused message.
+    pub reply_queue: ReplyQueueModalState,
+    /// Thread-summary modal showing the LLM-generated 2-3 sentence
+    /// summary of the focused thread. Loading / error / disabled
+    /// states all surface inline.
+    pub summary: ThreadSummaryModalState,
+}
+
+/// Read-only state for the snippets browser modal. `visible=true`
+/// while the modal is open; `loading=true` between dispatch and
+/// response so the UI can show a spinner instead of "no snippets".
+#[derive(Debug, Clone, Default)]
+pub struct SnippetsModalState {
+    pub visible: bool,
+    pub loading: bool,
+    pub snippets: Vec<SnippetData>,
+    pub selected_index: usize,
+    pub error: Option<String>,
+}
+
+impl SnippetsModalState {
+    pub fn open_loading(&mut self) {
+        self.visible = true;
+        self.loading = true;
+        self.snippets.clear();
+        self.selected_index = 0;
+        self.error = None;
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.loading = false;
+        self.error = None;
+    }
+
+    pub fn set_snippets(&mut self, snippets: Vec<SnippetData>) {
+        self.loading = false;
+        self.error = None;
+        self.snippets = snippets;
+        self.selected_index = 0;
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.loading = false;
+        self.error = Some(message);
+    }
+
+    pub fn select_next(&mut self) {
+        if self.snippets.is_empty() {
+            return;
+        }
+        self.selected_index = (self.selected_index + 1) % self.snippets.len();
+    }
+
+    pub fn select_prev(&mut self) {
+        if self.snippets.is_empty() {
+            return;
+        }
+        self.selected_index = self
+            .selected_index
+            .checked_sub(1)
+            .unwrap_or(self.snippets.len() - 1);
+    }
+
+    pub fn selected(&self) -> Option<&SnippetData> {
+        self.snippets.get(self.selected_index)
+    }
+}
+
+/// Read-only state for the sender-profile browser modal. Either holds
+/// a fetched profile, an error, or a "loading" placeholder while the
+/// IPC call is in-flight.
+#[derive(Debug, Clone, Default)]
+pub struct SenderProfileModalState {
+    pub visible: bool,
+    pub loading: bool,
+    /// Email address whose profile is being shown. Kept on the state so
+    /// the title bar can read it back even when the response is still
+    /// pending.
+    pub email: Option<String>,
+    pub profile: Option<SenderProfileData>,
+    pub error: Option<String>,
+}
+
+impl SenderProfileModalState {
+    pub fn open_loading(&mut self, email: String) {
+        self.visible = true;
+        self.loading = true;
+        self.email = Some(email);
+        self.profile = None;
+        self.error = None;
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.loading = false;
+        self.email = None;
+        self.profile = None;
+        self.error = None;
+    }
+
+    pub fn set_profile(&mut self, profile: Option<SenderProfileData>) {
+        self.loading = false;
+        self.error = None;
+        self.profile = profile;
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.loading = false;
+        self.error = Some(message);
+    }
+}
+
+/// State for the screener triage modal. Holds the queue of senders
+/// without a decision yet; key dispositions remove the entry from the
+/// list optimistically and fire the IPC.
+#[derive(Debug, Clone, Default)]
+pub struct ScreenerModalState {
+    pub visible: bool,
+    pub loading: bool,
+    pub account_id: Option<mxr_core::AccountId>,
+    pub entries: Vec<ScreenerQueueEntryData>,
+    pub selected_index: usize,
+    pub error: Option<String>,
+}
+
+impl ScreenerModalState {
+    pub fn open_loading(&mut self, account_id: mxr_core::AccountId) {
+        self.visible = true;
+        self.loading = true;
+        self.account_id = Some(account_id);
+        self.entries.clear();
+        self.selected_index = 0;
+        self.error = None;
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.loading = false;
+        self.account_id = None;
+        self.entries.clear();
+        self.error = None;
+    }
+
+    pub fn set_entries(&mut self, entries: Vec<ScreenerQueueEntryData>) {
+        self.loading = false;
+        self.error = None;
+        self.entries = entries;
+        self.selected_index = 0;
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.loading = false;
+        self.error = Some(message);
+    }
+
+    pub fn select_next(&mut self) {
+        if self.entries.is_empty() {
+            return;
+        }
+        self.selected_index = (self.selected_index + 1) % self.entries.len();
+    }
+
+    pub fn select_prev(&mut self) {
+        if self.entries.is_empty() {
+            return;
+        }
+        self.selected_index = self
+            .selected_index
+            .checked_sub(1)
+            .unwrap_or(self.entries.len() - 1);
+    }
+
+    pub fn selected(&self) -> Option<&ScreenerQueueEntryData> {
+        self.entries.get(self.selected_index)
+    }
+
+    /// Remove the currently-selected entry (after a disposition has
+    /// been applied) and clamp the cursor so it stays within range.
+    pub fn remove_selected(&mut self) -> Option<ScreenerQueueEntryData> {
+        if self.entries.is_empty() {
+            return None;
+        }
+        let removed = self.entries.remove(self.selected_index);
+        if self.selected_index >= self.entries.len() && !self.entries.is_empty() {
+            self.selected_index = self.entries.len() - 1;
+        } else if self.entries.is_empty() {
+            self.selected_index = 0;
+        }
+        Some(removed)
+    }
+}
+
+/// State for the reply-later queue modal. Read-only listing of
+/// flagged messages; replying still flows through the regular
+/// compose pipeline once the user opens the focused message.
+#[derive(Debug, Clone, Default)]
+pub struct ReplyQueueModalState {
+    pub visible: bool,
+    pub loading: bool,
+    pub messages: Vec<Envelope>,
+    pub selected_index: usize,
+    pub error: Option<String>,
+}
+
+impl ReplyQueueModalState {
+    pub fn open_loading(&mut self) {
+        self.visible = true;
+        self.loading = true;
+        self.messages.clear();
+        self.selected_index = 0;
+        self.error = None;
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.loading = false;
+        self.error = None;
+    }
+
+    pub fn set_messages(&mut self, messages: Vec<Envelope>) {
+        self.loading = false;
+        self.error = None;
+        self.messages = messages;
+        self.selected_index = 0;
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.loading = false;
+        self.error = Some(message);
+    }
+
+    pub fn select_next(&mut self) {
+        if self.messages.is_empty() {
+            return;
+        }
+        self.selected_index = (self.selected_index + 1) % self.messages.len();
+    }
+
+    pub fn select_prev(&mut self) {
+        if self.messages.is_empty() {
+            return;
+        }
+        self.selected_index = self
+            .selected_index
+            .checked_sub(1)
+            .unwrap_or(self.messages.len() - 1);
+    }
+
+    pub fn selected(&self) -> Option<&Envelope> {
+        self.messages.get(self.selected_index)
+    }
+}
+
+/// State for the thread-summary modal. Holds the LLM result while the
+/// modal is visible; `error` carries the daemon-side message verbatim
+/// (e.g. `LlmDisabled`, `ThreadTooShort`).
+#[derive(Debug, Clone, Default)]
+pub struct ThreadSummaryModalState {
+    pub visible: bool,
+    pub loading: bool,
+    /// Thread identifier currently being summarized. Used to drop late
+    /// responses for a previously-focused thread.
+    pub thread_id: Option<mxr_core::ThreadId>,
+    pub summary: Option<String>,
+    pub model: Option<String>,
+    pub error: Option<String>,
+}
+
+impl ThreadSummaryModalState {
+    pub fn open_loading(&mut self, thread_id: mxr_core::ThreadId) {
+        self.visible = true;
+        self.loading = true;
+        self.thread_id = Some(thread_id);
+        self.summary = None;
+        self.model = None;
+        self.error = None;
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.loading = false;
+        self.thread_id = None;
+        self.summary = None;
+        self.model = None;
+        self.error = None;
+    }
+
+    pub fn set_summary(&mut self, text: String, model: String) {
+        self.loading = false;
+        self.summary = Some(text);
+        self.model = Some(model);
+        self.error = None;
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.loading = false;
+        self.summary = None;
+        self.model = None;
+        self.error = Some(message);
+    }
 }
 
 /// Form state for the analytics filter modal. Holds string-form

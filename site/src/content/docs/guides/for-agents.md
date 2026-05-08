@@ -1,95 +1,154 @@
 ---
 title: For agents
-description: How agents use mxr today, what is safe, and what is not shipped yet.
+description: How to drive mxr from a coding agent, an LLM script, or your own loop. Three worked examples, the safety primitives that make them safe, and the boundaries the daemon won't cross.
 ---
 
-mxr already works with agents today through the CLI and the skill file.
+mxr is built so an LLM agent can run it directly. The CLI emits structured JSON, every mutation has a dry-run, and the [HTTP bridge](/reference/bridge/) exposes the same surface for non-shell clients. There is no provider-specific SDK to wrap, no headless browser, no DOM scraping — the agent uses the same commands a human would.
 
-That is the current story. It is simple, it is scriptable, and it does not pretend an MCP server exists when it does not.
+This page is the practical guide. For the comprehensive list of what's safe to script, see the [automation contract](/guides/automation-contract/). For the field-level JSON shape, see [JSON output schemas](/reference/json-output/).
 
-## Current agent surface
+## Safety primitives, all the time
 
-| Surface | Status | Notes |
-|---|---|---|
-| CLI | shipped | structured output, batch ops, dry runs |
-| Skill | shipped | documents the CLI for coding agents |
-| Daemon socket | shipped | available for custom clients |
-| Web bridge | shipped | HTTP/WebSocket client over daemon IPC |
-| First-party MCP server | not shipped | still on the roadmap |
+1. **Read first.** `mxr search`, `mxr cat`, `mxr stale`, `mxr sender`, `mxr summarize` never mutate. Use them to understand the situation before acting.
+2. **Dry-run everything.** `--dry-run` works on every mutation; show the user the affected count before you run the real thing.
+3. **`--yes` is opt-in.** Without `--yes`, mutations prompt. When stdin isn't a TTY (i.e. piped from an agent), pass `--yes` explicitly so the user has a clear "I authorise this batch" moment in the loop.
+4. **Use `mxr history`.** Every mutation gets a `mutation_id`. Capture it; offer `mxr undo <id>` within ~60 seconds.
 
-## Why the CLI works well
+## Worked example 1 — Newsletter prune
 
-- `--format json` gives structured output
-- `--dry-run` previews risky mutations
-- `--search` lets one command target a set of messages
-- `mxr history` shows persisted mutation history
-
-This is enough for a lot of useful agent work without inventing a new tool surface first.
-
-## IPC boundaries matter
-
-If you use the socket directly, think in buckets:
-
-- `core-mail`
-- `mxr-platform`
-- `admin-maintenance`
-
-Do not push `client-specific` shaping into the daemon because a screen wants a convenient payload. Web/TUI already derive their own view models from reusable daemon data.
-
-## Good patterns
-
-### Search first
+**Goal:** unsubscribe from low-engagement subscriptions, archive the residue.
 
 ```bash
-mxr search "is:unread" --format json
+mxr subscriptions --rank --format json
 ```
 
-### Preview before changing anything
+The agent gets:
+
+```jsonc
+{
+  "subscriptions": [
+    {
+      "sender": "newsletter@example.com",
+      "list_id": "<list.example.com>",
+      "messages_30d": 12,
+      "open_rate_30d": 0.0,
+      "last_opened": null,
+      "unsubscribe": { "OneClick": { "url": "https://..." } }
+    }
+    /* ... */
+  ]
+}
+```
+
+The agent picks candidates with `open_rate_30d == 0` and `messages_30d >= 4`, presents them to the user, then dry-runs:
 
 ```bash
-mxr archive --search "label:notifications older:30d" --dry-run
+mxr unsubscribe --search 'list:<list.example.com> OR list:<...>' --dry-run
 ```
 
-### Check what happened after
+User confirms. Agent runs:
 
 ```bash
-mxr history --category mutation
+mxr unsubscribe --search 'list:<list.example.com> OR list:<...>' --yes
+mxr archive --search 'from:newsletter@example.com OR from:<...>' --yes
 ```
 
-## Example workflows
+Agent verifies and reports:
 
-### Inbox triage
+```bash
+mxr history --category mutation --limit 3 --format json
+```
 
-1. Search unread mail.
-2. Read selected messages with `mxr cat`.
-3. Draft replies or export threads.
-4. Use `--dry-run` for any batch mutation.
+## Worked example 2 — Meeting prep
 
-### Meeting prep
+**Goal:** for tomorrow's 1:1 with Sarah, gather the relevant threads from the last two weeks and draft an agenda.
 
-1. Search by sender and date range.
-2. Export the relevant thread as markdown.
-3. Summarize open items outside mxr.
+```bash
+mxr search 'from:sarah@example.com OR to:sarah@example.com after:2026-04-23' --format json
+```
 
-### CI cleanup
+The agent gets compact search rows with `message_id`, `from`, `subject`, `date`, `read`, `starred`, and `score`. When it needs thread context, it exports the matching search directly as markdown:
 
-1. Search build notifications.
-2. Group by thread or sender.
-3. Preview archive/trash actions with `--dry-run`.
-4. Apply mutations and verify with `mxr history`.
+```bash
+for tid in 01JFQ7K3M2X8N5R0VYZA9CTBPF 01JFQ8...; do
+  mxr export "$tid" --format markdown
+done
+```
 
-## Safe defaults
+Or in one call with `--search`:
 
-- Prefer `--dry-run` on batch changes.
-- Use `--yes` only when the workflow is already known and reviewed.
-- Treat `trash`, `spam`, and `unsubscribe` as high-friction commands.
-- Keep in mind that agent-safe permission presets are not shipped yet.
+```bash
+mxr export --search 'from:sarah@example.com OR to:sarah@example.com after:2026-04-23' --format markdown > /tmp/sarah-context.md
+```
 
-## Current limits
+Agent feeds the markdown into its summariser, then uses `mxr draft-assist` to generate a suggested reply body on stdout. The agent can show that body to the user or pass it into `mxr compose --body-stdin` / `mxr reply --body-stdin` after approval:
 
-- No first-party MCP server yet
-- No read-only or draft-only agent mode yet
-- No agent-specific account scoping yet
-- No explicit send-approval flow yet
+```bash
+mxr draft-assist <thread_id> "Build a 1:1 agenda. Group by open question, decision needed, status update."
+```
 
-If you need those controls right now, treat mxr as a CLI tool that an agent can use carefully, not as a permissioned agent platform.
+The agent never sends. The user reviews the generated body, saves a draft, or sends only after explicit approval.
+
+## Worked example 3 — CI failure cleanup
+
+**Goal:** archive every CI failure email from last week whose underlying test has since been fixed.
+
+```bash
+mxr search 'from:noreply@github.com subject:"failed" after:2026-04-30' --format json
+```
+
+For each failure, the agent extracts the commit SHA and test name from the body (using `mxr cat <id> --view reader`). It cross-references against the local repo:
+
+```bash
+git log --since=1.week --pretty='%H %s' | grep -i 'fix.*test'
+```
+
+It builds a list of message IDs to archive. Dry-run:
+
+```bash
+echo 01JFQ... 01JFQ... | xargs mxr archive --dry-run
+```
+
+User confirms. Apply:
+
+```bash
+echo 01JFQ... 01JFQ... | xargs mxr archive --yes
+```
+
+Capture the `mutation_id` in the output. If the user notices an over-archive, the agent runs `mxr undo <mutation_id>` within 60 seconds.
+
+## What stays local, what doesn't
+
+- **Embeddings (semantic search)** — local, with locally-stored model weights. Never sent off-device.
+- **`mxr summarize` and `mxr draft-assist`** — call your configured `[llm]` endpoint. That can be a local server (Ollama, LM Studio) or a remote provider. Configure in `config.toml`. The thread content goes wherever the LLM is.
+- **Provider mail content** — passes through mxr to whatever provider the account is connected to (Gmail, IMAP). mxr never proxies through third parties.
+
+If you want a strict local-only setup: set `[llm].base_url = "http://localhost:11434/v1"` for Ollama and `[search.semantic].enabled = true`. No third-party calls beyond your own provider.
+
+## Token-budget tips
+
+- Use `--limit` aggressively. `mxr search 'is:unread' --format json --limit 20` is plenty for triage.
+- Use `--format ids` when you only need to drive a mutation. Saves tokens vs. full envelopes.
+- Use `mxr summarize <thread_id>` for long threads instead of feeding `mxr cat` into the model.
+- Use `mxr export <thread_id> --format llm` for thread context formatted for an LLM (omits redundant headers, strips signatures).
+
+## IPC bucket model (skim)
+
+Behind the CLI, every request lands in one of four [IPC buckets](/guides/glossary/#ipc-buckets): `core-mail`, `mxr-platform`, `admin-maintenance`, `client-specific`. The first three are stable; the fourth is per-client view-shape and not part of the daemon contract. If you're scripting against the [HTTP bridge](/reference/bridge/), think in those buckets — they're the contract surface.
+
+## Current limits (be honest)
+
+- No first-party MCP server yet. The agent surface is the CLI plus the HTTP bridge; both are real and stable.
+- No `--read-only` daemon mode yet. Use `safety_policy = "restricted"` or `"read-only"` in `[general]` to cap mutations daemon-wide if you need the guardrail.
+- No agent-specific account scoping yet. The agent sees every account the user sees.
+
+If you need any of these as enforcement (rather than convention), file an issue — the design space is open.
+
+## See also
+
+- [Automation contract](/guides/automation-contract/) — exhaustive table of `--format`, `--dry-run`, stdin support
+- [JSON output schemas](/reference/json-output/) — field names for `jq`
+- [Recipes](/guides/recipes/) — pipelines for common tasks
+- [Agent skill](/guides/agent-skill/) — install the mxr skill into Claude Code, Cursor, Continue, Aider
+- [HTTP bridge](/reference/bridge/) — same surface over HTTP
+- [API explorer](/api/bridge/) — interactive Scalar reference

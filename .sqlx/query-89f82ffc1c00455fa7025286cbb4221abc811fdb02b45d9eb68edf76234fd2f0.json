@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM snippets WHERE name = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "89f82ffc1c00455fa7025286cbb4221abc811fdb02b45d9eb68edf76234fd2f0"
+}

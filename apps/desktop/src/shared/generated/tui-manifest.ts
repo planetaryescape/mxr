@@ -1027,6 +1027,42 @@ export const tuiDesktopManifest = {
       "category": "Mail"
     },
     {
+      "label": "Bookmark for Reply Later",
+      "shortcut": "b",
+      "action": "flag_reply_later",
+      "category": "Triage"
+    },
+    {
+      "label": "Reply Queue",
+      "shortcut": "",
+      "action": "open_reply_queue",
+      "category": "Triage"
+    },
+    {
+      "label": "Screener Queue",
+      "shortcut": "",
+      "action": "open_screener_queue",
+      "category": "Triage"
+    },
+    {
+      "label": "Sender View",
+      "shortcut": "",
+      "action": "open_sender_view",
+      "category": "Mail"
+    },
+    {
+      "label": "Summarize Thread",
+      "shortcut": "",
+      "action": "summarize_current_thread",
+      "category": "AI"
+    },
+    {
+      "label": "Snippets",
+      "shortcut": "",
+      "action": "open_snippets",
+      "category": "Compose"
+    },
+    {
       "label": "Unsubscribe",
       "shortcut": "D",
       "action": "unsubscribe",
@@ -1297,13 +1333,25 @@ export const tuiDesktopManifest = {
       "category": "Analytics"
     },
     {
-      "label": "Analytics: Contact Asymmetry",
+      "label": "Analytics: Contacts",
       "shortcut": "",
       "action": "open_analytics_view",
       "category": "Analytics"
     },
     {
       "label": "Analytics: Response Time",
+      "shortcut": "",
+      "action": "open_analytics_view",
+      "category": "Analytics"
+    },
+    {
+      "label": "Analytics: Subscriptions",
+      "shortcut": "",
+      "action": "open_analytics_view",
+      "category": "Analytics"
+    },
+    {
+      "label": "Analytics: Wrapped",
       "shortcut": "",
       "action": "open_analytics_view",
       "category": "Analytics"

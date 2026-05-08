@@ -8,7 +8,9 @@
 
 #![cfg(feature = "openapi")]
 
-use mxr_protocol::{DaemonEvent, IpcMessage, IpcPayload, MutationCommand, Request, Response, ResponseData};
+use mxr_protocol::{
+    DaemonEvent, IpcMessage, IpcPayload, MutationCommand, Request, Response, ResponseData,
+};
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
@@ -107,7 +109,11 @@ fn daemon_event_schema_includes_operation_variants() {
         .expect("DaemonEvent schema present");
 
     let serialized = serde_json::to_string(event_schema).expect("schema serializes");
-    for variant in ["OperationStarted", "OperationProgress", "OperationCompleted"] {
+    for variant in [
+        "OperationStarted",
+        "OperationProgress",
+        "OperationCompleted",
+    ] {
         assert!(
             serialized.contains(variant),
             "DaemonEvent schema must surface variant {variant}; got {serialized}"

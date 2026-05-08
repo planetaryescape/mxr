@@ -1,6 +1,6 @@
 ---
 source: crates/tui/tests/snapshots.rs
-assertion_line: 685
+assertion_line: 699
 expression: snapshot
 ---
 "┌ Diagnostics ───────────┐┌ Summary / Status / Doctor ─────────────────────────────────────────────┐"
@@ -18,8 +18,8 @@ expression: snapshot
 "│                        ││Messages: total=42 unread=7 starred=3                                   │"
 "│                        ││Freshness: lex=current sync=03-20 10:59Z                                │"
 "│                        ││Lexical rebuilt: 03-20 10:55Z                                           │"
+"│                        ││Findings: none                                                          │"
 "│                        ││Hints: Tab/Shift-Tab pane  Enter fullscreen  d details  L logs          │"
-"│                        ││                                                                        │"
 "│                        ││                                                                        │"
 "│                        ││                                                                        │"
 "│                        ││                                                                        │"

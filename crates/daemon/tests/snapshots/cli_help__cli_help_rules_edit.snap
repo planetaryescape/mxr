@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Usage: mxr rules edit [OPTIONS] <RULE>
+
+Arguments:
+  <RULE>
+
+Options:
+      --name <NAME>
+      --when <CONDITION>
+      --then <ACTION>
+      --priority <PRIORITY>
+      --enable
+      --disable
+  -h, --help                 Print help

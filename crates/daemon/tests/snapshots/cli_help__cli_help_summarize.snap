@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Summarise an email thread using the configured LLM (Ollama, LM Studio, OpenAI, etc.). Requires `[llm] enabled = true` in config. Pass a positional thread ID or use `--search QUERY` plus `--first` (most recent match) or `--limit N` to summarize multiple threads in one go. Multi-summary output is separated by `--- THREAD_ID ---`
+
+Usage: mxr summarize [OPTIONS] [THREAD_ID]
+
+Arguments:
+  [THREAD_ID]  Thread ID to summarise
+
+Options:
+      --search <SEARCH>
+      --first            Summarize only the most recent matching thread
+      --limit <LIMIT>    Cap the number of threads summarized when --search is used. Each summary is an LLM call — keep this low when targeting metered cloud endpoints
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

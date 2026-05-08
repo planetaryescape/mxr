@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Mark a message for reply-later
+
+Usage: mxr replies add <MESSAGE_ID>
+
+Arguments:
+  <MESSAGE_ID>
+
+Options:
+  -h, --help  Print help

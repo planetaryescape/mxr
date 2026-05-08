@@ -1,0 +1,93 @@
+//! Reply-later queue and auto-reminders: local-only nudges that don't
+//! roundtrip to the provider.
+//!
+//! * `message_flags` (migration 013) — manually-flagged "reply later"
+//!   set; user-driven curation.
+//! * `auto_reminders` (migration 014) — time-based "remind me if no
+//!   reply in N days"; daemon-driven, fired by a background loop.
+
+use super::HandlerResult;
+use crate::state::AppState;
+use chrono::{DateTime, Utc};
+use mxr_core::id::MessageId;
+use mxr_protocol::ResponseData;
+
+pub(super) async fn set_reply_later(
+    state: &AppState,
+    message_id: &MessageId,
+    flag: bool,
+) -> HandlerResult {
+    let now = Utc::now();
+    if flag {
+        state
+            .store
+            .set_reply_later(message_id, now)
+            .await
+            .map_err(|e| e.to_string())?;
+    } else {
+        state
+            .store
+            .clear_reply_later(message_id, now)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(ResponseData::Ack)
+}
+
+pub(super) async fn list_reply_queue(state: &AppState) -> HandlerResult {
+    let ids = state
+        .store
+        .list_reply_later()
+        .await
+        .map_err(|e| e.to_string())?;
+    let messages = state
+        .store
+        .list_envelopes_by_ids(&ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    // The store returns IDs in set_at-desc order, but the join may
+    // reshuffle envelopes. Re-sort to honor the original ordering so
+    // the UI surfaces the most recently flagged message first.
+    let id_order: std::collections::HashMap<_, _> = ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.clone(), i))
+        .collect();
+    let mut sorted = messages;
+    sorted.sort_by_key(|env| id_order.get(&env.id).copied().unwrap_or(usize::MAX));
+    Ok(ResponseData::ReplyQueue { messages: sorted })
+}
+
+pub(super) async fn set_auto_reminder(
+    state: &AppState,
+    sent_message_id: &MessageId,
+    remind_at: DateTime<Utc>,
+) -> HandlerResult {
+    // Look up the message's account so the reminder row carries it for
+    // analytics and per-account loop sharding later.
+    let envelope = state
+        .store
+        .get_envelope(sent_message_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("unknown message id `{}`", sent_message_id.as_str()))?;
+    let now = Utc::now();
+    state
+        .store
+        .set_auto_reminder(sent_message_id, &envelope.account_id, remind_at, now)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Ack)
+}
+
+pub(super) async fn cancel_auto_reminder(
+    state: &AppState,
+    sent_message_id: &MessageId,
+) -> HandlerResult {
+    state
+        .store
+        .cancel_auto_reminder(sent_message_id, Utc::now())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ResponseData::Ack)
+}

@@ -2,12 +2,16 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Open message in browser
+Open message in browser. Pass a positional ID or `--search QUERY` (with `--first` for the latest match, or `--limit N` plus `--yes` to open many tabs at once)
 
-Usage: mxr open <MESSAGE_ID>
+Usage: mxr open [OPTIONS] [MESSAGE_ID]
 
 Arguments:
-  <MESSAGE_ID>  
+  [MESSAGE_ID]
 
 Options:
-  -h, --help  Print help
+      --search <SEARCH>
+      --first
+      --limit <LIMIT>
+      --yes              Required when `--search` resolves to more than one match. Confirms you actually want N browser tabs
+  -h, --help             Print help

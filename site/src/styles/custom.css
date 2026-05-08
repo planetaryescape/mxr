@@ -89,6 +89,11 @@
 html, body {
   background: var(--ink);
   color: var(--paper);
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] body {
+  color-scheme: light;
 }
 
 body {
@@ -107,16 +112,38 @@ body {
   color: var(--ink);
 }
 
-/* ---- Hero ---- */
-[data-page-title] .hero {
+/* ---- Hero ----
+   Selectors target the real Starlight 0.37 DOM:
+     <div class="hero">
+       <h1 data-page-title>...</h1>
+       <div class="tagline">...</div>
+       <div class="actions">
+         <a class="sl-link-button primary">...</a>
+         <a class="sl-link-button secondary">...</a>
+         <a class="sl-link-button minimal">...</a>
+       </div>
+     </div>
+   The previous code used `[data-page-title] .hero .action` which never
+   matched (data-page-title sits on the H1, a descendant of .hero) so
+   Starlight's default pill buttons rendered. The fix drops the prefix
+   and targets `.actions > a` to match by structural position rather
+   than Starlight's class names. */
+.hero {
   padding-block: clamp(3rem, 8vw, 8rem) clamp(1.5rem, 4vw, 4rem);
   position: relative;
   max-width: 84rem;
   margin-inline: auto;
   padding-inline: clamp(1.25rem, 4vw, 4rem);
+  /* Starlight ships .hero as a 2-col grid that pairs the copy
+     stack with an image slot. mxr's hero has no image, so we
+     collapse to a single column and let .copy take full width. */
+  grid-template-columns: 1fr !important;
 }
 
-[data-page-title] .hero::before {
+.hero .stack { width: 100%; }
+.hero .copy { max-width: none !important; }
+
+.hero::before {
   content: 'mxr · 0.4.72 · ◈ a notebook for your inbox';
   display: block;
   font-family: var(--font-mono);
@@ -130,7 +157,7 @@ body {
   text-transform: lowercase;
 }
 
-[data-page-title] .hero h1 {
+.hero h1 {
   font-family: var(--font-display);
   font-variation-settings: var(--rec-display);
   font-size: clamp(2.8rem, 10vw, 8.5rem);
@@ -141,13 +168,13 @@ body {
   margin-bottom: clamp(1.5rem, 3vw, 2.75rem);
 }
 
-[data-page-title] .hero h1 .hero-accent {
+.hero h1 .hero-accent {
   display: inline;
   color: var(--signal);
   font-variation-settings: var(--rec-display-italic);
 }
 
-[data-page-title] .hero .tagline {
+.hero .tagline {
   font-family: var(--font-body);
   font-variation-settings: var(--rec-body);
   font-size: clamp(1.1rem, 1.5vw, 1.35rem);
@@ -157,7 +184,7 @@ body {
   letter-spacing: -0.005em;
 }
 
-[data-page-title] .hero .actions {
+.hero .actions {
   margin-top: clamp(2.5rem, 5vw, 4rem);
   display: flex;
   gap: 2.5rem;
@@ -165,7 +192,7 @@ body {
   flex-wrap: wrap;
 }
 
-[data-page-title] .hero .action {
+.hero .actions > a {
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
   font-size: 0.95rem;
@@ -181,136 +208,221 @@ body {
   align-items: baseline;
   gap: 0.55rem;
   transition: color 0.18s ease;
+  box-shadow: none !important;
 }
 
-[data-page-title] .hero .action.primary {
+.hero .actions > a.primary {
   color: var(--signal) !important;
   font-weight: 600 !important;
 }
 
-[data-page-title] .hero .action::after {
+.hero .actions > a::after {
   content: '↗';
   display: inline-block;
   transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
   font-size: 0.95em;
 }
 
-[data-page-title] .hero .action.primary::after { content: '→'; }
+.hero .actions > a.primary::after { content: '→'; }
 
-[data-page-title] .hero .action:hover { color: var(--signal) !important; }
+.hero .actions > a:hover { color: var(--signal) !important; }
 
-[data-page-title] .hero .action:hover::after { transform: translate(3px, -2px); }
+.hero .actions > a:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 4px;
+  color: var(--signal) !important;
+}
 
-[data-page-title] .hero .action.primary:hover::after { transform: translateX(4px); }
+.hero .actions > a:hover::after { transform: translate(3px, -2px); }
 
-[data-page-title] .hero .action svg { display: none; }
+.hero .actions > a.primary:hover::after { transform: translateX(4px); }
 
-/* Docs-nav strip — under the hero, above the bullet marquee.
-   Surfaces the actual documentation routes that the splash
-   template otherwise hides. Same typographic register as section
-   headers so it reads as part of the page rather than chrome.
-   Horizontally scrollable on narrow screens. */
-.docs-nav {
+.hero .actions > a svg { display: none; }
+
+/* Hero install one-liner — copy-able prompt directly under the
+   hero actions. Brings the install command to scroll 0 for
+   already-convinced visitors. The full method grid still lives
+   in §01 below. */
+.hero-install {
   max-width: 84rem;
   margin: 0 auto;
-  padding: 0.85rem clamp(1.25rem, 4vw, 4rem);
-  border-top: 1px solid var(--rule);
+  padding: 0 clamp(1.25rem, 4vw, 4rem);
+  margin-top: clamp(-1.5rem, -2vw, -0.5rem);
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
   font-family: var(--font-mono);
-  font-variation-settings: var(--rec-meta);
-  font-size: 0.78rem;
-  letter-spacing: 0.06em;
-  text-transform: lowercase;
+  font-variation-settings: var(--rec-mono);
+  font-size: clamp(0.92rem, 1.1vw, 1.05rem);
+}
+
+.hero-install-prompt {
+  color: var(--signal);
+  font-variation-settings: var(--rec-mono-em);
+  font-size: 1.05em;
+}
+
+.hero-install-cmd {
+  color: var(--paper) !important;
+  background: var(--ink-soft) !important;
+  border: 0 !important;
+  border-left: 1px solid var(--rule) !important;
+  padding: 0.55rem 1rem !important;
+  border-radius: 0 !important;
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-mono);
+  flex: 1 1 22rem;
+  min-width: 0;
+  user-select: all;
+  white-space: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
 }
 
-.docs-nav::-webkit-scrollbar { display: none; }
+.hero-install-cmd::-webkit-scrollbar { display: none; }
 
-.docs-nav-inner {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  white-space: nowrap;
+.hero-install-copy {
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--paper-mute);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
-.docs-nav a {
-  color: var(--paper);
-  text-decoration: none;
-  border: none;
-  padding: 0;
-  transition: color 0.15s ease;
+.hero-install-copy:hover {
+  color: var(--signal);
+  border-color: var(--signal);
 }
 
-.docs-nav a:hover { color: var(--signal); }
+.hero-install-copy:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
 
-.docs-nav-sep {
+.hero-install-copy.copied {
+  color: var(--signal);
+  border-color: var(--signal);
+  background: var(--signal-soft);
+}
+
+.hero-install-copy.copy-failed {
+  color: var(--ink);
+  border-color: var(--paper);
+  background: var(--paper);
+}
+
+.hero-install-alt {
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
   color: var(--paper-faint);
-  font-size: 0.62rem;
+  text-transform: lowercase;
+  flex: 0 1 auto;
 }
 
-/* Bullet-rhythm strip directly under the hero. Repeating provider
-   names form a visual texture and tell the user, at a glance, what
-   mxr connects to. Direct steal from the nyx repeating-pattern
-   move, recontextualised. */
-.bullet-strip {
+.hero-install-alt a {
+  color: var(--paper-mute);
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.hero-install-alt a:hover {
+  color: var(--signal);
+  text-decoration-color: var(--signal);
+}
+
+.hero-install-alt a:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  color: var(--signal);
+}
+
+@media (max-width: 640px) {
+  .hero-install { flex-direction: column; align-items: flex-start; gap: 0.6rem; }
+  .hero-install-cmd { width: 100%; flex: 0 0 auto; }
+  .hero-install-alt { font-size: 0.7rem; }
+}
+
+/* Provider line — single typographic statement that replaces the
+   marquee. Honest about what mxr connects to, no logo wall in
+   disguise. Tested-with list is a quieter trailing note. */
+.provider-line {
   max-width: 84rem;
   margin: 0 auto;
-  padding: 0.85rem clamp(1.25rem, 4vw, 4rem);
+  padding: 1rem clamp(1.25rem, 4vw, 4rem);
   border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-meta);
-  font-size: 0.78rem;
-  letter-spacing: 0.18em;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
   color: var(--paper-mute);
-  text-transform: uppercase;
-  white-space: nowrap;
-  overflow: hidden;
-  position: relative;
+  text-transform: lowercase;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  line-height: 1.6;
 }
 
-.bullet-strip > div {
-  display: inline-flex;
-  gap: 1.6rem;
-  align-items: center;
-  animation: bullet-marquee 60s linear infinite;
+.provider-line strong {
+  color: var(--paper);
+  font-variation-settings: var(--rec-mono-em);
+  font-weight: normal;
 }
 
-.bullet-strip > div span { white-space: nowrap; }
-
-.bullet-strip > div .bullet {
-  color: var(--signal);
-  font-size: 0.6rem;
+.provider-line-sep {
+  color: var(--paper-faint);
+  font-size: 0.7em;
+  margin-inline: 0.5rem;
 }
 
-@keyframes bullet-marquee {
-  from { transform: translateX(0); }
-  to   { transform: translateX(-50%); }
+.hero-pronounce {
+  max-width: 84rem;
+  margin: 0 auto;
+  padding: 0.6rem clamp(1.25rem, 4vw, 4rem) 0;
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: var(--paper-mute);
+  text-transform: lowercase;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .bullet-strip > div { animation: none; }
+.hero-pronounce code {
+  color: var(--paper);
+  background: transparent;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-mono-em);
 }
 
-.bullet-strip::before,
-.bullet-strip::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 6rem;
-  z-index: 1;
-  pointer-events: none;
+.hero-pronounce strong {
+  color: var(--paper);
+  font-variation-settings: var(--rec-mono-em);
+  font-weight: normal;
 }
 
-.bullet-strip::before {
-  left: 0;
-  background: linear-gradient(to right, var(--ink), transparent);
-}
-
-.bullet-strip::after {
-  right: 0;
-  background: linear-gradient(to left, var(--ink), transparent);
+.hero-pronounce-sep {
+  color: var(--paper-faint);
+  font-size: 0.7em;
+  margin-inline: 0.4rem;
 }
 
 /* ---- Sections ---- */
@@ -682,7 +794,7 @@ body {
   padding-block: 1.25rem;
   margin-bottom: 0.5rem;
   display: grid;
-  grid-template-columns: 1.2rem 1fr auto;
+  grid-template-columns: 1.2rem 1fr;
   gap: 0.8rem;
   align-items: baseline;
 }
@@ -697,15 +809,6 @@ body {
 .search-event .search-string {
   color: var(--signal);
   font-variation-settings: var(--rec-mono-em);
-}
-
-.search-event .search-timing {
-  font-family: var(--font-mono);
-  font-variation-settings: var(--rec-meta);
-  font-size: 0.8rem;
-  color: var(--paper-mute);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
 }
 
 .search-results {
@@ -872,6 +975,31 @@ body {
   font-style: normal;
   font-variation-settings: var(--rec-body-em);
   margin-left: 0.35rem;
+}
+
+/* Agent JSON peek — closes the agent section by showing the real
+   schema your agent reads. Honest, copy-able, and the actual
+   shape from crates/daemon/src/commands/search.rs. */
+.agent-json-peek {
+  margin-top: clamp(1.5rem, 3vw, 2.5rem);
+  margin-bottom: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+}
+
+.agent-json-peek .agent-json-label {
+  font-family: var(--font-mono);
+  font-variation-settings: var(--rec-meta);
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  color: var(--quiet);
+  text-transform: lowercase;
+  font-weight: 600;
+  margin-bottom: 0.85rem;
+}
+
+.agent-json-peek pre {
+  margin-block: 0 0.5rem !important;
 }
 
 /* ==========================================================
@@ -1118,6 +1246,8 @@ body {
   border-left: 1px solid var(--rule) !important;
   padding: 0.1rem 0 0.1rem 1rem !important;
   font-size: 0.8rem !important;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .principle-margin code {
@@ -1127,8 +1257,9 @@ body {
   color: var(--paper-soft) !important;
   display: block;
   white-space: pre;
+  min-width: 0;
   line-height: 1.55;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 880px) {
@@ -1204,8 +1335,10 @@ body {
   padding: 0.8rem 1.1rem !important;
   font-family: var(--font-mono);
   font-variation-settings: var(--rec-mono);
-  font-size: 0.82rem !important;
+  font-size: 0.9rem !important;
   color: var(--paper) !important;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .surface-snippet code {
@@ -1214,7 +1347,8 @@ body {
   padding: 0 !important;
   color: var(--paper) !important;
   white-space: pre;
-  font-size: 0.82rem;
+  min-width: 0;
+  font-size: 0.9rem;
 }
 
 .surface-block-fourth .surface-key {

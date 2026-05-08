@@ -3,35 +3,38 @@ title: First sync
 description: From installed binary to a working local mailbox.
 ---
 
-## Start the daemon
-
-For development:
-
-```bash
-mxr daemon --foreground
-```
-
-In another terminal:
-
-```bash
-mxr status
-```
-
 ## Open the TUI
 
 ```bash
 mxr
 ```
 
-If the daemon is not already running, `mxr` starts it.
+`mxr` auto-starts the daemon on first run. No separate process to manage.
 
 ## Trigger sync
 
 ```bash
-mxr sync
-mxr sync --status
-mxr status --watch
+mxr sync --wait     # blocks until first sync finishes
+mxr sync --status   # check progress at any time
+mxr status --watch  # live daemon status
 ```
+
+<details>
+<summary>For developers: run the daemon in the foreground</summary>
+
+If you're debugging the daemon itself, run it explicitly so its logs print to your terminal:
+
+```bash
+# Terminal 1: keep this running
+mxr daemon --foreground
+
+# Terminal 2: any other mxr command will use this daemon
+mxr status
+```
+
+In normal use you don't need this — `mxr`, `mxr sync`, and friends auto-start a background daemon if one isn't already running.
+
+</details>
 
 ## Verify local data
 

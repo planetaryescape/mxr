@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List messages flagged for reply-later (default if no subcommand given)
+
+Usage: mxr replies list
+
+Options:
+  -h, --help  Print help

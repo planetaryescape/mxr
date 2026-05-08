@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id as \"id!\"\n               FROM drafts\n               WHERE status = 'sending'\n                 AND COALESCE(last_heartbeat_at, status_updated_at, updated_at) < ?\n               ORDER BY status_updated_at ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "0ab9cc6e3cedf05821064a282c1c091a6ad15828637a236bb23d4177872a931e"
+}

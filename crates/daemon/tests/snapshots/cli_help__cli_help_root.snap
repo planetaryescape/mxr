@@ -1,9 +1,8 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 13
 expression: stdout
 ---
-Terminal email client
+Terminal email client (pronounced "Mixer")
 
 Usage: mxr [COMMAND]
 
@@ -12,11 +11,19 @@ Commands:
   restart        Restart the daemon with the current binary
   search         Search messages
   count          Count matching messages
-  cat            Display a message
-  thread         Display a thread
+  cat            Display a message. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY` (then `--first` for the most recent match or `--limit N` for the top N)
+  thread         Display a thread. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY` (deduplicated by thread)
   export         Export a thread or matching search results
-  headers        Show message headers
+  headers        Show message headers. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY`
   saved          Manage saved searches
+  replies        Manage the reply-later queue
+  summarize      Summarise an email thread using the configured LLM (Ollama, LM Studio, OpenAI, etc.). Requires `[llm] enabled = true` in config. Pass a positional thread ID or use `--search QUERY` plus `--first` (most recent match) or `--limit N` to summarize multiple threads in one go. Multi-summary output is separated by `--- THREAD_ID ---`
+  draft-assist   Generate a draft reply for a thread, grounded on the thread context plus the user's instruction. Output goes to stdout — pipe it into `$EDITOR` or your scratch buffer. Never auto-sends. Two equivalent forms:
+  setup          First-run setup. Without flags, prints quick-start guidance for configuring a Gmail or IMAP account. With `--demo`, configures an in-memory fake-provider account so you can try the TUI/CLI without touching any real mail credentials
+  screener       Triage unknown senders: classify them as allow / deny / feed / paper-trail. Local-only consent metadata; never roundtrips to the provider
+  sender         Show per-sender relationship aggregates: volume, response cadence, open threads. The unfair advantage of having local SQLite — every other email tool reasons over messages, not people
+  snippets       Manage compose snippets (`;name` expansions)
+  remind         Set or cancel a follow-up reminder on an outbound message. Reminders fire if no reply has arrived by the given time — surfacing the message back to the user as a follow-up
   semantic       Manage semantic search profiles and indexing
   subscriptions  List senders with unsubscribe support
   storage        Roll up disk consumption by sender, mimetype, or label
@@ -42,8 +49,9 @@ Commands:
   reply          Reply to a message
   reply-all      Reply to all recipients
   forward        Forward a message
-  drafts         List drafts
+  drafts         Manage drafts: list (default), recover orphaned in-flight sends, resume one for retry, or discard recovered drafts
   send           Send a draft by ID
+  unsend         Cancel a previously-scheduled send. The draft itself is preserved
   archive        Archive a message (remove from inbox)
   read-archive   Mark message as read and archive it
   trash          Move message to trash
@@ -60,7 +68,7 @@ Commands:
   unsnooze       Unsnooze a message
   snoozed        List snoozed messages
   unsubscribe    Unsubscribe from a mailing list
-  open           Open message in browser
+  open           Open message in browser. Pass a positional ID or `--search QUERY` (with `--first` for the latest match, or `--limit N` plus `--yes` to open many tabs at once)
   attachments    Manage message attachments
   config         Configuration management
   version        Show version

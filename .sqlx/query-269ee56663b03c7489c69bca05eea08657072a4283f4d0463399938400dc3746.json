@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO screener_decisions\n                   (account_id, sender_email, disposition, route_label, decided_at)\n               VALUES (?, ?, ?, ?, ?)\n               ON CONFLICT(account_id, sender_email) DO UPDATE SET\n                   disposition = excluded.disposition,\n                   route_label = excluded.route_label,\n                   decided_at = excluded.decided_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "269ee56663b03c7489c69bca05eea08657072a4283f4d0463399938400dc3746"
+}

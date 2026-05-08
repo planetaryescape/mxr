@@ -3,6 +3,26 @@ title: Keybindings
 description: Default keybindings for the mxr TUI.
 ---
 
+:::tip[The 10 keys that get you 80% of mxr]
+If you only learn ten, learn these:
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-p` | Command palette — searchable surface for everything below |
+| `?` | Help modal (context-aware) |
+| `j` / `k` | Move down / up |
+| `Enter` | Open selected message or thread |
+| `e` | Archive |
+| `r` | Reply |
+| `c` | Compose |
+| `s` | Star / unstar |
+| `Z` | Snooze (preset list + custom-time entry) |
+| `/` | Search |
+
+Everything else is discoverable from the palette (`Ctrl-p`) and the
+help modal (`?`).
+:::
+
 ## Global
 
 | Key | Action |
@@ -14,6 +34,8 @@ description: Default keybindings for the mxr TUI.
 | `?` | Toggle help modal |
 | `Esc` | Back, close modal, dismiss pane, or clear selection |
 | `q` | Quit current view or exit |
+
+The Analytics screen has no default digit key; open it via `Ctrl-p` → "Analytics" or rebind `open_tab_6` to a key in `~/.config/mxr/keys.toml` (see [Custom keybindings](/reference/config/#custom-keybindings)).
 
 ## Mail list
 
@@ -45,6 +67,7 @@ description: Default keybindings for the mxr TUI.
 | `a` | Reply all |
 | `f` | Forward |
 | `e` | Archive |
+| `m` | Mark read + archive |
 | `#` | Trash |
 | `!` | Mark spam |
 | `s` | Star / unstar |
@@ -54,8 +77,12 @@ description: Default keybindings for the mxr TUI.
 | `v` | Move to label |
 | `D` | Unsubscribe |
 | `Z` | Snooze |
+| `b` | Bookmark for reply-later |
 | `O` | Open in browser |
 | `R` | Toggle reader mode |
+| `H` | Toggle HTML view |
+| `M` | Toggle remote content (HTML images) |
+| `S` | Toggle signature display |
 | `E` | Export thread |
 
 ### Selection
@@ -65,6 +92,17 @@ description: Default keybindings for the mxr TUI.
 | `x` | Toggle row selection |
 | `V` | Visual line selection |
 | `Esc` | Clear selection |
+
+### Tabs
+
+| Key | Action |
+|-----|--------|
+| `1` | Mailbox |
+| `2` | Search |
+| `3` | Rules |
+| `4` | Accounts |
+| `5` | Diagnostics |
+| _(unbound)_ | Analytics — via `Ctrl-p` → "Analytics" |
 
 ### Go-to
 
@@ -76,6 +114,10 @@ description: Default keybindings for the mxr TUI.
 | `gd` | Go to Drafts |
 | `ga` | Go to All Mail |
 | `gl` | Go to Label (picker) |
+| `gc` | Edit config (opens `$EDITOR`) |
+| `gL` | Show recent logs |
+| `g 1`–`g 9` | Jump to saved-search 1–9 |
+| `g 0` | Return to default inbox (clear saved-search filter) |
 
 ## Message view
 
@@ -83,17 +125,25 @@ description: Default keybindings for the mxr TUI.
 |-----|--------|
 | `j` / `k` | Scroll body |
 | `R` | Toggle reader mode |
+| `H` | Toggle HTML view |
+| `M` | Toggle remote content (HTML images) |
+| `S` | Toggle signature display |
 | `O` | Open in browser |
 | `A` | Open attachment modal |
+| `L` | Open links modal (jump to any URL in the body) |
 | `r` | Reply |
 | `a` | Reply all |
 | `f` | Forward |
 | `e` | Archive |
+| `m` | Mark read + archive |
 | `#` | Trash |
 | `!` | Mark spam |
 | `s` | Star / unstar |
 | `I` | Mark read |
 | `U` | Mark unread |
+| `1`–`5` | Switch primary tab (Mailbox / Search / Rules / Accounts / Diagnostics) |
+| `gc` | Edit config |
+| `gL` | Show recent logs |
 | `D` | Unsubscribe |
 
 ## Thread view
@@ -105,16 +155,66 @@ description: Default keybindings for the mxr TUI.
 | `a` | Reply all to focused message |
 | `f` | Forward focused message |
 | `A` | Open attachment modal |
+| `L` | Open links modal |
 | `R` | Toggle reader mode |
+| `H` | Toggle HTML view |
+| `M` | Toggle remote content |
+| `S` | Toggle signature |
 | `E` | Export thread |
 | `O` | Open in browser |
 | `e` | Archive |
+| `m` | Mark read + archive |
 | `#` | Trash |
 | `!` | Mark spam |
 | `s` | Star / unstar |
 | `I` | Mark read |
 | `U` | Mark unread |
 | `D` | Unsubscribe |
+| `1`–`5` | Switch primary tab |
+| `gc` / `gL` | Edit config / show logs |
+
+## Sidebar
+
+| Key | Action |
+|-----|--------|
+| `[` / `]` | Collapse / expand the focused sidebar section |
+| `n` | New saved search (when the sidebar's saved-searches list is focused) |
+| `e` | Edit the focused saved search |
+| `d` | Delete the focused saved search (with confirm) |
+| `g 1`–`g 9` | Jump to saved-search 1–9 |
+| `g 0` | Clear saved-search filter (return to default inbox) |
+
+## Analytics screen
+
+The Analytics screen has six views. Cycle them with `Tab` / `Shift-Tab`; refresh the active view with `r`.
+
+### View-specific keys
+
+| View | Key | Action |
+|------|-----|--------|
+| Storage | `m` | Toggle Breakdown ↔ Largest-Messages mode |
+| Storage | `g` | Cycle `group_by` (sender / mimetype / label) in Breakdown mode |
+| Stale Threads | `p` | Toggle perspective (mine ↔ theirs) |
+| Stale Threads | `[` / `]` | ±7 days on `older_than_days` |
+| Stale Threads | `{` / `}` | ±30 days on `within_days` |
+| Contacts | `m` | Cycle sub-mode (asymmetry / decay / refresh) |
+| Contacts | `R` | Refresh the materialized contacts table |
+| Response Time | `d` | Toggle direction (clock ↔ business hours) |
+| Subscriptions | `o` | Toggle ranking (volume ↔ open-rate) |
+| Subscriptions | `u` | Open the unsubscribe-confirm modal for the selected row |
+| Wrapped | `h` / `j` / `k` / `l` | Move between dashboard tiles |
+| Wrapped | `y` / `Y` | Step year (back / forward) |
+| Wrapped | `t` | Cycle window kind (YTD → Year → SinceDays) |
+
+### Cross-view
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift-Tab` | Cycle views |
+| `r` | Refresh active view |
+| `Enter` | Drill down (sender → search filter; thread row → open conversation) |
+| `f` | Open the filter modal — every CLI flag for the active view as an editable field |
+| `Esc` | Return to Mailbox |
 
 ## Search query editor
 
@@ -192,3 +292,17 @@ description: Default keybindings for the mxr TUI.
 | Label picker | typing, `j` / `k`, `Enter`, `Esc` |
 | Attachments | `j` / `k`, `Enter` / `o`, `d`, `Esc` |
 | Bulk confirm | `Enter` / `y` confirm, `Esc` / `n` cancel |
+| Snooze (preset list) | `j` / `k` move, `Enter` confirm, `Esc` close |
+| Snooze (custom mode) | typing, `Enter` parse + snooze, `Backspace`, `Esc` back to presets |
+| Reply queue | `j` / `k`, `Esc` close |
+| Snippets browser | `j` / `k`, `Esc` close |
+| Sender profile | `Esc` close |
+| Screener queue | `j` / `k` navigate, `a` allow, `d` deny, `f` feed, `p` paper-trail, `Esc` close |
+| Thread summary | `Esc` close |
+| Welcome / setup | `d` demo, `g` Gmail, `i` IMAP, `Enter` open form, `Esc` dismiss |
+| Saved-search form | typing fields, `Tab` / `Shift-Tab` move, `Ctrl-s` save, `Esc` cancel |
+| Saved-search delete | `Enter` / `y` confirm delete, `Esc` / `n` cancel |
+| Compose send-confirm | `s` send, `d` save as draft, `e` re-edit, `Esc` cancel |
+| Unsubscribe confirm | `u` unsubscribe + archive, `U` unsubscribe + trash, `a` archive only, `A` archive all from sender, `Esc` cancel |
+| Analytics filter modal | typing fields, `Tab` / `Shift-Tab` move, `Enter` apply, `Esc` cancel |
+| Error modal | `j` / `k`, `Ctrl-d` / `Ctrl-u` scroll, `q` / `x` / `Esc` close |

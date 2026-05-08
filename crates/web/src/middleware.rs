@@ -87,8 +87,7 @@ pub fn cors_layer(extra_origins: &[String]) -> CorsLayer {
         let Ok(origin_str) = origin.to_str() else {
             return false;
         };
-        is_loopback_origin(origin_str)
-            || allowed.iter().any(|v| v.as_bytes() == origin.as_bytes())
+        is_loopback_origin(origin_str) || allowed.iter().any(|v| v.as_bytes() == origin.as_bytes())
     };
     CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(allow_predicate))

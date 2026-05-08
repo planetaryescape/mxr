@@ -1,7 +1,8 @@
 use crate::cli::{BodyViewArg, OutputFormat};
 use crate::commands::expect_response;
+use crate::commands::selection::{resolve_message_ids, SelectionLimit};
 use crate::ipc_client::IpcClient;
-use crate::output::{jsonl, resolve_format};
+use crate::output::resolve_format;
 use mxr_core::MessageId;
 use mxr_protocol::*;
 
@@ -45,91 +46,74 @@ fn render_body_view(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
-    message_id: String,
+    message_id: Option<String>,
+    search: Option<String>,
+    first: bool,
+    limit: Option<u32>,
     view: Option<BodyViewArg>,
     assets: bool,
     raw: bool,
     html: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    let mid = MessageId::from_uuid(uuid::Uuid::parse_str(&message_id)?);
     let mut client = IpcClient::connect().await?;
+    let ids = resolve_message_ids(
+        &mut client,
+        message_id.into_iter().collect(),
+        search,
+        SelectionLimit::from_flags(first, limit),
+    )
+    .await?;
+    if ids.is_empty() {
+        anyhow::bail!("No messages matched");
+    }
+
     let fmt = resolve_format(format);
 
     if assets {
-        let allow_remote = mxr_config::load_config()
-            .map(|config| config.render.html_remote_content)
-            .unwrap_or(true);
-        let resp = client
-            .request(Request::GetHtmlImageAssets {
-                message_id: mid,
-                allow_remote,
-            })
-            .await?;
-        let assets = expect_response(resp, |r| match r {
-            Response::Ok {
-                data: ResponseData::HtmlImageAssets { assets, .. },
-            } => Some(assets),
-            _ => None,
-        })?;
-        match fmt {
-            OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(&assets)?);
-            }
-            OutputFormat::Jsonl => {
-                println!("{}", jsonl(&assets)?);
-            }
-            _ => {
-                for asset in &assets {
-                    let path = asset
-                        .path
-                        .as_ref()
-                        .map(|path| path.display().to_string())
-                        .unwrap_or_else(|| "-".into());
-                    println!(
-                        "{:<10} {:<18} {} -> {}",
-                        format!("{:?}", asset.status).to_lowercase(),
-                        format!("{:?}", asset.kind).to_lowercase(),
-                        asset.source,
-                        path,
-                    );
-                }
-            }
-        }
-        return Ok(());
+        return print_assets_for_ids(&mut client, &ids, fmt).await;
     }
 
     match fmt {
         OutputFormat::Json => {
-            let resp = client
-                .request(Request::GetBody {
-                    message_id: mid.clone(),
-                })
-                .await?;
-            let body = expect_response(resp, |r| match r {
-                Response::Ok {
-                    data: ResponseData::Body { body },
-                } => Some(body),
-                _ => None,
-            })?;
-            println!("{}", serde_json::to_string_pretty(&body)?);
+            let mut bodies = Vec::with_capacity(ids.len());
+            for id in &ids {
+                bodies.push(fetch_body(&mut client, id.clone()).await?);
+            }
+            if ids.len() == 1 {
+                println!("{}", serde_json::to_string_pretty(&bodies[0])?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&bodies)?);
+            }
         }
         OutputFormat::Jsonl => {
-            let resp = client
-                .request(Request::GetBody {
-                    message_id: mid.clone(),
-                })
-                .await?;
-            let body = expect_response(resp, |r| match r {
-                Response::Ok {
-                    data: ResponseData::Body { body },
-                } => Some(body),
-                _ => None,
-            })?;
-            println!("{}", serde_json::to_string(&body)?);
+            for id in &ids {
+                let body = fetch_body(&mut client, id.clone()).await?;
+                println!("{}", serde_json::to_string(&body)?);
+            }
         }
-        _ => {
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["message_id", "has_text", "has_html", "attachments"])?;
+            for id in &ids {
+                let body = fetch_body(&mut client, id.clone()).await?;
+                writer.write_record(&[
+                    id.as_str().to_string(),
+                    body.text_plain.is_some().to_string(),
+                    body.text_html.is_some().to_string(),
+                    body.attachments.len().to_string(),
+                ])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for id in &ids {
+                println!("{id}");
+            }
+        }
+        OutputFormat::Table => {
             let selected_view = view.unwrap_or_else(|| {
                 if raw {
                     BodyViewArg::Raw
@@ -145,36 +129,182 @@ pub async fn run(
                 }
             });
 
-            if matches!(selected_view, BodyViewArg::Headers) {
+            for (index, id) in ids.iter().enumerate() {
+                if ids.len() > 1 {
+                    if index > 0 {
+                        println!();
+                    }
+                    println!("--- {} ---", id.as_str());
+                }
+                if matches!(selected_view, BodyViewArg::Headers) {
+                    let headers = fetch_headers(&mut client, id.clone()).await?;
+                    for (key, value) in &headers {
+                        println!("{key}: {value}");
+                    }
+                    continue;
+                }
+                let body = fetch_body(&mut client, id.clone()).await?;
+                let html_command = mxr_config::load_config()
+                    .ok()
+                    .and_then(|config| config.render.html_command);
+                println!("{}", render_body_view(&body, &selected_view, html_command));
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn fetch_body(
+    client: &mut IpcClient,
+    id: MessageId,
+) -> anyhow::Result<mxr_core::types::MessageBody> {
+    let resp = client.request(Request::GetBody { message_id: id }).await?;
+    expect_response(resp, |r| match r {
+        Response::Ok {
+            data: ResponseData::Body { body },
+        } => Some(body),
+        _ => None,
+    })
+}
+
+async fn fetch_headers(
+    client: &mut IpcClient,
+    id: MessageId,
+) -> anyhow::Result<Vec<(String, String)>> {
+    let resp = client
+        .request(Request::GetHeaders { message_id: id })
+        .await?;
+    expect_response(resp, |r| match r {
+        Response::Ok {
+            data: ResponseData::Headers { headers },
+        } => Some(headers),
+        _ => None,
+    })
+}
+
+async fn print_assets_for_ids(
+    client: &mut IpcClient,
+    ids: &[MessageId],
+    fmt: OutputFormat,
+) -> anyhow::Result<()> {
+    let allow_remote = mxr_config::load_config()
+        .map(|config| config.render.html_remote_content)
+        .unwrap_or(true);
+
+    match fmt {
+        OutputFormat::Json => {
+            let mut all = Vec::new();
+            for id in ids {
                 let resp = client
-                    .request(Request::GetHeaders {
-                        message_id: mid.clone(),
+                    .request(Request::GetHtmlImageAssets {
+                        message_id: id.clone(),
+                        allow_remote,
                     })
                     .await?;
-                let headers = expect_response(resp, |r| match r {
+                let assets = expect_response(resp, |r| match r {
                     Response::Ok {
-                        data: ResponseData::Headers { headers },
-                    } => Some(headers),
+                        data: ResponseData::HtmlImageAssets { assets, .. },
+                    } => Some(assets),
                     _ => None,
                 })?;
-                for (key, value) in &headers {
-                    println!("{key}: {value}");
-                }
-                return Ok(());
+                all.push(serde_json::json!({ "message_id": id.as_str(), "assets": assets }));
             }
-
-            let resp = client.request(Request::GetBody { message_id: mid }).await?;
-            let body = expect_response(resp, |r| match r {
-                Response::Ok {
-                    data: ResponseData::Body { body },
-                } => Some(body),
-                _ => None,
-            })?;
-
-            let html_command = mxr_config::load_config()
-                .ok()
-                .and_then(|config| config.render.html_command);
-            println!("{}", render_body_view(&body, &selected_view, html_command));
+            if ids.len() == 1 {
+                println!("{}", serde_json::to_string_pretty(&all[0])?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&all)?);
+            }
+        }
+        OutputFormat::Jsonl => {
+            for id in ids {
+                let resp = client
+                    .request(Request::GetHtmlImageAssets {
+                        message_id: id.clone(),
+                        allow_remote,
+                    })
+                    .await?;
+                let assets = expect_response(resp, |r| match r {
+                    Response::Ok {
+                        data: ResponseData::HtmlImageAssets { assets, .. },
+                    } => Some(assets),
+                    _ => None,
+                })?;
+                println!(
+                    "{}",
+                    serde_json::to_string(
+                        &serde_json::json!({ "message_id": id.as_str(), "assets": assets })
+                    )?
+                );
+            }
+        }
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["message_id", "status", "kind", "source", "path"])?;
+            for id in ids {
+                let resp = client
+                    .request(Request::GetHtmlImageAssets {
+                        message_id: id.clone(),
+                        allow_remote,
+                    })
+                    .await?;
+                let assets = expect_response(resp, |r| match r {
+                    Response::Ok {
+                        data: ResponseData::HtmlImageAssets { assets, .. },
+                    } => Some(assets),
+                    _ => None,
+                })?;
+                for asset in &assets {
+                    writer.write_record(&[
+                        id.as_str().to_string(),
+                        format!("{:?}", asset.status).to_lowercase(),
+                        format!("{:?}", asset.kind).to_lowercase(),
+                        asset.source.clone(),
+                        asset
+                            .path
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| "-".into()),
+                    ])?;
+                }
+            }
+            let bytes = writer.into_inner()?;
+            println!("{}", String::from_utf8(bytes)?.trim_end());
+        }
+        OutputFormat::Ids | OutputFormat::Table => {
+            for (index, id) in ids.iter().enumerate() {
+                if ids.len() > 1 {
+                    if index > 0 {
+                        println!();
+                    }
+                    println!("--- {} ---", id.as_str());
+                }
+                let resp = client
+                    .request(Request::GetHtmlImageAssets {
+                        message_id: id.clone(),
+                        allow_remote,
+                    })
+                    .await?;
+                let assets = expect_response(resp, |r| match r {
+                    Response::Ok {
+                        data: ResponseData::HtmlImageAssets { assets, .. },
+                    } => Some(assets),
+                    _ => None,
+                })?;
+                for asset in &assets {
+                    let path = asset
+                        .path
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "-".into());
+                    println!(
+                        "{:<10} {:<18} {} -> {}",
+                        format!("{:?}", asset.status).to_lowercase(),
+                        format!("{:?}", asset.kind).to_lowercase(),
+                        asset.source,
+                        path,
+                    );
+                }
+            }
         }
     }
     Ok(())

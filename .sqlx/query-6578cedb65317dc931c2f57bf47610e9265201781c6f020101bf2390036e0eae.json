@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT m.from_email as \"from_email!\",\n                      m.from_name as \"from_name?\",\n                      COUNT(*) as \"message_count!: i64\",\n                      MAX(m.date) as \"latest_at!: i64\",\n                      (SELECT subject FROM messages\n                       WHERE account_id = m.account_id\n                         AND from_email = m.from_email COLLATE NOCASE\n                         AND direction = 'inbound'\n                       ORDER BY date DESC LIMIT 1) as \"latest_subject!\"\n               FROM messages m\n               WHERE m.account_id = ?\n                 AND m.direction = 'inbound'\n                 AND NOT EXISTS (\n                     SELECT 1 FROM screener_decisions sd\n                     WHERE sd.account_id = m.account_id\n                       AND sd.sender_email = m.from_email COLLATE NOCASE\n                       AND sd.disposition IN ('allow', 'deny', 'feed', 'paper_trail')\n                 )\n               GROUP BY m.from_email COLLATE NOCASE\n               ORDER BY MAX(m.date) DESC\n               LIMIT ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "from_email!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_name?",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "message_count!: i64",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "latest_at!: i64",
+        "ordinal": 3,
+        "type_info": "Null"
+      },
+      {
+        "name": "latest_subject!",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true,
+      null,
+      null,
+      false
+    ]
+  },
+  "hash": "6578cedb65317dc931c2f57bf47610e9265201781c6f020101bf2390036e0eae"
+}

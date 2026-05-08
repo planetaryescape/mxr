@@ -172,6 +172,9 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         }
         Some(Command::Cat {
             message_id,
+            search,
+            first,
+            limit,
             view,
             assets,
             raw,
@@ -179,11 +182,18 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::cat::run(message_id, view, assets, raw, html, format).await?;
+            commands::cat::run(message_id, search, first, limit, view, assets, raw, html, format)
+                .await?;
         }
-        Some(Command::Thread { thread_id, format }) => {
+        Some(Command::Thread {
+            thread_id,
+            search,
+            first,
+            limit,
+            format,
+        }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::thread::run(thread_id, format).await?;
+            commands::thread::run(thread_id, search, first, limit, format).await?;
         }
         Some(Command::Export {
             thread_id,
@@ -194,13 +204,93 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::export::run(thread_id, search, format, output).await?;
         }
-        Some(Command::Headers { message_id, format }) => {
+        Some(Command::Headers {
+            message_id,
+            search,
+            first,
+            limit,
+            format,
+        }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::headers::run(message_id, format).await?;
+            commands::headers::run(message_id, search, first, limit, format).await?;
         }
         Some(Command::Saved { action, format }) => {
             crate::server::ensure_daemon_running().await?;
             commands::saved::run(action, format).await?;
+        }
+        Some(Command::Replies { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::replies::run(action, format).await?;
+        }
+        Some(Command::Snippets { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::snippets::run(action, format).await?;
+        }
+        Some(Command::Sender {
+            email,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::sender::run(email, account, format).await?;
+        }
+        Some(Command::Screener {
+            action,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::screener::run(action, account, format).await?;
+        }
+        Some(Command::Setup { demo, key, force }) => {
+            // Setup writes config; doesn't need a running daemon.
+            commands::setup::run(demo, key, force).await?;
+        }
+        Some(Command::Summarize {
+            thread_id,
+            search,
+            first,
+            limit,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::summarize::run(thread_id, search, first, limit, format).await?;
+        }
+        Some(Command::DraftAssist {
+            thread_id,
+            instruction,
+            search,
+            first,
+            limit,
+            instruct,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            // Either source of the instruction is fine; --instruct wins
+            // when both are supplied so the long form is the canonical
+            // override surface.
+            let instruction_text = instruct.or(instruction).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Provide an instruction: a positional argument or `--instruct \"...\"`"
+                )
+            })?;
+            commands::draft_assist::run(
+                thread_id,
+                search,
+                first,
+                limit,
+                instruction_text,
+                format,
+            )
+            .await?;
+        }
+        Some(Command::Remind {
+            message_id,
+            when,
+            cancel,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::remind::run(message_id, when, cancel).await?;
         }
         Some(Command::Semantic { action, format }) => {
             crate::server::ensure_daemon_running().await?;
@@ -374,160 +464,214 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::forward(message_id, to, body, body_stdin, yes, dry_run).await?;
         }
-        Some(Command::Drafts { format }) => {
+        Some(Command::Drafts { action, format }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::drafts(format).await?;
+            match action {
+                None | Some(crate::cli::DraftsAction::List) => {
+                    commands::mutations::drafts(format).await?;
+                }
+                Some(crate::cli::DraftsAction::Recover) => {
+                    commands::mutations::drafts_recover(format).await?;
+                }
+                Some(crate::cli::DraftsAction::Resume { draft_id }) => {
+                    commands::mutations::drafts_resume(draft_id).await?;
+                }
+                Some(crate::cli::DraftsAction::Discard { draft_id }) => {
+                    commands::mutations::drafts_discard(draft_id).await?;
+                }
+            }
         }
-        Some(Command::Send { draft_id, dry_run }) => {
+        Some(Command::Send {
+            draft_id,
+            dry_run,
+            at,
+        }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::send_draft(draft_id, dry_run).await?;
+            if let Some(when) = at {
+                commands::mutations::schedule_send(draft_id, when).await?;
+            } else {
+                commands::mutations::send_draft(draft_id, dry_run).await?;
+            }
+        }
+        Some(Command::Unsend { draft_id }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::mutations::cancel_scheduled_send(draft_id).await?;
         }
         Some(Command::Archive {
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::archive(message_id, search, yes, dry_run).await?;
+            commands::mutations::archive(message_ids, search, yes, dry_run, format).await?;
         }
-        Some(Command::Undo { mutation_id }) => {
+        Some(Command::Undo {
+            mutation_id,
+            dry_run,
+            format,
+        }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::undo(mutation_id).await?;
+            commands::mutations::undo(mutation_id, dry_run, format).await?;
         }
         Some(Command::ReadArchive {
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::read_archive(message_id, search, yes, dry_run).await?;
+            commands::mutations::read_archive(message_ids, search, yes, dry_run, format).await?;
         }
         Some(Command::Trash {
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::trash(message_id, search, yes, dry_run).await?;
+            commands::mutations::trash(message_ids, search, yes, dry_run, format).await?;
         }
         Some(Command::Spam {
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::spam(message_id, search, yes, dry_run).await?;
+            commands::mutations::spam(message_ids, search, yes, dry_run, format).await?;
         }
         Some(Command::Star {
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::star(message_id, search, yes, dry_run).await?;
+            commands::mutations::star(message_ids, search, yes, dry_run, format).await?;
         }
         Some(Command::Unstar {
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unstar(message_id, search, yes, dry_run).await?;
+            commands::mutations::unstar(message_ids, search, yes, dry_run, format).await?;
         }
         Some(Command::MarkRead {
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::mark_read(message_id, search, yes, dry_run).await?;
+            commands::mutations::mark_read(message_ids, search, yes, dry_run, format).await?;
         }
         Some(Command::Unread {
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unread(message_id, search, yes, dry_run).await?;
+            commands::mutations::unread(message_ids, search, yes, dry_run, format).await?;
         }
         Some(Command::Label {
             name,
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::label(name, message_id, search, yes, dry_run).await?;
+            commands::mutations::label(name, message_ids, search, yes, dry_run, format).await?;
         }
         Some(Command::Unlabel {
             name,
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unlabel(name, message_id, search, yes, dry_run).await?;
+            commands::mutations::unlabel(name, message_ids, search, yes, dry_run, format).await?;
         }
         Some(Command::MoveMsg {
             label,
-            message_id,
+            message_ids,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::move_msg(label, message_id, search, yes, dry_run).await?;
+            commands::mutations::move_msg(label, message_ids, search, yes, dry_run, format).await?;
         }
         Some(Command::Snooze {
-            message_id,
+            message_ids,
             until,
             search,
             yes,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::snooze(message_id, until, search, yes, dry_run).await?;
+            commands::mutations::snooze(message_ids, until, search, yes, dry_run, format).await?;
         }
         Some(Command::Unsnooze {
-            message_id,
+            message_ids,
             all,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unsnooze(message_id, all, dry_run).await?;
+            commands::mutations::unsnooze(message_ids, all, dry_run, format).await?;
         }
         Some(Command::Snoozed { format }) => {
             crate::server::ensure_daemon_running().await?;
             commands::mutations::snoozed(format).await?;
         }
         Some(Command::Unsubscribe {
-            message_id,
+            message_ids,
             yes,
             search,
             dry_run,
+            format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::unsubscribe(message_id, yes, search, dry_run).await?;
+            commands::mutations::unsubscribe(message_ids, yes, search, dry_run, format).await?;
         }
-        Some(Command::Open { message_id }) => {
+        Some(Command::Open {
+            message_id,
+            search,
+            first,
+            limit,
+            yes,
+        }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::open_in_browser(message_id).await?;
+            commands::mutations::open_in_browser(message_id, search, first, limit, yes).await?;
         }
         Some(Command::Attachments { action }) => {
             crate::server::ensure_daemon_running().await?;
             match action {
-                cli::AttachmentAction::List { message_id } => {
-                    commands::mutations::attachments_list(message_id).await?;
+                cli::AttachmentAction::List {
+                    message_id,
+                    search,
+                    first,
+                    limit,
+                } => {
+                    commands::mutations::attachments_list(message_id, search, first, limit).await?;
                 }
                 cli::AttachmentAction::Download {
                     message_id,

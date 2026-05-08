@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
+    "generate": "node scripts/generate-cli-reference.mjs && bash scripts/dump-openapi-spec.sh",
+    "validate": "node scripts/validate-docs.mjs",
+    "postbuild": "node scripts/generate-llms-txt.mjs",
+    "dev": "npm run generate && astro dev",
+    "build": "npm run generate && npm run validate && astro build && node scripts/generate-llms-txt.mjs",
     "preview": "astro preview"
   },
   "dependencies": {
     "@astrojs/starlight": "0.37.7",
+    "@scalar/api-reference": "^1.55.1",
     "astro": "5.18.1",
     "sharp": "^0.33"
   },

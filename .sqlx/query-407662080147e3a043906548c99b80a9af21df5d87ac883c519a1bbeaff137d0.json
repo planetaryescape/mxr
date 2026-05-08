@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT name as \"name!\", body as \"body!\", vars as \"vars!\",\n                      created_at as \"created_at!\", updated_at as \"updated_at!\"\n               FROM snippets WHERE name = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "name!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "body!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "vars!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "updated_at!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "407662080147e3a043906548c99b80a9af21df5d87ac883c519a1bbeaff137d0"
+}

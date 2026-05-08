@@ -339,6 +339,22 @@ impl App {
 
         ui::onboarding_modal::draw(frame, area, &self.modals.onboarding, theme);
 
+        // Snippets browser modal — shown above mailbox/search and below
+        // the connection error / global onboarding modal.
+        ui::snippets_modal::draw(frame, area, &self.modals.snippets, theme);
+
+        // Sender profile modal — same render layer as snippets.
+        ui::sender_profile_modal::draw(frame, area, &self.modals.sender_profile, theme);
+
+        // Screener triage modal — same layer as the others.
+        ui::screener_modal::draw(frame, area, &self.modals.screener, theme);
+
+        // Reply-later queue modal.
+        ui::reply_queue_modal::draw(frame, area, &self.modals.reply_queue, theme);
+
+        // Thread summary modal (LLM result).
+        ui::summary_modal::draw(frame, area, &self.modals.summary, theme);
+
         // Account setup onboarding (shown on any page when no accounts configured)
         if self.accounts.page.onboarding_modal_open {
             ui::accounts_page::draw_account_setup_onboarding(frame, area, theme);

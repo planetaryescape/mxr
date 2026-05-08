@@ -144,6 +144,28 @@ impl App {
             | Action::GoToLabel
             | Action::SelectLabel(_)
             | Action::SelectSavedSearch(_, _)
+            | Action::OpenSavedSearchByIndex(_)
+            | Action::FlagReplyLater
+            | Action::OpenReplyQueue
+            | Action::CloseReplyQueueModal
+            | Action::ReplyQueueModalNext
+            | Action::ReplyQueueModalPrev
+            | Action::OpenScreenerQueue
+            | Action::CloseScreenerModal
+            | Action::ScreenerModalNext
+            | Action::ScreenerModalPrev
+            | Action::ScreenerDisposeAllow
+            | Action::ScreenerDisposeDeny
+            | Action::ScreenerDisposeFeed
+            | Action::ScreenerDisposePaperTrail
+            | Action::OpenSenderView
+            | Action::CloseSenderViewModal
+            | Action::SummarizeCurrentThread
+            | Action::CloseSummaryModal
+            | Action::OpenSnippets
+            | Action::CloseSnippetsModal
+            | Action::SnippetsModalNext
+            | Action::SnippetsModalPrev
             | Action::ClearFilter
             | Action::OpenMessageView
             | Action::CloseMessageView

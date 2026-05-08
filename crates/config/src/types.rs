@@ -23,6 +23,45 @@ pub struct MxrConfig {
     pub logging: LoggingConfig,
     pub appearance: AppearanceConfig,
     pub bridge: BridgeConfig,
+    pub llm: LlmConfig,
+}
+
+/// LLM configuration. Disabled by default — opt-in for users who want
+/// thread summarisation and draft assist. Local-first: the
+/// recommended setup points at a local Ollama or LM Studio instance,
+/// with cloud endpoints (OpenAI, Groq, OpenRouter) supported via the
+/// same OpenAI-compatible config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LlmConfig {
+    pub enabled: bool,
+    /// OpenAI-compatible base URL. Defaults to local Ollama.
+    pub base_url: String,
+    /// Model name (e.g. `"qwen2.5:3b-instruct"` for Ollama,
+    /// `"gpt-4o-mini"` for OpenAI, `"llama-3.1-8b-instant"` for Groq).
+    pub model: String,
+    /// Environment variable to read the API key from. Empty/missing =
+    /// no auth header (correct for Ollama / LM Studio). Naming the env
+    /// var rather than embedding the key keeps the secret out of the
+    /// config file.
+    pub api_key_env: String,
+    /// Context window in tokens; used to bound prompt construction.
+    pub context_window: u32,
+    /// Per-request timeout in seconds. Local LLMs can be slow.
+    pub request_timeout_secs: u64,
+}
+
+impl Default for LlmConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_url: "http://localhost:11434/v1".into(),
+            model: "qwen2.5:3b-instruct".into(),
+            api_key_env: String::new(),
+            context_window: 8192,
+            request_timeout_secs: 120,
+        }
+    }
 }
 
 /// HTTP bridge configuration. The bridge runs as a managed task inside

@@ -5,7 +5,7 @@ use mxr_core::types::SubscriptionSummary;
 use mxr_core::{Envelope, Label, MessageBody, MessageId, MxrError, Thread, ThreadId};
 use mxr_protocol::{
     AccountOperationResult, AccountSummaryData, AccountSyncStatus, AttachmentFile, BodyFailure,
-    DaemonEvent, Response, RuleFormData,
+    DaemonEvent, Response, RuleFormData, ScreenerQueueEntryData, SenderProfileData, SnippetData,
 };
 use ratatui_image::thread::ResizeResponse;
 
@@ -87,7 +87,10 @@ pub(crate) enum AsyncResult {
         message_id: MessageId,
         result: Result<Envelope, MxrError>,
     },
-    MutationResult(Result<app::MutationEffect, MxrError>),
+    MutationResult {
+        id: app::MutationId,
+        outcome: Result<app::MutationEffect, MxrError>,
+    },
     ComposeReady(Result<ComposeReadyData, MxrError>),
     ExportResult(Result<String, MxrError>),
     Unsubscribe(Result<UnsubscribeResultData, MxrError>),
@@ -130,6 +133,37 @@ pub(crate) enum AsyncResult {
     AnalyticsResult {
         view: app::AnalyticsView,
         result: Result<AnalyticsResultPayload, MxrError>,
+    },
+    /// Snapshot of the user's compose snippets, surfaced by the
+    /// snippets browser modal.
+    SnippetsList(Result<Vec<SnippetData>, MxrError>),
+    /// Snapshot of the messages flagged for reply-later.
+    ReplyQueueList(Result<Vec<Envelope>, MxrError>),
+    /// Per-sender relationship aggregates for the sender-view modal.
+    /// `Ok(None)` when the sender is unknown to the contacts table.
+    SenderProfileLoaded {
+        email: String,
+        result: Result<Option<SenderProfileData>, MxrError>,
+    },
+    /// Snapshot of senders awaiting a screener decision.
+    ScreenerQueueLoaded {
+        account_id: mxr_core::AccountId,
+        result: Result<Vec<ScreenerQueueEntryData>, MxrError>,
+    },
+    /// Result of one `SetScreenerDecision` IPC. On success the modal
+    /// has already optimistically removed the entry; on failure we
+    /// re-fetch to recover the queue.
+    ScreenerDecisionApplied {
+        account_id: mxr_core::AccountId,
+        sender_email: String,
+        result: Result<(), MxrError>,
+    },
+    /// LLM summary for a thread. The tuple carries `(text, model)`.
+    /// Late responses for a previously-focused thread are filtered at
+    /// the dispatcher.
+    ThreadSummaryLoaded {
+        thread_id: mxr_core::ThreadId,
+        result: Result<(String, String), MxrError>,
     },
 }
 

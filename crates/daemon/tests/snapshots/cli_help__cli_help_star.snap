@@ -4,13 +4,14 @@ expression: stdout
 ---
 Star a message
 
-Usage: mxr star [OPTIONS] [MESSAGE_ID]
+Usage: mxr star [OPTIONS] [MESSAGE_ID]...
 
 Arguments:
-  [MESSAGE_ID]  
+  [MESSAGE_ID]...
 
 Options:
-      --search <SEARCH>  
-      --yes              
-      --dry-run          
+      --search <SEARCH>
+      --yes
+      --dry-run
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
   -h, --help             Print help

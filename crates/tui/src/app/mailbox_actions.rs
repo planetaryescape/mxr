@@ -138,10 +138,21 @@ impl App {
             }
             Action::OpenSelected => {
                 if let Some(pending) = self.modals.pending_bulk_confirm.take() {
+                    let snapshot = pending
+                        .optimistic_effect
+                        .as_ref()
+                        .map(|effect| self.snapshot_for_effect(effect));
                     if let Some(effect) = pending.optimistic_effect.as_ref() {
                         self.apply_local_mutation_effect(effect);
                     }
-                    self.queue_mutation(pending.request, pending.effect, pending.status_message);
+                    let id = self.queue_mutation(
+                        pending.request,
+                        pending.effect,
+                        pending.status_message,
+                    );
+                    if let Some(snapshot) = snapshot {
+                        self.mutation_snapshots.insert(id, snapshot);
+                    }
                     self.clear_selection();
                     return;
                 }
@@ -319,6 +330,129 @@ impl App {
                 self.mailbox.desired_system_mailbox = None;
                 self.mailbox.active_pane = ActivePane::MailList;
                 self.screen = Screen::Mailbox;
+            }
+            Action::OpenSavedSearchByIndex(index) => {
+                if index == 0 {
+                    self.apply(Action::ClearFilter);
+                    return;
+                }
+                // 1-indexed lookup; out-of-range is a safe no-op.
+                let Some(search) = self.mailbox.saved_searches.get(index - 1).cloned() else {
+                    return;
+                };
+                self.apply(Action::SelectSavedSearch(search.query, search.search_mode));
+            }
+            Action::FlagReplyLater => {
+                let Some(env) = self.context_envelope() else {
+                    self.status_message = Some("No message selected".into());
+                    return;
+                };
+                let id = env.id.clone();
+                self.queue_mutation(
+                    Request::SetReplyLater {
+                        message_id: id,
+                        flag: true,
+                    },
+                    MutationEffect::StatusOnly("Marked for reply later".into()),
+                    "Marking for reply later...".into(),
+                );
+            }
+            Action::OpenReplyQueue => {
+                self.modals.reply_queue.open_loading();
+                self.pending_reply_queue_refresh = true;
+                self.status_message = Some("Loading reply-later queue...".into());
+            }
+            Action::CloseReplyQueueModal => {
+                self.modals.reply_queue.close();
+            }
+            Action::ReplyQueueModalNext => {
+                self.modals.reply_queue.select_next();
+            }
+            Action::ReplyQueueModalPrev => {
+                self.modals.reply_queue.select_prev();
+            }
+            Action::OpenScreenerQueue => {
+                // Reach for an account_id from any visible envelope so
+                // we don't need to plumb a "default account" surface
+                // here. The CLI is the right tool for cross-account
+                // sweeps; the modal scopes to the inbox the user is
+                // already looking at.
+                let Some(account_id) = self
+                    .mailbox
+                    .envelopes
+                    .first()
+                    .map(|env| env.account_id.clone())
+                    .or_else(|| self.context_envelope().map(|env| env.account_id.clone()))
+                else {
+                    self.status_message =
+                        Some("Screener: open an inbox first so we know which account".into());
+                    return;
+                };
+                self.modals.screener.open_loading(account_id.clone());
+                self.pending_screener_refresh = Some(account_id);
+            }
+            Action::CloseScreenerModal => {
+                self.modals.screener.close();
+            }
+            Action::ScreenerModalNext => {
+                self.modals.screener.select_next();
+            }
+            Action::ScreenerModalPrev => {
+                self.modals.screener.select_prev();
+            }
+            Action::ScreenerDisposeAllow => {
+                self.dispatch_screener_disposition(mxr_protocol::ScreenerDispositionData::Allow);
+            }
+            Action::ScreenerDisposeDeny => {
+                self.dispatch_screener_disposition(mxr_protocol::ScreenerDispositionData::Deny);
+            }
+            Action::ScreenerDisposeFeed => {
+                self.dispatch_screener_disposition(mxr_protocol::ScreenerDispositionData::Feed);
+            }
+            Action::ScreenerDisposePaperTrail => {
+                self.dispatch_screener_disposition(
+                    mxr_protocol::ScreenerDispositionData::PaperTrail,
+                );
+            }
+            Action::OpenSenderView => {
+                let Some(env) = self.context_envelope() else {
+                    self.status_message = Some("No message selected".into());
+                    return;
+                };
+                let email = env.from.email.clone();
+                let account_id = env.account_id.clone();
+                self.modals.sender_profile.open_loading(email.clone());
+                self.pending_sender_profile_request = Some((account_id, email));
+            }
+            Action::CloseSenderViewModal => {
+                self.modals.sender_profile.close();
+            }
+            Action::SummarizeCurrentThread => {
+                let Some(env) = self.context_envelope() else {
+                    self.status_message = Some("No message selected".into());
+                    return;
+                };
+                let thread_id = env.thread_id.clone();
+                self.modals.summary.open_loading(thread_id.clone());
+                self.pending_summary_request = Some(thread_id);
+                self.status_message = Some("Summarizing thread...".into());
+            }
+            Action::CloseSummaryModal => {
+                self.modals.summary.close();
+            }
+            Action::OpenSnippets => {
+                self.modals.snippets.open_loading();
+                self.pending_snippets_refresh = true;
+                self.status_message = Some("Loading snippets...".into());
+            }
+            Action::CloseSnippetsModal => {
+                self.modals.snippets.close();
+            }
+            Action::SnippetsModalNext => {
+                self.modals.snippets.select_next();
+            }
+            Action::SnippetsModalPrev => {
+                self.modals.snippets.select_prev();
             }
             Action::SelectSavedSearch(query, mode) => {
                 self.mailbox.mailbox_view = MailboxView::Messages;

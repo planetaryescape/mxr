@@ -12,6 +12,8 @@ mxr keeps provider-specific logic in adapters. The rest of the app works against
 | Gmail | yes | yes | labels | yes | direct Gmail adapter |
 | IMAP | yes | no | folders | yes | usually paired with SMTP |
 | SMTP | no | yes | no | no | send-only adapter |
+| Outlook Personal | yes | yes | folders/categories | yes | Microsoft consumer accounts |
+| Outlook Work | yes | yes | folders/categories | yes | Microsoft 365 work/school accounts |
 | Fake | yes | yes | fixture labels | yes | tests and local development |
 
 ## Why this boundary matters

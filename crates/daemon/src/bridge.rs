@@ -58,10 +58,12 @@ pub async fn spawn_bridge_loop(
     let bind: IpAddr = bridge_cfg
         .bind
         .parse()
-        .map_err(|error: std::net::AddrParseError| BridgeStartupError::InvalidBind {
-            bind: bridge_cfg.bind.clone(),
-            error: error.to_string(),
-        })?;
+        .map_err(
+            |error: std::net::AddrParseError| BridgeStartupError::InvalidBind {
+                bind: bridge_cfg.bind.clone(),
+                error: error.to_string(),
+            },
+        )?;
     let addr = SocketAddr::new(bind, bridge_cfg.port);
 
     let token = load_or_create_token(&bridge_cfg)?;
@@ -144,12 +146,10 @@ fn write_token_file(path: &PathBuf, token: &str) -> Result<(), BridgeStartupErro
     use std::os::unix::fs::OpenOptionsExt;
     let mut opts = std::fs::OpenOptions::new();
     opts.create(true).write(true).truncate(true).mode(0o600);
-    let mut file = opts
-        .open(path)
-        .map_err(|error| BridgeStartupError::Token {
-            path: path.clone(),
-            error: error.to_string(),
-        })?;
+    let mut file = opts.open(path).map_err(|error| BridgeStartupError::Token {
+        path: path.clone(),
+        error: error.to_string(),
+    })?;
     use std::io::Write;
     file.write_all(token.as_bytes())
         .and_then(|_| file.write_all(b"\n"))

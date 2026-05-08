@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Re-save account passwords into the protected keychain store
+
+Usage: mxr accounts repair [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>
+
+Options:
+      --format <FORMAT>  Output format for `accounts` (the no-subcommand listing) [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

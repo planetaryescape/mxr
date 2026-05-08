@@ -7,12 +7,12 @@ Search messages
 Usage: mxr search [OPTIONS] [QUERY]
 
 Arguments:
-  [QUERY]  
+  [QUERY]
 
 Options:
       --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
       --limit <LIMIT>    [default: 50]
       --mode <MODE>      [possible values: lexical, hybrid, semantic]
       --sort <SORT>      [possible values: date, relevance]
-      --explain          
+      --explain
   -h, --help             Print help

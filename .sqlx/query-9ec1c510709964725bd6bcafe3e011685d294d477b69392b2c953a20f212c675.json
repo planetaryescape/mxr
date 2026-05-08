@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE auto_reminders\n               SET triggered_at = ?\n               WHERE sent_message_id = ? AND triggered_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "9ec1c510709964725bd6bcafe3e011685d294d477b69392b2c953a20f212c675"
+}

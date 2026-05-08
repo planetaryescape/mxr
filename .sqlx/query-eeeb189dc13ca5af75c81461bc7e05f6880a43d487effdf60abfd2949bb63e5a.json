@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE drafts SET last_heartbeat_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "eeeb189dc13ca5af75c81461bc7e05f6880a43d487effdf60abfd2949bb63e5a"
+}

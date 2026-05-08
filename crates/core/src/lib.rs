@@ -1,11 +1,13 @@
 pub mod error;
 pub mod id;
 pub mod provider;
+pub mod time_parse;
 pub mod types;
 
 pub use error::MxrError;
 pub use id::*;
 pub use provider::*;
+pub use time_parse::{parse_relative_time, TimeParseError};
 pub use types::*;
 
 #[cfg(test)]

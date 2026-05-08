@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT message_id as \"message_id!\"\n               FROM message_flags\n               WHERE reply_later = 1\n               ORDER BY reply_later_set_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "name": "message_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "6b2125e7a6c15a6e0cb327e7186b28f5b4b44d7a7dff9c8a5eea273e89ebf1f8"
+}

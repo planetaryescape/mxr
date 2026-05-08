@@ -142,6 +142,18 @@ fn cli_journey_send_then_mutate_then_search_reflects_state() {
         .as_str()
         .expect("first result needs message_id");
 
+    // Message mutations accept IDs from stdin and can preview as structured JSON.
+    let archive_preview = run_json_with_stdin(
+        &instance,
+        &data_dir,
+        &config_dir,
+        &["archive", "--dry-run", "--format", "json"],
+        &format!("{message_id}\n"),
+    );
+    assert_eq!(archive_preview["dry_run"].as_bool(), Some(true));
+    assert_eq!(archive_preview["action"].as_str(), Some("archive"));
+    assert_eq!(archive_preview["message_ids"][0].as_str(), Some(message_id));
+
     // count --format json reports the same query.
     let count = run_json(
         &instance,
@@ -733,8 +745,18 @@ fn cli_journey_saved_search_create_list_delete_round_trip() {
 }
 
 fn write_fake_config(config_dir: &Path) {
+    // Disable the bridge so multiple cli_journey tests don't fight for
+    // TCP port 7777. The bridge defaults to `enabled = true` and binding
+    // 7777 — when port 7777 is busy (machine-wide, or another daemon
+    // hasn't released it yet), `run_daemon_with_overrides` calls
+    // `anyhow::bail!` and the daemon exits, leaving the client to time
+    // out 40 retries on a half-up daemon. Tests don't exercise the
+    // bridge — disabling it removes the collision entirely.
     let toml = r#"[general]
 default_account = "fake"
+
+[bridge]
+enabled = false
 
 [accounts.fake]
 name = "Fake Account"
@@ -785,6 +807,41 @@ fn run_json(instance: &str, data_dir: &Path, config_dir: &Path, args: &[&str]) -
             args.join(" "),
             out.stdout,
             out.stderr
+        )
+    })
+}
+
+fn run_json_with_stdin(
+    instance: &str,
+    data_dir: &Path,
+    config_dir: &Path,
+    args: &[&str],
+    stdin: &str,
+) -> Value {
+    let output = Command::cargo_bin("mxr")
+        .expect("mxr bin")
+        .env("MXR_INSTANCE", instance)
+        .env("MXR_DATA_DIR", data_dir)
+        .env("MXR_CONFIG_DIR", config_dir)
+        .env_remove("EDITOR")
+        .env_remove("VISUAL")
+        .args(args)
+        .write_stdin(stdin)
+        .assert()
+        .get_output()
+        .clone();
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    if !output.status.success() {
+        panic!(
+            "command {args:?} failed (exit {:?})\nstdout={stdout}\nstderr={stderr}",
+            output.status.code()
+        );
+    }
+    serde_json::from_str(stdout.trim()).unwrap_or_else(|err| {
+        panic!(
+            "expected JSON output for `mxr {}`; parse error: {err}\nstdout={stdout}\nstderr={stderr}",
+            args.join(" "),
         )
     })
 }

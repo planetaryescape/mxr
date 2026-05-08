@@ -1,0 +1,11 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Show senders waiting for a decision (default if no subcommand)
+
+Usage: mxr screener queue [OPTIONS]
+
+Options:
+      --limit <LIMIT>  [default: 100]
+  -h, --help           Print help

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE message_flags\n               SET reply_later = 0,\n                   reply_later_dismissed_at = ?\n               WHERE message_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e8e134987c166f57d66125cec1aa11b9f7102b469b70f084784b84a9cc132955"
+}

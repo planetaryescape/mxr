@@ -79,6 +79,57 @@ pub enum Action {
     // Label / saved search selection
     SelectLabel(mxr_core::LabelId),
     SelectSavedSearch(String, mxr_core::SearchMode),
+    /// Jump to the Nth saved search (1-indexed) for keyboard-driven
+    /// power users. `0` clears any active saved-search filter and
+    /// returns to the default inbox view. Out-of-range indices are
+    /// no-ops.
+    OpenSavedSearchByIndex(usize),
+    /// Mark the current message for reply-later. Local-only intent —
+    /// never roundtrips to the provider. Cleared via the queue view or
+    /// when the user replies.
+    FlagReplyLater,
+    /// Open the reply-later queue (a saved search for `is:reply-later`
+    /// once the Tantivy operator lands; today opens via CLI).
+    OpenReplyQueue,
+    /// Close the reply-later queue modal (Esc).
+    CloseReplyQueueModal,
+    /// Move cursor to the next message in the reply queue.
+    ReplyQueueModalNext,
+    /// Move cursor to the previous message in the reply queue.
+    ReplyQueueModalPrev,
+    /// Open the screener queue — senders waiting for a classification.
+    OpenScreenerQueue,
+    /// Close the screener triage modal (Esc).
+    CloseScreenerModal,
+    /// Move cursor to the next entry in the screener queue.
+    ScreenerModalNext,
+    /// Move cursor to the previous entry in the screener queue.
+    ScreenerModalPrev,
+    /// Set the focused sender's disposition to allow.
+    ScreenerDisposeAllow,
+    /// Set the focused sender's disposition to deny.
+    ScreenerDisposeDeny,
+    /// Set the focused sender's disposition to feed.
+    ScreenerDisposeFeed,
+    /// Set the focused sender's disposition to paper-trail.
+    ScreenerDisposePaperTrail,
+    /// Show the sender-view full-screen page for the currently focused
+    /// message's `from` address.
+    OpenSenderView,
+    /// Close the sender-view modal (Esc).
+    CloseSenderViewModal,
+    /// Summarize the current thread via the configured LLM.
+    SummarizeCurrentThread,
+    /// Close the thread-summary modal (Esc).
+    CloseSummaryModal,
+    /// Open the snippet manager modal.
+    OpenSnippets,
+    /// Close the snippet manager modal (Esc).
+    CloseSnippetsModal,
+    /// Move cursor to the next snippet in the modal list.
+    SnippetsModalNext,
+    /// Move cursor to the previous snippet in the modal list.
+    SnippetsModalPrev,
     ClearFilter,
     RefreshRules,
     ToggleRuleEnabled,

@@ -203,7 +203,9 @@ pub fn app(config: WebServerConfig) -> Router {
 
     Router::new()
         .nest("/api/v1", v1)
-        .merge(SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()))
+        .merge(
+            SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()),
+        )
         .layer(axum::middleware::from_fn(legacy::redirect_legacy_paths))
         .layer(axum::middleware::from_fn_with_state(
             host_allowlist,
@@ -281,14 +283,14 @@ struct AuthQuery {
 ///    (browsers cannot set `Authorization` on WS upgrades)
 /// 4. `x-mxr-bridge-token: <token>` — v0.4.x compat, kept for the v0.5
 ///    cycle so old desktop installs keep working through the migration
-fn extract_token<'a>(
-    headers: &'a HeaderMap,
-    query_token: Option<&'a str>,
-) -> Option<&'a str> {
+fn extract_token<'a>(headers: &'a HeaderMap, query_token: Option<&'a str>) -> Option<&'a str> {
     if let Some(value) = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer ").or_else(|| v.strip_prefix("bearer ")))
+        .and_then(|v| {
+            v.strip_prefix("Bearer ")
+                .or_else(|| v.strip_prefix("bearer "))
+        })
     {
         return Some(value);
     }
@@ -2936,7 +2938,11 @@ mod tests {
                     data: ResponseData::Count {
                         // surface the mode round-trip so we know the
                         // handler parsed and forwarded it correctly
-                        count: if mode == Some(SearchMode::Lexical) { 7 } else { 0 },
+                        count: if mode == Some(SearchMode::Lexical) {
+                            7
+                        } else {
+                            0
+                        },
                     },
                 }),
                 _ => None,
@@ -3304,7 +3310,10 @@ mod tests {
         let cases = [
             ("/status", "/api/v1/admin/status"),
             ("/diagnostics", "/api/v1/admin/diagnostics"),
-            ("/diagnostics/bug-report", "/api/v1/admin/diagnostics/bug-report"),
+            (
+                "/diagnostics/bug-report",
+                "/api/v1/admin/diagnostics/bug-report",
+            ),
             ("/mailbox", "/api/v1/mail/mailbox"),
             ("/search", "/api/v1/mail/search"),
             ("/drafts", "/api/v1/mail/drafts"),
@@ -3423,10 +3432,7 @@ mod tests {
 
         let info = &json["info"];
         assert_eq!(info["title"], "mxr HTTP Bridge");
-        assert!(
-            info["version"].is_string(),
-            "info.version must be a string"
-        );
+        assert!(info["version"].is_string(), "info.version must be a string");
 
         let bearer = json
             .pointer("/components/securitySchemes/bearer")

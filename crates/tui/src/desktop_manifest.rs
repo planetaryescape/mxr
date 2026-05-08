@@ -243,10 +243,32 @@ fn action_name(action: &Action) -> Option<&'static str> {
         Action::RepairAccount => Some("repair_account"),
         Action::SetDefaultAccount => Some("set_default_account"),
         Action::Noop => Some("noop"),
+        Action::FlagReplyLater => Some("flag_reply_later"),
+        Action::OpenReplyQueue => Some("open_reply_queue"),
+        Action::OpenScreenerQueue => Some("open_screener_queue"),
+        Action::OpenSenderView => Some("open_sender_view"),
+        Action::OpenSnippets => Some("open_snippets"),
+        Action::SummarizeCurrentThread => Some("summarize_current_thread"),
         Action::OpenMessageView
         | Action::CloseMessageView
         | Action::SelectLabel(_)
         | Action::SelectSavedSearch(_, _)
+        | Action::OpenSavedSearchByIndex(_)
+        | Action::CloseReplyQueueModal
+        | Action::ReplyQueueModalNext
+        | Action::ReplyQueueModalPrev
+        | Action::CloseScreenerModal
+        | Action::ScreenerModalNext
+        | Action::ScreenerModalPrev
+        | Action::ScreenerDisposeAllow
+        | Action::ScreenerDisposeDeny
+        | Action::ScreenerDisposeFeed
+        | Action::ScreenerDisposePaperTrail
+        | Action::CloseSenderViewModal
+        | Action::CloseSummaryModal
+        | Action::CloseSnippetsModal
+        | Action::SnippetsModalNext
+        | Action::SnippetsModalPrev
         | Action::ClearFilter
         | Action::SaveRuleForm
         | Action::SaveAccountForm

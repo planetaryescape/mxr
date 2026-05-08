@@ -268,8 +268,18 @@ pub enum ConfigAction {
 
 #[derive(Subcommand)]
 pub enum AttachmentAction {
-    /// List attachments for a message
-    List { message_id: String },
+    /// List attachments for one message, or for every match of a
+    /// `--search QUERY`. Multi-message output prefixes each section
+    /// with `--- MESSAGE_ID ---`.
+    List {
+        message_id: Option<String>,
+        #[arg(long, conflicts_with = "message_id")]
+        search: Option<String>,
+        #[arg(long, requires = "search", conflicts_with = "limit")]
+        first: bool,
+        #[arg(long, requires = "search")]
+        limit: Option<u32>,
+    },
     /// Download attachment(s)
     Download {
         message_id: String,

@@ -1,5 +1,6 @@
 ---
 source: crates/daemon/tests/cli_help.rs
+assertion_line: 13
 expression: stdout
 ---
 Manage message attachments
@@ -7,7 +8,7 @@ Manage message attachments
 Usage: mxr attachments <COMMAND>
 
 Commands:
-  list      List attachments for a message
+  list      List attachments for one message, or for every match of a `--search QUERY`. Multi-message output prefixes each section with `--- MESSAGE_ID ---`
   download  Download attachment(s)
   open      Open attachment with system handler
   help      Print this message or the help of the given subcommand(s)

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT last_heartbeat_at FROM drafts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "last_heartbeat_at",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "4a012720345bafc70ff79e6ca72e1eb290e37fa2d73c592ac70b31fe0a2c16ab"
+}

@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Install a semantic profile without switching to it
+
+Usage: mxr semantic profile install <PROFILE>
+
+Arguments:
+  <PROFILE>  [possible values: bge-small-en-v1.5, multilingual-e5-small, bge-m3]
+
+Options:
+  -h, --help  Print help

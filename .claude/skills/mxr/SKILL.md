@@ -1,11 +1,13 @@
 ---
 name: mxr
-description: "Use the mxr terminal email client CLI to read, search, compose, mutate, and manage email. Invoke when the user asks to check email, search messages, compose/reply/forward emails, archive/trash/star/label messages, manage accounts, check sync status, or perform any email operations via mxr. Triggers: 'check email', 'search email', 'compose email', 'reply to', 'forward to', 'archive', 'trash', 'star', 'label', 'snooze', 'unsubscribe', 'mxr', 'email', 'inbox', 'unread messages', 'send email', 'drafts', 'sync email', 'saved search'."
+description: "Use the mxr (pronounced 'Mixer') terminal email client CLI to read, search, compose, mutate, and manage email. Invoke when the user asks to check email, search messages, compose/reply/forward emails, archive/trash/star/label messages, manage accounts, check sync status, or perform any email operations via mxr. Triggers: 'check email', 'search email', 'compose email', 'reply to', 'forward to', 'archive', 'trash', 'star', 'label', 'snooze', 'unsubscribe', 'mxr', 'mixer', 'email', 'inbox', 'unread messages', 'send email', 'drafts', 'sync email', 'saved search'."
 ---
 
 # mxr CLI
 
 Terminal email client. Daemon-backed, local-first. All commands go through `mxr <subcommand>`.
+
+> Pronounced "Mixer". Write `mxr` in code; say "Mixer" out loud.
 
 ## Quick Reference
 

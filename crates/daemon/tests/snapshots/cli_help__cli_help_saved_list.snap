@@ -1,0 +1,10 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List saved searches
+
+Usage: mxr saved list
+
+Options:
+  -h, --help  Print help

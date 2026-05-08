@@ -1,0 +1,11 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Usage: mxr rules show <RULE>
+
+Arguments:
+  <RULE>
+
+Options:
+  -h, --help  Print help

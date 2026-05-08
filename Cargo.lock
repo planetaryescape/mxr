@@ -3757,6 +3757,7 @@ dependencies = [
  "mxr-core",
  "mxr-export",
  "mxr-keychain",
+ "mxr-llm",
  "mxr-mail-parse",
  "mxr-protocol",
  "mxr-provider-fake",
@@ -3917,6 +3918,19 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "mxr-llm"
+version = "0.5.2"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
  "tracing",
 ]
 

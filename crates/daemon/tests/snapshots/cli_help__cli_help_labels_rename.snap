@@ -1,0 +1,16 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Rename a label
+
+Usage: mxr labels rename [OPTIONS] <OLD> <NEW>
+
+Arguments:
+  <OLD>
+  <NEW>
+
+Options:
+      --dry-run  Show what would change without renaming the label
+      --yes      Skip the interactive confirmation prompt
+  -h, --help     Print help

@@ -1,5 +1,8 @@
 use crate::app::{DiagnosticsPageState, DiagnosticsPaneKind};
-use mxr_protocol::{AccountSyncStatus, DoctorDataStats, EventLogEntry};
+use mxr_protocol::{
+    AccountSyncStatus, DoctorDataStats, DoctorFinding, DoctorFindingCategory,
+    DoctorFindingSeverity, EventLogEntry,
+};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -448,8 +451,29 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                         "-".into()
                     }),
             ),
-            format!("Hints: Tab/Shift-Tab pane  Enter fullscreen  d details  L logs"),
-        ],
+            {
+                let findings = doctor
+                    .map(|report| report.findings.as_slice())
+                    .unwrap_or(&[]);
+                if findings.is_empty() {
+                    "Findings: none".to_string()
+                } else {
+                    format!("Findings: {} issue(s)", findings.len())
+                }
+            },
+        ]
+        .into_iter()
+        .chain(
+            doctor
+                .map(|report| report.findings.as_slice())
+                .unwrap_or(&[])
+                .iter()
+                .flat_map(format_finding_lines),
+        )
+        .chain(std::iter::once(
+            "Hints: Tab/Shift-Tab pane  Enter fullscreen  d details  L logs".to_string(),
+        ))
+        .collect::<Vec<_>>(),
         DiagnosticsPaneKind::Data => vec![
             format!(
                 "Records: accounts={} labels={} saved={} rules={}",
@@ -584,6 +608,33 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
     }
 }
 
+/// Render a single doctor finding as one or more lines: a leading
+/// "<glyph> <category>: <message>" line, then any remediation steps as
+/// indented "→ <command>" lines so the user can copy-paste.
+fn format_finding_lines(finding: &DoctorFinding) -> Vec<String> {
+    let glyph = match finding.severity {
+        DoctorFindingSeverity::Error => "✗",
+        DoctorFindingSeverity::Warning => "!",
+        DoctorFindingSeverity::Info => "·",
+    };
+    let category = match finding.category {
+        DoctorFindingCategory::Generic => "general",
+        DoctorFindingCategory::Sync => "sync",
+        DoctorFindingCategory::OAuth => "oauth",
+        DoctorFindingCategory::Network => "network",
+        DoctorFindingCategory::SearchIndex => "search-index",
+        DoctorFindingCategory::Semantic => "semantic",
+        DoctorFindingCategory::SqliteLock => "sqlite-lock",
+        DoctorFindingCategory::Storage => "storage",
+        DoctorFindingCategory::Daemon => "daemon",
+    };
+    let mut lines = vec![format!("  {glyph} {category}: {}", finding.message)];
+    for step in &finding.remediation {
+        lines.push(format!("    → {step}"));
+    }
+    lines
+}
+
 fn yes_no(value: bool) -> &'static str {
     if value {
         "yes"
@@ -617,4 +668,116 @@ fn format_timestamp_compact(value: Option<&str>, default: &str) -> String {
                 .to_string()
         })
         .unwrap_or_else(|| default.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mxr_protocol::{DoctorFinding, DoctorFindingCategory, DoctorFindingSeverity, DoctorReport};
+
+    fn empty_doctor_with_findings(findings: Vec<DoctorFinding>) -> DoctorReport {
+        DoctorReport {
+            healthy: false,
+            health_class: mxr_protocol::DaemonHealthClass::Degraded,
+            lexical_index_freshness: mxr_protocol::IndexFreshness::Current,
+            last_successful_sync_at: None,
+            lexical_last_rebuilt_at: None,
+            semantic_enabled: false,
+            semantic_active_profile: None,
+            semantic_index_freshness: mxr_protocol::IndexFreshness::Current,
+            semantic_last_indexed_at: None,
+            data_stats: DoctorDataStats::default(),
+            data_dir_exists: true,
+            database_exists: true,
+            index_exists: true,
+            socket_exists: true,
+            socket_reachable: true,
+            stale_socket: false,
+            daemon_running: true,
+            daemon_pid: None,
+            daemon_protocol_version: 1,
+            daemon_version: None,
+            daemon_build_id: None,
+            index_lock_held: false,
+            index_lock_error: None,
+            restart_required: false,
+            repair_required: false,
+            database_path: String::new(),
+            database_size_bytes: 0,
+            index_path: String::new(),
+            index_size_bytes: 0,
+            log_path: String::new(),
+            log_size_bytes: 0,
+            sync_statuses: vec![],
+            recent_sync_events: vec![],
+            recent_error_logs: vec![],
+            recommended_next_steps: vec![],
+            findings,
+        }
+    }
+
+    #[test]
+    fn format_finding_lines_emits_message_and_remediation() {
+        let finding = DoctorFinding {
+            category: DoctorFindingCategory::OAuth,
+            severity: DoctorFindingSeverity::Error,
+            message: "OAuth token expired for me@example.com".into(),
+            remediation: vec!["mxr accounts reauth me@example.com".into()],
+        };
+        let lines = format_finding_lines(&finding);
+        assert_eq!(
+            lines,
+            vec![
+                "  ✗ oauth: OAuth token expired for me@example.com".to_string(),
+                "    → mxr accounts reauth me@example.com".to_string(),
+            ],
+            "an OAuth error finding must lead with the cross glyph and indent remediation",
+        );
+    }
+
+    #[test]
+    fn status_pane_lines_include_findings_count_and_remediation_step() {
+        let doctor = empty_doctor_with_findings(vec![DoctorFinding {
+            category: DoctorFindingCategory::Network,
+            severity: DoctorFindingSeverity::Warning,
+            message: "DNS resolution failed for imap.example.com".into(),
+            remediation: vec!["check internet connectivity".into()],
+        }]);
+        let state = DiagnosticsPageState {
+            doctor: Some(doctor),
+            ..Default::default()
+        };
+
+        let lines = pane_lines(&state, DiagnosticsPaneKind::Status);
+        assert!(
+            lines.iter().any(|line| line == "Findings: 1 issue(s)"),
+            "Status pane must summarise the findings count; got {lines:?}",
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("DNS resolution failed")),
+            "Status pane must surface the finding's message; got {lines:?}",
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("→ check internet connectivity")),
+            "Status pane must surface the remediation step; got {lines:?}",
+        );
+    }
+
+    #[test]
+    fn status_pane_says_no_findings_when_doctor_clean() {
+        let doctor = empty_doctor_with_findings(vec![]);
+        let state = DiagnosticsPageState {
+            doctor: Some(doctor),
+            ..Default::default()
+        };
+        let lines = pane_lines(&state, DiagnosticsPaneKind::Status);
+        assert!(
+            lines.iter().any(|line| line == "Findings: none"),
+            "Status pane must show 'Findings: none' on a clean doctor; got {lines:?}",
+        );
+    }
 }

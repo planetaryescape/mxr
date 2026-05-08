@@ -18,18 +18,17 @@ The wizard prompts for an account name and your Gmail address, then opens a brow
 For IMAP+SMTP non-interactively (e.g. Gmail with an app password):
 
 ```bash
-mxr accounts add imap \
-  --account-name personal \
-  --email you@gmail.com \
-  --imap-host imap.gmail.com \
-  --imap-username you@gmail.com \
-  --imap-password "$APP_PASSWORD" \
-  --smtp-host smtp.gmail.com \
-  --smtp-username you@gmail.com \
-  --smtp-password "$APP_PASSWORD"
+MXR_IMAP_PASSWORD="$APP_PASSWORD" MXR_SMTP_PASSWORD="$APP_PASSWORD" \
+  mxr accounts add imap-smtp \
+    --account-name personal \
+    --email you@gmail.com \
+    --imap-host imap.gmail.com \
+    --imap-username you@gmail.com \
+    --smtp-host smtp.gmail.com \
+    --smtp-username you@gmail.com
 ```
 
-Passwords also resolve from `MXR_IMAP_PASSWORD` / `MXR_SMTP_PASSWORD` env vars when stdin is not a TTY — handy for CI.
+`MXR_IMAP_PASSWORD` / `MXR_SMTP_PASSWORD` env vars resolve when stdin is not a TTY — handy for CI. You can also pass `--imap-password` / `--smtp-password` literal values if you don't mind shell history.
 
 ## 2. Sync
 
@@ -45,7 +44,7 @@ mxr sync --wait
 mxr
 ```
 
-`j`/`k` to navigate, `<Enter>` to open, `R` for reader mode, `:` for the command palette, `/` for search, `?` for help.
+`j`/`k` to navigate, `<Enter>` to open, `R` for reader mode, `Ctrl-p` for the command palette, `/` for search, `?` for help.
 
 ## 4. Or do it from the CLI
 
@@ -64,7 +63,7 @@ mxr archive --search "label:newsletters older_than:30d" --dry-run
 mxr archive --search "label:newsletters older_than:30d" --yes
 ```
 
-Every read/list/status/mutation surface accepts `--format json`; pipe it to `jq` and you have a programmable inbox.
+Most read/list/status/mutation surfaces accept `--format json`; the generated [CLI reference](/reference/cli/) lists the exact formats per command.
 
 ## What's next
 

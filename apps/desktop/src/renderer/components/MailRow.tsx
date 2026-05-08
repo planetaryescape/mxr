@@ -2,6 +2,7 @@ import { Paperclip, Star } from "lucide-react";
 import { cn } from "../lib/cn";
 import type { MailboxRow } from "../../shared/types";
 import { mailboxRowSelectionId } from "../lib/mailboxSelection";
+import { formatAttachmentChipSize, smartSenderDisplay } from "./MailRow.formatters";
 
 export function MailRow(props: {
   row: MailboxRow;
@@ -54,13 +55,16 @@ export function MailRow(props: {
                   : "font-medium text-foreground-muted",
               )}
             >
-              {props.row.sender}
+              {smartSenderDisplay(props.row)}
             </span>
             {props.row.starred ? (
               <Star className="size-3.5 shrink-0 fill-warning text-warning" />
             ) : null}
             {props.row.has_attachments ? (
-              <Paperclip className="size-3 shrink-0 text-foreground-subtle" />
+              <span className="flex shrink-0 items-center gap-1 font-mono text-[length:var(--text-xs)] text-foreground-subtle">
+                <Paperclip className="size-3 shrink-0" />
+                {formatAttachmentChipSize(props.row.attachment_size_bytes)}
+              </span>
             ) : null}
           </div>
           {props.pending ? (

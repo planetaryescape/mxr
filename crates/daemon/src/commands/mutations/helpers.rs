@@ -1,45 +1,31 @@
+use crate::cli::OutputFormat;
+use crate::commands::selection::{parse_message_id as selection_parse_id, SelectionLimit};
 use crate::ipc_client::IpcClient;
+use crate::output::{jsonl, resolve_format};
 use chrono::Utc;
 use mxr_core::id::MessageId;
-use mxr_core::types::{Envelope, SortOrder};
+use mxr_core::types::Envelope;
 use mxr_protocol::*;
+use serde::Serialize;
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
 pub(super) fn parse_message_id(id_str: &str) -> anyhow::Result<MessageId> {
-    let uuid = uuid::Uuid::parse_str(id_str)
-        .map_err(|e| anyhow::anyhow!("Invalid message ID '{id_str}': {e}"))?;
-    Ok(MessageId::from_uuid(uuid))
+    selection_parse_id(id_str)
 }
 
 pub(super) async fn resolve_message_ids(
     client: &mut IpcClient,
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
 ) -> anyhow::Result<Vec<MessageId>> {
-    match (message_id, search) {
-        (Some(id), _) => Ok(vec![parse_message_id(&id)?]),
-        (None, Some(query)) => {
-            let resp = client
-                .request(Request::Search {
-                    query,
-                    limit: 1000,
-                    offset: 0,
-                    mode: None,
-                    sort: Some(SortOrder::DateDesc),
-                    explain: false,
-                })
-                .await?;
-            match resp {
-                Response::Ok {
-                    data: ResponseData::SearchResults { results, .. },
-                } => Ok(results.into_iter().map(|r| r.message_id).collect()),
-                Response::Error { message, .. } => anyhow::bail!("{message}"),
-                _ => anyhow::bail!("Unexpected response from search"),
-            }
-        }
-        (None, None) => anyhow::bail!("Provide a message ID or --search query"),
-    }
+    crate::commands::selection::resolve_message_ids(
+        client,
+        message_ids,
+        search,
+        SelectionLimit::Unbounded,
+    )
+    .await
 }
 
 pub(super) struct MutationSelection {
@@ -50,11 +36,11 @@ pub(super) struct MutationSelection {
 
 pub(super) async fn resolve_mutation_selection(
     client: &mut IpcClient,
-    message_id: Option<String>,
+    message_ids: Vec<String>,
     search: Option<String>,
 ) -> anyhow::Result<MutationSelection> {
-    let used_search = message_id.is_none() && search.is_some();
-    let ids = resolve_message_ids(client, message_id, search).await?;
+    let used_search = message_ids.is_empty() && search.is_some();
+    let ids = resolve_message_ids(client, message_ids, search).await?;
     let envelopes = if ids.is_empty() {
         Vec::new()
     } else {
@@ -132,6 +118,163 @@ pub(super) fn print_selection_preview(action: &str, selection: &MutationSelectio
     }
 }
 
+#[derive(Serialize)]
+struct MutationPreviewOutput {
+    action: String,
+    dry_run: bool,
+    requested: usize,
+    message_ids: Vec<String>,
+    messages: Vec<MutationPreviewRecord>,
+}
+
+#[derive(Clone, Serialize)]
+struct MutationPreviewRecord {
+    message_id: String,
+    from: String,
+    subject: String,
+}
+
+#[derive(Serialize)]
+struct MutationPreviewLine {
+    action: String,
+    dry_run: bool,
+    message_id: String,
+    from: String,
+    subject: String,
+}
+
+#[derive(Serialize)]
+struct MutationResultOutput {
+    action: String,
+    dry_run: bool,
+    message_ids: Vec<String>,
+    result: MutationResultData,
+}
+
+#[derive(Serialize)]
+struct MutationAckOutput {
+    action: String,
+    dry_run: bool,
+    message_ids: Vec<String>,
+    ok: bool,
+}
+
+#[derive(Clone, Serialize)]
+pub(super) struct BatchMutationError {
+    pub(super) message_id: String,
+    pub(super) error: String,
+}
+
+#[derive(Serialize)]
+struct BatchMutationOutput {
+    action: String,
+    dry_run: bool,
+    requested: usize,
+    succeeded: usize,
+    failed: usize,
+    message_ids: Vec<String>,
+    errors: Vec<BatchMutationError>,
+}
+
+pub(super) fn print_dry_run_output(
+    action: &str,
+    selection: &MutationSelection,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    let message_ids = selection_message_ids(selection);
+    let messages = preview_records(selection);
+
+    match resolve_format(format) {
+        OutputFormat::Table => print_selection_preview(action, selection),
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&MutationPreviewOutput {
+                action: action.to_owned(),
+                dry_run: true,
+                requested: selection.ids.len(),
+                message_ids,
+                messages,
+            })?
+        ),
+        OutputFormat::Jsonl => {
+            let lines: Vec<_> = messages
+                .into_iter()
+                .map(|message| MutationPreviewLine {
+                    action: action.to_owned(),
+                    dry_run: true,
+                    message_id: message.message_id,
+                    from: message.from,
+                    subject: message.subject,
+                })
+                .collect();
+            println!("{}", jsonl(&lines)?);
+        }
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["action", "dry_run", "message_id", "from", "subject"])?;
+            for message in messages {
+                writer.write_record([
+                    action,
+                    "true",
+                    &message.message_id,
+                    &message.from,
+                    &message.subject,
+                ])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for id in message_ids {
+                println!("{id}");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn selection_message_ids(selection: &MutationSelection) -> Vec<String> {
+    selection
+        .ids
+        .iter()
+        .map(|id| id.as_str().to_owned())
+        .collect()
+}
+
+fn preview_records(selection: &MutationSelection) -> Vec<MutationPreviewRecord> {
+    selection
+        .ids
+        .iter()
+        .map(|id| {
+            let envelope = selection
+                .envelopes
+                .iter()
+                .find(|envelope| envelope.id == *id);
+            MutationPreviewRecord {
+                message_id: id.as_str().to_owned(),
+                from: envelope
+                    .map(|envelope| {
+                        envelope
+                            .from
+                            .name
+                            .as_deref()
+                            .unwrap_or(&envelope.from.email)
+                            .to_owned()
+                    })
+                    .unwrap_or_default(),
+                subject: envelope
+                    .map(|envelope| {
+                        if envelope.subject.is_empty() {
+                            "(no subject)".to_owned()
+                        } else {
+                            envelope.subject.clone()
+                        }
+                    })
+                    .unwrap_or_default(),
+            }
+        })
+        .collect()
+}
+
 pub(super) fn confirm_action(action: &str, selection: &MutationSelection) -> anyhow::Result<()> {
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         anyhow::bail!(
@@ -167,7 +310,7 @@ where
     }
 
     if options.dry_run {
-        print_selection_preview(options.action, &selection);
+        print_dry_run_output(options.action, &selection, options.format)?;
         return Ok(());
     }
 
@@ -180,21 +323,104 @@ where
         confirm_action(options.action, &selection)?;
     }
 
+    let message_ids = selection.ids.clone();
     let resp = client.request(build_request(selection.ids)).await?;
-    handle_mutation_response(resp, options.success_message)
+    handle_mutation_response(
+        resp,
+        options.success_message,
+        options.action,
+        &message_ids,
+        options.format,
+    )
 }
 
 pub(super) fn handle_mutation_response(
     resp: Response,
     success_message: &str,
+    action: &str,
+    message_ids: &[MessageId],
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
+    let format = resolve_format(format);
     match resp {
         Response::Ok {
             data: ResponseData::Ack,
-        } => println!("{success_message}"),
+        } => print_ack_output(action, success_message, message_ids, format)?,
         Response::Ok {
             data: ResponseData::MutationResult { result },
         } => {
+            let none_succeeded = result.succeeded == 0;
+            let requested = result.requested;
+            let skipped = result.skipped;
+            let failed = result.failed;
+            print_mutation_result_output(action, success_message, message_ids, result, format)?;
+            if none_succeeded {
+                anyhow::bail!(
+                    "No messages changed (requested {}, skipped {}, failed {})",
+                    requested,
+                    skipped,
+                    failed
+                );
+            }
+        }
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+    Ok(())
+}
+
+fn print_ack_output(
+    action: &str,
+    success_message: &str,
+    message_ids: &[MessageId],
+    format: OutputFormat,
+) -> anyhow::Result<()> {
+    match format {
+        OutputFormat::Table => println!("{success_message}"),
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&MutationAckOutput {
+                action: action.to_owned(),
+                dry_run: false,
+                message_ids: message_ids_to_strings(message_ids),
+                ok: true,
+            })?
+        ),
+        OutputFormat::Jsonl => println!(
+            "{}",
+            serde_json::to_string(&MutationAckOutput {
+                action: action.to_owned(),
+                dry_run: false,
+                message_ids: message_ids_to_strings(message_ids),
+                ok: true,
+            })?
+        ),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["action", "ok", "message_id"])?;
+            for id in message_ids {
+                writer.write_record([action.to_owned(), "true".to_owned(), id.as_str()])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for id in message_ids {
+                println!("{id}");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_mutation_result_output(
+    action: &str,
+    success_message: &str,
+    message_ids: &[MessageId],
+    result: MutationResultData,
+    format: OutputFormat,
+) -> anyhow::Result<()> {
+    match format {
+        OutputFormat::Table => {
             for account in &result.accounts {
                 if account.succeeded > 0 {
                     println!(
@@ -219,22 +445,175 @@ pub(super) fn handle_mutation_response(
                     );
                 }
             }
-            if result.succeeded == 0 {
-                anyhow::bail!(
-                    "No messages changed (requested {}, skipped {}, failed {})",
-                    result.requested,
-                    result.skipped,
-                    result.failed
-                );
-            }
             if let Some(mutation_id) = result.mutation_id.as_deref() {
                 println!("Undo with: mxr undo {mutation_id}");
             }
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response"),
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&MutationResultOutput {
+                action: action.to_owned(),
+                dry_run: false,
+                message_ids: message_ids_to_strings(message_ids),
+                result,
+            })?
+        ),
+        OutputFormat::Jsonl => println!(
+            "{}",
+            serde_json::to_string(&MutationResultOutput {
+                action: action.to_owned(),
+                dry_run: false,
+                message_ids: message_ids_to_strings(message_ids),
+                result,
+            })?
+        ),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "action",
+                "requested",
+                "succeeded",
+                "skipped",
+                "failed",
+                "account_id",
+                "account_name",
+                "account_succeeded",
+                "account_skipped",
+                "account_failed",
+                "error",
+                "mutation_id",
+            ])?;
+            if result.accounts.is_empty() {
+                writer.write_record([
+                    action.to_owned(),
+                    result.requested.to_string(),
+                    result.succeeded.to_string(),
+                    result.skipped.to_string(),
+                    result.failed.to_string(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    result.mutation_id.clone().unwrap_or_default(),
+                ])?;
+            } else {
+                for account in &result.accounts {
+                    writer.write_record([
+                        action.to_owned(),
+                        result.requested.to_string(),
+                        result.succeeded.to_string(),
+                        result.skipped.to_string(),
+                        result.failed.to_string(),
+                        account.account_id.as_str().to_owned(),
+                        account.account_name.clone(),
+                        account.succeeded.to_string(),
+                        account.skipped.to_string(),
+                        account.failed.to_string(),
+                        account.error.clone().unwrap_or_default(),
+                        result.mutation_id.clone().unwrap_or_default(),
+                    ])?;
+                }
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for id in message_ids {
+                println!("{id}");
+            }
+        }
     }
     Ok(())
+}
+
+pub(super) fn print_batch_mutation_output(
+    action: &str,
+    dry_run: bool,
+    table_message: &str,
+    message_ids: &[MessageId],
+    succeeded: usize,
+    errors: Vec<BatchMutationError>,
+    format: Option<OutputFormat>,
+) -> anyhow::Result<()> {
+    match resolve_format(format) {
+        OutputFormat::Table => println!("{table_message}"),
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&BatchMutationOutput {
+                action: action.to_owned(),
+                dry_run,
+                requested: message_ids.len(),
+                succeeded,
+                failed: errors.len(),
+                message_ids: message_ids_to_strings(message_ids),
+                errors,
+            })?
+        ),
+        OutputFormat::Jsonl => println!(
+            "{}",
+            serde_json::to_string(&BatchMutationOutput {
+                action: action.to_owned(),
+                dry_run,
+                requested: message_ids.len(),
+                succeeded,
+                failed: errors.len(),
+                message_ids: message_ids_to_strings(message_ids),
+                errors,
+            })?
+        ),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "action",
+                "dry_run",
+                "requested",
+                "succeeded",
+                "failed",
+                "message_id",
+                "error",
+            ])?;
+            if errors.is_empty() {
+                for id in message_ids {
+                    writer.write_record([
+                        action.to_owned(),
+                        dry_run.to_string(),
+                        message_ids.len().to_string(),
+                        succeeded.to_string(),
+                        "0".to_owned(),
+                        id.as_str(),
+                        String::new(),
+                    ])?;
+                }
+            } else {
+                for error in &errors {
+                    writer.write_record([
+                        action.to_owned(),
+                        dry_run.to_string(),
+                        message_ids.len().to_string(),
+                        succeeded.to_string(),
+                        errors.len().to_string(),
+                        error.message_id.clone(),
+                        error.error.clone(),
+                    ])?;
+                }
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for id in message_ids {
+                println!("{id}");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn message_ids_to_strings(message_ids: &[MessageId]) -> Vec<String> {
+    message_ids
+        .iter()
+        .map(|id| id.as_str().to_owned())
+        .collect()
 }
 
 pub(super) struct MutationRunOptions<'a> {
@@ -242,14 +621,22 @@ pub(super) struct MutationRunOptions<'a> {
     pub(super) success_message: &'a str,
     pub(super) yes: bool,
     pub(super) dry_run: bool,
+    pub(super) format: Option<OutputFormat>,
     pub(super) destructive: bool,
 }
 
 pub(super) fn parse_snooze_until(until: &str) -> anyhow::Result<chrono::DateTime<Utc>> {
+    // Try the config-driven preset parser first ("tomorrow", "weekend",
+    // "tonight" — uses the user's configured wake hour for each preset).
     let config = mxr_config::load_config().unwrap_or_default().snooze;
-    mxr_config::snooze::parse_snooze_until(until, &config).ok_or_else(|| {
+    if let Some(absolute) = mxr_config::snooze::parse_snooze_until(until, &config) {
+        return Ok(absolute);
+    }
+    // Fall through to the conversational parser which handles richer
+    // forms: `in 2h`, `monday 5pm`, `tomorrow 9am`, RFC3339, etc.
+    mxr_core::parse_relative_time(until, chrono::Utc::now()).map_err(|e| {
         anyhow::anyhow!(
-            "Cannot parse '{until}'. Use: tomorrow, tonight, monday, weekend, or ISO 8601"
+            "Cannot parse '{until}': {e}. Try: `in 2h`, `tomorrow 9am`, `monday 17:00`, or ISO 8601."
         )
     })
 }

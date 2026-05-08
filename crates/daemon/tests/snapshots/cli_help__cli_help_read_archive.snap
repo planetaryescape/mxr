@@ -1,0 +1,17 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Mark message as read and archive it
+
+Usage: mxr read-archive [OPTIONS] [MESSAGE_ID]...
+
+Arguments:
+  [MESSAGE_ID]...
+
+Options:
+      --search <SEARCH>
+      --yes
+      --dry-run
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

@@ -188,6 +188,21 @@ pub(super) async fn collect_doctor_report(
         && socket_exists
         && matches!(health_class, mxr_protocol::DaemonHealthClass::Healthy);
 
+    // Structured findings: classify the existing signals into
+    // categorised entries with shell-runnable remediation. Clients (TUI,
+    // future agents) can reason about individual issues without parsing
+    // free text.
+    let findings = build_doctor_findings(
+        &sync_statuses,
+        &recent_error_logs,
+        data_dir_exists,
+        database_exists,
+        index_exists,
+        socket_exists,
+        repair_required,
+        restart_required,
+    );
+
     let report = mxr_protocol::DoctorReport {
         healthy,
         health_class,
@@ -224,6 +239,7 @@ pub(super) async fn collect_doctor_report(
         recent_sync_events,
         recent_error_logs,
         recommended_next_steps,
+        findings,
     };
 
     tracing::trace!(
@@ -232,6 +248,144 @@ pub(super) async fn collect_doctor_report(
     );
 
     Ok(report)
+}
+
+/// Classify the doctor's raw signals into structured findings with
+/// remediation. Pattern-matches recent error log lines for common
+/// failure modes — OAuth refresh failed, rate-limited, network
+/// unreachable — so the user gets a copy-pasteable next step instead
+/// of a free-text dump.
+fn build_doctor_findings(
+    sync_statuses: &[mxr_protocol::AccountSyncStatus],
+    recent_errors: &[String],
+    data_dir_exists: bool,
+    database_exists: bool,
+    index_exists: bool,
+    socket_exists: bool,
+    repair_required: bool,
+    restart_required: bool,
+) -> Vec<mxr_protocol::DoctorFinding> {
+    use mxr_protocol::{DoctorFinding, DoctorFindingCategory, DoctorFindingSeverity};
+    let mut findings = Vec::new();
+
+    if !data_dir_exists {
+        findings.push(DoctorFinding {
+            category: DoctorFindingCategory::Storage,
+            severity: DoctorFindingSeverity::Error,
+            message: "Data directory missing".into(),
+            remediation: vec!["mxr daemon --foreground".into()],
+        });
+    }
+    if !database_exists {
+        findings.push(DoctorFinding {
+            category: DoctorFindingCategory::Storage,
+            severity: DoctorFindingSeverity::Error,
+            message: "SQLite database missing".into(),
+            remediation: vec!["mxr daemon --foreground".into(), "mxr doctor".into()],
+        });
+    }
+    if !index_exists || repair_required {
+        findings.push(DoctorFinding {
+            category: DoctorFindingCategory::SearchIndex,
+            severity: DoctorFindingSeverity::Warning,
+            message: "Search index missing or needs rebuild".into(),
+            remediation: vec!["mxr doctor --reindex".into()],
+        });
+    }
+    if !socket_exists {
+        findings.push(DoctorFinding {
+            category: DoctorFindingCategory::Daemon,
+            severity: DoctorFindingSeverity::Error,
+            message: "Daemon socket missing — daemon not running?".into(),
+            remediation: vec!["mxr daemon --foreground".into(), "mxr status".into()],
+        });
+    }
+    if restart_required {
+        findings.push(DoctorFinding {
+            category: DoctorFindingCategory::Daemon,
+            severity: DoctorFindingSeverity::Warning,
+            message: "Daemon protocol changed — restart needed".into(),
+            remediation: vec!["mxr daemon --restart".into()],
+        });
+    }
+
+    for status in sync_statuses {
+        if let Some(err) = status.last_error.as_deref() {
+            findings.push(classify_sync_error(&status.account_name, err));
+        }
+    }
+
+    for line in recent_errors {
+        if let Some(finding) = classify_log_line(line) {
+            findings.push(finding);
+        }
+    }
+
+    findings
+}
+
+fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding {
+    use mxr_protocol::{DoctorFinding, DoctorFindingCategory, DoctorFindingSeverity};
+    let lower = err.to_lowercase();
+    let (category, remediation) = if lower.contains("oauth")
+        || lower.contains("invalid_grant")
+        || lower.contains("token")
+        || lower.contains("unauthorized")
+    {
+        (
+            DoctorFindingCategory::OAuth,
+            vec![format!("mxr accounts reauth {account}")],
+        )
+    } else if lower.contains("connection refused")
+        || lower.contains("dns")
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+    {
+        (DoctorFindingCategory::Network, vec![])
+    } else if lower.contains("rate") && lower.contains("limit") {
+        (
+            DoctorFindingCategory::Sync,
+            vec![format!(
+                "# Provider rate-limited account `{account}`; retry after backoff"
+            )],
+        )
+    } else if lower.contains("locked") || lower.contains("busy") {
+        (
+            DoctorFindingCategory::SqliteLock,
+            vec!["# Close other mxr processes".into()],
+        )
+    } else {
+        (DoctorFindingCategory::Sync, vec![])
+    };
+    DoctorFinding {
+        category,
+        severity: DoctorFindingSeverity::Error,
+        message: format!("Sync error on {account}: {err}"),
+        remediation,
+    }
+}
+
+fn classify_log_line(line: &str) -> Option<mxr_protocol::DoctorFinding> {
+    use mxr_protocol::{DoctorFinding, DoctorFindingCategory, DoctorFindingSeverity};
+    let lower = line.to_lowercase();
+    if lower.contains("invalid_grant") || lower.contains("token expired") || lower.contains("oauth")
+    {
+        return Some(DoctorFinding {
+            category: DoctorFindingCategory::OAuth,
+            severity: DoctorFindingSeverity::Warning,
+            message: "OAuth token issue in recent logs".into(),
+            remediation: vec!["mxr accounts reauth <account>".into()],
+        });
+    }
+    if lower.contains("database is locked") {
+        return Some(DoctorFinding {
+            category: DoctorFindingCategory::SqliteLock,
+            severity: DoctorFindingSeverity::Warning,
+            message: "SQLite lock contention in recent logs".into(),
+            remediation: vec!["# Close other mxr processes".into()],
+        });
+    }
+    None
 }
 
 pub(crate) fn doctor_data_stats(

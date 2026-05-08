@@ -1,0 +1,19 @@
+-- =========================================================================
+-- Crash-safe drafts: heartbeat column for detecting orphaned 'sending'
+-- drafts after a daemon crash mid-send.
+--
+-- The existing draft state machine (migration 011: draft -> sending ->
+-- sent) is already CAS-protected. The remaining failure mode is:
+--
+--   1. send_stored_draft CAS-promotes the row to 'sending'.
+--   2. Daemon crashes (or is killed) before the provider responds.
+--   3. The row stays in 'sending' forever; subsequent send attempts
+--      refuse because the CAS expects 'draft'.
+--
+-- `last_heartbeat_at` is touched by the live send pipeline. On daemon
+-- startup, drafts in 'sending' with a stale heartbeat (older than a
+-- threshold) are considered orphaned and can be reset to 'draft' so
+-- the user can retry them. Surfacing them via `mxr drafts recover` is
+-- the explicit recovery surface.
+-- =========================================================================
+ALTER TABLE drafts ADD COLUMN last_heartbeat_at INTEGER;

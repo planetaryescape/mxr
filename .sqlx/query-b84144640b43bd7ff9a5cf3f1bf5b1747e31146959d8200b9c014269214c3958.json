@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO snippets (name, body, vars, created_at, updated_at)\n               VALUES (?, ?, ?, ?, ?)\n               ON CONFLICT(name) DO UPDATE SET\n                   body = excluded.body,\n                   vars = excluded.vars,\n                   updated_at = excluded.updated_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "b84144640b43bd7ff9a5cf3f1bf5b1747e31146959d8200b9c014269214c3958"
+}

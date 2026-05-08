@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT account_id as \"account_id!\", sender_email as \"sender_email!\",\n                      disposition as \"disposition!\", route_label,\n                      decided_at as \"decided_at!\"\n               FROM screener_decisions\n               WHERE account_id = ?\n               ORDER BY sender_email ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "account_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "sender_email!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "disposition!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "route_label",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "decided_at!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "40aed51d3ec0c1745f66165b5d68e4eac76d91d3fe810f57a6b7a657bdd529a6"
+}

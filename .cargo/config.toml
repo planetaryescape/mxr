@@ -1,2 +1,9 @@
 [env]
 SQLX_OFFLINE = "true"
+# clap-derive parses generate large stack frames in debug builds; the
+# CLI surface has 60+ subcommand variants and the default 2MB test
+# thread stack overflows on `Command::parse` paths. Bump to 16MB. This
+# only affects child processes (cargo test, cargo run, mxr binary
+# invocations from the workspace) — release builds inline differently
+# and don't need it, but setting it here is harmless.
+RUST_MIN_STACK = "16777216"

@@ -2,6 +2,22 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::SqlitePool;
 use std::path::Path;
 use std::str::FromStr;
+use std::time::Duration;
+
+/// SQLite-level busy retry. Multiple connections can be told to wait
+/// for the writer lock instead of erroring with SQLITE_BUSY. Pairs with
+/// the pool-level `acquire_timeout` below: the pool decides how long a
+/// task waits for a connection, and `busy_timeout` decides how long
+/// SQLite itself waits for the underlying lock once it has one.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Pool-level wait. The default is 30s; we bump it because the writer
+/// pool is single-connection and serializes all writes — sync, contacts
+/// refresh, mutations, snooze wakes, reply-pair reconciler. Under
+/// realistic load these queue behind a long aggregate (contacts
+/// refresh) and the default trips, surfacing as cascading "Sync error /
+/// Mutation Failed / Contacts refresh error" entries.
+const POOL_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(90);
 
 pub struct Store {
     writer: SqlitePool,
@@ -16,21 +32,25 @@ impl Store {
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(BUSY_TIMEOUT)
             .pragma("foreign_keys", "ON");
 
         let writer = SqlitePoolOptions::new()
             .max_connections(1)
+            .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
             .connect_with(write_opts)
             .await?;
 
         let read_opts = SqliteConnectOptions::from_str(&db_url)?
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(BUSY_TIMEOUT)
             .pragma("foreign_keys", "ON")
             .read_only(true);
 
         let reader = SqlitePoolOptions::new()
             .max_connections(4)
+            .acquire_timeout(POOL_ACQUIRE_TIMEOUT)
             .connect_with(read_opts)
             .await?;
 
@@ -394,6 +414,51 @@ const MIGRATIONS: &[Migration] = &[
         version: 12,
         name: "mutation_undo_log",
         kind: MigrationKind::Sql(include_str!("../migrations/012_mutation_undo_log.sql")),
+    },
+    Migration {
+        version: 13,
+        name: "message_flags",
+        kind: MigrationKind::Sql(include_str!("../migrations/013_message_flags.sql")),
+    },
+    Migration {
+        version: 14,
+        name: "auto_reminders",
+        kind: MigrationKind::Sql(include_str!("../migrations/014_auto_reminders.sql")),
+    },
+    Migration {
+        version: 15,
+        name: "scheduled_sends",
+        kind: MigrationKind::Composite(&[
+            MigrationStep::AddColumn {
+                table: "drafts",
+                column: "send_at",
+                sql: "ALTER TABLE drafts ADD COLUMN send_at INTEGER",
+            },
+            MigrationStep::Sql(
+                "CREATE INDEX IF NOT EXISTS idx_drafts_pending_scheduled \
+                 ON drafts(send_at) \
+                 WHERE send_at IS NOT NULL AND status = 'draft'",
+            ),
+        ]),
+    },
+    Migration {
+        version: 16,
+        name: "snippets",
+        kind: MigrationKind::Sql(include_str!("../migrations/016_snippets.sql")),
+    },
+    Migration {
+        version: 17,
+        name: "draft_heartbeat",
+        kind: MigrationKind::AddColumn {
+            table: "drafts",
+            column: "last_heartbeat_at",
+            sql: "ALTER TABLE drafts ADD COLUMN last_heartbeat_at INTEGER",
+        },
+    },
+    Migration {
+        version: 18,
+        name: "screener_decisions",
+        kind: MigrationKind::Sql(include_str!("../migrations/018_screener_decisions.sql")),
     },
 ];
 

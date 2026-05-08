@@ -110,3 +110,37 @@ Snoozing is local-first but also updates provider state where supported. For Gma
 - `o` from Help: reopen the onboarding walkthrough
 
 The help modal is context-aware. The command palette exposes mailbox, search, rules, diagnostics, account actions, config edit, and logs.
+
+## In real life
+
+- **First thing in the morning:** open mxr (`mxr`), press `g i` for
+  Inbox, scan with `j/k`, `e` to archive, `b` to bookmark for reply
+  later, `Z` to snooze. You'll be at inbox-zero before your coffee.
+- **Backlog cleanup on a slow Friday:** `mxr stale --mine
+  --older-than-days 30 --format ids | xargs -n1 mxr cat | $PAGER` —
+  scan everything you've been ignoring, then bulk-archive what you
+  decide to drop.
+- **Switching contexts mid-day:** `g 1`–`g 9` jump straight to your
+  saved-search lenses. Set up "VIP", "Today", "Waiting on me", and
+  hop between them with one keystroke.
+
+## Agent prompts that work
+
+```text
+"What's in my inbox right now? Group by sender, count unreads, and
+show me the noisiest 5. Use `mxr search 'is:unread' --format json | jq`."
+```
+
+```text
+"Help me hit inbox zero. For each unread, suggest archive / reply
+later / snooze and explain why. Read with `mxr cat --view reader`,
+classify in batches of 10. Don't actually mutate yet — I'll approve
+each batch."
+```
+
+## See also
+
+- [Triage flow](/guides/triage-flow/)
+- [Search workflow](/guides/search/)
+- [Recipes — interactive pickers](/guides/recipes/#with-fzf--interactive-picker)
+- [Keybindings reference](/reference/keybindings/)

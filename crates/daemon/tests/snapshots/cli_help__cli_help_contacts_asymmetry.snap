@@ -1,0 +1,13 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+Rank contacts by reply imbalance (|inbound - outbound| / max)
+
+Usage: mxr contacts asymmetry [OPTIONS]
+
+Options:
+      --min-inbound <MIN_INBOUND>  Filter out contacts with fewer than this many inbound messages [default: 3]
+      --limit <LIMIT>              [default: 50]
+      --account <ACCOUNT>
+  -h, --help                       Print help

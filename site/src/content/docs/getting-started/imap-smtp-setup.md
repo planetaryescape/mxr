@@ -16,21 +16,27 @@ The shortest path is `mxr accounts add`. It writes the config entry, stores the 
 mxr accounts add imap
 mxr accounts add smtp
 
-# Non-interactive — useful in scripts or first-boot setup
-mxr accounts add imap \
+# Combined IMAP + SMTP — one call, both sides
+MXR_IMAP_PASSWORD="$WORK_IMAP_PW" MXR_SMTP_PASSWORD="$WORK_SMTP_PW" \
+  mxr accounts add imap-smtp \
+    --account-name work \
+    --email you@example.com \
+    --imap-host imap.fastmail.com --imap-username you@example.com \
+    --smtp-host smtp.fastmail.com --smtp-username you@example.com
+
+# Or split — useful when sync and send live on different servers
+MXR_IMAP_PASSWORD="$WORK_IMAP_PW" mxr accounts add imap \
   --account-name work \
   --imap-host imap.fastmail.com \
-  --imap-username you@example.com \
-  --imap-password ENV:WORK_IMAP_PW
+  --imap-username you@example.com
 
-mxr accounts add smtp \
+MXR_SMTP_PASSWORD="$WORK_SMTP_PW" mxr accounts add smtp \
   --account-name work \
   --smtp-host smtp.fastmail.com \
-  --smtp-username you@example.com \
-  --smtp-password ENV:WORK_SMTP_PW
+  --smtp-username you@example.com
 ```
 
-Passwords supplied via `--imap-password` / `--smtp-password` accept either a literal value or `ENV:VAR_NAME` to avoid exposing the secret in shell history. The actual credential is then written to the OS keychain (Keychain on macOS, Secret Service on Linux) — never to `config.toml`.
+Passwords resolve in this order: the `--imap-password` / `--smtp-password` flag (if present and stdin is not a TTY), then the `MXR_IMAP_PASSWORD` / `MXR_SMTP_PASSWORD` environment variables, then an interactive prompt. Pass the env-var form when scripting to keep secrets out of shell history. The credential is written to the OS keychain (Keychain on macOS, Secret Service on Linux) — never to `config.toml`.
 
 If a password ever goes stale (provider rotated it, you regenerated an app password), re-run `mxr accounts repair work` to overwrite the keychain entry without touching the rest of the account config.
 
@@ -77,6 +83,7 @@ The `mxr accounts add` flow above is the supported path; the manual TOML shape i
 | Provider | IMAP Host | IMAP Port | SMTP Host | SMTP Port |
 |---|---|---|---|---|
 | Fastmail | imap.fastmail.com | 993 | smtp.fastmail.com | 587 |
+| Migadu | imap.migadu.com | 993 | smtp.migadu.com | 587 |
 | Outlook / Office 365 | outlook.office365.com | 993 | smtp.office365.com | 587 |
 | Yahoo | imap.mail.yahoo.com | 993 | smtp.mail.yahoo.com | 587 |
 | ProtonMail (Bridge) | 127.0.0.1 | 1143 | 127.0.0.1 | 1025 |
@@ -102,14 +109,14 @@ mxr sync --account work
 Add as many accounts as you need — each `mxr accounts add` invocation appends a new entry to the config:
 
 ```bash
-mxr accounts add imap --account-name personal \
+MXR_IMAP_PASSWORD="$PERSONAL_IMAP_PW" mxr accounts add imap \
+  --account-name personal \
   --imap-host imap.fastmail.com \
-  --imap-username me@fastmail.com \
-  --imap-password ENV:PERSONAL_IMAP_PW
-mxr accounts add smtp --account-name personal \
+  --imap-username me@fastmail.com
+MXR_SMTP_PASSWORD="$PERSONAL_SMTP_PW" mxr accounts add smtp \
+  --account-name personal \
   --smtp-host smtp.fastmail.com \
-  --smtp-username me@fastmail.com \
-  --smtp-password ENV:PERSONAL_SMTP_PW
+  --smtp-username me@fastmail.com
 ```
 
 You can mix and match: one account on Gmail, another on IMAP/SMTP, a third on something else. They all sync into the same local database and are searchable together.

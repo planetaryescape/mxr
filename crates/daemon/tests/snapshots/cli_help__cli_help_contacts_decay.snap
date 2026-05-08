@@ -1,0 +1,19 @@
+---
+source: crates/daemon/tests/cli_help.rs
+expression: stdout
+---
+List contacts where the most recent inbound is older than the outbound by more than --threshold-days days. Surfaces "going cold" relationships
+
+Usage: mxr contacts decay [OPTIONS]
+
+Options:
+      --threshold-days <THRESHOLD_DAYS>
+          [default: 30]
+      --max-lookback-days <MAX_LOOKBACK_DAYS>
+          Upper bound: ignore contacts whose last inbound is older than this. Default ~3 years keeps focus on relationships you might still rebuild; raise for a wider audit [default: 1095]
+      --limit <LIMIT>
+          [default: 50]
+      --account <ACCOUNT>
+
+  -h, --help
+          Print help

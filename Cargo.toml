@@ -71,6 +71,7 @@ members = [
     "crates/core",
     "crates/export",
     "crates/keychain",
+    "crates/llm",
     "crates/mail-parse",
     "crates/outbound",
     "crates/protocol",
@@ -120,6 +121,7 @@ mxr-config = { path = "crates/config", version = "0.5.2" }
 mxr-core = { path = "crates/core", version = "0.5.2" }
 mxr-export = { path = "crates/export", version = "0.5.2" }
 mxr-keychain = { path = "crates/keychain", version = "0.5.2" }
+mxr-llm = { path = "crates/llm", version = "0.5.2" }
 mxr-mail-parse = { path = "crates/mail-parse", version = "0.5.2" }
 mxr-outbound = { path = "crates/outbound", version = "0.5.2" }
 mxr-protocol = { path = "crates/protocol", version = "0.5.2" }
@@ -257,6 +259,7 @@ mxr-config = { workspace = true }
 mxr-core = { workspace = true }
 mxr-export = { workspace = true }
 mxr-keychain = { workspace = true }
+mxr-llm = { workspace = true }
 mxr-mail-parse = { workspace = true }
 mxr-protocol = { workspace = true }
 mxr-provider-fake = { workspace = true }

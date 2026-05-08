@@ -8,5 +8,5 @@ Usage: mxr status [OPTIONS]
 
 Options:
       --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-      --watch            
+      --watch
   -h, --help             Print help

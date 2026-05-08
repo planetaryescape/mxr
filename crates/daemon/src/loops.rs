@@ -275,8 +275,7 @@ async fn sync_loop_for_account(
                 // for users to run `mxr doctor --rebuild-analytics`
                 // for ordinary drift.
                 let backfill =
-                    crate::handler::diagnostics_impl::incremental_analytics_backfill(&state)
-                        .await;
+                    crate::handler::diagnostics_impl::incremental_analytics_backfill(&state).await;
                 if backfill.did_work() || backfill.startup_repair_ran {
                     tracing::info!(
                         account = %account_id,
@@ -843,6 +842,125 @@ pub async fn contacts_refresher_loop(state: Arc<AppState>, mut shutdown_rx: watc
         match state.store.refresh_contacts().await {
             Ok(n) => tracing::debug!(rows = n, "contacts refresher updated table"),
             Err(e) => tracing::warn!("Contacts refresh error: {e}"),
+        }
+    }
+}
+
+/// Process all auto-reminders due by `now`: mark each as triggered,
+/// emit a `ReminderTriggered` event so clients can refresh views.
+/// Returns the number of reminders that fired.
+///
+/// Factored out of `auto_reminders_loop` so it can be exercised
+/// directly in tests with a virtual `now` — no clock plumbing needed
+/// in the test harness.
+pub async fn process_due_reminders(
+    state: &AppState,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<u32, String> {
+    let due = state
+        .store
+        .get_due_auto_reminders(now)
+        .await
+        .map_err(|e| e.to_string())?;
+    let count = due.len() as u32;
+    for reminder in due {
+        let id = reminder.sent_message_id.clone();
+        if let Err(e) = state.store.mark_auto_reminder_triggered(&id, now).await {
+            tracing::warn!(
+                message_id = %id.as_str(),
+                "auto-reminder mark-triggered failed: {e}"
+            );
+            continue;
+        }
+        let event = IpcMessage {
+            id: 0,
+            payload: IpcPayload::Event(DaemonEvent::ReminderTriggered {
+                sent_message_id: id,
+            }),
+        };
+        let _ = state.event_tx.send(event);
+    }
+    Ok(count)
+}
+
+/// Process all scheduled drafts due by `now`: invoke the existing
+/// send pipeline (`send_stored_draft`) for each. Returns the number of
+/// drafts that fired (regardless of send outcome — we count attempts).
+///
+/// Factored out for direct test access; the surrounding loop just
+/// calls this on each tick.
+pub async fn process_due_scheduled_sends(
+    state: &AppState,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<u32, String> {
+    let due = state
+        .store
+        .get_due_scheduled_drafts(now)
+        .await
+        .map_err(|e| e.to_string())?;
+    let count = due.len() as u32;
+    for draft_id in due {
+        // Clear the scheduled flag before sending so a retry from a
+        // crashed prior attempt doesn't re-fire indefinitely.
+        if let Err(e) = state.store.cancel_scheduled_send(&draft_id).await {
+            tracing::warn!(
+                draft_id = %draft_id,
+                "scheduled-send: failed to clear send_at before send: {e}"
+            );
+            continue;
+        }
+        match crate::handler::send_stored_draft(state, &draft_id).await {
+            Ok(_) => tracing::debug!(draft_id = %draft_id, "scheduled-send: sent"),
+            Err(e) => tracing::warn!(
+                draft_id = %draft_id,
+                "scheduled-send: send failed: {e}"
+            ),
+        }
+    }
+    Ok(count)
+}
+
+/// Background loop: flush due scheduled sends on a 60-second cadence.
+pub async fn scheduled_sends_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
+    let mut ticker = interval(Duration::from_secs(60));
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                    tracing::info!("Scheduled-sends loop exiting: shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
+        match process_due_scheduled_sends(&state, chrono::Utc::now()).await {
+            Ok(0) => {}
+            Ok(n) => tracing::debug!(fired = n, "scheduled-sends loop fired"),
+            Err(e) => tracing::warn!("Scheduled-sends loop error: {e}"),
+        }
+    }
+}
+
+/// Background loop: scan auto-reminders on a 60-second cadence and
+/// fire any whose window has elapsed.
+pub async fn auto_reminders_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
+    let mut ticker = interval(Duration::from_secs(60));
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                    tracing::info!("Auto-reminders loop exiting: shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
+        match process_due_reminders(&state, chrono::Utc::now()).await {
+            Ok(0) => {}
+            Ok(n) => tracing::debug!(fired = n, "auto-reminders loop fired reminders"),
+            Err(e) => tracing::warn!("Auto-reminders loop error: {e}"),
         }
     }
 }

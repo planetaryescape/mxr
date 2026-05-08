@@ -4,6 +4,11 @@ use crate::theme::Theme;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
+/// Maximum hints surfaced in the bar at once. Past this, the user is
+/// better served by Cmd+K (palette) or `?` (help). Five fits a single
+/// 80-col line and matches the "top-5 contextual" design intent.
+pub const HINT_BAR_MAX_HINTS: usize = 5;
+
 pub struct HintBarState<'a> {
     pub ui_context: UiContext,
     pub search_active: bool,
@@ -80,34 +85,20 @@ pub fn draw(frame: &mut Frame, area: Rect, state: HintBarState<'_>, theme: &Them
     );
 }
 
+/// Hints for the bar in this context. Capped at [`HINT_BAR_MAX_HINTS`];
+/// less-frequent actions live in Cmd+K palette or the `?` help modal.
+/// Action lists below are ordered by user-task primacy: open the
+/// dominant action first, then escape/help last.
 pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(String, String)> {
-    match context {
+    let mut hints = match context {
         UiContext::MailboxSidebar => display_bindings_for_actions(
             ViewContext::MailList,
-            &[
-                "move_down",
-                "move_up",
-                "open",
-                "search_all_mail",
-                "command_palette",
-                "help",
-            ],
+            &["open", "search_all_mail", "command_palette", "help"],
         ),
         UiContext::MailboxList if selected_count > 0 => {
             let mut hints = display_bindings_for_actions(
                 ViewContext::MailList,
-                &[
-                    "archive",
-                    "mark_read_archive",
-                    "trash",
-                    "apply_label",
-                    "move_to_label",
-                    "mark_read",
-                    "mark_unread",
-                    "star",
-                    "command_palette",
-                    "help",
-                ],
+                &["archive", "mark_read_archive", "trash", "apply_label"],
             );
             hints.insert(0, ("Esc".to_string(), "Clear Sel".to_string()));
             hints
@@ -115,36 +106,16 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
         UiContext::MailboxList => display_bindings_for_actions(
             ViewContext::MailList,
             &[
-                "move_down",
-                "move_up",
                 "open",
-                "toggle_fullscreen",
                 "reply",
                 "archive",
                 "search_all_mail",
-                "mailbox_filter",
                 "command_palette",
-                "help",
             ],
         ),
         UiContext::MailboxMessage => display_bindings_for_actions(
             ViewContext::ThreadView,
-            &[
-                "next_message",
-                "prev_message",
-                "reply",
-                "reply_all",
-                "forward",
-                "archive",
-                "star",
-                "attachment_list",
-                "open_links",
-                "toggle_fullscreen",
-                "toggle_reader_mode",
-                "toggle_html_view",
-                "toggle_remote_content",
-                "help",
-            ],
+            &["reply", "reply_all", "archive", "open_links", "help"],
         ),
         UiContext::SearchEditor => vec![
             ("Enter".to_string(), "Run Now".to_string()),
@@ -153,10 +124,7 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
             ("?".to_string(), "Help".to_string()),
         ],
         UiContext::SearchResults => vec![
-            ("j".to_string(), "Next Result".to_string()),
-            ("k".to_string(), "Prev Result".to_string()),
             ("Enter/o".to_string(), "Open".to_string()),
-            ("F".to_string(), "Full View".to_string()),
             ("/".to_string(), "Edit Query".to_string()),
             ("Tab".to_string(), "Switch Pane".to_string()),
             ("Esc".to_string(), "Mailbox".to_string()),
@@ -165,89 +133,56 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
         UiContext::SearchPreview => {
             let mut hints = display_bindings_for_actions(
                 ViewContext::ThreadView,
-                &[
-                    "reply",
-                    "archive",
-                    "toggle_select",
-                    "attachment_list",
-                    "open_links",
-                    "unsubscribe",
-                    "toggle_fullscreen",
-                    "toggle_reader_mode",
-                    "toggle_html_view",
-                    "toggle_remote_content",
-                    "help",
-                ],
+                &["reply", "archive", "open_links"],
             );
-            hints.insert(0, ("Esc".to_string(), "Results".to_string()));
-            hints.insert(0, ("h".to_string(), "Results".to_string()));
             hints.insert(0, ("/".to_string(), "Edit Query".to_string()));
+            hints.push(("?".to_string(), "Help".to_string()));
             hints
         }
         UiContext::RulesList => vec![
-            ("j".to_string(), "Down".to_string()),
-            ("k".to_string(), "Up".to_string()),
-            ("Enter".to_string(), "Refresh".to_string()),
             ("n".to_string(), "New Rule".to_string()),
+            ("Enter".to_string(), "Refresh".to_string()),
             ("E".to_string(), "Edit Rule".to_string()),
-            ("e".to_string(), "Toggle Enabled".to_string()),
             ("D".to_string(), "Dry Run".to_string()),
-            ("H".to_string(), "History".to_string()),
             ("?".to_string(), "Help".to_string()),
         ],
         UiContext::RulesForm => vec![
             ("Tab".to_string(), "Next Field".to_string()),
-            ("Shift-Tab".to_string(), "Prev Field".to_string()),
             ("Ctrl-s".to_string(), "Save".to_string()),
             ("Esc".to_string(), "Close Form".to_string()),
             ("?".to_string(), "Help".to_string()),
         ],
         UiContext::Diagnostics => vec![
-            ("j".to_string(), "Next Section".to_string()),
-            ("k".to_string(), "Prev Section".to_string()),
-            ("Ctrl-d".to_string(), "Scroll Down".to_string()),
-            ("Ctrl-u".to_string(), "Scroll Up".to_string()),
             ("Enter/o".to_string(), "Full".to_string()),
             ("r".to_string(), "Refresh".to_string()),
             ("c".to_string(), "Config".to_string()),
             ("L".to_string(), "Logs".to_string()),
-            ("Esc".to_string(), "Mailbox".to_string()),
             ("?".to_string(), "Help".to_string()),
         ],
         UiContext::AccountsList => vec![
-            ("j".to_string(), "Next Account".to_string()),
-            ("k".to_string(), "Prev Account".to_string()),
             ("n".to_string(), "New".to_string()),
-            ("t".to_string(), "Test".to_string()),
-            ("O".to_string(), "Details".to_string()),
-            ("d".to_string(), "Default".to_string()),
-            ("c".to_string(), "Config".to_string()),
             ("Enter".to_string(), "Edit".to_string()),
-            ("r".to_string(), "Refresh".to_string()),
-            ("Esc".to_string(), "Mailbox".to_string()),
+            ("t".to_string(), "Test".to_string()),
+            ("d".to_string(), "Default".to_string()),
             ("?".to_string(), "Help".to_string()),
         ],
         UiContext::AccountsForm => vec![
-            ("j/k".to_string(), "Fields".to_string()),
             ("Tab".to_string(), "Next Field".to_string()),
-            ("Shift-Tab".to_string(), "Prev Field".to_string()),
-            ("h/l".to_string(), "Mode".to_string()),
             ("Enter/i".to_string(), "Edit".to_string()),
             ("s".to_string(), "Save".to_string()),
-            ("t".to_string(), "Test".to_string()),
-            ("o".to_string(), "Details".to_string()),
             ("Esc".to_string(), "Close".to_string()),
             ("?".to_string(), "Help".to_string()),
         ],
         UiContext::Analytics => vec![
             ("Tab".to_string(), "Next View".to_string()),
-            ("Shift-Tab".to_string(), "Prev View".to_string()),
             ("j/k".to_string(), "Move Row".to_string()),
             ("r".to_string(), "Refresh".to_string()),
             ("Esc".to_string(), "Mailbox".to_string()),
             ("?".to_string(), "Help".to_string()),
         ],
-    }
+    };
+    hints.truncate(HINT_BAR_MAX_HINTS);
+    hints
 }
 
 fn build_lines(hints: &[(String, String)], theme: &Theme) -> Vec<Line<'static>> {
@@ -300,23 +235,62 @@ fn hint_line_owned(hints: &[(String, String)], theme: &Theme) -> Line<'static> {
 
 #[cfg(test)]
 mod tests {
-    use super::hints_for_context;
+    use super::{hints_for_context, HINT_BAR_MAX_HINTS};
     use crate::action::UiContext;
 
+    /// The hint bar promises a top-N contextual surface; deeper
+    /// commands live in Cmd+K and `?`. Test that every context keeps
+    /// the bar under the documented cap so the design stays honest.
     #[test]
-    fn selected_mailbox_hints_include_bulk_actions_and_clear() {
-        let hints = hints_for_context(UiContext::MailboxList, 3);
-        let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
-        assert!(labels.contains(&"Clear Sel".to_string()));
-        assert!(labels.contains(&"Archive".to_string()));
-        assert!(labels.contains(&"Read + Archive".to_string()));
-        assert!(labels.contains(&"Apply Label".to_string()));
+    fn no_context_exceeds_hint_bar_cap() {
+        let contexts = [
+            (UiContext::MailboxSidebar, 0usize),
+            (UiContext::MailboxList, 0),
+            (UiContext::MailboxList, 3),
+            (UiContext::MailboxMessage, 0),
+            (UiContext::SearchEditor, 0),
+            (UiContext::SearchResults, 0),
+            (UiContext::SearchPreview, 0),
+            (UiContext::RulesList, 0),
+            (UiContext::RulesForm, 0),
+            (UiContext::Diagnostics, 0),
+            (UiContext::AccountsList, 0),
+            (UiContext::AccountsForm, 0),
+            (UiContext::Analytics, 0),
+        ];
+        for (context, selected) in contexts {
+            let hints = hints_for_context(context, selected);
+            assert!(
+                hints.len() <= HINT_BAR_MAX_HINTS,
+                "context {context:?} (selected={selected}) yielded {} hints, cap is {HINT_BAR_MAX_HINTS}",
+                hints.len(),
+            );
+        }
     }
 
     #[test]
-    fn message_view_hints_include_open_links() {
+    fn selected_mailbox_hints_lead_with_clear_and_keep_archive() {
+        let hints = hints_for_context(UiContext::MailboxList, 3);
+        let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
+        assert_eq!(
+            labels.first().map(String::as_str),
+            Some("Clear Sel"),
+            "selected mailbox must surface the clear-selection escape first"
+        );
+        assert!(
+            labels.contains(&"Archive".to_string()),
+            "Archive must remain in the slim bar; got {labels:?}",
+        );
+    }
+
+    #[test]
+    fn message_view_hints_lead_with_reply() {
         let hints = hints_for_context(UiContext::MailboxMessage, 0);
         let labels: Vec<String> = hints.into_iter().map(|(_, label)| label).collect();
-        assert!(labels.contains(&"Open Links".to_string()));
+        assert_eq!(
+            labels.first().map(String::as_str),
+            Some("Reply"),
+            "message view must surface Reply first; got {labels:?}",
+        );
     }
 }

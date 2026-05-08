@@ -53,6 +53,9 @@ pub fn render_event(event: &DaemonEvent, format: OutputFormat) -> anyhow::Result
             DaemonEvent::MessageUnsnoozed { message_id } => {
                 format!("snooze message_unsnoozed={message_id}")
             }
+            DaemonEvent::ReminderTriggered { sent_message_id } => {
+                format!("reminder reminder_triggered={sent_message_id}")
+            }
             DaemonEvent::LabelCountsUpdated { counts } => {
                 format!("sync label_counts_updated={}", counts.len())
             }

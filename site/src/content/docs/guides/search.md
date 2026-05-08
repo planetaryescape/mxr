@@ -111,3 +111,33 @@ mxr saved add urgent "label:inbox unread from:boss@example.com"
 mxr saved list
 mxr saved run urgent
 ```
+
+## In real life
+
+- **Quick "did I miss anything important today":** `mxr search 'is:unread label:inbox newer_than:1d' --format json | jq 'group_by(.from) | map({sender:.[0].from, count:length})'`
+- **Find that one PDF you were sent last quarter:** `mxr search 'has:attachment filename:pricing.pdf older_than:90d' --mode hybrid`
+- **Bulk-archive every receipt 30 days old:** `mxr search 'label:receipts older_than:30d' --format ids | mxr archive --yes`
+- **Build a digest before a 1:1:** `mxr search 'from:sarah newer_than:7d' --format json | jq -r '.[].subject'`
+
+## Agent prompts that work
+
+```text
+"Find every email mentioning 'launch checklist' since last Monday and
+summarise what's still open. Use `mxr search 'launch checklist
+newer_than:7d' --format json` and `mxr summarize` for any thread with
+4+ messages."
+```
+
+```text
+"What did Bob email me about pricing in Q1? Use hybrid search and
+`--explain` so I can see why each result matched: `mxr search
+'from:bob pricing after:2026-01-01 before:2026-04-01' --mode hybrid
+--explain`."
+```
+
+## See also
+
+- [Labels and saved searches](/guides/labels-and-saved-searches/)
+- [Semantic search](/guides/semantic-search/)
+- [Recipes — fzf / jq](/guides/recipes/)
+- [CLI — Mail retrieval](/reference/cli/#mail-retrieval-and-inspection)

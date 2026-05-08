@@ -366,6 +366,105 @@ pub async fn drafts(format: Option<OutputFormat>) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// CLI surface for `mxr drafts recover`. Surfaces drafts the daemon
+/// believes are orphaned mid-send (status `'sending'` with stale
+/// activity) so the user can decide between resume and discard.
+pub async fn drafts_recover(format: Option<OutputFormat>) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    let resp = client.request(Request::ListOrphanedDrafts).await?;
+    let drafts = match resp {
+        Response::Ok {
+            data: ResponseData::Drafts { drafts },
+        } => drafts,
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    };
+    match resolve_format(format) {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&drafts)?),
+        OutputFormat::Jsonl => println!("{}", jsonl(&drafts)?),
+        OutputFormat::Csv => {
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record(["draft_id", "account_id", "subject", "updated_at"])?;
+            for draft in &drafts {
+                writer.write_record(vec![
+                    draft.id.as_str(),
+                    draft.account_id.as_str(),
+                    draft.subject.clone(),
+                    draft.updated_at.to_rfc3339(),
+                ])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            for draft in &drafts {
+                println!("{}", draft.id);
+            }
+        }
+        OutputFormat::Table => {
+            if drafts.is_empty() {
+                println!("No orphaned drafts");
+            } else {
+                println!("{} orphaned draft(s):", drafts.len());
+                for d in &drafts {
+                    println!("  {} — {}", d.id, d.subject);
+                }
+                println!();
+                println!("Resume any with: mxr drafts resume <draft-id>");
+                println!("Discard any with: mxr drafts discard <draft-id>");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// CLI surface for `mxr drafts resume <id>`. Force-resets the draft to
+/// `'draft'` status so the user can retry the send via the normal
+/// pipeline. Idempotent — already-`'draft'` drafts are a no-op.
+pub async fn drafts_resume(draft_id: String) -> anyhow::Result<()> {
+    let parsed = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
+    let mut client = IpcClient::connect().await?;
+    let resp = client
+        .request(Request::ResetOrphanedDraft {
+            draft_id: parsed.clone(),
+        })
+        .await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => {
+            println!(
+                "Draft {} reset to 'draft' — retry with `mxr send {}`",
+                parsed, parsed
+            );
+            Ok(())
+        }
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+}
+
+/// CLI surface for `mxr drafts discard <id>`. Permanently deletes the
+/// draft. Use after `mxr drafts recover` when you don't want to retry.
+pub async fn drafts_discard(draft_id: String) -> anyhow::Result<()> {
+    let parsed = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
+    let mut client = IpcClient::connect().await?;
+    let resp = client
+        .request(Request::DeleteDraft {
+            draft_id: parsed.clone(),
+        })
+        .await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => {
+            println!("Discarded draft {parsed}");
+            Ok(())
+        }
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+}
+
 pub async fn send_draft(draft_id: String, dry_run: bool) -> anyhow::Result<()> {
     let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
     let mut client = IpcClient::connect().await?;
@@ -447,6 +546,55 @@ pub async fn send_draft(draft_id: String, dry_run: bool) -> anyhow::Result<()> {
         println!("Local message id: {}", info.local_message_id);
     }
     Ok(())
+}
+
+pub async fn schedule_send(draft_id: String, when: String) -> anyhow::Result<()> {
+    let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
+    let send_at = mxr_core::parse_relative_time(&when, chrono::Utc::now()).map_err(|e| {
+        anyhow::anyhow!(
+            "Cannot parse '{when}': {e}. Try: `in 2h`, `tomorrow 9am`, `monday 17:00`, or ISO 8601."
+        )
+    })?;
+    let mut client = IpcClient::connect().await?;
+    let resp = client
+        .request(Request::ScheduleSend {
+            draft_id: draft_id.clone(),
+            send_at,
+        })
+        .await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => {
+            let pretty = send_at
+                .with_timezone(&chrono::Local)
+                .format("%a %b %e %H:%M");
+            println!("Scheduled draft {draft_id} for {pretty}");
+            Ok(())
+        }
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+}
+
+pub async fn cancel_scheduled_send(draft_id: String) -> anyhow::Result<()> {
+    let draft_id = DraftId::from_uuid(uuid::Uuid::parse_str(&draft_id)?);
+    let mut client = IpcClient::connect().await?;
+    let resp = client
+        .request(Request::CancelScheduledSend {
+            draft_id: draft_id.clone(),
+        })
+        .await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::Ack,
+        } => {
+            println!("Cancelled scheduled send for draft {draft_id}");
+            Ok(())
+        }
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
 }
 
 async fn resolve_compose_account(

@@ -1,0 +1,14 @@
+---
+source: crates/daemon/tests/cli_help.rs
+assertion_line: 13
+expression: stdout
+---
+Force-reset an orphaned draft to `'draft'` status so it can be re-sent via the normal pipeline. No-op if the draft is already in `'draft'`
+
+Usage: mxr drafts resume <DRAFT_ID>
+
+Arguments:
+  <DRAFT_ID>  Draft ID to resume
+
+Options:
+  -h, --help  Print help

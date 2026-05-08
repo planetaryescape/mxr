@@ -58,6 +58,27 @@ impl App {
         self.apply(Action::OpenAccountFormNew);
     }
 
+    /// Onboarding shortcut: dismiss the welcome modal and surface a CLI
+    /// hint pointing at `mxr setup --demo`. The daemon side of demo
+    /// setup writes a fake-provider account to disk; the TUI then
+    /// auto-picks it up after the user re-launches.
+    pub(super) fn pick_demo_setup_path(&mut self) {
+        self.accounts.page.onboarding_modal_open = false;
+        self.status_message =
+            Some("Run `mxr setup --demo` from another terminal, then relaunch mxr".into());
+    }
+
+    /// Onboarding shortcut: jump into the new-account form. Used by
+    /// both `g` and `i` paths in the welcome modal. The provider
+    /// chooser lives inside the form itself; the modal's role is just
+    /// to get the user there fast.
+    pub(super) fn pick_form_setup_path(&mut self, provider_hint: &'static str) {
+        self.status_message = Some(format!(
+            "Pick `{provider_hint}` in the provider tabs at the top of the form"
+        ));
+        self.complete_account_setup_onboarding();
+    }
+
     pub fn sync_rule_form_editors(&mut self) {
         self.rules.condition_editor =
             TextArea::from(if self.rules.page.form.condition.is_empty() {

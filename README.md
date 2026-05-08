@@ -3,7 +3,7 @@
 [![CI](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml/badge.svg)](https://github.com/planetaryescape/mxr/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/rust-1.88%2B-blue.svg)](https://github.com/planetaryescape/mxr/blob/main/Cargo.toml)
 
-**Local-first email infrastructure.**
+**Local-first email infrastructure.** Write `mxr`, say "Mixer".
 
 mxr syncs Gmail and IMAP into SQLite on your machine. You read mail in the TUI, script it from the CLI, and hand it to an agent when that helps. Same local data. Same daemon. Same commands.
 
@@ -154,10 +154,22 @@ Operating rules:
 
 No SDK. No custom DSL. If a tool can run a command and parse JSON, it can work with mxr.
 
+**Search is the universal selector.** Every list/search command writes one ID per line under `--format ids`; every read or mutate command takes an ID. Compose with anything:
+
 ```bash
-mxr search "is:unread from:buildkite" --format json \
-  | jq -r '.[].message_id'
+mxr search '<query>' --format ids | xargs -I{} <command> {}
 ```
+
+For mxr-on-mxr chaining, prefer `--search` directly — daemon-native, snapshot-consistent, with `--first` and `--limit N` modifiers:
+
+```bash
+mxr cat --search 'from:alice' --first              # body of the latest match
+mxr summarize --search 'is:unread' --first         # LLM summary of the most recent unread thread
+mxr archive --search 'from:no-reply older_than:30d' --yes
+mxr search "is:unread from:buildkite" --format json | jq -r '.[].message_id'
+```
+
+`--search` is on every read command that takes an ID (`cat`, `thread`, `headers`, `summarize`, `draft-assist`, `open`, `attachments list`) and on every mutation. See [`docs/recipes`](https://mxr-mail.vercel.app/guides/recipes/) for the full cookbook (fzf / jq / xargs / cron / agent prompts).
 
 That same surface is what the agent skill uses. A coding agent can search, read, draft, export, and batch-mutate mail through the CLI that already exists.
 

@@ -2,13 +2,16 @@
 source: crates/daemon/tests/cli_help.rs
 expression: stdout
 ---
-Show message headers
+Show message headers. Pass a positional ID, pipe IDs on stdin, or resolve a list with `--search QUERY`
 
-Usage: mxr headers [OPTIONS] <MESSAGE_ID>
+Usage: mxr headers [OPTIONS] [MESSAGE_ID]
 
 Arguments:
-  <MESSAGE_ID>  
+  [MESSAGE_ID]
 
 Options:
+      --search <SEARCH>
+      --first
+      --limit <LIMIT>
       --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
   -h, --help             Print help

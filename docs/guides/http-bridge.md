@@ -78,7 +78,7 @@ The bridge accepts the token via four mechanisms:
 ```
 /api/v1/admin/*       — daemon health, diagnostics, status
 /api/v1/mail/*        — read, search, mutate, sync, compose
-/api/v1/platform/*    — accounts, rules, saved searches, semantic, analytics
+/api/v1/platform/*    — accounts, rules, saved searches, LLM, semantic, analytics
 /api/v1/desktop/*     — client-specific UI shaping (transitional)
 /api/v1/events        — WebSocket event stream (10 DaemonEvent variants)
 /api/v1/health        — unauthenticated liveness probe

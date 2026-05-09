@@ -1,9 +1,9 @@
 use crate::app::{AnalyticsState, AnalyticsView, ContactsMode, StorageMode, WrappedWindow};
-use crate::ui::analytics_widgets::{big_text_banner, format_count, histogram_bar_chart, stat_card};
+use crate::ui::analytics_widgets::{format_count, histogram_bar_chart, stat_card};
 use mxr_core::types::{ResponseTimeDirection, StaleBallInCourt, StorageGroupBy};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
-use tui_big_text::PixelSize;
+use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
     let chunks = Layout::default()
@@ -113,10 +113,16 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
             .title(" Loading ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(theme.text_muted));
+        let spinner = Throbber::default()
+            .throbber_set(BRAILLE_SIX)
+            .throbber_style(Style::default().fg(theme.accent))
+            .to_symbol_span(&state.loading_throbber);
+        let line = Line::from(vec![
+            spinner,
+            Span::raw("  Computing analytics… first run may take a minute on large mailboxes."),
+        ]);
         frame.render_widget(
-            Paragraph::new("Computing analytics...")
-                .block(block)
-                .wrap(Wrap { trim: false }),
+            Paragraph::new(line).block(block).wrap(Wrap { trim: false }),
             area,
         );
         return;
@@ -135,20 +141,105 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
         return;
     }
 
+    // Each view (other than Wrapped, which has its own contextual
+    // header) gets a small "What you're seeing" explainer block
+    // above the per-view body. The text answers three questions in
+    // three lines: what this view is, what the numbers mean, and what
+    // to do with it. Pulled out of the views so every tab gets the
+    // same shape.
+    let body_area = match view_explainer_lines(state, theme) {
+        Some(lines) => {
+            let split = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(5), Constraint::Min(0)])
+                .split(area);
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(theme.muted_style())
+                .title(" What you're seeing ");
+            frame.render_widget(
+                Paragraph::new(lines).block(block).wrap(Wrap { trim: false }),
+                split[0],
+            );
+            split[1]
+        }
+        None => area,
+    };
+
     match state.view {
         AnalyticsView::Storage => match state.storage_mode {
-            StorageMode::Breakdown => draw_storage(frame, area, state, theme),
-            StorageMode::LargestMessages => draw_largest_messages(frame, area, state, theme),
+            StorageMode::Breakdown => draw_storage(frame, body_area, state, theme),
+            StorageMode::LargestMessages => draw_largest_messages(frame, body_area, state, theme),
         },
-        AnalyticsView::StaleThreads => draw_stale(frame, area, state, theme),
+        AnalyticsView::StaleThreads => draw_stale(frame, body_area, state, theme),
         AnalyticsView::Contacts => match state.contacts_mode {
-            ContactsMode::Asymmetry => draw_asymmetry(frame, area, state, theme),
-            ContactsMode::Decay => draw_decay(frame, area, state, theme),
+            ContactsMode::Asymmetry => draw_asymmetry(frame, body_area, state, theme),
+            ContactsMode::Decay => draw_decay(frame, body_area, state, theme),
         },
-        AnalyticsView::ResponseTime => draw_response_time(frame, area, state, theme),
-        AnalyticsView::Subscriptions => draw_subscriptions(frame, area, state, theme),
-        AnalyticsView::Wrapped => draw_wrapped(frame, area, state, theme),
+        AnalyticsView::ResponseTime => draw_response_time(frame, body_area, state, theme),
+        AnalyticsView::Subscriptions => draw_subscriptions(frame, body_area, state, theme),
+        AnalyticsView::Wrapped => draw_wrapped(frame, body_area, state, theme),
     }
+}
+
+/// Three-line explainer for the active view. Line 1 is the headline
+/// (what this is), line 2 the gloss (what the numbers mean), line 3
+/// the action (what to do with it). Returns `None` for Wrapped, which
+/// already has its own redesigned header.
+fn view_explainer_lines<'a>(
+    state: &'a AnalyticsState,
+    theme: &crate::theme::Theme,
+) -> Option<Vec<Line<'a>>> {
+    let (headline, gloss, action) = match state.view {
+        AnalyticsView::Storage => match state.storage_mode {
+            StorageMode::Breakdown => (
+                "Storage breakdown — where your disk goes.",
+                "Each row totals bytes for one bucket (sender, mimetype, or label). Share = % of all bytes.",
+                "Tab top rows to find archive / unsubscribe candidates. Press 'f' to switch grouping.",
+            ),
+            StorageMode::LargestMessages => (
+                "Largest single messages by size.",
+                "One row = one message. Useful when a single attachment dwarfs everything else.",
+                "Enter jumps to the sender's mail so you can review before archiving.",
+            ),
+        },
+        AnalyticsView::StaleThreads => (
+            "Threads waiting on a reply.",
+            "Each row is a thread whose latest message is older than the threshold. Days stale = how long the ball has sat.",
+            "Toggle perspective: 'mine' = you owe a reply; 'theirs' = they owe one. Enter searches that counterparty.",
+        ),
+        AnalyticsView::Contacts => match state.contacts_mode {
+            ContactsMode::Asymmetry => (
+                "Imbalanced correspondents.",
+                "Asymmetry = |inbound − outbound| / max(in, out). 1.0 means one side does all the talking.",
+                "High inbound + low outbound = newsletters or under-replied senders. Enter to drill in.",
+            ),
+            ContactsMode::Decay => (
+                "Relationships drifting.",
+                "Last inbound is recent but you haven't replied within the threshold. The longer the gap, the colder the contact.",
+                "Press 'r' to refresh the materialized contacts table; Enter to jump to that contact's mail.",
+            ),
+        },
+        AnalyticsView::ResponseTime => (
+            "Reply times — how fast you/they respond.",
+            "p50 = median wait. p90 = the slow tail (only 10% take longer). Histogram below buckets every reply.",
+            "Tall left bars = quick replier. Tall right bars = a backlog forming.",
+        ),
+        AnalyticsView::Subscriptions => (
+            "Senders with an unsubscribe header.",
+            "Each row is one sender; 'opened' / 'archived unread' show whether you actually read what they send.",
+            "'u' opens the unsubscribe-confirm modal for the selected row. Enter searches that sender's mail.",
+        ),
+        AnalyticsView::Wrapped => return None,
+    };
+    Some(vec![
+        Line::from(Span::styled(
+            headline,
+            theme.accent_style().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(gloss, theme.primary_style())),
+        Line::from(Span::styled(action, theme.muted_style())),
+    ])
 }
 
 /// Standard tabular-tab layout: a 3-up "stat strip" of cards on top
@@ -495,11 +586,10 @@ fn draw_response_time(
         return;
     }
 
-    // Stat strip on top + histogram below. We dropped the BigText
-    // hero (one number doesn't deserve a billboard) and the
-    // percentile-bar block (those scaled to p90, so the p90 bar
-    // always rendered 100% full and conveyed nothing). Distribution
-    // shape + p50/p90 text annotations beats both.
+    // Stats on top, histogram below. The "What you're seeing"
+    // explainer is now rendered by the dispatcher (`draw_table`)
+    // above this view alongside every other tab's, so we no longer
+    // bake one in here.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(4), Constraint::Min(0)])
@@ -1049,18 +1139,18 @@ fn unsubscribe_method_label(method: &mxr_core::types::UnsubscribeMethod) -> &'st
     }
 }
 
-/// Wrapped year-in-review dashboard. A compact header (BigText
-/// window label + window range + totals) sits above two rows of
-/// three tiles — Volume, When, Contacts, Reply discipline, Storage,
-/// Newsletters — and a full-width Superlatives strip. Each tile
-/// answers ONE question with the most direct rendering for that
-/// data shape:
-///   * Volume:  the in:out ratio, not three mismatched bars.
-///   * When:    a smooth 24h sparkline + AM/PM split, not 24 mini-bars.
-///   * Contacts: top-1 with share %, not a stack of bars duplicating the count.
-///   * Reply:   p50/p90 + named fastest/slowest, not a maxed-out gauge.
-///   * Storage / Newsletters: stat lines, with empty state when data is absent.
-/// Tile selection (`wrapped_selected_tile`, 0..=6) draws the focused
+/// Wrapped year-in-review dashboard. A compact 4-row header (window
+/// label + range + totals) sits above a 2×3 tile grid — Volume,
+/// When, Contacts, Reply discipline, Storage, Newsletters. Each
+/// tile answers ONE question with the most direct rendering for
+/// that data shape:
+///   * Volume:  in:out ratio + split bar + longest-thread footer.
+///   * When:    busiest day-of-week + 24h sparkline + AM/PM split.
+///   * Contacts: top-1 + share gauge + most-ghosted footer.
+///   * Reply:   p50/p90 + named fastest/slowest.
+///   * Storage: top mime + share gauge + heaviest message.
+///   * Newsletters: top list + opened gauge (or zeroed empty state).
+/// Tile selection (`wrapped_selected_tile`, 0..=5) draws the focused
 /// border around the selected tile.
 fn draw_wrapped(
     frame: &mut Frame,
@@ -1078,24 +1168,22 @@ fn draw_wrapped(
         return;
     };
 
-    // Compact 5-row header: BigText (3 inner rows) + borders. Frees
-    // ~3 extra rows of tile real estate vs the previous 8-row hero.
-    let outer_chunks = Layout::default()
+    // Compact 4-row header (one bordered block, two text lines) + a 2x3
+    // tile grid. The previous 5-row pixel-art header plus a separate
+    // "Superlatives" strip ate ~9 rows of vertical real estate while
+    // saying very little; folding the longest-thread / most-ghosted
+    // factoids into the existing Volume and Top-inbound tiles lets the
+    // grid breathe.
+    let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(5), Constraint::Min(0)])
+        .constraints([Constraint::Length(4), Constraint::Min(0)])
         .split(area);
-    draw_wrapped_header(frame, outer_chunks[0], summary, theme);
+    draw_wrapped_header(frame, outer[0], summary, theme);
 
-    // Body: row1 | row2 | superlatives.
-    let body_chunks = Layout::default()
+    let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage(45),
-            Constraint::Percentage(45),
-            Constraint::Min(4),
-        ])
-        .split(outer_chunks[1]);
-
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(outer[1]);
     let row1 = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -1103,7 +1191,7 @@ fn draw_wrapped(
             Constraint::Percentage(33),
             Constraint::Percentage(34),
         ])
-        .split(body_chunks[0]);
+        .split(rows[0]);
     let row2 = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -1111,7 +1199,7 @@ fn draw_wrapped(
             Constraint::Percentage(33),
             Constraint::Percentage(34),
         ])
-        .split(body_chunks[1]);
+        .split(rows[1]);
 
     let selected = state.wrapped_selected_tile;
     draw_wrapped_volume(frame, row1[0], summary, theme, selected == 0);
@@ -1120,7 +1208,6 @@ fn draw_wrapped(
     draw_wrapped_reply(frame, row2[0], summary, theme, selected == 3);
     draw_wrapped_storage(frame, row2[1], summary, theme, selected == 4);
     draw_wrapped_newsletters(frame, row2[2], summary, theme, selected == 5);
-    draw_wrapped_superlatives(frame, body_chunks[2], summary, theme, selected == 6);
 }
 
 fn draw_wrapped_header(
@@ -1129,42 +1216,41 @@ fn draw_wrapped_header(
     summary: &mxr_core::types::WrappedSummary,
     theme: &crate::theme::Theme,
 ) {
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(area);
     let label = wrapped_short_label(&summary.label);
-    big_text_banner(frame, cols[0], "Wrapped", &label, PixelSize::Sextant, theme);
-
     let total_msgs = summary.volume.inbound_count as u64 + summary.volume.outbound_count as u64;
-    let info = vec![
+    let window_line = format!(
+        "{} → {}  ·  {} messages  ·  {} threads",
+        summary.window_start.format("%b %-d, %Y"),
+        summary.window_end.format("%b %-d, %Y"),
+        format_count(total_msgs),
+        format_count(summary.volume.thread_count as u64),
+    );
+    let lines = vec![
         Line::from(Span::styled(
-            format!(
-                "{} → {}",
-                summary.window_start.format("%Y-%m-%d"),
-                summary.window_end.format("%Y-%m-%d"),
-            ),
+            label,
             theme.accent_style().add_modifier(Modifier::BOLD),
         )),
-        Line::from(format!(
-            "{} messages · {} threads",
-            format_count(total_msgs),
-            format_count(summary.volume.thread_count as u64),
-        )),
+        Line::from(Span::styled(window_line, theme.muted_style())),
     ];
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(theme.muted_style())
-        .title(" Window ");
+        .border_style(theme.accent_style())
+        .title(Line::from(vec![
+            Span::raw(" "),
+            Span::styled("Wrapped", theme.accent_style().add_modifier(Modifier::BOLD)),
+            Span::raw(" "),
+        ]));
     frame.render_widget(
-        Paragraph::new(info).block(block).wrap(Wrap { trim: false }),
-        cols[1],
+        Paragraph::new(lines)
+            .block(block)
+            .wrap(Wrap { trim: false })
+            .alignment(Alignment::Center),
+        area,
     );
 }
 
-/// Compact label for the BigText banner — `"2026 year-to-date"`
-/// becomes `"2026 YTD"`, `"last 90 days"` becomes `"LAST 90D"`.
-/// Keeps the banner narrow so the header doesn't wrap.
+/// Compact label for the header — `"2026 year-to-date"` becomes
+/// `"2026 YTD"`, `"last 90 days"` becomes `"LAST 90D"`.
 fn wrapped_short_label(label: &str) -> String {
     let upper = label.to_uppercase();
     upper
@@ -1188,10 +1274,13 @@ fn draw_wrapped_volume(
     theme: &crate::theme::Theme,
     focused: bool,
 ) {
-    // Volume's story is the *ratio*, not three bars at mismatched
-    // scales. With in=5214 and out=159 in the same chart, the `out`
-    // bar disappears. Ratio + counts as text answers the actual
-    // question ("am I lurking or participating?").
+    // Volume's story is the *ratio*: am I lurking or participating?
+    // Render it three ways that reinforce each other — a centred
+    // headline ratio, a coloured split bar showing the proportion
+    // visually, and the raw counts beneath. The longest-thread
+    // superlative tags on as a footer because it's a volume statistic
+    // ("biggest single conversation in the window") and used to live
+    // in its own dedicated strip that left lots of empty space.
     let block = wrapped_tile_block("Volume", theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1199,10 +1288,18 @@ fn draw_wrapped_volume(
         return;
     }
     let v = &summary.volume;
+    let has_longest = summary.superlatives.longest_thread.is_some();
+    let footer_height = if has_longest { 2 } else { 0 };
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(2), Constraint::Min(0)])
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(footer_height),
+        ])
         .split(inner);
+
     let ratio_text = ratio_label(v.inbound_count, v.outbound_count);
     frame.render_widget(
         Paragraph::new(vec![
@@ -1215,16 +1312,26 @@ fn draw_wrapped_volume(
         .alignment(Alignment::Center),
         chunks[0],
     );
-    let kv = vec![
-        ("inbound".to_string(), format_count(v.inbound_count as u64)),
-        (
-            "outbound".to_string(),
-            format_count(v.outbound_count as u64),
-        ),
-        ("threads".to_string(), format_count(v.thread_count as u64)),
+
+    // Split bar visualising in:out proportion. Always shows both
+    // sides — pads each to ≥1 cell so a 33:1 ratio doesn't render
+    // outbound as zero-width and look broken.
+    render_split_bar(
+        frame,
+        chunks[1],
+        v.inbound_count as u64,
+        v.outbound_count as u64,
+        theme.accent,
+        theme.text_muted,
+    );
+
+    let kv = [
+        ("inbound", format_count(v.inbound_count as u64)),
+        ("outbound", format_count(v.outbound_count as u64)),
+        ("threads", format_count(v.thread_count as u64)),
     ];
     let label_w = kv.iter().map(|(l, _)| l.len()).max().unwrap_or(0);
-    let lines: Vec<Line> = kv
+    let stat_lines: Vec<Line> = kv
         .iter()
         .map(|(label, value)| {
             Line::from(vec![
@@ -1237,7 +1344,69 @@ fn draw_wrapped_volume(
             ])
         })
         .collect();
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), chunks[1]);
+    frame.render_widget(
+        Paragraph::new(stat_lines).wrap(Wrap { trim: false }),
+        chunks[2],
+    );
+
+    if has_longest {
+        if let Some(t) = summary.superlatives.longest_thread.as_ref() {
+            let subject: String = t.subject.chars().take(40).collect();
+            let footer = vec![
+                Line::from(Span::styled(
+                    format!("longest thread · {} msgs", t.message_count),
+                    theme.muted_style(),
+                )),
+                Line::from(Span::styled(subject, theme.secondary_style())),
+            ];
+            frame.render_widget(Paragraph::new(footer), chunks[3]);
+        }
+    }
+}
+
+/// Render a single-row coloured split bar across `area` representing
+/// `a` vs `b`. Both sides are clamped to ≥1 cell when the data is
+/// non-zero so the smaller side never disappears entirely.
+fn render_split_bar(
+    frame: &mut Frame,
+    area: Rect,
+    a: u64,
+    b: u64,
+    color_a: ratatui::style::Color,
+    color_b: ratatui::style::Color,
+) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let total = a.saturating_add(b);
+    if total == 0 {
+        return;
+    }
+    let width = area.width as u64;
+    let mut a_w = (a * width) / total;
+    let mut b_w = width.saturating_sub(a_w);
+    // Floor each non-zero side to 1 cell so a tiny side stays visible.
+    if a > 0 && a_w == 0 {
+        a_w = 1;
+        b_w = b_w.saturating_sub(1);
+    }
+    if b > 0 && b_w == 0 {
+        b_w = 1;
+        a_w = a_w.saturating_sub(1);
+    }
+    let bar = format!("{}{}", "█".repeat(a_w as usize), "█".repeat(b_w as usize));
+    let line = Line::from(vec![
+        Span::styled(
+            "█".repeat(a_w as usize),
+            ratatui::style::Style::default().fg(color_a),
+        ),
+        Span::styled(
+            "█".repeat(b_w as usize),
+            ratatui::style::Style::default().fg(color_b),
+        ),
+    ]);
+    let _ = bar;
+    frame.render_widget(Paragraph::new(line), area);
 }
 
 /// Pretty-print a ratio between two counts. Big sides get the
@@ -1276,11 +1445,10 @@ fn draw_wrapped_when(
         .unwrap_or_else(|| "—".into());
     let title = format!("When · peak {peak}");
 
-    // Smooth 24h sparkline + AM/PM split subtitle. The shape (where
-    // the curve rises/falls across the day) is what tells you
-    // something; 24 individual bars labelled "0 0 0 1 1 2 2" are
-    // just noise. Inline rather than via the sparkline_card helper
-    // so we can preserve focus state on the outer wrapped_tile_block.
+    // 24-hour sparkline + AM/PM split + busiest day-of-week headline.
+    // The curve answers "when do messages land" at a glance; the
+    // named DOW + AM/PM split turn that shape into a sentence
+    // ("Mondays, mostly afternoon").
     let block = wrapped_tile_block(&title, theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1306,24 +1474,45 @@ fn draw_wrapped_when(
         (evening as f64) / (total as f64) * 100.0,
     );
 
-    // Inner split: sparkline | axis | subtitle.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(1),
             Constraint::Min(1),
             Constraint::Length(1),
             Constraint::Length(1),
         ])
         .split(inner);
+
+    // Headline row: busiest day-of-week, e.g. "Mondays · 988 msgs".
+    let dow_line = match (
+        pat.busiest_day_of_week.as_deref(),
+        pat.busiest_day_of_week_count,
+    ) {
+        (Some(name), count) if count > 0 => Line::from(vec![
+            Span::styled(
+                format!("{name}s"),
+                theme.accent_style().add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("  "),
+            Span::styled(
+                format!("· {} msgs", format_count(count as u64)),
+                theme.muted_style(),
+            ),
+        ]),
+        _ => Line::from(Span::styled("(no busiest day)", theme.muted_style())),
+    };
+    frame.render_widget(Paragraph::new(dow_line), chunks[0]);
+
     let max = data.iter().copied().max().unwrap_or(1).max(1);
     frame.render_widget(
         Sparkline::default()
             .data(&data)
             .max(max)
             .style(theme.accent_style().add_modifier(Modifier::BOLD)),
-        chunks[0],
+        chunks[1],
     );
-    let axis_w = chunks[1].width as usize;
+    let axis_w = chunks[2].width as usize;
     let mut axis = String::with_capacity(axis_w);
     axis.push_str("00");
     let pad = axis_w.saturating_sub(4);
@@ -1331,11 +1520,11 @@ fn draw_wrapped_when(
     axis.push_str("23");
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(axis, theme.muted_style()))),
-        chunks[1],
+        chunks[2],
     );
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(subtitle, theme.secondary_style()))),
-        chunks[2],
+        chunks[3],
     );
 }
 
@@ -1348,8 +1537,11 @@ fn draw_wrapped_contacts(
 ) {
     // Top-1 with share % beats listing 5 senders next to bars
     // that duplicate the count. The interesting fact is the
-    // *concentration* (one sender = X% of inbound), not the
-    // ranking the table already shows.
+    // *concentration* (one sender = X% of inbound). A Gauge
+    // visualises the percentage so the empty middle of the tile
+    // stops looking like dead space, and the most-ghosted
+    // superlative tags on as a footer for the same reason as the
+    // longest-thread footer in Volume.
     let block = wrapped_tile_block("Top inbound", theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1365,35 +1557,82 @@ fn draw_wrapped_contacts(
         .take(5)
         .map(|c| c.count as u64)
         .sum();
-    let lines = match top {
-        Some(c) => {
-            let pct = share_pct(c.count as u64, total_in);
-            let top5_pct = share_pct(top5_share, total_in);
-            vec![
+    let Some(c) = top else {
+        frame.render_widget(
+            Paragraph::new("(no inbound senders)").style(theme.muted_style()),
+            inner,
+        );
+        return;
+    };
+    let pct = share_pct(c.count as u64, total_in);
+    let top5_pct = share_pct(top5_share, total_in);
+    let has_ghosted = summary.superlatives.most_ghosted.is_some();
+    let footer_height = if has_ghosted { 2 } else { 0 };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(footer_height),
+        ])
+        .split(inner);
+
+    // Headline: sender + count line.
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                short_email(&c.email).to_string(),
+                theme.primary_style().add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                format!(
+                    "{} msgs · {pct:.1}% of inbound",
+                    format_count(c.count as u64)
+                ),
+                theme.accent_style(),
+            )),
+        ]),
+        chunks[0],
+    );
+
+    // Gauge for the top-1 share. Uses a clamped ratio so 100%+ never
+    // overflows the widget; muted label shows the raw percent.
+    let ratio = (pct / 100.0).clamp(0.0, 1.0);
+    frame.render_widget(
+        Gauge::default()
+            .gauge_style(theme.accent_style())
+            .ratio(ratio)
+            .label(""),
+        chunks[1],
+    );
+
+    // Top-5 share as a hint underneath the gauge.
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            format!("top 5 = {top5_pct:.0}% of inbound"),
+            theme.muted_style(),
+        ))),
+        chunks[2],
+    );
+
+    if has_ghosted {
+        if let Some(g) = summary.superlatives.most_ghosted.as_ref() {
+            let footer = vec![
                 Line::from(Span::styled(
-                    c.email.clone(),
-                    theme.primary_style().add_modifier(Modifier::BOLD),
-                )),
-                Line::from(Span::styled(
-                    format!(
-                        "{} msgs · {pct:.1}% of inbound",
-                        format_count(c.count as u64)
-                    ),
-                    theme.accent_style(),
-                )),
-                Line::from(""),
-                Line::from(Span::styled(
-                    format!("top 5 = {top5_pct:.0}% of inbound"),
+                    format!("most ghosted · {} unanswered", g.inbound_count),
                     theme.muted_style(),
                 )),
-            ]
+                Line::from(Span::styled(
+                    short_email(&g.email).to_string(),
+                    theme.secondary_style(),
+                )),
+            ];
+            frame.render_widget(Paragraph::new(footer), chunks[4]);
         }
-        None => vec![Line::from(Span::styled(
-            "(no inbound senders)",
-            theme.muted_style(),
-        ))],
-    };
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    }
 }
 
 fn draw_wrapped_reply(
@@ -1429,43 +1668,47 @@ fn draw_wrapped_reply(
         return;
     }
 
+    // Business-hours stats are filled by the Slice-14 reconciler once
+    // it's run. Until then the tuple is (None, None) — drop the line
+    // entirely rather than render a "(business-hours pending)" filler
+    // that looks like an empty slot.
+    let biz_line = match (
+        reply.business_hours_p50_seconds,
+        reply.business_hours_p90_seconds,
+    ) {
+        (Some(p50), Some(p90)) => Some(Line::from(vec![
+            Span::styled("biz p50 ", theme.muted_style()),
+            Span::styled(format_duration_seconds(p50), theme.primary_style()),
+            Span::raw("   "),
+            Span::styled("biz p90 ", theme.muted_style()),
+            Span::styled(format_duration_seconds(p90), theme.primary_style()),
+        ])),
+        _ => None,
+    };
+
+    let header_height = if biz_line.is_some() { 3 } else { 2 };
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .constraints([Constraint::Length(header_height), Constraint::Min(0)])
         .split(inner);
 
-    // Top: p50 · p90 (clock and biz on one line each).
-    let p50p90 = vec![
-        Line::from(vec![
-            Span::styled("p50 ", theme.muted_style()),
-            Span::styled(
-                format_duration_seconds(reply.clock_p50_seconds),
-                theme.accent_style().add_modifier(Modifier::BOLD),
-            ),
-            Span::raw("   "),
-            Span::styled("p90 ", theme.muted_style()),
-            Span::styled(
-                format_duration_seconds(reply.clock_p90_seconds),
-                theme.accent_style().add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        match (
-            reply.business_hours_p50_seconds,
-            reply.business_hours_p90_seconds,
-        ) {
-            (Some(p50), Some(p90)) => Line::from(vec![
-                Span::styled("biz p50 ", theme.muted_style()),
-                Span::styled(format_duration_seconds(p50), theme.primary_style()),
-                Span::raw("   "),
-                Span::styled("biz p90 ", theme.muted_style()),
-                Span::styled(format_duration_seconds(p90), theme.primary_style()),
-            ]),
-            _ => Line::from(Span::styled(
-                "(business-hours pending)",
-                theme.muted_style(),
-            )),
-        },
-    ];
+    // Top: p50 · p90, plus the biz row when present.
+    let mut p50p90 = vec![Line::from(vec![
+        Span::styled("p50 ", theme.muted_style()),
+        Span::styled(
+            format_duration_seconds(reply.clock_p50_seconds),
+            theme.accent_style().add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("   "),
+        Span::styled("p90 ", theme.muted_style()),
+        Span::styled(
+            format_duration_seconds(reply.clock_p90_seconds),
+            theme.accent_style().add_modifier(Modifier::BOLD),
+        ),
+    ])];
+    if let Some(line) = biz_line {
+        p50p90.push(line);
+    }
     frame.render_widget(Paragraph::new(p50p90).wrap(Wrap { trim: false }), chunks[0]);
 
     // Bottom: fastest / slowest with names attached.
@@ -1538,40 +1781,66 @@ fn draw_wrapped_storage(
         return;
     }
 
-    let mut lines: Vec<Line> = Vec::new();
+    // Layout: top-mime header (2 rows) → gauge → spacer → heaviest
+    // (2 rows). The Gauge gives the share an immediate visual scale
+    // and stops the tile from looking like a stack of disconnected
+    // KV lines.
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(2),
+        ])
+        .split(inner);
+
     if let Some(top) = storage.top_mimetype.as_ref() {
         let pct = share_pct(top.bytes, storage.total_bytes);
-        lines.push(Line::from(vec![
-            Span::styled("top mime  ", theme.muted_style()),
-            Span::styled(
-                top.key.clone(),
-                theme.primary_style().add_modifier(Modifier::BOLD),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("          "),
-            Span::styled(
-                format!("{} · {pct:.1}%", format_bytes(top.bytes)),
-                theme.accent_style(),
-            ),
-        ]));
-        lines.push(Line::from(""));
+        let header = vec![
+            Line::from(vec![
+                Span::styled("top mime  ", theme.muted_style()),
+                Span::styled(
+                    top.key.clone(),
+                    theme.primary_style().add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("          "),
+                Span::styled(
+                    format!("{} · {pct:.1}%", format_bytes(top.bytes)),
+                    theme.accent_style(),
+                ),
+            ]),
+        ];
+        frame.render_widget(Paragraph::new(header), chunks[0]);
+        let ratio = (pct / 100.0).clamp(0.0, 1.0);
+        frame.render_widget(
+            Gauge::default()
+                .gauge_style(theme.accent_style())
+                .ratio(ratio)
+                .label(""),
+            chunks[1],
+        );
     }
+
     if let Some(heaviest) = storage.heaviest_message.as_ref() {
         let subject: String = heaviest.subject.chars().take(40).collect();
-        lines.push(Line::from(vec![
-            Span::styled("heaviest  ", theme.muted_style()),
-            Span::styled(subject, theme.primary_style()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("          "),
-            Span::styled(
-                format_bytes(heaviest.size_bytes),
-                theme.accent_style().add_modifier(Modifier::BOLD),
-            ),
-        ]));
+        let footer = vec![
+            Line::from(vec![
+                Span::styled("heaviest  ", theme.muted_style()),
+                Span::styled(subject, theme.primary_style()),
+            ]),
+            Line::from(vec![
+                Span::raw("          "),
+                Span::styled(
+                    format_bytes(heaviest.size_bytes),
+                    theme.accent_style().add_modifier(Modifier::BOLD),
+                ),
+            ]),
+        ];
+        frame.render_widget(Paragraph::new(footer), chunks[3]);
     }
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
 fn draw_wrapped_newsletters(
@@ -1582,21 +1851,6 @@ fn draw_wrapped_newsletters(
     focused: bool,
 ) {
     let news = &summary.newsletters;
-
-    // Empty state instead of an empty `Gauge` and "0 lists" label
-    // when no list-id headers are detected. Renders as muted text,
-    // not a broken-looking box.
-    if news.unique_lists == 0 && news.top_list.is_none() {
-        let block = wrapped_tile_block("Newsletters", theme, focused);
-        frame.render_widget(
-            Paragraph::new("(no list-id headers detected)")
-                .style(theme.muted_style())
-                .block(block),
-            area,
-        );
-        return;
-    }
-
     let title = format!(
         "Newsletters · {} lists · {:.1}% of inbound",
         news.unique_lists, news.list_share_of_inbound_pct
@@ -1607,81 +1861,77 @@ fn draw_wrapped_newsletters(
     if inner.height == 0 {
         return;
     }
-    let mut lines: Vec<Line> = Vec::new();
-    if let Some(top) = news.top_list.as_ref() {
-        let opened_pct = if top.message_count == 0 {
-            0.0
-        } else {
-            (top.opened_count as f64) / (top.message_count as f64) * 100.0
-        };
-        let id: String = top.list_id.chars().take(40).collect();
-        lines.push(Line::from(vec![
+
+    // Empty state: instead of a half-empty tile labelled "(no list-id
+    // headers detected)", render a stat-shape that mirrors the
+    // populated case — a centred big "0%" with a one-line gloss.
+    // Same skeleton, just zeroed out.
+    if news.unique_lists == 0 && news.top_list.is_none() {
+        let lines = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "0%",
+                theme.accent_style().add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                "of inbound is list-mail",
+                theme.muted_style(),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "no List-Id headers detected",
+                theme.muted_style(),
+            )),
+        ];
+        frame.render_widget(
+            Paragraph::new(lines).alignment(Alignment::Center),
+            inner,
+        );
+        return;
+    }
+
+    // Populated layout: top-list line + count·opened% line + opened
+    // gauge that visualises the read rate.
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .split(inner);
+
+    let Some(top) = news.top_list.as_ref() else {
+        return;
+    };
+    let opened_pct = if top.message_count == 0 {
+        0.0
+    } else {
+        (top.opened_count as f64) / (top.message_count as f64) * 100.0
+    };
+    let id: String = top.list_id.chars().take(40).collect();
+    let header = vec![
+        Line::from(vec![
             Span::styled("top list  ", theme.muted_style()),
             Span::styled(id, theme.primary_style().add_modifier(Modifier::BOLD)),
-        ]));
-        lines.push(Line::from(vec![
+        ]),
+        Line::from(vec![
             Span::raw("          "),
             Span::styled(
                 format!("{} msgs · {opened_pct:.0}% opened", top.message_count),
                 theme.accent_style(),
             ),
-        ]));
-    }
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
-}
+        ]),
+    ];
+    frame.render_widget(Paragraph::new(header), chunks[0]);
 
-fn draw_wrapped_superlatives(
-    frame: &mut Frame,
-    area: Rect,
-    summary: &mxr_core::types::WrappedSummary,
-    theme: &crate::theme::Theme,
-    focused: bool,
-) {
-    let sup = &summary.superlatives;
-    let block = wrapped_tile_block("Superlatives", theme, focused);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(inner);
-
-    let accent = theme.accent_style().add_modifier(Modifier::BOLD);
-    let muted = theme.muted_style();
-
-    let longest_lines = match sup.longest_thread.as_ref() {
-        Some(t) => {
-            let subject: String = t.subject.chars().take(60).collect();
-            vec![
-                Line::from(Span::styled("longest thread", muted)),
-                Line::from(Span::styled(subject, theme.primary_style())),
-                Line::from(Span::styled(
-                    format!("{} messages", t.message_count),
-                    accent,
-                )),
-            ]
-        }
-        None => vec![Line::from(Span::styled("(no longest thread)", muted))],
-    };
+    let ratio = (opened_pct / 100.0).clamp(0.0, 1.0);
     frame.render_widget(
-        Paragraph::new(longest_lines).wrap(Wrap { trim: false }),
-        cols[0],
-    );
-
-    let ghosted_lines = match sup.most_ghosted.as_ref() {
-        Some(g) => vec![
-            Line::from(Span::styled("most ghosted", muted)),
-            Line::from(Span::styled(g.email.clone(), theme.primary_style())),
-            Line::from(Span::styled(
-                format!("{} inbound, 0 replied", g.inbound_count),
-                accent,
-            )),
-        ],
-        None => vec![Line::from(Span::styled("(no most-ghosted)", muted))],
-    };
-    frame.render_widget(
-        Paragraph::new(ghosted_lines).wrap(Wrap { trim: false }),
-        cols[1],
+        Gauge::default()
+            .gauge_style(theme.accent_style())
+            .ratio(ratio)
+            .label(""),
+        chunks[1],
     );
 }
 

@@ -10,8 +10,9 @@ mxr ships two LLM-driven features today:
 - `mxr summarize <thread-id>` — 2 to 3 sentence summary focused on
   what's actionable for a busy reader.
 - `mxr draft-assist <thread-id> "<instruction>"` — generate a draft
-  reply grounded on the thread context plus your instruction. Output
-  goes to stdout; **never auto-sends**.
+  reply grounded on the thread context, your instruction, and similar
+  prior sent mail when semantic search is enabled. Output goes to
+  stdout; **never auto-sends**.
 
 Both are off by default. Enable them by setting `[llm] enabled = true`
 in your config and pointing at any backend that speaks the
@@ -64,6 +65,17 @@ The API key is read from the env var named in `api_key_env` at runtime
 the config file is intentional — the config is checked into dotfiles;
 the env var lives in your shell init.
 
+Check what the running daemon is using:
+
+```bash
+mxr llm status
+mxr llm status --format json
+```
+
+Config reloads rebuild the runtime provider, so changing `[llm]` and
+reloading the daemon account/config runtime switches the model without
+restarting the process.
+
 ## Recommended local models
 
 For Ollama (`ollama pull <model>`):
@@ -113,6 +125,12 @@ assistant asks for **just the reply body, no greeting line if the
 thread is mid-conversation, no signature, plain prose, matching the
 formality and length of the thread**.
 
+When semantic search is enabled and indexed, draft assist first looks
+for similar prior outbound messages, filters out inbound mail and the
+current thread, and includes up to three examples as voice grounding.
+If semantic search is disabled or unavailable, draft assist still works
+with only the current thread and instruction.
+
 You'll get the best results with models that follow instructions well
 and stay close to the source — Qwen 2.5 instruct, Llama 3 instruct,
 and the GPT-4o family all do this reliably.
@@ -123,11 +141,9 @@ and the GPT-4o family all do this reliably.
   short-form (≤2KB outputs); a single round-trip beats streaming for
   this use case.
 - **24KB prompt budget** — long threads truncate oldest-first.
-- **No retrieval-grounded draft assist yet** — the current draft
-  assistant uses thread context + instruction only. The future
-  extension is to retrieve top-K similar prior sent messages from
-  your own corpus (the `crates/semantic/` infrastructure is in place)
-  and inject them as few-shot examples to ground the generated voice.
+- **Semantic grounding is optional** — prior sent examples are included
+  only when semantic search is enabled and has indexed matching sent
+  messages.
 - **No cache for summaries** — re-running `mxr summarize` on the same
   thread re-prompts the model. Inexpensive for local Ollama; worth
   thinking about for cloud APIs with metered costs.

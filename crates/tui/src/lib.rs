@@ -263,38 +263,6 @@ pub async fn run() -> anyhow::Result<()> {
             });
         }
 
-        if let Some(message_id) = app.mailbox.pending_envelope_open.take() {
-            // Deep-link drill-down (e.g. analytics row Enter): we
-            // know the message ID but not the full Envelope yet.
-            // Fetch via daemon, then `open_envelope` runs the same
-            // flow as a normal mailbox click.
-            let bg = bg.clone();
-            let id_for_response = message_id.clone();
-            let _ = submit_task(&queued, async move {
-                let resp = ipc_call(
-                    &bg,
-                    Request::GetEnvelope {
-                        message_id: message_id.clone(),
-                    },
-                )
-                .await;
-                let result = match resp {
-                    Ok(Response::Ok {
-                        data: ResponseData::Envelope { envelope },
-                    }) => Ok(envelope),
-                    Ok(Response::Ok { .. }) => {
-                        Err(MxrError::Ipc("unexpected response to GetEnvelope".into()))
-                    }
-                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
-                    Err(e) => Err(e),
-                };
-                AsyncResult::OpenEnvelopeResponse {
-                    message_id: id_for_response,
-                    result,
-                }
-            });
-        }
-
         terminal.draw(|frame| app.draw(frame))?;
 
         let timeout = if app.input_pending() {
@@ -1695,29 +1663,6 @@ pub async fn run() -> anyhow::Result<()> {
                                 continue;
                             }
                             app.resolve_thread_fetch_error(&thread_id);
-                        }
-                        AsyncResult::OpenEnvelopeResponse {
-                            message_id: _,
-                            result: Ok(envelope),
-                        } => {
-                            // Mirror the mailbox row-click flow: switch to
-                            // Mailbox, open the envelope, raise the message
-                            // pane. The drill-down now lands the user on
-                            // the actual thread instead of failing in a
-                            // search box.
-                            app.screen = crate::app::Screen::Mailbox;
-                            app.mailbox.layout_mode = crate::app::LayoutMode::ThreePane;
-                            app.mailbox.active_pane = crate::app::ActivePane::MessageView;
-                            app.open_envelope_for_drill_down(envelope);
-                        }
-                        AsyncResult::OpenEnvelopeResponse {
-                            message_id,
-                            result: Err(e),
-                        } => {
-                            app.report_warn(format!(
-                                "Could not open message {}: {e}",
-                                message_id
-                            ));
                         }
                         AsyncResult::MutationResult {
                             id,
@@ -8012,13 +7957,14 @@ mod tests {
         assert_eq!(app.search.page.query, "from:alice@example.com");
     }
 
-    /// Stale-thread drill-down must arm `pending_envelope_open` for
-    /// the latest message in the thread, not fire a `thread:<uuid>`
-    /// search query. The lexical engine doesn't index thread IDs as
-    /// queryable fields, so the old behaviour landed the user on a
-    /// "search failed" screen — exactly the bug we're closing here.
+    /// Stale-thread drill-down jumps to a `from:<counterparty>` search,
+    /// matching the Contacts drill pattern. Earlier attempts opened the
+    /// envelope directly, but that left the centre mailbox list out of
+    /// sync with the preview pane (the list still showed the previous
+    /// mailbox while the preview showed an unrelated message). Search
+    /// reorients both panes coherently.
     #[test]
-    fn drill_down_stale_thread_arms_envelope_open_not_search() {
+    fn drill_down_stale_thread_jumps_to_counterparty_search() {
         use crate::action::Action;
         use crate::app::{AnalyticsView, Screen};
         use mxr_core::id::{MessageId, ThreadId};
@@ -8038,29 +7984,23 @@ mod tests {
         app.analytics.selected_index = 0;
         app.apply(Action::AnalyticsRowDrillDown);
         assert_eq!(
-            app.mailbox.pending_envelope_open.as_ref(),
-            Some(&latest_id),
-            "drill-down must queue a GetEnvelope for the latest message id"
+            app.search.page.query, "from:alice@example.com",
+            "drill-down must set the search query to the counterparty"
         );
-        // Screen change happens in the response handler (after the
-        // envelope arrives), so the screen stays on Analytics until
-        // then. This avoids the "blank mailbox flash while loading"
-        // regression.
         assert_eq!(
             app.screen,
-            Screen::Analytics,
-            "must not jump to mailbox before the envelope is fetched"
+            Screen::Search,
+            "drill-down must navigate to the Search screen"
         );
     }
 
-    /// Largest-messages drill-down must arm `pending_envelope_open`
-    /// rather than fire `rfc822msgid:<internal-uuid>` (the operator
-    /// expects the RFC 822 Message-ID header value, not our internal
-    /// UUIDv7).
+    /// Largest-messages drill-down jumps to a `from:<sender>` search
+    /// (matches the Storage/Sender drill). Direct envelope-open left
+    /// the centre mailbox list out of sync with the preview pane.
     #[test]
-    fn drill_down_largest_message_arms_envelope_open() {
+    fn drill_down_largest_message_jumps_to_sender_search() {
         use crate::action::Action;
-        use crate::app::{AnalyticsView, StorageMode};
+        use crate::app::{AnalyticsView, Screen, StorageMode};
         use mxr_core::id::MessageId;
         use mxr_core::types::LargestMessageRow;
         let mut app = App::new();
@@ -8076,15 +8016,16 @@ mod tests {
         }];
         app.analytics.selected_index = 0;
         app.apply(Action::AnalyticsRowDrillDown);
-        assert_eq!(app.mailbox.pending_envelope_open.as_ref(), Some(&id));
+        assert_eq!(app.search.page.query, "from:noreply@list.example");
+        assert_eq!(app.screen, Screen::Search);
     }
 
-    /// Subscriptions drill-down opens the latest message from the
-    /// selected sender directly. Mirror of the stale-thread test.
+    /// Subscriptions drill-down jumps to a `from:<sender>` search.
+    /// Mirror of the stale-thread / largest-message tests.
     #[test]
-    fn drill_down_subscriptions_arms_envelope_open() {
+    fn drill_down_subscriptions_jumps_to_sender_search() {
         use crate::action::Action;
-        use crate::app::AnalyticsView;
+        use crate::app::{AnalyticsView, Screen};
         use mxr_core::id::{AccountId, MessageId, ThreadId};
         use mxr_core::types::{MessageFlags, SubscriptionSummary, UnsubscribeMethod};
         let mut app = App::new();
@@ -8111,7 +8052,8 @@ mod tests {
         }];
         app.analytics.selected_index = 0;
         app.apply(Action::AnalyticsRowDrillDown);
-        assert_eq!(app.mailbox.pending_envelope_open.as_ref(), Some(&latest));
+        assert_eq!(app.search.page.query, "from:promo@example.com");
+        assert_eq!(app.screen, Screen::Search);
     }
 
     /// Slice 11 / B11.5: Enter on a Contacts row (either sub-mode)

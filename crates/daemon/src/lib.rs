@@ -182,8 +182,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::cat::run(message_id, search, first, limit, view, assets, raw, html, format)
-                .await?;
+            commands::cat::run(
+                message_id, search, first, limit, view, assets, raw, html, format,
+            )
+            .await?;
         }
         Some(Command::Thread {
             thread_id,
@@ -274,15 +276,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                     "Provide an instruction: a positional argument or `--instruct \"...\"`"
                 )
             })?;
-            commands::draft_assist::run(
-                thread_id,
-                search,
-                first,
-                limit,
-                instruction_text,
-                format,
-            )
-            .await?;
+            commands::draft_assist::run(thread_id, search, first, limit, instruction_text, format)
+                .await?;
         }
         Some(Command::Remind {
             message_id,
@@ -295,6 +290,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         Some(Command::Semantic { action, format }) => {
             crate::server::ensure_daemon_running().await?;
             commands::semantic::run(action, format).await?;
+        }
+        Some(Command::Llm { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::llm::run(action, format).await?;
         }
         Some(Command::Subscriptions {
             limit,

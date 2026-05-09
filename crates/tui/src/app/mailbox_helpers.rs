@@ -257,14 +257,6 @@ impl App {
         }
     }
 
-    /// Public-facing entry to `open_envelope` for deep-link
-    /// drill-downs (analytics row Enter, future ID-based jumps).
-    /// Same flow as a normal mailbox row-click: optimistic thread
-    /// list, body fetch queue, thread fetch.
-    pub fn open_envelope_for_drill_down(&mut self, env: Envelope) {
-        self.open_envelope(env);
-    }
-
     pub(super) fn open_envelope(&mut self, env: Envelope) {
         self.close_attachment_panel();
         self.mailbox.signature_expanded = false;

@@ -297,6 +297,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::SetPrimaryAccountAddress { account_id, email } => {
             platform::set_primary_account_address(state, account_id, email).await
         }
+        Request::GetLlmStatus => platform::llm_status(state).await,
         Request::GetSemanticStatus => platform::semantic_status(state).await,
         Request::EnableSemantic { enabled } => platform::enable_semantic(state, *enabled).await,
         Request::InstallSemanticProfile { profile } => {
@@ -540,6 +541,8 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListContactDecay { .. }
             | Request::ListResponseTime { .. }
             | Request::ListAccountAddresses { .. }
+            | Request::GetLlmStatus
+            | Request::GetSemanticStatus
             | Request::RunSavedSearch { .. }
             | Request::ListEvents { .. }
             | Request::GetLogs { .. }
@@ -629,6 +632,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::AddAccountAddress { .. } => "add_account_address",
         Request::RemoveAccountAddress { .. } => "remove_account_address",
         Request::SetPrimaryAccountAddress { .. } => "set_primary_account_address",
+        Request::GetLlmStatus => "get_llm_status",
         Request::GetSemanticStatus => "get_semantic_status",
         Request::EnableSemantic { .. } => "enable_semantic",
         Request::InstallSemanticProfile { .. } => "install_semantic_profile",
@@ -6473,6 +6477,65 @@ mod tests {
                 assert!(accounts[0].is_default);
             }
             other => panic!("Expected Accounts response, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_llm_status_reports_noop_provider_by_default() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::GetLlmStatus),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::LlmStatus { snapshot },
+            }) => {
+                assert!(!snapshot.enabled);
+                assert_eq!(snapshot.provider, "noop");
+                assert_eq!(snapshot.model, "noop");
+                assert_eq!(snapshot.configured_model, "qwen2.5:3b-instruct");
+                assert_eq!(snapshot.base_url, None);
+                assert_eq!(snapshot.context_window, 0);
+            }
+            other => panic!("Expected LlmStatus response, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn config_reload_rebuilds_llm_provider_for_status() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let mut config = state.config_snapshot();
+        config.llm.enabled = true;
+        config.llm.model = "local-test-model".to_string();
+        config.llm.base_url = "http://127.0.0.1:11434/v1".to_string();
+        config.llm.context_window = 4096;
+        config.llm.request_timeout_secs = 30;
+        state.set_config_for_test(config).await;
+
+        let msg = IpcMessage {
+            id: 1,
+            payload: IpcPayload::Request(Request::GetLlmStatus),
+        };
+        let resp = handle_request(&state, &msg).await;
+        match resp.payload {
+            IpcPayload::Response(Response::Ok {
+                data: ResponseData::LlmStatus { snapshot },
+            }) => {
+                assert!(snapshot.enabled);
+                assert_eq!(snapshot.provider, "openai_compatible");
+                assert_eq!(snapshot.model, "local-test-model");
+                assert_eq!(snapshot.configured_model, "local-test-model");
+                assert_eq!(
+                    snapshot.base_url.as_deref(),
+                    Some("http://127.0.0.1:11434/v1")
+                );
+                assert_eq!(snapshot.context_window, 4096);
+                assert_eq!(snapshot.request_timeout_secs, 30);
+            }
+            other => panic!("Expected LlmStatus response, got {:?}", other),
         }
     }
 

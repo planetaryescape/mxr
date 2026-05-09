@@ -111,6 +111,7 @@ const COMMAND_EXAMPLES = {
   export: { use: 'Turn threads into Markdown/JSON/LLM context.', examples: ["mxr export THREAD_ID --format markdown", "mxr export --search 'from:legal' --format markdown > legal.md"] },
   attachments: { use: 'List, open, or download message attachments.', examples: ["mxr attachments list MESSAGE_ID", "mxr attachments download MESSAGE_ID 1 --dir ~/Downloads/mxr"] },
   config: { use: 'Inspect or edit resolved config without hunting for the file.', examples: ["mxr config path", "mxr config show --format json"] },
+  llm: { use: 'Check which LLM provider the daemon is using.', examples: ["mxr llm status", "mxr llm status --format json"] },
   semantic: { use: 'Manage local semantic search profiles and indexing.', examples: ["mxr semantic status", "mxr semantic profile install bge-small-en-v1.5"] },
   open: { use: 'Open message URLs in your browser from CLI selection.', examples: ["mxr open MESSAGE_ID", "mxr open --search 'from:github subject:PR' --first"] },
   web: { use: 'Run the HTTP bridge directly for local app/API work.', examples: ["mxr web --port 7777 --print-url"] },

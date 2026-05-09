@@ -21,6 +21,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -101,6 +102,44 @@ pub trait LlmProvider: Send + Sync {
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError>;
     fn capabilities(&self) -> LlmCapabilities;
     fn model_name(&self) -> &str;
+}
+
+pub struct LlmRuntime {
+    provider: RwLock<Arc<dyn LlmProvider>>,
+}
+
+impl LlmRuntime {
+    pub fn new(provider: Arc<dyn LlmProvider>) -> Self {
+        Self {
+            provider: RwLock::new(provider),
+        }
+    }
+
+    pub fn replace(&self, provider: Arc<dyn LlmProvider>) {
+        *self
+            .provider
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = provider;
+    }
+
+    pub async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        self.current().complete(req).await
+    }
+
+    pub fn capabilities(&self) -> LlmCapabilities {
+        self.current().capabilities()
+    }
+
+    pub fn model_name(&self) -> String {
+        self.current().model_name().to_string()
+    }
+
+    fn current(&self) -> Arc<dyn LlmProvider> {
+        self.provider
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
 }
 
 /// Stub provider used when LLM features are disabled. All calls return

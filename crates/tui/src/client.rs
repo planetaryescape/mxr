@@ -127,21 +127,6 @@ impl Client {
         }
     }
 
-    pub async fn get_envelope(&mut self, message_id: &MessageId) -> Result<Envelope, MxrError> {
-        let resp = self
-            .request(Request::GetEnvelope {
-                message_id: message_id.clone(),
-            })
-            .await?;
-        match resp {
-            Response::Ok {
-                data: ResponseData::Envelope { envelope },
-            } => Ok(envelope),
-            Response::Error { message, .. } => Err(MxrError::Ipc(message)),
-            _ => Err(MxrError::Ipc("Unexpected response".into())),
-        }
-    }
-
     pub async fn get_body(&mut self, message_id: &MessageId) -> Result<MessageBody, MxrError> {
         let resp = self
             .request(Request::GetBody {

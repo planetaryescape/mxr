@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.5.1"
+    "version": "0.5.3"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -1285,6 +1285,21 @@
         "tags": [],
         "summary": "Complete OAuth session",
         "operationId": "auth_session_complete",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/llm/status": {
+      "get": {
+        "tags": [],
+        "summary": "LLM provider status",
+        "operationId": "llm_status",
         "responses": {
           "200": {
             "description": "OK"
@@ -3719,6 +3734,61 @@
           }
         }
       },
+      "LlmStatusSnapshot": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "provider",
+          "model",
+          "configured_model",
+          "api_key_present",
+          "context_window",
+          "supports_streaming",
+          "request_timeout_secs"
+        ],
+        "properties": {
+          "api_key_env": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "api_key_present": {
+            "type": "boolean"
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "configured_model": {
+            "type": "string"
+          },
+          "context_window": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "request_timeout_secs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "supports_streaming": {
+            "type": "boolean"
+          }
+        }
+      },
       "MessageBody": {
         "type": "object",
         "required": [
@@ -5313,6 +5383,20 @@
               },
               "email": {
                 "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetLlmStatus"
+                ]
               }
             }
           },
@@ -7565,6 +7649,24 @@
               },
               "snapshot": {
                 "$ref": "#/components/schemas/SemanticStatusSnapshot"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "snapshot",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "LlmStatus"
+                ]
+              },
+              "snapshot": {
+                "$ref": "#/components/schemas/LlmStatusSnapshot"
               }
             }
           },

@@ -145,6 +145,10 @@ pub(super) async fn semantic_status(state: &AppState) -> HandlerResult {
     diagnostics_impl::semantic_status(state).await
 }
 
+pub(super) async fn llm_status(state: &AppState) -> HandlerResult {
+    diagnostics_impl::llm_status(state).await
+}
+
 pub(super) async fn enable_semantic(state: &AppState, enabled: bool) -> HandlerResult {
     diagnostics_impl::enable_semantic(state, enabled).await
 }

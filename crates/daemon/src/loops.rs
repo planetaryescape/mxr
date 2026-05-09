@@ -846,6 +846,95 @@ pub async fn contacts_refresher_loop(state: Arc<AppState>, mut shutdown_rx: watc
     }
 }
 
+/// Pre-compute the default Wrapped (current YTD, default account) on
+/// startup and keep it warm. Wrapped runs ~10 SQL queries against the
+/// store; on large mailboxes a cold call is multi-second, sometimes
+/// minutes. Warming once at startup means opening the Wrapped tab in
+/// the TUI is normally instant.
+///
+/// Cadence (15m) is shorter than `WRAPPED_CACHE_TTL` (30m) so the cache
+/// never expires under steady-state — every tick re-primes the entry
+/// before it would naturally roll over. Errors are logged and the
+/// loop keeps running; warming is best-effort.
+pub async fn wrapped_warmer_loop(state: Arc<AppState>, mut shutdown_rx: watch::Receiver<bool>) {
+    // Prime once immediately at startup — the whole point is to absorb
+    // the first cold call before the user gets to the Wrapped tab.
+    warm_default_wrapped(&state).await;
+
+    let mut ticker = interval(Duration::from_secs(15 * 60));
+    // The first tick of `interval` fires immediately; we already
+    // warmed once above, so consume that first tick.
+    ticker.tick().await;
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            changed = shutdown_rx.changed() => {
+                if changed.is_ok() && *shutdown_rx.borrow_and_update() {
+                    tracing::info!("Wrapped warmer exiting: shutdown requested");
+                    break;
+                }
+                continue;
+            }
+        }
+        warm_default_wrapped(&state).await;
+    }
+}
+
+async fn warm_default_wrapped(state: &Arc<AppState>) {
+    use chrono::{Datelike, TimeZone, Utc};
+    let now = Utc::now();
+    let Some(start) = Utc
+        .with_ymd_and_hms(now.year(), 1, 1, 0, 0, 0)
+        .single()
+    else {
+        return;
+    };
+    let since_unix = start.timestamp();
+    let until_unix = now.timestamp();
+    let label = format!("{} year-to-date", now.year());
+
+    // Account scopes to warm: the implicit "all accounts" key (which the
+    // TUI sends when no `--account` filter is set) plus every configured
+    // account. This way the first Wrapped open after switching accounts
+    // is also instant. Each scope is its own cache key so they don't
+    // collide.
+    let mut scopes: Vec<Option<mxr_core::id::AccountId>> = vec![None];
+    for (account_id, _) in state.sync_provider_entries() {
+        scopes.push(Some(account_id));
+    }
+
+    for account_id in scopes {
+        let cache_key = crate::state::WrappedCacheKey {
+            account_id: account_id.clone(),
+            label: label.clone(),
+        };
+        let started = std::time::Instant::now();
+        match state
+            .store
+            .wrapped_summary(account_id.as_ref(), since_unix, until_unix, &label)
+            .await
+        {
+            Ok(summary) => {
+                state.wrapped_cache_put(cache_key, Arc::new(summary));
+                tracing::debug!(
+                    label = %label,
+                    account = ?account_id.as_ref().map(|a| a.as_str()),
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    "wrapped warmer primed cache"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    label = %label,
+                    account = ?account_id.as_ref().map(|a| a.as_str()),
+                    "wrapped warmer failed: {e}"
+                );
+            }
+        }
+    }
+}
+
 /// Process all auto-reminders due by `now`: mark each as triggered,
 /// emit a `ReminderTriggered` event so clients can refresh views.
 /// Returns the number of reminders that fired.

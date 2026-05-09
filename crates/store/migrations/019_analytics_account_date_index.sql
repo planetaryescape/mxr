@@ -1,0 +1,22 @@
+-- =========================================================================
+-- Composite (account_id, date DESC) index for windowed analytics queries.
+--
+-- Background: most analytics aggregates filter by
+--   `WHERE (? IS NULL OR account_id = ?) AND date >= ? AND date <= ?`
+-- without constraining `direction`. Existing indices were:
+--   - `idx_messages_account` (account_id only)
+--   - `idx_messages_date` (date DESC only)
+--   - `idx_messages_account_direction_date` (only fully effective when
+--      direction is also bound, otherwise SQLite can't use the date suffix)
+--
+-- The result was that each Wrapped sub-query (volume, time patterns,
+-- storage roll-up, newsletters, superlatives — six of seven groups) had
+-- to either index-scan by account and inline-filter date, or index-scan
+-- by date and inline-filter account. On large mailboxes this compounded
+-- across the seven sequential sub-queries into multi-minute waits.
+--
+-- This composite lets the planner satisfy both predicates from the index
+-- directly, regardless of whether direction is part of the filter.
+-- =========================================================================
+CREATE INDEX IF NOT EXISTS idx_messages_account_date
+    ON messages(account_id, date DESC);

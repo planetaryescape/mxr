@@ -256,8 +256,6 @@ pub(crate) async fn wrapped(
         .or_else(|| state.default_account_id_opt());
     let cache_key = crate::state::WrappedCacheKey {
         account_id: resolved.clone(),
-        since_unix,
-        until_unix,
         label: label.to_string(),
     };
     if let Some(cached) = state.wrapped_cache_get(&cache_key) {
@@ -567,6 +565,33 @@ pub(crate) async fn semantic_status(state: &AppState) -> HandlerResult {
         .await
         .map_err(|e| e.to_string())?;
     Ok(ResponseData::SemanticStatus { snapshot })
+}
+
+pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
+    let config = state.config_snapshot().llm;
+    let capabilities = state.llm.capabilities();
+    let api_key_env = (!config.api_key_env.is_empty()).then_some(config.api_key_env.clone());
+    let api_key_present = api_key_env
+        .as_deref()
+        .and_then(|name| std::env::var(name).ok())
+        .is_some_and(|value| !value.is_empty());
+    let snapshot = mxr_protocol::LlmStatusSnapshot {
+        enabled: config.enabled,
+        provider: if config.enabled {
+            "openai_compatible".to_string()
+        } else {
+            "noop".to_string()
+        },
+        model: state.llm.model_name(),
+        configured_model: config.model,
+        base_url: config.enabled.then_some(config.base_url),
+        api_key_env,
+        api_key_present,
+        context_window: capabilities.context_window,
+        supports_streaming: capabilities.supports_streaming,
+        request_timeout_secs: config.request_timeout_secs,
+    };
+    Ok(ResponseData::LlmStatus { snapshot })
 }
 
 pub(crate) async fn enable_semantic(state: &AppState, enabled: bool) -> HandlerResult {

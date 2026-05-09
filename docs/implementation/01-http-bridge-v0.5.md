@@ -69,7 +69,7 @@ organised by the IPC bucket classification from CLAUDE.md:
 | Prefix | Purpose | Example |
 |---|---|---|
 | `/api/v1/mail/*` | core mail (read, search, mutate) | `GET /api/v1/mail/threads/{id}` |
-| `/api/v1/platform/*` | accounts, rules, saved searches, semantic, subscriptions | `GET /api/v1/platform/rules` |
+| `/api/v1/platform/*` | accounts, rules, saved searches, LLM, semantic, subscriptions | `GET /api/v1/platform/rules` |
 | `/api/v1/admin/*` | diagnostics, doctor, status, events log | `POST /api/v1/admin/doctor/rebuild-analytics` |
 | `/api/v1/events` | WebSocket event stream (all `DaemonEvent` variants) | upgrade required |
 | `/api/v1/events/stream` | SSE fallback for `curl`/scripts | `text/event-stream` |

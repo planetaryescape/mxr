@@ -48,7 +48,7 @@ use utoipa::{
         account_addresses_list, account_addresses_add, account_addresses_remove,
         account_addresses_primary, auth_session_start, auth_session_get,
         auth_session_cancel, auth_session_complete, subscriptions_list,
-        semantic_status, semantic_reindex, semantic_enable,
+        llm_status, semantic_status, semantic_reindex, semantic_enable,
         semantic_profile_install, semantic_profile_use, analytics_wrapped,
         analytics_storage_breakdown, analytics_largest_messages,
         analytics_stale_threads, analytics_contact_asymmetry,
@@ -70,14 +70,14 @@ pub struct ApiDoc;
 macro_rules! endpoint {
     ($method:ident $name:ident $path:literal, $summary:literal) => {
         #[utoipa::path(
-            $method,
-            path = $path,
-            summary = $summary,
-            responses(
-                (status = 200, description = "OK"),
-                (status = 401, description = "Missing or invalid bridge token")
-            )
-        )]
+                            $method,
+                            path = $path,
+                            summary = $summary,
+                            responses(
+                                (status = 200, description = "OK"),
+                                (status = 401, description = "Missing or invalid bridge token")
+                            )
+                        )]
         #[allow(dead_code)]
         fn $name() {}
     };
@@ -184,6 +184,7 @@ endpoint!(post auth_session_cancel "/api/v1/platform/auth/sessions/{session_id}/
 endpoint!(post auth_session_complete "/api/v1/platform/auth/sessions/{session_id}/complete", "Complete OAuth session");
 
 endpoint!(get subscriptions_list "/api/v1/platform/subscriptions", "List subscriptions");
+endpoint!(get llm_status "/api/v1/platform/llm/status", "LLM provider status");
 endpoint!(get semantic_status "/api/v1/platform/semantic/status", "Semantic index status");
 endpoint!(post semantic_reindex "/api/v1/platform/semantic/reindex", "Reindex semantic search");
 endpoint!(post semantic_enable "/api/v1/platform/semantic/enable", "Enable semantic search");

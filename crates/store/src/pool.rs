@@ -460,6 +460,13 @@ const MIGRATIONS: &[Migration] = &[
         name: "screener_decisions",
         kind: MigrationKind::Sql(include_str!("../migrations/018_screener_decisions.sql")),
     },
+    Migration {
+        version: 19,
+        name: "analytics_account_date_index",
+        kind: MigrationKind::Sql(include_str!(
+            "../migrations/019_analytics_account_date_index.sql"
+        )),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

@@ -980,9 +980,8 @@ impl App {
     }
 
     fn handle_wrapped_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {
-        // Tile order is row-major over a 3x3 grid (last cell is the
-        // wide Superlatives banner spanning the bottom row). Indices:
-        // 0=Volume 1=When 2=Contacts | 3=Reply 4=Storage 5=News | 6=Sup
+        // Tile order is row-major over a 2x3 grid (six tiles total).
+        // Indices: 0=Volume 1=When 2=Contacts | 3=Reply 4=Storage 5=News
         match (key.code, key.modifiers) {
             (KeyCode::Char('h') | KeyCode::Left, _) => {
                 let curr = self.analytics.wrapped_selected_tile;
@@ -1000,26 +999,16 @@ impl App {
             }
             (KeyCode::Char('j') | KeyCode::Down, _) => {
                 let curr = self.analytics.wrapped_selected_tile;
-                let next = if curr <= 2 {
-                    curr + 3
-                } else if curr <= 5 {
-                    6
-                } else {
-                    curr
-                };
-                self.analytics.wrapped_selected_tile = next;
+                if curr <= 2 {
+                    self.analytics.wrapped_selected_tile = curr + 3;
+                }
                 None
             }
             (KeyCode::Char('k') | KeyCode::Up, _) => {
                 let curr = self.analytics.wrapped_selected_tile;
-                let next = if curr == 6 {
-                    4
-                } else if curr >= 3 {
-                    curr - 3
-                } else {
-                    curr
-                };
-                self.analytics.wrapped_selected_tile = next;
+                if (3..=5).contains(&curr) {
+                    self.analytics.wrapped_selected_tile = curr - 3;
+                }
                 None
             }
             (KeyCode::Tab, _) => Some(Action::NextAnalyticsView),

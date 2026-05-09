@@ -58,7 +58,8 @@ See [01-delight-plan.md §Phase 3](./01-delight-plan.md#phase-3--sender-as-unit-
 - [x] API key read from env (`api_key_env` names the env var; key never lives in the config file)
 - [x] Error classification: `Disabled`, `Unreachable`, `RateLimited { retry_after_secs }`, `Timeout`, `Unauthorized`, `Empty`, `Other`
 - [x] API key redaction in error strings (defensive)
-- [x] Daemon `AppState.llm: Arc<dyn LlmProvider>` always present (defaults to `NoopProvider` when disabled)
+- [x] Daemon LLM runtime always present (defaults to `NoopProvider` when disabled) and can rebuild the provider on config reload
+- [x] IPC/CLI status surface: `mxr llm status` reports provider, runtime model, configured model, context window, timeout, and API-key env presence
 - [x] RED+GREEN: `noop_provider_returns_disabled_error`
 - [x] RED+GREEN: `redact_replaces_api_key_substring`
 - [x] RED+GREEN: `redact_leaves_short_keys_alone_to_avoid_collateral_damage`
@@ -84,31 +85,18 @@ See [01-delight-plan.md §Phase 3](./01-delight-plan.md#phase-3--sender-as-unit-
 - [ ] Content-hash cache (re-summarising an unchanged thread re-prompts unnecessarily; small efficiency win but not correctness-critical)
 - [ ] TUI `S` keybinding to invoke summarise on the focused thread
 
-### 3.5 Draft assist grounded on sent corpus ✅ (basic)
+### 3.5 Draft assist grounded on sent corpus ✅
 
 - [x] IPC: `Request::DraftAssist { thread_id, instruction }` → `ResponseData::DraftSuggestion { body, model }`
 - [x] Handler `crates/daemon/src/handler/draft_assist.rs` constructs a prompt with thread transcript + the user's plain-language instruction
+- [x] Semantic grounding retrieves similar prior outbound messages, excludes inbound/current-thread hits, and includes up to 3 examples as voice context when semantic search is enabled
 - [x] System prompt tuned for "no greeting, no signature, match thread formality"
 - [x] CLI `mxr draft-assist <thread-id> "<instruction>"`
 - [x] Result printed to stdout for the user to pipe / edit / paste — never auto-sent
+- [x] Gracefully falls back to thread-only prompting when semantic search is disabled or unavailable
 
-**Deferred (semantic-grounding extension)**
-- [ ] Retrieval of top-K similar prior sent messages from the user's corpus to inject as few-shot examples (the `crates/semantic/` infrastructure exists; the integration is the missing piece)
-- [ ] Token-budget truncation that truncates retrieved examples first, thread context last
-
-### 3.5 Draft assist grounded on sent corpus
-
-- [ ] IPC: `DraftAssist`
-- [ ] Handler `draft_assist.rs`
-- [ ] Extend `crates/semantic/` with `direction` filter
-- [ ] CLI: `mxr draft-assist --reply <id> --instruct "..."`
-- [ ] TUI: `Ctrl+G` from compose
-- [ ] RED: `draft_assist_grounds_on_users_sent_messages_only`
-- [ ] RED: `draft_assist_returns_disabled_when_llm_off`
-- [ ] RED: `draft_assist_includes_thread_context_in_prompt`
-- [ ] RED: `draft_assist_respects_temperature_setting`
-- [ ] RED: `draft_assist_truncates_examples_when_over_token_budget`
-- [ ] RED: `draft_assist_never_auto_sends`
+**Deferred**
+- [ ] Token-budget truncation that prioritises examples before truncating thread context
 
 ## Phase 3 acceptance
 

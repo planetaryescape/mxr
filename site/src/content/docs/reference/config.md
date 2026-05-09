@@ -317,6 +317,12 @@ The API key is read from `api_key_env` at runtime and is never persisted
 to the config file. Empty `api_key_env` means no `Authorization` header
 is sent — correct for Ollama and LM Studio.
 
+Use `mxr llm status` to inspect the running provider, model, context
+window, timeout, and whether the configured API-key environment variable
+is present. Daemon config reloads rebuild the LLM provider, so changing
+`base_url`, `model`, or `api_key_env` is reflected after reload without
+restarting the process.
+
 ## Custom keybindings
 
 Default TUI keybindings can be overridden via `~/.config/mxr/keys.toml` (or wherever `mxr config path` resolves). The file is split into three view contexts that match the TUI's input router:

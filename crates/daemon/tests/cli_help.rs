@@ -48,10 +48,22 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_saved_delete", &["saved", "delete", "--help"]),
         ("cli_help_saved_run", &["saved", "run", "--help"]),
         ("cli_help_semantic", &["semantic", "--help"]),
-        ("cli_help_semantic_status", &["semantic", "status", "--help"]),
-        ("cli_help_semantic_enable", &["semantic", "enable", "--help"]),
-        ("cli_help_semantic_disable", &["semantic", "disable", "--help"]),
-        ("cli_help_semantic_reindex", &["semantic", "reindex", "--help"]),
+        (
+            "cli_help_semantic_status",
+            &["semantic", "status", "--help"],
+        ),
+        (
+            "cli_help_semantic_enable",
+            &["semantic", "enable", "--help"],
+        ),
+        (
+            "cli_help_semantic_disable",
+            &["semantic", "disable", "--help"],
+        ),
+        (
+            "cli_help_semantic_reindex",
+            &["semantic", "reindex", "--help"],
+        ),
         (
             "cli_help_semantic_profile",
             &["semantic", "profile", "--help"],
@@ -81,9 +93,18 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_accounts_add", &["accounts", "add", "--help"]),
         ("cli_help_accounts_show", &["accounts", "show", "--help"]),
         ("cli_help_accounts_test", &["accounts", "test", "--help"]),
-        ("cli_help_accounts_repair", &["accounts", "repair", "--help"]),
-        ("cli_help_accounts_disable", &["accounts", "disable", "--help"]),
-        ("cli_help_accounts_remove", &["accounts", "remove", "--help"]),
+        (
+            "cli_help_accounts_repair",
+            &["accounts", "repair", "--help"],
+        ),
+        (
+            "cli_help_accounts_disable",
+            &["accounts", "disable", "--help"],
+        ),
+        (
+            "cli_help_accounts_remove",
+            &["accounts", "remove", "--help"],
+        ),
         (
             "cli_help_accounts_addresses",
             &["accounts", "addresses", "--help"],
@@ -131,12 +152,18 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_send", &["send", "--help"]),
         ("cli_help_unsubscribe", &["unsubscribe", "--help"]),
         ("cli_help_attachments", &["attachments", "--help"]),
-        ("cli_help_attachments_list", &["attachments", "list", "--help"]),
+        (
+            "cli_help_attachments_list",
+            &["attachments", "list", "--help"],
+        ),
         (
             "cli_help_attachments_download",
             &["attachments", "download", "--help"],
         ),
-        ("cli_help_attachments_open", &["attachments", "open", "--help"]),
+        (
+            "cli_help_attachments_open",
+            &["attachments", "open", "--help"],
+        ),
         ("cli_help_archive", &["archive", "--help"]),
         ("cli_help_read_archive", &["read-archive", "--help"]),
         ("cli_help_undo", &["undo", "--help"]),
@@ -162,7 +189,10 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_snippets", &["snippets", "--help"]),
         ("cli_help_snippets_list", &["snippets", "list", "--help"]),
         ("cli_help_snippets_set", &["snippets", "set", "--help"]),
-        ("cli_help_snippets_remove", &["snippets", "remove", "--help"]),
+        (
+            "cli_help_snippets_remove",
+            &["snippets", "remove", "--help"],
+        ),
         ("cli_help_sender", &["sender", "--help"]),
         ("cli_help_screener", &["screener", "--help"]),
         ("cli_help_screener_queue", &["screener", "queue", "--help"]),
@@ -178,6 +208,8 @@ fn cli_help_snapshots_cover_all_commands() {
         ("cli_help_setup", &["setup", "--help"]),
         ("cli_help_summarize", &["summarize", "--help"]),
         ("cli_help_draft_assist", &["draft-assist", "--help"]),
+        ("cli_help_llm", &["llm", "--help"]),
+        ("cli_help_llm_status", &["llm", "status", "--help"]),
         ("cli_help_open", &["open", "--help"]),
         ("cli_help_config", &["config", "--help"]),
         ("cli_help_config_show", &["config", "show", "--help"]),
@@ -196,12 +228,15 @@ fn cli_help_snapshots_cover_all_commands() {
             &["contacts", "asymmetry", "--help"],
         ),
         ("cli_help_contacts_decay", &["contacts", "decay", "--help"]),
-        ("cli_help_contacts_refresh", &["contacts", "refresh", "--help"]),
+        (
+            "cli_help_contacts_refresh",
+            &["contacts", "refresh", "--help"],
+        ),
         ("cli_help_response_time", &["response-time", "--help"]),
         ("cli_help_wrapped", &["wrapped", "--help"]),
     ];
 
-    assert_eq!(cases.len(), 131);
+    assert_eq!(cases.len(), 133);
 
     for (name, args) in cases {
         assert_help_snapshot(name, args);

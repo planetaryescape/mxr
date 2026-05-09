@@ -274,6 +274,13 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Inspect local/cloud LLM provider status
+    Llm {
+        #[command(subcommand)]
+        action: Option<LlmAction>,
+        #[arg(long, global = true)]
+        format: Option<OutputFormat>,
+    },
     /// List senders with unsubscribe support
     #[command(alias = "unsub")]
     Subscriptions {

@@ -1,6 +1,5 @@
 ---
 source: crates/web/src/lib.rs
-assertion_line: 3478
 expression: summary
 ---
 {
@@ -58,6 +57,7 @@ expression: summary
     "LabelId",
     "LabelKind",
     "LargestMessageRow",
+    "LlmStatusSnapshot",
     "MessageBody",
     "MessageId",
     "MessageMetadata",

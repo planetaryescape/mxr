@@ -119,6 +119,13 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
     });
     state.register_contacts_refresher(contacts_handle);
 
+    let wrapped_warmer_state = state.clone();
+    let wrapped_warmer_handle = tokio::spawn(async move {
+        let shutdown_rx = wrapped_warmer_state.shutdown_receiver();
+        loops::wrapped_warmer_loop(wrapped_warmer_state, shutdown_rx).await;
+    });
+    state.register_wrapped_warmer(wrapped_warmer_handle);
+
     // Managed HTTP bridge. Reads [bridge] from config, applies CLI
     // overrides, refuses to start non-loopback binds without operator
     // intent.

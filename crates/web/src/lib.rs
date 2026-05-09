@@ -175,6 +175,7 @@ fn platform_router() -> Router<AppState> {
         .route("/saved-searches/create", post(create_saved_search))
         .route("/saved-searches/delete", post(delete_saved_search))
         .route("/subscriptions", get(list_subscriptions))
+        .route("/llm/status", get(get_llm_status))
         .route("/semantic/status", get(get_semantic_status))
         .route("/semantic/reindex", post(trigger_semantic_reindex))
 }
@@ -2737,6 +2738,18 @@ async fn get_semantic_status(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     match ipc_request(&state.config.socket_path, Request::GetSemanticStatus).await? {
         ResponseData::SemanticStatus { snapshot } => Ok(Json(json!({ "status": snapshot }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn get_llm_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(&state.config.socket_path, Request::GetLlmStatus).await? {
+        ResponseData::LlmStatus { snapshot } => Ok(Json(json!({ "status": snapshot }))),
         _ => Err(BridgeError::UnexpectedResponse),
     }
 }

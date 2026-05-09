@@ -36,15 +36,30 @@ impl super::Store {
         let acct: Option<String> = account_id.map(|a| a.as_str());
         let floor = since_unix.max(EARLIEST_PLAUSIBLE_TS);
 
-        let volume = self.wrapped_volume(&acct, floor, until_unix).await?;
-        let time_patterns = self.wrapped_time_patterns(&acct, floor, until_unix).await?;
-        let top_contacts = self.wrapped_top_contacts(&acct, floor, until_unix).await?;
-        let reply_discipline = self
-            .wrapped_reply_discipline(&acct, floor, until_unix)
-            .await?;
-        let storage = self.wrapped_storage(&acct, floor, until_unix).await?;
-        let newsletters = self.wrapped_newsletters(&acct, floor, until_unix).await?;
-        let superlatives = self.wrapped_superlatives(&acct, floor, until_unix).await?;
+        // The seven sub-aggregates are fully independent — they share no
+        // intermediate state and just dispatch their own SQL. Run them
+        // concurrently so the reader pool (4 connections) can saturate
+        // instead of blocking on a strict serial chain. On a large
+        // mailbox (multi-million rows) this is the difference between
+        // "minutes" and "seconds" because the bound is read-IO + index
+        // walking, not CPU.
+        let (
+            volume,
+            time_patterns,
+            top_contacts,
+            reply_discipline,
+            storage,
+            newsletters,
+            superlatives,
+        ) = tokio::try_join!(
+            self.wrapped_volume(&acct, floor, until_unix),
+            self.wrapped_time_patterns(&acct, floor, until_unix),
+            self.wrapped_top_contacts(&acct, floor, until_unix),
+            self.wrapped_reply_discipline(&acct, floor, until_unix),
+            self.wrapped_storage(&acct, floor, until_unix),
+            self.wrapped_newsletters(&acct, floor, until_unix),
+            self.wrapped_superlatives(&acct, floor, until_unix),
+        )?;
 
         trace_query("wrapped.summary", started_at, 1);
         Ok(WrappedSummary {
@@ -95,10 +110,13 @@ impl super::Store {
         since: i64,
         until: i64,
     ) -> Result<WrappedTimePatterns, sqlx::Error> {
-        // Full DOW distribution (up to 7 rows). SQLite's strftime('%w')
-        // returns 0=Sunday..6=Saturday; the public `day_of_week_distribution`
-        // array uses 0=Monday..6=Sunday, so remap by `(sqlite_dow + 6) % 7`.
-        let dow_rows: Vec<(i64, i64)> = sqlx::query_as(
+        // Full DOW distribution (up to 7 rows), full hour distribution
+        // (up to 24 rows), and busiest-day all share the same predicate
+        // shape; run them concurrently against the reader pool.
+        // SQLite's strftime('%w') returns 0=Sunday..6=Saturday; the
+        // public `day_of_week_distribution` array uses 0=Monday..6=Sunday,
+        // so remap by `(sqlite_dow + 6) % 7`.
+        let dow_query = sqlx::query_as::<_, (i64, i64)>(
             r#"SELECT CAST(strftime('%w', date, 'unixepoch') AS INTEGER) AS dow,
                       COUNT(*) AS c
                FROM messages
@@ -109,8 +127,37 @@ impl super::Store {
         .bind(acct)
         .bind(since)
         .bind(until)
-        .fetch_all(self.reader())
-        .await?;
+        .fetch_all(self.reader());
+
+        let hour_query = sqlx::query_as::<_, (i64, i64)>(
+            r#"SELECT CAST(strftime('%H', date, 'unixepoch') AS INTEGER) AS hr,
+                      COUNT(*) AS c
+               FROM messages
+               WHERE (?1 IS NULL OR account_id = ?1)
+                 AND date >= ?2 AND date <= ?3
+               GROUP BY hr"#,
+        )
+        .bind(acct)
+        .bind(since)
+        .bind(until)
+        .fetch_all(self.reader());
+
+        let day_query = sqlx::query_as::<_, (i64, i64)>(
+            r#"SELECT MIN(date) AS first_ts, COUNT(*) AS c
+               FROM messages
+               WHERE (?1 IS NULL OR account_id = ?1)
+                 AND date >= ?2 AND date <= ?3
+               GROUP BY date(date, 'unixepoch')
+               ORDER BY c DESC, first_ts ASC
+               LIMIT 1"#,
+        )
+        .bind(acct)
+        .bind(since)
+        .bind(until)
+        .fetch_optional(self.reader());
+
+        let (dow_rows, hour_rows, day): (Vec<(i64, i64)>, Vec<(i64, i64)>, Option<(i64, i64)>) =
+            tokio::try_join!(dow_query, hour_query, day_query)?;
 
         let mut day_of_week_distribution = [0u32; 7];
         let mut busiest_dow_sqlite: Option<i64> = None;
@@ -127,21 +174,6 @@ impl super::Store {
             }
         }
 
-        // Full hour distribution (up to 24 rows).
-        let hour_rows: Vec<(i64, i64)> = sqlx::query_as(
-            r#"SELECT CAST(strftime('%H', date, 'unixepoch') AS INTEGER) AS hr,
-                      COUNT(*) AS c
-               FROM messages
-               WHERE (?1 IS NULL OR account_id = ?1)
-                 AND date >= ?2 AND date <= ?3
-               GROUP BY hr"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_all(self.reader())
-        .await?;
-
         let mut hour_distribution = [0u32; 24];
         let mut busiest_hour: Option<u8> = None;
         let mut busiest_hour_count: u32 = 0;
@@ -156,21 +188,6 @@ impl super::Store {
                 busiest_hour = Some(hr_clamped as u8);
             }
         }
-
-        let day: Option<(i64, i64)> = sqlx::query_as(
-            r#"SELECT MIN(date) AS first_ts, COUNT(*) AS c
-               FROM messages
-               WHERE (?1 IS NULL OR account_id = ?1)
-                 AND date >= ?2 AND date <= ?3
-               GROUP BY date(date, 'unixepoch')
-               ORDER BY c DESC, first_ts ASC
-               LIMIT 1"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_optional(self.reader())
-        .await?;
 
         Ok(WrappedTimePatterns {
             busiest_day_of_week: busiest_dow_sqlite.map(|d| dow_name(d).to_string()),
@@ -193,8 +210,9 @@ impl super::Store {
         since: i64,
         until: i64,
     ) -> Result<WrappedTopContacts, sqlx::Error> {
-        // Top inbound senders.
-        let inbound: Vec<(String, Option<String>, i64)> = sqlx::query_as(
+        // Three independent aggregates — top inbound, top outbound,
+        // and most-asymmetric — fan out to the reader pool together.
+        let inbound_query = sqlx::query_as::<_, (String, Option<String>, i64)>(
             r#"SELECT LOWER(from_email), MAX(from_name), COUNT(*) AS c
                FROM messages
                WHERE direction = 'inbound'
@@ -209,11 +227,9 @@ impl super::Store {
         .bind(since)
         .bind(until)
         .bind(TOP_N)
-        .fetch_all(self.reader())
-        .await?;
+        .fetch_all(self.reader());
 
-        // Top outbound recipients (json_each over to_addrs).
-        let outbound: Vec<(String, i64)> = sqlx::query_as(
+        let outbound_query = sqlx::query_as::<_, (String, i64)>(
             r#"SELECT LOWER(json_extract(t.value, '$.email')) AS email,
                       COUNT(*) AS c
                FROM messages m, json_each(m.to_addrs) t
@@ -229,13 +245,12 @@ impl super::Store {
         .bind(since)
         .bind(until)
         .bind(TOP_N)
-        .fetch_all(self.reader())
-        .await?;
+        .fetch_all(self.reader());
 
         // Most asymmetric over the window — recompute (the materialized
         // contacts table is all-time, doesn't respect window). Requires
         // ≥5 inbound to filter out one-off senders.
-        let asym: Vec<(String, Option<String>, i64, i64)> = sqlx::query_as(
+        let asym_query = sqlx::query_as::<_, (String, Option<String>, i64, i64)>(
             r#"WITH window_contacts AS (
                 SELECT LOWER(from_email) AS email, from_name AS name,
                        'in' AS dir
@@ -267,8 +282,13 @@ impl super::Store {
         .bind(acct)
         .bind(since)
         .bind(until)
-        .fetch_all(self.reader())
-        .await?;
+        .fetch_all(self.reader());
+
+        let (inbound, outbound, asym): (
+            Vec<(String, Option<String>, i64)>,
+            Vec<(String, i64)>,
+            Vec<(String, Option<String>, i64, i64)>,
+        ) = tokio::try_join!(inbound_query, outbound_query, asym_query)?;
 
         // last_seen_at on ContactAsymmetryRow needs a value — reuse
         // window_end as a placeholder rather than running another query.
@@ -412,7 +432,7 @@ impl super::Store {
         since: i64,
         until: i64,
     ) -> Result<WrappedStorage, sqlx::Error> {
-        let total_row: (i64,) = sqlx::query_as(
+        let total_query = sqlx::query_as::<_, (i64,)>(
             r#"SELECT COALESCE(SUM(size_bytes), 0)
                FROM messages
                WHERE (?1 IS NULL OR account_id = ?1)
@@ -421,10 +441,9 @@ impl super::Store {
         .bind(acct)
         .bind(since)
         .bind(until)
-        .fetch_one(self.reader())
-        .await?;
+        .fetch_one(self.reader());
 
-        let mime: Option<(String, i64, i64)> = sqlx::query_as(
+        let mime_query = sqlx::query_as::<_, (String, i64, i64)>(
             r#"SELECT a.mime_type,
                       COALESCE(SUM(a.size_bytes), 0),
                       COUNT(*)
@@ -439,10 +458,9 @@ impl super::Store {
         .bind(acct)
         .bind(since)
         .bind(until)
-        .fetch_optional(self.reader())
-        .await?;
+        .fetch_optional(self.reader());
 
-        let heaviest: Option<(String, String, String, i64, i64)> = sqlx::query_as(
+        let heaviest_query = sqlx::query_as::<_, (String, String, String, i64, i64)>(
             r#"SELECT id, from_email, subject, size_bytes, date
                FROM messages
                WHERE (?1 IS NULL OR account_id = ?1)
@@ -454,8 +472,13 @@ impl super::Store {
         .bind(acct)
         .bind(since)
         .bind(until)
-        .fetch_optional(self.reader())
-        .await?;
+        .fetch_optional(self.reader());
+
+        let (total_row, mime, heaviest): (
+            (i64,),
+            Option<(String, i64, i64)>,
+            Option<(String, String, String, i64, i64)>,
+        ) = tokio::try_join!(total_query, mime_query, heaviest_query)?;
 
         Ok(WrappedStorage {
             total_bytes: total_row.0.max(0) as u64,
@@ -483,7 +506,9 @@ impl super::Store {
         since: i64,
         until: i64,
     ) -> Result<WrappedNewsletters, sqlx::Error> {
-        let unique_row: (i64,) = sqlx::query_as(
+        let read_flag = MessageFlags::READ.bits() as i64;
+
+        let unique_query = sqlx::query_as::<_, (i64,)>(
             r#"SELECT COUNT(DISTINCT list_id)
                FROM messages
                WHERE list_id IS NOT NULL
@@ -493,11 +518,9 @@ impl super::Store {
         .bind(acct)
         .bind(since)
         .bind(until)
-        .fetch_one(self.reader())
-        .await?;
+        .fetch_one(self.reader());
 
-        let read_flag = MessageFlags::READ.bits() as i64;
-        let top_list: Option<(String, i64, i64)> = sqlx::query_as(
+        let top_list_query = sqlx::query_as::<_, (String, i64, i64)>(
             r#"SELECT list_id,
                       COUNT(*),
                       SUM(CASE WHEN (flags & ?4) = ?4 THEN 1 ELSE 0 END)
@@ -513,11 +536,10 @@ impl super::Store {
         .bind(since)
         .bind(until)
         .bind(read_flag)
-        .fetch_optional(self.reader())
-        .await?;
+        .fetch_optional(self.reader());
 
         // Share of inbound that is list-bearing.
-        let share_row: (Option<f64>,) = sqlx::query_as(
+        let share_query = sqlx::query_as::<_, (Option<f64>,)>(
             r#"SELECT
                 CASE WHEN COUNT(*) = 0 THEN NULL
                      ELSE 100.0 * SUM(CASE WHEN list_id IS NOT NULL THEN 1 ELSE 0 END)
@@ -531,8 +553,13 @@ impl super::Store {
         .bind(acct)
         .bind(since)
         .bind(until)
-        .fetch_one(self.reader())
-        .await?;
+        .fetch_one(self.reader());
+
+        let (unique_row, top_list, share_row): (
+            (i64,),
+            Option<(String, i64, i64)>,
+            (Option<f64>,),
+        ) = tokio::try_join!(unique_query, top_list_query, share_query)?;
 
         Ok(WrappedNewsletters {
             unique_lists: unique_row.0.max(0) as u32,

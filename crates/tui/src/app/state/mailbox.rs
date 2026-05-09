@@ -198,12 +198,6 @@ pub struct MailboxState {
     pub pending_thread_fetch: Option<mxr_core::ThreadId>,
     pub in_flight_thread_fetch: Option<mxr_core::ThreadId>,
     pub thread_request_id: u64,
-    /// `Some(message_id)` requests a `Request::GetEnvelope` →
-    /// `open_envelope` flow next runtime tick. Used by drill-downs
-    /// (analytics row Enter, future deep-link navigation) when the
-    /// caller has only an ID and needs the runtime to fetch the real
-    /// `Envelope` before opening it. Cleared after dispatch.
-    pub pending_envelope_open: Option<MessageId>,
     pub pending_browser_open: Option<PendingBrowserOpen>,
     pub pending_browser_open_after_load: Option<MessageId>,
     pub sidebar_selected: usize,
@@ -270,7 +264,6 @@ impl MailboxState {
             pending_thread_fetch: None,
             in_flight_thread_fetch: None,
             thread_request_id: 0,
-            pending_envelope_open: None,
             pending_browser_open: None,
             pending_browser_open_after_load: None,
             sidebar_selected: 0,

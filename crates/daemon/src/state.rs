@@ -41,6 +41,7 @@ struct RuntimeTasks {
     scheduled_sends_loop: ParkingMutex<Option<JoinHandle<()>>>,
     reply_pair_reconciler: ParkingMutex<Option<JoinHandle<()>>>,
     contacts_refresher: ParkingMutex<Option<JoinHandle<()>>>,
+    wrapped_warmer: ParkingMutex<Option<JoinHandle<()>>>,
     startup_maintenance: ParkingMutex<Option<JoinHandle<()>>>,
     bridge_loop: ParkingMutex<Option<JoinHandle<()>>>,
 }
@@ -80,6 +81,10 @@ impl RuntimeTasks {
 
     fn set_contacts_refresher(&self, handle: JoinHandle<()>) {
         *self.contacts_refresher.lock() = Some(handle);
+    }
+
+    fn set_wrapped_warmer(&self, handle: JoinHandle<()>) {
+        *self.wrapped_warmer.lock() = Some(handle);
     }
 
     fn set_startup_maintenance(&self, handle: JoinHandle<()>) {
@@ -135,6 +140,12 @@ impl RuntimeTasks {
                 handle,
             });
         }
+        if let Some(handle) = self.wrapped_warmer.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "wrapped_warmer".to_string(),
+                handle,
+            });
+        }
         if let Some(handle) = self.startup_maintenance.lock().take() {
             handles.push(NamedTaskHandle {
                 name: "startup_maintenance".to_string(),
@@ -187,25 +198,28 @@ fn build_llm_provider(config: &mxr_config::LlmConfig) -> Arc<dyn mxr_llm::LlmPro
 }
 
 /// Key for the in-memory `Wrapped` summary cache. Disambiguates by
-/// account scope (`None` = "all accounts"), the requested time
-/// window in unix seconds, and the human label (so "year-to-date"
-/// and "year=2026" don't collide when the dates happen to align).
+/// account scope (`None` = "all accounts") and the human label.
+///
+/// `since_unix`/`until_unix` are intentionally NOT in the key: for
+/// live windows ("year-to-date", "last 30 days") `until_unix` shifts
+/// with `now()` on every request, which used to make the cache miss
+/// 100% of the time. The label encodes the window semantics
+/// uniquely ("2024" vs "last 30 days" vs "2026 year-to-date") so it
+/// is the right primary key. The TTL — and the background warmer —
+/// keep entries fresh enough.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct WrappedCacheKey {
     pub account_id: Option<AccountId>,
-    pub since_unix: i64,
-    pub until_unix: i64,
     pub label: String,
 }
 
-/// TTL for the daemon-side `Wrapped` summary cache. Wrapped runs
-/// ~10 SQL queries per call; this lets repeated requests within a
-/// short window (e.g. the user toggling between analytics tabs in
-/// the TUI before the client cache settles, or an automation
-/// loop) reuse the prior result instead of re-running the queries.
-/// Sync completion does NOT proactively invalidate; entries
-/// naturally roll over within `WRAPPED_CACHE_TTL`.
-const WRAPPED_CACHE_TTL: Duration = Duration::from_secs(60);
+/// TTL for the daemon-side `Wrapped` summary cache. The background
+/// `wrapped_warmer_loop` re-primes the default-window entry on a
+/// shorter cadence than this so opening the Wrapped tab is normally
+/// instant. Bound at 30 minutes so a cache hit on a non-warmed
+/// window (e.g. an arbitrary `--year`) still reflects roughly
+/// current data.
+pub(crate) const WRAPPED_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 
 pub struct AppState {
     pub store: Arc<Store>,
@@ -215,7 +229,7 @@ pub struct AppState {
     /// present; defaults to `NoopProvider` when LLM is disabled in
     /// config so callers can return `LlmDisabled` without `Option`
     /// gymnastics.
-    pub llm: Arc<dyn mxr_llm::LlmProvider>,
+    pub llm: Arc<mxr_llm::LlmRuntime>,
     pub sync_engine: Arc<SyncEngine>,
     /// Account-owned address cache. SyncEngine consults this for direction
     /// classification; handlers refresh it after every mutation through
@@ -304,7 +318,7 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
-        let llm = build_llm_provider(&config.llm);
+        let llm = Arc::new(mxr_llm::LlmRuntime::new(build_llm_provider(&config.llm)));
 
         Ok(Self {
             store,
@@ -747,6 +761,10 @@ impl AppState {
         self.runtime_tasks.set_contacts_refresher(handle);
     }
 
+    pub fn register_wrapped_warmer(&self, handle: JoinHandle<()>) {
+        self.runtime_tasks.set_wrapped_warmer(handle);
+    }
+
     pub fn register_snooze_loop(&self, handle: JoinHandle<()>) {
         self.runtime_tasks.set_snooze_loop(handle);
     }
@@ -829,6 +847,7 @@ impl AppState {
             .apply_config(config.search.semantic.clone())
             .await
             .map_err(|e| e.to_string())?;
+        self.llm.replace(build_llm_provider(&config.llm));
         *self.config.write() = config.clone();
         Ok(config)
     }
@@ -839,6 +858,7 @@ impl AppState {
             .apply_config(config.search.semantic.clone())
             .await
             .expect("apply semantic config");
+        self.llm.replace(build_llm_provider(&config.llm));
         *self.config.write() = config;
     }
 
@@ -966,6 +986,7 @@ impl AppState {
             .apply_config(config.search.semantic.clone())
             .await
             .map_err(|e| e.to_string())?;
+        self.llm.replace(build_llm_provider(&config.llm));
         *self.config.write() = config;
         crate::loops::spawn_sync_loops(self.clone());
         Ok(())
@@ -1015,7 +1036,7 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
-        let llm = build_llm_provider(&config.llm);
+        let llm = Arc::new(mxr_llm::LlmRuntime::new(build_llm_provider(&config.llm)));
 
         Ok(Self {
             store,
@@ -1064,7 +1085,7 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
-        let llm = build_llm_provider(&config.llm);
+        let llm = Arc::new(mxr_llm::LlmRuntime::new(build_llm_provider(&config.llm)));
 
         Ok(Self {
             store,
@@ -1138,7 +1159,9 @@ impl AppState {
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
 
-        let llm = build_llm_provider(&mxr_config::LlmConfig::default());
+        let llm = Arc::new(mxr_llm::LlmRuntime::new(build_llm_provider(
+            &mxr_config::LlmConfig::default(),
+        )));
 
         Ok((
             Self {

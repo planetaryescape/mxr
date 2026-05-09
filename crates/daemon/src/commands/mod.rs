@@ -12,6 +12,7 @@ pub mod export;
 pub mod headers;
 pub mod history;
 pub mod labels;
+pub mod llm;
 pub mod logs;
 pub mod mutations;
 pub mod notify;

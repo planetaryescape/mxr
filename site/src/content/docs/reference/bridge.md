@@ -220,11 +220,11 @@ lives server-side until you send/save/discard.
 | `POST` | `/mail/labels/rename` | `{from, to}` |
 | `POST` | `/mail/labels/delete` | `{name}` |
 
-## `/api/v1/platform/*` — Rules, accounts, semantic, analytics
+## `/api/v1/platform/*` — Rules, accounts, LLM, semantic, analytics
 
 These are the "platform" features — saved searches, rules, account
-management, analytics, semantic search. Available even without an
-active inbox.
+management, analytics, LLM status, semantic search. Available even
+without an active inbox.
 
 ### Rules
 
@@ -274,6 +274,12 @@ The daemon owns OAuth flows so the renderer never sees a refresh token.
 | `GET` | `/platform/auth/sessions/{id}` | Poll progress |
 | `POST` | `/platform/auth/sessions/{id}/cancel` | Abort |
 | `POST` | `/platform/auth/sessions/{id}/complete` | Wrap up after callback |
+
+### LLM
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/platform/llm/status` | Runtime LLM provider + model status |
 
 ### Semantic
 

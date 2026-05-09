@@ -570,6 +570,38 @@ impl super::Store {
             .collect())
     }
 
+    pub async fn list_message_directions_by_ids(
+        &self,
+        message_ids: &[MessageId],
+    ) -> Result<HashMap<MessageId, MessageDirection>, sqlx::Error> {
+        if message_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let placeholders: Vec<String> = message_ids.iter().map(|_| "?".to_string()).collect();
+        let sql = format!(
+            "SELECT id, direction FROM messages WHERE id IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut query = sqlx::query(&sql);
+        for message_id in message_ids {
+            query = query.bind(message_id.as_str());
+        }
+
+        let rows = query.fetch_all(self.reader()).await?;
+        let mut directions = HashMap::with_capacity(rows.len());
+        for row in rows {
+            let id = decode_id(row.get::<String, _>("id").as_str())?;
+            let direction =
+                MessageDirection::from_db_str(row.get::<String, _>("direction").as_str())
+                    .unwrap_or(MessageDirection::Unknown);
+            directions.insert(id, direction);
+        }
+
+        Ok(directions)
+    }
+
     // Dynamic SQL -- kept as runtime query due to variable IN clause
     pub async fn delete_messages_by_provider_ids(
         &self,

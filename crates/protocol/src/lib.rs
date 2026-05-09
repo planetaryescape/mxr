@@ -307,6 +307,7 @@ mod tests {
                 },
                 IpcCategory::MxrPlatform,
             ),
+            (Request::GetLlmStatus, IpcCategory::MxrPlatform),
             (Request::GetSemanticStatus, IpcCategory::MxrPlatform),
             (
                 Request::EnableSemantic { enabled: true },
@@ -608,6 +609,23 @@ mod tests {
                         active_profile: SemanticProfile::BgeSmallEnV15,
                         profiles: Vec::new(),
                         runtime: SemanticRuntimeMetrics::default(),
+                    },
+                },
+                IpcCategory::MxrPlatform,
+            ),
+            (
+                ResponseData::LlmStatus {
+                    snapshot: LlmStatusSnapshot {
+                        enabled: false,
+                        provider: "noop".into(),
+                        model: "noop".into(),
+                        configured_model: "qwen2.5:3b-instruct".into(),
+                        base_url: None,
+                        api_key_env: None,
+                        api_key_present: false,
+                        context_window: 0,
+                        supports_streaming: false,
+                        request_timeout_secs: 120,
                     },
                 },
                 IpcCategory::MxrPlatform,

@@ -42,10 +42,13 @@ jobs:
       - id: matrix
         name: Build release matrix
         run: |
+          # Release builds enable semantic-local; embedding model is fetched lazily
+          # at runtime by `mxr semantic enable`. Intel mac stays disabled because
+          # fastembed/onnxruntime fails to build on x86_64-apple-darwin (see 59d8b7a).
           MATRIX='{"include":[
-            {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","desktop_platform":"linux","desktop_arch":"x64","desktop_archive":"desktop-linux-x86_64.zip","use_cross":false,"cargo_args":""},
+            {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","desktop_platform":"linux","desktop_arch":"x64","desktop_archive":"desktop-linux-x86_64.zip","use_cross":false,"cargo_args":"--features semantic-local"},
             {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","desktop_platform":"darwin","desktop_arch":"x64","desktop_archive":"desktop-macos-x86_64.zip","use_cross":false,"cargo_args":"--no-default-features"},
-            {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","desktop_platform":"darwin","desktop_arch":"arm64","desktop_archive":"desktop-macos-aarch64.zip","use_cross":false,"cargo_args":""}
+            {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","desktop_platform":"darwin","desktop_arch":"arm64","desktop_archive":"desktop-macos-aarch64.zip","use_cross":false,"cargo_args":"--features semantic-local"}
           ]}'
           {
             echo 'build_matrix<<EOF'

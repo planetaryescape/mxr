@@ -204,17 +204,20 @@ impl App {
                     else {
                         return;
                     };
-                    self.queue_envelope_open(row.message_id.clone());
+                    // Jump to the sender's mail (same pattern as
+                    // Storage / Sender). Direct envelope-open left the
+                    // mailbox list out of sync with the preview pane.
+                    self.jump_to_search(format!("from:{}", row.from_email));
                 }
             },
             AnalyticsView::StaleThreads => {
                 let Some(row) = self.analytics.stale_rows.get(self.analytics.selected_index) else {
                     return;
                 };
-                // Open the latest message in the thread; the runtime's
-                // `open_envelope` flow then triggers the thread fetch
-                // and lands the user on the actual conversation.
-                self.queue_envelope_open(row.latest_message_id.clone());
+                // Jump to a counterparty-scoped search (same pattern as
+                // Contacts drill). Opening the envelope directly left the
+                // mailbox list out of sync with the preview pane.
+                self.jump_to_search(format!("from:{}", row.counterparty_email));
             }
             AnalyticsView::Contacts => {
                 let email = match self.analytics.contacts_mode {
@@ -241,10 +244,9 @@ impl App {
                 else {
                     return;
                 };
-                // Open the latest message from this sender. Same
-                // direct-open flow as Stale Threads / Largest
-                // Messages — bypasses lexical search entirely.
-                self.queue_envelope_open(row.latest_message_id.clone());
+                // Jump to the sender's mail. Direct envelope-open left
+                // the mailbox list out of sync with the preview pane.
+                self.jump_to_search(format!("from:{}", row.sender_email));
             }
             AnalyticsView::ResponseTime => {
                 // ResponseTime is a summary view; no per-row drill.
@@ -260,35 +262,31 @@ impl App {
             return;
         };
         // Tile order: 0=Volume, 1=When, 2=Contacts, 3=Reply,
-        // 4=Storage, 5=Newsletters, 6=Superlatives.
+        // 4=Storage, 5=Newsletters. The legacy "Superlatives" strip
+        // (tile 6) was folded into Volume + Contacts; the
+        // most-ghosted search now triggers from tile 2 (Contacts).
         let tile = self.analytics.wrapped_selected_tile;
         match tile {
-            4 => {
-                if let Some(heaviest) = summary.storage.heaviest_message.as_ref() {
-                    self.queue_envelope_open(heaviest.message_id.clone());
-                }
-            }
-            6 => {
+            2 => {
                 // "Most ghosted" gives an email but no message ID, so
-                // here the from:<email> search is the most precise
-                // surface — the lexical engine indexes from-address.
+                // a from:<email> search is the most precise surface —
+                // the lexical engine indexes from-address.
                 if let Some(g) = summary.superlatives.most_ghosted.as_ref() {
                     let email = g.email.clone();
                     self.jump_to_search(format!("from:{email}"));
                 }
             }
+            4 => {
+                // Heaviest message: jump to its sender's mail. Direct
+                // envelope-open left the centre mailbox list out of
+                // sync with the preview pane (same fix as the other
+                // analytics drills).
+                if let Some(heaviest) = summary.storage.heaviest_message.as_ref() {
+                    self.jump_to_search(format!("from:{}", heaviest.from_email));
+                }
+            }
             _ => {}
         }
-    }
-
-    /// Stage a deep-link open of `message_id`. The runtime drains
-    /// `pending_envelope_open`, fires `Request::GetEnvelope`, and on
-    /// the response calls `open_envelope` (same flow as a mailbox
-    /// row-click). Switches to Mailbox happens in the response
-    /// handler so the user only sees the screen change once the
-    /// envelope is ready to render.
-    fn queue_envelope_open(&mut self, message_id: mxr_core::id::MessageId) {
-        self.mailbox.pending_envelope_open = Some(message_id);
     }
 
     /// Slice 6: 'u' on a Subscriptions row populates the existing

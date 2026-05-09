@@ -19,6 +19,21 @@ pub enum IpcCategory {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct LlmStatusSnapshot {
+    pub enabled: bool,
+    pub provider: String,
+    pub model: String,
+    pub configured_model: String,
+    pub base_url: Option<String>,
+    pub api_key_env: Option<String>,
+    pub api_key_present: bool,
+    pub context_window: u32,
+    pub supports_streaming: bool,
+    pub request_timeout_secs: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct IpcMessage {
     pub id: u64,
     pub payload: IpcPayload,
@@ -223,6 +238,7 @@ pub enum Request {
         account_id: AccountId,
         email: String,
     },
+    GetLlmStatus,
     GetSemanticStatus,
     EnableSemantic {
         enabled: bool,
@@ -548,6 +564,7 @@ impl Request {
             | Self::AddAccountAddress { .. }
             | Self::RemoveAccountAddress { .. }
             | Self::SetPrimaryAccountAddress { .. }
+            | Self::GetLlmStatus
             | Self::GetSemanticStatus
             | Self::EnableSemantic { .. }
             | Self::InstallSemanticProfile { .. }
@@ -948,6 +965,9 @@ pub enum ResponseData {
     SemanticStatus {
         snapshot: SemanticStatusSnapshot,
     },
+    LlmStatus {
+        snapshot: LlmStatusSnapshot,
+    },
     SavedSearchData {
         search: mxr_core::types::SavedSearch,
     },
@@ -1051,6 +1071,7 @@ impl ResponseData {
             | Self::AnalyticsRebuildSummary { .. }
             | Self::ResponseTime { .. }
             | Self::AccountAddresses { .. }
+            | Self::LlmStatus { .. }
             | Self::SemanticStatus { .. }
             | Self::SavedSearchData { .. } => IpcCategory::MxrPlatform,
             Self::EventLogEntries { .. }

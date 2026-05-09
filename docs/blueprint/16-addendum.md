@@ -726,7 +726,7 @@ use_tls = true
 
 9. **Provider-fake is selectable from config.** `[accounts.foo.sync] type = "fake"` and `[accounts.foo.send] type = "fake"` route the daemon to `mxr-provider-fake`. This is the seam used by the binary-level CLI smoke test (`crates/daemon/tests/cli_journey.rs`). (D088)
 
-10. **Default Cargo features exclude semantic-local.** The root `mxr` crate's default feature set is now empty; `--features semantic-local` opts in. CI runs both lanes (`Test (fast / no semantic)` and `Test (semantic-local)`). This drops first-time CLI test compile from ~6 min to ~1 min. (D089)
+10. **Default Cargo features exclude semantic-local; release artifacts opt in.** The root `mxr` crate's default feature set is empty so local `cargo build`/`cargo test` stay fast (~1 min vs ~6 min). CI runs both lanes (`Test (fast / no semantic)` and `Test (semantic-local)`). Release builds in `.github/workflows/release.yml` pass `--features semantic-local` for `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`; the embedding model is still fetched lazily at runtime by `mxr semantic enable`. The Intel mac (`x86_64-apple-darwin`) release stays on `--no-default-features` because fastembed/onnxruntime does not build on that target. (D089)
 
 ### Decision records
 
@@ -739,7 +739,7 @@ use_tls = true
 - **D086**: Silently-ignored CLI flags are removed; `--since` is wired.
 - **D087**: Label create/delete/rename support `--dry-run` and require `--yes` for destructive operations.
 - **D088**: `SyncProviderConfig::Fake` and `SendProviderConfig::Fake` are recognised by the daemon and bind to `mxr-provider-fake`.
-- **D089**: `semantic-local` is no longer a default feature; CI runs a fast lane plus a full-feature lane. Notmuch-style `--format-version=N` versioning is intentionally deferred to post-v1.
+- **D089**: `semantic-local` is no longer a default feature; CI runs a fast lane plus a full-feature lane. Release artifacts for Linux x86_64 and macOS aarch64 ship with `--features semantic-local` (model still downloaded lazily at runtime); Intel macOS stays disabled because fastembed does not build there. Notmuch-style `--format-version=N` versioning is intentionally deferred to post-v1.
 
 ### Out of scope for v1 (post-v1 follow-ups)
 

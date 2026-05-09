@@ -50,6 +50,12 @@ pub enum SemanticAction {
 }
 
 #[derive(Subcommand)]
+pub enum LlmAction {
+    /// Show LLM provider status
+    Status,
+}
+
+#[derive(Subcommand)]
 pub enum SemanticProfileAction {
     /// List known semantic profiles
     List,

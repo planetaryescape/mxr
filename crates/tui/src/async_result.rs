@@ -79,14 +79,6 @@ pub(crate) enum AsyncResult {
         request_id: u64,
         result: Result<(Thread, Vec<Envelope>), MxrError>,
     },
-    /// Response from an `Request::GetEnvelope` triggered by a deep-link
-    /// drill-down (analytics row Enter, future ID-based navigation).
-    /// On success the runtime calls `App::open_envelope(envelope)` and
-    /// switches to the Mailbox screen.
-    OpenEnvelopeResponse {
-        message_id: MessageId,
-        result: Result<Envelope, MxrError>,
-    },
     MutationResult {
         id: app::MutationId,
         outcome: Result<app::MutationEffect, MxrError>,

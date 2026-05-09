@@ -12,6 +12,7 @@ use mxr_core::types::{
 };
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+use throbber_widgets_tui::ThrobberState;
 
 /// How long an analytics view's cached data is considered fresh
 /// before a tab-switch will trigger a background refresh. Manual
@@ -169,6 +170,11 @@ pub struct AnalyticsState {
     /// by h/j/k/l in tile-grid layout. Drill-down uses this to know
     /// which tile's destination to follow on Enter.
     pub wrapped_selected_tile: usize,
+
+    /// Animated throbber state for the cold-load "Computing analytics..."
+    /// indicator. Advanced by the tick handler whenever `loading` is set
+    /// and no cached data exists for the active view.
+    pub loading_throbber: ThrobberState,
 }
 
 impl Default for AnalyticsState {
@@ -214,6 +220,7 @@ impl Default for AnalyticsState {
 
             pending_contacts_refresh: false,
             wrapped_selected_tile: 0,
+            loading_throbber: ThrobberState::default(),
         }
     }
 }

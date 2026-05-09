@@ -65,6 +65,9 @@ impl App {
         if self.accounts.page.operation_in_flight {
             self.accounts.page.throbber.calc_next();
         }
+        if self.analytics.should_show_cold_load() {
+            self.analytics.loading_throbber.calc_next();
+        }
         self.process_pending_search_debounce();
         self.process_pending_preview_read();
     }

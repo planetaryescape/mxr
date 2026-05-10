@@ -3046,6 +3046,9 @@ async fn materialize_attachment_file(
 }
 
 fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::AttachmentId) -> String {
+    const MAX_ATTACHMENT_FILENAME_BYTES: usize = 220;
+    const MAX_EXTENSION_BYTES: usize = 16;
+
     let candidate = std::path::Path::new(filename)
         .file_name()
         .and_then(|name| name.to_str())
@@ -3059,11 +3062,39 @@ fn sanitized_attachment_filename(filename: &str, attachment_id: &mxr_core::Attac
         })
         .collect();
 
-    if sanitized.trim().is_empty() {
+    let sanitized = if sanitized.trim().is_empty() {
         format!("attachment-{}", attachment_id.as_str())
     } else {
         sanitized
+    };
+
+    // APFS limits individual path components to 255 bytes. Some
+    // real-world attachment filenames exceed that once MIME-decoded;
+    // keep the extension when possible and add a stable attachment-id
+    // suffix to avoid collisions after truncation.
+    if sanitized.len() <= MAX_ATTACHMENT_FILENAME_BYTES {
+        return sanitized;
     }
+
+    let path = std::path::Path::new(&sanitized);
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .filter(|extension| extension.len() <= MAX_EXTENSION_BYTES);
+    let suffix = match extension {
+        Some(extension) => format!("-{}.{}", attachment_id.as_str(), extension),
+        None => format!("-{}", attachment_id.as_str()),
+    };
+    let max_stem_bytes = MAX_ATTACHMENT_FILENAME_BYTES.saturating_sub(suffix.len());
+    let mut stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or(&sanitized)
+        .to_string();
+    while stem.len() > max_stem_bytes {
+        stem.pop();
+    }
+    format!("{stem}{suffix}")
 }
 
 fn open_local_file(path: &str) -> anyhow::Result<()> {
@@ -3097,6 +3128,45 @@ mod tests {
     use chrono::TimeZone;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex as StdMutex;
+
+    #[test]
+    fn sanitized_attachment_filename_truncates_long_names_preserving_extension() {
+        let attachment_id = mxr_core::AttachmentId::from_provider_id("test", "long-pdf");
+        let filename = format!("{}.pdf", "a".repeat(400));
+
+        let sanitized = sanitized_attachment_filename(&filename, &attachment_id);
+
+        assert!(
+            sanitized.len() <= 220,
+            "filename should fit conservative path component limit: {} bytes",
+            sanitized.len()
+        );
+        assert!(sanitized.ends_with(&format!("-{}.pdf", attachment_id.as_str())));
+    }
+
+    #[test]
+    fn sanitized_attachment_filename_truncates_utf8_on_char_boundary() {
+        let attachment_id = mxr_core::AttachmentId::from_provider_id("test", "utf8-pdf");
+        let filename = format!("{}.pdf", "é".repeat(200));
+
+        let sanitized = sanitized_attachment_filename(&filename, &attachment_id);
+
+        assert!(
+            sanitized.len() <= 220,
+            "filename should fit conservative path component limit: {} bytes",
+            sanitized.len()
+        );
+        assert!(sanitized.ends_with(&format!("-{}.pdf", attachment_id.as_str())));
+    }
+
+    #[test]
+    fn sanitized_attachment_filename_uses_stable_fallback_for_blank_names() {
+        let attachment_id = mxr_core::AttachmentId::from_provider_id("test", "blank");
+
+        let sanitized = sanitized_attachment_filename("   ", &attachment_id);
+
+        assert_eq!(sanitized, format!("attachment-{}", attachment_id.as_str()));
+    }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     enum FolderCopyReanchorMode {

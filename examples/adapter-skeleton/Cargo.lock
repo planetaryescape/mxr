@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-core"
-version = "0.5.7"
+version = "0.5.8"
 dependencies = [
  "async-trait",
  "bitflags",
@@ -281,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "mxr-provider-fake"
-version = "0.5.7"
+version = "0.5.8"
 dependencies = [
  "async-trait",
  "chrono",

@@ -80,7 +80,7 @@ jobs:
         # Endpoint-level conformance testing requires a real daemon
         # backed by FakeProvider — tracked as a follow-up after v0.5
         # ships.
-        run: schemathesis run --dry-run --validate-schema=true .openapi/spec.json
+        run: schemathesis run --dry-run --validate-schema=true --experimental=openapi-3.1 .openapi/spec.json
 
       - name: Upload spec artifact
         if: always()

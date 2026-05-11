@@ -66,6 +66,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatRelativeAge } from "@/lib/utils";
+import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const CodeMirrorComposeEditor = lazy(() =>
@@ -109,6 +110,14 @@ interface ActiveDraftEntry {
   updatedAt: number;
 }
 
+interface ComposeSaveSnapshot {
+  draftPath: string;
+  accountId: string;
+  fingerprint: string;
+  frontmatter: ComposeFrontmatter;
+  body: string;
+}
+
 interface Snippet {
   name: string;
   body: string;
@@ -143,6 +152,7 @@ export function ComposeRoute() {
   const [draft, setDraft] = useState<ComposeDraftState | null>(null);
   const draftRef = useRef<ComposeDraftState | null>(null);
   draftRef.current = draft;
+  const lastSavedFingerprintRef = useRef<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -172,11 +182,15 @@ export function ComposeRoute() {
   useEffect(() => {
     const session = sessionQuery.data?.session;
     if (!session) return;
-    const { draft: next, changed } = applyPrefill(draftFromSession(session), intent);
+    const baseDraft = draftFromSession(session);
+    const { draft: next, changed } = applyPrefill(baseDraft, intent);
     setDraft(next);
     setDirty(changed);
     setSaveError(null);
     setLastSavedAt(new Date());
+    lastSavedFingerprintRef.current = changed
+      ? draftFingerprint(baseDraft)
+      : draftFingerprint(next);
     setShowCc(Boolean(next.frontmatter.cc.trim()));
     setShowBcc(Boolean(next.frontmatter.bcc.trim()));
     rememberActiveDraft(intent.key, next);
@@ -185,18 +199,31 @@ export function ComposeRoute() {
   const saveCurrentDraft = useCallback(async () => {
     const current = draftRef.current;
     if (!current) return undefined;
-    const submittedSnapshot = serializeDraft(current);
+    const snapshot = captureSaveSnapshot(current);
+    if (snapshot.fingerprint === lastSavedFingerprintRef.current) {
+      setDirty(false);
+      setSaveError(null);
+      return undefined;
+    }
     setSaveError(null);
     try {
-      const response = await updateSession.mutateAsync({
-        draftPath: current.draftPath,
-        frontmatter: current.frontmatter,
-        body: current.bodyMarkdown,
-      });
+      const result = await requestCoordinator.queueComposeLatest(
+        composeQueueKey(snapshot.draftPath),
+        async () =>
+          await updateSession.mutateAsync({
+            draftPath: snapshot.draftPath,
+            frontmatter: snapshot.frontmatter,
+            body: snapshot.body,
+          }),
+      );
+      if (result.status !== "committed") return undefined;
+      const response = result.value;
+      lastSavedFingerprintRef.current = snapshot.fingerprint;
       const latest = draftRef.current;
-      if (latest && serializeDraft(latest) === submittedSnapshot) {
-        const next = draftFromSession(response.session, current.accountId);
+      if (latest && draftFingerprint(latest) === snapshot.fingerprint) {
+        const next = draftFromSession(response.session, snapshot.accountId);
         setDraft(next);
+        lastSavedFingerprintRef.current = draftFingerprint(next);
         setDirty(false);
         rememberActiveDraft(intent.key, next);
       } else if (latest) {
@@ -213,14 +240,14 @@ export function ComposeRoute() {
   }, [intent.key, queryClient, updateSession]);
 
   useEffect(() => {
-    if (!dirty || !draft || updateSession.isPending) return;
+    if (!dirty || !draft) return;
     const handle = window.setTimeout(() => {
       void saveCurrentDraft().catch((error: Error) => {
         toast.error("Autosave failed", { description: error.message });
       });
     }, 3000);
     return () => window.clearTimeout(handle);
-  }, [dirty, draft, saveCurrentDraft, updateSession.isPending]);
+  }, [dirty, draft, saveCurrentDraft]);
 
   useEffect(() => {
     if (!draft?.draftPath) return;
@@ -292,17 +319,24 @@ export function ComposeRoute() {
     setDirty(true);
   }
 
+  function isCurrentDraftSaved(current: ComposeDraftState): boolean {
+    return draftFingerprint(current) === lastSavedFingerprintRef.current;
+  }
+
   async function handleSaveClick() {
     await saveCurrentDraft();
     toast.success("Draft saved locally");
   }
 
   async function handleServerSaveClick() {
-    const saved = await saveCurrentDraft();
+    await saveCurrentDraft();
     const current = draftRef.current;
-    const accountId = saved?.accountId ?? current?.accountId;
-    const draftPath = saved?.draftPath ?? current?.draftPath;
-    if (!accountId || !draftPath) return;
+    if (!current || !isCurrentDraftSaved(current)) {
+      toast.error("Draft changed while saving", { description: "Save again before server draft." });
+      return;
+    }
+    const accountId = current.accountId;
+    const draftPath = current.draftPath;
     await serverSave.mutateAsync({ draftPath, accountId });
     toast.success("Draft saved to server");
   }
@@ -341,11 +375,16 @@ export function ComposeRoute() {
   }
 
   async function confirmSend() {
-    const saved = await saveCurrentDraft();
+    await saveCurrentDraft();
     const current = draftRef.current;
-    const accountId = saved?.accountId ?? current?.accountId;
-    const draftPath = saved?.draftPath ?? current?.draftPath;
-    if (!accountId || !draftPath) return;
+    if (!current || !isCurrentDraftSaved(current)) {
+      toast.error("Draft changed while saving", {
+        description: "Retry send after the latest save.",
+      });
+      return;
+    }
+    const accountId = current.accountId;
+    const draftPath = current.draftPath;
     await sendSession.mutateAsync({ draftPath, accountId });
     forgetActiveDraft(intent.key);
     setSendConfirmOpen(false);
@@ -1070,11 +1109,29 @@ function draftFromSession(session: ComposeSession, fallbackAccountId = ""): Comp
   };
 }
 
-function serializeDraft(draft: ComposeDraftState): string {
-  return JSON.stringify({
-    frontmatter: draft.frontmatter,
-    body: draft.bodyMarkdown,
+function captureSaveSnapshot(draft: ComposeDraftState): ComposeSaveSnapshot {
+  return {
+    draftPath: draft.draftPath,
     accountId: draft.accountId,
+    fingerprint: draftFingerprint(draft),
+    frontmatter: { ...draft.frontmatter, attach: [...draft.frontmatter.attach] },
+    body: draft.bodyMarkdown,
+  };
+}
+
+function composeQueueKey(draftPath: string): string {
+  return `compose:${draftPath}`;
+}
+
+function draftFingerprint(draft: ComposeDraftState): string {
+  return JSON.stringify({
+    to: draft.frontmatter.to,
+    cc: draft.frontmatter.cc,
+    bcc: draft.frontmatter.bcc,
+    subject: draft.frontmatter.subject,
+    from: draft.frontmatter.from,
+    attach: draft.frontmatter.attach,
+    body: draft.bodyMarkdown,
   });
 }
 

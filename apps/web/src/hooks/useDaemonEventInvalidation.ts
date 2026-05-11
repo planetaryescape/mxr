@@ -1,14 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { shellKey } from "./api";
+import { shellKey } from "@/features/mailbox/api";
 import { useDaemonEvents } from "@/hooks/useDaemonEvents";
 import { useConnectionStore, type SyncProgress } from "@/state/connectionStore";
 
 const CLEAR_SYNC_PROGRESS_DELAY_MS = 1_000;
 let clearSyncProgressHandle: ReturnType<typeof setTimeout> | undefined;
 
-export function useMailboxRealtime(): void {
+export function useDaemonEventInvalidation(): void {
   const qc = useQueryClient();
   useDaemonEvents(
     useCallback(
@@ -20,6 +20,8 @@ export function useMailboxRealtime(): void {
           case "MessageUnsnoozed":
             void qc.invalidateQueries({ queryKey: ["mailbox"] });
             void qc.invalidateQueries({ queryKey: ["thread"] });
+            void qc.invalidateQueries({ queryKey: ["search"] });
+            void qc.invalidateQueries({ queryKey: ["search-palette"] });
             void qc.invalidateQueries({ queryKey: shellKey });
             break;
           case "LabelCountsUpdated":
@@ -51,6 +53,7 @@ export function useMailboxRealtime(): void {
             if (event.type !== "SyncCompleted" && !isSyncOperationEvent(event)) break;
             clearSyncProgressSoon();
             void qc.invalidateQueries({ queryKey: ["mailbox"] });
+            void qc.invalidateQueries({ queryKey: ["search"] });
             void qc.invalidateQueries({ queryKey: shellKey });
             break;
         }

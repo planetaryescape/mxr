@@ -45,7 +45,7 @@ export function MailboxList({
 }: MailboxListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-  const [focused, setFocused] = useState(0);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const activePane = useMailboxPane((state) => state.activePane);
   const setActivePane = useMailboxPane((state) => state.setActivePane);
   const setScope = useSelection((state) => state.setScope);
@@ -69,13 +69,27 @@ export function MailboxList({
     () => flat.flatMap((item) => (item.kind === "row" ? [item.row] : [])),
     [flat],
   );
+  const focusedIndex = useMemo(() => {
+    if (!focusedId) return rows.length > 0 ? 0 : -1;
+    const index = rows.findIndex((row) => row.id === focusedId);
+    return index >= 0 ? index : rows.length > 0 ? 0 : -1;
+  }, [focusedId, rows]);
+  const focusedRow = focusedIndex >= 0 ? rows[focusedIndex] : undefined;
 
   useEffect(() => setScope(mailboxPath), [mailboxPath, setScope]);
 
   useEffect(() => {
+    setFocusedId((current) => {
+      if (rows.length === 0) return null;
+      if (current && rows.some((row) => row.id === current)) return current;
+      return rows[0]?.id ?? null;
+    });
+  }, [rows]);
+
+  useEffect(() => {
     if (!activeThreadId) return;
-    const nextIndex = rows.findIndex((row) => row.thread_id === activeThreadId);
-    if (nextIndex >= 0) setFocused(nextIndex);
+    const row = rows.find((item) => item.thread_id === activeThreadId);
+    if (row) setFocusedId(row.id);
   }, [activeThreadId, rows]);
 
   const virtualizer = useVirtualizer({
@@ -102,11 +116,12 @@ export function MailboxList({
   }, [flat.length, hasMore, loadingMore, onLoadMore, virtualItems]);
 
   useEffect(() => {
-    const row = rows[focused];
-    if (!row) return;
-    const flatIndex = flat.findIndex((item) => item.kind === "row" && item.row.id === row.id);
+    if (!focusedRow) return;
+    const flatIndex = flat.findIndex(
+      (item) => item.kind === "row" && item.row.id === focusedRow.id,
+    );
     if (flatIndex >= 0) virtualizer.scrollToIndex(flatIndex, { align: "auto" });
-  }, [flat, focused, rows, virtualizer]);
+  }, [flat, focusedRow, virtualizer]);
 
   const openRow = useCallback(
     (row: MessageRowView, pane: "mailbox" | "reader") => {
@@ -125,12 +140,13 @@ export function MailboxList({
   const moveFocus = useCallback(
     (delta: number) => {
       if (rows.length === 0) return;
-      const next = Math.max(0, Math.min(rows.length - 1, focused + delta));
-      setFocused(next);
+      const current = focusedIndex >= 0 ? focusedIndex : 0;
+      const next = Math.max(0, Math.min(rows.length - 1, current + delta));
+      setFocusedId(rows[next]?.id ?? null);
       const row = rows[next];
       if (previewOnFocus && row && row.thread_id !== activeThreadId) openRow(row, "mailbox");
     },
-    [activeThreadId, focused, openRow, previewOnFocus, rows],
+    [activeThreadId, focusedIndex, openRow, previewOnFocus, rows],
   );
 
   useEffect(() => {
@@ -155,7 +171,7 @@ export function MailboxList({
         setActivePane("sidebar");
       } else if (event.key.toLowerCase() === "x") {
         event.preventDefault();
-        const row = rowItems[focused];
+        const row = rowItems[focusedIndex];
         if (!row) return;
         if (event.shiftKey && lastClickedId) {
           const ordered = rowItems.map((item) => item.id);
@@ -170,34 +186,46 @@ export function MailboxList({
         toggle(row.id);
       } else if (event.key === "Enter" || event.key === "o") {
         event.preventDefault();
-        const row = rowItems[focused];
+        const row = rowItems[focusedIndex];
         if (row) openRow(row, "reader");
       } else if (event.key === "l" || event.key === "ArrowRight") {
         event.preventDefault();
-        const row = rowItems[focused];
+        const row = rowItems[focusedIndex];
         if (row) openRow(row, "reader");
       } else if (event.key === "e") {
         event.preventDefault();
         const ids =
-          selectedIds.size > 0 ? [...selectedIds] : rowItems[focused] ? [rowItems[focused].id] : [];
+          selectedIds.size > 0
+            ? [...selectedIds]
+            : rowItems[focusedIndex]
+              ? [rowItems[focusedIndex].id]
+              : [];
         if (ids.length > 0) archive.mutate(ids);
       } else if (event.key === "!") {
         event.preventDefault();
         const ids =
-          selectedIds.size > 0 ? [...selectedIds] : rowItems[focused] ? [rowItems[focused].id] : [];
+          selectedIds.size > 0
+            ? [...selectedIds]
+            : rowItems[focusedIndex]
+              ? [rowItems[focusedIndex].id]
+              : [];
         if (ids.length > 0) spam.mutate(ids);
       } else if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
         const ids =
-          selectedIds.size > 0 ? [...selectedIds] : rowItems[focused] ? [rowItems[focused].id] : [];
+          selectedIds.size > 0
+            ? [...selectedIds]
+            : rowItems[focusedIndex]
+              ? [rowItems[focusedIndex].id]
+              : [];
         if (ids.length > 0) trash.mutate(ids);
       } else if (event.key === "s") {
         event.preventDefault();
-        const row = rowItems[focused];
+        const row = rowItems[focusedIndex];
         if (row) (row.starred ? unstar : star).mutate([row.id]);
       } else if (event.key === "m") {
         event.preventDefault();
-        const row = rowItems[focused];
+        const row = rowItems[focusedIndex];
         if (row) (row.unread ? read : unread).mutate([row.id]);
       } else if (event.key === "Escape") {
         event.preventDefault();
@@ -211,7 +239,7 @@ export function MailboxList({
     activeThreadId,
     archive,
     clearSelection,
-    focused,
+    focusedIndex,
     lastClickedId,
     mailboxPath,
     moveFocus,
@@ -303,7 +331,7 @@ export function MailboxList({
                   <MailboxRow
                     row={item.row}
                     selected={selectedIds.has(item.row.id)}
-                    focused={rows[focused]?.id === item.row.id}
+                    focused={focusedRow?.id === item.row.id}
                     onToggleSelection={(shift) => toggleRow(item.row, shift)}
                     onFocusPane={() => setActivePane("mailbox")}
                     onOpen={() => openRow(item.row, "mailbox")}

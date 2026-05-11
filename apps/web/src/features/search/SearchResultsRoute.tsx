@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { parseSearchTokens, removeSearchToken, searchSyntaxRows } from "@/lib/searchSyntax";
 
 export function SearchResultsRoute() {
@@ -51,7 +52,13 @@ export function SearchResultsRoute() {
 
   const results = useQuery({
     queryKey: searchKey({ q, mode, sort, account: search.account, limit: 100 }),
-    queryFn: () => fetchSearch({ q, mode, sort, account: search.account, limit: 100 }),
+    queryFn: ({ signal }) =>
+      runReplaceableQuery("search-results", signal, (combinedSignal) =>
+        fetchSearch(
+          { q, mode, sort, account: search.account, limit: 100 },
+          { signal: combinedSignal },
+        ),
+      ),
     enabled: q.trim().length > 0,
   });
   const savedSearches = useQuery({

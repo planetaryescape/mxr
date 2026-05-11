@@ -4,7 +4,6 @@ import { useEffect } from "react";
 
 import { MailboxList } from "./MailboxList";
 import { SyncProgressBanner } from "./SyncProgressBanner";
-import { useMailboxRealtime } from "./useMailboxRealtime";
 import { useMailboxQuery } from "./useMailboxQuery";
 import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,6 @@ export function MailboxRoute() {
   const mailboxPath = activeThreadId ? `/m/${routeParts[1]}` : pathname;
   const activePane = useMailboxPane((state) => state.activePane);
   const setActivePane = useMailboxPane((state) => state.setActivePane);
-  useMailboxRealtime();
   const mailbox = useMailboxQuery();
 
   useEffect(() => {

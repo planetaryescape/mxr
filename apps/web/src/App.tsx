@@ -6,6 +6,8 @@ import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useConnectionStatusBootstrap } from "@/hooks/useConnectionStatus";
+import { useDaemonEventInvalidation } from "@/hooks/useDaemonEventInvalidation";
+import { useProtocolCompatibilityBootstrap } from "@/hooks/useProtocolCompatibility";
 import { createQueryClient } from "@/lib/queryClient";
 import { daemonEvents } from "@/lib/ws";
 import { routeTree } from "@/routeTree.gen";
@@ -47,6 +49,8 @@ export default function App() {
 
 function RealtimeBootstrap() {
   useConnectionStatusBootstrap();
+  useProtocolCompatibilityBootstrap();
+  useDaemonEventInvalidation();
   useEffect(() => {
     daemonEvents.start();
     return () => daemonEvents.stop();

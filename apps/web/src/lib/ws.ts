@@ -3,7 +3,7 @@
  *
  * - Auth via `Sec-WebSocket-Protocol: bearer, <token>` (browsers can't set
  *   custom headers on WS upgrades; the bridge accepts this subprotocol form).
- * - Exponential backoff with jitter, 250ms → 2s.
+ * - Exponential backoff with jitter, 250ms → 30s.
  * - Heartbeat ping every 25s.
  * - Reconnect triggers: online event, window focus, manual reconnect.
  * - Multi-subscriber: handlers fan out from a single connection.
@@ -30,7 +30,7 @@ type StatusListener = (status: ConnectionStatus) => void;
 
 const HEARTBEAT_MS = 25_000;
 const MIN_BACKOFF_MS = 250;
-const MAX_BACKOFF_MS = 2_000;
+const MAX_BACKOFF_MS = 30_000;
 const PATH = "/api/v1/events";
 
 class DaemonEventClient {

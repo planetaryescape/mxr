@@ -11,6 +11,7 @@ import {
   undoMutation,
 } from "./api";
 import type { MailboxResponse, MessageGroupView, MutationResponse } from "./types";
+import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useSelection } from "@/state/selectionStore";
 
 export type MailAction = "archive" | "trash" | "spam" | "star" | "unstar" | "read" | "unread";
@@ -113,7 +114,8 @@ export function useOptimisticMailMutation(
   const qc = useQueryClient();
   const clearSelection = useSelection((state) => state.clear);
   return useMutation({
-    mutationFn: (messageIds: string[]) => runAction(action, messageIds),
+    mutationFn: (messageIds: string[]) =>
+      requestCoordinator.enqueueMutation(() => runAction(action, messageIds)),
     onMutate: async (messageIds) => {
       await qc.cancelQueries({ queryKey: ["mailbox"] });
       const context = snapshotAndMutate(qc, messageIds, action);

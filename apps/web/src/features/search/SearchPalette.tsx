@@ -8,6 +8,7 @@ import type { MessageRowView } from "@/features/mailbox/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { runReplaceableQuery } from "@/lib/requestCoordinator";
 import { cn } from "@/lib/utils";
 import { useModals } from "@/state/modalStore";
 
@@ -33,7 +34,10 @@ export function SearchPalette() {
 
   const suggestions = useQuery({
     queryKey: ["search-palette", debounced],
-    queryFn: () => fetchSearch({ q: debounced, limit: 8 }),
+    queryFn: ({ signal }) =>
+      runReplaceableQuery("search-palette", signal, (combinedSignal) =>
+        fetchSearch({ q: debounced, limit: 8 }, { signal: combinedSignal }),
+      ),
     enabled: open && debounced.length > 1,
     staleTime: 15_000,
   });

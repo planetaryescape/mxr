@@ -85,4 +85,32 @@ describe("MailboxList keyboard selection", () => {
 
     expect([...useSelection.getState().ids]).toEqual(["msg-1", "msg-2"]);
   });
+
+  test("keeps keyboard focus on the same message when rows shift", async () => {
+    const { rerender } = render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
+
+    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "j" });
+
+    const first = rows[0];
+    if (!first) throw new Error("missing first row");
+    const prepended: MessageRowView = {
+      ...first,
+      id: "msg-0",
+      thread_id: "thread-0",
+      provider_id: "provider-0",
+      subject: "Subject 0",
+    };
+    rerender(
+      <MailboxList
+        groups={[{ id: "today", label: "Today", rows: [prepended, ...rows] }]}
+        mailboxPath="/m/inbox"
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "x" });
+
+    expect([...useSelection.getState().ids]).toEqual(["msg-2"]);
+  });
 });

@@ -7,6 +7,7 @@
 import { create } from "zustand";
 
 import type { ConnectionState } from "@/lib/ws";
+import type { ProtocolMismatch } from "@/lib/protocolCompatibility";
 
 export interface SyncProgress {
   account_id: string;
@@ -19,6 +20,9 @@ export interface ConnectionStoreState {
   lastEventAt?: number;
   lastErrorAt?: number;
   errorMessage?: string;
+  protocolMismatch?: ProtocolMismatch;
+  protocolCheckedAt?: number;
+  protocolCheckError?: string;
   syncProgress?: SyncProgress;
   semanticReindexProgress?: { current: number; total: number };
   setState: (next: Partial<Omit<ConnectionStoreState, keyof Setters>>) => void;

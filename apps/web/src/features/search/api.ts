@@ -40,7 +40,10 @@ export function searchKey(params: SearchParams) {
   return ["search", params] as const;
 }
 
-export function fetchSearch(params: SearchParams): Promise<SearchResponse> {
+export function fetchSearch(
+  params: SearchParams,
+  opts: { signal?: AbortSignal } = {},
+): Promise<SearchResponse> {
   const query = new URLSearchParams();
   query.set("q", params.q);
   query.set("mode", params.mode ?? "lexical");
@@ -49,7 +52,9 @@ export function fetchSearch(params: SearchParams): Promise<SearchResponse> {
   query.set("offset", String(params.offset ?? 0));
   query.set("scope", params.scope ?? "threads");
   if (params.account) query.set("account", params.account);
-  return apiFetch<SearchResponse>(`/api/v1/mail/search?${query.toString()}`);
+  return apiFetch<SearchResponse>(`/api/v1/mail/search?${query.toString()}`, {
+    signal: opts.signal,
+  });
 }
 
 export function fetchSavedSearches(): Promise<{ searches: SavedSearch[] }> {

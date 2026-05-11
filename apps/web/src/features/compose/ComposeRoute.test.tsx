@@ -153,4 +153,13 @@ describe("ComposeRoute keyboard flow", () => {
     expect(screen.queryByText("beta@example.com")).not.toBeInTheDocument();
     expect(screen.getByText("alpha@example.com")).toBeVisible();
   });
+
+  test("does not re-save an unchanged draft", async () => {
+    renderWithQueryClient(<ComposeRoute />);
+
+    const save = await screen.findByRole("button", { name: "Save" });
+    fireEvent.click(save);
+
+    expect(api.updateComposeSession).not.toHaveBeenCalled();
+  });
 });

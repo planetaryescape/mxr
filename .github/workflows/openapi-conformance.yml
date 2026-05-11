@@ -58,7 +58,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Schemathesis
-        run: pip install "schemathesis==3.39.5"
+        run: pip install "schemathesis==3.39.5" "hypothesis==6.103.4"
 
       - name: Dump served OpenAPI spec
         run: |

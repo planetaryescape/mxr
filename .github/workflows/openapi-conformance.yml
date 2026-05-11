@@ -8,11 +8,13 @@ on:
       - "crates/web/**"
       - "crates/protocol/**"
       - "crates/core/**"
+      - ".github/workflows/openapi-conformance.yml"
   pull_request:
     paths:
       - "crates/web/**"
       - "crates/protocol/**"
       - "crates/core/**"
+      - ".github/workflows/openapi-conformance.yml"
   workflow_dispatch:
 
 concurrency:
@@ -54,7 +56,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
 
       - name: Install Schemathesis
         run: pip install "schemathesis==3.39.5"

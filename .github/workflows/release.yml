@@ -22,8 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       cli_changed: ${{ steps.scope.outputs.cli_changed }}
-      desktop_source_changed: ${{ steps.scope.outputs.desktop_source_changed }}
-      desktop_changed: ${{ steps.scope.outputs.desktop_changed }}
       has_artifacts: ${{ steps.scope.outputs.has_artifacts }}
       build_matrix: ${{ steps.matrix.outputs.build_matrix }}
     steps:
@@ -46,9 +44,9 @@ jobs:
           # at runtime by `mxr semantic enable`. Intel mac stays disabled because
           # fastembed/onnxruntime fails to build on x86_64-apple-darwin (see 59d8b7a).
           MATRIX='{"include":[
-            {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","desktop_platform":"linux","desktop_arch":"x64","desktop_archive":"desktop-linux-x86_64.zip","use_cross":false,"cargo_args":"--features semantic-local,web-ui"},
-            {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","desktop_platform":"darwin","desktop_arch":"x64","desktop_archive":"desktop-macos-x86_64.zip","use_cross":false,"cargo_args":"--no-default-features --features web-ui"},
-            {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","desktop_platform":"darwin","desktop_arch":"arm64","desktop_archive":"desktop-macos-aarch64.zip","use_cross":false,"cargo_args":"--features semantic-local,web-ui"}
+            {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","use_cross":false,"cargo_args":"--features semantic-local,web-ui"},
+            {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","use_cross":false,"cargo_args":"--no-default-features --features web-ui"},
+            {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","use_cross":false,"cargo_args":"--features semantic-local,web-ui"}
           ]}'
           {
             echo 'build_matrix<<EOF'
@@ -110,16 +108,10 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - uses: actions/setup-node@v6
-        if: needs.plan.outputs.desktop_changed == 'true'
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config fakeroot dpkg rpm xvfb
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
 
       - name: Install cross
         if: matrix.use_cross
@@ -251,61 +243,6 @@ jobs:
         if: needs.plan.outputs.cli_changed == 'true'
         run: shasum -a 256 "${{ env.ARCHIVE }}" > "${{ env.ARCHIVE }}.sha256"
 
-      - name: Install desktop dependencies
-        if: needs.plan.outputs.desktop_changed == 'true'
-        working-directory: apps/desktop
-        run: npm ci
-
-      - name: Check desktop version sync
-        if: needs.plan.outputs.desktop_changed == 'true'
-        working-directory: apps/desktop
-        run: npm run sync-version:check
-
-      - name: Package desktop
-        if: needs.plan.outputs.desktop_changed == 'true'
-        working-directory: apps/desktop
-        env:
-          MXR_DESKTOP_BUNDLED_BINARY: ../../target/${{ matrix.target }}/release/mxr
-        run: npm run make -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
-
-      - name: Smoke packaged desktop bundle
-        if: needs.plan.outputs.desktop_changed == 'true'
-        working-directory: apps/desktop
-        run: |
-          BUNDLED_MXR=$(find out -type f \( -path '*resources/bin/mxr' -o -path '*Resources/bin/mxr' \) ! -path '*resources/app/*' ! -path '*Resources/app/*' -print -quit)
-          test -n "$BUNDLED_MXR"
-          "$BUNDLED_MXR" status --format json | grep '"protocol_version"'
-
-      - name: Smoke packaged desktop app
-        if: needs.plan.outputs.desktop_changed == 'true'
-        working-directory: apps/desktop
-        run: |
-          if [ "${{ matrix.desktop_platform }}" = "linux" ]; then
-            xvfb-run -a npm run smoke:packaged -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
-          else
-            npm run smoke:packaged -- --platform=${{ matrix.desktop_platform }} --arch=${{ matrix.desktop_arch }}
-          fi
-
-      - name: Collect desktop archive
-        if: needs.plan.outputs.desktop_changed == 'true'
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          mkdir -p desktop-artifacts
-          find apps/desktop/out/make -type f \( -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' \) -print0 |
-            while IFS= read -r -d '' artifact; do
-              ext="${artifact##*.}"
-              cp "${artifact}" "desktop-artifacts/mxr-v${VERSION}-desktop-${{ matrix.desktop_platform }}-${{ matrix.desktop_arch }}.${ext}"
-            done
-          test "$(find desktop-artifacts -type f | wc -l | tr -d ' ')" -gt 0
-
-      - name: Generate desktop SHA256 checksum
-        if: needs.plan.outputs.desktop_changed == 'true'
-        run: |
-          find desktop-artifacts -type f ! -name '*.sha256' -print0 |
-            while IFS= read -r -d '' artifact; do
-              shasum -a 256 "${artifact}" > "${artifact}.sha256"
-            done
-
       - uses: actions/upload-artifact@v7
         if: needs.plan.outputs.cli_changed == 'true'
         with:
@@ -313,12 +250,6 @@ jobs:
           path: |
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
-
-      - uses: actions/upload-artifact@v7
-        if: needs.plan.outputs.desktop_changed == 'true'
-        with:
-          name: ${{ matrix.target }}-desktop
-          path: desktop-artifacts/*
 
   github-release:
     name: GitHub Release

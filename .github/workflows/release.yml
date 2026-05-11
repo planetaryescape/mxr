@@ -81,8 +81,8 @@ jobs:
           if [ -z "$MXR_GMAIL_TEST_CLIENT_ID" ] \
             || [ -z "$MXR_GMAIL_TEST_CLIENT_SECRET" ] \
             || [ -z "$MXR_GMAIL_TEST_REFRESH_TOKEN" ]; then
-            echo "::error ::Missing MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN}; live provider smoke is release-gating."
-            exit 1
+            echo "::warning ::Missing MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN}; skipping live provider smoke."
+            exit 0
           fi
           cargo test -p mxr --test live_gmail_e2e -- --ignored --nocapture
       - name: Skip CLI smoke
@@ -323,8 +323,13 @@ jobs:
   github-release:
     name: GitHub Release
     runs-on: ubuntu-latest
-    needs: [plan, build-binaries]
-    if: always() && needs.plan.result == 'success' && (needs.build-binaries.result == 'success' || needs.build-binaries.result == 'skipped')
+    needs: [plan, release-smoke, build-binaries]
+    if: >-
+      always()
+      && needs.plan.result == 'success'
+      && needs.release-smoke.result == 'success'
+      && (needs.build-binaries.result == 'success'
+        || (needs.plan.outputs.has_artifacts != 'true' && needs.build-binaries.result == 'skipped'))
     steps:
       - uses: actions/checkout@v6
         with:

@@ -4,7 +4,7 @@
   "description": "A local-first desktop email client for mxr.",
   "license": "MIT OR Apache-2.0",
   "private": true,
-  "version": "0.5.5",
+  "version": "0.5.6",
   "type": "module",
   "main": "dist-electron/main/index.js",
   "scripts": {

@@ -546,13 +546,15 @@ async fn reindex_message_in_search(
             .await
             .map_err(|e| e.to_string());
     };
+    let body = state
+        .store
+        .get_body(message_id)
+        .await
+        .map_err(|e| e.to_string())?;
     state
         .search
         .apply_batch(mxr_search::SearchUpdateBatch {
-            entries: vec![mxr_search::SearchIndexEntry {
-                envelope,
-                body: None,
-            }],
+            entries: vec![mxr_search::SearchIndexEntry { envelope, body }],
             removed_message_ids: Vec::new(),
         })
         .await
@@ -879,7 +881,11 @@ async fn resolve_from_address(state: &AppState, draft: &Draft) -> Address {
 pub(super) async fn send_draft(state: &AppState, draft: &Draft) -> HandlerResult {
     let sender = state.send_provider_for_account(&draft.account_id)?;
     let from = resolve_from_address(state, draft).await;
-    let receipt = sender.send(draft, &from).await.map_err(|e| e.to_string())?;
+    let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
+    let receipt = sender
+        .send(draft, &from, &rfc2822_message_id)
+        .await
+        .map_err(|e| e.to_string())?;
     // Ingest synthetic Sent envelope so the message is searchable as `is:sent`
     // immediately, without waiting for the next sync. Failures here are
     // non-fatal: the send already succeeded on the wire and we surface the
@@ -984,8 +990,31 @@ pub(crate) async fn send_stored_draft(
         }
     };
     let from = resolve_from_address(state, &draft).await;
+    let rfc2822_message_id = match state
+        .store
+        .get_draft_message_id_header(draft_id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        Some(existing) => existing,
+        None => {
+            let generated = mxr_outbound::email::generate_message_id(&from);
+            if let Err(e) = state
+                .store
+                .set_draft_message_id_header(draft_id, &generated)
+                .await
+            {
+                let _ = state
+                    .store
+                    .update_draft_status(draft_id, DraftStatus::Draft)
+                    .await;
+                return Err(e.to_string());
+            }
+            generated
+        }
+    };
 
-    let receipt = match sender.send(&draft, &from).await {
+    let receipt = match sender.send(&draft, &from, &rfc2822_message_id).await {
         Ok(r) => r,
         Err(e) => {
             let _ = state
@@ -995,12 +1024,6 @@ pub(crate) async fn send_stored_draft(
             return Err(e.to_string());
         }
     };
-
-    // Persist the Message-ID we used; helps IMAP-side dedupe on next sync.
-    let _ = state
-        .store
-        .set_draft_message_id_header(draft_id, &receipt.rfc2822_message_id)
-        .await;
 
     let local_message_id = match ingest_sent_message(state, &draft, &from, &receipt).await {
         Ok(id) => id,
@@ -1232,8 +1255,9 @@ pub(super) async fn unsubscribe(
                 created_at: now,
                 updated_at: now,
             };
+            let rfc2822_message_id = mxr_outbound::email::generate_message_id(&from);
             sender
-                .send(&draft, &from)
+                .send(&draft, &from, &rfc2822_message_id)
                 .await
                 .map_err(|e| e.to_string())?;
             if let Err(error) = log_mutation(

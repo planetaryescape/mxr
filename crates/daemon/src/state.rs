@@ -408,18 +408,22 @@ impl AppState {
 
             let sync_provider = match &acct_config.sync {
                 Some(mxr_config::SyncProviderConfig::Gmail {
-                    credential_source: _,
+                    credential_source,
                     client_id,
                     client_secret,
                     token_ref,
                 }) => {
-                    let cid = client_id.clone();
-                    let csecret = client_secret
-                        .clone()
-                        .or_else(|| {
-                            mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET.map(String::from)
-                        })
-                        .unwrap_or_default();
+                    let Some((cid, csecret)) = resolve_gmail_runtime_credentials(
+                        *credential_source,
+                        client_id,
+                        client_secret.as_deref(),
+                    ) else {
+                        tracing::warn!(
+                            account = %key,
+                            "Gmail auth not ready, skipping provider: bundled OAuth credentials are unavailable"
+                        );
+                        continue;
+                    };
                     let mut auth =
                         mxr_provider_gmail::auth::GmailAuth::new(cid, csecret, token_ref.clone());
                     match auth.load_existing().await {
@@ -1324,6 +1328,40 @@ fn sync_provider_kind(sync: Option<&mxr_config::SyncProviderConfig>) -> Option<P
         Some(mxr_config::SyncProviderConfig::OutlookWork { .. }) => Some(ProviderKind::OutlookWork),
         Some(mxr_config::SyncProviderConfig::Fake) => Some(ProviderKind::Fake),
         None => None,
+    }
+}
+
+fn resolve_gmail_runtime_credentials(
+    credential_source: mxr_config::GmailCredentialSource,
+    client_id: &str,
+    client_secret: Option<&str>,
+) -> Option<(String, String)> {
+    match credential_source {
+        mxr_config::GmailCredentialSource::Bundled => match (
+            mxr_provider_gmail::auth::BUNDLED_CLIENT_ID,
+            mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET,
+        ) {
+            (Some(id), Some(secret)) => Some((id.to_string(), secret.to_string())),
+            _ if !client_id.trim().is_empty()
+                && !client_secret.unwrap_or_default().trim().is_empty() =>
+            {
+                Some((
+                    client_id.to_string(),
+                    client_secret.unwrap_or_default().to_string(),
+                ))
+            }
+            _ => None,
+        },
+        mxr_config::GmailCredentialSource::Custom => {
+            if client_id.trim().is_empty() || client_secret.unwrap_or_default().trim().is_empty() {
+                None
+            } else {
+                Some((
+                    client_id.to_string(),
+                    client_secret.unwrap_or_default().to_string(),
+                ))
+            }
+        }
     }
 }
 

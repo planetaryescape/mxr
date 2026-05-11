@@ -17,4 +17,5 @@ Options:
       --from <FROM>        Account name to send from
       --yes                Skip confirmation prompt
       --dry-run            Show what would be sent without sending
+      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
   -h, --help               Print help

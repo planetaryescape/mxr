@@ -5,9 +5,11 @@ use mxr_core::id::AccountId;
 use mxr_core::types::AccountAddress;
 use mxr_protocol::{
     AccountConfigData, AccountOperationResult, AccountSendConfigData, AccountSummaryData,
-    AccountSyncConfigData, GmailCredentialSourceData, Request, Response, ResponseData,
+    AccountSyncConfigData, AuthFlowData, AuthSessionData, AuthSessionStateData,
+    GmailCredentialSourceData, Request, Response, ResponseData,
 };
-use mxr_provider_outlook::auth::BUNDLED_CLIENT_ID as OUTLOOK_BUNDLED_CLIENT_ID;
+use std::io::IsTerminal;
+use std::time::Duration;
 
 pub async fn run(
     action: Option<AccountsAction>,
@@ -166,7 +168,7 @@ fn render_addresses(
                 println!("No addresses configured.");
                 return Ok(());
             }
-            println!("{:<48} {}", "EMAIL", "PRIMARY");
+            println!("{:<48} PRIMARY", "EMAIL");
             println!("{}", "-".repeat(58));
             for a in addresses {
                 let email: String = a.email.chars().take(48).collect();
@@ -381,6 +383,120 @@ fn render_account_operation(result: AccountOperationResult) -> anyhow::Result<()
     }
 }
 
+async fn authorize_and_save_account(account: AccountConfigData) -> anyhow::Result<()> {
+    let mut client = client().await?;
+    let session = request_auth_session(
+        &mut client,
+        Request::StartAuthSession {
+            account,
+            reauthorize: false,
+            flow: AuthFlowData::Auto,
+        },
+    )
+    .await?;
+    let authorized = wait_for_auth_session(&mut client, session).await?;
+    let completed = request_auth_session(
+        &mut client,
+        Request::CompleteAuthSession {
+            session_id: authorized.session_id,
+            save_account: true,
+        },
+    )
+    .await?;
+
+    match completed.state {
+        AuthSessionStateData::Authorized => {
+            if let Some(message) = completed.message {
+                println!("{message}");
+            }
+            println!("Account '{}' saved.", completed.account_key);
+            Ok(())
+        }
+        AuthSessionStateData::Failed => anyhow::bail!(
+            "authorization failed: {}",
+            completed
+                .error
+                .unwrap_or_else(|| "unknown error".to_string())
+        ),
+        AuthSessionStateData::Cancelled => anyhow::bail!("authorization cancelled"),
+        AuthSessionStateData::Starting | AuthSessionStateData::WaitingForUser => {
+            anyhow::bail!("authorization did not complete")
+        }
+    }
+}
+
+async fn wait_for_auth_session(
+    client: &mut IpcClient,
+    mut session: AuthSessionData,
+) -> anyhow::Result<AuthSessionData> {
+    let mut printed_prompt: Option<String> = None;
+
+    loop {
+        print_auth_session_prompt(&session, &mut printed_prompt);
+        match session.state {
+            AuthSessionStateData::Authorized => return Ok(session),
+            AuthSessionStateData::Failed => anyhow::bail!(
+                "authorization failed: {}",
+                session.error.unwrap_or_else(|| "unknown error".to_string())
+            ),
+            AuthSessionStateData::Cancelled => anyhow::bail!("authorization cancelled"),
+            AuthSessionStateData::Starting | AuthSessionStateData::WaitingForUser => {}
+        }
+
+        let delay = session.poll_interval_secs.unwrap_or(2).clamp(1, 10);
+        tokio::time::sleep(Duration::from_secs(delay)).await;
+        session = request_auth_session(
+            client,
+            Request::GetAuthSession {
+                session_id: session.session_id.clone(),
+            },
+        )
+        .await?;
+    }
+}
+
+fn print_auth_session_prompt(session: &AuthSessionData, printed_prompt: &mut Option<String>) {
+    let prompt_key = format!(
+        "{}|{}|{}",
+        session.auth_url.as_deref().unwrap_or_default(),
+        session.verification_uri.as_deref().unwrap_or_default(),
+        session.user_code.as_deref().unwrap_or_default()
+    );
+    if prompt_key.trim_matches('|').is_empty() || printed_prompt.as_deref() == Some(&prompt_key) {
+        return;
+    }
+    *printed_prompt = Some(prompt_key);
+
+    if let Some(url) = session.auth_url.as_deref() {
+        println!("Open this authorization URL: {url}");
+        if open::that(url).is_ok() {
+            println!("(Browser opened automatically)");
+        }
+    }
+    if let (Some(uri), Some(code)) = (
+        session.verification_uri.as_deref(),
+        session.user_code.as_deref(),
+    ) {
+        println!("Go to {uri} and enter: {code}");
+    }
+    if let Some(message) = session.message.as_deref() {
+        println!("{message}");
+    }
+}
+
+async fn request_auth_session(
+    client: &mut IpcClient,
+    request: Request,
+) -> anyhow::Result<AuthSessionData> {
+    match client.request(request).await? {
+        Response::Ok {
+            data: ResponseData::AuthSession { session },
+        } => Ok(session),
+        Response::Error { message, .. } => anyhow::bail!(message),
+        other => anyhow::bail!("Unexpected auth session response: {other:?}"),
+    }
+}
+
 /// Optional inputs for `mxr accounts add`. When `Some`, skip the corresponding
 /// interactive prompt; when `None`, fall back to the wizard. Hardened so
 /// scripts can drive the flow without a TTY.
@@ -432,10 +548,30 @@ fn or_prompt_secret(value: Option<String>, env_var: &str, msg: &str) -> anyhow::
 async fn add_gmail(args: &AddArgs) -> anyhow::Result<()> {
     println!("Adding Gmail account\n");
 
-    let bundled = match args.gmail_bundled {
-        Some(b) => b,
-        None => prompt_bool("Use bundled OAuth credentials", true)?,
+    let custom_requested = args.gmail_bundled == Some(false)
+        || args.gmail_client_id.is_some()
+        || args.gmail_client_secret.is_some();
+    let bundled = if custom_requested {
+        false
+    } else if args.gmail_bundled == Some(true) {
+        if !gmail_bundled_credentials_available() {
+            anyhow::bail!(missing_gmail_bundled_credentials_message());
+        }
+        true
+    } else if gmail_bundled_credentials_available() {
+        true
+    } else if std::io::stdin().is_terminal() {
+        print_missing_gmail_bundled_credentials_help();
+        if !prompt_bool("Use your own Google OAuth credentials now", false)? {
+            anyhow::bail!(
+                "Gmail setup cancelled. Try `mxr demo` first, install the official release build, or rerun with `--gmail-bundled=false`."
+            );
+        }
+        false
+    } else {
+        anyhow::bail!(missing_gmail_bundled_credentials_message());
     };
+
     let (credential_source, client_id, client_secret) = if bundled {
         (
             mxr_config::GmailCredentialSource::Bundled,
@@ -481,23 +617,26 @@ async fn add_gmail(args: &AddArgs) -> anyhow::Result<()> {
         is_default: false,
     };
 
-    println!("\nOpening browser for Google authorization...");
-    let mut client = client().await?;
-    render_account_operation(
-        request_account_operation(
-            &mut client,
-            Request::AuthorizeAccountConfig {
-                account: account.clone(),
-                reauthorize: false,
-            },
-        )
-        .await?,
-    )?;
-    render_account_operation(
-        request_account_operation(&mut client, Request::UpsertAccountConfig { account }).await?,
-    )?;
-    println!("Account '{}' saved.", account_name);
+    authorize_and_save_account(account).await?;
     Ok(())
+}
+
+fn gmail_bundled_credentials_available() -> bool {
+    mxr_provider_gmail::auth::BUNDLED_CLIENT_ID.is_some()
+        && mxr_provider_gmail::auth::BUNDLED_CLIENT_SECRET.is_some()
+}
+
+fn missing_gmail_bundled_credentials_message() -> &'static str {
+    "This mxr build does not include one-click Gmail OAuth credentials. Install an official release build, run `mxr demo` to try mxr without your inbox, or rerun Gmail setup with `--gmail-bundled=false --gmail-client-id ...` and `MXR_GMAIL_CLIENT_SECRET`."
+}
+
+fn print_missing_gmail_bundled_credentials_help() {
+    println!("This build cannot start one-click Gmail OAuth because it was built without the official mxr Gmail client.");
+    println!("Fastest safe path: run `mxr demo` to try a full synthetic inbox first.");
+    println!(
+        "To connect Gmail from this build, use your own Google OAuth desktop-app credentials."
+    );
+    println!();
 }
 
 async fn add_imap(include_smtp: bool, args: &AddArgs) -> anyhow::Result<()> {
@@ -666,32 +805,32 @@ async fn remove_account(
 }
 
 async fn add_outlook() -> anyhow::Result<()> {
-    add_outlook_inner(mxr_provider_outlook::OutlookTenant::Personal).await
+    add_outlook_inner(OutlookAccountKind::Personal).await
 }
 
 async fn add_outlook_work() -> anyhow::Result<()> {
-    add_outlook_inner(mxr_provider_outlook::OutlookTenant::Work).await
+    add_outlook_inner(OutlookAccountKind::Work).await
 }
 
-async fn add_outlook_inner(tenant: mxr_provider_outlook::OutlookTenant) -> anyhow::Result<()> {
-    let label = match tenant {
-        mxr_provider_outlook::OutlookTenant::Personal => "Outlook (Personal)",
-        mxr_provider_outlook::OutlookTenant::Work => "Outlook (Work)",
+#[derive(Clone, Copy)]
+enum OutlookAccountKind {
+    Personal,
+    Work,
+}
+
+async fn add_outlook_inner(kind: OutlookAccountKind) -> anyhow::Result<()> {
+    let label = match kind {
+        OutlookAccountKind::Personal => "Outlook (Personal)",
+        OutlookAccountKind::Work => "Outlook (Work)",
     };
     println!("Adding {label} account (OAuth2 + IMAP + SMTP)\n");
 
-    let client_id = match OUTLOOK_BUNDLED_CLIENT_ID {
-        Some(id) => {
-            println!("Using bundled Azure app credentials.");
-            id.to_string()
-        }
-        None => {
-            println!("No bundled Azure app client ID found.");
-            println!(
-                "Register a multi-tenant public client app at https://portal.azure.com and enter your client ID below."
-            );
-            prompt("Azure app client ID: ")?
-        }
+    println!("Press Enter to use bundled Azure app credentials when available.");
+    let client_id = prompt("Azure app client ID: ")?;
+    let client_id = if client_id.trim().is_empty() {
+        None
+    } else {
+        Some(client_id)
     };
 
     let account_name = prompt("\nAccount name (e.g. personal, work): ")?;
@@ -700,55 +839,25 @@ async fn add_outlook_inner(tenant: mxr_provider_outlook::OutlookTenant) -> anyho
     let email = prompt("Microsoft email address: ")?;
 
     let token_ref = format!("mxr/{account_name}-outlook");
-    let auth = mxr_provider_outlook::OutlookAuth::new(client_id.clone(), token_ref.clone(), tenant);
-
-    println!("\nStarting Microsoft device code authorization...");
-    let device_resp = auth.start_device_flow().await?;
-
-    println!(
-        "\nGo to {} and enter: {}",
-        device_resp.verification_uri, device_resp.user_code
-    );
-    let open_url = device_resp
-        .verification_uri_complete
-        .as_deref()
-        .unwrap_or(&device_resp.verification_uri);
-    if open::that(open_url).is_ok() {
-        println!("(Browser opened automatically)");
-    } else {
-        println!("(Could not open browser — copy the URL above)");
-    }
-    println!(
-        "Waiting for authorization (expires in {} seconds)...\n",
-        device_resp.expires_in
-    );
-
-    let tokens = auth
-        .poll_for_token(&device_resp.device_code, device_resp.interval)
-        .await?;
-    auth.save_tokens(&tokens)?;
-    println!("Authorization successful!\n");
-
-    let client_id_stored = Some(client_id);
-    let (sync, send) = match auth.tenant_kind() {
-        mxr_provider_outlook::OutlookTenant::Work => (
+    let (sync, send) = match kind {
+        OutlookAccountKind::Work => (
             Some(AccountSyncConfigData::OutlookWork {
-                client_id: client_id_stored,
+                client_id: client_id.clone(),
                 token_ref: token_ref.clone(),
             }),
             Some(AccountSendConfigData::OutlookWork {
-                client_id: None,
-                token_ref,
+                client_id: client_id.clone(),
+                token_ref: token_ref.clone(),
             }),
         ),
-        mxr_provider_outlook::OutlookTenant::Personal => (
+        OutlookAccountKind::Personal => (
             Some(AccountSyncConfigData::OutlookPersonal {
-                client_id: client_id_stored,
+                client_id: client_id.clone(),
                 token_ref: token_ref.clone(),
             }),
             Some(AccountSendConfigData::OutlookPersonal {
-                client_id: None,
-                token_ref,
+                client_id,
+                token_ref: token_ref.clone(),
             }),
         ),
     };
@@ -763,8 +872,7 @@ async fn add_outlook_inner(tenant: mxr_provider_outlook::OutlookTenant) -> anyho
         is_default: false,
     };
 
-    run_account_operation(Request::UpsertAccountConfig { account }).await?;
-    println!("Account '{}' saved.", account_name);
+    authorize_and_save_account(account).await?;
     Ok(())
 }
 
@@ -914,5 +1022,14 @@ mod tests {
                 dry_run: false,
             } if key == "work"
         ));
+    }
+
+    #[test]
+    fn missing_gmail_bundled_credentials_points_to_safe_paths() {
+        let message = missing_gmail_bundled_credentials_message();
+        assert!(message.contains("mxr demo"));
+        assert!(message.contains("official release build"));
+        assert!(message.contains("--gmail-bundled=false"));
+        assert!(message.contains("MXR_GMAIL_CLIENT_SECRET"));
     }
 }

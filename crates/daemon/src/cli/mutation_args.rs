@@ -11,7 +11,7 @@ pub enum AccountsAction {
     /// `MXR_SMTP_PASSWORD`, or `MXR_GMAIL_CLIENT_SECRET` when stdin is not a
     /// TTY.
     Add {
-        /// Provider type: `gmail`, `imap`, `imap-smtp`, or `smtp`.
+        /// Provider type: `gmail`, `imap`, `imap-smtp`, `smtp`, `outlook`, or `outlook-work`.
         provider: String,
         /// Account key (the short identifier used by other commands).
         #[arg(long)]
@@ -279,6 +279,8 @@ pub enum AttachmentAction {
         first: bool,
         #[arg(long, requires = "search")]
         limit: Option<u32>,
+        #[arg(long)]
+        format: Option<crate::cli::OutputFormat>,
     },
     /// Download attachment(s)
     Download {

@@ -11,7 +11,7 @@ hero:
     - text: Get started
       link: /getting-started/install/
       variant: primary
-    - text: Quick start
+    - text: Try the demo
       link: /getting-started/quick-start/
       variant: secondary
     - text: Source
@@ -71,12 +71,12 @@ cargo install --git \
 </div>
 
 <div class="install-runline">
-  <div class="run-step"><span class="run-mark">◈</span><span class="run-cmd">mxr accounts add</span><span class="run-note">connect Gmail or IMAP+SMTP</span></div>
-  <div class="run-step"><span class="run-mark">◈</span><span class="run-cmd">mxr sync</span><span class="run-note">pull your archive locally</span></div>
-  <div class="run-step"><span class="run-mark">◈</span><span class="run-cmd">mxr</span><span class="run-note">open the TUI, you're in</span></div>
+  <div class="run-step"><span class="run-mark">◈</span><span class="run-cmd">mxr demo</span><span class="run-note">try a 50k-message inbox without connecting yours</span></div>
+  <div class="run-step"><span class="run-mark">◈</span><span class="run-cmd">mxr accounts add gmail</span><span class="run-note">connect when you're ready</span></div>
+  <div class="run-step"><span class="run-mark">◈</span><span class="run-cmd">mxr</span><span class="run-note">open your real local inbox</span></div>
 </div>
 
-<p class="install-coda">Works with Gmail, IMAP, and SMTP out of the box. One local database, one binary, all your accounts.</p>
+<p class="install-coda">Not ready to hand over your inbox? Run <code>mxr demo</code>. It uses a separate demo config, database, and daemon so you can explore search, labels, threads, attachments, newsletters, analytics, and keyboard triage safely.</p>
 
 </div>
 
@@ -402,7 +402,7 @@ would archive 142 messages.`}</code></pre>
     <div class="surface-body">
       <p><code>mxr web</code> exposes the daemon over HTTP and WebSocket. Bearer-token auth, OpenAPI-described, generates typed SDK clients. Use the browser app we ship, or build your own client against the same API.</p>
       <pre class="surface-snippet"><code>{`curl -H "Authorization: Bearer $TOKEN" \\
-    "http://127.0.0.1:7777/api/v1/mail/search?q=is:unread"
+    "http://127.0.0.1:42829/api/v1/mail/search?q=is:unread"
 {"results": [...]}`}</code></pre>
     </div>
   </div>

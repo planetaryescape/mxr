@@ -1043,20 +1043,58 @@ impl App {
                 modal.active_field = (modal.active_field + n - 1) % n;
                 None
             }
+            (KeyCode::Right, _) => {
+                Self::cycle_analytics_filter_option(modal, 1);
+                None
+            }
+            (KeyCode::Left, _) => {
+                Self::cycle_analytics_filter_option(modal, -1);
+                None
+            }
             (KeyCode::Backspace, _) => {
                 if let Some(f) = modal.fields.get_mut(modal.active_field) {
-                    f.value.pop();
+                    if f.options.is_empty() {
+                        f.value.pop();
+                    }
                 }
                 None
             }
             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 if let Some(f) = modal.fields.get_mut(modal.active_field) {
-                    f.value.push(c);
+                    if f.options.is_empty() {
+                        f.value.push(c);
+                    }
                 }
                 None
             }
             _ => None,
         }
+    }
+
+    fn cycle_analytics_filter_option(
+        modal: &mut crate::app::AnalyticsFilterModalState,
+        delta: isize,
+    ) {
+        let Some(field) = modal.fields.get_mut(modal.active_field) else {
+            return;
+        };
+        if field.options.is_empty() {
+            return;
+        }
+
+        let len = field.options.len();
+        let current = field
+            .options
+            .iter()
+            .position(|option| option == &field.value)
+            .unwrap_or(0);
+        let next = if delta.is_negative() {
+            (current + len - 1) % len
+        } else {
+            (current + 1) % len
+        };
+        field.value = field.options[next].clone();
+        modal.validation_error = None;
     }
 
     fn handle_search_screen_key(&mut self, key: crossterm::event::KeyEvent) -> Option<Action> {

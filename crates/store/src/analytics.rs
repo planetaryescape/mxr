@@ -1,4 +1,4 @@
-use crate::{decode_id, decode_timestamp, trace_query};
+use crate::{decode_id, decode_timestamp, trace_query, NON_SELF_ADDRESSED_MESSAGE_PREDICATE};
 use mxr_core::id::*;
 use mxr_core::types::*;
 use std::time::Instant;
@@ -182,7 +182,12 @@ impl super::Store {
                WHERE direction = ?1
                  AND (?2 IS NULL OR account_id = ?2)
                  AND (?3 IS NULL OR counterparty_email = ?3)
-                 AND (?4 IS NULL OR replied_at >= ?4)"#,
+                 AND (?4 IS NULL OR replied_at >= ?4)
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM account_addresses self_addr
+                     WHERE LOWER(self_addr.email) = LOWER(counterparty_email)
+                 )"#,
         )
         .bind(direction_str)
         .bind(account_filter)
@@ -237,22 +242,24 @@ impl super::Store {
         // as "the most stale thread ever" forever.
         let date_floor = within_unix.max(EARLIEST_PLAUSIBLE_TS);
 
-        let sql = "WITH thread_latest AS (
+        let sql = format!(
+            "WITH thread_latest AS (
                 SELECT
-                    id,
-                    thread_id,
-                    subject,
-                    direction,
-                    date,
-                    from_email,
-                    to_addrs,
+                    m.id,
+                    m.thread_id,
+                    m.subject,
+                    m.direction,
+                    m.date,
+                    m.from_email,
+                    m.to_addrs,
                     ROW_NUMBER() OVER (
-                        PARTITION BY thread_id
-                        ORDER BY date DESC, id DESC
+                        PARTITION BY m.thread_id
+                        ORDER BY m.date DESC, m.id DESC
                     ) AS rn
-                FROM messages
-                WHERE (?1 IS NULL OR account_id = ?1)
-                  AND date >= ?5
+                FROM messages m
+                WHERE (?1 IS NULL OR m.account_id = ?1)
+                  AND m.date >= ?5
+                  AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
             )
             SELECT id, thread_id, subject, date, from_email, to_addrs
             FROM thread_latest
@@ -260,9 +267,10 @@ impl super::Store {
               AND direction = ?2
               AND date < ?3
             ORDER BY date DESC
-            LIMIT ?4";
+            LIMIT ?4"
+        );
 
-        let rows: Vec<(String, String, String, i64, String, String)> = sqlx::query_as(sql)
+        let rows: Vec<(String, String, String, i64, String, String)> = sqlx::query_as(&sql)
             .bind(account_filter)
             .bind(direction_str)
             .bind(older_than_unix)

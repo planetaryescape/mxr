@@ -26,72 +26,117 @@ The mxr skill teaches an agent how to use the CLI that already exists. It is a m
 ## Install — Claude Code
 
 ```bash
-mkdir -p ~/.claude/skills/mxr
+mkdir -p ~/.claude/skills/mxr/references
 curl -fsSL https://raw.githubusercontent.com/planetaryescape/mxr/main/.claude/skills/mxr/SKILL.md \
   -o ~/.claude/skills/mxr/SKILL.md
+curl -fsSL https://raw.githubusercontent.com/planetaryescape/mxr/main/.claude/skills/mxr/references/commands.md \
+  -o ~/.claude/skills/mxr/references/commands.md
 ```
 
-Restart Claude Code. The skill is now invoked when the user asks anything email-shaped — "check email", "search for...", "archive that thread", etc.
+Restart Claude Code. The skill is now invoked when the user asks anything email-shaped — "check email", "search for...", "archive that thread", "summarize this thread", "remind me if no reply by Monday", etc. The skill loads `SKILL.md` into context on invoke; the agent reads `references/commands.md` on demand for exhaustive flag detail.
 
 ## What the skill teaches
 
-The skill is intentionally short — it documents the CLI surface in a form an agent can map prompts onto. Key sections:
+The skill is intentionally short — it documents the CLI surface in a form an agent can map prompts onto, with a longer reference file (`references/commands.md`) for the exhaustive flag set.
 
 ### Quick reference (excerpt)
 
 ```bash
-# Read
-mxr search "is:unread"                    # Find unread messages
-mxr search "from:alice subject:meeting"   # Search with field prefixes
-mxr cat <id>                              # Read message body
-mxr thread <id>                           # Read full thread
+# Read / search
+mxr search "is:unread"                       # Lexical BM25
+mxr search "from:alice" --mode hybrid        # Lexical + dense (semantic enabled)
+mxr cat <id>                                 # Reader mode
+mxr thread <id>                              # Whole thread
+mxr export <thread_id>                       # Markdown export
 
-# Compose
+# Compose / send / undo
 mxr compose --to a@x.com --subject "Hi" --body "Hello"
 mxr reply <id> --body "Thanks!"
+mxr send <draft_id> --at "monday 9am"        # Scheduled send
+mxr unsend <draft_id>                        # Cancel a scheduled send
+mxr undo <mutation_id>                       # ~60s window on destructive ops
 
-# Mutate (single or batch via --search)
+# Mutate (positional, stdin pipe, or --search batch — all with --dry-run / --yes)
 mxr archive <id>
+mxr read-archive --search "from:noreply older:7d" --yes
 mxr star --search "subject:urgent" --yes
 mxr label "todo" --search "from:boss" --yes
 
-# Snooze
+# Snooze / remind / reply-later
 mxr snooze <id> --until tomorrow
+mxr remind <id> --when "monday 9am"          # Follow-up if no reply
+mxr replies add <id>                         # Reply-later queue
 
-# Status
-mxr status                                # Daemon status
-mxr count "is:unread"                     # Count unread
+# Triage unknown senders (local consent)
+mxr screener                                 # Queue of undecided senders
+mxr screener allow|deny|feed|paper-trail <email>
+
+# LLM-assisted (never auto-sends)
+mxr summarize <thread_id>
+mxr draft-assist <thread_id> "decline politely"
+
+# Analytics (local SQLite)
+mxr sender alice@x.com
+mxr stale --mine --older-than-days 7
+mxr response-time
+mxr subscriptions --rank
+mxr wrapped --ytd
+
+# Daemon
+mxr status                                   # Daemon status
+mxr sync --status
+mxr web                                      # Open the web app via local bridge
 ```
 
 ### Important patterns the skill enforces
 
-1. **Message IDs are UUIDs** — get them from `mxr search --format ids` or `mxr search --format json`.
-2. **Batch mutations** — use `--search <query>` instead of `<id>` for bulk operations. Always add `--yes` to skip confirmation when running non-interactively.
-3. **`--dry-run`** — available on all mutations. Use to preview before executing.
-4. **`--format json`** — for machine-readable output on search, cat, thread, status.
-5. **`--format ids`** — for piping into `xargs` or other mutations.
-6. **Daemon auto-starts** — no need to manually start; commands that need it launch it.
+1. **Message / thread / draft / mutation IDs are UUIDs** — get them from `mxr search --format ids` (one per line), `--format json`, or printed inline by mutations.
+2. **Batch via `--search`** — most mutations accept `<id>` positionals, piped stdin IDs, OR `--search <query>`. Always add `--yes` for non-interactive batches.
+3. **`--dry-run`** — available on every mutation, compose flow, `rules dry-run`, `reset --dry-run`, and `undo --dry-run`. Preview the count and sample before committing.
+4. **Output formats** — `--format table|json|jsonl|csv|ids`. `ids` is the cheapest form to pipe into other commands; `jsonl` is best for streams (`events`, `history`, search).
+5. **`mxr undo` window is ~60s** — destructive ops (`archive`, `trash`, `spam`, `read`, `read-archive`) print a mutation ID; capture it if you might need to reverse.
+6. **`draft-assist` never sends** — output goes to stdout. Pipe into `mxr reply --body "$(...)"`.
+7. **Daemon auto-starts** — no need to launch it manually.
 
 ### Typical workflows the skill seeds
 
-**Check inbox:** `mxr search "is:unread" --format json`
-
-**Read and reply:**
+**Triage inbox:**
 ```bash
-mxr search "from:alice is:unread" --format json --limit 5
-mxr cat <message_id>
-mxr reply <message_id> --body "Got it, thanks!"
+mxr screener                                                # Decide on unknown senders
+mxr search "is:unread label:inbox" --format json --limit 20
+mxr read-archive --search "from:noreply older:7d" --yes     # Bulk newsletter sweep
+mxr replies add <id>                                        # Interesting → reply-later
 ```
 
-**Bulk cleanup with preview:**
+**Reply with LLM scaffold:**
 ```bash
-mxr archive --search "older:30d label:notifications" --dry-run
-mxr archive --search "older:30d label:notifications" --yes
+mxr draft-assist <thread_id> "agree, propose Tuesday 2pm"   # → stdout
+mxr reply <message_id> --body "..." --dry-run
+mxr reply <message_id> --body "..."
 ```
 
-**Triage with labels:** `mxr label "review" <id>; mxr star <id>; mxr snooze <id> --until monday`
+**Bulk cleanup with preview + undo:**
+```bash
+mxr archive --search "label:notifications older:30d" --dry-run
+mxr archive --search "label:notifications older:30d" --yes
+mxr undo <mutation_id>                                      # If wrong (~60s)
+```
 
-For the full skill content, see [SKILL.md on GitHub](https://github.com/planetaryescape/mxr/blob/main/.claude/skills/mxr/SKILL.md). For the exhaustive command reference the agent has access to, see [the CLI overview](/reference/cli/) and the [automation contract](/guides/automation-contract/).
+**Find what's slipping:**
+```bash
+mxr stale --mine --older-than-days 7        # I owe a reply
+mxr contacts decay --threshold-days 60       # Going-cold relationships
+mxr response-time                            # My reply percentiles
+```
+
+**Schedule and unsend:**
+```bash
+mxr compose --to a@x.com --subject "..." --body "..."       # Becomes draft
+mxr send <draft_id> --at "monday 9am"
+mxr unsend <draft_id>                                       # Before it fires
+```
+
+For the full skill content, see [SKILL.md on GitHub](https://github.com/planetaryescape/mxr/blob/main/.claude/skills/mxr/SKILL.md) and [references/commands.md](https://github.com/planetaryescape/mxr/blob/main/.claude/skills/mxr/references/commands.md). For the human-facing surface, see [the CLI overview](/reference/cli/) and the [automation contract](/guides/automation-contract/).
 
 ## Install — Cursor
 

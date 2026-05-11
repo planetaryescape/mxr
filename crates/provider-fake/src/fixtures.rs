@@ -3,6 +3,9 @@ use mxr_core::id::*;
 use mxr_core::types::*;
 use std::collections::HashMap;
 
+pub const DEFAULT_DEMO_MESSAGE_COUNT: usize = 50_000;
+const MAX_DEMO_MESSAGE_COUNT: usize = 200_000;
+
 #[derive(Debug, Clone)]
 pub struct FixtureDataset {
     pub envelopes: Vec<Envelope>,
@@ -543,6 +546,367 @@ pub fn generate_fixtures(
     }
 
     (envelopes, bodies, labels)
+}
+
+pub fn generate_env_selected_fixtures(
+    account_id: &AccountId,
+) -> (Vec<Envelope>, HashMap<String, MessageBody>, Vec<Label>) {
+    match demo_message_count_from_env() {
+        Some(count) => generate_demo_fixtures(account_id, count),
+        None => generate_fixtures(account_id),
+    }
+}
+
+fn demo_message_count_from_env() -> Option<usize> {
+    let dataset = std::env::var("MXR_FAKE_DATASET").ok()?;
+    if dataset.trim() != "demo" {
+        return None;
+    }
+
+    let requested = std::env::var("MXR_FAKE_MESSAGE_COUNT")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(DEFAULT_DEMO_MESSAGE_COUNT);
+    Some(requested.clamp(1, MAX_DEMO_MESSAGE_COUNT))
+}
+
+pub fn generate_demo_fixtures(
+    account_id: &AccountId,
+    target_count: usize,
+) -> (Vec<Envelope>, HashMap<String, MessageBody>, Vec<Label>) {
+    let target_count = target_count.clamp(1, MAX_DEMO_MESSAGE_COUNT);
+    let mut envelopes = Vec::with_capacity(target_count);
+    let mut bodies = HashMap::with_capacity(target_count);
+    let now = Utc::now();
+    let self_addr = Address {
+        name: Some("Alex Demo".to_string()),
+        email: "alex@demo.mxr.local".to_string(),
+    };
+
+    let labels = vec![
+        make_label(account_id, "Inbox", LabelKind::System, "INBOX"),
+        make_label(account_id, "Sent", LabelKind::System, "SENT"),
+        make_label(account_id, "Trash", LabelKind::System, "TRASH"),
+        make_label(account_id, "Spam", LabelKind::System, "SPAM"),
+        make_label(account_id, "Starred", LabelKind::System, "STARRED"),
+        make_label(account_id, "Work", LabelKind::User, "work"),
+        make_label(account_id, "Product", LabelKind::User, "product"),
+        make_label(account_id, "Newsletters", LabelKind::User, "newsletters"),
+        make_label(account_id, "Receipts", LabelKind::User, "receipts"),
+        make_label(account_id, "Travel", LabelKind::User, "travel"),
+        make_label(account_id, "Alerts", LabelKind::User, "alerts"),
+        make_label(account_id, "Hiring", LabelKind::User, "hiring"),
+        make_label(account_id, "Waiting", LabelKind::User, "waiting"),
+    ];
+
+    let people = [
+        ("Maya Ortiz", "maya@orbit.example"),
+        ("Theo Nash", "theo@northstar.example"),
+        ("Priya Raman", "priya@atlas.example"),
+        ("Jon Bell", "jon@papertrail.example"),
+        ("Nora Kim", "nora@foundry.example"),
+        ("Samir Patel", "samir@launchpad.example"),
+        ("Elena Wood", "elena@harbor.example"),
+        ("Ari Stone", "ari@fieldkit.example"),
+        ("Ruth Vega", "ruth@keystone.example"),
+        ("Cal Brooks", "cal@signal.example"),
+        ("Iris Chen", "iris@meridian.example"),
+        ("Leo Park", "leo@workbench.example"),
+    ];
+    let newsletter_senders = [
+        ("Terminal Dispatch", "dispatch@lists.demo.mxr.local"),
+        ("Local First Weekly", "weekly@lists.demo.mxr.local"),
+        ("SQLite Notes", "notes@lists.demo.mxr.local"),
+        ("Ops Digest", "ops@lists.demo.mxr.local"),
+    ];
+    let alert_senders = [
+        ("Build Watch", "builds@alerts.demo.mxr.local"),
+        ("Uptime Robot", "uptime@alerts.demo.mxr.local"),
+        ("Pager Relay", "pager@alerts.demo.mxr.local"),
+    ];
+    let subject_templates = [
+        "Launch checklist for Project Aurora",
+        "Canary rollout notes",
+        "Customer feedback from the design partner call",
+        "Draft positioning for the CLI-first release",
+        "Security review follow-up",
+        "QBR prep and open questions",
+        "Contract renewal details",
+        "Interview panel for Staff Engineer candidate",
+        "Receipt for workspace subscription",
+        "Flight options for the Portland demo day",
+        "Incident review: delayed sync jobs",
+        "Weekly local-first reading list",
+        "Build failed on release branch",
+        "Pricing page copy review",
+        "API migration plan",
+        "Research notes: terminal workflows",
+    ];
+
+    let mut msg_num = 1usize;
+    let mut thread_num = 0usize;
+    while envelopes.len() < target_count {
+        let template_idx = thread_num % subject_templates.len();
+        let category = thread_num % 10;
+        let thread_len = match category {
+            1 | 4 => 5,
+            2 | 7 => 1,
+            8 => 3,
+            _ => 2 + (thread_num % 4),
+        };
+        let thread_id = ThreadId::new();
+        let root_subject = subject_templates[template_idx];
+        let thread_offset_minutes = (thread_num as i64 * 37) % (365 * 24 * 60);
+        let mut references = Vec::new();
+        let mut previous_message_id: Option<String> = None;
+
+        for reply_idx in 0..thread_len {
+            if envelopes.len() >= target_count {
+                break;
+            }
+
+            let sent = matches!(category, 0 | 1 | 5) && reply_idx % 3 == 1;
+            let (name, email) = match category {
+                2 => newsletter_senders[thread_num % newsletter_senders.len()],
+                7 => alert_senders[thread_num % alert_senders.len()],
+                _ => people[(thread_num + reply_idx) % people.len()],
+            };
+            let peer = Address {
+                name: Some(name.to_string()),
+                email: email.to_string(),
+            };
+            let (from, to) = if sent {
+                (self_addr.clone(), vec![peer.clone()])
+            } else {
+                (peer.clone(), vec![self_addr.clone()])
+            };
+
+            let subject = if reply_idx == 0 {
+                root_subject.to_string()
+            } else {
+                format!("Re: {root_subject}")
+            };
+            let date = now
+                - Duration::minutes(thread_offset_minutes + (thread_len - reply_idx) as i64 * 47);
+            let old_enough_to_read = thread_offset_minutes > 24 * 60;
+            let unread = !sent && !old_enough_to_read && reply_idx + 1 == thread_len;
+            let starred = thread_num % 29 == 0 || root_subject.contains("Security");
+            let mut flags = if unread {
+                MessageFlags::empty()
+            } else {
+                MessageFlags::READ
+            };
+            if sent {
+                flags |= MessageFlags::SENT | MessageFlags::READ;
+            }
+            if starred {
+                flags |= MessageFlags::STARRED;
+            }
+            if category == 9 && thread_num % 11 == 0 {
+                flags |= MessageFlags::ARCHIVED;
+            }
+
+            let mut provider_labels = Vec::new();
+            if sent {
+                provider_labels.push("SENT".to_string());
+            } else if flags.contains(MessageFlags::ARCHIVED) {
+                provider_labels.push("ARCHIVE".to_string());
+            } else {
+                provider_labels.push("INBOX".to_string());
+            }
+            if unread {
+                provider_labels.push("UNREAD".to_string());
+            }
+            if starred {
+                provider_labels.push("STARRED".to_string());
+            }
+            match category {
+                0 | 1 | 3 | 9 => provider_labels.push("work".to_string()),
+                4 => provider_labels.push("product".to_string()),
+                2 => provider_labels.push("newsletters".to_string()),
+                5 => provider_labels.push("receipts".to_string()),
+                6 => provider_labels.push("travel".to_string()),
+                7 => provider_labels.push("alerts".to_string()),
+                8 => provider_labels.push("hiring".to_string()),
+                _ => {}
+            }
+            if matches!(category, 0 | 3 | 8) && !sent && reply_idx + 1 == thread_len {
+                provider_labels.push("waiting".to_string());
+            }
+
+            let unsubscribe = match category {
+                2 if thread_num % 2 == 0 => UnsubscribeMethod::OneClick {
+                    url: format!("https://lists.demo.mxr.local/unsubscribe/{thread_num}"),
+                },
+                2 => UnsubscribeMethod::Mailto {
+                    address: "unsubscribe@lists.demo.mxr.local".to_string(),
+                    subject: Some(format!("unsubscribe-{thread_num}")),
+                },
+                _ => UnsubscribeMethod::None,
+            };
+            let has_attachments = matches!(category, 5 | 6) || thread_num % 41 == 0;
+            let snippet = demo_snippet(root_subject, category, reply_idx, sent);
+            let body = demo_body(root_subject, category, reply_idx, sent, &peer.email);
+            let current_header = push_demo_msg(
+                &mut envelopes,
+                &mut bodies,
+                &mut msg_num,
+                account_id,
+                &thread_id,
+                from,
+                to,
+                subject,
+                snippet,
+                body,
+                date,
+                flags,
+                has_attachments,
+                unsubscribe,
+                provider_labels,
+                previous_message_id.clone(),
+                references.clone(),
+            );
+            if previous_message_id.is_none() {
+                references.push(current_header.clone());
+            }
+            previous_message_id = Some(current_header);
+        }
+        thread_num += 1;
+    }
+
+    (envelopes, bodies, labels)
+}
+
+fn demo_snippet(subject: &str, category: usize, reply_idx: usize, sent: bool) -> String {
+    let action = if sent { "You replied" } else { "New update" };
+    match category {
+        2 => format!("{subject}: links, notes, and unsubscribe metadata"),
+        5 => format!("Receipt and invoice details for {subject}"),
+        7 => format!("Alert #{reply_idx}: status changed, investigate if this is still active"),
+        _ => format!("{action} in thread: {subject}"),
+    }
+}
+
+fn demo_body(
+    subject: &str,
+    category: usize,
+    reply_idx: usize,
+    sent: bool,
+    peer_email: &str,
+) -> String {
+    let perspective = if sent {
+        "I tightened the next step and left a clear owner."
+    } else {
+        "Can you take a look and reply with the next concrete step?"
+    };
+    let detail = match category {
+        0 => "Rollout risk: watch sync latency, auth failures, and support tickets for the first hour.",
+        1 => "The review thread has enough detail to test search, replies, archive, and labels.",
+        2 => "Newsletter section: SQLite, terminal workflows, local-first apps, and unsubscribe links.",
+        3 => "Follow-up needed: customer context, owner, deadline, and decision history are all in one thread.",
+        4 => "Product notes: copy, onboarding friction, time-to-wow, and first-run experience.",
+        5 => "Finance note: receipt attached, amount approved, and billing period included below.",
+        6 => "Travel note: itinerary attached, hotel confirmation, and calendar details.",
+        7 => "Alert details: service recovered, but keep this searchable for the incident review.",
+        8 => "Hiring notes: interview plan, scorecard, and candidate follow-up.",
+        _ => "General work thread with enough text to make full-body search feel useful.",
+    };
+    format!(
+        "Subject: {subject}\n\nMessage {reply_idx} with {peer_email}. {perspective}\n\n{detail}\n\nDemo data is synthetic. It is designed to exercise mxr search, labels, threads, attachments, newsletters, saved searches, reply-later, and analytics without touching a real inbox."
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_demo_msg(
+    envelopes: &mut Vec<Envelope>,
+    bodies: &mut HashMap<String, MessageBody>,
+    msg_num: &mut usize,
+    account_id: &AccountId,
+    thread_id: &ThreadId,
+    from: Address,
+    to: Vec<Address>,
+    subject: String,
+    snippet: String,
+    body_text: String,
+    date: chrono::DateTime<chrono::Utc>,
+    flags: MessageFlags,
+    has_attachments: bool,
+    unsubscribe: UnsubscribeMethod,
+    label_provider_ids: Vec<String>,
+    in_reply_to: Option<String>,
+    references: Vec<String>,
+) -> String {
+    let current_num = *msg_num;
+    let msg_id = MessageId::new();
+    let provider_id = format!("demo-msg-{current_num}");
+    let message_id_header = format!("<demo-{current_num}@mxr.local>");
+    *msg_num += 1;
+
+    let attachments = if has_attachments {
+        vec![AttachmentMeta {
+            id: AttachmentId::new(),
+            message_id: msg_id.clone(),
+            filename: match flags.contains(MessageFlags::SENT) {
+                true => format!("demo-followup-{current_num}.md"),
+                false => format!("demo-attachment-{current_num}.pdf"),
+            },
+            mime_type: if flags.contains(MessageFlags::SENT) {
+                "text/markdown".to_string()
+            } else {
+                "application/pdf".to_string()
+            },
+            disposition: AttachmentDisposition::Attachment,
+            content_id: None,
+            content_location: None,
+            size_bytes: 12_000 + (current_num as u64 % 250_000),
+            local_path: None,
+            provider_id: format!("demo-att-{current_num}"),
+        }]
+    } else {
+        Vec::new()
+    };
+
+    let size_bytes = body_text.len() as u64
+        + attachments
+            .iter()
+            .map(|attachment| attachment.size_bytes)
+            .sum::<u64>()
+        + 700;
+    envelopes.push(Envelope {
+        id: msg_id.clone(),
+        account_id: account_id.clone(),
+        provider_id: provider_id.clone(),
+        thread_id: thread_id.clone(),
+        message_id_header: Some(message_id_header.clone()),
+        in_reply_to,
+        references,
+        from,
+        to,
+        cc: Vec::new(),
+        bcc: Vec::new(),
+        subject,
+        date,
+        flags,
+        snippet,
+        has_attachments,
+        size_bytes,
+        unsubscribe,
+        label_provider_ids,
+    });
+
+    bodies.insert(
+        provider_id,
+        MessageBody {
+            message_id: msg_id,
+            text_plain: Some(body_text),
+            text_html: None,
+            attachments,
+            fetched_at: chrono::Utc::now(),
+            metadata: Default::default(),
+        },
+    );
+
+    message_id_header
 }
 
 fn make_label(account_id: &AccountId, name: &str, kind: LabelKind, provider_id: &str) -> Label {

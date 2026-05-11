@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>mxr web — SPA not built</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+             background: #0a0e14; color: #e4e6eb; margin: 0;
+             min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+      main { max-width: 560px; padding: 32px; }
+      h1 { margin: 0 0 12px; font-weight: 600; font-size: 20px; }
+      p { color: #8b96a8; line-height: 1.55; }
+      code, pre { font-family: ui-monospace, "JetBrains Mono", monospace;
+                  background: #161c25; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+      pre { padding: 12px; overflow-x: auto; }
+      a { color: #7dd3fc; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>mxr web — SPA not built</h1>
+      <p>
+        The bridge is running but the embedded SPA files are missing. Build the
+        web app first:
+      </p>
+      <pre>cd apps/web
+npm install
+npm run build
+cargo build --features web-ui --release
+mxr web</pre>
+      <p>
+        For local development, prefer running the Vite dev server directly:
+      </p>
+      <pre>cd apps/web
+npm run dev          # http://localhost:5173</pre>
+      <p>
+        The dev server proxies <code>/api</code> to the bridge at
+        <code>http://127.0.0.1:7777</code>.
+      </p>
+      <p>
+        See <a href="/api/v1/docs">/api/v1/docs</a> for the bridge API surface.
+      </p>
+    </main>
+  </body>
+</html>

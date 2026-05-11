@@ -4,8 +4,10 @@ pub mod snooze;
 mod types;
 
 pub use resolve::{
-    app_instance_name, config_dir, config_file_path, data_dir, load_config, load_config_from_path,
-    load_config_from_str, save_config, save_config_to_path, socket_path, ConfigError,
+    app_instance_name, bridge_port_path, bridge_token_path, config_dir, config_file_path, data_dir,
+    load_config, load_config_from_path, load_config_from_str, read_bridge_port,
+    read_or_create_bridge_token, remote_bridge_token_path, save_config, save_config_to_path,
+    socket_path, write_bridge_port, ConfigError,
 };
 pub use types::*;
 

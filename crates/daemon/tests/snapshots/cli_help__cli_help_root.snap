@@ -19,7 +19,8 @@ Commands:
   replies        Manage the reply-later queue
   summarize      Summarise an email thread using the configured LLM (Ollama, LM Studio, OpenAI, etc.). Requires `[llm] enabled = true` in config. Pass a positional thread ID or use `--search QUERY` plus `--first` (most recent match) or `--limit N` to summarize multiple threads in one go. Multi-summary output is separated by `--- THREAD_ID ---`
   draft-assist   Generate a draft reply for a thread, grounded on the thread context plus the user's instruction. Output goes to stdout — pipe it into `$EDITOR` or your scratch buffer. Never auto-sends. Two equivalent forms:
-  setup          First-run setup. Without flags, prints quick-start guidance for configuring a Gmail or IMAP account. With `--demo`, configures an in-memory fake-provider account so you can try the TUI/CLI without touching any real mail credentials
+  setup          First-run setup wizard for demo, Gmail, or IMAP/SMTP
+  demo           Launch an isolated, realistic demo inbox without touching your real config
   screener       Triage unknown senders: classify them as allow / deny / feed / paper-trail. Local-only consent metadata; never roundtrips to the provider
   sender         Show per-sender relationship aggregates: volume, response cadence, open threads. The unfair advantage of having local SQLite — every other email tool reasons over messages, not people
   snippets       Manage compose snippets (`;name` expansions)
@@ -34,7 +35,7 @@ Commands:
   stale          List stale threads waiting for a reply (mine = my turn, theirs = theirs)
   sync           Trigger or query sync
   status         Show daemon status
-  web            Start a local HTTP/WebSocket bridge over daemon IPC
+  web            Start the local HTTP/WebSocket bridge and open the web app in the default browser. Pre-authenticates via URL fragment using the persisted bridge token at `~/.config/mxr/bridge-token`
   events         Watch daemon events
   history        Show persisted event history
   notify         Unread summary for status bars

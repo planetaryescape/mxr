@@ -1,4 +1,4 @@
-use crate::{decode_id, decode_timestamp, trace_query};
+use crate::{decode_id, decode_timestamp, trace_query, NON_SELF_ADDRESSED_MESSAGE_PREDICATE};
 use mxr_core::id::*;
 use mxr_core::types::*;
 use std::time::Instant;
@@ -82,21 +82,23 @@ impl super::Store {
         since: i64,
         until: i64,
     ) -> Result<WrappedVolume, sqlx::Error> {
-        let row: (i64, i64, i64) = sqlx::query_as(
+        let sql = format!(
             r#"SELECT
-                COALESCE(SUM(CASE WHEN direction = 'inbound' THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN direction = 'outbound' THEN 1 ELSE 0 END), 0),
-                COUNT(DISTINCT thread_id)
-              FROM messages
-              WHERE (?1 IS NULL OR account_id = ?1)
-                AND date >= ?2
-                AND date <= ?3"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_one(self.reader())
-        .await?;
+                COALESCE(SUM(CASE WHEN m.direction = 'inbound' THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN m.direction = 'outbound' THEN 1 ELSE 0 END), 0),
+                COUNT(DISTINCT m.thread_id)
+              FROM messages m
+              WHERE (?1 IS NULL OR m.account_id = ?1)
+                AND m.date >= ?2
+                AND m.date <= ?3
+                AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}"#
+        );
+        let row: (i64, i64, i64) = sqlx::query_as(&sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .fetch_one(self.reader())
+            .await?;
         Ok(WrappedVolume {
             inbound_count: row.0.max(0) as u32,
             outbound_count: row.1.max(0) as u32,
@@ -116,45 +118,51 @@ impl super::Store {
         // SQLite's strftime('%w') returns 0=Sunday..6=Saturday; the
         // public `day_of_week_distribution` array uses 0=Monday..6=Sunday,
         // so remap by `(sqlite_dow + 6) % 7`.
-        let dow_query = sqlx::query_as::<_, (i64, i64)>(
-            r#"SELECT CAST(strftime('%w', date, 'unixepoch') AS INTEGER) AS dow,
+        let dow_sql = format!(
+            r#"SELECT CAST(strftime('%w', m.date, 'unixepoch') AS INTEGER) AS dow,
                       COUNT(*) AS c
-               FROM messages
-               WHERE (?1 IS NULL OR account_id = ?1)
-                 AND date >= ?2 AND date <= ?3
+               FROM messages m
+               WHERE (?1 IS NULL OR m.account_id = ?1)
+                 AND m.date >= ?2 AND m.date <= ?3
+                 AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
                GROUP BY dow"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_all(self.reader());
+        );
+        let dow_query = sqlx::query_as::<_, (i64, i64)>(&dow_sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .fetch_all(self.reader());
 
-        let hour_query = sqlx::query_as::<_, (i64, i64)>(
-            r#"SELECT CAST(strftime('%H', date, 'unixepoch') AS INTEGER) AS hr,
+        let hour_sql = format!(
+            r#"SELECT CAST(strftime('%H', m.date, 'unixepoch') AS INTEGER) AS hr,
                       COUNT(*) AS c
-               FROM messages
-               WHERE (?1 IS NULL OR account_id = ?1)
-                 AND date >= ?2 AND date <= ?3
+               FROM messages m
+               WHERE (?1 IS NULL OR m.account_id = ?1)
+                 AND m.date >= ?2 AND m.date <= ?3
+                 AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
                GROUP BY hr"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_all(self.reader());
+        );
+        let hour_query = sqlx::query_as::<_, (i64, i64)>(&hour_sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .fetch_all(self.reader());
 
-        let day_query = sqlx::query_as::<_, (i64, i64)>(
-            r#"SELECT MIN(date) AS first_ts, COUNT(*) AS c
-               FROM messages
-               WHERE (?1 IS NULL OR account_id = ?1)
-                 AND date >= ?2 AND date <= ?3
-               GROUP BY date(date, 'unixepoch')
+        let day_sql = format!(
+            r#"SELECT MIN(m.date) AS first_ts, COUNT(*) AS c
+               FROM messages m
+               WHERE (?1 IS NULL OR m.account_id = ?1)
+                 AND m.date >= ?2 AND m.date <= ?3
+                 AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
+               GROUP BY date(m.date, 'unixepoch')
                ORDER BY c DESC, first_ts ASC
                LIMIT 1"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_optional(self.reader());
+        );
+        let day_query = sqlx::query_as::<_, (i64, i64)>(&day_sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .fetch_optional(self.reader());
 
         let (dow_rows, hour_rows, day): (Vec<(i64, i64)>, Vec<(i64, i64)>, Option<(i64, i64)>) =
             tokio::try_join!(dow_query, hour_query, day_query)?;
@@ -212,22 +220,29 @@ impl super::Store {
     ) -> Result<WrappedTopContacts, sqlx::Error> {
         // Three independent aggregates — top inbound, top outbound,
         // and most-asymmetric — fan out to the reader pool together.
-        let inbound_query = sqlx::query_as::<_, (String, Option<String>, i64)>(
-            r#"SELECT LOWER(from_email), MAX(from_name), COUNT(*) AS c
-               FROM messages
-               WHERE direction = 'inbound'
-                 AND from_email != ''
-                 AND (?1 IS NULL OR account_id = ?1)
-                 AND date >= ?2 AND date <= ?3
-               GROUP BY LOWER(from_email)
+        let inbound_sql = format!(
+            r#"SELECT LOWER(m.from_email), MAX(m.from_name), COUNT(*) AS c
+               FROM messages m
+               WHERE m.direction = 'inbound'
+                 AND m.from_email != ''
+                 AND (?1 IS NULL OR m.account_id = ?1)
+                 AND m.date >= ?2 AND m.date <= ?3
+                 AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM account_addresses self_addr
+                     WHERE LOWER(self_addr.email) = LOWER(m.from_email)
+                 )
+               GROUP BY LOWER(m.from_email)
                ORDER BY c DESC
                LIMIT ?4"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .bind(TOP_N)
-        .fetch_all(self.reader());
+        );
+        let inbound_query = sqlx::query_as::<_, (String, Option<String>, i64)>(&inbound_sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .bind(TOP_N)
+            .fetch_all(self.reader());
 
         let outbound_query = sqlx::query_as::<_, (String, i64)>(
             r#"SELECT LOWER(json_extract(t.value, '$.email')) AS email,
@@ -236,6 +251,11 @@ impl super::Store {
                WHERE m.direction = 'outbound'
                  AND (?1 IS NULL OR m.account_id = ?1)
                  AND m.date >= ?2 AND m.date <= ?3
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM account_addresses self_addr
+                     WHERE LOWER(self_addr.email) = LOWER(json_extract(t.value, '$.email'))
+                 )
                GROUP BY email
                HAVING email IS NOT NULL AND email != ''
                ORDER BY c DESC
@@ -250,14 +270,20 @@ impl super::Store {
         // Most asymmetric over the window — recompute (the materialized
         // contacts table is all-time, doesn't respect window). Requires
         // ≥5 inbound to filter out one-off senders.
-        let asym_query = sqlx::query_as::<_, (String, Option<String>, i64, i64)>(
+        let asym_sql = format!(
             r#"WITH window_contacts AS (
-                SELECT LOWER(from_email) AS email, from_name AS name,
+                SELECT LOWER(m.from_email) AS email, m.from_name AS name,
                        'in' AS dir
-                  FROM messages
-                  WHERE direction = 'inbound' AND from_email != ''
-                    AND (?1 IS NULL OR account_id = ?1)
-                    AND date >= ?2 AND date <= ?3
+                  FROM messages m
+                  WHERE m.direction = 'inbound' AND m.from_email != ''
+                    AND (?1 IS NULL OR m.account_id = ?1)
+                    AND m.date >= ?2 AND m.date <= ?3
+                    AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM account_addresses self_addr
+                        WHERE LOWER(self_addr.email) = LOWER(m.from_email)
+                    )
                 UNION ALL
                 SELECT LOWER(json_extract(t.value, '$.email')),
                        json_extract(t.value, '$.name'),
@@ -266,6 +292,11 @@ impl super::Store {
                   WHERE m.direction = 'outbound'
                     AND (?1 IS NULL OR m.account_id = ?1)
                     AND m.date >= ?2 AND m.date <= ?3
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM account_addresses self_addr
+                        WHERE LOWER(self_addr.email) = LOWER(json_extract(t.value, '$.email'))
+                    )
               )
               SELECT email, MAX(name),
                      SUM(CASE WHEN dir = 'in' THEN 1 ELSE 0 END) AS in_c,
@@ -278,11 +309,12 @@ impl super::Store {
                      / CAST(MAX(in_c, out_c, 1) AS REAL) DESC,
                      in_c + out_c DESC
               LIMIT 3"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_all(self.reader());
+        );
+        let asym_query = sqlx::query_as::<_, (String, Option<String>, i64, i64)>(&asym_sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .fetch_all(self.reader());
 
         let (inbound, outbound, asym): (
             Vec<(String, Option<String>, i64)>,
@@ -342,7 +374,12 @@ impl super::Store {
                FROM reply_pairs
                WHERE direction = 'i_replied'
                  AND replied_at >= ?2 AND replied_at <= ?3
-                 AND (?1 IS NULL OR account_id = ?1)"#,
+                 AND (?1 IS NULL OR account_id = ?1)
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM account_addresses self_addr
+                     WHERE LOWER(self_addr.email) = LOWER(counterparty_email)
+                 )"#,
         )
         .bind(acct)
         .bind(since)
@@ -366,8 +403,13 @@ impl super::Store {
                  AND replied_at >= ?2 AND replied_at <= ?3
                  AND latency_seconds > 0
                  AND (?1 IS NULL OR account_id = ?1)
-               ORDER BY latency_seconds ASC
-               LIMIT 1"#,
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM account_addresses self_addr
+                     WHERE LOWER(self_addr.email) = LOWER(counterparty_email)
+                 )
+                ORDER BY latency_seconds ASC
+                LIMIT 1"#,
         )
         .bind(acct)
         .bind(since)
@@ -383,8 +425,13 @@ impl super::Store {
                  AND latency_seconds > 0
                  AND latency_seconds <= ?4
                  AND (?1 IS NULL OR account_id = ?1)
-               ORDER BY latency_seconds DESC
-               LIMIT 1"#,
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM account_addresses self_addr
+                     WHERE LOWER(self_addr.email) = LOWER(counterparty_email)
+                 )
+                ORDER BY latency_seconds DESC
+                LIMIT 1"#,
         )
         .bind(acct)
         .bind(since)
@@ -508,52 +555,58 @@ impl super::Store {
     ) -> Result<WrappedNewsletters, sqlx::Error> {
         let read_flag = MessageFlags::READ.bits() as i64;
 
-        let unique_query = sqlx::query_as::<_, (i64,)>(
-            r#"SELECT COUNT(DISTINCT list_id)
-               FROM messages
-               WHERE list_id IS NOT NULL
-                 AND (?1 IS NULL OR account_id = ?1)
-                 AND date >= ?2 AND date <= ?3"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_one(self.reader());
+        let unique_sql = format!(
+            r#"SELECT COUNT(DISTINCT m.list_id)
+               FROM messages m
+               WHERE m.list_id IS NOT NULL
+                 AND (?1 IS NULL OR m.account_id = ?1)
+                 AND m.date >= ?2 AND m.date <= ?3
+                 AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}"#
+        );
+        let unique_query = sqlx::query_as::<_, (i64,)>(&unique_sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .fetch_one(self.reader());
 
-        let top_list_query = sqlx::query_as::<_, (String, i64, i64)>(
-            r#"SELECT list_id,
+        let top_list_sql = format!(
+            r#"SELECT m.list_id,
                       COUNT(*),
-                      SUM(CASE WHEN (flags & ?4) = ?4 THEN 1 ELSE 0 END)
-               FROM messages
-               WHERE list_id IS NOT NULL
-                 AND (?1 IS NULL OR account_id = ?1)
-                 AND date >= ?2 AND date <= ?3
-               GROUP BY list_id
+                      SUM(CASE WHEN (m.flags & ?4) = ?4 THEN 1 ELSE 0 END)
+               FROM messages m
+               WHERE m.list_id IS NOT NULL
+                 AND (?1 IS NULL OR m.account_id = ?1)
+                 AND m.date >= ?2 AND m.date <= ?3
+                 AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
+               GROUP BY m.list_id
                ORDER BY COUNT(*) DESC
                LIMIT 1"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .bind(read_flag)
-        .fetch_optional(self.reader());
+        );
+        let top_list_query = sqlx::query_as::<_, (String, i64, i64)>(&top_list_sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .bind(read_flag)
+            .fetch_optional(self.reader());
 
         // Share of inbound that is list-bearing.
-        let share_query = sqlx::query_as::<_, (Option<f64>,)>(
+        let share_sql = format!(
             r#"SELECT
                 CASE WHEN COUNT(*) = 0 THEN NULL
-                     ELSE 100.0 * SUM(CASE WHEN list_id IS NOT NULL THEN 1 ELSE 0 END)
-                                / CAST(COUNT(*) AS REAL)
+                     ELSE 100.0 * SUM(CASE WHEN m.list_id IS NOT NULL THEN 1 ELSE 0 END)
+                                 / CAST(COUNT(*) AS REAL)
                 END
-              FROM messages
-              WHERE direction = 'inbound'
-                AND (?1 IS NULL OR account_id = ?1)
-                AND date >= ?2 AND date <= ?3"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_one(self.reader());
+              FROM messages m
+              WHERE m.direction = 'inbound'
+                AND (?1 IS NULL OR m.account_id = ?1)
+                AND m.date >= ?2 AND m.date <= ?3
+                AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}"#
+        );
+        let share_query = sqlx::query_as::<_, (Option<f64>,)>(&share_sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .fetch_one(self.reader());
 
         let (unique_row, top_list, share_row): (
             (i64,),
@@ -579,37 +632,50 @@ impl super::Store {
         until: i64,
     ) -> Result<WrappedSuperlatives, sqlx::Error> {
         // Longest thread by message count in window.
-        let longest: Option<(String, i64, String)> = sqlx::query_as(
-            r#"SELECT thread_id, COUNT(*) AS c, MAX(subject)
-               FROM messages
-               WHERE (?1 IS NULL OR account_id = ?1)
-                 AND date >= ?2 AND date <= ?3
-               GROUP BY thread_id
+        let longest_sql = format!(
+            r#"SELECT m.thread_id, COUNT(*) AS c, MAX(m.subject)
+               FROM messages m
+               WHERE (?1 IS NULL OR m.account_id = ?1)
+                 AND m.date >= ?2 AND m.date <= ?3
+                 AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
+               GROUP BY m.thread_id
                HAVING c > 1
                ORDER BY c DESC
                LIMIT 1"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_optional(self.reader())
-        .await?;
+        );
+        let longest: Option<(String, i64, String)> = sqlx::query_as(&longest_sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .fetch_optional(self.reader())
+            .await?;
 
         // Most ghosted: high inbound, zero outbound. Reuses the window_contacts
         // CTE shape from top_contacts but constrains to out_count = 0.
-        let ghosted: Option<(String, i64, i64)> = sqlx::query_as(
+        let ghosted_sql = format!(
             r#"WITH window_contacts AS (
-                SELECT LOWER(from_email) AS email, 'in' AS dir
-                  FROM messages
-                  WHERE direction = 'inbound' AND from_email != ''
-                    AND (?1 IS NULL OR account_id = ?1)
-                    AND date >= ?2 AND date <= ?3
+                SELECT LOWER(m.from_email) AS email, 'in' AS dir
+                  FROM messages m
+                  WHERE m.direction = 'inbound' AND m.from_email != ''
+                    AND (?1 IS NULL OR m.account_id = ?1)
+                    AND m.date >= ?2 AND m.date <= ?3
+                    AND {NON_SELF_ADDRESSED_MESSAGE_PREDICATE}
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM account_addresses self_addr
+                        WHERE LOWER(self_addr.email) = LOWER(m.from_email)
+                    )
                 UNION ALL
                 SELECT LOWER(json_extract(t.value, '$.email')), 'out'
                   FROM messages m, json_each(m.to_addrs) t
                   WHERE m.direction = 'outbound'
                     AND (?1 IS NULL OR m.account_id = ?1)
                     AND m.date >= ?2 AND m.date <= ?3
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM account_addresses self_addr
+                        WHERE LOWER(self_addr.email) = LOWER(json_extract(t.value, '$.email'))
+                    )
               )
               SELECT email,
                      SUM(CASE WHEN dir = 'in' THEN 1 ELSE 0 END) AS in_c,
@@ -620,12 +686,13 @@ impl super::Store {
               HAVING out_c = 0 AND in_c >= 10
               ORDER BY in_c DESC
               LIMIT 1"#,
-        )
-        .bind(acct)
-        .bind(since)
-        .bind(until)
-        .fetch_optional(self.reader())
-        .await?;
+        );
+        let ghosted: Option<(String, i64, i64)> = sqlx::query_as(&ghosted_sql)
+            .bind(acct)
+            .bind(since)
+            .bind(until)
+            .fetch_optional(self.reader())
+            .await?;
 
         Ok(WrappedSuperlatives {
             longest_thread: match longest {

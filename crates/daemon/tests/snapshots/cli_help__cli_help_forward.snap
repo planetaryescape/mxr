@@ -10,9 +10,10 @@ Arguments:
   <MESSAGE_ID>  Message ID to forward
 
 Options:
-      --to <TO>      Forward to recipient(s)
-      --body <BODY>  Inline body
-      --body-stdin   Read body from stdin
-      --yes          Skip confirmation
-      --dry-run      Show what would be sent
-  -h, --help         Print help
+      --to <TO>          Forward to recipient(s)
+      --body <BODY>      Inline body
+      --body-stdin       Read body from stdin
+      --yes              Skip confirmation
+      --dry-run          Show what would be sent
+      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
+  -h, --help             Print help

@@ -2522,19 +2522,21 @@ mod tests {
     }
 
     #[test]
-    fn app_new_uses_default_reader_mode() {
+    fn app_new_uses_original_html_as_default_message_view() {
         let app = App::new();
         assert!(app.mailbox.reader_mode);
+        assert!(app.mailbox.html_view);
     }
 
     #[test]
-    fn app_from_render_config_respects_reader_mode() {
+    fn app_from_render_config_respects_text_reader_mode() {
         let config = RenderConfig {
-            reader_mode: false,
+            reader_mode: true,
             ..Default::default()
         };
         let app = App::from_render_config(&config);
-        assert!(!app.mailbox.reader_mode);
+        assert!(app.mailbox.reader_mode);
+        assert!(app.mailbox.html_view);
     }
 
     #[test]
@@ -2548,6 +2550,7 @@ mod tests {
         app.apply_runtime_config(&config);
 
         assert!(!app.mailbox.reader_mode);
+        assert!(app.mailbox.html_view);
         assert_eq!(app.modals.snooze_config.morning_hour, 7);
         assert_eq!(
             app.theme.selection_fg,
@@ -3979,6 +3982,7 @@ mod tests {
         app.apply(Action::CloseMessageView);
 
         assert!(app.mailbox.reader_mode);
+        assert!(app.mailbox.html_view);
     }
 
     #[test]
@@ -6801,12 +6805,12 @@ mod tests {
             }
             other => panic!("expected text ready state, got {other:?}"),
         }
-        assert_eq!(app.status_message.as_deref(), Some("Showing reading view"));
+        assert_eq!(app.status_message.as_deref(), Some("View: Reading"));
         assert!(app
             .status_bar_state()
             .body_status
             .as_deref()
-            .is_some_and(|status| status.contains("reading view")));
+            .is_some_and(|status| status.contains("View: Reading")));
 
         app.apply(Action::ToggleRemoteContent);
 
@@ -6825,7 +6829,7 @@ mod tests {
             .status_bar_state()
             .body_status
             .as_deref()
-            .is_some_and(|status| status.contains("reading view")));
+            .is_some_and(|status| status.contains("View: Reading")));
     }
 
     #[test]
@@ -7887,6 +7891,29 @@ mod tests {
         assert_eq!(modal.view, AnalyticsView::StaleThreads);
         assert!(!modal.fields.is_empty());
         assert_eq!(modal.active_field, 0);
+    }
+
+    #[test]
+    fn analytics_filter_modal_cycles_select_options_without_typing() {
+        use crate::action::Action;
+        use crate::app::{AnalyticsView, StorageMode};
+        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = App::new();
+        app.screen = crate::app::Screen::Analytics;
+        app.analytics.view = AnalyticsView::Storage;
+        app.analytics.storage_mode = StorageMode::Breakdown;
+        app.apply(Action::OpenAnalyticsFilterModal);
+
+        let before = app.modals.analytics_filter.as_ref().unwrap().fields[0]
+            .value
+            .clone();
+        app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        let after = app.modals.analytics_filter.as_ref().unwrap().fields[0]
+            .value
+            .clone();
+
+        assert_eq!(before, "sender");
+        assert_eq!(after, "mimetype");
     }
 
     /// Slice 10 / B10.3: submitting the filter modal copies the

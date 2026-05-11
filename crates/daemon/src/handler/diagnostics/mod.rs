@@ -15,8 +15,8 @@ use mxr_core::id::{AccountId, MessageId, ThreadId};
 use mxr_core::types::{ExportFormat, SearchMode, SemanticProfile, SortOrder};
 use mxr_protocol::IPC_PROTOCOL_VERSION;
 use mxr_protocol::{
-    DaemonEvent, IpcMessage, IpcPayload, ResponseData, SearchExplain, SearchExplainResult,
-    SearchResultItem,
+    DaemonEvent, IpcMessage, IpcPayload, LlmConfigData, ResponseData, SearchExplain,
+    SearchExplainResult, SearchResultItem,
 };
 use mxr_search::{SearchPage, SearchResult};
 use std::collections::HashMap;
@@ -592,6 +592,66 @@ pub(crate) async fn llm_status(state: &AppState) -> HandlerResult {
         request_timeout_secs: config.request_timeout_secs,
     };
     Ok(ResponseData::LlmStatus { snapshot })
+}
+
+pub(crate) async fn llm_config(state: &AppState) -> HandlerResult {
+    Ok(ResponseData::LlmConfig {
+        config: llm_config_data(state.config_snapshot().llm),
+    })
+}
+
+pub(crate) async fn update_llm_config(state: &AppState, config: LlmConfigData) -> HandlerResult {
+    let config = normalize_llm_config(config)?;
+    let saved = state
+        .mutate_config(|current| {
+            current.llm = config;
+        })
+        .await?;
+    Ok(ResponseData::LlmConfig {
+        config: llm_config_data(saved.llm),
+    })
+}
+
+fn llm_config_data(config: mxr_config::LlmConfig) -> LlmConfigData {
+    LlmConfigData {
+        enabled: config.enabled,
+        base_url: config.base_url,
+        model: config.model,
+        api_key_env: config.api_key_env,
+        context_window: config.context_window,
+        request_timeout_secs: config.request_timeout_secs,
+    }
+}
+
+fn normalize_llm_config(config: LlmConfigData) -> Result<mxr_config::LlmConfig, String> {
+    let base_url = config.base_url.trim().trim_end_matches('/').to_string();
+    if base_url.is_empty() {
+        return Err("llm.base_url must not be empty".to_string());
+    }
+    let parsed = url::Url::parse(&base_url).map_err(|e| format!("invalid llm.base_url: {e}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("llm.base_url must use http or https".to_string());
+    }
+
+    let model = config.model.trim().to_string();
+    if model.is_empty() {
+        return Err("llm.model must not be empty".to_string());
+    }
+    if config.context_window == 0 {
+        return Err("llm.context_window must be greater than 0".to_string());
+    }
+    if config.request_timeout_secs == 0 {
+        return Err("llm.request_timeout_secs must be greater than 0".to_string());
+    }
+
+    Ok(mxr_config::LlmConfig {
+        enabled: config.enabled,
+        base_url,
+        model,
+        api_key_env: config.api_key_env.trim().to_string(),
+        context_window: config.context_window,
+        request_timeout_secs: config.request_timeout_secs,
+    })
 }
 
 pub(crate) async fn enable_semantic(state: &AppState, enabled: bool) -> HandlerResult {

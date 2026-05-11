@@ -12,6 +12,13 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = []
+# When enabled, bakes the contents of `apps/web/dist/` into the binary so the
+# bridge serves the web SPA at `/`. Build the SPA first (`npm run build` in
+# apps/web) before invoking `cargo build --features web-ui`.
+web-ui = ["dep:include_dir", "dep:mime_guess"]
+
 [dependencies]
 mxr-compose = { workspace = true }
 mxr-config = { workspace = true }
@@ -19,6 +26,7 @@ mxr-core = { workspace = true, features = ["openapi"] }
 mxr-mail-parse = { workspace = true }
 mxr-protocol = { workspace = true, features = ["openapi"] }
 axum = { workspace = true }
+base64 = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
@@ -32,6 +40,8 @@ utoipa = { workspace = true }
 utoipa-axum = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
 uuid = { workspace = true }
+include_dir = { version = "0.7", optional = true }
+mime_guess = { workspace = true, optional = true }
 
 [dev-dependencies]
 insta = { workspace = true, features = ["json"] }

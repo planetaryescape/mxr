@@ -46,9 +46,9 @@ jobs:
           # at runtime by `mxr semantic enable`. Intel mac stays disabled because
           # fastembed/onnxruntime fails to build on x86_64-apple-darwin (see 59d8b7a).
           MATRIX='{"include":[
-            {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","desktop_platform":"linux","desktop_arch":"x64","desktop_archive":"desktop-linux-x86_64.zip","use_cross":false,"cargo_args":"--features semantic-local"},
-            {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","desktop_platform":"darwin","desktop_arch":"x64","desktop_archive":"desktop-macos-x86_64.zip","use_cross":false,"cargo_args":"--no-default-features"},
-            {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","desktop_platform":"darwin","desktop_arch":"arm64","desktop_archive":"desktop-macos-aarch64.zip","use_cross":false,"cargo_args":"--features semantic-local"}
+            {"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","platform_family":"linux","archive":"linux-x86_64.tar.gz","desktop_platform":"linux","desktop_arch":"x64","desktop_archive":"desktop-linux-x86_64.zip","use_cross":false,"cargo_args":"--features semantic-local,web-ui"},
+            {"os":"macos-15-intel","target":"x86_64-apple-darwin","platform_family":"macos","archive":"macos-x86_64.tar.gz","desktop_platform":"darwin","desktop_arch":"x64","desktop_archive":"desktop-macos-x86_64.zip","use_cross":false,"cargo_args":"--no-default-features --features web-ui"},
+            {"os":"macos-15","target":"aarch64-apple-darwin","platform_family":"macos","archive":"macos-aarch64.tar.gz","desktop_platform":"darwin","desktop_arch":"arm64","desktop_archive":"desktop-macos-aarch64.zip","use_cross":false,"cargo_args":"--features semantic-local,web-ui"}
           ]}'
           {
             echo 'build_matrix<<EOF'
@@ -56,9 +56,42 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
+  release-smoke:
+    name: Release CLI Smoke
+    runs-on: ubuntu-latest
+    needs: plan
+    env:
+      MXR_GMAIL_TEST_CLIENT_ID: ${{ secrets.MXR_GMAIL_TEST_CLIENT_ID }}
+      MXR_GMAIL_TEST_CLIENT_SECRET: ${{ secrets.MXR_GMAIL_TEST_CLIENT_SECRET }}
+      MXR_GMAIL_TEST_REFRESH_TOKEN: ${{ secrets.MXR_GMAIL_TEST_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - name: Run release-blocking CLI tests
+        if: needs.plan.outputs.cli_changed == 'true'
+        run: cargo nextest run -p mxr --test cli_journey --test daemon_lifecycle --test reset_cli --test cli_help
+      - name: Run deterministic provider smoke suite
+        if: needs.plan.outputs.cli_changed == 'true'
+        run: cargo test --workspace provider_offline_smoke_ -- --nocapture
+      - name: Run live Gmail release smoke
+        if: needs.plan.outputs.cli_changed == 'true'
+        run: |
+          if [ -z "$MXR_GMAIL_TEST_CLIENT_ID" ] \
+            || [ -z "$MXR_GMAIL_TEST_CLIENT_SECRET" ] \
+            || [ -z "$MXR_GMAIL_TEST_REFRESH_TOKEN" ]; then
+            echo "::error ::Missing MXR_GMAIL_TEST_{CLIENT_ID,CLIENT_SECRET,REFRESH_TOKEN}; live provider smoke is release-gating."
+            exit 1
+          fi
+          cargo test -p mxr --test live_gmail_e2e -- --ignored --nocapture
+      - name: Skip CLI smoke
+        if: needs.plan.outputs.cli_changed != 'true'
+        run: echo "CLI artifacts unchanged; skipping CLI smoke."
+
   build-binaries:
     name: Build ${{ matrix.target }}
-    needs: plan
+    needs: [plan, release-smoke]
     if: needs.plan.outputs.has_artifacts == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -72,6 +105,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
       - uses: actions/setup-node@v6
         if: needs.plan.outputs.desktop_changed == 'true'
         with:
@@ -87,6 +125,10 @@ jobs:
         if: matrix.use_cross
         run: cargo install cross --locked
 
+      - name: Build web SPA
+        working-directory: apps/web
+        run: npm ci && npm run build
+
       - name: Build (cross)
         if: matrix.use_cross
         run: cross build --release --locked --target ${{ matrix.target }} -p mxr ${{ matrix.cargo_args }}
@@ -100,6 +142,29 @@ jobs:
         env:
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+
+      - name: SPA embedded in release binary
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+        run: |
+          BINARY="./target/${MATRIX_TARGET}/release/mxr"
+          "${BINARY}" daemon --foreground &
+          DAEMON=$!
+          WEB_URL="$RUNNER_TEMP/mxr-web-url.txt"
+          trap 'kill "${WEB:-}" "${DAEMON}" || true' EXIT
+          sleep 2
+          "${BINARY}" web --no-open --print-url > "${WEB_URL}" &
+          WEB=$!
+          for _ in $(seq 1 20); do
+            test -s "${WEB_URL}" && break
+            sleep 1
+          done
+          URL=$(head -n1 "${WEB_URL}")
+          test -n "${URL}"
+          HTML=$(curl -fsSL "${URL}" || echo FAIL)
+          echo "${HTML}" | grep -q 'spa-not-built' && { echo "FAIL: placeholder served"; exit 1; }
+          echo "${HTML}" | grep -q '/assets/index-' || { echo "FAIL: no Vite-built bundle"; exit 1; }
 
       # macOS code signing happens BEFORE the archive so the signed binary
       # is what gets distributed. Both signing and notarization gracefully
@@ -310,6 +375,10 @@ jobs:
         env:
           COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
+          if [ -z "$COMMITTER_TOKEN" ]; then
+            echo "::error ::HOMEBREW_TAP_TOKEN is required to update the Homebrew tap."
+            exit 1
+          fi
           VERSION="${GITHUB_REF#refs/tags/v}"
           git clone "https://x-access-token:${COMMITTER_TOKEN}@github.com/planetaryescape/homebrew-mxr.git" tap
           cp Formula/mxr.rb tap/Formula/mxr.rb
@@ -322,3 +391,9 @@ jobs:
           git -C tap add Formula/mxr.rb
           git -C tap commit -m "mxr ${VERSION}"
           git -C tap push origin HEAD:main
+      - uses: Homebrew/actions/setup-homebrew@master
+      - name: Verify Homebrew install
+        run: |
+          brew update
+          brew install planetaryescape/mxr/mxr
+          mxr version

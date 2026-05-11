@@ -4,7 +4,10 @@ use mxr_protocol::*;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::net::UnixStream;
+use tokio::time::{timeout, Duration};
 use tokio_util::codec::Framed;
+
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub struct IpcClient {
     framed: Framed<UnixStream, IpcCodec>,
@@ -31,7 +34,8 @@ impl IpcClient {
     }
 
     pub async fn request(&mut self, req: Request) -> anyhow::Result<Response> {
-        self.request_with_events(req, |_| {}).await
+        self.request_inner(req, |_| {}, Some(DEFAULT_REQUEST_TIMEOUT))
+            .await
     }
 
     /// Like [`request`], but invokes `on_event` for every
@@ -51,6 +55,18 @@ impl IpcClient {
     where
         F: FnMut(DaemonEvent),
     {
+        self.request_inner(req, &mut on_event, None).await
+    }
+
+    async fn request_inner<F>(
+        &mut self,
+        req: Request,
+        mut on_event: F,
+        request_timeout: Option<Duration>,
+    ) -> anyhow::Result<Response>
+    where
+        F: FnMut(DaemonEvent),
+    {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let msg = IpcMessage {
             id,
@@ -58,19 +74,34 @@ impl IpcClient {
         };
         self.framed.send(msg).await?;
 
-        loop {
-            match self.framed.next().await {
+        let wait_for_response = async {
+            loop {
+                match self.framed.next().await {
                 Some(Ok(resp_msg)) => match resp_msg.payload {
                     IpcPayload::Response(resp) if resp_msg.id == id => return Ok(resp),
                     IpcPayload::Event(event) => on_event(event),
-                    // Out-of-id responses or other frames: ignore.
-                    _ => continue,
+                    IpcPayload::Response(_) => anyhow::bail!(
+                        "IPC protocol error: received response id {} while waiting for {id}",
+                        resp_msg.id
+                    ),
+                    _ => anyhow::bail!(
+                        "IPC protocol error: received non-response frame while waiting for response {id}"
+                    ),
                 },
                 Some(Err(e)) => anyhow::bail!("{}", describe_ipc_failure(&e.to_string())),
                 None => anyhow::bail!(
                     "Connection closed. The running daemon may be using an incompatible protocol. Restart the daemon after upgrading."
                 ),
             }
+            }
+        };
+
+        if let Some(duration) = request_timeout {
+            timeout(duration, wait_for_response).await.map_err(|_| {
+                anyhow::anyhow!("IPC request timed out after {} seconds", duration.as_secs())
+            })?
+        } else {
+            wait_for_response.await
         }
     }
 

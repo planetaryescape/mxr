@@ -128,7 +128,7 @@ pub async fn run(
         Response::Ok {
             data: ResponseData::Ack,
         } => match resolve_format(format.clone()) {
-            OutputFormat::Json | OutputFormat::Jsonl => {
+            OutputFormat::Json | OutputFormat::Jsonl if !wait => {
                 println!(
                     "{}",
                     serde_json::to_string(&serde_json::json!({
@@ -137,6 +137,7 @@ pub async fn run(
                     }))?
                 );
             }
+            OutputFormat::Json | OutputFormat::Jsonl => {}
             _ => println!("Sync triggered"),
         },
         Response::Error { message, .. } => anyhow::bail!("{}", message),
@@ -150,6 +151,13 @@ pub async fn run(
             Duration::from_secs(wait_timeout_secs),
         )
         .await?;
+        if matches!(
+            resolve_format(format.clone()),
+            OutputFormat::Json | OutputFormat::Jsonl
+        ) {
+            let statuses = fetch_sync_statuses(&mut client, account_id.as_ref()).await?;
+            render_status(&statuses, format);
+        }
     }
     Ok(())
 }

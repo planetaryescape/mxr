@@ -100,6 +100,11 @@ impl super::Store {
               FROM contacts
               WHERE (?1 IS NULL OR account_id = ?1)
                 AND total_inbound >= ?2
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM account_addresses self_addr
+                    WHERE LOWER(self_addr.email) = LOWER(contacts.email)
+                )
               ORDER BY
                 CAST(ABS(total_inbound - total_outbound) AS REAL)
                   / CAST(MAX(total_inbound, total_outbound, 1) AS REAL) DESC,
@@ -140,9 +145,28 @@ impl super::Store {
         max_lookback_days: u32,
         limit: u32,
     ) -> Result<Vec<ContactDecayRow>, sqlx::Error> {
+        let now_unix = chrono::Utc::now().timestamp();
+
+        self.list_contact_decay_at(
+            account_id,
+            threshold_days,
+            max_lookback_days,
+            limit,
+            now_unix,
+        )
+        .await
+    }
+
+    pub(crate) async fn list_contact_decay_at(
+        &self,
+        account_id: Option<&AccountId>,
+        threshold_days: u32,
+        max_lookback_days: u32,
+        limit: u32,
+        now_unix: i64,
+    ) -> Result<Vec<ContactDecayRow>, sqlx::Error> {
         let started_at = Instant::now();
         let lim = limit as i64;
-        let now_unix = chrono::Utc::now().timestamp();
         let cutoff = now_unix - i64::from(threshold_days) * 86_400;
         let max_lookback_unix = now_unix - i64::from(max_lookback_days) * 86_400;
         // Floor at year 2000: messages with epoch-0 Date headers would otherwise
@@ -165,6 +189,11 @@ impl super::Store {
                 AND last_inbound_at IS NOT NULL
                 AND last_inbound_at < ?2
                 AND last_inbound_at >= ?4
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM account_addresses self_addr
+                    WHERE LOWER(self_addr.email) = LOWER(contacts.email)
+                )
                 AND (
                     last_outbound_at IS NULL
                     OR last_outbound_at < last_inbound_at

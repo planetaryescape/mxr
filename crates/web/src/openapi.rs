@@ -40,7 +40,7 @@ use utoipa::{
         screener_decisions_clear, thread_summarize, draft_assist,
         compose_session_start, compose_session_refresh, compose_session_restore,
         compose_session_update, compose_session_send, compose_session_save,
-        compose_session_discard, rules_list, rule_detail, rule_form,
+        compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
         rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete,
         saved_searches_list, saved_searches_create, saved_searches_delete,
         saved_searches_run, accounts_list, accounts_config, account_test,
@@ -48,7 +48,7 @@ use utoipa::{
         account_addresses_list, account_addresses_add, account_addresses_remove,
         account_addresses_primary, auth_session_start, auth_session_get,
         auth_session_cancel, auth_session_complete, subscriptions_list,
-        llm_status, semantic_status, semantic_reindex, semantic_enable,
+        llm_status, llm_config_get, llm_config_update, semantic_status, semantic_reindex, semantic_enable,
         semantic_profile_install, semantic_profile_use, analytics_wrapped,
         analytics_storage_breakdown, analytics_largest_messages,
         analytics_stale_threads, analytics_contact_asymmetry,
@@ -150,6 +150,7 @@ endpoint!(post compose_session_restore "/api/v1/mail/compose/session/restore", "
 endpoint!(post compose_session_update "/api/v1/mail/compose/session/update", "Update compose session");
 endpoint!(post compose_session_send "/api/v1/mail/compose/session/send", "Send compose session");
 endpoint!(post compose_session_save "/api/v1/mail/compose/session/save", "Save compose session");
+endpoint!(post compose_session_attachment "/api/v1/mail/compose/session/attachment", "Upload compose attachment");
 endpoint!(post compose_session_discard "/api/v1/mail/compose/session/discard", "Discard compose session");
 
 endpoint!(get rules_list "/api/v1/platform/rules", "List rules");
@@ -185,6 +186,8 @@ endpoint!(post auth_session_complete "/api/v1/platform/auth/sessions/{session_id
 
 endpoint!(get subscriptions_list "/api/v1/platform/subscriptions", "List subscriptions");
 endpoint!(get llm_status "/api/v1/platform/llm/status", "LLM provider status");
+endpoint!(get llm_config_get "/api/v1/platform/llm/config", "Get LLM configuration");
+endpoint!(post llm_config_update "/api/v1/platform/llm/config", "Update LLM configuration");
 endpoint!(get semantic_status "/api/v1/platform/semantic/status", "Semantic index status");
 endpoint!(post semantic_reindex "/api/v1/platform/semantic/reindex", "Reindex semantic search");
 endpoint!(post semantic_enable "/api/v1/platform/semantic/enable", "Enable semantic search");

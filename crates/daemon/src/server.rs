@@ -137,6 +137,13 @@ pub async fn run_daemon_with_overrides(bridge_overrides: BridgeOverrides) -> any
             Ok(None) => {
                 tracing::info!("bridge disabled by config");
             }
+            Err(crate::bridge::BridgeStartupError::Bind { addr, error }) => {
+                tracing::warn!(
+                    %addr,
+                    %error,
+                    "HTTP bridge disabled because its port is unavailable"
+                );
+            }
             Err(error) => {
                 anyhow::bail!("bridge startup failed: {error}");
             }

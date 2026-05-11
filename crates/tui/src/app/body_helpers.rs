@@ -20,7 +20,7 @@ impl App {
             return None;
         };
 
-        Some(format!("Showing {}", primary_body_label(metadata, source)))
+        Some(primary_body_label(metadata, source).to_string())
     }
 
     pub fn status_bar_state(&self) -> ui::status_bar::StatusBarState {

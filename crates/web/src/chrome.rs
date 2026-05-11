@@ -19,6 +19,14 @@ pub(crate) struct BridgeChrome {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct MessageLabelView {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) kind: &'static str,
+    pub(crate) color: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct MessageRowView {
     pub(crate) id: String,
     pub(crate) kind: &'static str,
@@ -28,7 +36,18 @@ pub(crate) struct MessageRowView {
     pub(crate) sender_detail: Option<String>,
     pub(crate) subject: String,
     pub(crate) snippet: String,
+    pub(crate) date: DateTime<Utc>,
     pub(crate) date_label: String,
+    pub(crate) date_full: String,
+    pub(crate) date_relative: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) to: Vec<mxr_core::Address>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) cc: Vec<mxr_core::Address>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) bcc: Vec<mxr_core::Address>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) labels: Vec<MessageLabelView>,
     pub(crate) unread: bool,
     pub(crate) starred: bool,
     pub(crate) has_attachments: bool,
@@ -135,7 +154,14 @@ pub(crate) async fn ack_mutation(
     socket_path: &Path,
     mutation: mxr_protocol::MutationCommand,
 ) -> Result<Json<serde_json::Value>, BridgeError> {
-    ack_request(socket_path, Request::Mutation(mutation)).await
+    match ipc_request(socket_path, Request::Mutation(mutation)).await? {
+        ResponseData::Ack => Ok(Json(serde_json::json!({ "ok": true }))),
+        ResponseData::MutationResult { result } => Ok(Json(serde_json::json!({
+            "ok": result.failed == 0,
+            "result": result,
+        }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
 }
 
 pub(crate) async fn ack_request(

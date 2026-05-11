@@ -426,7 +426,7 @@ mod tests {
         assert!(rendered.contains("Logo"));
         assert!(rendered.contains("Badge"));
         assert!(rendered.contains("Hero"));
-        assert!(rendered.contains("original html"));
+        assert!(rendered.contains("View: Original HTML"));
         // Phase 3.4: chip label changed from "remote images blocked"
         // to a clearer "External content blocked" with affordance hint.
         assert!(rendered.contains("External content blocked"));

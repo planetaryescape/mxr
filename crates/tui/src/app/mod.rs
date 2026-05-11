@@ -671,15 +671,15 @@ fn reader_trim_label(metadata: &BodyViewMetadata) -> Option<String> {
 
 fn primary_body_label(metadata: &BodyViewMetadata, source: &BodySource) -> &'static str {
     match (metadata.mode, metadata.reader_applied, source) {
-        (BodyViewMode::Html, _, BodySource::Html) => "original html",
-        (BodyViewMode::Html, _, BodySource::Plain) => "plain text (no html)",
-        (BodyViewMode::Html, _, BodySource::Fallback) => "message summary (no html)",
-        (BodyViewMode::Html, _, BodySource::Snippet) => "snippet preview",
-        (BodyViewMode::Text, true, _) => "reading view",
-        (BodyViewMode::Text, false, BodySource::Plain) => "plain text",
-        (BodyViewMode::Text, false, BodySource::Html) => "html as text",
-        (BodyViewMode::Text, false, BodySource::Fallback) => "message summary",
-        (BodyViewMode::Text, false, BodySource::Snippet) => "snippet preview",
+        (BodyViewMode::Html, _, BodySource::Html) => "View: Original HTML",
+        (BodyViewMode::Html, _, BodySource::Plain) => "View: Plain text (no HTML)",
+        (BodyViewMode::Html, _, BodySource::Fallback) => "View: Message summary (no HTML)",
+        (BodyViewMode::Html, _, BodySource::Snippet) => "View: Snippet preview",
+        (BodyViewMode::Text, true, _) => "View: Reading",
+        (BodyViewMode::Text, false, BodySource::Plain) => "View: Plain text",
+        (BodyViewMode::Text, false, BodySource::Html) => "View: HTML as text",
+        (BodyViewMode::Text, false, BodySource::Fallback) => "View: Message summary",
+        (BodyViewMode::Text, false, BodySource::Snippet) => "View: Snippet preview",
     }
 }
 

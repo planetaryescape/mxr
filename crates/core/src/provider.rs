@@ -98,7 +98,12 @@ pub trait IdleWatcher: Send + Sync {
 #[async_trait]
 pub trait MailSendProvider: Send + Sync {
     fn name(&self) -> &str;
-    async fn send(&self, draft: &Draft, from: &Address) -> Result<SendReceipt>;
+    async fn send(
+        &self,
+        draft: &Draft,
+        from: &Address,
+        rfc2822_message_id: &str,
+    ) -> Result<SendReceipt>;
 
     /// Save a draft to the mail server. Returns the server-side draft ID if supported.
     /// Default: returns Ok(None) (provider doesn't support server drafts).

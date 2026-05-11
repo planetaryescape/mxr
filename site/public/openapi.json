@@ -10,7 +10,7 @@
     "license": {
       "name": "MIT OR Apache-2.0"
     },
-    "version": "0.5.3"
+    "version": "0.5.5"
   },
   "paths": {
     "/api/v1/admin/diagnostics": {
@@ -258,6 +258,21 @@
         "tags": [],
         "summary": "Start compose session",
         "operationId": "compose_session_start",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/mail/compose/session/attachment": {
+      "post": {
+        "tags": [],
+        "summary": "Upload compose attachment",
+        "operationId": "compose_session_attachment",
         "responses": {
           "200": {
             "description": "OK"
@@ -1285,6 +1300,34 @@
         "tags": [],
         "summary": "Complete OAuth session",
         "operationId": "auth_session_complete",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/llm/config": {
+      "get": {
+        "tags": [],
+        "summary": "Get LLM configuration",
+        "operationId": "llm_config_get",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Missing or invalid bridge token"
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "Update LLM configuration",
+        "operationId": "llm_config_update",
         "responses": {
           "200": {
             "description": "OK"
@@ -3734,6 +3777,41 @@
           }
         }
       },
+      "LlmConfigData": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "base_url",
+          "model",
+          "api_key_env",
+          "context_window",
+          "request_timeout_secs"
+        ],
+        "properties": {
+          "api_key_env": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "context_window": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "model": {
+            "type": "string"
+          },
+          "request_timeout_secs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "LlmStatusSnapshot": {
         "type": "object",
         "required": [
@@ -5397,6 +5475,38 @@
                 "enum": [
                   "GetLlmStatus"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetLlmConfig"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "config",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "UpdateLlmConfig"
+                ]
+              },
+              "config": {
+                "$ref": "#/components/schemas/LlmConfigData"
               }
             }
           },
@@ -7667,6 +7777,24 @@
               },
               "snapshot": {
                 "$ref": "#/components/schemas/LlmStatusSnapshot"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "config",
+              "kind"
+            ],
+            "properties": {
+              "config": {
+                "$ref": "#/components/schemas/LlmConfigData"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "LlmConfig"
+                ]
               }
             }
           },

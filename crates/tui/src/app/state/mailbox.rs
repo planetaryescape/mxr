@@ -281,7 +281,7 @@ impl MailboxState {
             mailbox_loading_throbber: ThrobberState::default(),
             pending_preview_read: None,
             reader_mode: render.reader_mode,
-            html_view: !render.reader_mode,
+            html_view: true,
             render_html_command: render.html_command.clone(),
             show_reader_stats: render.show_reader_stats,
             remote_content_enabled: render.html_remote_content,

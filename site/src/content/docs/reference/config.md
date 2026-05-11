@@ -70,9 +70,10 @@ weekend_hour = 10
 [bridge]
 enabled = true
 bind = "127.0.0.1"
-port = 7777
+port = 42829                       # bridge walks up to next free port on EADDRINUSE
 cors_allowlist = []
 host_allowlist = []
+auto_local_token = true            # loopback callers can auto-fetch the token
 token_path = "~/.config/mxr/bridge-token"
 
 [llm]
@@ -283,12 +284,13 @@ Notes:
 
 HTTP bridge configuration.
 
-- `enabled` — start the bridge alongside the daemon (default `true`)
-- `bind` — bind address (default `127.0.0.1`)
-- `port` — TCP port (default `7777`)
-- `cors_allowlist` — additional origins (defaults already cover loopback)
-- `host_allowlist` — additional hostnames for non-loopback binds
-- `token_path` — path to the auth token file (default `~/.config/mxr/bridge-token`)
+- `enabled` — start the bridge alongside the daemon (default `true`).
+- `bind` — bind address (default `127.0.0.1`).
+- `port` — preferred TCP port (default `42829`). On `EADDRINUSE` the bridge walks up to the next free port (up to 32 attempts). The actual bound port is written to `<config_dir>/bridge-port` for clients to discover.
+- `cors_allowlist` — additional origins (defaults already cover loopback).
+- `host_allowlist` — additional hostnames for non-loopback binds.
+- `auto_local_token` — when `true` (default), `GET /api/v1/auth/local-token` returns the bridge token to callers whose TCP peer is a loopback IP. Lets the web SPA bootstrap on the same machine without a paste prompt. Set to `false` for paranoid setups that want strict bearer auth even on loopback. Non-loopback peers never receive the token regardless of this setting.
+- `token_path` — path to the auth token file (default `~/.config/mxr/bridge-token`).
 
 ## `llm`
 
@@ -322,6 +324,9 @@ window, timeout, and whether the configured API-key environment variable
 is present. Daemon config reloads rebuild the LLM provider, so changing
 `base_url`, `model`, or `api_key_env` is reflected after reload without
 restarting the process.
+
+The web app's Settings > LLM panel edits this same section through the
+daemon and reloads the provider immediately after save.
 
 ## Custom keybindings
 

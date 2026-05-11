@@ -4,6 +4,7 @@ use mxr_core::types::{ResponseTimeDirection, StaleBallInCourt, StorageGroupBy};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 use throbber_widgets_tui::{Throbber, BRAILLE_SIX};
+use tui_big_text::{BigText, PixelSize};
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
     let chunks = Layout::default()
@@ -158,7 +159,9 @@ fn draw_table(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &cra
                 .border_style(theme.muted_style())
                 .title(" What you're seeing ");
             frame.render_widget(
-                Paragraph::new(lines).block(block).wrap(Wrap { trim: false }),
+                Paragraph::new(lines)
+                    .block(block)
+                    .wrap(Wrap { trim: false }),
                 split[0],
             );
             split[1]
@@ -195,7 +198,7 @@ fn view_explainer_lines<'a>(
             StorageMode::Breakdown => (
                 "Storage breakdown — where your disk goes.",
                 "Each row totals bytes for one bucket (sender, mimetype, or label). Share = % of all bytes.",
-                "Tab top rows to find archive / unsubscribe candidates. Press 'f' to switch grouping.",
+                "Tab top rows to find archive / unsubscribe candidates. Press 'g' to rotate buckets or 'f' to pick.",
             ),
             StorageMode::LargestMessages => (
                 "Largest single messages by size.",
@@ -206,7 +209,7 @@ fn view_explainer_lines<'a>(
         AnalyticsView::StaleThreads => (
             "Threads waiting on a reply.",
             "Each row is a thread whose latest message is older than the threshold. Days stale = how long the ball has sat.",
-            "Toggle perspective: 'mine' = you owe a reply; 'theirs' = they owe one. Enter searches that counterparty.",
+            "Press 'p' to switch mine/theirs. Mine = you owe a reply; theirs = they owe one. Enter searches that counterparty.",
         ),
         AnalyticsView::Contacts => match state.contacts_mode {
             ContactsMode::Asymmetry => (
@@ -222,7 +225,7 @@ fn view_explainer_lines<'a>(
         },
         AnalyticsView::ResponseTime => (
             "Reply times — how fast you/they respond.",
-            "p50 = median wait. p90 = the slow tail (only 10% take longer). Histogram below buckets every reply.",
+            "Typical wait = half of replies are faster. Slow tail = only 10% take longer. Histogram below buckets every reply.",
             "Tall left bars = quick replier. Tall right bars = a backlog forming.",
         ),
         AnalyticsView::Subscriptions => (
@@ -603,7 +606,7 @@ fn draw_response_time(
     stat_card(
         frame,
         cards[0],
-        "p50",
+        "typical wait",
         &format_duration_seconds(summary.clock_p50_seconds),
         theme,
         true,
@@ -611,7 +614,7 @@ fn draw_response_time(
     stat_card(
         frame,
         cards[1],
-        "p90",
+        "slow tail",
         &format_duration_seconds(summary.clock_p90_seconds),
         theme,
         false,
@@ -639,7 +642,7 @@ fn draw_response_time(
     };
     stat_card(frame, cards[3], "scope", &scope_value, theme, false);
 
-    // Distribution histogram with p50/p90 callouts in the title — a
+    // Distribution histogram with typical/slow-tail callouts in the title — a
     // chart with an annotation that puts the percentiles where they
     // sit on the distribution. Bars containing p50/p90 are bolded.
     let p50_idx = histogram_bucket_index(summary.clock_p50_seconds);
@@ -654,7 +657,7 @@ fn draw_response_time(
         .map(|b| histogram_bucket_label(b.upper_bound_seconds));
     let title = match (p50_bucket, p90_bucket) {
         (Some(p50b), Some(p90b)) => format!(
-            "Distribution · p50 {} (in {}) · p90 {} (in {})",
+            "Distribution · typical {} (in {}) · slow tail {} (in {})",
             format_duration_seconds(summary.clock_p50_seconds),
             p50b,
             format_duration_seconds(summary.clock_p90_seconds),
@@ -1168,15 +1171,13 @@ fn draw_wrapped(
         return;
     };
 
-    // Compact 4-row header (one bordered block, two text lines) + a 2x3
-    // tile grid. The previous 5-row pixel-art header plus a separate
-    // "Superlatives" strip ate ~9 rows of vertical real estate while
-    // saying very little; folding the longest-thread / most-ghosted
-    // factoids into the existing Volume and Top-inbound tiles lets the
-    // grid breathe.
+    // Story header + a 2x3 tile grid. On normal terminals the header
+    // gets enough room for big text and a narrative; cramped terminals
+    // fall back to the compact two-line header.
+    let header_height = if area.height >= 28 { 7 } else { 4 };
     let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(4), Constraint::Min(0)])
+        .constraints([Constraint::Length(header_height), Constraint::Min(0)])
         .split(area);
     draw_wrapped_header(frame, outer[0], summary, theme);
 
@@ -1225,13 +1226,6 @@ fn draw_wrapped_header(
         format_count(total_msgs),
         format_count(summary.volume.thread_count as u64),
     );
-    let lines = vec![
-        Line::from(Span::styled(
-            label,
-            theme.accent_style().add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(window_line, theme.muted_style())),
-    ];
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(theme.accent_style())
@@ -1240,13 +1234,98 @@ fn draw_wrapped_header(
             Span::styled("Wrapped", theme.accent_style().add_modifier(Modifier::BOLD)),
             Span::raw(" "),
         ]));
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(block)
-            .wrap(Wrap { trim: false })
-            .alignment(Alignment::Center),
-        area,
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if inner.height < 5 || inner.width < 72 {
+        let lines = vec![
+            Line::from(Span::styled(
+                label,
+                theme.accent_style().add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(window_line, theme.muted_style())),
+        ];
+        frame.render_widget(
+            Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .alignment(Alignment::Center),
+            inner,
+        );
+        return;
+    }
+
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(28), Constraint::Min(0)])
+        .split(inner);
+    let label_lines = vec![Line::from(label.clone())];
+    let big = BigText::builder()
+        .pixel_size(PixelSize::Sextant)
+        .style(theme.accent_style().add_modifier(Modifier::BOLD))
+        .alignment(Alignment::Center)
+        .lines(label_lines)
+        .build();
+    frame.render_widget(big, cols[0]);
+
+    let mut story = wrapped_story_lines(summary, theme);
+    story.insert(
+        0,
+        Line::from(Span::styled(window_line, theme.muted_style())),
     );
+    frame.render_widget(
+        Paragraph::new(story)
+            .wrap(Wrap { trim: false })
+            .alignment(Alignment::Left),
+        cols[1],
+    );
+}
+
+fn wrapped_story_lines<'a>(
+    summary: &mxr_core::types::WrappedSummary,
+    theme: &crate::theme::Theme,
+) -> Vec<Line<'a>> {
+    let volume = &summary.volume;
+    let volume_sentence = if volume.inbound_count >= volume.outbound_count.saturating_mul(3).max(1)
+    {
+        "Mostly receiving: this window was inbox pressure, not sent-mail output."
+    } else if volume.outbound_count > volume.inbound_count {
+        "Mostly sending: this window was driven by mail you pushed out."
+    } else {
+        "Balanced flow: inbound and outbound stayed close."
+    };
+    let when = match (
+        summary.time_patterns.busiest_day_of_week.as_deref(),
+        summary.time_patterns.busiest_hour_utc,
+    ) {
+        (Some(day), Some(hour)) => {
+            format!("Rhythm: {day}s around {hour:02}:00 UTC were the busiest.")
+        }
+        (Some(day), None) => format!("Rhythm: {day}s carried the most mail."),
+        (None, Some(hour)) => format!("Rhythm: {hour:02}:00 UTC was the busiest hour."),
+        (None, None) => "Rhythm: not enough dated mail to find a peak.".into(),
+    };
+    let contact = summary
+        .top_contacts
+        .most_emailed_to_me
+        .first()
+        .map(|top| {
+            format!(
+                "Cast: {} sent the most inbound mail ({}).",
+                short_email(&top.email),
+                format_count(top.count as u64)
+            )
+        })
+        .unwrap_or_else(|| "Cast: no dominant inbound sender.".into());
+
+    vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            volume_sentence,
+            theme.accent_style().add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(when, theme.primary_style())),
+        Line::from(Span::styled(contact, theme.secondary_style())),
+    ]
 }
 
 /// Compact label for the header — `"2026 year-to-date"` becomes
@@ -1307,7 +1386,10 @@ fn draw_wrapped_volume(
                 ratio_text,
                 theme.accent_style().add_modifier(Modifier::BOLD),
             )),
-            Line::from(Span::styled("inbound : outbound", theme.muted_style())),
+            Line::from(Span::styled(
+                "mail coming in vs going out",
+                theme.muted_style(),
+            )),
         ])
         .alignment(Alignment::Center),
         chunks[0],
@@ -1542,7 +1624,7 @@ fn draw_wrapped_contacts(
     // stops looking like dead space, and the most-ghosted
     // superlative tags on as a footer for the same reason as the
     // longest-thread footer in Volume.
-    let block = wrapped_tile_block("Top inbound", theme, focused);
+    let block = wrapped_tile_block("Who filled your inbox", theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     if inner.height == 0 {
@@ -1642,7 +1724,7 @@ fn draw_wrapped_reply(
     theme: &crate::theme::Theme,
     focused: bool,
 ) {
-    // p50/p90 as numbers + the named fastest/slowest extremes that
+    // Typical/slow-tail waits + the named fastest/slowest extremes that
     // already exist in WrappedReplyDiscipline. Names anchor stats —
     // "you replied in 12s to bob@x.com" lands harder than a gauge
     // bar that's 100% full because it's scaled to its own max.
@@ -1658,7 +1740,7 @@ fn draw_wrapped_reply(
     };
 
     let title = format!(
-        "Reply discipline · samples {}",
+        "Reply pace · {} samples",
         format_count(reply.sample_count as u64)
     );
     let block = wrapped_tile_block(&title, theme, focused);
@@ -1677,10 +1759,10 @@ fn draw_wrapped_reply(
         reply.business_hours_p90_seconds,
     ) {
         (Some(p50), Some(p90)) => Some(Line::from(vec![
-            Span::styled("biz p50 ", theme.muted_style()),
+            Span::styled("biz typical ", theme.muted_style()),
             Span::styled(format_duration_seconds(p50), theme.primary_style()),
             Span::raw("   "),
-            Span::styled("biz p90 ", theme.muted_style()),
+            Span::styled("biz slow ", theme.muted_style()),
             Span::styled(format_duration_seconds(p90), theme.primary_style()),
         ])),
         _ => None,
@@ -1692,15 +1774,15 @@ fn draw_wrapped_reply(
         .constraints([Constraint::Length(header_height), Constraint::Min(0)])
         .split(inner);
 
-    // Top: p50 · p90, plus the biz row when present.
+    // Top: typical · slow tail, plus the biz row when present.
     let mut p50p90 = vec![Line::from(vec![
-        Span::styled("p50 ", theme.muted_style()),
+        Span::styled("typical ", theme.muted_style()),
         Span::styled(
             format_duration_seconds(reply.clock_p50_seconds),
             theme.accent_style().add_modifier(Modifier::BOLD),
         ),
         Span::raw("   "),
-        Span::styled("p90 ", theme.muted_style()),
+        Span::styled("slow tail ", theme.muted_style()),
         Span::styled(
             format_duration_seconds(reply.clock_p90_seconds),
             theme.accent_style().add_modifier(Modifier::BOLD),
@@ -1761,7 +1843,7 @@ fn draw_wrapped_storage(
     focused: bool,
 ) {
     let storage = &summary.storage;
-    let title = format!("Storage · {}", format_bytes(storage.total_bytes));
+    let title = format!("Storage weight · {}", format_bytes(storage.total_bytes));
     let block = wrapped_tile_block(&title, theme, focused);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1852,7 +1934,7 @@ fn draw_wrapped_newsletters(
 ) {
     let news = &summary.newsletters;
     let title = format!(
-        "Newsletters · {} lists · {:.1}% of inbound",
+        "List mail · {} lists · {:.1}% of inbound",
         news.unique_lists, news.list_share_of_inbound_pct
     );
     let block = wrapped_tile_block(&title, theme, focused);
@@ -1873,20 +1955,14 @@ fn draw_wrapped_newsletters(
                 "0%",
                 theme.accent_style().add_modifier(Modifier::BOLD),
             )),
-            Line::from(Span::styled(
-                "of inbound is list-mail",
-                theme.muted_style(),
-            )),
+            Line::from(Span::styled("of inbound is list-mail", theme.muted_style())),
             Line::from(""),
             Line::from(Span::styled(
                 "no List-Id headers detected",
                 theme.muted_style(),
             )),
         ];
-        frame.render_widget(
-            Paragraph::new(lines).alignment(Alignment::Center),
-            inner,
-        );
+        frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), inner);
         return;
     }
 
@@ -1950,8 +2026,31 @@ fn empty_state(frame: &mut Frame, area: Rect, message: &str, theme: &crate::them
 }
 
 fn draw_footer(frame: &mut Frame, area: Rect, state: &AnalyticsState, theme: &crate::theme::Theme) {
-    let _ = state;
-    let hint = "Tab/Shift-Tab:switch view  j/k:select  r:refresh  Esc:mailbox";
+    let hint = match state.view {
+        AnalyticsView::Storage => match state.storage_mode {
+            StorageMode::Breakdown => {
+                "Tab/Shift-Tab:view  j/k:select  g:bucket  m:largest  f:filters  r:refresh  Esc:mailbox"
+            }
+            StorageMode::LargestMessages => {
+                "Tab/Shift-Tab:view  j/k:select  m:breakdown  f:filters  Enter:sender  r:refresh  Esc:mailbox"
+            }
+        },
+        AnalyticsView::StaleThreads => {
+            "Tab/Shift-Tab:view  j/k:select  p:mine/theirs  [/]:age  {/}:window  f:filters  Esc:mailbox"
+        }
+        AnalyticsView::Contacts => {
+            "Tab/Shift-Tab:view  j/k:select  m:mode  Enter:sender  r:refresh  Esc:mailbox"
+        }
+        AnalyticsView::ResponseTime => {
+            "Tab/Shift-Tab:view  d:you/them  f:filters  r:refresh  Esc:mailbox"
+        }
+        AnalyticsView::Subscriptions => {
+            "Tab/Shift-Tab:view  j/k:select  o:rank  u:unsubscribe  Enter:sender  Esc:mailbox"
+        }
+        AnalyticsView::Wrapped => {
+            "Tab/Shift-Tab:view  h/j/k/l:tile  t:window  y/Y:year  f:filters  Enter:open  Esc:mailbox"
+        }
+    };
     frame.render_widget(
         Paragraph::new(hint).block(
             Block::default()
@@ -2072,8 +2171,8 @@ mod tests {
         );
     }
 
-    /// Response Time view renders a 4-card stat strip (p50, p90,
-    /// samples, scope) and a histogram with p50/p90 callouts in
+    /// Response Time view renders a 4-card stat strip (typical wait,
+    /// slow tail, samples, scope) and a histogram with callouts in
     /// the title. No more BigText hero, no more percentile-bar
     /// block — both were removed because they didn't add info a
     /// number couldn't carry.
@@ -2103,8 +2202,14 @@ mod tests {
             draw(frame, Rect::new(0, 0, 160, 30), &state, &theme());
         });
         // Stat strip: card labels.
-        assert!(rendered.contains("p50"), "p50 card missing: {rendered}");
-        assert!(rendered.contains("p90"), "p90 card missing: {rendered}");
+        assert!(
+            rendered.contains("typical wait"),
+            "typical card missing: {rendered}"
+        );
+        assert!(
+            rendered.contains("slow tail"),
+            "slow-tail card missing: {rendered}"
+        );
         assert!(
             rendered.contains("samples"),
             "samples card missing: {rendered}"
@@ -2123,12 +2228,12 @@ mod tests {
             "histogram pane missing: {rendered}"
         );
         assert!(
-            rendered.contains("p50 1m30s"),
-            "p50 annotation missing: {rendered}"
+            rendered.contains("typical 1m30s"),
+            "typical annotation missing: {rendered}"
         );
         assert!(
-            rendered.contains("p90 1h0m"),
-            "p90 annotation missing: {rendered}"
+            rendered.contains("slow tail 1h0m"),
+            "slow-tail annotation missing: {rendered}"
         );
     }
 

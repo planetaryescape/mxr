@@ -6,24 +6,28 @@ mod legacy;
 mod middleware;
 mod openapi;
 mod routes_v6;
+#[cfg(feature = "web-ui")]
+mod spa;
 
 pub use openapi::ApiDoc;
 
 use axum::{
     extract::ws::{Message as WebSocketMessage, WebSocket, WebSocketUpgrade},
-    extract::{Path as AxumPath, Query, State},
+    extract::{ConnectInfo, Path as AxumPath, Query, State},
     http::HeaderMap,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use base64::{engine::general_purpose, Engine as _};
 use chrome::{ack_mutation, ack_request, build_bridge_chrome, load_mailbox_selection};
 use chrono::{DateTime, Local, TimeZone, Utc};
 use envelope_list::{
-    attachment_search_rows, dedupe_search_results_by_thread, group_envelopes, group_row_views,
-    list_bodies_by_message_ids, list_envelopes_by_message_ids, mailbox_message_rows,
-    mailbox_thread_rows, message_row_view, reorder_envelopes, thread_reader_mode,
+    attachment_search_rows, dedupe_search_results_by_thread, format_date_full, format_date_label,
+    format_relative_label, group_envelopes, group_row_views, list_bodies_by_message_ids,
+    list_envelopes_by_message_ids, mailbox_message_rows, mailbox_thread_rows,
+    message_row_view_with_labels, reorder_envelopes, thread_reader_mode,
 };
 use futures::{SinkExt, StreamExt};
 use mxr_compose::{
@@ -41,7 +45,7 @@ use mxr_core::{
     },
 };
 use mxr_mail_parse::parse_address_list;
-use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload, Request, ResponseData};
+use mxr_protocol::{IpcCodec, IpcMessage, IpcPayload, LlmConfigData, Request, ResponseData};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::net::SocketAddr;
@@ -69,6 +73,12 @@ pub struct WebServerConfig {
     /// loopback defaults. Empty by default; populated only when the
     /// daemon is intentionally bound to a non-loopback address.
     pub host_allowlist: Vec<String>,
+    /// When true, `GET /api/v1/auth/local-token` returns the bridge token
+    /// to callers whose TCP peer is a loopback IP. Lets the web SPA
+    /// bootstrap on the same machine without a manual paste. Set to false
+    /// for paranoid setups that want a strict bearer handshake even on
+    /// loopback. See `[bridge].auto_local_token` in config.
+    pub auto_local_token: bool,
 }
 
 impl WebServerConfig {
@@ -78,6 +88,7 @@ impl WebServerConfig {
             auth_token,
             cors_allowlist: Vec::new(),
             host_allowlist: Vec::new(),
+            auto_local_token: true,
         }
     }
 
@@ -88,6 +99,11 @@ impl WebServerConfig {
 
     pub fn with_host_allowlist(mut self, hosts: Vec<String>) -> Self {
         self.host_allowlist = hosts;
+        self
+    }
+
+    pub fn with_auto_local_token(mut self, enabled: bool) -> Self {
+        self.auto_local_token = enabled;
         self
     }
 }
@@ -109,6 +125,34 @@ async fn health() -> Json<serde_json::Value> {
         "service": "mxr-bridge",
         "protocol_version": mxr_protocol::IPC_PROTOCOL_VERSION,
     }))
+}
+
+/// Same-machine handshake. Returns the bridge token to callers whose
+/// TCP peer is a loopback address, gated by `[bridge].auto_local_token`.
+///
+/// This is *not* a way around bearer auth in general. The endpoint
+/// refuses if either:
+///   - the operator has disabled it via `auto_local_token = false`, or
+///   - the connecting peer's IP is not a loopback address.
+///
+/// In both refusal cases it returns 404, not 401/403, so cross-network
+/// scanners cannot tell the endpoint exists.
+async fn local_token_handshake(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+) -> Response {
+    if !state.config.auto_local_token {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+    }
+    if !peer.ip().is_loopback() {
+        tracing::debug!(?peer, "local-token handshake refused: non-loopback peer");
+        return (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response();
+    }
+    Json(json!({
+        "token": state.config.auth_token,
+        "source": "local-handshake",
+    }))
+    .into_response()
 }
 
 /// Routes under `/api/v1/mail/*` — read, search, mutate, sync, compose.
@@ -143,6 +187,10 @@ fn mail_router() -> Router<AppState> {
         .route("/compose/session/update", post(update_compose_session))
         .route("/compose/session/send", post(send_compose_session))
         .route("/compose/session/save", post(save_compose_session))
+        .route(
+            "/compose/session/attachment",
+            post(upload_compose_attachment),
+        )
         .route("/compose/session/discard", post(discard_compose_session))
 }
 
@@ -176,6 +224,7 @@ fn platform_router() -> Router<AppState> {
         .route("/saved-searches/delete", post(delete_saved_search))
         .route("/subscriptions", get(list_subscriptions))
         .route("/llm/status", get(get_llm_status))
+        .route("/llm/config", get(get_llm_config).post(update_llm_config))
         .route("/semantic/status", get(get_semantic_status))
         .route("/semantic/reindex", post(trigger_semantic_reindex))
 }
@@ -195,6 +244,7 @@ pub fn app(config: WebServerConfig) -> Router {
 
     let v1 = Router::new()
         .route("/health", get(health))
+        .route("/auth/local-token", get(local_token_handshake))
         .nest("/admin", routes_v6::extend_admin(admin_router()))
         .nest("/mail", routes_v6::extend_mail(mail_router()))
         .nest("/platform", routes_v6::extend_platform(platform_router()))
@@ -202,11 +252,14 @@ pub fn app(config: WebServerConfig) -> Router {
         .route("/events", get(events))
         .with_state(state);
 
-    Router::new()
-        .nest("/api/v1", v1)
-        .merge(
-            SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()),
-        )
+    let router = Router::new().nest("/api/v1", v1).merge(
+        SwaggerUi::new("/api/v1/docs").url("/api/v1/openapi.json", openapi::ApiDoc::openapi()),
+    );
+
+    #[cfg(feature = "web-ui")]
+    let router = router.merge(spa::router());
+
+    router
         .layer(axum::middleware::from_fn(legacy::redirect_legacy_paths))
         .layer(axum::middleware::from_fn_with_state(
             host_allowlist,
@@ -216,7 +269,11 @@ pub fn app(config: WebServerConfig) -> Router {
 }
 
 pub async fn serve(listener: TcpListener, config: WebServerConfig) -> std::io::Result<()> {
-    axum::serve(listener, app(config)).await
+    axum::serve(
+        listener,
+        app(config).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
 }
 
 pub async fn bind_and_serve(
@@ -230,6 +287,53 @@ pub async fn bind_and_serve(
         let _ = serve(listener, config).await;
     });
     Ok(addr)
+}
+
+/// Default bridge port. Chosen as a high unprivileged port that doesn't
+/// clash with the common dev-server set (3000/5173/8000/8080/7777/4200).
+/// Backwards-compat note: pre-launch the bridge defaulted to 7777; if
+/// you're upgrading existing setups, your `[bridge].port` config wins.
+pub const DEFAULT_BRIDGE_PORT: u16 = 42829;
+
+/// How many ports to walk through when the configured one is in use.
+/// Capped so a totally broken host (no free ports in a wide range) still
+/// fails in finite time with a clear error.
+pub const PORT_RETRY_ATTEMPTS: u16 = 32;
+
+/// Attempt to bind a `TcpListener` to `host:port`. If the port is taken
+/// and `retry` is true, increment by one and try again up to
+/// `PORT_RETRY_ATTEMPTS` times.
+///
+/// Returns the bound listener (caller is responsible for serving it).
+pub async fn bind_listener(
+    host: std::net::IpAddr,
+    port: u16,
+    retry: bool,
+) -> std::io::Result<TcpListener> {
+    let mut candidate = port;
+    let max = if retry {
+        port.saturating_add(PORT_RETRY_ATTEMPTS)
+    } else {
+        port
+    };
+    loop {
+        match TcpListener::bind((host, candidate)).await {
+            Ok(listener) => return Ok(listener),
+            Err(error) if retry && is_addr_in_use(&error) && candidate < max => {
+                tracing::debug!(
+                    "bridge port {candidate} in use, trying {next}",
+                    next = candidate + 1
+                );
+                candidate += 1;
+                continue;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn is_addr_in_use(error: &std::io::Error) -> bool {
+    matches!(error.kind(), std::io::ErrorKind::AddrInUse)
 }
 
 #[derive(Clone)]
@@ -604,6 +708,13 @@ struct ComposeSessionSendRequest {
 }
 
 #[derive(Debug, Deserialize)]
+struct ComposeSessionAttachmentRequest {
+    draft_path: String,
+    filename: String,
+    content_base64: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct ModifyLabelsRequest {
     message_ids: Vec<String>,
     #[serde(default)]
@@ -682,6 +793,29 @@ struct SnoozeRequest {
     until: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct LlmConfigRequest {
+    enabled: bool,
+    base_url: String,
+    model: String,
+    api_key_env: String,
+    context_window: u32,
+    request_timeout_secs: u64,
+}
+
+impl From<LlmConfigRequest> for LlmConfigData {
+    fn from(value: LlmConfigRequest) -> Self {
+        Self {
+            enabled: value.enabled,
+            base_url: value.base_url,
+            model: value.model,
+            api_key_env: value.api_key_env,
+            context_window: value.context_window,
+            request_timeout_secs: value.request_timeout_secs,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct ComposeIssueView {
     severity: &'static str,
@@ -704,11 +838,18 @@ async fn mailbox(
         query.offset,
     )
     .await?;
+    let envelope_page_size = mailbox.envelopes.len() as u32;
     let view = query.view;
     let groups = match view {
         MailboxView::Threads => group_row_views(mailbox_thread_rows(mailbox.envelopes)),
         MailboxView::Messages => group_row_views(mailbox_message_rows(mailbox.envelopes)),
     };
+    let supports_pagination = matches!(
+        lens.kind,
+        MailboxLensKind::Inbox | MailboxLensKind::AllMail | MailboxLensKind::Label
+    );
+    let has_more = supports_pagination && envelope_page_size == query.limit;
+    let next_offset = has_more.then(|| query.offset.saturating_add(query.limit));
     Ok(Json(json!({
         "shell": chrome.shell,
         "sidebar": chrome.sidebar,
@@ -716,6 +857,8 @@ async fn mailbox(
             "lensLabel": mailbox.lens_label,
             "view": view.as_str(),
             "counts": mailbox.counts,
+            "has_more": has_more,
+            "next_offset": next_offset,
             "groups": groups,
         }
     })))
@@ -731,6 +874,16 @@ async fn thread(
     let thread_id = parse_thread_id(&thread_id)?;
     match ipc_request(&state.config.socket_path, Request::GetThread { thread_id }).await? {
         ResponseData::Thread { thread, messages } => {
+            let labels = match ipc_request(
+                &state.config.socket_path,
+                Request::ListLabels { account_id: None },
+            )
+            .await?
+            {
+                ResponseData::Labels { labels } => labels,
+                _ => return Err(BridgeError::UnexpectedResponse),
+            };
+
             let (bodies, body_failures) = match ipc_request(
                 &state.config.socket_path,
                 Request::ListBodies {
@@ -753,7 +906,10 @@ async fn thread(
 
             Ok(Json(json!({
                 "thread": thread,
-                "messages": messages.iter().map(message_row_view).collect::<Vec<_>>(),
+                "messages": messages
+                    .iter()
+                    .map(|message| message_row_view_with_labels(message, &labels))
+                    .collect::<Vec<_>>(),
                 "bodies": bodies,
                 "body_failures": body_failures,
                 "reader_mode": thread_reader_mode(&bodies),
@@ -1083,6 +1239,7 @@ async fn send_compose_session(
         }
     }
     remove_compose_file(Path::new(&request.draft_path)).await?;
+    remove_compose_attachment_dir(Path::new(&request.draft_path)).await?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -1138,6 +1295,33 @@ async fn save_compose_session(
     Ok(Json(json!({ "ok": true })))
 }
 
+async fn upload_compose_attachment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(request): Json<ComposeSessionAttachmentRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    let bytes = general_purpose::STANDARD
+        .decode(request.content_base64)
+        .map_err(|error| BridgeError::Ipc(format!("invalid attachment content: {error}")))?;
+    let filename = safe_attachment_filename(&request.filename);
+    let path = compose_attachment_path(Path::new(&request.draft_path), &filename)?;
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    }
+    tokio::fs::write(&path, &bytes)
+        .await
+        .map_err(|error| BridgeError::Ipc(error.to_string()))?;
+    Ok(Json(json!({
+        "path": path.display().to_string(),
+        "filename": filename,
+        "size_bytes": bytes.len(),
+    })))
+}
+
 async fn discard_compose_session(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1146,6 +1330,7 @@ async fn discard_compose_session(
 ) -> Result<Json<serde_json::Value>, BridgeError> {
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     remove_compose_file(Path::new(&request.draft_path)).await?;
+    remove_compose_attachment_dir(Path::new(&request.draft_path)).await?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -2220,6 +2405,9 @@ fn draft_summary_view(draft: Draft) -> serde_json::Value {
         "subject": draft.subject,
         "recipients": format_addresses(&draft.to),
         "updated_at": draft.updated_at,
+        "updated_at_label": format_date_label(draft.updated_at),
+        "updated_at_full": format_date_full(draft.updated_at),
+        "updated_at_relative": format!("edited {}", format_relative_label(draft.updated_at)),
         "attachment_count": draft.attachments.len(),
     })
 }
@@ -2273,6 +2461,52 @@ async fn remove_compose_file(path: &Path) -> Result<(), BridgeError> {
     mxr_compose::delete_draft_file_async(path)
         .await
         .map_err(|error| BridgeError::Ipc(error.to_string()))
+}
+
+fn compose_attachment_dir(path: &Path) -> Result<PathBuf, BridgeError> {
+    let draft_stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| BridgeError::Ipc("invalid draft path for attachment".into()))?;
+    Ok(std::env::temp_dir()
+        .join("mxr-compose-attachments")
+        .join(draft_stem))
+}
+
+fn compose_attachment_path(draft_path: &Path, filename: &str) -> Result<PathBuf, BridgeError> {
+    let unique_name = format!("{}-{filename}", Uuid::now_v7());
+    Ok(compose_attachment_dir(draft_path)?.join(unique_name))
+}
+
+fn safe_attachment_filename(value: &str) -> String {
+    let raw_name = Path::new(value)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("attachment");
+    let sanitized = raw_name
+        .chars()
+        .map(|ch| match ch {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '-' | '_' | ' ' => ch,
+            _ => '_',
+        })
+        .collect::<String>()
+        .trim()
+        .trim_matches('.')
+        .to_string();
+    if sanitized.is_empty() {
+        "attachment".into()
+    } else {
+        sanitized
+    }
+}
+
+async fn remove_compose_attachment_dir(path: &Path) -> Result<(), BridgeError> {
+    let dir = compose_attachment_dir(path)?;
+    match tokio::fs::remove_dir_all(dir).await {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(BridgeError::Ipc(error.to_string())),
+    }
 }
 
 async fn default_account(socket_path: &Path) -> Result<(AccountId, String), BridgeError> {
@@ -2754,6 +2988,38 @@ async fn get_llm_status(
     }
 }
 
+async fn get_llm_config(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(&state.config.socket_path, Request::GetLlmConfig).await? {
+        ResponseData::LlmConfig { config } => Ok(Json(json!({ "config": config }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
+async fn update_llm_config(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<LlmConfigRequest>,
+) -> Result<Json<serde_json::Value>, BridgeError> {
+    ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
+    match ipc_request(
+        &state.config.socket_path,
+        Request::UpdateLlmConfig {
+            config: body.into(),
+        },
+    )
+    .await?
+    {
+        ResponseData::LlmConfig { config } => Ok(Json(json!({ "config": config }))),
+        _ => Err(BridgeError::UnexpectedResponse),
+    }
+}
+
 async fn trigger_semantic_reindex(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3028,6 +3294,76 @@ mod tests {
             json["count"], 7,
             "mode=lexical must round-trip — fake responder returns 7 only for that mode"
         );
+    }
+
+    #[tokio::test]
+    async fn llm_config_endpoint_forwards_update_to_daemon() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let seen_update = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let seen_for_ipc = seen_update.clone();
+
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |request| match request {
+                Request::GetLlmConfig => Some(Response::Ok {
+                    data: ResponseData::LlmConfig {
+                        config: mxr_protocol::LlmConfigData {
+                            enabled: false,
+                            base_url: "http://localhost:11434/v1".into(),
+                            model: "qwen2.5:3b-instruct".into(),
+                            api_key_env: String::new(),
+                            context_window: 8192,
+                            request_timeout_secs: 120,
+                        },
+                    },
+                }),
+                Request::UpdateLlmConfig { config } => {
+                    *seen_for_ipc.lock().unwrap() = Some(config.clone());
+                    Some(Response::Ok {
+                        data: ResponseData::LlmConfig { config },
+                    })
+                }
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::new()
+            .post(format!("http://{addr}/api/v1/platform/llm/config"))
+            .bearer_auth(TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "enabled": true,
+                "base_url": "https://api.openai.com/v1",
+                "model": "gpt-5-mini",
+                "api_key_env": "OPENAI_API_KEY",
+                "context_window": 16384,
+                "request_timeout_secs": 45
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+
+        let json: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(json["config"]["model"], "gpt-5-mini");
+        let forwarded = seen_update
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("bridge must forward UpdateLlmConfig");
+        assert!(forwarded.enabled);
+        assert_eq!(forwarded.base_url, "https://api.openai.com/v1");
+        assert_eq!(forwarded.api_key_env, "OPENAI_API_KEY");
     }
 
     /// Slice 6 — bad query params surface a 4xx error rather than a
@@ -4045,9 +4381,11 @@ mod tests {
     async fn thread_endpoint_returns_messages_and_bodies() {
         let temp = TempDir::new().unwrap();
         let socket_path = temp.path().join("mxr.sock");
-        let envelope = sample_envelope();
+        let mut envelope = sample_envelope();
+        envelope.label_provider_ids = vec!["INBOX".into(), "follow-up".into()];
         let thread = sample_thread(&envelope);
         let body = sample_body(&envelope);
+        let labels = sample_labels(&envelope.account_id);
         let thread_id = thread.id.to_string();
         let message_id = envelope.id.to_string();
         let _ipc = spawn_fake_ipc_server(
@@ -4059,6 +4397,11 @@ mod tests {
                     data: ResponseData::Thread {
                         thread: thread.clone(),
                         messages: vec![envelope.clone()],
+                    },
+                }),
+                Request::ListLabels { .. } => Some(Response::Ok {
+                    data: ResponseData::Labels {
+                        labels: labels.clone(),
                     },
                 }),
                 Request::ListBodies { message_ids }
@@ -4096,6 +4439,11 @@ mod tests {
         let json: serde_json::Value = response.json().await.unwrap();
         assert_eq!(json["thread"]["id"], thread_id);
         assert_eq!(json["messages"][0]["id"], message_id);
+        assert_eq!(json["messages"][0]["to"][0]["email"], "user@example.com");
+        assert_eq!(json["messages"][0]["labels"][0]["name"], "Inbox");
+        assert_eq!(json["messages"][0]["labels"][1]["name"], "Follow Up");
+        assert!(json["messages"][0]["date_full"].as_str().is_some());
+        assert!(json["messages"][0]["date_relative"].as_str().is_some());
         assert_eq!(json["bodies"][0]["text_html"], "<p>rich html</p>");
     }
 
@@ -4106,6 +4454,7 @@ mod tests {
         let envelope = sample_envelope();
         let thread = sample_thread(&envelope);
         let body = sample_body(&envelope);
+        let labels = sample_labels(&envelope.account_id);
         let thread_id = thread.id.to_string();
         let _ipc = spawn_fake_ipc_server(
             &socket_path,
@@ -4116,6 +4465,11 @@ mod tests {
                     data: ResponseData::Thread {
                         thread: thread.clone(),
                         messages: vec![envelope.clone()],
+                    },
+                }),
+                Request::ListLabels { .. } => Some(Response::Ok {
+                    data: ResponseData::Labels {
+                        labels: labels.clone(),
                     },
                 }),
                 Request::ListBodies { message_ids }
@@ -4161,6 +4515,7 @@ mod tests {
         let socket_path = temp.path().join("mxr.sock");
         let envelope = sample_envelope();
         let thread = sample_thread(&envelope);
+        let labels = sample_labels(&envelope.account_id);
         let thread_id = thread.id.to_string();
         let _ipc = spawn_fake_ipc_server(
             &socket_path,
@@ -4171,6 +4526,11 @@ mod tests {
                     data: ResponseData::Thread {
                         thread: thread.clone(),
                         messages: vec![envelope.clone()],
+                    },
+                }),
+                Request::ListLabels { .. } => Some(Response::Ok {
+                    data: ResponseData::Labels {
+                        labels: labels.clone(),
                     },
                 }),
                 Request::ListBodies { .. } => Some(Response::Ok {
@@ -4305,6 +4665,60 @@ mod tests {
         assert_eq!(groups[1].id, "last-7-days");
         assert_eq!(groups[1].rows.len(), 1);
         assert_eq!(groups[1].rows[0].subject, "gamma");
+    }
+
+    #[test]
+    fn date_labels_show_time_today_and_date_time_for_older_mail() {
+        let today = Local
+            .from_local_datetime(
+                &Local::now()
+                    .date_naive()
+                    .and_hms_opt(12, 5, 0)
+                    .expect("valid local time"),
+            )
+            .single()
+            .expect("local noon is unambiguous")
+            .with_timezone(&Utc);
+        let yesterday = today - chrono::Duration::days(1);
+
+        assert_eq!(format_date_label(today), "12:05pm");
+        assert_eq!(
+            format_date_label(yesterday),
+            yesterday
+                .with_timezone(&Local)
+                .format("%b %-d %-I:%M%P")
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn draft_summary_includes_updated_time_labels() {
+        let updated_at = Utc::now() - chrono::Duration::hours(2);
+        let draft = Draft {
+            id: DraftId::new(),
+            account_id: AccountId::new(),
+            reply_headers: None,
+            to: vec![Address {
+                name: Some("User".into()),
+                email: "user@example.com".into(),
+            }],
+            cc: Vec::new(),
+            bcc: Vec::new(),
+            subject: "Draft".into(),
+            body_markdown: "Body".into(),
+            attachments: Vec::new(),
+            created_at: updated_at,
+            updated_at,
+        };
+
+        let json = draft_summary_view(draft);
+
+        assert_eq!(json["updated_at_label"], format_date_label(updated_at));
+        assert_eq!(json["updated_at_full"], format_date_full(updated_at));
+        assert_eq!(
+            json["updated_at_relative"],
+            format!("edited {}", format_relative_label(updated_at))
+        );
     }
 
     #[tokio::test]
@@ -4776,6 +5190,83 @@ mod tests {
         assert!(
             !std::path::Path::new(refreshed["session"]["draftPath"].as_str().unwrap()).exists()
         );
+    }
+
+    #[tokio::test]
+    async fn compose_attachment_upload_writes_local_file_and_discard_cleans_it() {
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let account = sample_account(&AccountId::new());
+        let _ipc = spawn_fake_ipc_server(
+            &socket_path,
+            move |request| match request {
+                Request::ListAccounts => Some(Response::Ok {
+                    data: ResponseData::Accounts {
+                        accounts: vec![account.clone()],
+                    },
+                }),
+                _ => None,
+            },
+            None,
+        )
+        .await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+        let client = reqwest::Client::new();
+
+        let started: serde_json::Value = client
+            .post(format!("http://{addr}/compose/session"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({ "kind": "new" }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let draft_path = started["session"]["draftPath"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let uploaded: serde_json::Value = client
+            .post(format!(
+                "http://{addr}/api/v1/mail/compose/session/attachment"
+            ))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({
+                "draft_path": draft_path,
+                "filename": "notes.txt",
+                "content_base64": general_purpose::STANDARD.encode(b"hello attachment"),
+            }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let attachment_path = uploaded["path"].as_str().unwrap();
+        assert_eq!(uploaded["filename"], "notes.txt");
+        assert_eq!(
+            tokio::fs::read_to_string(attachment_path).await.unwrap(),
+            "hello attachment"
+        );
+
+        let discard_response = client
+            .post(format!("http://{addr}/compose/session/discard"))
+            .header("x-mxr-bridge-token", TEST_AUTH_TOKEN)
+            .json(&serde_json::json!({ "draft_path": draft_path }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(discard_response.status(), reqwest::StatusCode::OK);
+        assert!(!std::path::Path::new(attachment_path).exists());
     }
 
     #[tokio::test]

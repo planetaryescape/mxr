@@ -1,11 +1,27 @@
 ---
 title: Quick start
-description: From install to first email in five minutes.
+description: Try mxr safely, then connect your own inbox.
 ---
 
 After [installing](./install/), you have one binary: `mxr`. The TUI is what you'll use most; the CLI handles scripting and one-off operations. Both talk to the same daemon.
 
-## 1. Add an account
+## 1. Try the demo inbox
+
+Start with a realistic local demo before connecting your own mail:
+
+```bash
+mxr demo
+```
+
+This creates a separate `mxr-demo` config, database, socket, and daemon. It seeds a 50k-message synthetic inbox so you can try search, labels, threads, attachments, newsletters, analytics, and keyboard triage without granting access to your real inbox.
+
+Reset the demo any time:
+
+```bash
+mxr demo --reset
+```
+
+## 2. Add your account
 
 For Gmail on your local machine:
 
@@ -30,7 +46,7 @@ MXR_IMAP_PASSWORD="$APP_PASSWORD" MXR_SMTP_PASSWORD="$APP_PASSWORD" \
 
 `MXR_IMAP_PASSWORD` / `MXR_SMTP_PASSWORD` env vars resolve when stdin is not a TTY — handy for CI. You can also pass `--imap-password` / `--smtp-password` literal values if you don't mind shell history.
 
-## 2. Sync
+## 3. Sync
 
 ```bash
 mxr sync --wait
@@ -38,7 +54,7 @@ mxr sync --wait
 
 `--wait` blocks until the initial sync completes. Subsequent syncs are incremental and run automatically in the background once the daemon is up.
 
-## 3. Open the TUI
+## 4. Open the TUI
 
 ```bash
 mxr
@@ -46,7 +62,7 @@ mxr
 
 `j`/`k` to navigate, `<Enter>` to open, `R` for reader mode, `Ctrl-p` for the command palette, `/` for search, `?` for help.
 
-## 4. Or do it from the CLI
+## 5. Or do it from the CLI
 
 ```bash
 # Search

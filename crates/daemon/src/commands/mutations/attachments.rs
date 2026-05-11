@@ -1,6 +1,8 @@
+use crate::cli::OutputFormat;
 use crate::commands::selection::{resolve_message_ids, SelectionLimit};
 use crate::ipc_client::IpcClient;
-use mxr_core::MessageId;
+use crate::output::{jsonl, resolve_format};
+use mxr_core::{AttachmentMeta, MessageId};
 use mxr_protocol::*;
 use std::path::PathBuf;
 
@@ -18,6 +20,7 @@ pub async fn attachments_list(
     search: Option<String>,
     first: bool,
     limit: Option<u32>,
+    format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let ids = resolve_message_ids(
@@ -31,49 +34,137 @@ pub async fn attachments_list(
         anyhow::bail!("No messages matched");
     }
 
-    for (index, id) in ids.iter().enumerate() {
-        if ids.len() > 1 {
-            if index > 0 {
-                println!();
+    match resolve_format(format) {
+        OutputFormat::Table => {
+            for (index, id) in ids.iter().enumerate() {
+                if ids.len() > 1 {
+                    if index > 0 {
+                        println!();
+                    }
+                    println!("--- {} ---", id.as_str());
+                }
+                print_one_message_attachments(&mut client, id.clone()).await?;
             }
-            println!("--- {} ---", id.as_str());
         }
-        print_one_message_attachments(&mut client, id.clone()).await?;
+        OutputFormat::Json => {
+            let rows = collect_attachment_rows(&mut client, &ids).await?;
+            println!("{}", serde_json::to_string_pretty(&rows)?);
+        }
+        OutputFormat::Jsonl => {
+            let rows = collect_attachment_rows(&mut client, &ids).await?;
+            println!("{}", jsonl(&rows)?);
+        }
+        OutputFormat::Csv => {
+            let rows = collect_attachment_rows(&mut client, &ids).await?;
+            let mut writer = csv::Writer::from_writer(Vec::new());
+            writer.write_record([
+                "message_id",
+                "index",
+                "attachment_id",
+                "filename",
+                "mime_type",
+                "size_bytes",
+                "provider_id",
+                "local_path",
+            ])?;
+            for row in &rows {
+                writer.write_record(vec![
+                    row.message_id.clone(),
+                    row.index.to_string(),
+                    row.attachment_id.clone(),
+                    row.filename.clone(),
+                    row.mime_type.clone(),
+                    row.size_bytes.to_string(),
+                    row.provider_id.clone(),
+                    row.local_path.clone().unwrap_or_default(),
+                ])?;
+            }
+            println!("{}", String::from_utf8(writer.into_inner()?)?.trim_end());
+        }
+        OutputFormat::Ids => {
+            let rows = collect_attachment_rows(&mut client, &ids).await?;
+            for row in &rows {
+                println!("{}", row.attachment_id);
+            }
+        }
     }
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct AttachmentListRow {
+    message_id: String,
+    index: usize,
+    attachment_id: String,
+    filename: String,
+    mime_type: String,
+    size_bytes: u64,
+    provider_id: String,
+    local_path: Option<String>,
+}
+
+async fn collect_attachment_rows(
+    client: &mut IpcClient,
+    ids: &[MessageId],
+) -> anyhow::Result<Vec<AttachmentListRow>> {
+    let mut rows = Vec::new();
+    for id in ids {
+        let attachments = fetch_attachments(client, id.clone()).await?;
+        for (index, attachment) in attachments.into_iter().enumerate() {
+            rows.push(AttachmentListRow {
+                message_id: id.as_str(),
+                index: index + 1,
+                attachment_id: attachment.id.as_str(),
+                filename: attachment.filename,
+                mime_type: attachment.mime_type,
+                size_bytes: attachment.size_bytes,
+                provider_id: attachment.provider_id,
+                local_path: attachment
+                    .local_path
+                    .map(|path| path.to_string_lossy().to_string()),
+            });
+        }
+    }
+    Ok(rows)
+}
+
+async fn fetch_attachments(
+    client: &mut IpcClient,
+    id: MessageId,
+) -> anyhow::Result<Vec<AttachmentMeta>> {
+    let resp = client.request(Request::GetBody { message_id: id }).await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::Body { body },
+        } => Ok(body.attachments),
+        Response::Error { message, .. } => anyhow::bail!("{message}"),
+        _ => anyhow::bail!("Unexpected response"),
+    }
 }
 
 async fn print_one_message_attachments(
     client: &mut IpcClient,
     id: MessageId,
 ) -> anyhow::Result<()> {
-    let resp = client.request(Request::GetBody { message_id: id }).await?;
-    match resp {
-        Response::Ok {
-            data: ResponseData::Body { body },
-        } => {
-            if body.attachments.is_empty() {
-                println!("No attachments");
-            } else {
-                println!(
-                    "{:<4} {:<40} {:<25} {:>10}",
-                    "#", "FILENAME", "TYPE", "SIZE"
-                );
-                println!("{}", "-".repeat(82));
-                for (i, att) in body.attachments.iter().enumerate() {
-                    println!(
-                        "{:<4} {:<40} {:<25} {:>10}",
-                        i + 1,
-                        att.filename,
-                        att.mime_type,
-                        format_bytes(att.size_bytes),
-                    );
-                }
-                println!("\n{} attachment(s)", body.attachments.len());
-            }
+    let attachments = fetch_attachments(client, id).await?;
+    if attachments.is_empty() {
+        println!("No attachments");
+    } else {
+        println!(
+            "{:<4} {:<40} {:<25} {:>10}",
+            "#", "FILENAME", "TYPE", "SIZE"
+        );
+        println!("{}", "-".repeat(82));
+        for (i, att) in attachments.iter().enumerate() {
+            println!(
+                "{:<4} {:<40} {:<25} {:>10}",
+                i + 1,
+                att.filename,
+                att.mime_type,
+                format_bytes(att.size_bytes),
+            );
         }
-        Response::Error { message, .. } => anyhow::bail!("{message}"),
-        _ => anyhow::bail!("Unexpected response"),
+        println!("\n{} attachment(s)", attachments.len());
     }
     Ok(())
 }

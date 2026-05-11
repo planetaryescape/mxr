@@ -55,7 +55,11 @@ export function shortcutSections({ path, activePane }: ShortcutContext): Shortcu
     return [
       {
         title: "Analytics shortcuts",
-        hints: [{ key: "1-5", label: "Workspace" }, { key: "g i", label: "Inbox" }, ...globalHints],
+        hints: [
+          { key: "1-0", label: "Sidebar nav" },
+          { key: "g i", label: "Inbox" },
+          ...globalHints,
+        ],
       },
     ];
   }
@@ -101,6 +105,8 @@ export function shortcutSections({ path, activePane }: ShortcutContext): Shortcu
           { key: "l", label: "Labels" },
           { key: "L", label: "Context" },
           { key: "A", label: "Attachments" },
+          { key: "y", label: "Summary" },
+          { key: "p", label: "Sender" },
           { key: "e", label: "Archive" },
           { key: "!", label: "Spam" },
           { key: "Del", label: "Trash" },
@@ -117,7 +123,7 @@ export function shortcutSections({ path, activePane }: ShortcutContext): Shortcu
         hints: [
           { key: "j/k", label: "Move" },
           { key: "l/o", label: "Open lens" },
-          { key: "1-5", label: "Workspace" },
+          { key: "1-0", label: "Sidebar nav" },
           { key: "g i", label: "Inbox" },
           ...globalHints,
         ],
@@ -146,7 +152,7 @@ export function shortcutSections({ path, activePane }: ShortcutContext): Shortcu
   return [
     {
       title: "Global shortcuts",
-      hints: [{ key: "1-5", label: "Workspace" }, { key: "g i", label: "Inbox" }, ...globalHints],
+      hints: [{ key: "1-0", label: "Sidebar nav" }, { key: "g i", label: "Inbox" }, ...globalHints],
     },
   ];
 }

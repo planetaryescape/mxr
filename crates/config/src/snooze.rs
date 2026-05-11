@@ -42,16 +42,24 @@ pub const SNOOZE_PRESETS: [SnoozePreset; 4] = [
 /// Resolve a snooze option to a concrete wake time using the user's config.
 pub fn resolve_snooze_time(option: SnoozeOption, config: &SnoozeConfig) -> DateTime<Utc> {
     let now = Local::now();
+    resolve_snooze_time_from(option, config, &now)
+}
 
+fn resolve_snooze_time_from<Tz: TimeZone>(
+    option: SnoozeOption,
+    config: &SnoozeConfig,
+    now: &DateTime<Tz>,
+) -> DateTime<Utc> {
     match option {
         SnoozeOption::TomorrowMorning => {
             let tomorrow = now.date_naive() + Duration::days(1);
-            local_datetime_utc(tomorrow, u32::from(config.morning_hour), now.timezone())
+            local_datetime_utc(tomorrow, u32::from(config.morning_hour), &now.timezone())
         }
         SnoozeOption::Tonight => {
             let today = now.date_naive();
-            let tonight = local_datetime_utc(today, u32::from(config.evening_hour), now.timezone());
-            if tonight <= Utc::now() {
+            let tonight =
+                local_datetime_utc(today, u32::from(config.evening_hour), &now.timezone());
+            if tonight <= now.with_timezone(&Utc) {
                 tonight + Duration::days(1)
             } else {
                 tonight
@@ -68,7 +76,7 @@ pub fn resolve_snooze_time(option: SnoozeOption, config: &SnoozeConfig) -> DateT
                 % 7;
             let days = if days_until == 0 { 7 } else { days_until };
             let weekend = now.date_naive() + Duration::days(days);
-            local_datetime_utc(weekend, u32::from(config.weekend_hour), now.timezone())
+            local_datetime_utc(weekend, u32::from(config.weekend_hour), &now.timezone())
         }
         SnoozeOption::NextMonday => {
             let days_until_monday = (i64::from(Weekday::Mon.num_days_from_monday())
@@ -81,10 +89,36 @@ pub fn resolve_snooze_time(option: SnoozeOption, config: &SnoozeConfig) -> DateT
                 days_until_monday
             };
             let monday = now.date_naive() + Duration::days(days);
-            local_datetime_utc(monday, u32::from(config.morning_hour), now.timezone())
+            local_datetime_utc(monday, u32::from(config.morning_hour), &now.timezone())
         }
-        SnoozeOption::Custom => Utc::now(), // caller should use Custom datetime directly
+        SnoozeOption::Custom => now.with_timezone(&Utc), // caller should use Custom datetime directly
     }
+}
+
+/// Resolve a snooze preset only when its display label is still truthful.
+pub fn resolve_snooze_preset_time(
+    option: SnoozeOption,
+    config: &SnoozeConfig,
+) -> Option<DateTime<Utc>> {
+    let now = Local::now();
+    resolve_snooze_preset_time_from(option, config, &now)
+}
+
+fn resolve_snooze_preset_time_from<Tz: TimeZone>(
+    option: SnoozeOption,
+    config: &SnoozeConfig,
+    now: &DateTime<Tz>,
+) -> Option<DateTime<Utc>> {
+    if option != SnoozeOption::Tonight {
+        return Some(resolve_snooze_time_from(option, config, now));
+    }
+
+    let tonight = local_datetime_utc(
+        now.date_naive(),
+        u32::from(config.evening_hour),
+        &now.timezone(),
+    );
+    (tonight > now.with_timezone(&Utc)).then_some(tonight)
 }
 
 /// Compute the next occurrence of a weekday at a given hour, using the
@@ -102,7 +136,11 @@ pub fn next_weekday_at(from: DateTime<Utc>, target: Weekday, hour: u32) -> DateT
     Utc.from_utc_datetime(&date.and_time(time))
 }
 
-fn local_datetime_utc(date: chrono::NaiveDate, hour: u32, timezone: Local) -> DateTime<Utc> {
+fn local_datetime_utc<Tz: TimeZone>(
+    date: chrono::NaiveDate,
+    hour: u32,
+    timezone: &Tz,
+) -> DateTime<Utc> {
     let time = NaiveTime::from_hms_opt(hour, 0, 0).expect("validated snooze hour");
     let candidate = date.and_time(time);
     timezone
@@ -124,7 +162,7 @@ pub fn parse_snooze_until(until: &str, config: &SnoozeConfig) -> Option<DateTime
         "tomorrow" | "tomorrow_morning" => {
             Some(resolve_snooze_time(SnoozeOption::TomorrowMorning, config))
         }
-        "tonight" => Some(resolve_snooze_time(SnoozeOption::Tonight, config)),
+        "tonight" => resolve_snooze_preset_time(SnoozeOption::Tonight, config),
         "weekend" | "saturday" => Some(resolve_snooze_time(SnoozeOption::Weekend, config)),
         "monday" | "next_monday" => Some(resolve_snooze_time(SnoozeOption::NextMonday, config)),
         "tuesday" => Some(next_weekday_at(
@@ -197,6 +235,7 @@ fn capitalize(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{FixedOffset, Timelike};
 
     #[test]
     fn resolve_tomorrow_morning() {
@@ -231,9 +270,38 @@ mod tests {
         assert!(parse_snooze_until("tomorrow", &config).is_some());
         assert!(parse_snooze_until("monday", &config).is_some());
         assert!(parse_snooze_until("weekend", &config).is_some());
-        assert!(parse_snooze_until("tonight", &config).is_some());
+        assert_eq!(
+            parse_snooze_until("tonight", &config),
+            resolve_snooze_preset_time(SnoozeOption::Tonight, &config)
+        );
         assert!(parse_snooze_until("tuesday", &config).is_some());
         assert!(parse_snooze_until("friday", &config).is_some());
+    }
+
+    #[test]
+    fn tonight_preset_expires_after_evening_hour() {
+        let config = SnoozeConfig::default();
+        let timezone = FixedOffset::east_opt(3600).expect("valid test offset");
+        let before_evening = timezone
+            .with_ymd_and_hms(2026, 5, 11, 17, 0, 0)
+            .single()
+            .expect("valid test time");
+        let after_evening = timezone
+            .with_ymd_and_hms(2026, 5, 11, 19, 0, 0)
+            .single()
+            .expect("valid test time");
+
+        let tonight =
+            resolve_snooze_preset_time_from(SnoozeOption::Tonight, &config, &before_evening)
+                .expect("tonight should be available before evening");
+        let local_tonight = tonight.with_timezone(&timezone);
+        assert_eq!(local_tonight.date_naive(), before_evening.date_naive());
+        assert_eq!(local_tonight.hour(), u32::from(config.evening_hour));
+
+        assert!(
+            resolve_snooze_preset_time_from(SnoozeOption::Tonight, &config, &after_evening)
+                .is_none()
+        );
     }
 
     #[test]

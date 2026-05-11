@@ -1,25 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
-import { cn } from "@/lib/utils";
 import type { EmailHtmlTheme } from "@/state/uiPrefsStore";
 
 interface MessageBodyProps {
   html: string;
   allowRemoteImages?: boolean;
   theme?: EmailHtmlTheme;
-  fillAvailable?: boolean;
 }
 
-const IFRAME_SANDBOX = "allow-popups allow-popups-to-escape-sandbox";
+const IFRAME_SANDBOX = "allow-same-origin allow-popups allow-popups-to-escape-sandbox";
 
-export function MessageBody({
-  html,
-  allowRemoteImages = true,
-  theme = "dark",
-  fillAvailable = false,
-}: MessageBodyProps) {
+export function MessageBody({ html, allowRemoteImages = true, theme = "dark" }: MessageBodyProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [height, setHeight] = useState(320);
   const [loaded, setLoaded] = useState(false);
   const srcDoc = useMemo(
@@ -28,12 +22,35 @@ export function MessageBody({
   );
   const frameBackground = theme === "dark" ? "#11110f" : "#fff";
 
-  useEffect(() => setLoaded(false), [srcDoc]);
+  useEffect(() => {
+    setLoaded(false);
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
+  }, [srcDoc]);
+
+  useEffect(
+    () => () => {
+      resizeObserverRef.current?.disconnect();
+    },
+    [],
+  );
 
   function resizeToContent() {
     try {
-      const body = iframeRef.current?.contentDocument?.body;
-      if (body) setHeight(Math.max(160, body.scrollHeight));
+      const doc = iframeRef.current?.contentDocument;
+      const body = doc?.body;
+      const root = doc?.documentElement;
+      if (body || root) {
+        setHeight(
+          Math.max(
+            160,
+            body?.scrollHeight ?? 0,
+            body?.offsetHeight ?? 0,
+            root?.scrollHeight ?? 0,
+            root?.offsetHeight ?? 0,
+          ),
+        );
+      }
     } catch {
       setHeight(320);
     } finally {
@@ -41,28 +58,41 @@ export function MessageBody({
     }
   }
 
+  function handleLoad() {
+    resizeToContent();
+    try {
+      const body = iframeRef.current?.contentDocument?.body;
+      if (body && "ResizeObserver" in window) {
+        resizeObserverRef.current?.disconnect();
+        resizeObserverRef.current = new ResizeObserver(resizeToContent);
+        resizeObserverRef.current.observe(body);
+      }
+    } catch {
+      // The iframe still renders; fixed fallback height comes from resizeToContent.
+    }
+    window.setTimeout(resizeToContent, 100);
+    window.setTimeout(resizeToContent, 500);
+  }
+
   return (
     <div
-      className={cn(
-        "overflow-hidden rounded-md border border-border",
-        fillAvailable && "h-full min-h-0",
-      )}
+      className="overflow-hidden rounded-md border border-border"
       style={{ backgroundColor: frameBackground }}
     >
       <iframe
         ref={iframeRef}
         title="HTML message body"
-        className={cn("block min-h-40 w-full border-0", fillAvailable && "h-full")}
+        className="block min-h-40 w-full border-0"
         sandbox={IFRAME_SANDBOX}
         srcDoc={srcDoc}
         style={{
-          height: fillAvailable ? "100%" : height,
+          height,
           backgroundColor: frameBackground,
           colorScheme: theme === "dark" ? "dark" : "light",
           opacity: loaded ? 1 : 0,
           transition: "opacity 80ms ease-out",
         }}
-        onLoad={resizeToContent}
+        onLoad={handleLoad}
       />
     </div>
   );

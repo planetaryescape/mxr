@@ -35,7 +35,7 @@ Commands:
   stale          List stale threads waiting for a reply (mine = my turn, theirs = theirs)
   sync           Trigger or query sync
   status         Show daemon status
-  web            Start the local HTTP/WebSocket bridge and open the web app in the default browser. Pre-authenticates via URL fragment using the persisted bridge token at `~/.config/mxr/bridge-token`
+  web            Start or reopen the local HTTP/WebSocket bridge and open the web app in the default browser. Runs detached by default; use `mxr web stop` to stop the detached bridge
   events         Watch daemon events
   history        Show persisted event history
   notify         Unread summary for status bars

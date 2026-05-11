@@ -32,6 +32,10 @@ pub struct SenderProfile {
     pub is_list_sender: bool,
     pub list_id: Option<String>,
     pub open_thread_count: u32,
+    pub inbound_storage_bytes: u64,
+    pub outbound_storage_bytes: u64,
+    pub attachment_count: u32,
+    pub attachment_bytes: u64,
 }
 
 impl super::Store {
@@ -94,6 +98,69 @@ impl super::Store {
         .fetch_one(self.reader())
         .await?;
 
+        let (inbound_storage_bytes, outbound_storage_bytes, attachment_count, attachment_bytes): (
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = sqlx::query_as(
+            r#"WITH matched AS (
+                   SELECT
+                     m.id,
+                     CASE WHEN LOWER(m.from_email) = LOWER(?2) THEN m.size_bytes ELSE 0 END
+                       AS inbound_storage_bytes,
+                     CASE
+                       WHEN m.direction = 'outbound' AND (
+                         EXISTS (
+                           SELECT 1 FROM json_each(m.to_addrs)
+                           WHERE LOWER(json_extract(value, '$.email')) = LOWER(?2)
+                         )
+                         OR EXISTS (
+                           SELECT 1 FROM json_each(m.cc_addrs)
+                           WHERE LOWER(json_extract(value, '$.email')) = LOWER(?2)
+                         )
+                         OR EXISTS (
+                           SELECT 1 FROM json_each(m.bcc_addrs)
+                           WHERE LOWER(json_extract(value, '$.email')) = LOWER(?2)
+                         )
+                       )
+                       THEN m.size_bytes
+                       ELSE 0
+                     END AS outbound_storage_bytes
+                   FROM messages m
+                   WHERE m.account_id = ?1
+                     AND (
+                       LOWER(m.from_email) = LOWER(?2)
+                       OR (
+                         m.direction = 'outbound'
+                         AND (
+                           EXISTS (
+                             SELECT 1 FROM json_each(m.to_addrs)
+                             WHERE LOWER(json_extract(value, '$.email')) = LOWER(?2)
+                           )
+                           OR EXISTS (
+                             SELECT 1 FROM json_each(m.cc_addrs)
+                             WHERE LOWER(json_extract(value, '$.email')) = LOWER(?2)
+                           )
+                           OR EXISTS (
+                             SELECT 1 FROM json_each(m.bcc_addrs)
+                             WHERE LOWER(json_extract(value, '$.email')) = LOWER(?2)
+                           )
+                         )
+                       )
+                     )
+                 )
+                 SELECT
+                   COALESCE((SELECT SUM(inbound_storage_bytes) FROM matched), 0),
+                   COALESCE((SELECT SUM(outbound_storage_bytes) FROM matched), 0),
+                   COALESCE((SELECT COUNT(*) FROM attachments a JOIN matched ON matched.id = a.message_id), 0),
+                   COALESCE((SELECT SUM(a.size_bytes) FROM attachments a JOIN matched ON matched.id = a.message_id), 0)"#,
+        )
+        .bind(aid)
+        .bind(email)
+        .fetch_one(self.reader())
+        .await?;
+
         Ok(Some(SenderProfile {
             account_id: decode_id(&r.account_id)?,
             email: r.email,
@@ -109,6 +176,10 @@ impl super::Store {
             is_list_sender: r.is_list_sender != 0,
             list_id: r.list_id,
             open_thread_count: open as u32,
+            inbound_storage_bytes: inbound_storage_bytes.max(0) as u64,
+            outbound_storage_bytes: outbound_storage_bytes.max(0) as u64,
+            attachment_count: attachment_count.max(0) as u32,
+            attachment_bytes: attachment_bytes.max(0) as u64,
         }))
     }
 }

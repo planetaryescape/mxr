@@ -45,11 +45,21 @@ export function buildGlobalKeymap(nav: Navigator): KeyBindingMap {
     "3": (e) => navigateUnlessTyping(e, nav, "/analytics"),
     "4": (e) => navigateUnlessTyping(e, nav, "/rules"),
     "5": (e) => navigateUnlessTyping(e, nav, "/screener"),
+    "6": (e) => navigateUnlessTyping(e, nav, "/subscriptions"),
+    "7": (e) => navigateUnlessTyping(e, nav, "/reply-queue"),
+    "8": (e) => navigateUnlessTyping(e, nav, "/accounts"),
+    "9": (e) => navigateUnlessTyping(e, nav, "/diagnostics"),
+    "0": (e) => navigateUnlessTyping(e, nav, "/settings/theme"),
     Digit1: (e) => navigateUnlessTyping(e, nav, "/m/inbox"),
     Digit2: (e) => navigateUnlessTyping(e, nav, "/search"),
     Digit3: (e) => navigateUnlessTyping(e, nav, "/analytics"),
     Digit4: (e) => navigateUnlessTyping(e, nav, "/rules"),
     Digit5: (e) => navigateUnlessTyping(e, nav, "/screener"),
+    Digit6: (e) => navigateUnlessTyping(e, nav, "/subscriptions"),
+    Digit7: (e) => navigateUnlessTyping(e, nav, "/reply-queue"),
+    Digit8: (e) => navigateUnlessTyping(e, nav, "/accounts"),
+    Digit9: (e) => navigateUnlessTyping(e, nav, "/diagnostics"),
+    Digit0: (e) => navigateUnlessTyping(e, nav, "/settings/theme"),
     "Shift+Slash": (e) => {
       // `?` opens help cheat sheet
       const t = e.target as HTMLElement | null;

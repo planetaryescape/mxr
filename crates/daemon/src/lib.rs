@@ -387,23 +387,29 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::status::run(format, watch).await?;
         }
         Some(Command::Web {
+            action,
             host,
             port,
             print_url,
             no_open,
             strict_port,
             remote_host,
+            foreground,
+            detached_child,
         }) => {
-            if remote_host.is_none() {
+            if remote_host.is_none() && !matches!(action, Some(cli::WebAction::Stop)) {
                 crate::server::ensure_daemon_running().await?;
             }
             commands::web::run(commands::web::Args {
+                action,
                 host,
                 port,
                 print_url,
                 no_open,
                 strict_port,
                 remote_host,
+                foreground,
+                detached_child,
             })
             .await?;
         }

@@ -45,9 +45,9 @@ const primary: NavItem[] = [
   { to: "/analytics", label: "Analytics", Icon: Activity, shortcut: "3" },
   { to: "/rules", label: "Rules", Icon: Filter, shortcut: "4" },
   { to: "/screener", label: "Screener", Icon: Shield, shortcut: "5" },
-  { to: "/subscriptions", label: "Subscriptions", Icon: Sparkles },
-  { to: "/reply-queue", label: "Reply queue", Icon: MessageSquareReply },
-  { to: "/accounts", label: "Accounts", Icon: UserCog },
+  { to: "/subscriptions", label: "Subscriptions", Icon: Sparkles, shortcut: "6" },
+  { to: "/reply-queue", label: "Reply queue", Icon: MessageSquareReply, shortcut: "7" },
+  { to: "/accounts", label: "Accounts", Icon: UserCog, shortcut: "8" },
 ];
 
 const fallbackLenses: NavItem[] = [
@@ -61,8 +61,8 @@ const fallbackLenses: NavItem[] = [
 ];
 
 const systemItems: NavItem[] = [
-  { to: "/diagnostics", label: "Diagnostics", Icon: Activity },
-  { to: "/settings/theme", label: "Settings", Icon: Settings },
+  { to: "/diagnostics", label: "Diagnostics", Icon: Activity, shortcut: "9" },
+  { to: "/settings/theme", label: "Settings", Icon: Settings, shortcut: "0" },
 ];
 
 interface NavSection {
@@ -269,7 +269,7 @@ function SidebarLink({ item, collapsed, active, focused, onFocusPane }: LinkProp
           {item.badge}
         </span>
       ) : null}
-      {!collapsed && item.badge === undefined && item.shortcut ? (
+      {!collapsed && item.shortcut ? (
         <kbd className="rounded border border-sidebar-border bg-sidebar-accent px-1.5 py-0.5 font-mono text-2xs text-sidebar-foreground/60">
           {item.shortcut}
         </kbd>

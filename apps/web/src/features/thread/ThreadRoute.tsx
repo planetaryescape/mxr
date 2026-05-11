@@ -8,6 +8,7 @@ import {
   Forward,
   Mail,
   MailOpen,
+  MoreVertical,
   Paperclip,
   Reply,
   ReplyAll,
@@ -18,7 +19,16 @@ import {
   UserRound,
   Check,
 } from "lucide-react";
-import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import {
@@ -46,6 +56,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -72,7 +89,7 @@ export function ThreadRoute() {
   const mailboxPath = `/${parts.slice(0, -1).join("/")}`;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 bg-background">
-      <div className="hidden w-[420px] shrink-0 xl:w-[460px] lg:flex">
+      <div className="hidden w-[520px] shrink-0 xl:w-[560px] 2xl:w-[600px] lg:flex">
         <MailboxRoute />
       </div>
       <ThreadReader threadId={threadId} mailboxPath={mailboxPath} />
@@ -117,6 +134,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   const scrollRef = useRef<HTMLDivElement>(null);
   const activePane = useMailboxPane((state) => state.activePane);
   const setActivePane = useMailboxPane((state) => state.setActivePane);
+  const setSuppressNextReaderFocus = useMailboxPane((state) => state.setSuppressNextReaderFocus);
   const emailHtmlTheme = useUiPrefs((state) => state.emailHtmlTheme);
   const shell = useShellQuery();
   const archive = useOptimisticMailMutation("archive");
@@ -134,6 +152,16 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const openRail = useModals((state) => state.openRightRail);
+
+  useEffect(() => {
+    const paneState = useMailboxPane.getState();
+    if (paneState.suppressNextReaderFocus) {
+      paneState.setSuppressNextReaderFocus(false);
+      return;
+    }
+    setActivePane("reader");
+  }, [data.thread.id, setActivePane]);
+
   const summary = useMutation({
     mutationFn: () => summarizeThread(data.thread.id),
     onSuccess: (result) => openRail("thread-summary", result),
@@ -153,6 +181,11 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   const primaryMessage = data.messages[0];
   const anyUnread = data.messages.some((message) => message.unread);
   const anyStarred = data.messages.some((message) => message.starred);
+  const recipientCount =
+    (primaryMessage?.to?.length ?? 0) +
+    (primaryMessage?.cc?.length ?? 0) +
+    (primaryMessage?.bcc?.length ?? 0);
+  const canReplyAll = recipientCount > 1 || data.thread.participants.length > 2;
   const threadLabels = useMemo(() => uniqueLabels(data.messages), [data.messages]);
   const labelOptions = useMemo(
     () => labelOptionsFromShell(shell.data, threadLabels),
@@ -211,6 +244,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         scrollRef.current?.scrollBy({ top: -72, behavior: "smooth" });
       } else if (event.key === "h" || event.key === "ArrowLeft") {
         event.preventDefault();
+        setSuppressNextReaderFocus(true);
         setActivePane("mailbox");
       } else if (event.key === "u" || event.key === "Escape") {
         event.preventDefault();
@@ -231,6 +265,12 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       } else if (event.key === "A") {
         event.preventDefault();
         if (attachments.length > 0) openRail("attachments", attachments);
+      } else if (event.key === "y") {
+        event.preventDefault();
+        summary.mutate();
+      } else if (event.key === "p") {
+        event.preventDefault();
+        if (primarySenderEmail) senderProfile.mutate(primarySenderEmail);
       } else if (event.key === "l") {
         event.preventDefault();
         setLabelDialogOpen(true);
@@ -242,7 +282,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         compose("single");
       } else if (event.key === "a") {
         event.preventDefault();
-        compose("all");
+        if (canReplyAll) compose("all");
       } else if (event.key === "f") {
         event.preventDefault();
         compose("forward");
@@ -263,14 +303,19 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     allMessageIds,
     archive,
     attachments,
+    canReplyAll,
     data.right_rail,
     mailboxPath,
     navigate,
     labelDialogOpen,
     openRail,
+    primarySenderEmail,
     setActivePane,
+    setSuppressNextReaderFocus,
+    senderProfile,
     snoozeOpen,
     spam,
+    summary,
     trash,
     toggleRead,
     toggleStar,
@@ -284,12 +329,101 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     return () => window.clearTimeout(handle);
   }, [data.messages]);
 
+  const overflowActions = useMemo<ReaderOverflowAction[]>(
+    () => [
+      {
+        label: anyStarred ? "Unstar" : "Star",
+        shortcut: "s",
+        icon: <Star className={cn("size-3", anyStarred && "fill-current text-star")} />,
+        onSelect: toggleStar,
+      },
+      {
+        label: "Archive",
+        shortcut: "e",
+        icon: <Archive className="size-3" />,
+        onSelect: () => archive.mutate(allMessageIds),
+      },
+      {
+        label: "Spam",
+        shortcut: "!",
+        icon: <Ban className="size-3" />,
+        onSelect: () => spam.mutate(allMessageIds),
+      },
+      {
+        label: "Trash",
+        shortcut: "Del",
+        icon: <Trash2 className="size-3" />,
+        destructive: true,
+        onSelect: () => trash.mutate(allMessageIds),
+      },
+      {
+        label: anyUnread ? "Mark read" : "Mark unread",
+        shortcut: "m",
+        icon: anyUnread ? <MailOpen className="size-3" /> : <Mail className="size-3" />,
+        onSelect: toggleRead,
+      },
+      {
+        label: "Labels",
+        shortcut: "l",
+        icon: <Tag className="size-3" />,
+        onSelect: () => setLabelDialogOpen(true),
+      },
+      {
+        label: "Snooze",
+        shortcut: "z",
+        icon: <Clock className="size-3" />,
+        onSelect: () => setSnoozeOpen(true),
+      },
+      {
+        label: "Context",
+        shortcut: "L",
+        icon: <UserRound className="size-3" />,
+        onSelect: () => openRail("thread-context", data.right_rail),
+      },
+      {
+        label: "Sender",
+        shortcut: "p",
+        icon: <UserRound className="size-3" />,
+        disabled: !primarySenderEmail || senderProfile.isPending,
+        onSelect: () => primarySenderEmail && senderProfile.mutate(primarySenderEmail),
+      },
+      ...(attachments.length > 0
+        ? [
+            {
+              label: `Attachments (${attachments.length})`,
+              shortcut: "A",
+              icon: <Paperclip className="size-3" />,
+              onSelect: () => openRail("attachments", attachments),
+            },
+          ]
+        : []),
+    ],
+    [
+      allMessageIds,
+      anyStarred,
+      anyUnread,
+      archive,
+      attachments,
+      data.right_rail,
+      openRail,
+      primarySenderEmail,
+      senderProfile,
+      spam,
+      toggleRead,
+      toggleStar,
+      trash,
+    ],
+  );
+
   return (
     <article
       aria-label="Thread reader"
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
       data-active-pane={activePane === "reader" ? "true" : undefined}
-      onMouseDown={() => setActivePane("reader")}
+      onMouseDown={() => {
+        setSuppressNextReaderFocus(false);
+        setActivePane("reader");
+      }}
     >
       <header className="border-b border-border px-5 py-3 lg:px-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -299,7 +433,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
                 {data.thread.subject || "(no subject)"}
               </h1>
               {threadLabels.map((label) => (
-                <Badge key={label.id}>{label.name}</Badge>
+                <LabelBadge key={label.id} label={label} />
               ))}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -351,81 +485,33 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
           </div>
         </div>
         <div
-          className="mt-3 flex flex-wrap items-center gap-3 border-t border-border/70 pt-3"
+          className="mt-3 flex min-w-0 flex-nowrap items-center gap-2 overflow-hidden border-t border-border/70 pt-3"
           role="toolbar"
           aria-label="Message actions"
         >
-          <ReaderActionButton onClick={toggleStar} title="s">
-            <Star className={cn("size-3", anyStarred && "fill-current text-star")} />
-            {anyStarred ? "Unstar" : "Star"}
-          </ReaderActionButton>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-9 rounded-md px-3 text-xs shadow-sm"
-            onClick={() => archive.mutate(allMessageIds)}
-          >
-            <Archive className="size-3" />
-            Archive
-          </Button>
-          <ReaderActionButton onClick={() => spam.mutate(allMessageIds)} title="!">
-            <Ban className="size-3" />
-            Spam
-          </ReaderActionButton>
-          <Button
-            variant="destructive"
-            size="sm"
-            className="h-9 rounded-md px-3 text-xs shadow-sm"
-            onClick={() => trash.mutate(allMessageIds)}
-          >
-            <Trash2 className="size-3" />
-            Trash
-          </Button>
-          <ReaderActionButton onClick={toggleRead} title="m">
-            {anyUnread ? <MailOpen className="size-3" /> : <Mail className="size-3" />}
-            {anyUnread ? "Mark read" : "Mark unread"}
-          </ReaderActionButton>
-          <ReaderActionButton onClick={() => setLabelDialogOpen(true)} title="l">
-            <Tag className="size-3" />
-            Labels
-          </ReaderActionButton>
-          <ReaderActionButton onClick={() => setSnoozeOpen(true)} title="z">
-            <Clock className="size-3" />
-            Snooze
-          </ReaderActionButton>
-          <ReaderActionButton onClick={() => compose("single")} title="r">
+          <ReaderActionButton onClick={() => compose("single")} shortcut="r">
             <Reply className="size-3" />
             Reply
           </ReaderActionButton>
-          <ReaderActionButton onClick={() => compose("all")} title="a">
-            <ReplyAll className="size-3" />
-            Reply all
-          </ReaderActionButton>
-          <ReaderActionButton onClick={() => compose("forward")} title="f">
+          {canReplyAll ? (
+            <ReaderActionButton onClick={() => compose("all")} shortcut="a">
+              <ReplyAll className="size-3" />
+              Reply all
+            </ReaderActionButton>
+          ) : null}
+          <ReaderActionButton onClick={() => compose("forward")} shortcut="f">
             <Forward className="size-3" />
             Forward
           </ReaderActionButton>
-          <ReaderActionButton onClick={() => openRail("thread-context", data.right_rail)}>
-            <UserRound className="size-3" />
-            Context
-          </ReaderActionButton>
-          <ReaderActionButton onClick={() => summary.mutate()} disabled={summary.isPending}>
-            <FileText className="size-3" />
-            Summary
-          </ReaderActionButton>
           <ReaderActionButton
-            onClick={() => primarySenderEmail && senderProfile.mutate(primarySenderEmail)}
-            disabled={!primarySenderEmail || senderProfile.isPending}
+            onClick={() => summary.mutate()}
+            disabled={summary.isPending}
+            shortcut="y"
           >
-            <UserRound className="size-3" />
-            Sender
+            <FileText className="size-3" />
+            {summary.isPending ? "Summarizing..." : "Summary"}
           </ReaderActionButton>
-          {attachments.length > 0 ? (
-            <ReaderActionButton onClick={() => openRail("attachments", attachments)}>
-              <Paperclip className="size-3" />
-              {attachments.length}
-            </ReaderActionButton>
-          ) : null}
+          <ReaderActionMenu actions={overflowActions} />
         </div>
       </header>
 
@@ -452,7 +538,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         data-testid="thread-scroll"
         className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-3 sm:px-6 lg:px-8"
       >
-        <div className={cn("flex w-full min-w-0 flex-col", data.messages.length === 1 && "flex-1")}>
+        <div className="flex w-full min-w-0 flex-col">
           {data.messages.map((message) => (
             <ThreadMessage
               key={message.id}
@@ -461,7 +547,6 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
               mode={mode}
               remoteImages={remoteImages}
               emailHtmlTheme={emailHtmlTheme}
-              fillAvailable={data.messages.length === 1}
             />
           ))}
         </div>
@@ -567,17 +652,78 @@ function ThreadLabelDialog({
   );
 }
 
-function ReaderActionButton({ className, ...props }: ComponentProps<typeof Button>) {
+interface ReaderOverflowAction {
+  label: string;
+  shortcut?: string;
+  icon: ReactNode;
+  onSelect: () => void;
+  disabled?: boolean;
+  destructive?: boolean;
+}
+
+function ReaderActionMenu({ actions }: { actions: ReaderOverflowAction[] }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 shrink-0 rounded-md border-border/90 bg-muted/60 shadow-sm hover:border-primary/60 hover:bg-primary/15"
+          aria-label="More message actions"
+        >
+          <MoreVertical className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        {actions.map((action) => (
+          <DropdownMenuItem
+            key={action.label}
+            disabled={action.disabled}
+            className={cn(action.destructive && "text-destructive focus:text-destructive")}
+            onSelect={action.onSelect}
+          >
+            {action.icon}
+            <span>{action.label}</span>
+            {action.shortcut ? (
+              <DropdownMenuShortcut>{action.shortcut}</DropdownMenuShortcut>
+            ) : null}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ReaderActionButton({
+  className,
+  children,
+  shortcut,
+  title,
+  ...props
+}: ComponentProps<typeof Button> & { shortcut?: string }) {
+  const visibleShortcut = shortcut ?? (typeof title === "string" ? title : undefined);
   return (
     <Button
       variant="outline"
       size="sm"
       className={cn(
         "h-9 rounded-md border-border/90 bg-muted/60 px-3 text-xs shadow-sm hover:border-primary/60 hover:bg-primary/15",
+        "shrink-0",
         className,
       )}
+      title={title}
       {...props}
-    />
+    >
+      {children}
+      {visibleShortcut ? (
+        <>
+          {" "}
+          <kbd className="ml-1.5 rounded border border-border/80 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
+            {visibleShortcut}
+          </kbd>
+        </>
+      ) : null}
+    </Button>
   );
 }
 
@@ -587,14 +733,12 @@ function ThreadMessage({
   mode,
   remoteImages,
   emailHtmlTheme,
-  fillAvailable,
 }: {
   message: MessageRowView;
   body?: MessageBodyView;
   mode: "reader" | "plain" | "html";
   remoteImages: boolean;
   emailHtmlTheme: "dark" | "original";
-  fillAvailable: boolean;
 }) {
   const plain = body?.reader_text ?? body?.text_plain ?? message.snippet;
   const html = body?.text_html;
@@ -603,7 +747,6 @@ function ThreadMessage({
     <section
       className={cn(
         "min-w-0 border-b border-border bg-background",
-        fillAvailable && "grid flex-1 grid-rows-[auto_minmax(0,1fr)_auto]",
         message.unread && "border-l-2 border-l-primary pl-4",
       )}
       data-testid="thread-message"
@@ -613,7 +756,7 @@ function ThreadMessage({
           <div className="flex flex-wrap items-center gap-2">
             <div className="break-words text-base font-medium">{message.sender}</div>
             {message.labels?.map((label) => (
-              <Badge key={label.id}>{label.name}</Badge>
+              <LabelBadge key={label.id} label={label} />
             ))}
           </div>
           <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
@@ -635,21 +778,11 @@ function ThreadMessage({
           ) : null}
         </time>
       </div>
-      <div className={cn("text-[15px] leading-7", fillAvailable ? "min-h-0 pb-2" : "pb-6")}>
+      <div className="pb-6 text-[15px] leading-7">
         {mode === "html" && html ? (
-          <MessageBody
-            html={html}
-            allowRemoteImages={remoteImages}
-            theme={emailHtmlTheme}
-            fillAvailable={fillAvailable}
-          />
+          <MessageBody html={html} allowRemoteImages={remoteImages} theme={emailHtmlTheme} />
         ) : (
-          <pre
-            className={cn(
-              "w-full whitespace-pre-wrap break-words font-sans text-[15px] leading-7 text-foreground",
-              fillAvailable && "min-h-full",
-            )}
-          >
+          <pre className="w-full whitespace-pre-wrap break-words font-sans text-[15px] leading-7 text-foreground">
             {plain || "No readable body."}
           </pre>
         )}
@@ -710,6 +843,89 @@ function labelOptionsFromShell(
 
 function isAssignableLabel(label: MessageLabelView): boolean {
   return label.kind !== "system";
+}
+
+function LabelBadge({ label }: { label: MessageLabelView }) {
+  const style = labelBadgeStyle(labelDisplayColor(label));
+  return (
+    <Badge variant={style ? "outline" : "secondary"} style={style} title={label.name}>
+      {style ? (
+        <span className="size-1.5 rounded-full" style={{ backgroundColor: style.color }} />
+      ) : null}
+      {label.name}
+    </Badge>
+  );
+}
+
+function labelDisplayColor(label: MessageLabelView): string | null {
+  return normalizeHexColor(label.color) ?? fallbackLabelColor(label.name);
+}
+
+function labelBadgeStyle(color?: string | null): CSSProperties | undefined {
+  const hex = normalizeHexColor(color);
+  if (!hex) return undefined;
+  return {
+    backgroundColor: hexToRgba(hex, 0.16),
+    borderColor: hexToRgba(hex, 0.65),
+    color: hex,
+  };
+}
+
+function normalizeHexColor(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  const short = trimmed.match(/^#([0-9a-f]{3})$/i);
+  if (short) {
+    return `#${short[1]!
+      .split("")
+      .map((part) => part + part)
+      .join("")}`;
+  }
+  const long = trimmed.match(/^#([0-9a-f]{6})$/i);
+  return long ? `#${long[1]}` : null;
+}
+
+function fallbackLabelColor(name: string): string {
+  switch (name.toUpperCase()) {
+    case "INBOX":
+      return "#60a5fa";
+    case "STARRED":
+    case "IMPORTANT":
+      return "#facc15";
+    case "SENT":
+      return "#9ca3af";
+    case "DRAFT":
+      return "#d946ef";
+    case "TRASH":
+      return "#f87171";
+    case "SPAM":
+      return "#fb923c";
+    case "ARCHIVE":
+    case "ALL MAIL":
+      return "#6b7280";
+    default: {
+      const colors = [
+        "#60a5fa",
+        "#34d399",
+        "#fb923c",
+        "#a78bfa",
+        "#fb7185",
+        "#38bdf8",
+        "#fdba74",
+        "#86efac",
+      ];
+      const hash = [...name].reduce((acc, char) => (acc + char.charCodeAt(0)) % 256, 0);
+      return colors[hash % colors.length]!;
+    }
+  }
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const value = hex.slice(1);
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function extractEmail(value?: string | null): string | null {

@@ -30,7 +30,7 @@ describe("SnoozeDialog", () => {
     api.fetchSnoozePresets.mockResolvedValue({
       presets: [
         {
-          name: "tomorrow",
+          id: "tomorrow",
           label: "Tomorrow morning",
           wakeAt: "2026-05-12T09:00:00Z",
         },
@@ -63,4 +63,35 @@ describe("SnoozeDialog", () => {
 
     await waitFor(() => expect(api.snoozeMessages).toHaveBeenCalledWith(["msg-2"], "in 2h"));
   });
+
+  test("hides the tonight preset when it resolves to tomorrow", async () => {
+    const tomorrowMorning = tomorrowAt(9);
+    const tomorrowEvening = tomorrowAt(18);
+    api.fetchSnoozePresets.mockResolvedValue({
+      presets: [
+        {
+          id: "tomorrow",
+          label: "Tomorrow morning",
+          wakeAt: tomorrowMorning.toISOString(),
+        },
+        {
+          id: "tonight",
+          label: "Tonight",
+          wakeAt: tomorrowEvening.toISOString(),
+        },
+      ],
+    });
+
+    renderWithQueryClient(<SnoozeDialog open messageIds={["msg-3"]} onOpenChange={() => {}} />);
+
+    expect(await screen.findByRole("button", { name: /tomorrow morning/i })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /tonight/i })).not.toBeInTheDocument();
+  });
 });
+
+function tomorrowAt(hour: number): Date {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(hour, 0, 0, 0);
+  return date;
+}

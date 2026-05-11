@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { MailboxList } from "./MailboxList";
+import { MailboxRow } from "./MailboxRow";
 import type { MessageGroupView, MessageRowView } from "./types";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useSelection } from "@/state/selectionStore";
@@ -50,14 +51,22 @@ const groups: MessageGroupView[] = [{ id: "today", label: "Today", rows }];
 
 describe("MailboxList keyboard selection", () => {
   beforeEach(() => {
-    useMailboxPane.setState({ activePane: "mailbox", sidebarIndex: 0 });
+    useMailboxPane.setState({
+      activePane: "mailbox",
+      sidebarIndex: 0,
+      suppressNextReaderFocus: false,
+    });
     useSelection.setState({ scope: null, ids: new Set(), lastClickedId: null });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     useSelection.getState().clear();
-    useMailboxPane.setState({ activePane: "mailbox", sidebarIndex: 0 });
+    useMailboxPane.setState({
+      activePane: "mailbox",
+      sidebarIndex: 0,
+      suppressNextReaderFocus: false,
+    });
   });
 
   test("selects all visible rows with ctrl-a and clears with escape", async () => {
@@ -112,5 +121,61 @@ describe("MailboxList keyboard selection", () => {
     fireEvent.keyDown(window, { key: "x" });
 
     expect([...useSelection.getState().ids]).toEqual(["msg-2"]);
+  });
+
+  test("jumps to the top with gg and bottom with G", async () => {
+    render(<MailboxList groups={groups} mailboxPath="/m/inbox" />);
+
+    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "G", shiftKey: true });
+    fireEvent.keyDown(window, { key: "x" });
+
+    expect([...useSelection.getState().ids]).toEqual(["msg-3"]);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(window, { key: "g" });
+    fireEvent.keyDown(window, { key: "g" });
+    fireEvent.keyDown(window, { key: "x" });
+
+    expect([...useSelection.getState().ids]).toEqual(["msg-1"]);
+  });
+
+  test("keeps mailbox pane active when keyboard preview opens the next thread", async () => {
+    render(
+      <MailboxList
+        groups={groups}
+        mailboxPath="/m/inbox"
+        activeThreadId="thread-1"
+        previewOnFocus
+      />,
+    );
+
+    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "j" });
+
+    expect(useMailboxPane.getState().activePane).toBe("mailbox");
+    expect(useMailboxPane.getState().suppressNextReaderFocus).toBe(true);
+    expect(router.navigate).toHaveBeenCalledWith({
+      to: "/m/$mailbox/$threadId",
+      params: { mailbox: "inbox", threadId: "thread-2" },
+    });
+  });
+
+  test("shows attachment status in the mailbox row", async () => {
+    render(
+      <MailboxRow
+        row={{ ...rows[0]!, has_attachments: true, attachment_filename: "quote.pdf" }}
+        selected={false}
+        focused={false}
+        onOpen={vi.fn<() => void>()}
+        onFocusPane={vi.fn<() => void>()}
+        onToggleSelection={vi.fn<(shift: boolean) => void>()}
+      />,
+    );
+
+    expect(screen.getByLabelText("Has attachments")).toBeVisible();
+    expect(screen.getByRole("article", { name: /has attachments/i })).toBeVisible();
   });
 });

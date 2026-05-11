@@ -1,6 +1,6 @@
 use super::chrome::{MessageGroupView, MessageLabelView, MessageRowView};
 use super::*;
-use chrono::Datelike;
+use chrono::{Datelike, Local};
 use mxr_core::{Label, LabelKind, MessageFlags, SavedSearch};
 use mxr_protocol::SearchResultItem;
 use std::collections::{HashMap, HashSet};
@@ -187,10 +187,14 @@ pub(crate) fn mailbox_thread_rows(
     envelopes: Vec<Envelope>,
 ) -> Vec<(DateTime<Utc>, MessageRowView)> {
     let mut message_counts = HashMap::new();
+    let mut thread_has_attachments = HashMap::new();
     for envelope in &envelopes {
         *message_counts
             .entry(envelope.thread_id.clone())
             .or_insert(0_u32) += 1;
+        *thread_has_attachments
+            .entry(envelope.thread_id.clone())
+            .or_insert(false) |= envelope.has_attachments;
     }
 
     let mut seen = HashSet::new();
@@ -204,6 +208,10 @@ pub(crate) fn mailbox_thread_rows(
             let mut row = message_row_view(&envelope);
             row.kind = "thread";
             row.message_count = message_counts.get(&envelope.thread_id).copied();
+            row.has_attachments = thread_has_attachments
+                .get(&envelope.thread_id)
+                .copied()
+                .unwrap_or(envelope.has_attachments);
             Some((date, row))
         })
         .collect()

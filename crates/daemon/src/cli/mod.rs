@@ -405,10 +405,12 @@ pub enum Command {
         #[arg(long)]
         watch: bool,
     },
-    /// Start the local HTTP/WebSocket bridge and open the web app in the
-    /// default browser. Pre-authenticates via URL fragment using the persisted
-    /// bridge token at `~/.config/mxr/bridge-token`.
+    /// Start or reopen the local HTTP/WebSocket bridge and open the web app in
+    /// the default browser. Runs detached by default; use `mxr web stop` to
+    /// stop the detached bridge.
     Web {
+        #[command(subcommand)]
+        action: Option<WebAction>,
         /// Bind address for the bridge. Defaults to loopback.
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
@@ -417,7 +419,7 @@ pub enum Command {
         /// ephemeral port (useful for tests).
         #[arg(long, default_value_t = 42829)]
         port: u16,
-        /// Print the launch URL instead of binding the bridge. Implies --no-open.
+        /// Print the launch URL instead of opening the browser.
         #[arg(long)]
         print_url: bool,
         /// Do not open the system browser; just print the URL.
@@ -433,6 +435,12 @@ pub enum Command {
         /// Reads the per-host token from `~/.config/mxr/bridge-tokens/<host>.token`.
         #[arg(long, value_name = "HOST")]
         remote_host: Option<String>,
+        /// Run the bridge in the foreground instead of detaching it.
+        #[arg(long)]
+        foreground: bool,
+        /// Internal marker for the detached child process.
+        #[arg(long, hide = true)]
+        detached_child: bool,
     },
     /// Watch daemon events
     Events {
@@ -956,6 +964,12 @@ pub enum Command {
     Completions { shell: String },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Subcommand)]
+pub enum WebAction {
+    /// Stop the detached local web bridge started by `mxr web`.
+    Stop,
+}
+
 #[derive(Subcommand)]
 pub enum SavedAction {
     /// List saved searches
@@ -1208,19 +1222,25 @@ mod tests {
         ]);
         match cli.command {
             Some(Command::Web {
+                action,
                 host,
                 port,
                 print_url,
                 no_open,
                 strict_port,
                 remote_host,
+                foreground,
+                detached_child,
             }) => {
+                assert!(action.is_none());
                 assert_eq!(host, "127.0.0.1");
                 assert_eq!(port, 4321);
                 assert!(print_url);
                 assert!(!no_open);
                 assert!(!strict_port);
                 assert!(remote_host.is_none());
+                assert!(!foreground);
+                assert!(!detached_child);
             }
             other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
         }
@@ -1243,6 +1263,28 @@ mod tests {
             }) => {
                 assert_eq!(remote_host.as_deref(), Some("mxr.example.com:443"));
                 assert!(no_open);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_web_stop_subcommand() {
+        let cli = Cli::parse_from(["mxr", "web", "stop"]);
+        match cli.command {
+            Some(Command::Web { action, .. }) => {
+                assert_eq!(action, Some(WebAction::Stop));
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_web_foreground_flag() {
+        let cli = Cli::parse_from(["mxr", "web", "--foreground"]);
+        match cli.command {
+            Some(Command::Web { foreground, .. }) => {
+                assert!(foreground);
             }
             other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
         }

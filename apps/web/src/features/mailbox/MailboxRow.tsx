@@ -36,7 +36,7 @@ export function MailboxRow({
     <div
       role="article"
       tabIndex={0}
-      aria-label={`${row.sender} ${row.subject || "(no subject)"} ${row.snippet}`}
+      aria-label={`${row.sender} ${row.subject || "(no subject)"} ${row.has_attachments ? "has attachments" : ""} ${row.snippet}`}
       onClick={onOpen}
       onFocus={onFocusPane}
       onKeyDown={(event) => {
@@ -51,7 +51,7 @@ export function MailboxRow({
         selected && "bg-accent text-accent-foreground hover:bg-accent",
         focused && "bg-accent/85 text-accent-foreground ring-1 ring-ring/70 hover:bg-accent",
         row.unread &&
-          "font-semibold text-foreground before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-unread-marker",
+          "font-semibold text-foreground before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-unread-marker",
       )}
       style={{ height: "var(--row-height)" }}
     >
@@ -99,7 +99,15 @@ export function MailboxRow({
               {row.message_count}
             </Badge>
           ) : null}
-          {row.has_attachments ? <Paperclip className="size-3 text-muted-foreground" /> : null}
+          {row.has_attachments ? (
+            <Paperclip
+              aria-label="Has attachments"
+              className="size-3.5 shrink-0 text-foreground/75"
+              role="img"
+            >
+              <title>{row.attachment_filename ?? "Has attachments"}</title>
+            </Paperclip>
+          ) : null}
         </div>
         <div className="mailbox-row-snippet truncate text-[length:var(--mail-row-meta-size)] font-normal leading-5 text-muted-foreground">
           {row.snippet}

@@ -681,14 +681,16 @@ Sanitized diagnostic bundle.
 
 ## Web bridge
 
-### `mxr web [OPTIONS]`
-Start local HTTP/WebSocket bridge and open the web app. Auto-authenticates via URL fragment using `~/.config/mxr/bridge-token`.
+### `mxr web [OPTIONS] [COMMAND]`
+Start or reopen the detached local HTTP/WebSocket bridge and open the web app. Auto-authenticates via URL fragment using `~/.config/mxr/bridge-token`.
 ```
+stop                      Stop the detached local bridge
 --host <ADDR>             Default 127.0.0.1
 --port <N>                Default 42829; auto-walks on EADDRINUSE unless --strict-port
---print-url               Print URL instead of binding (implies --no-open)
+--print-url               Print URL instead of opening browser
 --no-open                 Print URL, don't launch browser
 --strict-port             Fail fast on conflict
+--foreground              Run bridge in the current terminal for debugging
 --remote-host <HOST[:PORT]>
   # Point browser at a remote daemon (TLS-terminated). Reads token from
   # ~/.config/mxr/bridge-tokens/<host>.token

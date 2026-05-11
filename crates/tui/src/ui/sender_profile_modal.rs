@@ -88,6 +88,15 @@ fn profile_lines<'a>(profile: &'a mxr_protocol::SenderProfileData, theme: &Theme
         Span::styled("Open threads: ", label_style),
         Span::raw(profile.open_thread_count.to_string()),
     ]));
+    lines.push(Line::from(vec![
+        Span::styled("Storage: ", label_style),
+        Span::raw(format!(
+            "{} in · {} out · {} attachments",
+            human_bytes(profile.inbound_storage_bytes),
+            human_bytes(profile.outbound_storage_bytes),
+            profile.attachment_count
+        )),
+    ]));
 
     lines.push(Line::from(vec![
         Span::styled("First seen: ", label_style),
@@ -166,6 +175,10 @@ mod tests {
             is_list_sender: false,
             list_id: None,
             open_thread_count: 2,
+            inbound_storage_bytes: 1_048_576,
+            outbound_storage_bytes: 262_144,
+            attachment_count: 3,
+            attachment_bytes: 512_000,
         }
     }
 
@@ -220,5 +233,20 @@ mod tests {
             snapshot.contains("Sender unknown"),
             "unknown senders must surface a hint; got:\n{snapshot}",
         );
+    }
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{} {}", bytes, UNITS[unit])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
     }
 }

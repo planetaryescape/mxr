@@ -22,7 +22,7 @@ use axum::{
 };
 use base64::{engine::general_purpose, Engine as _};
 use chrome::{ack_mutation, ack_request, build_bridge_chrome, load_mailbox_selection};
-use chrono::{DateTime, Local, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use envelope_list::{
     attachment_search_rows, dedupe_search_results_by_thread, format_date_full, format_date_label,
     format_relative_label, group_envelopes, group_row_views, list_bodies_by_message_ids,
@@ -1342,11 +1342,14 @@ async fn snooze_presets(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let config = load_config().unwrap_or_default().snooze;
     let presets = [
-        build_snooze_preset("tomorrow", "Tomorrow morning", &config),
-        build_snooze_preset("tonight", "Tonight", &config),
-        build_snooze_preset("weekend", "Weekend", &config),
-        build_snooze_preset("monday", "Next Monday", &config),
-    ];
+        ("tomorrow", "Tomorrow morning"),
+        ("tonight", "Tonight"),
+        ("weekend", "Weekend"),
+        ("monday", "Next Monday"),
+    ]
+    .into_iter()
+    .filter_map(|(name, label)| build_snooze_preset(name, label, &config))
+    .collect::<Vec<_>>();
     Ok(Json(json!({ "presets": presets })))
 }
 
@@ -2667,80 +2670,22 @@ fn build_snooze_preset(
     name: &str,
     label: &str,
     config: &mxr_config::SnoozeConfig,
-) -> serde_json::Value {
-    let wake_at = resolve_snooze_until(name, config).unwrap_or_else(|_| Utc::now());
-    json!({
+) -> Option<serde_json::Value> {
+    let wake_at = resolve_snooze_until(name, config).ok()?;
+    Some(json!({
         "id": name,
+        "name": name,
         "label": label,
         "wakeAt": wake_at,
-    })
+    }))
 }
 
 fn resolve_snooze_until(
     until: &str,
     config: &mxr_config::SnoozeConfig,
 ) -> Result<DateTime<Utc>, BridgeError> {
-    use chrono::{Datelike, Duration, Weekday};
-
-    let now = Local::now();
-    let lower = until.trim().to_ascii_lowercase();
-    let wake_at = match lower.as_str() {
-        "tomorrow" | "tomorrow_morning" => {
-            let tomorrow = now.date_naive() + Duration::days(1);
-            local_datetime_utc(tomorrow, u32::from(config.morning_hour), now.timezone())
-        }
-        "tonight" => {
-            let today = now.date_naive();
-            let tonight = local_datetime_utc(today, u32::from(config.evening_hour), now.timezone());
-            if tonight <= Utc::now() {
-                tonight + Duration::days(1)
-            } else {
-                tonight
-            }
-        }
-        "weekend" => {
-            let target_day = match config.weekend_day.as_str() {
-                "sunday" => Weekday::Sun,
-                _ => Weekday::Sat,
-            };
-            let days_until = (target_day.num_days_from_monday() as i64
-                - now.weekday().num_days_from_monday() as i64
-                + 7)
-                % 7;
-            let days = if days_until == 0 { 7 } else { days_until };
-            let weekend = now.date_naive() + Duration::days(days);
-            local_datetime_utc(weekend, u32::from(config.weekend_hour), now.timezone())
-        }
-        "monday" | "next_monday" => {
-            let days_until_monday = (Weekday::Mon.num_days_from_monday() as i64
-                - now.weekday().num_days_from_monday() as i64
-                + 7)
-                % 7;
-            let days = if days_until_monday == 0 {
-                7
-            } else {
-                days_until_monday
-            };
-            let monday = now.date_naive() + chrono::Duration::days(days);
-            local_datetime_utc(monday, u32::from(config.morning_hour), now.timezone())
-        }
-        _ => DateTime::parse_from_rfc3339(until)
-            .map_err(|_| BridgeError::Ipc(format!("invalid snooze time: {until}")))?
-            .with_timezone(&Utc),
-    };
-    Ok(wake_at)
-}
-
-fn local_datetime_utc(date: chrono::NaiveDate, hour: u32, timezone: Local) -> DateTime<Utc> {
-    let time = chrono::NaiveTime::from_hms_opt(hour, 0, 0).expect("validated snooze hour");
-    let candidate = date.and_time(time);
-    timezone
-        .from_local_datetime(&candidate)
-        .single()
-        .or_else(|| timezone.from_local_datetime(&candidate).earliest())
-        .or_else(|| timezone.from_local_datetime(&candidate).latest())
-        .expect("snooze local datetime should resolve")
-        .with_timezone(&Utc)
+    mxr_config::snooze::parse_snooze_until(until, config)
+        .ok_or_else(|| BridgeError::Ipc(format!("invalid snooze time: {until}")))
 }
 
 // --- Feature parity routes ---
@@ -3032,7 +2977,7 @@ async fn trigger_semantic_reindex(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use chrono::{Local, TimeZone, Utc};
     use futures::{SinkExt, StreamExt};
     use mxr_core::{
         id::{AccountId, AttachmentId, MessageId, ThreadId},
@@ -4258,6 +4203,7 @@ mod tests {
         second.thread_id = first.thread_id.clone();
         second.subject = "Mailroom follow-up".into();
         second.snippet = "Same thread, newer message".into();
+        second.has_attachments = true;
 
         let labels = sample_labels(&first.account_id);
         let saved_search = sample_saved_search(first.account_id.clone());
@@ -4349,6 +4295,10 @@ mod tests {
             threads_json["mailbox"]["groups"][0]["rows"][0]["message_count"],
             2
         );
+        assert_eq!(
+            threads_json["mailbox"]["groups"][0]["rows"][0]["has_attachments"],
+            true
+        );
 
         let messages_response = client
             .get(format!("http://{addr}/mailbox?view=messages"))
@@ -4374,6 +4324,10 @@ mod tests {
         assert_eq!(
             messages_json["mailbox"]["groups"][0]["rows"][1]["subject"],
             "Mailroom follow-up"
+        );
+        assert_eq!(
+            messages_json["mailbox"]["groups"][0]["rows"][1]["has_attachments"],
+            true
         );
     }
 

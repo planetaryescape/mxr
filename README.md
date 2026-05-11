@@ -239,9 +239,11 @@ After `mxr setup` and `mxr daemon`, launch the browser UI with:
 mxr web
 ```
 
-This opens `http://127.0.0.1:42829` in your default browser. On the
-same machine the SPA self-authenticates against the daemon — no token
-paste required.
+This starts the local web bridge in the background, opens
+`http://127.0.0.1:42829` in your default browser, then returns control to
+the terminal. Run `mxr web` again to reopen the same bridge, or
+`mxr web stop` to stop it. On the same machine the SPA self-authenticates
+against the daemon — no token paste required.
 
 If the port is already in use the bridge walks up to the next free port
 and the URL `mxr web` prints reflects the actual port. The bound port
@@ -253,7 +255,8 @@ Useful flags:
 - `--port N` sets a preferred port (walks up on conflict).
 - `--strict-port` makes `--port` fail-fast instead of retrying.
 - `--no-open` prints the URL without opening a browser.
-- `--print-url` prints the URL and continues serving.
+- `--print-url` prints the URL without opening a browser.
+- `--foreground` runs the bridge in the terminal for debugging.
 - `--remote-host H` opens a remote daemon at `H` using `~/.config/mxr/bridge-tokens/<host>.token`.
 
 Troubleshooting:

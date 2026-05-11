@@ -18,9 +18,11 @@ mxr daemon --foreground
 mxr web
 ```
 
-`mxr web` opens your default browser to `http://127.0.0.1:42829`. On
-the same machine the SPA auto-authenticates against the daemon —
-**no token paste prompt**.
+`mxr web` starts or reopens the detached local bridge, opens your
+default browser to `http://127.0.0.1:42829`, then returns control to the
+terminal. Run `mxr web` again to reopen it, or `mxr web stop` to stop
+the detached bridge. On the same machine the SPA auto-authenticates
+against the daemon — **no token paste prompt**.
 
 If you'd rather just see the URL, pass `--no-open` or `--print-url`.
 
@@ -61,6 +63,10 @@ to `<config_dir>/bridge-port` (`~/.config/mxr/bridge-port` on Linux,
 - The Vite dev proxy (`apps/web/`) reads it to know where to send `/api`.
 - Scripts can read it instead of hardcoding `42829`.
 - `mxr status` and `mxr web --print-url` reflect the actual port.
+
+Detached `mxr web` also records `<data_dir>/web.pid`,
+`<data_dir>/web.port`, and `<data_dir>/web.host` so later `mxr web`
+runs reopen the same process and `mxr web stop` can terminate it.
 
 Pass `mxr web --strict-port` to opt out of retries and fail fast.
 

@@ -1345,6 +1345,14 @@ pub struct SenderProfileData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub list_id: Option<String>,
     pub open_thread_count: u32,
+    #[serde(default)]
+    pub inbound_storage_bytes: u64,
+    #[serde(default)]
+    pub outbound_storage_bytes: u64,
+    #[serde(default)]
+    pub attachment_count: u32,
+    #[serde(default)]
+    pub attachment_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

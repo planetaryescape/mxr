@@ -19,7 +19,7 @@ const router = vi.hoisted(() => ({
 const api = vi.hoisted(() => ({
   fetchShell: vi.fn<() => Promise<unknown>>(),
   fetchThread: vi.fn<(threadId: string) => Promise<ThreadResponse>>(),
-  fetchSenderProfile: vi.fn<() => Promise<unknown>>(),
+  fetchSenderProfile: vi.fn<(input: { accountId: string; email: string }) => Promise<unknown>>(),
   modifyLabels:
     vi.fn<(messageIds: string[], add: string[], remove: string[]) => Promise<unknown>>(),
   summarizeThread: vi.fn<() => Promise<unknown>>(),
@@ -93,13 +93,14 @@ const thread: ThreadResponse = {
       thread_id: "thread-1",
       provider_id: "provider-msg-1",
       sender: "Sender",
+      sender_detail: "sender@example.com",
       subject: "Label workflow",
       snippet: "hello",
       date: "2026-05-11T10:00:00Z",
       date_label: "May 11",
       date_full: "May 11, 2026, 10:00 AM",
       date_relative: "now",
-      labels: [{ id: "label-work", name: "Work", kind: "user" }],
+      labels: [{ id: "label-work", name: "Work", kind: "user", color: "#fb4c2f" }],
       unread: false,
       starred: false,
       has_attachments: false,
@@ -116,7 +117,7 @@ const thread: ThreadResponse = {
       date_label: "May 11",
       date_full: "May 11, 2026, 10:01 AM",
       date_relative: "now",
-      labels: [{ id: "label-work", name: "Work", kind: "user" }],
+      labels: [{ id: "label-work", name: "Work", kind: "user", color: "#fb4c2f" }],
       unread: false,
       starred: false,
       has_attachments: false,
@@ -171,7 +172,11 @@ describe("ThreadRoute", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
-    useMailboxPane.setState({ activePane: "mailbox", sidebarIndex: 0 });
+    useMailboxPane.setState({
+      activePane: "mailbox",
+      sidebarIndex: 0,
+      suppressNextReaderFocus: false,
+    });
     useModals.setState({ rightRail: null });
   });
 
@@ -196,6 +201,85 @@ describe("ThreadRoute", () => {
     });
   });
 
+  test("direct-opened thread activates reader keyboard scrolling", async () => {
+    useMailboxPane.setState({
+      activePane: "mailbox",
+      sidebarIndex: 0,
+      suppressNextReaderFocus: false,
+    });
+    const originalScrollBy = HTMLElement.prototype.scrollBy;
+    const scrollBy = vi.fn<(options?: ScrollToOptions) => void>();
+    Object.defineProperty(HTMLElement.prototype, "scrollBy", {
+      configurable: true,
+      value: scrollBy,
+    });
+
+    try {
+      renderWithQueryClient(<ThreadRoute />);
+
+      expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+      await waitFor(() => expect(useMailboxPane.getState().activePane).toBe("reader"));
+
+      fireEvent.keyDown(window, { key: "j" });
+
+      expect(scrollBy).toHaveBeenCalledWith({ top: 72, behavior: "smooth" });
+    } finally {
+      if (originalScrollBy) {
+        Object.defineProperty(HTMLElement.prototype, "scrollBy", {
+          configurable: true,
+          value: originalScrollBy,
+        });
+      } else {
+        delete (HTMLElement.prototype as { scrollBy?: unknown }).scrollBy;
+      }
+    }
+  });
+
+  test("does not steal focus when the mailbox previews another thread", async () => {
+    useMailboxPane.setState({
+      activePane: "mailbox",
+      sidebarIndex: 0,
+      suppressNextReaderFocus: true,
+    });
+
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+
+    await waitFor(() => {
+      expect(useMailboxPane.getState().activePane).toBe("mailbox");
+      expect(useMailboxPane.getState().suppressNextReaderFocus).toBe(false);
+    });
+  });
+
+  test("h returns keyboard ownership to the mailbox list", async () => {
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "h" });
+
+    expect(useMailboxPane.getState().activePane).toBe("mailbox");
+    expect(useMailboxPane.getState().suppressNextReaderFocus).toBe(true);
+  });
+
+  test("keeps secondary reader actions in the overflow menu", async () => {
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("button", { name: /reply/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /forward/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /summary/i })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /archive/i })).not.toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /more message actions/i }), {
+      button: 0,
+      ctrlKey: false,
+    });
+
+    expect(await screen.findByRole("menuitem", { name: /archive/i })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: /snooze/i })).toBeVisible();
+  });
+
   test("opens thread context in the right rail from the reader keyboard shortcut", async () => {
     renderWithQueryClient(
       <>
@@ -210,6 +294,64 @@ describe("ThreadRoute", () => {
 
     expect(await screen.findByRole("heading", { name: "Thread context" })).toBeVisible();
     expect(screen.getByText("1 attachment")).toBeVisible();
+  });
+
+  test("renders visible reader shortcuts and colored label chips", async () => {
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+
+    expect(screen.getByRole("button", { name: /reply r/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /forward f/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /summary y/i })).toBeVisible();
+    expect(screen.getByRole("button", { name: /more message actions/i })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /reply all a/i })).not.toBeInTheDocument();
+
+    const label = screen.getAllByText("Work")[0];
+    expect(label).toBeDefined();
+    expect(label!).toHaveStyle({ color: "#fb4c2f" });
+  });
+
+  test("renders sender profile as relationship stats in the right rail", async () => {
+    api.fetchSenderProfile.mockResolvedValueOnce({
+      kind: "SenderProfile",
+      profile: {
+        account_id: "account-1",
+        email: "sender@example.com",
+        display_name: "Sender",
+        first_seen_at: "2026-05-01T09:00:00Z",
+        last_seen_at: "2026-05-11T10:00:00Z",
+        last_inbound_at: "2026-05-11T10:00:00Z",
+        last_outbound_at: "2026-05-10T10:00:00Z",
+        total_inbound: 12,
+        total_outbound: 4,
+        replied_count: 3,
+        cadence_days_p50: 2.5,
+        is_list_sender: false,
+        list_id: null,
+        open_thread_count: 2,
+        inbound_storage_bytes: 4096,
+        outbound_storage_bytes: 1024,
+        attachment_count: 3,
+        attachment_bytes: 2048,
+      },
+    });
+    renderWithQueryClient(
+      <>
+        <ThreadRoute />
+        <RightRail />
+      </>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "p" });
+
+    expect(await screen.findByText("sender@example.com")).toBeVisible();
+    expect(screen.getByText("Storage")).toBeVisible();
+    expect(screen.getByText("Asymmetry")).toBeVisible();
+    expect(screen.getByText("Reply rate")).toBeVisible();
+    expect(screen.queryByText(/"kind"/)).not.toBeInTheDocument();
   });
 
   test("opens attachments in the right rail from the reader keyboard shortcut", async () => {

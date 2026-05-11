@@ -3,6 +3,7 @@ import { apiFetch } from "@/api/client";
 import type { MailboxResponse, MutationResponse, ShellResponse, ThreadResponse } from "./types";
 
 export interface SnoozePreset {
+  id?: string;
   name?: string;
   label?: string;
   wakeAt?: string;
@@ -48,10 +49,32 @@ export function fetchThread(threadId: string): Promise<ThreadResponse> {
   return apiFetch<ThreadResponse>(`/api/v1/mail/threads/${threadId}`);
 }
 
-export function summarizeThread(threadId: string): Promise<unknown> {
-  return apiFetch<unknown>(`/api/v1/mail/threads/${encodeURIComponent(threadId)}/summarize`, {
-    method: "POST",
-  });
+const SUMMARY_TIMEOUT_MS = 125_000;
+
+export async function summarizeThread(threadId: string): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), SUMMARY_TIMEOUT_MS);
+  try {
+    return await apiFetch<unknown>(
+      `/api/v1/mail/threads/${encodeURIComponent(threadId)}/summarize`,
+      {
+        method: "POST",
+        signal: controller.signal,
+      },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(
+        "Summary timed out after 125 seconds. Check the local model or try a smaller thread.",
+        {
+          cause: error,
+        },
+      );
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 export function fetchSenderProfile(input: { accountId: string; email: string }): Promise<unknown> {

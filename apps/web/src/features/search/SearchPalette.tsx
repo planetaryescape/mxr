@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Mail, Search } from "lucide-react";
+import type { KeyboardEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import { fetchSearch } from "@/features/search/api";
@@ -33,16 +34,26 @@ export function SearchPalette() {
   }, [query]);
 
   const suggestions = useQuery({
-    queryKey: ["search-palette", debounced],
+    queryKey: ["search-palette", debounced, "mailbox-index"],
     queryFn: ({ signal }) =>
       runReplaceableQuery("search-palette", signal, (combinedSignal) =>
-        fetchSearch({ q: debounced, limit: 8 }, { signal: combinedSignal }),
+        fetchSearch(
+          { q: debounced, mode: "lexical", sort: "relevance", scope: "messages", limit: 8 },
+          { signal: combinedSignal },
+        ),
       ),
     enabled: open && debounced.length > 1,
     staleTime: 15_000,
   });
 
   const rows = suggestions.data?.groups.flatMap((group) => group.rows).slice(0, 8) ?? [];
+
+  useEffect(() => {
+    setActiveIndex((current) => {
+      if (rows.length === 0) return -1;
+      return current >= rows.length ? rows.length - 1 : current;
+    });
+  }, [rows.length]);
 
   function close() {
     setOpen(false);
@@ -74,9 +85,27 @@ export function SearchPalette() {
     });
   }
 
+  function handleKeyDown(event: KeyboardEvent) {
+    if (event.key === "ArrowDown" || (event.ctrlKey && event.key.toLowerCase() === "j")) {
+      event.preventDefault();
+      move(1);
+    } else if (event.key === "ArrowUp" || (event.ctrlKey && event.key.toLowerCase() === "k")) {
+      event.preventDefault();
+      move(-1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const row = activeIndex >= 0 ? rows[activeIndex] : undefined;
+      if (row) openRow(row);
+      else goToSearch();
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="top-[18vh] max-h-[74vh] translate-y-0 gap-0 overflow-hidden rounded-xl border-border/80 bg-popover/95 p-0 shadow-2xl backdrop-blur sm:max-w-[720px]">
+      <DialogContent
+        className="top-[18vh] max-h-[74vh] translate-y-0 gap-0 overflow-hidden rounded-xl border-border/80 bg-popover/95 p-0 shadow-2xl backdrop-blur sm:max-w-[720px]"
+        onKeyDown={handleKeyDown}
+      >
         <DialogTitle className="sr-only">Search mail</DialogTitle>
         <div className="flex items-center border-b border-border bg-muted/30 px-4">
           <Search className="mr-2 size-3.5 shrink-0 text-muted-foreground" />
@@ -86,23 +115,6 @@ export function SearchPalette() {
             onChange={(event) => {
               setQuery(event.target.value);
               setActiveIndex(-1);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown" || (event.ctrlKey && event.key.toLowerCase() === "j")) {
-                event.preventDefault();
-                move(1);
-              } else if (
-                event.key === "ArrowUp" ||
-                (event.ctrlKey && event.key.toLowerCase() === "k")
-              ) {
-                event.preventDefault();
-                move(-1);
-              } else if (event.key === "Enter") {
-                event.preventDefault();
-                const row = activeIndex >= 0 ? rows[activeIndex] : undefined;
-                if (row) openRow(row);
-                else goToSearch();
-              }
             }}
             placeholder="Search local mail..."
             aria-label="Search mail"

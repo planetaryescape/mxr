@@ -31,7 +31,8 @@ export function SnoozeDialog({ open, messageIds, onOpenChange, onSnoozed }: Snoo
     queryKey: ["snooze-presets"],
     queryFn: fetchSnoozePresets,
     enabled: open,
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
   const snooze = useMutation({
     mutationFn: (until: string) => snoozeMessages(messageIds, until),
@@ -77,8 +78,8 @@ export function SnoozeDialog({ open, messageIds, onOpenChange, onSnoozed }: Snoo
               Loading snooze presets...
             </Alert>
           ) : null}
-          {(presets.data?.presets ?? []).map((preset) => {
-            const until = preset.name ?? preset.label ?? "";
+          {(presets.data?.presets ?? []).filter(isDisplayablePreset).map((preset) => {
+            const until = preset.id ?? preset.name ?? preset.label ?? "";
             const label = preset.label ?? preset.name ?? "Preset";
             return (
               <Button
@@ -158,4 +159,24 @@ function formatWakeAt(value?: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function isDisplayablePreset(preset: {
+  label?: string;
+  name?: string;
+  wakeAt?: string;
+  wake_at?: string;
+}): boolean {
+  const label = (preset.label ?? preset.name ?? "").trim().toLowerCase();
+  if (label !== "tonight") return true;
+  const wakeAt = preset.wakeAt ?? preset.wake_at;
+  if (!wakeAt) return true;
+  const wakeDate = new Date(wakeAt);
+  if (Number.isNaN(wakeDate.getTime())) return true;
+  const today = new Date();
+  return (
+    wakeDate.getFullYear() === today.getFullYear() &&
+    wakeDate.getMonth() === today.getMonth() &&
+    wakeDate.getDate() === today.getDate()
+  );
 }

@@ -33,7 +33,7 @@ Two ways to run the bridge — both serve the same router code:
 | Mode | When to use |
 |---|---|
 | **Managed task** (default) | `mxr daemon` starts the bridge automatically. One PID to monitor, one config source, one auth source. |
-| **Standalone** (`mxr web`) | Failure isolation — desktop app uses this so a bridge crash doesn't take down the daemon. |
+| **Detached standalone** (`mxr web`) | Failure isolation — `mxr web` starts or reopens a separate bridge process so the terminal can close without killing the browser UI. |
 
 The default port is **42829** (loopback) — a high unprivileged port
 chosen to avoid the common dev-server set (3000/5173/8000/8080/7777).
@@ -55,14 +55,19 @@ CLI overrides:
 ```bash
 mxr daemon --no-bridge              # don't bind the bridge this run
 mxr daemon --bridge-port 8080       # override port
+mxr web                             # start/reopen detached bridge and open browser
+mxr web stop                        # stop the detached bridge
+mxr web --foreground                # debug the bridge in the current terminal
 mxr web --port 9000 --strict-port   # for `mxr web` only: fail instead of retrying on port-in-use
 ```
 
 **Port retry.** The daemon-managed bridge and `mxr web` both retry the
 next available port on EADDRINUSE (up to 32 ports). The actual bound
 port is written to `<config_dir>/bridge-port` so clients (the Vite dev
-proxy, scripts) can discover it. Pass `--strict-port` to `mxr web` to
-opt out and fail instead.
+proxy, scripts) can discover it. Detached `mxr web` also writes
+`<data_dir>/web.pid`, `<data_dir>/web.port`, and `<data_dir>/web.host`
+so `mxr web` can reopen the running bridge and `mxr web stop` can stop
+it. Pass `--strict-port` to `mxr web` to opt out and fail instead.
 
 ## Authentication
 

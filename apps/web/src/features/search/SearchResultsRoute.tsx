@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { BookmarkPlus, HelpCircle, RefreshCw, Search, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -49,6 +49,8 @@ export function SearchResultsRoute() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [previewRowId, setPreviewRowId] = useState<string | null>(null);
+  const [draftQ, setDraftQ] = useState(q);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const results = useQuery({
     queryKey: searchKey({ q, mode, sort, account: search.account, limit: 100 }),
@@ -95,6 +97,31 @@ export function SearchResultsRoute() {
     () => results.data?.groups.flatMap((group) => group.rows) ?? [],
     [results.data?.groups],
   );
+
+  const openPreviewRow = useCallback(() => {
+    const row = rows.find((candidate) => candidate.id === previewRowId) ?? rows[0];
+    if (!row) return;
+    void navigate({
+      to: "/m/$mailbox/$threadId",
+      params: { mailbox: "inbox", threadId: row.thread_id },
+    });
+  }, [navigate, previewRowId, rows]);
+
+  const movePreview = useCallback(
+    (delta: number) => {
+      if (rows.length === 0) return;
+      setPreviewRowId((current) => {
+        const currentIndex = current ? rows.findIndex((row) => row.id === current) : -1;
+        const fallback = delta > 0 ? -1 : rows.length;
+        const nextIndex = Math.max(
+          0,
+          Math.min(rows.length - 1, (currentIndex >= 0 ? currentIndex : fallback) + delta),
+        );
+        return rows[nextIndex]?.id ?? null;
+      });
+    },
+    [rows],
+  );
   const previewRow = rows.find((row) => row.id === previewRowId) ?? rows[0];
   const preview = useQuery({
     queryKey: ["search-preview", previewRow?.thread_id],
@@ -113,6 +140,47 @@ export function SearchResultsRoute() {
     );
   }, [rows]);
 
+  useEffect(() => {
+    setDraftQ(q);
+  }, [q]);
+
+  useEffect(() => {
+    if (!previewRowId) return;
+    document
+      .getElementById(`search-result-${previewRowId}`)
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [previewRowId]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (saveOpen || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        if (target.closest("input, textarea, select, [contenteditable=true]")) return;
+        if (
+          target.closest("button, a, [role=button]") &&
+          !target.closest("[data-search-result-row]")
+        ) {
+          return;
+        }
+      }
+      if (event.key === "j" || event.key === "ArrowDown") {
+        event.preventDefault();
+        movePreview(1);
+      } else if (event.key === "k" || event.key === "ArrowUp") {
+        event.preventDefault();
+        movePreview(-1);
+      } else if (event.key === "Enter" || event.key === "o") {
+        event.preventDefault();
+        openPreviewRow();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [movePreview, openPreviewRow, saveOpen]);
+
   return (
     <div className="flex min-w-0 flex-1 flex-col bg-background">
       <header className="border-b border-border px-6 py-4">
@@ -123,14 +191,16 @@ export function SearchResultsRoute() {
               className="mt-1 flex gap-2"
               onSubmit={(event) => {
                 event.preventDefault();
-                const form = new FormData(event.currentTarget);
-                updateSearch({ q: String(form.get("q") ?? "") });
+                updateSearch({ q: draftQ });
+                inputRef.current?.blur();
               }}
             >
               <Input
+                ref={inputRef}
                 id="search-page-input"
                 name="q"
-                defaultValue={q}
+                value={draftQ}
+                onChange={(event) => setDraftQ(event.target.value)}
                 placeholder="from:alice has:attachment"
                 className="h-9 bg-input text-sm"
               />
@@ -305,8 +375,11 @@ function SearchResultRow({
   const navigate = useNavigate();
   return (
     <button
+      id={`search-result-${row.id}`}
+      data-search-result-row="true"
       type="button"
       className={`grid w-full grid-cols-[minmax(120px,190px)_1fr_auto] gap-3 border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-muted ${active ? "bg-muted" : ""}`}
+      aria-current={active ? "true" : undefined}
       onFocus={onPreview}
       onMouseEnter={onPreview}
       onClick={() =>

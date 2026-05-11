@@ -127,7 +127,8 @@ mxr history [--category X] [--level X]          # Persisted event history
 mxr logs [--level error] [--since 1h] [--no-follow]
 mxr doctor [--reindex|--reindex-semantic|--check|--rebuild-analytics|--refresh-contacts]
 mxr bug-report [--edit|--stdout|--clipboard|--github|--output FILE]
-mxr web [--port N] [--no-open] [--remote-host HOST]   # Browser UI via local bridge
+mxr web [--port N] [--no-open] [--remote-host HOST]   # Start/reopen browser UI via detached local bridge
+mxr web stop                                          # Stop detached local web bridge
 mxr restart                                     # Restart the daemon
 mxr reset --hard [--dry-run] [--including-config]     # Wipe local state; preserves config+creds by default
 mxr burn                                        # Alias for reset --hard

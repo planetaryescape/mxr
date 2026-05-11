@@ -44,10 +44,12 @@ export function MailboxList({
   onLoadMore,
 }: MailboxListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const pendingGoTimerRef = useRef<number | null>(null);
   const navigate = useNavigate();
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const activePane = useMailboxPane((state) => state.activePane);
   const setActivePane = useMailboxPane((state) => state.setActivePane);
+  const setSuppressNextReaderFocus = useMailboxPane((state) => state.setSuppressNextReaderFocus);
   const setScope = useSelection((state) => state.setScope);
   const selectedIds = useSelection((state) => state.ids);
   const toggle = useSelection((state) => state.toggle);
@@ -126,6 +128,7 @@ export function MailboxList({
   const openRow = useCallback(
     (row: MessageRowView, pane: "mailbox" | "reader") => {
       setActivePane(pane);
+      setSuppressNextReaderFocus(pane === "mailbox");
       void navigate({
         to: "/m/$mailbox/$threadId",
         params: {
@@ -134,19 +137,36 @@ export function MailboxList({
         },
       });
     },
-    [mailboxPath, navigate, setActivePane],
+    [mailboxPath, navigate, setActivePane, setSuppressNextReaderFocus],
+  );
+
+  const clearGoPrefix = useCallback(() => {
+    if (pendingGoTimerRef.current === null) return;
+    window.clearTimeout(pendingGoTimerRef.current);
+    pendingGoTimerRef.current = null;
+  }, []);
+
+  const focusRowAt = useCallback(
+    (index: number, align: "auto" | "start" | "end" = "auto") => {
+      if (rows.length === 0) return;
+      const next = Math.max(0, Math.min(rows.length - 1, index));
+      const row = rows[next];
+      if (!row) return;
+      setFocusedId(row.id);
+      const flatIndex = flat.findIndex((item) => item.kind === "row" && item.row.id === row.id);
+      if (flatIndex >= 0) virtualizer.scrollToIndex(flatIndex, { align });
+      if (previewOnFocus && row.thread_id !== activeThreadId) openRow(row, "mailbox");
+    },
+    [activeThreadId, flat, openRow, previewOnFocus, rows, virtualizer],
   );
 
   const moveFocus = useCallback(
     (delta: number) => {
       if (rows.length === 0) return;
       const current = focusedIndex >= 0 ? focusedIndex : 0;
-      const next = Math.max(0, Math.min(rows.length - 1, current + delta));
-      setFocusedId(rows[next]?.id ?? null);
-      const row = rows[next];
-      if (previewOnFocus && row && row.thread_id !== activeThreadId) openRow(row, "mailbox");
+      focusRowAt(current + delta);
     },
-    [activeThreadId, focusedIndex, openRow, previewOnFocus, rows],
+    [focusRowAt, focusedIndex, rows.length],
   );
 
   useEffect(() => {
@@ -160,16 +180,34 @@ export function MailboxList({
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
         event.preventDefault();
         selectMany(rowItems.map((row) => row.id));
+      } else if (event.key === "G") {
+        event.preventDefault();
+        clearGoPrefix();
+        focusRowAt(rowItems.length - 1, "end");
+      } else if (event.key === "g") {
+        if (pendingGoTimerRef.current !== null) {
+          event.preventDefault();
+          clearGoPrefix();
+          focusRowAt(0, "start");
+          return;
+        }
+        pendingGoTimerRef.current = window.setTimeout(() => {
+          pendingGoTimerRef.current = null;
+        }, 800);
       } else if (event.key === "j") {
+        clearGoPrefix();
         event.preventDefault();
         moveFocus(1);
       } else if (event.key === "k") {
+        clearGoPrefix();
         event.preventDefault();
         moveFocus(-1);
       } else if (event.key === "h" || event.key === "ArrowLeft") {
+        clearGoPrefix();
         event.preventDefault();
         setActivePane("sidebar");
       } else if (event.key.toLowerCase() === "x") {
+        clearGoPrefix();
         event.preventDefault();
         const row = rowItems[focusedIndex];
         if (!row) return;
@@ -185,14 +223,17 @@ export function MailboxList({
         }
         toggle(row.id);
       } else if (event.key === "Enter" || event.key === "o") {
+        clearGoPrefix();
         event.preventDefault();
         const row = rowItems[focusedIndex];
         if (row) openRow(row, "reader");
       } else if (event.key === "l" || event.key === "ArrowRight") {
+        clearGoPrefix();
         event.preventDefault();
         const row = rowItems[focusedIndex];
         if (row) openRow(row, "reader");
       } else if (event.key === "e") {
+        clearGoPrefix();
         event.preventDefault();
         const ids =
           selectedIds.size > 0
@@ -202,6 +243,7 @@ export function MailboxList({
               : [];
         if (ids.length > 0) archive.mutate(ids);
       } else if (event.key === "!") {
+        clearGoPrefix();
         event.preventDefault();
         const ids =
           selectedIds.size > 0
@@ -211,6 +253,7 @@ export function MailboxList({
               : [];
         if (ids.length > 0) spam.mutate(ids);
       } else if (event.key === "Delete" || event.key === "Backspace") {
+        clearGoPrefix();
         event.preventDefault();
         const ids =
           selectedIds.size > 0
@@ -220,25 +263,33 @@ export function MailboxList({
               : [];
         if (ids.length > 0) trash.mutate(ids);
       } else if (event.key === "s") {
+        clearGoPrefix();
         event.preventDefault();
         const row = rowItems[focusedIndex];
         if (row) (row.starred ? unstar : star).mutate([row.id]);
       } else if (event.key === "m") {
+        clearGoPrefix();
         event.preventDefault();
         const row = rowItems[focusedIndex];
         if (row) (row.unread ? read : unread).mutate([row.id]);
       } else if (event.key === "Escape") {
+        clearGoPrefix();
         event.preventDefault();
         clearSelection();
       }
     }
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      clearGoPrefix();
+    };
   }, [
     activePane,
     activeThreadId,
     archive,
+    clearGoPrefix,
     clearSelection,
+    focusRowAt,
     focusedIndex,
     lastClickedId,
     mailboxPath,

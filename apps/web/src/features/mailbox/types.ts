@@ -123,11 +123,18 @@ export interface ThreadView {
   unread_count: number;
 }
 
+export interface ThreadSummaryViewData {
+  text: string;
+  model?: string | null;
+  generated_at?: string | null;
+}
+
 export interface ThreadResponse {
   thread: ThreadView;
   messages: MessageRowView[];
   bodies: MessageBodyView[];
   body_failures?: unknown[];
+  summary?: ThreadSummaryViewData | null;
   reader_mode?: string | null;
   right_rail?: { title?: string; items?: string[] };
 }

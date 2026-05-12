@@ -16,15 +16,15 @@ interface CodeMirrorComposeEditorProps {
 
 const tokenTheme = EditorView.theme({
   "&": {
-    minHeight: "420px",
+    minHeight: "520px",
     backgroundColor: "hsl(var(--surface))",
     color: "var(--foreground)",
     fontSize: "13px",
   },
   ".cm-content": {
-    minHeight: "420px",
+    minHeight: "520px",
     fontFamily: "var(--font-mono)",
-    padding: "18px",
+    padding: "14px",
   },
   ".cm-gutters": {
     backgroundColor: "hsl(var(--surface))",
@@ -111,6 +111,6 @@ export function CodeMirrorComposeEditor({
   }, [value]);
 
   return (
-    <div ref={hostRef} className="overflow-hidden rounded-xl border border-border bg-surface" />
+    <div ref={hostRef} className="overflow-hidden rounded-lg border border-border bg-surface" />
   );
 }

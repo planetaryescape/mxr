@@ -99,4 +99,27 @@ describe("SearchPalette", () => {
       params: { mailbox: "inbox", threadId: "thread-1" },
     });
   });
+
+  test("moves modal selection through suggestions with up and down keys", async () => {
+    renderWithQueryClient(<SearchPalette />);
+
+    const input = await screen.findByRole("textbox", { name: "Search mail" });
+    fireEvent.change(input, { target: { value: "invoice" } });
+
+    expect(await screen.findByText("Subject 1")).toBeVisible();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+
+    expect(screen.getByRole("option", { name: /open subject 2/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(router.navigate).toHaveBeenCalledWith({
+      to: "/m/$mailbox/$threadId",
+      params: { mailbox: "inbox", threadId: "thread-2" },
+    });
+  });
 });

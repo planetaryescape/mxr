@@ -26,7 +26,7 @@ export function TiptapComposeEditor({
     editorProps: {
       attributes: {
         class:
-          "min-h-[420px] rounded-xl border border-border bg-surface px-5 py-4 text-sm leading-6 outline-none",
+          "min-h-[520px] rounded-lg border border-border bg-surface px-4 py-3 text-sm leading-6 outline-none",
         role: "textbox",
         "aria-label": "Message body",
       },

@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Paperclip, X } from "lucide-react";
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -93,6 +93,19 @@ interface SenderProfile {
   outbound_storage_bytes?: number;
   attachment_count?: number;
   attachment_bytes?: number;
+  recent_messages?: SenderEmailReference[];
+}
+
+interface SenderEmailReference {
+  message_id: string;
+  thread_id: string;
+  subject: string;
+  snippet: string;
+  from_name?: string | null;
+  from_email: string;
+  date: string;
+  direction: string;
+  has_attachments: boolean;
 }
 
 function SenderProfilePanel({ payload }: { payload: unknown }) {
@@ -121,6 +134,11 @@ function SenderProfilePanel({ payload }: { payload: unknown }) {
   const attachmentShare = totalBytes > 0 ? Math.round((attachmentBytes / totalBytes) * 100) : 0;
   const avgInboundBytes = profile.total_inbound > 0 ? inboundBytes / profile.total_inbound : 0;
   const avgOutboundBytes = profile.total_outbound > 0 ? outboundBytes / profile.total_outbound : 0;
+  const currentThreadId = currentThreadIdFromPath();
+  const mailboxBase = mailboxBaseFromPath();
+  const otherMessages = (profile.recent_messages ?? []).filter(
+    (message) => message.thread_id !== currentThreadId,
+  );
 
   return (
     <div className="space-y-4 text-foreground">
@@ -138,6 +156,38 @@ function SenderProfilePanel({ payload }: { payload: unknown }) {
           ) : null}
         </div>
       </div>
+
+      {otherMessages.length > 0 ? (
+        <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
+          <h4 className="text-xs font-medium">Other emails from sender</h4>
+          <div className="space-y-1.5">
+            {otherMessages.slice(0, 8).map((message) => (
+              <a
+                key={message.message_id}
+                href={`${mailboxBase}/${message.thread_id}`}
+                className="block rounded border border-border/70 bg-background/50 px-2.5 py-2 text-xs outline-none transition hover:border-accent hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">
+                      {message.subject.trim() || "(no subject)"}
+                    </div>
+                    {message.snippet ? (
+                      <div className="mt-0.5 line-clamp-2 text-muted-foreground">
+                        {message.snippet}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1 text-2xs text-muted-foreground">
+                    {message.has_attachments ? <Paperclip className="size-3" /> : null}
+                    <span>{formatShortDate(message.date)}</span>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-2">
         <ProfileStat label="Emails" value={formatNumber(totalEmails)} />
@@ -271,4 +321,25 @@ function formatDate(value?: string | null): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
+}
+
+function formatShortDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function currentThreadIdFromPath(): string | null {
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  if (parts.length >= 3 && parts[0] === "m") return parts[2] ?? null;
+  return null;
+}
+
+function mailboxBaseFromPath(): string {
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  if (parts.length >= 2 && parts[0] === "m") return `/${parts.slice(0, 2).join("/")}`;
+  return "/m/inbox";
 }

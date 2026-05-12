@@ -178,4 +178,22 @@ describe("MailboxList keyboard selection", () => {
     expect(screen.getByLabelText("Has attachments")).toBeVisible();
     expect(screen.getByRole("article", { name: /has attachments/i })).toBeVisible();
   });
+
+  test("shows conversation thread count in the mailbox row", async () => {
+    render(
+      <MailboxRow
+        row={{ ...rows[0]!, message_count: 4 }}
+        selected={false}
+        focused={false}
+        onOpen={vi.fn<() => void>()}
+        onFocusPane={vi.fn<() => void>()}
+        onToggleSelection={vi.fn<(shift: boolean) => void>()}
+      />,
+    );
+
+    expect(screen.getByLabelText("Conversation thread with 4 messages")).toBeVisible();
+    expect(
+      screen.getByRole("article", { name: /conversation thread with 4 messages/i }),
+    ).toBeVisible();
+  });
 });

@@ -19,7 +19,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type DragEvent,
+  type KeyboardEvent,
   type Ref,
 } from "react";
 import { toast } from "sonner";
@@ -65,7 +67,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatRelativeAge } from "@/lib/utils";
+import { cn, formatRelativeAge } from "@/lib/utils";
 import { requestCoordinator } from "@/lib/requestCoordinator";
 import { useUiPrefs } from "@/state/uiPrefsStore";
 
@@ -353,6 +355,65 @@ export function ComposeRoute() {
     toast.success("Draft refreshed");
   }
 
+  function handleAttachShortcut() {
+    if (uploading > 0) return;
+    fileInputRef.current?.click();
+  }
+
+  function handleComposeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.defaultPrevented) return;
+    if (!(event.metaKey || event.ctrlKey)) return;
+    const key = event.key.toLowerCase();
+
+    if (event.shiftKey && key === "c") {
+      event.preventDefault();
+      event.stopPropagation();
+      revealCc();
+      return;
+    }
+    if (event.shiftKey && key === "b") {
+      event.preventDefault();
+      event.stopPropagation();
+      revealBcc();
+      return;
+    }
+    if (event.shiftKey && key === "a") {
+      event.preventDefault();
+      event.stopPropagation();
+      handleAttachShortcut();
+      return;
+    }
+    if (event.shiftKey && key === "r") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!busy) void handleRefreshClick();
+      return;
+    }
+    if (event.shiftKey && key === "s") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!busy && canServerSave) void handleServerSaveClick();
+      return;
+    }
+    if (!event.shiftKey && key === "s") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!busy) void handleSaveClick();
+      return;
+    }
+    if (!event.shiftKey && event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!busy) requestSend();
+      return;
+    }
+    if (!event.shiftKey && event.key === "Backspace") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!busy) requestDiscard();
+    }
+  }
+
   function requestSend() {
     const current = draftRef.current;
     if (!current) return;
@@ -484,9 +545,12 @@ export function ComposeRoute() {
   }
 
   return (
-    <div className="flex min-w-0 flex-1 overflow-auto bg-background">
-      <div className="mx-auto flex w-full max-w-[980px] flex-col px-5 py-7 lg:px-6">
-        <header className="mb-4 flex items-start justify-between gap-4 border-b border-border pb-4">
+    <div
+      className="flex min-w-0 flex-1 overflow-auto bg-background"
+      onKeyDown={handleComposeKeyDown}
+    >
+      <div className="mx-auto flex w-full max-w-[1080px] flex-col px-3 py-4 lg:px-4">
+        <header className="mb-3 flex items-start justify-between gap-4 border-b border-border pb-3">
           <div className="min-w-0">
             <div className="font-mono text-2xs uppercase tracking-wide text-muted-foreground">
               Compose
@@ -495,72 +559,62 @@ export function ComposeRoute() {
             <div className="mt-1 text-xs text-muted-foreground">{saveStatus} · local draft</div>
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <Button variant="ghost" onClick={handleRefreshClick} disabled={busy}>
+            <ComposeActionButton
+              variant="ghost"
+              onClick={handleRefreshClick}
+              disabled={busy}
+              shortcut="⇧⌘R"
+            >
               <RefreshCw className="size-3" />
               Refresh
-            </Button>
-            <Button variant="secondary" onClick={handleSaveClick} disabled={busy}>
+            </ComposeActionButton>
+            <ComposeActionButton
+              variant="secondary"
+              onClick={handleSaveClick}
+              disabled={busy}
+              shortcut="⌘S"
+            >
               {updateSession.isPending ? (
                 <Loader2 className="size-3 animate-spin" />
               ) : (
                 <Check className="size-3" />
               )}
               Save
-            </Button>
+            </ComposeActionButton>
             {canServerSave ? (
-              <Button
+              <ComposeActionButton
                 variant="outline"
                 onClick={handleServerSaveClick}
                 disabled={busy || serverSave.isPending}
+                shortcut="⇧⌘S"
               >
                 Server draft
-              </Button>
+              </ComposeActionButton>
             ) : null}
-            <Button variant="destructive" onClick={requestDiscard} disabled={busy}>
+            <ComposeActionButton
+              variant="destructive"
+              onClick={requestDiscard}
+              disabled={busy}
+              shortcut="⌘⌫"
+            >
               <Trash2 className="size-3" />
               Discard
-            </Button>
-            <Button onClick={requestSend} disabled={busy}>
+            </ComposeActionButton>
+            <ComposeActionButton onClick={requestSend} disabled={busy} shortcut="⌘Enter">
               <Send className="size-3" />
               Send
-            </Button>
+            </ComposeActionButton>
           </div>
         </header>
 
         <div
           role="form"
           aria-label="Compose message"
-          className="relative min-h-0 overflow-hidden rounded-xl border border-border bg-card"
+          className="relative min-h-0 overflow-hidden rounded-lg border border-border bg-card"
           onDragEnter={onDragEnter}
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
-          onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.shiftKey) {
-              if (event.key.toLowerCase() === "c") {
-                event.preventDefault();
-                revealCc();
-                return;
-              }
-              if (event.key.toLowerCase() === "b") {
-                event.preventDefault();
-                revealBcc();
-                return;
-              }
-            }
-            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-              event.preventDefault();
-              void handleSaveClick();
-            }
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-              event.preventDefault();
-              requestSend();
-            }
-            if ((event.metaKey || event.ctrlKey) && event.key === "Backspace") {
-              event.preventDefault();
-              requestDiscard();
-            }
-          }}
         >
           {dragActive ? (
             <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl border border-primary bg-background/80 backdrop-blur-sm">
@@ -574,7 +628,7 @@ export function ComposeRoute() {
             </div>
           ) : null}
 
-          <div className="space-y-3 border-b border-border px-4 py-4">
+          <div className="space-y-2 border-b border-border px-3 py-3">
             <AddressField
               label="To"
               value={draft.frontmatter.to}
@@ -583,14 +637,14 @@ export function ComposeRoute() {
             />
             <div className="flex gap-2 pl-12">
               {!showCc ? (
-                <Button variant="ghost" size="sm" onClick={revealCc}>
+                <ComposeActionButton variant="ghost" size="sm" onClick={revealCc} shortcut="⇧⌘C">
                   Add Cc
-                </Button>
+                </ComposeActionButton>
               ) : null}
               {!showBcc ? (
-                <Button variant="ghost" size="sm" onClick={revealBcc}>
+                <ComposeActionButton variant="ghost" size="sm" onClick={revealBcc} shortcut="⇧⌘B">
                   Add Bcc
-                </Button>
+                </ComposeActionButton>
               ) : null}
             </div>
             <Collapsible open={showCc} onOpenChange={setShowCc}>
@@ -637,7 +691,7 @@ export function ComposeRoute() {
                 event.currentTarget.value = "";
               }}
             />
-            <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t border-border pt-4">
+            <div className="mt-3 flex flex-wrap items-end justify-between gap-3 border-t border-border pt-3">
               <div className="flex min-w-0 flex-1 flex-wrap gap-3">
                 <div className="min-w-[260px] flex-1">
                   <Label>Send from</Label>
@@ -670,11 +724,12 @@ export function ComposeRoute() {
                   attachments={draft.frontmatter.attach}
                   onRemove={removeAttachment}
                 />
-                <Button
+                <ComposeActionButton
                   variant="outline"
                   size="sm"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={handleAttachShortcut}
                   disabled={uploading > 0}
+                  shortcut="⇧⌘A"
                 >
                   {uploading > 0 ? (
                     <Loader2 className="size-3 animate-spin" />
@@ -682,15 +737,15 @@ export function ComposeRoute() {
                     <Paperclip className="size-3" />
                   )}
                   Attach
-                </Button>
+                </ComposeActionButton>
               </div>
             </div>
           </div>
 
-          <div className="px-4 py-4">
+          <div className="px-3 py-3">
             <Suspense
               fallback={
-                <div className="h-[420px] rounded-lg border border-border bg-surface p-4 text-xs text-muted-foreground">
+                <div className="h-[520px] rounded-lg border border-border bg-surface p-4 text-xs text-muted-foreground">
                   Loading editor...
                 </div>
               }
@@ -715,7 +770,7 @@ export function ComposeRoute() {
             </Suspense>
           </div>
 
-          <footer className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          <footer className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs text-muted-foreground">
             <span className={dirty ? "text-warning" : "text-success"}>{saveStatus}</span>
             {saveError ? <span className="text-destructive">{saveError}</span> : null}
             <span className="ml-auto font-mono text-2xs">
@@ -757,6 +812,28 @@ function ComposeLoading({ title }: { title: string }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function ComposeActionButton({
+  className,
+  children,
+  shortcut,
+  ...props
+}: ComponentProps<typeof Button> & { shortcut: string }) {
+  return (
+    <Button className={cn("gap-1.5", className)} title={shortcut} {...props}>
+      {children}
+      <ShortcutKbd>{shortcut}</ShortcutKbd>
+    </Button>
+  );
+}
+
+function ShortcutKbd({ children }: { children: string }) {
+  return (
+    <kbd className="ml-1 rounded border border-border/80 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
+      {children}
+    </kbd>
   );
 }
 

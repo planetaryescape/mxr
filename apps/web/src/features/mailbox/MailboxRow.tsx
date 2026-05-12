@@ -1,4 +1,13 @@
-import { Archive, Check, MailOpen, Paperclip, ShieldAlert, Star, Trash2 } from "lucide-react";
+import {
+  Archive,
+  Check,
+  MailOpen,
+  MessagesSquare,
+  Paperclip,
+  ShieldAlert,
+  Star,
+  Trash2,
+} from "lucide-react";
 import type { MouseEvent } from "react";
 
 import type { MessageRowView } from "./types";
@@ -26,6 +35,8 @@ export function MailboxRow({
 }: MailboxRowProps) {
   const star = useOptimisticMailMutation(row.starred ? "unstar" : "star");
   const read = useOptimisticMailMutation(row.unread ? "read" : "unread");
+  const conversationCount =
+    typeof row.message_count === "number" && row.message_count > 1 ? row.message_count : null;
 
   function toggleSelection(event: MouseEvent) {
     event.stopPropagation();
@@ -36,7 +47,7 @@ export function MailboxRow({
     <div
       role="article"
       tabIndex={0}
-      aria-label={`${row.sender} ${row.subject || "(no subject)"} ${row.has_attachments ? "has attachments" : ""} ${row.snippet}`}
+      aria-label={`${row.sender} ${row.subject || "(no subject)"} ${conversationCount ? `conversation thread with ${conversationCount} messages` : ""} ${row.has_attachments ? "has attachments" : ""} ${row.snippet}`}
       onClick={onOpen}
       onFocus={onFocusPane}
       onKeyDown={(event) => {
@@ -82,11 +93,11 @@ export function MailboxRow({
         <Star className={cn("size-3.5", row.starred && "fill-current")} />
       </button>
 
-      <div
-        className="mailbox-row-sender min-w-0 truncate text-[length:var(--mail-row-subject-size)]"
-        title={row.sender_detail ?? row.sender}
-      >
-        {row.sender}
+      <div className="mailbox-row-sender flex min-w-0 items-center gap-1.5 text-[length:var(--mail-row-subject-size)]">
+        <span className="min-w-0 truncate" title={row.sender_detail ?? row.sender}>
+          {row.sender}
+        </span>
+        {conversationCount ? <ConversationBadge count={conversationCount} /> : null}
       </div>
 
       <div className="min-w-0">
@@ -94,11 +105,6 @@ export function MailboxRow({
           <h2 className="mailbox-row-subject truncate text-[length:var(--mail-row-subject-size)] leading-5">
             {row.subject || "(no subject)"}
           </h2>
-          {row.message_count && row.message_count > 1 ? (
-            <Badge variant="secondary" className="rounded font-mono text-muted-foreground">
-              {row.message_count}
-            </Badge>
-          ) : null}
           {row.has_attachments ? (
             <Paperclip
               aria-label="Has attachments"
@@ -128,6 +134,20 @@ export function MailboxRow({
         </div>
       </div>
     </div>
+  );
+}
+
+function ConversationBadge({ count }: { count: number }) {
+  return (
+    <Badge
+      variant="outline"
+      aria-label={`Conversation thread with ${count} messages`}
+      title={`${count} messages in this conversation`}
+      className="h-5 shrink-0 gap-1 rounded border-primary/45 bg-primary/15 px-1.5 font-mono text-[10px] text-primary"
+    >
+      <MessagesSquare className="size-3" aria-hidden="true" />
+      {count}
+    </Badge>
   );
 }
 

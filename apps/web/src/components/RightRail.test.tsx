@@ -40,6 +40,19 @@ describe("RightRail", () => {
             outbound_storage_bytes: 1024,
             attachment_count: 2,
             attachment_bytes: 2048,
+            recent_messages: [
+              {
+                message_id: "message-1",
+                thread_id: "thread-1",
+                subject: "Earlier question",
+                snippet: "Can you send the documents?",
+                from_name: "Sender Example",
+                from_email: "sender@example.com",
+                date: "2026-05-10T10:00:00Z",
+                direction: "inbound",
+                has_attachments: true,
+              },
+            ],
           },
         },
       },
@@ -52,6 +65,11 @@ describe("RightRail", () => {
     expect(screen.getByText("Mostly inbound")).toBeVisible();
     expect(screen.getByText("5 in / 2 out")).toBeVisible();
     expect(screen.getByText(/They send \+3 KB/)).toBeVisible();
+    expect(screen.getByText("Other emails from sender")).toBeVisible();
+    expect(screen.getByRole("link", { name: /Earlier question/ })).toHaveAttribute(
+      "href",
+      "/m/inbox/thread-1",
+    );
     expect(screen.queryByText(/"kind"/)).not.toBeInTheDocument();
   });
 });

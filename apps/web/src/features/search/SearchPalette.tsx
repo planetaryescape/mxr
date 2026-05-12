@@ -47,6 +47,7 @@ export function SearchPalette() {
   });
 
   const rows = suggestions.data?.groups.flatMap((group) => group.rows).slice(0, 8) ?? [];
+  const activeRowId = activeIndex >= 0 ? `search-palette-result-${activeIndex}` : undefined;
 
   useEffect(() => {
     setActiveIndex((current) => {
@@ -88,12 +89,15 @@ export function SearchPalette() {
   function handleKeyDown(event: KeyboardEvent) {
     if (event.key === "ArrowDown" || (event.ctrlKey && event.key.toLowerCase() === "j")) {
       event.preventDefault();
+      event.stopPropagation();
       move(1);
     } else if (event.key === "ArrowUp" || (event.ctrlKey && event.key.toLowerCase() === "k")) {
       event.preventDefault();
+      event.stopPropagation();
       move(-1);
     } else if (event.key === "Enter") {
       event.preventDefault();
+      event.stopPropagation();
       const row = activeIndex >= 0 ? rows[activeIndex] : undefined;
       if (row) openRow(row);
       else goToSearch();
@@ -104,7 +108,7 @@ export function SearchPalette() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
         className="top-[18vh] max-h-[74vh] translate-y-0 gap-0 overflow-hidden rounded-xl border-border/80 bg-popover/95 p-0 shadow-2xl backdrop-blur sm:max-w-[720px]"
-        onKeyDown={handleKeyDown}
+        onKeyDownCapture={handleKeyDown}
       >
         <DialogTitle className="sr-only">Search mail</DialogTitle>
         <div className="flex items-center border-b border-border bg-muted/30 px-4">
@@ -118,6 +122,8 @@ export function SearchPalette() {
             }}
             placeholder="Search local mail..."
             aria-label="Search mail"
+            aria-controls="search-palette-results"
+            aria-activedescendant={activeRowId}
             className="h-12 !border-0 bg-transparent px-0 text-sm !outline-none !ring-0 !ring-offset-0 shadow-none focus:outline-none focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0"
           />
         </div>
@@ -132,14 +138,19 @@ export function SearchPalette() {
               Searching local mail...
             </div>
           ) : rows.length > 0 ? (
-            <div className="grid gap-1">
+            <div id="search-palette-results" className="grid gap-1" role="listbox">
               {rows.map((row, index) => (
                 <button
                   key={row.id}
+                  id={`search-palette-result-${index}`}
                   type="button"
+                  role="option"
+                  aria-selected={activeIndex === index}
                   className={cn(
                     "grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-3 py-2 text-left text-xs outline-none transition-colors",
-                    activeIndex === index ? "bg-muted text-foreground" : "hover:bg-muted/70",
+                    activeIndex === index
+                      ? "bg-primary/15 text-foreground ring-1 ring-primary/35"
+                      : "hover:bg-muted/70",
                   )}
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => openRow(row)}

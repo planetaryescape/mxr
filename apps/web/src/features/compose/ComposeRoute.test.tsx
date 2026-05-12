@@ -157,9 +157,20 @@ describe("ComposeRoute keyboard flow", () => {
   test("does not re-save an unchanged draft", async () => {
     renderWithQueryClient(<ComposeRoute />);
 
-    const save = await screen.findByRole("button", { name: "Save" });
+    const save = await screen.findByRole("button", { name: /save/i });
     fireEvent.click(save);
 
     expect(api.updateComposeSession).not.toHaveBeenCalled();
+  });
+
+  test("shows keyboard shortcuts for compose actions", async () => {
+    renderWithQueryClient(<ComposeRoute />);
+
+    expect(await screen.findByRole("button", { name: /refresh/i })).toBeVisible();
+    expect(screen.getByText("⇧⌘R")).toBeVisible();
+    expect(screen.getByText("⌘S")).toBeVisible();
+    expect(screen.getByText("⌘⌫")).toBeVisible();
+    expect(screen.getByText("⌘Enter")).toBeVisible();
+    expect(screen.getByText("⇧⌘A")).toBeVisible();
   });
 });

@@ -168,6 +168,11 @@ describe("ThreadRoute", () => {
       },
     });
     api.modifyLabels.mockResolvedValue({ ok: true, result: { succeeded: 2 } });
+    api.summarizeThread.mockResolvedValue({
+      kind: "ThreadSummary",
+      model: "auto-model",
+      text: "- Auto summary",
+    });
   });
 
   afterEach(() => {
@@ -310,6 +315,57 @@ describe("ThreadRoute", () => {
     const label = screen.getAllByText("Work")[0];
     expect(label).toBeDefined();
     expect(label!).toHaveStyle({ color: "#fb4c2f" });
+  });
+
+  test("renders cached thread summaries inline without regenerating", async () => {
+    api.fetchThread.mockResolvedValueOnce({
+      ...thread,
+      summary: {
+        generated_at: "2026-05-11T10:02:00Z",
+        model: "cached-model",
+        text: "- Cached useful point",
+      },
+    });
+    renderWithQueryClient(
+      <>
+        <ThreadRoute />
+        <RightRail />
+      </>,
+    );
+
+    expect(await screen.findByText("AI overview")).toBeVisible();
+    expect(screen.getByText("cached-model")).toBeVisible();
+    const cachedSummaryToggle = screen.getByRole("button", {
+      name: /AI overview\s*cached-model/i,
+    });
+    if (cachedSummaryToggle.getAttribute("aria-expanded") === "false") {
+      fireEvent.click(cachedSummaryToggle);
+    }
+    expect(api.summarizeThread).not.toHaveBeenCalled();
+  });
+
+  test("auto-generates thread summaries inline above the email instead of the right rail", async () => {
+    api.summarizeThread.mockResolvedValueOnce({
+      kind: "ThreadSummary",
+      model: "summary-model",
+      text: "- First useful point\n- Second useful point",
+    });
+    renderWithQueryClient(
+      <>
+        <ThreadRoute />
+        <RightRail />
+      </>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+
+    expect(await screen.findByText("AI overview")).toBeVisible();
+    expect(screen.getByText("summary-model")).toBeVisible();
+    const summaryToggle = screen.getByRole("button", { name: /AI overview\s*summary-model/i });
+    if (summaryToggle.getAttribute("aria-expanded") === "false") {
+      fireEvent.click(summaryToggle);
+    }
+    expect(screen.queryByText(/"kind"/)).not.toBeInTheDocument();
   });
 
   test("renders sender profile as relationship stats in the right rail", async () => {

@@ -3,6 +3,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Archive,
   Ban,
+  ChevronDown,
   Clock,
   FileText,
   Forward,
@@ -82,6 +83,13 @@ interface LabelChange {
   remove: string[];
 }
 
+interface ThreadSummaryView {
+  model?: string;
+  generatedAt?: string;
+  text: string;
+  bullets: string[];
+}
+
 export function ThreadRoute() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const parts = pathname.split("/").filter(Boolean);
@@ -151,7 +159,11 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   const [remoteImages, setRemoteImages] = useState(true);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const [threadSummary, setThreadSummary] = useState<ThreadSummaryView | null>(null);
+  const [summaryExpanded, setSummaryExpanded] = useState(true);
+  const autoSummaryThreadRef = useRef<string | null>(null);
   const openRail = useModals((state) => state.openRightRail);
+  const closeRail = useModals((state) => state.closeRightRail);
 
   useEffect(() => {
     const paneState = useMailboxPane.getState();
@@ -163,9 +175,24 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   }, [data.thread.id, setActivePane]);
 
   const summary = useMutation({
-    mutationFn: () => summarizeThread(data.thread.id),
-    onSuccess: (result) => openRail("thread-summary", result),
-    onError: (error) => toast.error("Summary failed", { description: error.message }),
+    mutationFn: (_input?: { silent?: boolean }) => summarizeThread(data.thread.id),
+    onSuccess: (result, input) => {
+      const view = normalizeThreadSummary(result);
+      if (!view) {
+        if (!input?.silent) {
+          toast.error("Summary failed", { description: "The summary response was empty." });
+        }
+        return;
+      }
+      setThreadSummary(view);
+      setSummaryExpanded(true);
+      closeRail();
+    },
+    onError: (error, input) => {
+      if (!input?.silent) {
+        toast.error("Summary failed", { description: error.message });
+      }
+    },
   });
   const senderProfile = useMutation({
     mutationFn: (email: string) => fetchSenderProfile({ accountId: data.thread.account_id, email }),
@@ -267,7 +294,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         if (attachments.length > 0) openRail("attachments", attachments);
       } else if (event.key === "y") {
         event.preventDefault();
-        summary.mutate();
+        summary.mutate(undefined);
       } else if (event.key === "p") {
         event.preventDefault();
         if (primarySenderEmail) senderProfile.mutate(primarySenderEmail);
@@ -328,6 +355,19 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     const handle = window.setTimeout(() => markReadRef.current(unreadIds), 2000);
     return () => window.clearTimeout(handle);
   }, [data.messages]);
+
+  useEffect(() => {
+    const cachedSummary = normalizeThreadSummary(data.summary ? { summary: data.summary } : null);
+    setThreadSummary(cachedSummary);
+    setSummaryExpanded(true);
+    if (cachedSummary) {
+      autoSummaryThreadRef.current = data.thread.id;
+      return;
+    }
+    if (autoSummaryThreadRef.current === data.thread.id) return;
+    autoSummaryThreadRef.current = data.thread.id;
+    summary.mutate({ silent: true });
+  }, [data.thread.id, data.summary, summary.mutate]);
 
   const overflowActions = useMemo<ReaderOverflowAction[]>(
     () => [
@@ -471,7 +511,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
               </ToggleGroup>
             </div>
             <label
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground shadow-sm"
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-border/90 bg-muted/70 px-2.5 text-xs font-medium text-foreground shadow-sm"
               htmlFor="thread-remote-images"
             >
               <span>Remote images</span>
@@ -485,7 +525,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
           </div>
         </div>
         <div
-          className="mt-3 flex min-w-0 flex-nowrap items-center gap-2 overflow-hidden border-t border-border/70 pt-3"
+          className="mt-3 flex min-w-0 flex-nowrap items-center justify-end gap-2 overflow-hidden border-t border-border/70 pt-3"
           role="toolbar"
           aria-label="Message actions"
         >
@@ -504,7 +544,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
             Forward
           </ReaderActionButton>
           <ReaderActionButton
-            onClick={() => summary.mutate()}
+            onClick={() => summary.mutate(undefined)}
             disabled={summary.isPending}
             shortcut="y"
           >
@@ -539,6 +579,15 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         className="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-3 sm:px-6 lg:px-8"
       >
         <div className="flex w-full min-w-0 flex-col">
+          {threadSummary ? (
+            <ThreadSummaryAccordion
+              summary={threadSummary}
+              expanded={summaryExpanded}
+              onExpandedChange={setSummaryExpanded}
+            />
+          ) : summary.isPending ? (
+            <ThreadSummaryLoading />
+          ) : null}
           {data.messages.map((message) => (
             <ThreadMessage
               key={message.id}
@@ -552,6 +601,70 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         </div>
       </div>
     </article>
+  );
+}
+
+function ThreadSummaryAccordion({
+  summary,
+  expanded,
+  onExpandedChange,
+}: {
+  summary: ThreadSummaryView;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+}) {
+  return (
+    <section className="mb-4 rounded-lg border border-border/80 bg-muted/35 shadow-sm">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        aria-expanded={expanded}
+        onClick={() => onExpandedChange(!expanded)}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <FileText className="size-4 shrink-0 text-primary" />
+          <span className="font-medium">AI overview</span>
+          {summary.model ? (
+            <span className="truncate font-mono text-2xs text-muted-foreground">
+              {summary.model}
+            </span>
+          ) : null}
+        </span>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            expanded && "rotate-180",
+          )}
+        />
+      </button>
+      {expanded ? (
+        <div className="border-t border-border/70 px-4 py-3 text-sm leading-6 text-foreground">
+          {summary.bullets.length > 0 ? (
+            <ul className="space-y-1.5">
+              {summary.bullets.map((item) => (
+                <li key={item} className="flex gap-2">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
+                  <span className="min-w-0">{item}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>{summary.text}</p>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ThreadSummaryLoading() {
+  return (
+    <section className="mb-4 rounded-lg border border-border/80 bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
+      <span className="flex items-center gap-2">
+        <RefreshCw className="size-3.5 animate-spin" />
+        Summarizing thread…
+      </span>
+    </section>
   );
 }
 
@@ -810,6 +923,40 @@ function formatAddressList(addresses?: { name?: string | null; email: string }[]
 function formatAddress(address: { name?: string | null; email: string }): string {
   const name = address.name?.trim();
   return name ? `${name} <${address.email}>` : address.email;
+}
+
+function normalizeThreadSummary(payload: unknown): ThreadSummaryView | null {
+  const source =
+    isRecord(payload) && isRecord(payload.summary)
+      ? payload.summary
+      : isRecord(payload)
+        ? payload
+        : null;
+  const text = typeof source?.text === "string" ? source.text.trim() : "";
+  if (!text) return null;
+  const model = typeof source?.model === "string" ? source.model : undefined;
+  const generatedAt =
+    typeof source?.generated_at === "string" ? source.generated_at : undefined;
+  return { generatedAt, model, text, bullets: summaryBullets(text) };
+}
+
+function summaryBullets(text: string): string[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .trim()
+        .replace(/^[-*•]\s+/, "")
+        .replace(/^\d+[.)]\s+/, ""),
+    )
+    .filter((line) => !/^(summary|next steps):$/i.test(line))
+    .filter(Boolean);
+  if (lines.length > 1) return lines;
+  return [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function uniqueLabels(messages: MessageRowView[]) {

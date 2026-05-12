@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT s.id as \"id!\", s.name as \"name!\", s.body as \"body!\",\n                      s.created_at as \"created_at!\", s.updated_at as \"updated_at!\"\n               FROM signature_defaults d\n               JOIN signatures s ON s.id = d.signature_id\n               WHERE d.kind = ? AND d.scope_key IN (?, ?, ?)\n               ORDER BY CASE d.scope_key\n                   WHEN ? THEN 0\n                   WHEN ? THEN 1\n                   WHEN ? THEN 2\n                   ELSE 3\n               END\n               LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "body!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "updated_at!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "590576dbaa226b094c2978b731d2f0cf9f9c3984a7a21c8e011325803e9a2dcc"
+}

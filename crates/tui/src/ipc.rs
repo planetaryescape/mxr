@@ -214,6 +214,7 @@ pub(crate) fn request_supports_retry(request: &Request) -> bool {
             | Request::ListSubscriptions { .. }
             | Request::RunSavedSearch { .. }
             | Request::ListSnoozed
+            | Request::ResolveSignature { .. }
             | Request::PrepareReply { .. }
             | Request::PrepareForward { .. }
             | Request::ListDrafts

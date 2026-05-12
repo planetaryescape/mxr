@@ -5,7 +5,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::*;
 
 const MODAL_WIDTH_PERCENT: u16 = 70;
-const MODAL_HEIGHT_PERCENT: u16 = 60;
+const MODAL_HEIGHT_PERCENT: u16 = 78;
 
 pub fn draw(frame: &mut Frame, area: Rect, state: &SenderProfileModalState, theme: &Theme) {
     if !state.visible {
@@ -16,8 +16,8 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &SenderProfileModalState, them
     Clear.render(modal_area, frame.buffer_mut());
 
     let title = match &state.email {
-        Some(email) => format!(" Sender · {email} · Esc close "),
-        None => " Sender · Esc close ".to_string(),
+        Some(email) => format!(" Sender · {email} · j/k select · Enter open · Esc close "),
+        None => " Sender · j/k select · Enter open · Esc close ".to_string(),
     };
     let block = Block::default()
         .title(title)
@@ -49,7 +49,7 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &SenderProfileModalState, them
              table, or `mxr sender <email>` from the CLI.",
             Style::default().fg(theme.text_muted),
         ))],
-        Some(profile) => profile_lines(profile, theme),
+        Some(profile) => profile_lines(state, profile, theme),
     };
 
     let paragraph = Paragraph::new(lines)
@@ -58,7 +58,11 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &SenderProfileModalState, them
     frame.render_widget(paragraph, inner);
 }
 
-fn profile_lines<'a>(profile: &'a mxr_protocol::SenderProfileData, theme: &Theme) -> Vec<Line<'a>> {
+fn profile_lines<'a>(
+    state: &'a SenderProfileModalState,
+    profile: &'a mxr_protocol::SenderProfileData,
+    theme: &Theme,
+) -> Vec<Line<'a>> {
     let label_style = Style::default().fg(theme.text_muted);
     let mut lines = Vec::new();
 
@@ -128,6 +132,61 @@ fn profile_lines<'a>(profile: &'a mxr_protocol::SenderProfileData, theme: &Theme
         )));
     }
 
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Other emails from sender",
+        Style::default()
+            .fg(theme.text_primary)
+            .add_modifier(Modifier::BOLD),
+    )));
+    let recent_messages = state.recent_messages();
+    if recent_messages.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "No other local emails from this sender yet.",
+            label_style,
+        )));
+    } else {
+        for (index, message) in recent_messages.iter().enumerate() {
+            let marker = if index == state.selected_recent_index {
+                "› "
+            } else {
+                "  "
+            };
+            let row_style = if index == state.selected_recent_index {
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.text_primary)
+            };
+            lines.push(
+                Line::from(vec![
+                    Span::styled(marker, row_style),
+                    Span::styled(message.subject.trim().to_string(), row_style),
+                    Span::styled(
+                        format!(" · {}", message.date.format("%Y-%m-%d %H:%M")),
+                        label_style,
+                    ),
+                    Span::styled(
+                        if message.has_attachments {
+                            " · attachment"
+                        } else {
+                            ""
+                        },
+                        label_style,
+                    ),
+                ])
+                .style(row_style),
+            );
+            if !message.snippet.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::styled("    ", label_style),
+                    Span::styled(truncate(&message.snippet, 96), label_style),
+                ]));
+            }
+        }
+    }
+
     lines
 }
 
@@ -155,8 +214,8 @@ fn centered_rect(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
-    use mxr_core::AccountId;
-    use mxr_protocol::SenderProfileData;
+    use mxr_core::{AccountId, MessageId, ThreadId};
+    use mxr_protocol::{SenderEmailReferenceData, SenderProfileData};
     use mxr_test_support::render_to_string;
 
     fn sample_profile() -> SenderProfileData {
@@ -179,15 +238,27 @@ mod tests {
             outbound_storage_bytes: 262_144,
             attachment_count: 3,
             attachment_bytes: 512_000,
+            recent_messages: vec![SenderEmailReferenceData {
+                message_id: MessageId::new(),
+                thread_id: ThreadId::new(),
+                subject: "Previous contract note".into(),
+                snippet: "Can you send the signed copy?".into(),
+                from_name: Some("Alice Example".into()),
+                from_email: "alice@example.com".into(),
+                date: Utc.with_ymd_and_hms(2026, 4, 30, 9, 0, 0).unwrap(),
+                direction: "inbound".into(),
+                has_attachments: true,
+            }],
+            relationship: None,
         }
     }
 
     #[test]
     fn loading_state_shows_placeholder() {
         let mut state = SenderProfileModalState::default();
-        state.open_loading("alice@example.com".into());
-        let snapshot = render_to_string(80, 18, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 18), &state, &Theme::default());
+        state.open_loading("alice@example.com".into(), None);
+        let snapshot = render_to_string(80, 30, |frame| {
+            draw(frame, Rect::new(0, 0, 80, 30), &state, &Theme::default());
         });
         assert!(
             snapshot.contains("Loading sender profile..."),
@@ -202,10 +273,10 @@ mod tests {
     #[test]
     fn renders_aggregates_when_profile_present() {
         let mut state = SenderProfileModalState::default();
-        state.open_loading("alice@example.com".into());
+        state.open_loading("alice@example.com".into(), None);
         state.set_profile(Some(sample_profile()));
-        let snapshot = render_to_string(80, 18, |frame| {
-            draw(frame, Rect::new(0, 0, 80, 18), &state, &Theme::default());
+        let snapshot = render_to_string(80, 30, |frame| {
+            draw(frame, Rect::new(0, 0, 80, 30), &state, &Theme::default());
         });
         assert!(
             snapshot.contains("47 inbound"),
@@ -219,12 +290,16 @@ mod tests {
             snapshot.contains("2"),
             "open thread count must surface; got:\n{snapshot}",
         );
+        assert!(
+            snapshot.contains("Previous contract note"),
+            "recent sender emails must surface; got:\n{snapshot}",
+        );
     }
 
     #[test]
     fn unknown_sender_shows_empty_message() {
         let mut state = SenderProfileModalState::default();
-        state.open_loading("nobody@example.com".into());
+        state.open_loading("nobody@example.com".into(), None);
         state.set_profile(None);
         let snapshot = render_to_string(80, 18, |frame| {
             draw(frame, Rect::new(0, 0, 80, 18), &state, &Theme::default());
@@ -233,6 +308,16 @@ mod tests {
             snapshot.contains("Sender unknown"),
             "unknown senders must surface a hint; got:\n{snapshot}",
         );
+    }
+}
+
+fn truncate(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{truncated}…")
+    } else {
+        truncated
     }
 }
 

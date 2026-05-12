@@ -32,6 +32,19 @@ pub enum ChatRole {
     Assistant,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmFeature {
+    Summarize,
+    RelationshipSummary,
+    Commitments,
+    DraftAssist,
+    DraftNew,
+    DraftRefine,
+    VoiceMatch,
+    HumanizeRewrite,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: ChatRole,
@@ -120,6 +133,10 @@ impl LlmRuntime {
             .provider
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = provider;
+    }
+
+    pub fn for_feature(self: &Arc<Self>, _feature: LlmFeature) -> Arc<Self> {
+        self.clone()
     }
 
     pub async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {

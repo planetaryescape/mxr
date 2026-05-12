@@ -7,15 +7,17 @@ Compose a new email
 Usage: mxr compose [OPTIONS]
 
 Options:
-      --to <TO>            Recipient(s), comma-separated
-      --cc <CC>            CC recipient(s)
-      --bcc <BCC>          BCC recipient(s)
-      --subject <SUBJECT>  Subject line
-      --body <BODY>        Message body as string
-      --body-stdin         Read message body from stdin
-      --attach <ATTACH>    File path to attach (repeatable)
-      --from <FROM>        Account name to send from
-      --yes                Skip confirmation prompt
-      --dry-run            Show what would be sent without sending
-      --format <FORMAT>    [possible values: table, json, jsonl, csv, ids]
-  -h, --help               Print help
+      --to <TO>                Recipient(s), comma-separated
+      --cc <CC>                CC recipient(s)
+      --bcc <BCC>              BCC recipient(s)
+      --subject <SUBJECT>      Subject line
+      --body <BODY>            Message body as string
+      --body-stdin             Read message body from stdin
+      --attach <ATTACH>        File path to attach (repeatable)
+      --from <FROM>            Account name to send from
+      --signature <SIGNATURE>  Insert this signature by name instead of the scoped default
+      --no-signature           Do not insert any signature
+      --yes                    Skip confirmation prompt
+      --dry-run                Show what would be sent without sending
+      --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
+  -h, --help                   Print help

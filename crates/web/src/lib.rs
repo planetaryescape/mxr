@@ -873,7 +873,11 @@ async fn thread(
     ensure_authorized(&headers, auth.token.as_deref(), &state.config.auth_token)?;
     let thread_id = parse_thread_id(&thread_id)?;
     match ipc_request(&state.config.socket_path, Request::GetThread { thread_id }).await? {
-        ResponseData::Thread { thread, messages } => {
+        ResponseData::Thread {
+            thread,
+            messages,
+            summary,
+        } => {
             let labels = match ipc_request(
                 &state.config.socket_path,
                 Request::ListLabels { account_id: None },
@@ -912,6 +916,7 @@ async fn thread(
                     .collect::<Vec<_>>(),
                 "bodies": bodies,
                 "body_failures": body_failures,
+                "summary": summary,
                 "reader_mode": thread_reader_mode(&bodies),
                 "right_rail": {
                     "title": "Thread context",
@@ -1147,6 +1152,7 @@ async fn update_compose_session(
         references: extract_references(&content)?,
         thread_id: extract_thread_id(&content)?,
         attach: request.attach,
+        signature: _existing_frontmatter.signature,
     };
     let rendered = render_compose_file(&updated, &body, context.as_deref())
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
@@ -2367,6 +2373,7 @@ async fn restore_saved_draft_session(
             .iter()
             .map(|attachment| attachment.display().to_string())
             .collect(),
+        signature: None,
     };
     let rendered = render_compose_file(&frontmatter, &draft.body_markdown, None)
         .map_err(|error| BridgeError::Ipc(error.to_string()))?;
@@ -4351,6 +4358,7 @@ mod tests {
                     data: ResponseData::Thread {
                         thread: thread.clone(),
                         messages: vec![envelope.clone()],
+                        summary: None,
                     },
                 }),
                 Request::ListLabels { .. } => Some(Response::Ok {
@@ -4419,6 +4427,7 @@ mod tests {
                     data: ResponseData::Thread {
                         thread: thread.clone(),
                         messages: vec![envelope.clone()],
+                        summary: None,
                     },
                 }),
                 Request::ListLabels { .. } => Some(Response::Ok {
@@ -4480,6 +4489,7 @@ mod tests {
                     data: ResponseData::Thread {
                         thread: thread.clone(),
                         messages: vec![envelope.clone()],
+                        summary: None,
                     },
                 }),
                 Request::ListLabels { .. } => Some(Response::Ok {

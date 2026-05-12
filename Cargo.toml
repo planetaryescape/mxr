@@ -74,6 +74,7 @@ members = [
     "crates/core",
     "crates/export",
     "crates/keychain",
+    "crates/humanizer",
     "crates/llm",
     "crates/mail-parse",
     "crates/outbound",
@@ -84,6 +85,7 @@ members = [
     "crates/provider-outlook",
     "crates/provider-smtp",
     "crates/reader",
+    "crates/relationship",
     "crates/rules",
     "crates/search",
     "crates/semantic",
@@ -124,6 +126,7 @@ mxr-config = { path = "crates/config", version = "0.5.8" }
 mxr-core = { path = "crates/core", version = "0.5.8" }
 mxr-export = { path = "crates/export", version = "0.5.8" }
 mxr-keychain = { path = "crates/keychain", version = "0.5.8" }
+mxr-humanizer = { path = "crates/humanizer", version = "0.5.8" }
 mxr-llm = { path = "crates/llm", version = "0.5.8" }
 mxr-mail-parse = { path = "crates/mail-parse", version = "0.5.8" }
 mxr-outbound = { path = "crates/outbound", version = "0.5.8" }
@@ -134,6 +137,7 @@ mxr-provider-imap = { path = "crates/provider-imap", version = "0.5.8" }
 mxr-provider-outlook = { path = "crates/provider-outlook", version = "0.5.8" }
 mxr-provider-smtp = { path = "crates/provider-smtp", version = "0.5.8" }
 mxr-reader = { path = "crates/reader", version = "0.5.8" }
+mxr-relationship = { path = "crates/relationship", version = "0.5.8" }
 mxr-rules = { path = "crates/rules", version = "0.5.8" }
 mxr-search = { path = "crates/search", version = "0.5.8" }
 mxr-semantic = { path = "crates/semantic", version = "0.5.8" }
@@ -176,6 +180,7 @@ tui-big-text = "0.8"
 uuid = { version = "1", features = ["v5", "v7", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 bitflags = { version = "2", features = ["serde"] }
+sha2 = "0.10"
 
 # Error handling
 thiserror = "2"
@@ -262,6 +267,7 @@ mxr-config = { workspace = true }
 mxr-core = { workspace = true }
 mxr-export = { workspace = true }
 mxr-keychain = { workspace = true }
+mxr-humanizer = { workspace = true }
 mxr-llm = { workspace = true }
 mxr-mail-parse = { workspace = true }
 mxr-outbound = { workspace = true }
@@ -272,6 +278,7 @@ mxr-provider-imap = { workspace = true }
 mxr-provider-outlook = { workspace = true }
 mxr-provider-smtp = { workspace = true }
 mxr-reader = { workspace = true }
+mxr-relationship = { workspace = true }
 mxr-rules = { workspace = true }
 mxr-search = { workspace = true }
 mxr-semantic = { workspace = true }

@@ -259,6 +259,9 @@ impl App {
         if self.modals.sender_profile.visible {
             return match (key.code, key.modifiers) {
                 (KeyCode::Esc | KeyCode::Char('q'), _) => Some(Action::CloseSenderViewModal),
+                (KeyCode::Down | KeyCode::Char('j'), _) => Some(Action::SenderProfileNextMessage),
+                (KeyCode::Up | KeyCode::Char('k'), _) => Some(Action::SenderProfilePrevMessage),
+                (KeyCode::Enter | KeyCode::Char('o'), _) => Some(Action::OpenSenderProfileMessage),
                 _ => None,
             };
         }

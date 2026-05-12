@@ -10,9 +10,11 @@ Arguments:
   <MESSAGE_ID>  Message ID to reply to
 
 Options:
-      --body <BODY>      Inline reply body (skip $EDITOR)
-      --body-stdin       Read reply body from stdin
-      --yes              Skip confirmation
-      --dry-run          Show what would be sent
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --body <BODY>            Inline reply body (skip $EDITOR)
+      --body-stdin             Read reply body from stdin
+      --signature <SIGNATURE>  Insert this signature by name instead of the scoped default
+      --no-signature           Do not insert any signature
+      --yes                    Skip confirmation
+      --dry-run                Show what would be sent
+      --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
+  -h, --help                   Print help

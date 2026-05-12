@@ -1110,6 +1110,7 @@ async fn ingest_sent_message(
             Vec::new()
         },
     };
+    let thread_id = envelope.thread_id.clone();
 
     state
         .store
@@ -1162,6 +1163,12 @@ async fn ingest_sent_message(
         })
         .await
         .map_err(|e| e.to_string())?;
+
+    if let Err(error) =
+        crate::handler::summarize::refresh_thread_summary_if_enabled(state, &thread_id).await
+    {
+        tracing::warn!(%thread_id, error = %error, "failed to refresh sent thread summary");
+    }
 
     Ok(message_id)
 }

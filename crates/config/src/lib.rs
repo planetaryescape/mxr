@@ -32,7 +32,7 @@ mod tests {
             deserialized.search.default_mode,
             mxr_core::SearchMode::Lexical
         );
-        assert!(!deserialized.search.semantic.enabled);
+        assert!(deserialized.search.semantic.enabled);
         assert_eq!(
             deserialized.search.semantic.active_profile,
             mxr_core::SemanticProfile::BgeSmallEnV15
@@ -152,6 +152,7 @@ editor = "emacs"
         assert!(config.render.reader_mode);
         assert_eq!(config.search.max_results, 200);
         assert_eq!(config.search.default_mode, mxr_core::SearchMode::Lexical);
+        assert!(config.search.semantic.enabled);
         assert_eq!(
             config.search.semantic.active_profile,
             mxr_core::SemanticProfile::BgeSmallEnV15

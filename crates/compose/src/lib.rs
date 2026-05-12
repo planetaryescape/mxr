@@ -35,9 +35,25 @@ pub enum ComposeKind {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComposeSignature {
+    pub name: String,
+    pub body: String,
+}
+
 /// Create a draft file on disk and return its path + the cursor line.
 pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usize), ComposeError> {
-    let (path, cursor_line, content) = build_draft_file(kind, from)?;
+    let (path, cursor_line, content) = build_draft_file(kind, from, None)?;
+    std::fs::write(&path, &content)?;
+    Ok((path, cursor_line))
+}
+
+pub fn create_draft_file_with_signature(
+    kind: ComposeKind,
+    from: &str,
+    signature: Option<&ComposeSignature>,
+) -> Result<(PathBuf, usize), ComposeError> {
+    let (path, cursor_line, content) = build_draft_file(kind, from, signature)?;
     std::fs::write(&path, &content)?;
     Ok((path, cursor_line))
 }
@@ -45,7 +61,17 @@ pub fn create_draft_file(kind: ComposeKind, from: &str) -> Result<(PathBuf, usiz
 /// Build the seed frontmatter for a compose kind without touching the filesystem.
 /// Use this when the caller wants to skip $EDITOR (inline body, dry-run, etc.).
 pub fn seed_frontmatter(kind: ComposeKind, from: &str) -> Result<ComposeFrontmatter, ComposeError> {
-    let (_path, _cursor, content) = build_draft_file(kind, from)?;
+    let (_path, _cursor, content) = build_draft_file(kind, from, None)?;
+    let (frontmatter, _body) = frontmatter::parse_compose_file(&content)?;
+    Ok(frontmatter)
+}
+
+pub fn seed_frontmatter_with_signature(
+    kind: ComposeKind,
+    from: &str,
+    signature: Option<&ComposeSignature>,
+) -> Result<ComposeFrontmatter, ComposeError> {
+    let (_path, _cursor, content) = build_draft_file(kind, from, signature)?;
     let (frontmatter, _body) = frontmatter::parse_compose_file(&content)?;
     Ok(frontmatter)
 }
@@ -54,7 +80,17 @@ pub async fn create_draft_file_async(
     kind: ComposeKind,
     from: &str,
 ) -> Result<(PathBuf, usize), ComposeError> {
-    let (path, cursor_line, content) = build_draft_file(kind, from)?;
+    let (path, cursor_line, content) = build_draft_file(kind, from, None)?;
+    tokio::fs::write(&path, &content).await?;
+    Ok((path, cursor_line))
+}
+
+pub async fn create_draft_file_async_with_signature(
+    kind: ComposeKind,
+    from: &str,
+    signature: Option<&ComposeSignature>,
+) -> Result<(PathBuf, usize), ComposeError> {
+    let (path, cursor_line, content) = build_draft_file(kind, from, signature)?;
     tokio::fs::write(&path, &content).await?;
     Ok((path, cursor_line))
 }
@@ -94,11 +130,12 @@ pub async fn delete_draft_file_async(path: &Path) -> Result<(), ComposeError> {
 fn build_draft_file(
     kind: ComposeKind,
     from: &str,
+    signature: Option<&ComposeSignature>,
 ) -> Result<(PathBuf, usize, String), ComposeError> {
     let draft_id = Uuid::now_v7();
     let path = std::env::temp_dir().join(format!("mxr-draft-{draft_id}.md"));
 
-    let (fm, body, context) = match kind {
+    let (mut fm, mut body, context) = match kind {
         ComposeKind::New { to, subject } => {
             let fm = ComposeFrontmatter {
                 to,
@@ -143,6 +180,11 @@ fn build_draft_file(
         }
     };
 
+    if let Some(signature) = signature {
+        fm.signature = Some(signature.name.clone());
+        body = insert_signature_block(&body, &signature.body);
+    }
+
     let content = frontmatter::render_compose_file(&fm, &body, context.as_deref())?;
 
     // Calculate cursor line: first empty line after frontmatter closing ---
@@ -160,6 +202,45 @@ fn build_draft_file(
         .unwrap_or(1);
 
     Ok((path, cursor_line, content))
+}
+
+pub fn append_signature_to_body(body: &str, signature_body: &str) -> String {
+    let signature = signature_block(signature_body);
+    if signature.is_empty() {
+        return body.trim().to_string();
+    }
+    let body = body.trim();
+    if body.is_empty() {
+        signature
+    } else {
+        format!("{body}\n\n{signature}")
+    }
+}
+
+fn insert_signature_block(body: &str, signature_body: &str) -> String {
+    let signature = signature_block(signature_body);
+    if signature.is_empty() {
+        return body.to_string();
+    }
+    let body = body.trim();
+    if body.is_empty() {
+        signature
+    } else if body.starts_with("---------- Forwarded message ----------") {
+        format!("{signature}\n\n{body}")
+    } else {
+        format!("{body}\n\n{signature}")
+    }
+}
+
+fn signature_block(signature_body: &str) -> String {
+    let trimmed = signature_body.trim();
+    if trimmed.is_empty() {
+        String::new()
+    } else if trimmed == "-- " || trimmed.starts_with("-- \n") {
+        trimmed.to_string()
+    } else {
+        format!("-- \n{trimmed}")
+    }
 }
 
 /// Validate a parsed draft before sending.
@@ -320,6 +401,38 @@ mod tests {
     }
 
     #[test]
+    fn creates_new_message_with_signature_block() {
+        let signature = ComposeSignature {
+            name: "Work".into(),
+            body: "Alice".into(),
+        };
+        let (path, cursor) = create_draft_file_with_signature(
+            ComposeKind::New {
+                to: String::new(),
+                subject: String::new(),
+            },
+            "me@example.com",
+            Some(&signature),
+        )
+        .unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let (fm, body) = parse_compose_file(&content).unwrap();
+
+        assert_eq!(fm.signature.as_deref(), Some("Work"));
+        assert_eq!(body, "-- \nAlice");
+        assert!(cursor > 1);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn append_signature_preserves_existing_delimiter() {
+        let body = append_signature_to_body("Hello", "-- \nAlice");
+
+        assert_eq!(body, "Hello\n\n-- \nAlice");
+    }
+
+    #[test]
     fn validates_missing_recipient() {
         let fm = ComposeFrontmatter {
             to: String::new(),
@@ -331,6 +444,7 @@ mod tests {
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
+            signature: None,
         };
         let issues = validate_draft(&fm, "body");
         assert_eq!(
@@ -351,6 +465,7 @@ mod tests {
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
+            signature: None,
         };
         let issues = validate_draft_for_save(&fm, "body");
         assert!(issues.is_empty());
@@ -368,6 +483,7 @@ mod tests {
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
+            signature: None,
         };
         let issues = validate_draft(&fm, "body");
         assert_eq!(
@@ -388,6 +504,7 @@ mod tests {
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
+            signature: None,
         };
         let issues = validate_draft(&fm, "body");
         assert_eq!(issue_messages(&issues), vec!["Warning: Subject is empty"]);
@@ -424,6 +541,7 @@ mod tests {
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
+            signature: None,
         };
         let issues = validate_draft(&fm, "Hello there!");
         assert!(issues.is_empty());
@@ -441,6 +559,7 @@ mod tests {
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
+            signature: None,
         };
         let issues = validate_draft_for_save(&fm, "Hello there!");
         assert_eq!(issue_messages(&issues), vec!["Warning: Subject is empty"]);
@@ -458,6 +577,7 @@ mod tests {
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
+            signature: None,
         };
         let issues = validate_draft_for_save(&fm, "Hello there!");
         assert_eq!(

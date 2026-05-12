@@ -115,7 +115,13 @@ pub fn hints_for_context(context: UiContext, selected_count: usize) -> Vec<(Stri
         ),
         UiContext::MailboxMessage => display_bindings_for_actions(
             ViewContext::ThreadView,
-            &["reply", "reply_all", "archive", "open_links", "help"],
+            &[
+                "reply",
+                "reply_all",
+                "summarize_current_thread",
+                "archive",
+                "open_links",
+            ],
         ),
         UiContext::SearchEditor => vec![
             ("Enter".to_string(), "Run Now".to_string()),

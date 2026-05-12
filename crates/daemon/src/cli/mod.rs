@@ -263,6 +263,13 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Manage outgoing compose signatures
+    Signatures {
+        #[command(subcommand)]
+        action: Option<SignaturesAction>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// Set or cancel a follow-up reminder on an outbound message.
     /// Reminders fire if no reply has arrived by the given time —
     /// surfacing the message back to the user as a follow-up.
@@ -606,6 +613,12 @@ pub enum Command {
         /// Account name to send from
         #[arg(long)]
         from: Option<String>,
+        /// Insert this signature by name instead of the scoped default
+        #[arg(long, conflicts_with = "no_signature")]
+        signature: Option<String>,
+        /// Do not insert any signature
+        #[arg(long)]
+        no_signature: bool,
         /// Skip confirmation prompt
         #[arg(long)]
         yes: bool,
@@ -625,6 +638,12 @@ pub enum Command {
         /// Read reply body from stdin
         #[arg(long)]
         body_stdin: bool,
+        /// Insert this signature by name instead of the scoped default
+        #[arg(long, conflicts_with = "no_signature")]
+        signature: Option<String>,
+        /// Do not insert any signature
+        #[arg(long)]
+        no_signature: bool,
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
@@ -644,6 +663,12 @@ pub enum Command {
         /// Read body from stdin
         #[arg(long)]
         body_stdin: bool,
+        /// Insert this signature by name instead of the scoped default
+        #[arg(long, conflicts_with = "no_signature")]
+        signature: Option<String>,
+        /// Do not insert any signature
+        #[arg(long)]
+        no_signature: bool,
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
@@ -666,6 +691,12 @@ pub enum Command {
         /// Read body from stdin
         #[arg(long)]
         body_stdin: bool,
+        /// Insert this signature by name instead of the scoped default
+        #[arg(long, conflicts_with = "no_signature")]
+        signature: Option<String>,
+        /// Do not insert any signature
+        #[arg(long)]
+        no_signature: bool,
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
@@ -1064,6 +1095,56 @@ pub enum SnippetsAction {
     },
     /// Delete a snippet by name
     Remove { name: String },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum SignaturesAction {
+    /// List all signatures (default if no subcommand)
+    List,
+    /// Create or update a signature inline
+    Set {
+        /// Human-readable signature name
+        name: String,
+        /// Signature body. The RFC 3676 `-- ` delimiter is inserted at compose time if absent.
+        body: String,
+    },
+    /// Delete a signature by name
+    Remove { name: String },
+    /// List scoped default signatures
+    Defaults,
+    /// Set a scoped default signature
+    Default {
+        /// Signature name
+        name: String,
+        /// Which compose kind this default applies to
+        #[arg(long, value_enum, default_value = "all")]
+        kind: SignatureDefaultKindArg,
+        /// Account selector (key, name, email, or id). Omit for global default.
+        #[arg(long)]
+        account: Option<String>,
+        /// Exact from-address default within the account.
+        #[arg(long = "from", requires = "account")]
+        from_email: Option<String>,
+    },
+    /// Clear a scoped default signature
+    ClearDefault {
+        /// Which compose kind to clear
+        #[arg(long, value_enum, default_value = "all")]
+        kind: SignatureDefaultKindArg,
+        /// Account selector (key, name, email, or id). Omit for global default.
+        #[arg(long)]
+        account: Option<String>,
+        /// Exact from-address default within the account.
+        #[arg(long = "from", requires = "account")]
+        from_email: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum SignatureDefaultKindArg {
+    All,
+    New,
+    Reply,
 }
 
 #[derive(Debug, Clone, Subcommand)]

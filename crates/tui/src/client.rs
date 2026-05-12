@@ -153,7 +153,10 @@ impl Client {
             .await?;
         match resp {
             Response::Ok {
-                data: ResponseData::Thread { thread, messages },
+                data:
+                    ResponseData::Thread {
+                        thread, messages, ..
+                    },
             } => Ok((thread, messages)),
             Response::Error { message, .. } => Err(MxrError::Ipc(message)),
             _ => Err(MxrError::Ipc("Unexpected response".into())),

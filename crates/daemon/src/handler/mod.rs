@@ -11,21 +11,26 @@
 mod accounts;
 mod admin;
 mod auth_sessions;
+mod commitments;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
 mod draft_assist;
 mod helpers;
+mod humanizer;
 mod mailbox;
 mod mutations;
 mod platform;
+mod relationship_profile;
 mod reply_later;
 mod rules;
 mod runtime;
 mod screener;
 mod sender_view;
+mod signatures;
 mod snippets;
 mod status_helpers;
-mod summarize;
+pub(crate) mod summarize;
+mod user_voice;
 
 use crate::state::AppState;
 use mxr_config::SafetyPolicy;
@@ -404,9 +409,81 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             snippets::set_snippet(state, name.clone(), body.clone(), vars.clone()).await
         }
         Request::DeleteSnippet { name } => snippets::delete_snippet(state, name).await,
+        Request::ListSignatures => signatures::list_signatures(state).await,
+        Request::ListSignatureDefaults => signatures::list_signature_defaults(state).await,
+        Request::SetSignature { name, body } => {
+            signatures::set_signature(state, name.clone(), body.clone()).await
+        }
+        Request::DeleteSignature { name } => signatures::delete_signature(state, name).await,
+        Request::SetSignatureDefault {
+            name,
+            kind,
+            account_id,
+            from_email,
+        } => {
+            signatures::set_signature_default(
+                state,
+                name,
+                *kind,
+                account_id.as_ref(),
+                from_email.as_deref(),
+            )
+            .await
+        }
+        Request::ClearSignatureDefault {
+            kind,
+            account_id,
+            from_email,
+        } => {
+            signatures::clear_signature_default(
+                state,
+                *kind,
+                account_id.as_ref(),
+                from_email.as_deref(),
+            )
+            .await
+        }
+        Request::ResolveSignature {
+            name,
+            kind,
+            account_id,
+            from_email,
+        } => {
+            signatures::resolve_signature(
+                state,
+                name.as_deref(),
+                *kind,
+                account_id.as_ref(),
+                from_email.as_deref(),
+            )
+            .await
+        }
         Request::GetSenderProfile { account_id, email } => {
             sender_view::get_sender_profile(state, account_id, email).await
         }
+        Request::GetRelationshipProfile { account_id, email } => {
+            relationship_profile::get_relationship_profile(state, account_id, email).await
+        }
+        Request::RebuildRelationshipProfile { account_id, email } => {
+            relationship_profile::rebuild_relationship_profile(state, account_id, email).await
+        }
+        Request::ListCommitments {
+            account_id,
+            email,
+            status,
+        } => commitments::list_commitments(state, account_id, email.as_deref(), *status).await,
+        Request::ResolveCommitment { commitment_id } => {
+            commitments::resolve_commitment(state, commitment_id).await
+        }
+        Request::GetUserVoice { account_id } => user_voice::get_user_voice(state, account_id).await,
+        Request::RebuildUserVoice { account_id } => {
+            user_voice::rebuild_user_voice(state, account_id).await
+        }
+        Request::HumanizerScore { text } => humanizer::score_text(text).await,
+        Request::HumanizerRewrite {
+            text,
+            max_iterations,
+        } => humanizer::rewrite_text(text, *max_iterations).await,
         Request::ListScreenerQueue { account_id, limit } => {
             screener::list_queue(state, account_id, *limit).await
         }
@@ -561,6 +638,9 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListSnoozed
             | Request::ListReplyQueue
             | Request::ListSnippets
+            | Request::ListSignatures
+            | Request::ListSignatureDefaults
+            | Request::ResolveSignature { .. }
             | Request::GetSenderProfile { .. }
             | Request::ListScreenerQueue { .. }
             | Request::ListScreenerDecisions { .. }
@@ -663,7 +743,22 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ListSnippets => "list_snippets",
         Request::SetSnippet { .. } => "set_snippet",
         Request::DeleteSnippet { .. } => "delete_snippet",
+        Request::ListSignatures => "list_signatures",
+        Request::ListSignatureDefaults => "list_signature_defaults",
+        Request::SetSignature { .. } => "set_signature",
+        Request::DeleteSignature { .. } => "delete_signature",
+        Request::SetSignatureDefault { .. } => "set_signature_default",
+        Request::ClearSignatureDefault { .. } => "clear_signature_default",
+        Request::ResolveSignature { .. } => "resolve_signature",
         Request::GetSenderProfile { .. } => "get_sender_profile",
+        Request::GetRelationshipProfile { .. } => "get_relationship_profile",
+        Request::RebuildRelationshipProfile { .. } => "rebuild_relationship_profile",
+        Request::ListCommitments { .. } => "list_commitments",
+        Request::ResolveCommitment { .. } => "resolve_commitment",
+        Request::GetUserVoice { .. } => "get_user_voice",
+        Request::RebuildUserVoice { .. } => "rebuild_user_voice",
+        Request::HumanizerScore { .. } => "humanizer_score",
+        Request::HumanizerRewrite { .. } => "humanizer_rewrite",
         Request::ListScreenerQueue { .. } => "list_screener_queue",
         Request::ListScreenerDecisions { .. } => "list_screener_decisions",
         Request::SetScreenerDecision { .. } => "set_screener_decision",
@@ -720,7 +815,15 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         Request::ListAccountAddresses { account_id }
         | Request::AddAccountAddress { account_id, .. }
         | Request::RemoveAccountAddress { account_id, .. }
-        | Request::SetPrimaryAccountAddress { account_id, .. } => Some(account_id),
+        | Request::SetPrimaryAccountAddress { account_id, .. }
+        | Request::GetRelationshipProfile { account_id, .. }
+        | Request::RebuildRelationshipProfile { account_id, .. }
+        | Request::ListCommitments { account_id, .. }
+        | Request::GetUserVoice { account_id }
+        | Request::RebuildUserVoice { account_id } => Some(account_id),
+        Request::SetSignatureDefault { account_id, .. }
+        | Request::ClearSignatureDefault { account_id, .. }
+        | Request::ResolveSignature { account_id, .. } => account_id.as_ref(),
         Request::GetSyncStatus { account_id } => Some(account_id),
         Request::SendDraft { draft }
         | Request::SaveDraft { draft }

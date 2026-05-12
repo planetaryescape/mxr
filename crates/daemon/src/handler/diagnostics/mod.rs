@@ -655,19 +655,17 @@ fn normalize_llm_config(config: LlmConfigData) -> Result<mxr_config::LlmConfig, 
 }
 
 pub(crate) async fn enable_semantic(state: &AppState, enabled: bool) -> HandlerResult {
-    if enabled {
-        let profile = state.config_snapshot().search.semantic.active_profile;
-        state
-            .semantic
-            .use_profile(profile)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
     state
         .mutate_config(|config| {
             config.search.semantic.enabled = enabled;
         })
         .await?;
+    if enabled {
+        let profile = state.config_snapshot().search.semantic.active_profile;
+        if let Err(error) = state.semantic.use_profile(profile).await {
+            tracing::warn!(profile = profile.as_str(), %error, "semantic enable saved; profile activation deferred");
+        }
+    }
     semantic_status(state).await
 }
 
@@ -688,16 +686,14 @@ pub(crate) async fn use_semantic_profile(
     profile: SemanticProfile,
 ) -> HandlerResult {
     state
-        .semantic
-        .use_profile(profile)
-        .await
-        .map_err(|e| e.to_string())?;
-    state
         .mutate_config(|config| {
             config.search.semantic.enabled = true;
             config.search.semantic.active_profile = profile;
         })
         .await?;
+    if let Err(error) = state.semantic.use_profile(profile).await {
+        tracing::warn!(profile = profile.as_str(), %error, "semantic profile selected; activation deferred");
+    }
     semantic_status(state).await
 }
 
@@ -877,18 +873,36 @@ pub(crate) async fn sync_now(state: &AppState, account_id: Option<&AccountId>) -
             .enqueue_ingest_messages(&outcome.upserted_message_ids)
             .await
         {
-            let error = error.to_string();
+            tracing::warn!(error = %error, "semantic ingest enqueue failed after sync");
             emit_operation_event(
                 state,
-                DaemonEvent::OperationFailed {
-                    operation_id,
-                    operation,
-                    account_id,
-                    error: error.clone(),
-                    retryable: false,
+                DaemonEvent::OperationProgress {
+                    operation_id: operation_id.clone(),
+                    operation: operation.clone(),
+                    account_id: account_id.clone(),
+                    current: outcome.upserted_message_ids.len() as u32,
+                    total: Some(outcome.upserted_message_ids.len() as u32),
+                    message: format!(
+                        "Sync complete; semantic ingest deferred after enqueue failure: {error}"
+                    ),
                 },
             );
-            return Err(error);
+        }
+        if let Some(account_id) = account_id.as_ref() {
+            if let Err(error) = state
+                .contacts_refresh
+                .enqueue_accounts(std::slice::from_ref(account_id))
+                .await
+            {
+                tracing::warn!(%account_id, "contacts refresh enqueue failed after sync: {error}");
+            }
+        }
+        if let Err(error) = state
+            .relationship
+            .enqueue_contacts_from_messages(&outcome.upserted_message_ids)
+            .await
+        {
+            tracing::warn!("relationship profile enqueue failed after sync: {error}");
         }
     }
     emit_operation_event(

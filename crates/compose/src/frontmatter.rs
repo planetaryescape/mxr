@@ -25,6 +25,8 @@ pub struct ComposeFrontmatter {
     pub thread_id: Option<String>,
     #[serde(default)]
     pub attach: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 const FRONTMATTER_DELIMITER: &str = "---";
@@ -143,6 +145,7 @@ mod tests {
             references: Vec::new(),
             thread_id: None,
             attach: Vec::new(),
+            signature: None,
         };
         let rendered = render_compose_file(&fm, "Hello!", None).unwrap();
         let (parsed_fm, parsed_body) = parse_compose_file(&rendered).unwrap();
@@ -163,6 +166,7 @@ mod tests {
             references: vec!["<root@example.com>".into(), "<msg-123@example.com>".into()],
             thread_id: None,
             attach: Vec::new(),
+            signature: None,
         };
         let context = "From: alice@example.com\nDate: 2026-03-15\n\nOriginal message.";
         let rendered = render_compose_file(&fm, "My reply.", Some(context)).unwrap();
@@ -197,6 +201,7 @@ mod tests {
                 references: Vec::new(),
                 thread_id: None,
                 attach: Vec::new(),
+                signature: None,
             };
 
             let rendered = render_compose_file(&fm, &body, None)?;

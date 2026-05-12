@@ -188,16 +188,20 @@ pub struct SenderProfileModalState {
     /// the title bar can read it back even when the response is still
     /// pending.
     pub email: Option<String>,
+    pub current_thread_id: Option<mxr_core::ThreadId>,
     pub profile: Option<SenderProfileData>,
+    pub selected_recent_index: usize,
     pub error: Option<String>,
 }
 
 impl SenderProfileModalState {
-    pub fn open_loading(&mut self, email: String) {
+    pub fn open_loading(&mut self, email: String, current_thread_id: Option<mxr_core::ThreadId>) {
         self.visible = true;
         self.loading = true;
         self.email = Some(email);
+        self.current_thread_id = current_thread_id;
         self.profile = None;
+        self.selected_recent_index = 0;
         self.error = None;
     }
 
@@ -205,7 +209,9 @@ impl SenderProfileModalState {
         self.visible = false;
         self.loading = false;
         self.email = None;
+        self.current_thread_id = None;
         self.profile = None;
+        self.selected_recent_index = 0;
         self.error = None;
     }
 
@@ -213,11 +219,48 @@ impl SenderProfileModalState {
         self.loading = false;
         self.error = None;
         self.profile = profile;
+        self.selected_recent_index = 0;
     }
 
     pub fn set_error(&mut self, message: String) {
         self.loading = false;
         self.error = Some(message);
+    }
+
+    pub fn recent_messages(&self) -> Vec<&mxr_protocol::SenderEmailReferenceData> {
+        self.profile
+            .as_ref()
+            .map(|profile| {
+                profile
+                    .recent_messages
+                    .iter()
+                    .filter(|message| {
+                        self.current_thread_id
+                            .as_ref()
+                            .map_or(true, |thread_id| &message.thread_id != thread_id)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn select_next_recent_message(&mut self) {
+        let len = self.recent_messages().len();
+        if len == 0 {
+            self.selected_recent_index = 0;
+            return;
+        }
+        self.selected_recent_index = (self.selected_recent_index + 1).min(len - 1);
+    }
+
+    pub fn select_prev_recent_message(&mut self) {
+        self.selected_recent_index = self.selected_recent_index.saturating_sub(1);
+    }
+
+    pub fn selected_recent_message(&self) -> Option<mxr_protocol::SenderEmailReferenceData> {
+        self.recent_messages()
+            .get(self.selected_recent_index)
+            .map(|message| (*message).clone())
     }
 }
 

@@ -24,6 +24,7 @@ Commands:
   screener       Triage unknown senders: classify them as allow / deny / feed / paper-trail. Local-only consent metadata; never roundtrips to the provider
   sender         Show per-sender relationship aggregates: volume, response cadence, open threads. The unfair advantage of having local SQLite — every other email tool reasons over messages, not people
   snippets       Manage compose snippets (`;name` expansions)
+  signatures     Manage outgoing compose signatures
   remind         Set or cancel a follow-up reminder on an outbound message. Reminders fire if no reply has arrived by the given time — surfacing the message back to the user as a follow-up
   semantic       Manage semantic search profiles and indexing
   llm            Inspect local/cloud LLM provider status

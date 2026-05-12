@@ -233,7 +233,10 @@ fn build_row<'a>(
     let sender_spans: Vec<Span> = if let Some(count) = thread_count {
         vec![
             Span::styled(sender_text, Style::default().fg(row_secondary_fg)),
-            Span::styled(format!(" {}", count), Style::default().fg(row_fg).bold()),
+            Span::styled(
+                format!(" {}", format_thread_count_badge(count)),
+                Style::default().fg(row_fg).bold(),
+            ),
         ]
     } else {
         vec![Span::styled(
@@ -403,18 +406,25 @@ fn indexed_color_rgb(idx: u8) -> (u8, u8, u8) {
     }
 }
 fn sender_parts(row: &MailListRow, mode: MailListMode) -> (String, Option<usize>) {
-    // Reserve trailing chars in the 22-char sender column for the
-    // thread-count badge (" 99" worst case = 3 chars + leading space).
-    // Without the reservation a long display name would visually collide
-    // with the badge.
+    // Reserve trailing chars in the 22-char sender column for the thread
+    // count badge (" ↔99" worst case = 4 chars + leading space). Without
+    // the reservation a long display name would visually collide with the badge.
     let max_width = match mode {
-        MailListMode::Threads if row.message_count > 1 => 18,
+        MailListMode::Threads if row.message_count > 1 => 17,
         _ => 22,
     };
     let from_text = format_sender(&row.representative.from, max_width);
     match mode {
         MailListMode::Threads if row.message_count > 1 => (from_text, Some(row.message_count)),
         _ => (from_text, None),
+    }
+}
+
+pub fn format_thread_count_badge(message_count: usize) -> String {
+    if message_count > 1 {
+        format!("↔{message_count}")
+    } else {
+        String::new()
     }
 }
 
@@ -635,7 +645,7 @@ mod tests {
     }
 
     #[test]
-    fn sender_text_inlines_thread_count_without_brackets() {
+    fn sender_text_inlines_thread_count_with_conversation_marker() {
         assert_eq!(
             sender_parts(&row(1, false), MailListMode::Threads),
             ("Matt".into(), None)
@@ -644,6 +654,8 @@ mod tests {
             sender_parts(&row(4, false), MailListMode::Threads),
             ("Matt".into(), Some(4))
         );
+        assert_eq!(format_thread_count_badge(4), "↔4");
+        assert_eq!(format_thread_count_badge(1), "");
     }
 
     #[test]
@@ -699,6 +711,41 @@ mod tests {
         assert!(
             snapshot.contains("2M"),
             "row must surface the size chip from format_attachment_chip; got:\n{snapshot}",
+        );
+    }
+
+    #[test]
+    fn row_renders_thread_count_badge_for_conversations() {
+        use mxr_test_support::render_to_string;
+        use std::collections::HashSet;
+
+        let mut row = row(4, false);
+        row.representative.subject = "Planning".into();
+        row.representative.snippet = "Latest reply".into();
+        let rows = vec![row];
+
+        let snapshot = render_to_string(100, 6, |frame| {
+            draw_view(
+                frame,
+                Rect::new(0, 0, 100, 6),
+                &MailListView {
+                    rows: &rows,
+                    selected_index: 0,
+                    scroll_offset: 0,
+                    active_pane: &ActivePane::MailList,
+                    title: "Inbox",
+                    selected_set: &HashSet::new(),
+                    mode: MailListMode::Threads,
+                    loading_message: None,
+                    loading_throbber: None,
+                },
+                &Theme::default(),
+            );
+        });
+
+        assert!(
+            snapshot.contains("↔4"),
+            "conversation rows must surface a thread-count badge; got:\n{snapshot}",
         );
     }
 

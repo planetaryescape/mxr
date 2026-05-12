@@ -118,6 +118,12 @@ pub enum Action {
     OpenSenderView,
     /// Close the sender-view modal (Esc).
     CloseSenderViewModal,
+    /// Move cursor to the next recent sender message.
+    SenderProfileNextMessage,
+    /// Move cursor to the previous recent sender message.
+    SenderProfilePrevMessage,
+    /// Open the selected recent sender message.
+    OpenSenderProfileMessage,
     /// Summarize the current thread via the configured LLM.
     SummarizeCurrentThread,
     /// Close the thread-summary modal (Esc).

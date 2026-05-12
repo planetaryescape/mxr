@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO signatures (id, name, body, created_at, updated_at)\n               VALUES (?, ?, ?, ?, ?)\n               ON CONFLICT(id) DO UPDATE SET\n                   name = excluded.name,\n                   body = excluded.body,\n                   updated_at = excluded.updated_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "e1beee205c609d8efbf78a6694ea4ecea38a69ae7c90dbb8848503f16313a88d"
+}

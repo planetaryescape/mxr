@@ -3745,6 +3745,7 @@ dependencies = [
  "mxr-config",
  "mxr-core",
  "mxr-export",
+ "mxr-humanizer",
  "mxr-keychain",
  "mxr-llm",
  "mxr-mail-parse",
@@ -3756,6 +3757,7 @@ dependencies = [
  "mxr-provider-outlook",
  "mxr-provider-smtp",
  "mxr-reader",
+ "mxr-relationship",
  "mxr-rules",
  "mxr-search",
  "mxr-semantic",
@@ -3899,6 +3901,14 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "mxr-humanizer"
+version = "0.5.8"
+dependencies = [
+ "mxr-core",
+ "serde",
 ]
 
 [[package]]
@@ -4093,6 +4103,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "mxr-relationship"
+version = "0.5.8"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "mxr-core",
+ "mxr-store",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "mxr-rules"
 version = "0.5.8"
 dependencies = [
@@ -4155,6 +4180,7 @@ dependencies = [
  "mxr-core",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tempfile",
  "tokio",

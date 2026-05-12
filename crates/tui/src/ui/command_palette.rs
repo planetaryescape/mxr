@@ -346,7 +346,7 @@ pub fn default_commands() -> Vec<PaletteCommand> {
         },
         PaletteCommand {
             label: "Summarize Thread".into(),
-            shortcut: String::new(),
+            shortcut: "y".into(),
             action: Action::SummarizeCurrentThread,
             category: "AI".into(),
         },

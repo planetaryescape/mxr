@@ -467,6 +467,38 @@ const MIGRATIONS: &[Migration] = &[
             "../migrations/019_analytics_account_date_index.sql"
         )),
     },
+    Migration {
+        version: 20,
+        name: "signatures",
+        kind: MigrationKind::Sql(include_str!("../migrations/020_signatures.sql")),
+    },
+    Migration {
+        version: 21,
+        name: "thread_summaries",
+        kind: MigrationKind::Sql(include_str!("../migrations/021_thread_summaries.sql")),
+    },
+    Migration {
+        version: 22,
+        name: "contact_style",
+        kind: MigrationKind::Sql(include_str!("../migrations/022_contact_style.sql")),
+    },
+    Migration {
+        version: 23,
+        name: "contact_relationship_summary",
+        kind: MigrationKind::Sql(include_str!(
+            "../migrations/023_contact_relationship_summary.sql"
+        )),
+    },
+    Migration {
+        version: 24,
+        name: "contact_commitments",
+        kind: MigrationKind::Sql(include_str!("../migrations/024_contact_commitments.sql")),
+    },
+    Migration {
+        version: 25,
+        name: "user_voice_profile",
+        kind: MigrationKind::Sql(include_str!("../migrations/025_user_voice_profile.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
@@ -534,6 +566,20 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
     ),
     ("account_addresses", &["account_id", "email", "is_primary"]),
     (
+        "signatures",
+        &["id", "name", "body", "created_at", "updated_at"],
+    ),
+    (
+        "signature_defaults",
+        &[
+            "scope_key",
+            "kind",
+            "signature_id",
+            "account_id",
+            "from_email",
+        ],
+    ),
+    (
         "reply_pairs",
         &[
             "reply_message_id",
@@ -556,6 +602,10 @@ const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[
             "account_id",
             "created_at",
         ],
+    ),
+    (
+        "thread_summaries",
+        &["thread_id", "account_id", "content_hash", "text", "model"],
     ),
     (
         "contacts",

@@ -668,7 +668,12 @@ pub(super) async fn get_thread(state: &AppState, thread_id: &ThreadId) -> Handle
             let _ = populate_envelope_label_provider_ids(state, message, &labels).await;
         }
     }
-    Ok(ResponseData::Thread { thread, messages })
+    let summary = super::summarize::valid_cached_summary(&state.store, thread_id, &messages).await;
+    Ok(ResponseData::Thread {
+        thread,
+        messages,
+        summary,
+    })
 }
 
 pub(super) async fn list_labels(state: &AppState, account_id: Option<&AccountId>) -> HandlerResult {

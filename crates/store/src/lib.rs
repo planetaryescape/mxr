@@ -2,7 +2,11 @@ mod account;
 mod analytics;
 mod auto_reminders;
 mod body;
+mod contact_commitments;
+mod contact_relationship_summary;
+mod contact_style;
 mod contacts;
+mod contacts_refresh_handle;
 mod diagnostics;
 mod draft;
 mod draft_recovery;
@@ -19,6 +23,7 @@ mod screener;
 mod search;
 mod semantic;
 mod sender_profile;
+mod signatures;
 mod snippets;
 mod snooze;
 mod sync_cursor;
@@ -27,19 +32,28 @@ mod sync_runtime_status;
 #[cfg(test)]
 mod test_fixtures;
 mod thread;
+mod thread_summary;
 mod undo;
+mod user_voice_profile;
 mod wrapped;
 
+pub use contact_commitments::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord};
+pub use contact_relationship_summary::ContactRelationshipSummaryRecord;
+pub use contact_style::{ContactStyleRecord, RelationshipMessageSample};
+pub use contacts_refresh_handle::ContactsRefreshHandle;
 pub use diagnostics::StoreRecordCounts;
 pub use event_log::{EventLogEntry, EventLogRefs};
 pub use pool::Store;
 pub use rules::{row_to_rule_json, row_to_rule_log_json, RuleLogInput, RuleRecordInput};
 pub use screener::{ScreenerDecision, ScreenerDisposition, ScreenerQueueEntry};
-pub use sender_profile::SenderProfile;
+pub use sender_profile::{SenderEmailReference, SenderProfile};
+pub use signatures::{Signature, SignatureDefault, SignatureKind, SignatureScope};
 pub use snippets::Snippet;
 pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
+pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
+pub use user_voice_profile::{UserVoiceProfileRecord, UserVoiceRegisterMode};
 
 use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;
@@ -207,6 +221,54 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn relationship_summary_roundtrips_and_updates_by_contact_email() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+        let computed_at = Utc.timestamp_opt(1_700_000_000, 0).unwrap();
+
+        store
+            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
+                account_id: account.id.clone(),
+                email: "Alice@Example.com".to_string(),
+                text: "Alice prefers short launch updates.".to_string(),
+                model: "test-model".to_string(),
+                known_topics: vec!["launch".to_string(), "pricing".to_string()],
+                computed_at,
+                source_hash: "summary-v1".to_string(),
+                last_error: None,
+            })
+            .await
+            .unwrap();
+
+        let fetched = store
+            .get_contact_relationship_summary(&account.id, "alice@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.email, "Alice@Example.com");
+        assert_eq!(fetched.text, "Alice prefers short launch updates.");
+        assert_eq!(fetched.known_topics, vec!["launch", "pricing"]);
+
+        store
+            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
+                text: "Alice now wants weekly rollout updates.".to_string(),
+                source_hash: "summary-v2".to_string(),
+                ..fetched
+            })
+            .await
+            .unwrap();
+
+        let updated = store
+            .get_contact_relationship_summary(&account.id, "ALICE@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.text, "Alice now wants weekly rollout updates.");
+        assert_eq!(updated.source_hash, "summary-v2");
     }
 
     #[tokio::test]

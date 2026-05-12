@@ -10,10 +10,12 @@ Arguments:
   <MESSAGE_ID>  Message ID to forward
 
 Options:
-      --to <TO>          Forward to recipient(s)
-      --body <BODY>      Inline body
-      --body-stdin       Read body from stdin
-      --yes              Skip confirmation
-      --dry-run          Show what would be sent
-      --format <FORMAT>  [possible values: table, json, jsonl, csv, ids]
-  -h, --help             Print help
+      --to <TO>                Forward to recipient(s)
+      --body <BODY>            Inline body
+      --body-stdin             Read body from stdin
+      --signature <SIGNATURE>  Insert this signature by name instead of the scoped default
+      --no-signature           Do not insert any signature
+      --yes                    Skip confirmation
+      --dry-run                Show what would be sent
+      --format <FORMAT>        [possible values: table, json, jsonl, csv, ids]
+  -h, --help                   Print help

@@ -12,9 +12,10 @@
 //!   * Open thread count: threads whose latest message is from this
 //!     sender and has no outbound reply yet.
 
-use crate::{decode_id, decode_optional_timestamp, decode_timestamp, trace_lookup};
+use crate::{decode_id, decode_optional_timestamp, decode_timestamp, trace_lookup, trace_query};
 use chrono::{DateTime, Utc};
-use mxr_core::id::AccountId;
+use mxr_core::id::{AccountId, MessageId, ThreadId};
+use sqlx::Row;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SenderProfile {
@@ -36,6 +37,19 @@ pub struct SenderProfile {
     pub outbound_storage_bytes: u64,
     pub attachment_count: u32,
     pub attachment_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SenderEmailReference {
+    pub message_id: MessageId,
+    pub thread_id: ThreadId,
+    pub subject: String,
+    pub snippet: String,
+    pub from_name: Option<String>,
+    pub from_email: String,
+    pub date: DateTime<Utc>,
+    pub direction: String,
+    pub has_attachments: bool,
 }
 
 impl super::Store {
@@ -182,12 +196,56 @@ impl super::Store {
             attachment_bytes: attachment_bytes.max(0) as u64,
         }))
     }
+
+    pub async fn list_recent_sender_messages(
+        &self,
+        account_id: &AccountId,
+        email: &str,
+        limit: u32,
+    ) -> Result<Vec<SenderEmailReference>, sqlx::Error> {
+        let started_at = std::time::Instant::now();
+        let limit = i64::from(limit.clamp(1, 25));
+        let rows = sqlx::query(
+            r#"SELECT id, thread_id, subject, snippet, from_name, from_email,
+                      date, direction, has_attachments
+               FROM messages
+               WHERE account_id = ?1
+                 AND LOWER(from_email) = LOWER(?2)
+               ORDER BY date DESC
+               LIMIT ?3"#,
+        )
+        .bind(account_id.as_str())
+        .bind(email)
+        .bind(limit)
+        .fetch_all(self.reader())
+        .await?;
+        trace_query("sender_profile.recent_messages", started_at, rows.len());
+
+        rows.into_iter()
+            .map(|row| {
+                Ok(SenderEmailReference {
+                    message_id: decode_id(row.get::<String, _>("id").as_str())?,
+                    thread_id: decode_id(row.get::<String, _>("thread_id").as_str())?,
+                    subject: row.get::<String, _>("subject"),
+                    snippet: row.get::<String, _>("snippet"),
+                    from_name: row.get::<Option<String>, _>("from_name"),
+                    from_email: row.get::<String, _>("from_email"),
+                    date: decode_timestamp(row.get::<i64, _>("date"))?,
+                    direction: row.get::<String, _>("direction"),
+                    has_attachments: row.get::<bool, _>("has_attachments"),
+                })
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::super::Store;
+    use crate::test_fixtures::{test_account, TestEnvelopeBuilder};
+    use chrono::{TimeZone, Utc};
     use mxr_core::id::AccountId;
+    use mxr_core::{Address, MessageDirection};
 
     #[tokio::test]
     async fn get_sender_profile_returns_none_for_unknown_contact() {
@@ -197,5 +255,71 @@ mod tests {
             .await
             .unwrap();
         assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn list_recent_sender_messages_returns_latest_first() {
+        let store = Store::in_memory().await.unwrap();
+        let account = test_account();
+        store.insert_account(&account).await.unwrap();
+
+        let mut older = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        older.provider_id = "older".into();
+        older.from = Address {
+            name: Some("Alice".into()),
+            email: "alice@example.com".into(),
+        };
+        older.subject = "Older note".into();
+        older.snippet = "The first note".into();
+        older.date = Utc.with_ymd_and_hms(2026, 5, 10, 9, 0, 0).unwrap();
+        older.has_attachments = true;
+
+        let mut newer = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        newer.provider_id = "newer".into();
+        newer.from = Address {
+            name: Some("Alice".into()),
+            email: "alice@example.com".into(),
+        };
+        newer.subject = "Newer note".into();
+        newer.snippet = "The latest note".into();
+        newer.date = Utc.with_ymd_and_hms(2026, 5, 11, 9, 0, 0).unwrap();
+
+        let mut other = TestEnvelopeBuilder::new()
+            .account_id(account.id.clone())
+            .build();
+        other.provider_id = "other".into();
+        other.from = Address {
+            name: Some("Bob".into()),
+            email: "bob@example.com".into(),
+        };
+        other.subject = "Different sender".into();
+        other.date = Utc.with_ymd_and_hms(2026, 5, 12, 9, 0, 0).unwrap();
+
+        store
+            .upsert_envelope_with_direction(&older, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        store
+            .upsert_envelope_with_direction(&newer, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        store
+            .upsert_envelope_with_direction(&other, MessageDirection::Inbound)
+            .await
+            .unwrap();
+
+        let messages = store
+            .list_recent_sender_messages(&account.id, "ALICE@example.com", 10)
+            .await
+            .unwrap();
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].subject, "Newer note");
+        assert_eq!(messages[1].subject, "Older note");
+        assert!(messages[1].has_attachments);
     }
 }

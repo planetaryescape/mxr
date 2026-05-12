@@ -1,83 +1,591 @@
-//! Thread summarisation. Pulls a thread + bodies from the store,
-//! constructs a chat-style prompt, and asks the configured LLM for a
-//! 2-3 sentence summary focused on what's actionable.
+//! Thread summarisation. Pulls the full thread + bodies from the store,
+//! includes explicit sender/recipient context for each message, and asks
+//! the configured LLM for a per-message conversation summary.
 
-use super::HandlerResult;
+use super::{relationship_profile, HandlerResult};
 use crate::state::AppState;
-use mxr_core::id::ThreadId;
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError};
-use mxr_protocol::ResponseData;
+use mxr_core::id::{MessageId, ThreadId};
+use mxr_core::types::{AccountAddress, Address, Envelope};
+use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature, LlmRuntime};
+use mxr_protocol::{ResponseData, ThreadSummaryData};
+use mxr_store::{thread_summary_content_hash, Store, ThreadSummaryRecord};
+use std::collections::BTreeSet;
+use std::sync::Arc;
 
-const SYSTEM_PROMPT: &str =
-    "You summarise email threads in 2 to 3 short sentences for a busy reader. \
-Focus on what's actionable: who is asking what, when something is due, \
-what the user needs to decide. Skip pleasantries. Refer to the user as \
-\"you\". Use plain language; no bullet points unless the original thread \
-already structures the content that way.";
+const SYSTEM_PROMPT: &str = r#"You summarize email conversation threads for a busy reader.
 
-/// Maximum thread-content length we feed into the prompt. The
-/// configured model's context window bounds this; if a thread is
-/// longer we truncate and add a [...] marker rather than refusing.
-const PROMPT_BUDGET_CHARS: usize = 24_000;
+You will receive the complete thread in chronological order. Every message includes From, To, Cc, and Bcc. Use those fields to understand who is speaking to whom. Do not assume every inbound-looking message was sent to the account owner. Use "you" only for addresses listed under Account owner addresses.
+
+Return concise Markdown:
+- Start with "Summary:".
+- Then one bullet per message in chronological order. Each bullet must name the sender, the recipient scope, and the point of that specific message.
+- Preserve concrete dates, deadlines, decisions, and asks.
+- End with "Next steps:" and either bullets for actions the account owner should take or "No clear action needed."
+
+Do not invent context. If a message is informational, say so plainly."#;
 
 pub(super) async fn summarize_thread(state: &AppState, thread_id: &ThreadId) -> HandlerResult {
-    let thread = state
-        .store
+    let summary =
+        summarize_thread_cached(state.store.clone(), state.llm.clone(), thread_id).await?;
+    Ok(ResponseData::ThreadSummary {
+        text: summary.text,
+        model: summary.model,
+    })
+}
+
+pub(crate) async fn valid_cached_summary(
+    store: &Store,
+    thread_id: &ThreadId,
+    envelopes: &[Envelope],
+) -> Option<ThreadSummaryData> {
+    let relationship_hash = match envelopes.first() {
+        Some(first) => {
+            let owned_addresses = store
+                .list_account_addresses(&first.account_id)
+                .await
+                .unwrap_or_default();
+            relationship_context_for_summary(store, &first.account_id, &owned_addresses, envelopes)
+                .await
+                .1
+        }
+        None => String::new(),
+    };
+    let content_hash = format!(
+        "{}:{relationship_hash}",
+        thread_summary_content_hash(envelopes)
+    );
+    let record = store.get_thread_summary(thread_id).await.ok().flatten()?;
+    (record.content_hash == content_hash).then(|| ThreadSummaryData {
+        text: record.text,
+        model: record.model,
+        generated_at: record.generated_at,
+    })
+}
+
+pub(crate) async fn summarize_changed_message_threads(
+    state: Arc<AppState>,
+    message_ids: Vec<MessageId>,
+) {
+    if !state.config_snapshot().llm.enabled {
+        return;
+    }
+    let thread_ids = match state.store.thread_ids_for_message_ids(&message_ids).await {
+        Ok(thread_ids) => thread_ids,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to resolve changed message threads for summaries");
+            return;
+        }
+    };
+    for thread_id in thread_ids {
+        match summarize_thread_cached(state.store.clone(), state.llm.clone(), &thread_id).await {
+            Ok(_) => {
+                tracing::debug!(%thread_id, "thread summary refreshed after sync");
+            }
+            Err(error) => {
+                tracing::warn!(%thread_id, error = %error, "thread summary refresh failed");
+            }
+        }
+    }
+}
+
+pub(crate) async fn refresh_thread_summary_if_enabled(
+    state: &AppState,
+    thread_id: &ThreadId,
+) -> Result<(), String> {
+    if !state.config_snapshot().llm.enabled {
+        return Ok(());
+    }
+    summarize_thread_cached(state.store.clone(), state.llm.clone(), thread_id)
+        .await
+        .map(|_| ())
+}
+
+async fn summarize_thread_cached(
+    store: Arc<Store>,
+    llm: Arc<LlmRuntime>,
+    thread_id: &ThreadId,
+) -> Result<ThreadSummaryData, String> {
+    let context = load_summary_context(&store, thread_id).await?;
+    if let Some(record) = store
+        .get_thread_summary(thread_id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        if record.content_hash == context.content_hash {
+            return Ok(ThreadSummaryData {
+                text: record.text,
+                model: record.model,
+                generated_at: record.generated_at,
+            });
+        }
+    }
+
+    let max_tokens = summary_token_budget(context.message_count);
+    let request = CompletionRequest {
+        messages: vec![
+            ChatMessage::system(SYSTEM_PROMPT),
+            ChatMessage::user(context.prompt),
+        ],
+        max_tokens: Some(max_tokens),
+        temperature: Some(0.2),
+    };
+
+    let response = match llm
+        .for_feature(LlmFeature::Summarize)
+        .complete(request)
+        .await
+    {
+        Ok(response) => response,
+        Err(LlmError::Disabled) => {
+            return Err(
+                "LLM is disabled. Enable it in [llm] in your config and configure a model \
+                 (Ollama / LM Studio / OpenAI). See `mxr config`."
+                    .to_string(),
+            );
+        }
+        Err(e) => return Err(format!("LLM error: {e}")),
+    };
+
+    let generated_at = chrono::Utc::now();
+    let summary = ThreadSummaryData {
+        text: response.content.trim().to_string(),
+        model: response.model,
+        generated_at,
+    };
+    let record = ThreadSummaryRecord {
+        thread_id: thread_id.clone(),
+        account_id: context.account_id,
+        content_hash: context.content_hash,
+        text: summary.text.clone(),
+        model: summary.model.clone(),
+        generated_at,
+    };
+    store
+        .upsert_thread_summary(&record)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(summary)
+}
+
+struct SummaryContext {
+    account_id: mxr_core::AccountId,
+    content_hash: String,
+    message_count: u32,
+    prompt: String,
+}
+
+async fn load_summary_context(
+    store: &Store,
+    thread_id: &ThreadId,
+) -> Result<SummaryContext, String> {
+    let thread = store
         .get_thread(thread_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Thread {} not found", thread_id))?;
-    let envelopes = state
-        .store
+    let envelopes = store
         .get_thread_envelopes(thread_id)
         .await
         .map_err(|e| e.to_string())?;
     if envelopes.is_empty() {
         return Err(format!("Thread {} has no messages", thread_id));
     }
+    let owned_addresses = store
+        .list_account_addresses(&thread.account_id)
+        .await
+        .unwrap_or_default();
 
-    let mut prompt_body = format!("Subject: {}\n\n", thread.subject);
-    for env in &envelopes {
-        let from = env.from.name.as_deref().unwrap_or(env.from.email.as_str());
-        let date = env
+    let mut prompt = String::new();
+    prompt.push_str("Account owner addresses:\n");
+    if owned_addresses.is_empty() {
+        prompt.push_str("- unknown\n");
+    } else {
+        for address in &owned_addresses {
+            let primary = if address.is_primary { " (primary)" } else { "" };
+            prompt.push_str(&format!("- {}{}\n", address.email, primary));
+        }
+    }
+    prompt.push_str(&format!(
+        "\nThread subject: {}\nThread id: {}\nMessage count: {}\n\n",
+        thread.subject,
+        thread.id,
+        envelopes.len()
+    ));
+    let (relationship_prompt, relationship_hash) =
+        relationship_context_for_summary(store, &thread.account_id, &owned_addresses, &envelopes)
+            .await;
+    if !relationship_prompt.is_empty() {
+        prompt
+            .push_str("Relationship context (weak background only; message content is primary):\n");
+        prompt.push_str(&relationship_prompt);
+        prompt.push('\n');
+    }
+    prompt.push_str("Messages, oldest to newest:\n");
+
+    for (index, envelope) in envelopes.iter().enumerate() {
+        let date = envelope
             .date
             .with_timezone(&chrono::Local)
-            .format("%a %b %e %H:%M");
-        // Body is optional; fall back to the snippet when not yet stored.
-        let body = match state.store.get_body(&env.id).await {
+            .format("%a %b %e %Y %H:%M %Z");
+        let body = match store.get_body(&envelope.id).await {
             Ok(Some(body)) => body
                 .text_plain
                 .or(body.text_html)
-                .unwrap_or_else(|| env.snippet.clone()),
-            _ => env.snippet.clone(),
+                .unwrap_or_else(|| envelope.snippet.clone()),
+            _ => envelope.snippet.clone(),
         };
-        prompt_body.push_str(&format!("--- {from} ({date}) ---\n{body}\n\n"));
-        if prompt_body.len() > PROMPT_BUDGET_CHARS {
-            prompt_body.truncate(PROMPT_BUDGET_CHARS);
-            prompt_body.push_str("\n[...thread truncated...]\n");
+        prompt.push_str(&format!(
+            "\n--- Message {} of {} ---\nDate: {}\nFrom: {}\nTo: {}\nCc: {}\nBcc: {}\nSubject: {}\nBody:\n{}\n",
+            index + 1,
+            envelopes.len(),
+            date,
+            format_address(&envelope.from),
+            format_addresses(&envelope.to),
+            format_addresses(&envelope.cc),
+            format_addresses(&envelope.bcc),
+            envelope.subject,
+            body.trim(),
+        ));
+    }
+
+    Ok(SummaryContext {
+        account_id: thread.account_id,
+        content_hash: format!(
+            "{}:{relationship_hash}",
+            thread_summary_content_hash(&envelopes)
+        ),
+        message_count: envelopes.len().try_into().unwrap_or(u32::MAX),
+        prompt,
+    })
+}
+
+async fn relationship_context_for_summary(
+    store: &Store,
+    account_id: &mxr_core::AccountId,
+    owned_addresses: &[AccountAddress],
+    envelopes: &[Envelope],
+) -> (String, String) {
+    let owned = owned_addresses
+        .iter()
+        .map(|address| address.email.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let mut contacts = BTreeSet::new();
+    for envelope in envelopes {
+        maybe_insert_contact(&mut contacts, &owned, &envelope.from.email);
+        for address in envelope
+            .to
+            .iter()
+            .chain(envelope.cc.iter())
+            .chain(envelope.bcc.iter())
+        {
+            maybe_insert_contact(&mut contacts, &owned, &address.email);
+        }
+    }
+    let mut prompt = String::new();
+    let mut hash_parts = Vec::new();
+    for email in contacts.into_iter().take(3) {
+        let Ok(Some(profile)) =
+            relationship_profile::load_relationship_profile_for_store(store, account_id, &email)
+                .await
+        else {
+            continue;
+        };
+        prompt.push_str(&format!("- {email}: "));
+        if let Some(summary) = profile.summary {
+            prompt.push_str(summary.text.trim());
+            if !summary.known_topics.is_empty() {
+                prompt.push_str(&format!(
+                    " Known topics: {}.",
+                    summary.known_topics.join(", ")
+                ));
+            }
+            hash_parts.push(summary.source_hash);
+        }
+        if let Some(style) = profile.style {
+            prompt.push_str(&format!(
+                " Style: your formality {:.2}, their formality {:.2}.",
+                style.formality_score, style.formality_score_theirs
+            ));
+            hash_parts.push(style.source_hash);
+        }
+        prompt.push('\n');
+        if prompt.len() > 2_000 {
+            prompt.truncate(2_000);
+            prompt.push_str("\n[...relationship context truncated...]\n");
             break;
         }
     }
+    (prompt, hash_parts.join("|"))
+}
 
-    let request = CompletionRequest {
-        messages: vec![
-            ChatMessage::system(SYSTEM_PROMPT),
-            ChatMessage::user(prompt_body),
-        ],
-        max_tokens: Some(220),
-        temperature: Some(0.2),
-    };
+fn maybe_insert_contact(contacts: &mut BTreeSet<String>, owned: &BTreeSet<String>, email: &str) {
+    let email = email.trim().to_ascii_lowercase();
+    if email.is_empty() || owned.contains(&email) {
+        return;
+    }
+    contacts.insert(email);
+}
 
-    match state.llm.complete(request).await {
-        Ok(response) => Ok(ResponseData::ThreadSummary {
-            text: response.content.trim().to_string(),
-            model: response.model,
-        }),
-        Err(LlmError::Disabled) => Err(
-            "LLM is disabled. Enable it in [llm] in your config and configure a model \
-             (Ollama / LM Studio / OpenAI). See `mxr config`."
-                .to_string(),
-        ),
-        Err(e) => Err(format!("LLM error: {e}")),
+fn summary_token_budget(message_count: u32) -> u32 {
+    400u32
+        .saturating_add(message_count.saturating_mul(120))
+        .clamp(700, 2_400)
+}
+
+fn format_addresses(addresses: &[Address]) -> String {
+    if addresses.is_empty() {
+        return "(none)".into();
+    }
+    addresses
+        .iter()
+        .map(format_address)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn format_address(address: &Address) -> String {
+    match address
+        .name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+    {
+        Some(name) => format!("{name} <{}>", address.email),
+        None => address.email.clone(),
+    }
+}
+
+#[allow(dead_code)]
+fn _owned_address_emails(addresses: &[AccountAddress]) -> Vec<&str> {
+    addresses
+        .iter()
+        .map(|address| address.email.as_str())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_fixtures::TestEnvelopeBuilder;
+    use mxr_core::types::{MessageBody, MessageMetadata};
+    use mxr_llm::{CompletionResponse, LlmCapabilities, LlmProvider};
+    use mxr_store::ContactRelationshipSummaryRecord;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct CapturingLlm {
+        requests: Mutex<Vec<CompletionRequest>>,
+    }
+
+    #[async_trait::async_trait]
+    impl LlmProvider for CapturingLlm {
+        async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            self.requests.lock().expect("requests").push(req);
+            Ok(CompletionResponse {
+                content:
+                    "Summary:\n- Alice -> Bob: asks for approval.\n\nNext steps:\n- Reply to Alice."
+                        .to_string(),
+                model: "test-llm".to_string(),
+                finish_reason: Some("stop".to_string()),
+            })
+        }
+
+        fn capabilities(&self) -> LlmCapabilities {
+            LlmCapabilities {
+                context_window: 8192,
+                supports_streaming: false,
+            }
+        }
+
+        fn model_name(&self) -> &str {
+            "test-llm"
+        }
+    }
+
+    fn body(message_id: mxr_core::MessageId, text: &str) -> MessageBody {
+        MessageBody {
+            message_id,
+            text_plain: Some(text.to_string()),
+            text_html: None,
+            attachments: vec![],
+            fetched_at: chrono::Utc::now(),
+            metadata: MessageMetadata::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn summary_prompt_includes_full_sender_and_recipient_context() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let account_id = state.default_account_id();
+        let _ = state
+            .store
+            .add_account_address(&account_id, "alias@example.com", false)
+            .await;
+        let thread_id = mxr_core::ThreadId::new();
+        let mut first = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .thread_id(thread_id.clone())
+            .provider_id("first")
+            .from_address("Alice", "alice@example.com")
+            .to_address(Some("Bob"), "bob@example.com")
+            .subject("Decision")
+            .snippet("Please approve")
+            .build();
+        first.cc = vec![Address {
+            name: Some("Me".into()),
+            email: "alias@example.com".into(),
+        }];
+        let second = TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .thread_id(thread_id.clone())
+            .provider_id("second")
+            .from_address("Bob", "bob@example.com")
+            .to_address(Some("Alice"), "alice@example.com")
+            .subject("Decision")
+            .snippet("Approved")
+            .build();
+        state.store.upsert_envelope(&first).await.unwrap();
+        state.store.upsert_envelope(&second).await.unwrap();
+        state
+            .store
+            .insert_body(&body(first.id.clone(), "Please approve the plan."))
+            .await
+            .unwrap();
+        state
+            .store
+            .insert_body(&body(second.id.clone(), "Approved."))
+            .await
+            .unwrap();
+
+        let response = summarize_thread(&state, &thread_id).await.unwrap();
+        assert!(matches!(response, ResponseData::ThreadSummary { .. }));
+
+        let requests = llm.requests.lock().expect("requests");
+        assert_eq!(requests.len(), 1);
+        let prompt = &requests[0].messages[1].content;
+        assert!(prompt.contains("Account owner addresses:"));
+        assert!(prompt.contains("alias@example.com"));
+        assert!(prompt.contains("Message 1 of 2"));
+        assert!(prompt.contains("From: Alice <alice@example.com>"));
+        assert!(prompt.contains("To: Bob <bob@example.com>"));
+        assert!(prompt.contains("Cc: Me <alias@example.com>"));
+        assert!(prompt.contains("Message 2 of 2"));
+        assert!(prompt.contains("Approved."));
+    }
+
+    #[tokio::test]
+    async fn summary_is_persisted_and_reused_until_thread_changes() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let account_id = state.default_account_id();
+        let thread_id = mxr_core::ThreadId::new();
+        let first = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .thread_id(thread_id.clone())
+            .provider_id("first")
+            .build();
+        state.store.upsert_envelope(&first).await.unwrap();
+        state
+            .store
+            .insert_body(&body(first.id.clone(), "Initial body."))
+            .await
+            .unwrap();
+
+        summarize_thread(&state, &thread_id).await.unwrap();
+        summarize_thread(&state, &thread_id).await.unwrap();
+        assert_eq!(llm.requests.lock().expect("requests").len(), 1);
+
+        let second = TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .thread_id(thread_id.clone())
+            .provider_id("second")
+            .build();
+        state.store.upsert_envelope(&second).await.unwrap();
+        state
+            .store
+            .insert_body(&body(second.id.clone(), "New reply."))
+            .await
+            .unwrap();
+
+        summarize_thread(&state, &thread_id).await.unwrap();
+        assert_eq!(llm.requests.lock().expect("requests").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn summary_cache_includes_relationship_context_hash() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+        let account_id = state.default_account_id();
+        let thread_id = mxr_core::ThreadId::new();
+        let message = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .thread_id(thread_id.clone())
+            .provider_id("first")
+            .from_address("Alice", "alice@example.com")
+            .subject("Launch")
+            .snippet("Can you review the launch note?")
+            .build();
+        state.store.upsert_envelope(&message).await.unwrap();
+        state
+            .store
+            .insert_body(&body(message.id.clone(), "Can you review the launch note?"))
+            .await
+            .unwrap();
+        state
+            .store
+            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
+                account_id: account_id.clone(),
+                email: "alice@example.com".to_string(),
+                text: "Alice prefers launch context before asks.".to_string(),
+                model: "test-model".to_string(),
+                known_topics: vec!["launch".to_string()],
+                computed_at: chrono::Utc::now(),
+                source_hash: "relationship-v1".to_string(),
+                last_error: None,
+            })
+            .await
+            .unwrap();
+
+        summarize_thread(&state, &thread_id).await.unwrap();
+        summarize_thread(&state, &thread_id).await.unwrap();
+        {
+            let requests = llm.requests.lock().expect("requests");
+            assert_eq!(requests.len(), 1);
+            let prompt = &requests[0].messages[1].content;
+            assert!(prompt.contains("Relationship context (weak background only"));
+            assert!(prompt.contains("Alice prefers launch context before asks."));
+        }
+        let envelopes = state.store.get_thread_envelopes(&thread_id).await.unwrap();
+        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
+            .await
+            .is_some());
+
+        state
+            .store
+            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
+                account_id,
+                email: "alice@example.com".to_string(),
+                text: "Alice now wants launch risks called out first.".to_string(),
+                model: "test-model".to_string(),
+                known_topics: vec!["launch".to_string(), "risk".to_string()],
+                computed_at: chrono::Utc::now(),
+                source_hash: "relationship-v2".to_string(),
+                last_error: None,
+            })
+            .await
+            .unwrap();
+        assert!(valid_cached_summary(&state.store, &thread_id, &envelopes)
+            .await
+            .is_none());
+
+        summarize_thread(&state, &thread_id).await.unwrap();
+        let requests = llm.requests.lock().expect("requests");
+        assert_eq!(requests.len(), 2);
+        assert!(requests[1].messages[1]
+            .content
+            .contains("Alice now wants launch risks called out first."));
     }
 }

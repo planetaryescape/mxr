@@ -421,11 +421,80 @@ impl App {
                 };
                 let email = env.from.email.clone();
                 let account_id = env.account_id.clone();
-                self.modals.sender_profile.open_loading(email.clone());
+                self.modals
+                    .sender_profile
+                    .open_loading(email.clone(), Some(env.thread_id.clone()));
                 self.pending_sender_profile_request = Some((account_id, email));
             }
             Action::CloseSenderViewModal => {
                 self.modals.sender_profile.close();
+            }
+            Action::SenderProfileNextMessage => {
+                self.modals.sender_profile.select_next_recent_message();
+            }
+            Action::SenderProfilePrevMessage => {
+                self.modals.sender_profile.select_prev_recent_message();
+            }
+            Action::OpenSenderProfileMessage => {
+                let Some(message) = self.modals.sender_profile.selected_recent_message() else {
+                    self.status_message = Some("No other sender emails to open".into());
+                    return;
+                };
+                let Some(account_id) = self
+                    .modals
+                    .sender_profile
+                    .profile
+                    .as_ref()
+                    .map(|profile| profile.account_id.clone())
+                else {
+                    self.status_message = Some("Sender profile not loaded".into());
+                    return;
+                };
+
+                let env = self
+                    .mailbox
+                    .envelopes
+                    .iter()
+                    .chain(self.search.page.results.iter())
+                    .find(|env| env.thread_id == message.thread_id)
+                    .cloned()
+                    .unwrap_or_else(|| Envelope {
+                        id: message.message_id.clone(),
+                        account_id,
+                        provider_id: String::new(),
+                        thread_id: message.thread_id.clone(),
+                        message_id_header: None,
+                        in_reply_to: None,
+                        references: Vec::new(),
+                        from: Address {
+                            name: message.from_name.clone(),
+                            email: message.from_email.clone(),
+                        },
+                        to: Vec::new(),
+                        cc: Vec::new(),
+                        bcc: Vec::new(),
+                        subject: message.subject.clone(),
+                        date: message.date,
+                        flags: MessageFlags::empty(),
+                        snippet: message.snippet.clone(),
+                        has_attachments: message.has_attachments,
+                        size_bytes: 0,
+                        unsubscribe: UnsubscribeMethod::None,
+                        label_provider_ids: Vec::new(),
+                    });
+
+                if let Some(index) = self
+                    .mail_list_rows()
+                    .iter()
+                    .position(|row| row.thread_id == env.thread_id)
+                {
+                    self.mailbox.selected_index = index;
+                    self.ensure_visible();
+                    self.update_visual_selection();
+                }
+                self.modals.sender_profile.close();
+                self.open_envelope(env);
+                self.status_message = Some("Opened sender email".into());
             }
             Action::SummarizeCurrentThread => {
                 let Some(env) = self.context_envelope() else {

@@ -29,6 +29,7 @@ pub mod selection;
 pub mod semantic;
 pub mod sender;
 pub mod setup;
+pub mod signatures;
 pub mod snippets;
 pub mod stale;
 pub mod status;

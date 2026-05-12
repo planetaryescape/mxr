@@ -3,14 +3,14 @@ use crate::async_result::ComposeReadyData;
 use crate::ipc::{ipc_call, IpcRequest};
 use mxr_core::AccountId;
 use mxr_core::MxrError;
-use mxr_protocol::{AccountSummaryData, Request, Response, ResponseData};
+use mxr_protocol::{AccountSummaryData, Request, Response, ResponseData, SignatureContextData};
 use tokio::sync::mpsc;
 
 pub(crate) async fn handle_compose_action(
     bg: &mpsc::UnboundedSender<IpcRequest>,
     action: ComposeAction,
 ) -> Result<ComposeReadyData, MxrError> {
-    let (account_id, from, kind) = match action {
+    let (account_id, from, kind, signature_kind) = match action {
         ComposeAction::EditDraft { path, account_id } => {
             // Re-edit existing draft — skip creating a new file
             let cursor_line = 1;
@@ -29,6 +29,7 @@ pub(crate) async fn handle_compose_action(
                 account.account_id,
                 account.email,
                 mxr_compose::ComposeKind::New { to, subject },
+                SignatureContextData::New,
             )
         }
         ComposeAction::Reply {
@@ -59,7 +60,7 @@ pub(crate) async fn handle_compose_action(
                 Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
             };
-            (account_id, account.email, kind)
+            (account_id, account.email, kind, SignatureContextData::Reply)
         }
         ComposeAction::ReplyAll {
             message_id,
@@ -89,7 +90,7 @@ pub(crate) async fn handle_compose_action(
                 Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
             };
-            (account_id, account.email, kind)
+            (account_id, account.email, kind, SignatureContextData::Reply)
         }
         ComposeAction::Forward {
             message_id,
@@ -107,13 +108,15 @@ pub(crate) async fn handle_compose_action(
                 Response::Error { message, .. } => return Err(MxrError::Ipc(message)),
                 _ => return Err(MxrError::Ipc("unexpected response".into())),
             };
-            (account_id, account.email, kind)
+            (account_id, account.email, kind, SignatureContextData::Reply)
         }
     };
 
-    let (path, cursor_line) = mxr_compose::create_draft_file_async(kind, &from)
-        .await
-        .map_err(|e| MxrError::Ipc(e.to_string()))?;
+    let signature = resolve_default_signature(bg, &account_id, &from, signature_kind).await?;
+    let (path, cursor_line) =
+        mxr_compose::create_draft_file_async_with_signature(kind, &from, signature.as_ref())
+            .await
+            .map_err(|e| MxrError::Ipc(e.to_string()))?;
 
     Ok(ComposeReadyData {
         account_id,
@@ -166,6 +169,34 @@ pub(crate) async fn resolve_compose_account(
 
 fn compose_account_eligible(account: &AccountSummaryData) -> bool {
     account.enabled && account.send_kind.is_some()
+}
+
+async fn resolve_default_signature(
+    bg: &mpsc::UnboundedSender<IpcRequest>,
+    account_id: &AccountId,
+    from_email: &str,
+    kind: SignatureContextData,
+) -> Result<Option<mxr_compose::ComposeSignature>, MxrError> {
+    let resp = ipc_call(
+        bg,
+        Request::ResolveSignature {
+            name: None,
+            kind,
+            account_id: Some(account_id.clone()),
+            from_email: Some(from_email.to_string()),
+        },
+    )
+    .await?;
+    match resp {
+        Response::Ok {
+            data: ResponseData::ResolvedSignature { signature },
+        } => Ok(signature.map(|signature| mxr_compose::ComposeSignature {
+            name: signature.name,
+            body: signature.body,
+        })),
+        Response::Error { message, .. } => Err(MxrError::Ipc(message)),
+        _ => Err(MxrError::Ipc("Unexpected signature response".into())),
+    }
 }
 
 /// Phase 3.2: structured error from compose validation. Carries the

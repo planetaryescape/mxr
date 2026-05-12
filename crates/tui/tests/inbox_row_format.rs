@@ -8,6 +8,7 @@ use chrono::{Duration, TimeZone, Utc};
 use mxr_core::types::Address;
 use mxr_tui::ui::mail_list::{
     format_attachment_chip, format_date_relative, format_sender, format_subject_line,
+    format_thread_count_badge,
 };
 
 fn anchor() -> chrono::DateTime<Utc> {
@@ -184,6 +185,13 @@ fn attachment_chip_is_empty_when_no_attachments() {
         "",
         "size is irrelevant when has_attachments is false"
     );
+}
+
+#[test]
+fn thread_count_badge_marks_conversations_only() {
+    assert_eq!(format_thread_count_badge(1), "");
+    assert_eq!(format_thread_count_badge(2), "↔2");
+    assert_eq!(format_thread_count_badge(12), "↔12");
 }
 
 #[test]

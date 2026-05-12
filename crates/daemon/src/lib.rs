@@ -238,6 +238,10 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::snippets::run(action, format).await?;
         }
+        Some(Command::Signatures { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::signatures::run(action, format).await?;
+        }
         Some(Command::Sender {
             email,
             account,
@@ -448,6 +452,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             body_stdin,
             attach,
             from,
+            signature,
+            no_signature,
             yes,
             dry_run,
             format,
@@ -462,6 +468,8 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 body_stdin,
                 attach,
                 from,
+                signature,
+                no_signature,
                 yes,
                 dry_run,
                 format,
@@ -472,37 +480,72 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             message_id,
             body,
             body_stdin,
+            signature,
+            no_signature,
             yes,
             dry_run,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::reply(message_id, body, body_stdin, yes, dry_run, format).await?;
+            commands::mutations::reply(
+                message_id,
+                body,
+                body_stdin,
+                signature,
+                no_signature,
+                yes,
+                dry_run,
+                format,
+            )
+            .await?;
         }
         Some(Command::ReplyAll {
             message_id,
             body,
             body_stdin,
+            signature,
+            no_signature,
             yes,
             dry_run,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::reply_all(message_id, body, body_stdin, yes, dry_run, format)
-                .await?;
+            commands::mutations::reply_all(
+                message_id,
+                body,
+                body_stdin,
+                signature,
+                no_signature,
+                yes,
+                dry_run,
+                format,
+            )
+            .await?;
         }
         Some(Command::Forward {
             message_id,
             to,
             body,
             body_stdin,
+            signature,
+            no_signature,
             yes,
             dry_run,
             format,
         }) => {
             crate::server::ensure_daemon_running().await?;
-            commands::mutations::forward(message_id, to, body, body_stdin, yes, dry_run, format)
-                .await?;
+            commands::mutations::forward(
+                message_id,
+                to,
+                body,
+                body_stdin,
+                signature,
+                no_signature,
+                yes,
+                dry_run,
+                format,
+            )
+            .await?;
         }
         Some(Command::Drafts { action, format }) => {
             crate::server::ensure_daemon_running().await?;

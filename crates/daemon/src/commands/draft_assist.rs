@@ -116,7 +116,7 @@ async fn draft_one(
         .await?;
     match resp {
         Response::Ok {
-            data: ResponseData::DraftSuggestion { body, model },
+            data: ResponseData::DraftSuggestion { body, model, .. },
         } => Ok((body, model)),
         Response::Error { message, .. } => anyhow::bail!("{message}"),
         _ => anyhow::bail!("Unexpected response"),

@@ -267,6 +267,7 @@ mod tests {
                 references: vec![],
                 thread_id: None,
                 attach: vec![],
+                signature: None,
             },
             body: "Body".into(),
             draft_path,

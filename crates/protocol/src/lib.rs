@@ -570,6 +570,7 @@ mod tests {
                 ResponseData::Thread {
                     thread: sample_thread(),
                     messages: vec![sample_envelope()],
+                    summary: None,
                 },
                 IpcCategory::CoreMail,
             ),

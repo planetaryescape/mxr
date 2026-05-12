@@ -18,6 +18,8 @@ pub struct ComposeOptions {
     pub body_stdin: bool,
     pub attach: Vec<PathBuf>,
     pub from: Option<String>,
+    pub signature: Option<String>,
+    pub no_signature: bool,
     pub yes: bool,
     pub dry_run: bool,
     pub format: Option<OutputFormat>,
@@ -46,6 +48,15 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
     let mut client = IpcClient::connect().await?;
     let account = resolve_compose_account(&mut client, options.from.as_deref()).await?;
     let stdin_or_body = read_body_input(options.body, options.body_stdin)?;
+    let signature = resolve_compose_signature(
+        &mut client,
+        &account.account_id,
+        &account.email,
+        SignatureContextData::New,
+        options.signature.as_deref(),
+        options.no_signature,
+    )
+    .await?;
 
     let make_inline_frontmatter = || mxr_compose::frontmatter::ComposeFrontmatter {
         to: options.to.clone().unwrap_or_default(),
@@ -54,20 +65,30 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         subject: options.subject.clone().unwrap_or_default(),
         from: account.email.clone(),
         attach: attachment_strings(&options.attach),
+        signature: signature.as_ref().map(|signature| signature.name.clone()),
         ..Default::default()
     };
 
     let (frontmatter, body, draft_file) = if let Some(body) = stdin_or_body {
-        (make_inline_frontmatter(), body, None)
+        (
+            make_inline_frontmatter(),
+            apply_signature_to_body(body, signature.as_ref()),
+            None,
+        )
     } else if options.dry_run {
-        (make_inline_frontmatter(), String::new(), None)
+        (
+            make_inline_frontmatter(),
+            apply_signature_to_body(String::new(), signature.as_ref()),
+            None,
+        )
     } else {
-        let (path, cursor_line) = mxr_compose::create_draft_file(
+        let (path, cursor_line) = mxr_compose::create_draft_file_with_signature(
             mxr_compose::ComposeKind::New {
                 to: options.to.unwrap_or_default(),
                 subject: options.subject.unwrap_or_default(),
             },
             &account.email,
+            signature.as_ref(),
         )?;
         rewrite_compose_frontmatter(
             &path,
@@ -126,28 +147,56 @@ pub async fn reply(
     message_id: String,
     body: Option<String>,
     body_stdin: bool,
+    signature: Option<String>,
+    no_signature: bool,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    reply_inner(message_id, body, body_stdin, yes, dry_run, false, format).await
+    reply_inner(
+        message_id,
+        body,
+        body_stdin,
+        signature,
+        no_signature,
+        yes,
+        dry_run,
+        false,
+        format,
+    )
+    .await
 }
 
 pub async fn reply_all(
     message_id: String,
     body: Option<String>,
     body_stdin: bool,
+    signature: Option<String>,
+    no_signature: bool,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
-    reply_inner(message_id, body, body_stdin, yes, dry_run, true, format).await
+    reply_inner(
+        message_id,
+        body,
+        body_stdin,
+        signature,
+        no_signature,
+        yes,
+        dry_run,
+        true,
+        format,
+    )
+    .await
 }
 
 async fn reply_inner(
     message_id: String,
     body: Option<String>,
     body_stdin: bool,
+    signature: Option<String>,
+    no_signature: bool,
     yes: bool,
     dry_run: bool,
     reply_all: bool,
@@ -185,8 +234,24 @@ async fn reply_inner(
     };
 
     let stdin_or_body = read_body_input(body, body_stdin)?;
-    let (frontmatter, body_text, draft_file) =
-        build_compose_draft(&mut client, kind, &ctx.from, stdin_or_body, dry_run).await?;
+    let signature = resolve_compose_signature(
+        &mut client,
+        &ctx.account_id,
+        &ctx.from,
+        SignatureContextData::Reply,
+        signature.as_deref(),
+        no_signature,
+    )
+    .await?;
+    let (frontmatter, body_text, draft_file) = build_compose_draft(
+        &mut client,
+        kind,
+        &ctx.from,
+        stdin_or_body,
+        dry_run,
+        signature.as_ref(),
+    )
+    .await?;
 
     finalize_compose(
         &mut client,
@@ -206,6 +271,8 @@ pub async fn forward(
     to: Option<String>,
     body: Option<String>,
     body_stdin: bool,
+    signature: Option<String>,
+    no_signature: bool,
     yes: bool,
     dry_run: bool,
     format: Option<OutputFormat>,
@@ -230,8 +297,24 @@ pub async fn forward(
     };
 
     let stdin_or_body = read_body_input(body, body_stdin)?;
-    let (mut frontmatter, body_text, draft_file) =
-        build_compose_draft(&mut client, kind, &ctx.from, stdin_or_body, dry_run).await?;
+    let signature = resolve_compose_signature(
+        &mut client,
+        &ctx.account_id,
+        &ctx.from,
+        SignatureContextData::Reply,
+        signature.as_deref(),
+        no_signature,
+    )
+    .await?;
+    let (mut frontmatter, body_text, draft_file) = build_compose_draft(
+        &mut client,
+        kind,
+        &ctx.from,
+        stdin_or_body,
+        dry_run,
+        signature.as_ref(),
+    )
+    .await?;
 
     if let Some(to_val) = to {
         if !to_val.trim().is_empty() {
@@ -258,22 +341,30 @@ async fn build_compose_draft(
     from_email: &str,
     stdin_or_body: Option<String>,
     dry_run: bool,
+    signature: Option<&mxr_compose::ComposeSignature>,
 ) -> anyhow::Result<(
     mxr_compose::frontmatter::ComposeFrontmatter,
     String,
     Option<PathBuf>,
 )> {
     if let Some(body) = stdin_or_body {
-        let frontmatter = mxr_compose::seed_frontmatter(kind, from_email)?;
-        return Ok((frontmatter, body, None));
+        let frontmatter =
+            mxr_compose::seed_frontmatter_with_signature(kind, from_email, signature)?;
+        return Ok((frontmatter, apply_signature_to_body(body, signature), None));
     }
 
     if dry_run {
-        let frontmatter = mxr_compose::seed_frontmatter(kind, from_email)?;
-        return Ok((frontmatter, String::new(), None));
+        let frontmatter =
+            mxr_compose::seed_frontmatter_with_signature(kind, from_email, signature)?;
+        return Ok((
+            frontmatter,
+            apply_signature_to_body(String::new(), signature),
+            None,
+        ));
     }
 
-    let (path, cursor_line) = mxr_compose::create_draft_file(kind, from_email)?;
+    let (path, cursor_line) =
+        mxr_compose::create_draft_file_with_signature(kind, from_email, signature)?;
     let editor = mxr_compose::editor::resolve_editor(None);
     mxr_compose::editor::spawn_editor(&editor, &path, Some(cursor_line)).await?;
     let content = std::fs::read_to_string(&path)?;
@@ -645,6 +736,51 @@ fn read_body_input(body: Option<String>, body_stdin: bool) -> anyhow::Result<Opt
     Ok(None)
 }
 
+async fn resolve_compose_signature(
+    client: &mut IpcClient,
+    account_id: &AccountId,
+    from_email: &str,
+    kind: SignatureContextData,
+    name: Option<&str>,
+    disabled: bool,
+) -> anyhow::Result<Option<mxr_compose::ComposeSignature>> {
+    if disabled {
+        return Ok(None);
+    }
+    let name = name
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string);
+    let response = client
+        .request(Request::ResolveSignature {
+            name,
+            kind,
+            account_id: Some(account_id.clone()),
+            from_email: Some(from_email.to_string()),
+        })
+        .await?;
+    match response {
+        Response::Ok {
+            data: ResponseData::ResolvedSignature { signature },
+        } => Ok(signature.map(|signature| mxr_compose::ComposeSignature {
+            name: signature.name,
+            body: signature.body,
+        })),
+        Response::Error { message, .. } => anyhow::bail!(message),
+        _ => anyhow::bail!("Unexpected response"),
+    }
+}
+
+fn apply_signature_to_body(
+    body: String,
+    signature: Option<&mxr_compose::ComposeSignature>,
+) -> String {
+    match signature {
+        Some(signature) => mxr_compose::append_signature_to_body(&body, &signature.body),
+        None => body,
+    }
+}
+
 fn rewrite_compose_frontmatter(
     path: &std::path::Path,
     cc: Option<String>,
@@ -951,6 +1087,7 @@ mod tests {
             references: vec!["<root@example.com>".into()],
             thread_id: None,
             attach: Vec::new(),
+            signature: None,
         };
 
         let draft = draft_from_frontmatter(mxr_core::AccountId::new(), &frontmatter, "body".into())

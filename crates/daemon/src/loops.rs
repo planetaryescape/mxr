@@ -256,6 +256,20 @@ async fn sync_loop_for_account(
                     {
                         tracing::error!(account = %account_id, "Semantic indexing failed: {error}");
                     }
+                    if let Err(error) = state
+                        .contacts_refresh
+                        .enqueue_accounts(std::slice::from_ref(&account_id))
+                        .await
+                    {
+                        tracing::warn!(account = %account_id, "Contacts refresh enqueue failed: {error}");
+                    }
+                    if let Err(error) = state
+                        .relationship
+                        .enqueue_contacts_from_messages(&outcome.upserted_message_ids)
+                        .await
+                    {
+                        tracing::warn!(account = %account_id, "Relationship profile enqueue failed: {error}");
+                    }
                     if let Err(error) = apply_rules_to_messages(
                         &state,
                         &account_id,
@@ -265,6 +279,17 @@ async fn sync_loop_for_account(
                     .await
                     {
                         tracing::error!(account = %account_id, "Rule execution failed: {error}");
+                    }
+                    if state.config_snapshot().llm.enabled {
+                        let summary_state = state.clone();
+                        let summary_message_ids = outcome.upserted_message_ids.clone();
+                        tokio::spawn(async move {
+                            crate::handler::summarize::summarize_changed_message_threads(
+                                summary_state,
+                                summary_message_ids,
+                            )
+                            .await;
+                        });
                     }
                 }
 

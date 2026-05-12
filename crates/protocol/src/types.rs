@@ -34,6 +34,14 @@ pub struct LlmStatusSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadSummaryData {
+    pub text: String,
+    pub model: String,
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmConfigData {
     pub enabled: bool,
     pub base_url: String,
@@ -392,12 +400,77 @@ pub enum Request {
     DeleteSnippet {
         name: String,
     },
+    /// List outgoing compose signatures, alphabetically by name.
+    ListSignatures,
+    /// List scoped signature defaults.
+    ListSignatureDefaults,
+    /// Create or update a signature by name.
+    SetSignature {
+        name: String,
+        body: String,
+    },
+    /// Delete a signature by name. Also clears defaults pointing at it.
+    DeleteSignature {
+        name: String,
+    },
+    /// Set the default signature for a global/account/from-address scope.
+    SetSignatureDefault {
+        name: String,
+        kind: SignatureContextData,
+        account_id: Option<AccountId>,
+        from_email: Option<String>,
+    },
+    /// Clear the default signature for a global/account/from-address scope.
+    ClearSignatureDefault {
+        kind: SignatureContextData,
+        account_id: Option<AccountId>,
+        from_email: Option<String>,
+    },
+    /// Resolve the signature to insert into a compose draft.
+    ResolveSignature {
+        name: Option<String>,
+        kind: SignatureContextData,
+        account_id: Option<AccountId>,
+        from_email: Option<String>,
+    },
     /// Per-sender relationship aggregates: volume, response cadence,
     /// open threads. Returns `None` (via `Ok`/`SenderProfileData` with
     /// `present=false`) if the contact is unknown.
     GetSenderProfile {
         account_id: AccountId,
         email: String,
+    },
+    GetRelationshipProfile {
+        account_id: AccountId,
+        email: String,
+    },
+    RebuildRelationshipProfile {
+        account_id: AccountId,
+        email: String,
+    },
+    ListCommitments {
+        account_id: AccountId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        email: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        status: Option<CommitmentStatusData>,
+    },
+    ResolveCommitment {
+        commitment_id: String,
+    },
+    GetUserVoice {
+        account_id: AccountId,
+    },
+    RebuildUserVoice {
+        account_id: AccountId,
+    },
+    HumanizerScore {
+        text: String,
+    },
+    HumanizerRewrite {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_iterations: Option<u8>,
     },
     /// List senders who've sent inbound messages but don't have a
     /// screener decision yet.
@@ -525,7 +598,22 @@ impl Request {
             | Self::ListSnippets
             | Self::SetSnippet { .. }
             | Self::DeleteSnippet { .. }
+            | Self::ListSignatures
+            | Self::ListSignatureDefaults
+            | Self::SetSignature { .. }
+            | Self::DeleteSignature { .. }
+            | Self::SetSignatureDefault { .. }
+            | Self::ClearSignatureDefault { .. }
+            | Self::ResolveSignature { .. }
             | Self::GetSenderProfile { .. }
+            | Self::GetRelationshipProfile { .. }
+            | Self::RebuildRelationshipProfile { .. }
+            | Self::ListCommitments { .. }
+            | Self::ResolveCommitment { .. }
+            | Self::GetUserVoice { .. }
+            | Self::RebuildUserVoice { .. }
+            | Self::HumanizerScore { .. }
+            | Self::HumanizerRewrite { .. }
             | Self::ListScreenerQueue { .. }
             | Self::ListScreenerDecisions { .. }
             | Self::SetScreenerDecision { .. }
@@ -841,6 +929,8 @@ pub enum ResponseData {
     Thread {
         thread: Thread,
         messages: Vec<Envelope>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        summary: Option<ThreadSummaryData>,
     },
     Labels {
         labels: Vec<Label>,
@@ -890,8 +980,37 @@ pub enum ResponseData {
     SnippetData {
         snippet: SnippetData,
     },
+    Signatures {
+        signatures: Vec<SignatureData>,
+    },
+    SignatureData {
+        signature: SignatureData,
+    },
+    SignatureDefaults {
+        defaults: Vec<SignatureDefaultData>,
+    },
+    ResolvedSignature {
+        signature: Option<SignatureData>,
+    },
     SenderProfile {
         profile: Option<SenderProfileData>,
+    },
+    RelationshipProfile {
+        profile: Option<RelationshipProfileData>,
+    },
+    CommitmentList {
+        commitments: Vec<CommitmentData>,
+    },
+    UserVoice {
+        profile: Option<UserVoiceProfileData>,
+    },
+    HumanizerReport {
+        report: HumanizerReportSummaryData,
+    },
+    HumanizedText {
+        text: String,
+        report: HumanizerReportSummaryData,
+        iterations: u8,
     },
     ScreenerQueue {
         entries: Vec<ScreenerQueueEntryData>,
@@ -906,6 +1025,12 @@ pub enum ResponseData {
     DraftSuggestion {
         body: String,
         model: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        voice_match: Option<VoiceMatchData>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        humanizer: Option<HumanizerReportSummaryData>,
+        #[serde(default)]
+        rewrite_iterations: u8,
     },
     ExportResult {
         content: String,
@@ -1063,7 +1188,16 @@ impl ResponseData {
             | Self::ReplyQueue { .. }
             | Self::Snippets { .. }
             | Self::SnippetData { .. }
+            | Self::Signatures { .. }
+            | Self::SignatureData { .. }
+            | Self::SignatureDefaults { .. }
+            | Self::ResolvedSignature { .. }
             | Self::SenderProfile { .. }
+            | Self::RelationshipProfile { .. }
+            | Self::CommitmentList { .. }
+            | Self::UserVoice { .. }
+            | Self::HumanizerReport { .. }
+            | Self::HumanizedText { .. }
             | Self::ScreenerQueue { .. }
             | Self::ScreenerDecisions { .. }
             | Self::ThreadSummary { .. }
@@ -1325,6 +1459,21 @@ pub struct DoctorFinding {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SenderEmailReferenceData {
+    pub message_id: MessageId,
+    pub thread_id: ThreadId,
+    pub subject: String,
+    pub snippet: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_name: Option<String>,
+    pub from_email: String,
+    pub date: chrono::DateTime<chrono::Utc>,
+    pub direction: String,
+    pub has_attachments: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SenderProfileData {
     pub account_id: AccountId,
     pub email: String,
@@ -1353,6 +1502,164 @@ pub struct SenderProfileData {
     pub attachment_count: u32,
     #[serde(default)]
     pub attachment_bytes: u64,
+    #[serde(default)]
+    pub recent_messages: Vec<SenderEmailReferenceData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relationship: Option<RelationshipProfileData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RelationshipProfileData {
+    pub account_id: AccountId,
+    pub email: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<ContactStyleData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<ContactRelationshipSummaryData>,
+    #[serde(default)]
+    pub open_commitments: Vec<CommitmentData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ContactStyleData {
+    pub formality_score: f64,
+    pub formality_score_theirs: f64,
+    pub avg_sentence_len: f64,
+    pub avg_sentence_len_theirs: f64,
+    pub msg_count_used: u32,
+    pub msg_count_used_theirs: u32,
+    pub computed_at: chrono::DateTime<chrono::Utc>,
+    pub source_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ContactRelationshipSummaryData {
+    pub text: String,
+    pub model: String,
+    pub known_topics: Vec<String>,
+    pub computed_at: chrono::DateTime<chrono::Utc>,
+    pub source_hash: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CommitmentDirectionData {
+    Yours,
+    Theirs,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CommitmentStatusData {
+    Open,
+    Resolved,
+    Expired,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CommitmentData {
+    pub id: String,
+    pub account_id: AccountId,
+    pub email: String,
+    pub thread_id: ThreadId,
+    pub direction: CommitmentDirectionData,
+    pub status: CommitmentStatusData,
+    pub who_owes: String,
+    pub what: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by_when: Option<chrono::DateTime<chrono::Utc>>,
+    pub evidence_msg_id: MessageId,
+    pub extracted_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceRegisterData {
+    Casual,
+    Neutral,
+    Formal,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UserVoiceRegisterModeData {
+    pub register: VoiceRegisterData,
+    pub formality_score: f64,
+    pub avg_sentence_len: f64,
+    pub exemplar_message_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct UserVoiceProfileData {
+    pub account_id: AccountId,
+    pub formality_score: f64,
+    pub avg_sentence_len: f64,
+    pub msg_count_used: u32,
+    pub register_modes: Vec<UserVoiceRegisterModeData>,
+    pub computed_at: chrono::DateTime<chrono::Utc>,
+    pub source_hash: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceMatchConfidenceData {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct VoiceMatchData {
+    pub score: f64,
+    pub confidence: VoiceMatchConfidenceData,
+    pub notable_deltas: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct HumanizerHitData {
+    pub category: String,
+    pub matched: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggestion: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct HumanizerReportSummaryData {
+    pub score: u8,
+    pub hits: Vec<HumanizerHitData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum FeatureHealth {
+    Healthy,
+    Degraded { reason: String },
+    Disabled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct FeatureHealthReport {
+    pub semantic: FeatureHealth,
+    pub summarize: FeatureHealth,
+    pub relationship_profile: FeatureHealth,
+    pub commitments: FeatureHealth,
+    pub draft_assist: FeatureHealth,
+    pub voice_match: FeatureHealth,
+    pub humanizer: FeatureHealth,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1362,6 +1669,37 @@ pub struct SnippetData {
     pub body: String,
     #[serde(default)]
     pub vars: Vec<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "kebab-case")]
+pub enum SignatureContextData {
+    New,
+    Reply,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SignatureData {
+    pub id: SignatureId,
+    pub name: String,
+    pub body: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SignatureDefaultData {
+    pub kind: SignatureContextData,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<AccountId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_email: Option<String>,
+    pub signature: SignatureData,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }

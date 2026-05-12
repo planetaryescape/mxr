@@ -106,7 +106,9 @@ async fn fetch_thread(
     let resp = client.request(Request::GetThread { thread_id: id }).await?;
     expect_response(resp, |r| match r {
         Response::Ok {
-            data: ResponseData::Thread { thread, messages },
+            data: ResponseData::Thread {
+                thread, messages, ..
+            },
         } => Some((thread, messages)),
         _ => None,
     })

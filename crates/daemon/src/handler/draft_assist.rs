@@ -2,12 +2,18 @@
 //! a hand-tuned system prompt plus similar prior sent messages to
 //! ground the generated voice.
 
-use super::HandlerResult;
+use super::{relationship_profile, HandlerResult};
 use crate::state::AppState;
 use mxr_core::id::ThreadId;
-use mxr_core::types::{MessageDirection, SemanticChunkSourceKind};
-use mxr_llm::{ChatMessage, CompletionRequest, LlmError};
-use mxr_protocol::ResponseData;
+use mxr_core::types::{Envelope, MessageDirection, SemanticChunkSourceKind};
+use mxr_humanizer::{score as humanizer_score, writing_constraints, HumanizerOpts};
+use mxr_llm::{ChatMessage, CompletionRequest, LlmError, LlmFeature};
+use mxr_protocol::{
+    HumanizerReportSummaryData, ResponseData, VoiceMatchConfidenceData, VoiceMatchData,
+};
+use mxr_relationship::stylometry::StylometryMetrics;
+use mxr_relationship::{compute_metrics, score_voice_match, VoiceMatchConfidence};
+use std::collections::BTreeSet;
 
 const SYSTEM_PROMPT: &str = "You draft email replies for a busy professional. Given the thread \
 context and the user's intent, produce just the reply body — no \
@@ -21,6 +27,7 @@ const PROMPT_BUDGET_CHARS: usize = 24_000;
 const GROUNDING_LIMIT: usize = 3;
 const GROUNDING_SEARCH_LIMIT: usize = 8;
 const GROUNDING_BUDGET_CHARS: usize = 4_000;
+const RELATIONSHIP_BUDGET_CHARS: usize = 2_000;
 
 pub(super) async fn draft_assist(
     state: &AppState,
@@ -56,6 +63,7 @@ pub(super) async fn draft_assist(
         }
     }
 
+    let relationship_context = relationship_context_for_thread(state, &envelopes).await;
     let semantic_query = format!(
         "{}\n{}\n{}",
         envelopes[0].subject,
@@ -63,20 +71,8 @@ pub(super) async fn draft_assist(
         transcript
     );
     let grounding = prior_sent_grounding(state, thread_id, &semantic_query, &envelopes).await;
-    let user_message = if grounding.is_empty() {
-        format!(
-            "Thread so far:\n\n{transcript}\n\
-             Now draft my reply. Instruction: {}",
-            instruction.trim()
-        )
-    } else {
-        format!(
-            "Prior sent replies to match my voice:\n\n{grounding}\n\
-             Thread so far:\n\n{transcript}\n\
-             Now draft my reply. Instruction: {}",
-            instruction.trim()
-        )
-    };
+    let user_message =
+        build_user_message(&relationship_context, &grounding, &transcript, instruction);
 
     let request = CompletionRequest {
         messages: vec![
@@ -87,11 +83,24 @@ pub(super) async fn draft_assist(
         temperature: Some(0.4),
     };
 
-    match state.llm.complete(request).await {
-        Ok(response) => Ok(ResponseData::DraftSuggestion {
-            body: response.content.trim().to_string(),
-            model: response.model,
-        }),
+    match state
+        .llm
+        .for_feature(LlmFeature::DraftAssist)
+        .complete(request)
+        .await
+    {
+        Ok(response) => {
+            let body = response.content.trim().to_string();
+            let humanizer = humanizer_summary(humanizer_score(&body, &HumanizerOpts::default()));
+            let voice_match = voice_match_for_body(&body, &relationship_context);
+            Ok(ResponseData::DraftSuggestion {
+                body,
+                model: response.model,
+                voice_match,
+                humanizer: Some(humanizer),
+                rewrite_iterations: 0,
+            })
+        }
         Err(LlmError::Disabled) => Err(
             "LLM is disabled. Enable it in [llm] in your config and configure a model \
              (Ollama / LM Studio / OpenAI). See `mxr config`."
@@ -99,6 +108,154 @@ pub(super) async fn draft_assist(
         ),
         Err(e) => Err(format!("LLM error: {e}")),
     }
+}
+
+fn build_user_message(
+    relationship_context: &RelationshipPromptContext,
+    grounding: &str,
+    transcript: &str,
+    instruction: &str,
+) -> String {
+    let mut message = String::new();
+    if !relationship_context.prompt.is_empty() {
+        message.push_str("[VOICE CONTEXT]\n");
+        message.push_str("This is weak background guidance. The current thread and my instruction override it. Anything not listed as a known topic is unknown; do not invent familiarity.\n\n");
+        message.push_str(&relationship_context.prompt);
+        message.push_str("\n\n");
+    }
+    message.push_str("[WRITING CONSTRAINTS]\n");
+    message.push_str(writing_constraints());
+    message.push_str("\n\n");
+    if !grounding.is_empty() {
+        message.push_str("[PRIOR SENT REPLIES TO MATCH MY VOICE]\n");
+        message.push_str(grounding);
+        message.push_str("\n\n");
+    }
+    message.push_str("[THREAD SO FAR]\n");
+    message.push_str(transcript);
+    message.push_str("\n[TASK]\nNow draft my reply. Instruction: ");
+    message.push_str(instruction.trim());
+    message
+}
+
+#[derive(Default)]
+struct RelationshipPromptContext {
+    prompt: String,
+    baseline: Option<(StylometryMetrics, u32)>,
+}
+
+async fn relationship_context_for_thread(
+    state: &AppState,
+    envelopes: &[Envelope],
+) -> RelationshipPromptContext {
+    let Some(first) = envelopes.first() else {
+        return RelationshipPromptContext::default();
+    };
+    let owned = state
+        .store
+        .list_account_addresses(&first.account_id)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|address| address.email.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let mut emails = BTreeSet::new();
+    for envelope in envelopes {
+        maybe_insert_contact(&mut emails, &owned, &envelope.from.email);
+        for address in envelope
+            .to
+            .iter()
+            .chain(envelope.cc.iter())
+            .chain(envelope.bcc.iter())
+        {
+            maybe_insert_contact(&mut emails, &owned, &address.email);
+        }
+    }
+    let mut prompt = String::new();
+    let mut baseline = None;
+    for email in emails.into_iter().take(3) {
+        let Ok(Some(profile)) =
+            relationship_profile::load_relationship_profile(state, &first.account_id, &email).await
+        else {
+            continue;
+        };
+        prompt.push_str(&format!("Recipient/contact: {email}\n"));
+        if let Some(summary) = profile.summary {
+            prompt.push_str(&format!("- Relationship: {}\n", summary.text.trim()));
+            if !summary.known_topics.is_empty() {
+                prompt.push_str(&format!(
+                    "- Known topics: {}\n",
+                    summary.known_topics.join(", ")
+                ));
+            }
+        }
+        if let Some(style) = profile.style {
+            prompt.push_str(&format!(
+                "- Your style to them: formality {:.2}, avg sentence {:.1} words, based on {} messages\n",
+                style.formality_score, style.avg_sentence_len, style.msg_count_used
+            ));
+            prompt.push_str(&format!(
+                "- Their style to you: formality {:.2}, avg sentence {:.1} words, based on {} messages\n",
+                style.formality_score_theirs, style.avg_sentence_len_theirs, style.msg_count_used_theirs
+            ));
+            if baseline.is_none() {
+                baseline = Some((
+                    StylometryMetrics {
+                        formality_score: style.formality_score,
+                        avg_sentence_len: style.avg_sentence_len,
+                        ..StylometryMetrics::default()
+                    },
+                    style.msg_count_used,
+                ));
+            }
+        }
+        if !profile.open_commitments.is_empty() {
+            prompt.push_str("- Outstanding commitments:\n");
+            for commitment in profile.open_commitments.iter().take(3) {
+                prompt.push_str(&format!(
+                    "  - {:?}: {}\n",
+                    commitment.direction, commitment.what
+                ));
+            }
+        }
+        prompt.push('\n');
+        if prompt.len() > RELATIONSHIP_BUDGET_CHARS {
+            prompt.truncate(RELATIONSHIP_BUDGET_CHARS);
+            prompt.push_str("\n[...relationship context truncated...]\n");
+            break;
+        }
+    }
+    RelationshipPromptContext { prompt, baseline }
+}
+
+fn maybe_insert_contact(emails: &mut BTreeSet<String>, owned: &BTreeSet<String>, email: &str) {
+    let email = email.trim().to_ascii_lowercase();
+    if email.is_empty() || owned.contains(&email) {
+        return;
+    }
+    emails.insert(email);
+}
+
+fn humanizer_summary(report: mxr_humanizer::HumanizerReport) -> HumanizerReportSummaryData {
+    super::humanizer::report_summary(report)
+}
+
+fn voice_match_for_body(
+    body: &str,
+    relationship_context: &RelationshipPromptContext,
+) -> Option<VoiceMatchData> {
+    let (baseline, count) = relationship_context.baseline.as_ref()?;
+    let draft_metrics = compute_metrics(body);
+    let report = score_voice_match(&draft_metrics, baseline, *count);
+    Some(VoiceMatchData {
+        score: report.score,
+        confidence: match report.confidence {
+            VoiceMatchConfidence::Low => VoiceMatchConfidenceData::Low,
+            VoiceMatchConfidence::Medium => VoiceMatchConfidenceData::Medium,
+            VoiceMatchConfidence::High => VoiceMatchConfidenceData::High,
+        },
+        notable_deltas: report.notable_deltas,
+    })
 }
 
 async fn prior_sent_grounding(
@@ -203,6 +360,7 @@ mod tests {
     use mxr_core::types::Address;
     use mxr_core::types::{MessageBody, MessageDirection, MessageMetadata};
     use mxr_llm::{CompletionResponse, LlmCapabilities, LlmProvider};
+    use mxr_store::{ContactRelationshipSummaryRecord, ContactStyleRecord};
     use std::sync::{Arc, Mutex};
 
     #[derive(Default)]
@@ -294,7 +452,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             response,
-            ResponseData::DraftSuggestion { ref body, ref model }
+            ResponseData::DraftSuggestion { ref body, ref model, .. }
                 if body == "Grounded reply" && model == "test-llm"
         ));
 
@@ -310,8 +468,102 @@ mod tests {
             .map(|message| message.content.as_str())
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(prompt.contains("Thread so far:"));
-        assert!(!prompt.contains("Prior sent replies to match my voice:"));
+        assert!(prompt.contains("[THREAD SO FAR]"));
+        assert!(prompt.contains("[WRITING CONSTRAINTS]"));
+        assert!(!prompt.contains("[PRIOR SENT REPLIES TO MATCH MY VOICE]"));
+    }
+
+    #[tokio::test]
+    async fn draft_assist_injects_relationship_context_as_weak_guidance() {
+        let state = AppState::in_memory().await.unwrap();
+        let llm = Arc::new(CapturingLlm::default());
+        state.llm.replace(llm.clone());
+
+        let account_id = state.default_account_id();
+        let computed_at = chrono::Utc::now();
+        state
+            .store
+            .upsert_contact_relationship_summary(&ContactRelationshipSummaryRecord {
+                account_id: account_id.clone(),
+                email: "customer@example.com".to_string(),
+                text: "Customer prefers short pricing updates.".to_string(),
+                model: "test-model".to_string(),
+                known_topics: vec!["pricing".to_string(), "rollout".to_string()],
+                computed_at,
+                source_hash: "relationship-v1".to_string(),
+                last_error: None,
+            })
+            .await
+            .unwrap();
+        state
+            .store
+            .upsert_contact_style(&ContactStyleRecord {
+                account_id: account_id.clone(),
+                email: "customer@example.com".to_string(),
+                formality_score: 0.2,
+                formality_score_theirs: 0.4,
+                avg_sentence_len: 8.0,
+                avg_sentence_len_theirs: 10.0,
+                msg_count_used: 4,
+                msg_count_used_theirs: 3,
+                metrics_json: "{}".to_string(),
+                metrics_json_theirs: "{}".to_string(),
+                computed_at,
+                source_hash: "style-v1".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let thread_id = mxr_core::ThreadId::new();
+        let current = TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .thread_id(thread_id.clone())
+            .provider_id("current-inbound")
+            .subject("Pricing rollout")
+            .from_address("Customer", "customer@example.com")
+            .snippet("Can you clarify pricing rollout timing?")
+            .build();
+        state
+            .store
+            .upsert_envelope_with_direction(&current, MessageDirection::Inbound)
+            .await
+            .unwrap();
+        state
+            .store
+            .insert_body(&body(current.id.clone(), "Can you clarify pricing timing?"))
+            .await
+            .unwrap();
+
+        let response = draft_assist(&state, &thread_id, "reply briefly")
+            .await
+            .unwrap();
+        assert!(matches!(
+            response,
+            ResponseData::DraftSuggestion {
+                voice_match: Some(_),
+                humanizer: Some(_),
+                ..
+            }
+        ));
+
+        let request = llm
+            .last_request
+            .lock()
+            .expect("request lock")
+            .clone()
+            .expect("captured request");
+        let prompt = request
+            .messages
+            .iter()
+            .map(|message| message.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(prompt.contains("[VOICE CONTEXT]"));
+        assert!(prompt.contains("This is weak background guidance"));
+        assert!(prompt.contains("do not invent familiarity"));
+        assert!(prompt.contains("Relationship: Customer prefers short pricing updates."));
+        assert!(prompt.contains("Known topics: pricing, rollout"));
+        assert!(prompt.contains("Your style to them: formality 0.20"));
     }
 
     #[cfg(feature = "local")]
@@ -416,7 +668,7 @@ mod tests {
             .unwrap();
         assert!(matches!(
             response,
-            ResponseData::DraftSuggestion { ref body, ref model }
+            ResponseData::DraftSuggestion { ref body, ref model, .. }
                 if body == "Grounded reply" && model == "test-llm"
         ));
 

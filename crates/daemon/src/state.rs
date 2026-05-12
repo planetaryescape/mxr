@@ -1,9 +1,10 @@
 use mxr_core::id::AccountId;
 use mxr_core::*;
 use mxr_protocol::{AccountConfigData, AuthSessionData, AuthSessionId, IpcMessage};
+use mxr_relationship::RelationshipServiceHandle;
 use mxr_search::{SearchIndex, SearchServiceHandle};
 use mxr_semantic::{SemanticEngine, SemanticServiceHandle};
-use mxr_store::Store;
+use mxr_store::{ContactsRefreshHandle, Store};
 use mxr_sync::SyncEngine;
 use parking_lot::{Mutex as ParkingMutex, RwLock};
 use std::collections::{HashMap, HashSet};
@@ -35,6 +36,8 @@ struct NamedTaskHandle {
 struct RuntimeTasks {
     search_worker: ParkingMutex<Option<JoinHandle<()>>>,
     semantic_worker: ParkingMutex<Option<JoinHandle<()>>>,
+    relationship_worker: ParkingMutex<Option<JoinHandle<()>>>,
+    contacts_refresh_worker: ParkingMutex<Option<JoinHandle<()>>>,
     sync_loops: ParkingMutex<HashMap<AccountId, JoinHandle<()>>>,
     snooze_loop: ParkingMutex<Option<JoinHandle<()>>>,
     auto_reminders_loop: ParkingMutex<Option<JoinHandle<()>>>,
@@ -53,6 +56,14 @@ impl RuntimeTasks {
 
     fn set_semantic_worker(&self, handle: JoinHandle<()>) {
         *self.semantic_worker.lock() = Some(handle);
+    }
+
+    fn set_relationship_worker(&self, handle: JoinHandle<()>) {
+        *self.relationship_worker.lock() = Some(handle);
+    }
+
+    fn set_contacts_refresh_worker(&self, handle: JoinHandle<()>) {
+        *self.contacts_refresh_worker.lock() = Some(handle);
     }
 
     fn register_sync_loop(&self, account_id: AccountId, handle: JoinHandle<()>) {
@@ -107,6 +118,18 @@ impl RuntimeTasks {
         if let Some(handle) = self.semantic_worker.lock().take() {
             handles.push(NamedTaskHandle {
                 name: "semantic_worker".to_string(),
+                handle,
+            });
+        }
+        if let Some(handle) = self.relationship_worker.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "relationship_worker".to_string(),
+                handle,
+            });
+        }
+        if let Some(handle) = self.contacts_refresh_worker.lock().take() {
+            handles.push(NamedTaskHandle {
+                name: "contacts_refresh_worker".to_string(),
                 handle,
             });
         }
@@ -225,6 +248,8 @@ pub struct AppState {
     pub store: Arc<Store>,
     pub search: SearchServiceHandle,
     pub semantic: SemanticServiceHandle,
+    pub relationship: RelationshipServiceHandle,
+    pub contacts_refresh: ContactsRefreshHandle,
     /// LLM provider for thread summarisation and draft assist. Always
     /// present; defaults to `NoopProvider` when LLM is disabled in
     /// config so callers can return `LlmDisabled` without `Option`
@@ -293,6 +318,11 @@ impl AppState {
             config.search.semantic.clone(),
         ));
         runtime_tasks.set_semantic_worker(semantic_worker);
+        let (relationship, relationship_worker) = RelationshipServiceHandle::start(store.clone());
+        runtime_tasks.set_relationship_worker(relationship_worker);
+        let (contacts_refresh, contacts_refresh_worker) =
+            ContactsRefreshHandle::start(store.clone());
+        runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let account_addresses = Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new());
         // Best-effort initial load. Empty result is fine — `is_loaded` stays
         // false and direction classification falls back to Unknown until the
@@ -324,6 +354,8 @@ impl AppState {
             store,
             search,
             semantic,
+            relationship,
+            contacts_refresh,
             llm,
             sync_engine,
             account_addresses,
@@ -1023,6 +1055,11 @@ impl AppState {
             config.search.semantic.clone(),
         ));
         runtime_tasks.set_semantic_worker(semantic_worker);
+        let (relationship, relationship_worker) = RelationshipServiceHandle::start(store.clone());
+        runtime_tasks.set_relationship_worker(relationship_worker);
+        let (contacts_refresh, contacts_refresh_worker) =
+            ContactsRefreshHandle::start(store.clone());
+        runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
         store.insert_account(&account).await?;
@@ -1046,6 +1083,8 @@ impl AppState {
             store,
             search,
             semantic,
+            relationship,
+            contacts_refresh,
             llm,
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
@@ -1084,6 +1123,11 @@ impl AppState {
             config.search.semantic.clone(),
         ));
         runtime_tasks.set_semantic_worker(semantic_worker);
+        let (relationship, relationship_worker) = RelationshipServiceHandle::start(store.clone());
+        runtime_tasks.set_relationship_worker(relationship_worker);
+        let (contacts_refresh, contacts_refresh_worker) =
+            ContactsRefreshHandle::start(store.clone());
+        runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
@@ -1095,6 +1139,8 @@ impl AppState {
             store,
             search,
             semantic,
+            relationship,
+            contacts_refresh,
             llm,
             sync_engine,
             account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),
@@ -1134,6 +1180,11 @@ impl AppState {
             config.search.semantic.clone(),
         ));
         runtime_tasks.set_semantic_worker(semantic_worker);
+        let (relationship, relationship_worker) = RelationshipServiceHandle::start(store.clone());
+        runtime_tasks.set_relationship_worker(relationship_worker);
+        let (contacts_refresh, contacts_refresh_worker) =
+            ContactsRefreshHandle::start(store.clone());
+        runtime_tasks.set_contacts_refresh_worker(contacts_refresh_worker);
         let sync_engine = Arc::new(SyncEngine::new(store.clone(), search.clone()));
 
         let account_id = AccountId::new();
@@ -1172,6 +1223,8 @@ impl AppState {
                 store,
                 search,
                 semantic,
+                relationship,
+                contacts_refresh,
                 llm,
                 sync_engine,
                 account_addresses: Arc::new(mxr_core::types::InMemoryAccountAddressLookup::new()),

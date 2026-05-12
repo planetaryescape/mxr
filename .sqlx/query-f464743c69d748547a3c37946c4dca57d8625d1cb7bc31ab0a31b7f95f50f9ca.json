@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO signature_defaults\n                   (scope_key, kind, signature_id, account_id, from_email, created_at, updated_at)\n               VALUES (?, ?, ?, ?, ?, ?, ?)\n               ON CONFLICT(scope_key, kind) DO UPDATE SET\n                   signature_id = excluded.signature_id,\n                   account_id = excluded.account_id,\n                   from_email = excluded.from_email,\n                   updated_at = excluded.updated_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "f464743c69d748547a3c37946c4dca57d8625d1cb7bc31ab0a31b7f95f50f9ca"
+}

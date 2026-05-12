@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM signature_defaults WHERE scope_key = ? AND kind = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3cd6e125fbcc3510a2dae59afd8dfccba10565d89c241827fdeb489ccfd61d66"
+}

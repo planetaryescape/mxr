@@ -273,13 +273,38 @@ async fn execute_search_ast(
     }
 
     let dense_window = requested_window.saturating_mul(8).max(200);
-    let semantic_hits = state
+    let semantic_hits = match state
         .semantic
         // Lexical search remains the exact/literal path. Dense retrieval only
         // broadens recall inside the source kinds implied by the parsed query.
         .search(&semantic_query, dense_window, &semantic_plan.source_kinds)
         .await
-        .map_err(|e| e.to_string())?;
+    {
+        Ok(hits) => hits,
+        Err(error) => {
+            let page = paginate_results(lexical_results.clone(), options.offset, options.limit);
+            return Ok(build_execution(
+                options.mode,
+                SearchMode::Lexical,
+                page.results,
+                page.total,
+                page.has_more,
+                page.next_offset,
+                ExecutionExplainInput {
+                    include_explain: options.explain,
+                    semantic_query: Some(semantic_query),
+                    lexical_window,
+                    dense_window: Some(dense_window),
+                    lexical_results: &lexical_results,
+                    dense_results: &[],
+                    rrf_k: None,
+                    notes: vec![format!(
+                        "semantic retrieval failed ({error}); used lexical ranking"
+                    )],
+                },
+            ));
+        }
+    };
 
     let dense_results = filter_dense_hits(state, ast, semantic_hits).await?;
     if options.mode == SearchMode::Semantic {
@@ -443,6 +468,13 @@ mod tests {
                 ]
             })
             .collect())
+    }
+
+    fn failing_embedder(
+        _profile: mxr_core::SemanticProfile,
+        _texts: &[String],
+    ) -> anyhow::Result<Vec<Vec<f32>>> {
+        Err(anyhow::anyhow!("embedder offline"))
     }
 
     fn text_body(
@@ -708,5 +740,67 @@ mod tests {
             .notes
             .iter()
             .any(|note| note.contains("semantic search disabled in config")));
+    }
+
+    #[tokio::test]
+    async fn execute_search_hybrid_falls_back_to_lexical_when_semantic_backend_errors() {
+        let state = Arc::new(AppState::in_memory().await.unwrap());
+        let account_id = state.default_account_id();
+        let message = crate::test_fixtures::TestEnvelopeBuilder::new()
+            .account_id(account_id)
+            .provider_id("lexical-body")
+            .subject("Weekly update")
+            .snippet("body match")
+            .build();
+
+        state.store.upsert_envelope(&message).await.unwrap();
+        let body = text_body(
+            &message.id,
+            "Deployment checklist lives in the message body",
+            Vec::new(),
+        );
+        state.store.insert_body(&body).await.unwrap();
+        state
+            .search
+            .apply_batch(mxr_search::SearchUpdateBatch {
+                entries: vec![mxr_search::SearchIndexEntry {
+                    envelope: message.clone(),
+                    body: Some(body),
+                }],
+                removed_message_ids: Vec::new(),
+            })
+            .await
+            .unwrap();
+        let mut config = state.config_snapshot();
+        config.search.semantic.enabled = true;
+        state.set_config_for_test(config).await;
+        state
+            .semantic
+            .set_test_embedder(failing_embedder)
+            .await
+            .unwrap();
+
+        let execution = execute_search(
+            &state,
+            "body:deployment",
+            10,
+            0,
+            SearchMode::Hybrid,
+            SortOrder::Relevance,
+            true,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(execution.executed_mode, SearchMode::Lexical);
+        assert_eq!(execution.results.len(), 1);
+        assert_eq!(execution.results[0].message_id, message.id.as_str());
+        assert!(execution
+            .explain
+            .as_ref()
+            .unwrap()
+            .notes
+            .iter()
+            .any(|note| note.contains("semantic retrieval failed")));
     }
 }

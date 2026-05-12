@@ -265,6 +265,9 @@ fn action_name(action: &Action) -> Option<&'static str> {
         | Action::ScreenerDisposeFeed
         | Action::ScreenerDisposePaperTrail
         | Action::CloseSenderViewModal
+        | Action::SenderProfileNextMessage
+        | Action::SenderProfilePrevMessage
+        | Action::OpenSenderProfileMessage
         | Action::CloseSummaryModal
         | Action::CloseSnippetsModal
         | Action::SnippetsModalNext

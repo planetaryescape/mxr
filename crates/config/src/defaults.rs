@@ -38,7 +38,7 @@ impl Default for SearchConfig {
 impl Default for SemanticConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             auto_download_models: true,
             active_profile: mxr_core::SemanticProfile::BgeSmallEnV15,
             max_pending_jobs: 256,

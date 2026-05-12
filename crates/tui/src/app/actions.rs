@@ -164,6 +164,9 @@ impl App {
             | Action::ScreenerDisposePaperTrail
             | Action::OpenSenderView
             | Action::CloseSenderViewModal
+            | Action::SenderProfileNextMessage
+            | Action::SenderProfilePrevMessage
+            | Action::OpenSenderProfileMessage
             | Action::SummarizeCurrentThread
             | Action::CloseSummaryModal
             | Action::OpenSnippets

@@ -255,7 +255,10 @@ async fn execute_replaceable_request(
             .await
             {
                 Ok(Response::Ok {
-                    data: ResponseData::Thread { thread, messages },
+                    data:
+                        ResponseData::Thread {
+                            thread, messages, ..
+                        },
                 }) => Ok((thread, messages)),
                 Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
                 Err(error) => Err(error),

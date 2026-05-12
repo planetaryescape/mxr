@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT d.scope_key as \"scope_key!\", d.kind as \"kind!\",\n                      d.account_id, d.from_email,\n                      d.created_at as \"default_created_at!\",\n                      d.updated_at as \"default_updated_at!\",\n                      s.id as \"signature_id!\", s.name as \"signature_name!\",\n                      s.body as \"signature_body!\",\n                      s.created_at as \"signature_created_at!\",\n                      s.updated_at as \"signature_updated_at!\"\n               FROM signature_defaults d\n               JOIN signatures s ON s.id = d.signature_id\n               ORDER BY d.scope_key ASC, d.kind ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "scope_key!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "kind!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_id",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "from_email",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "default_created_at!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "default_updated_at!",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "signature_id!",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "signature_name!",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "signature_body!",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "signature_created_at!",
+        "ordinal": 9,
+        "type_info": "Integer"
+      },
+      {
+        "name": "signature_updated_at!",
+        "ordinal": 10,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2b719859d5ad1eda6ee26d28a6f69ef4d607a17209fd94c32c8433d692028ab3"
+}

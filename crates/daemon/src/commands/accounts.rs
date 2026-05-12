@@ -634,7 +634,7 @@ fn print_missing_gmail_bundled_credentials_help() {
     println!("This build cannot start one-click Gmail OAuth because it was built without the official mxr Gmail client.");
     println!("Fastest safe path: run `mxr demo` to try a full synthetic inbox first.");
     println!(
-        "To connect Gmail from this build, use your own Google OAuth desktop-app credentials."
+        "To connect Gmail from this build, use your own Google OAuth installed-app credentials."
     );
     println!();
 }

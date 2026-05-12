@@ -7,7 +7,6 @@ pub mod app;
 mod async_result;
 pub mod client;
 mod compose_flow;
-pub mod desktop_manifest;
 mod editor;
 pub mod input;
 mod ipc;

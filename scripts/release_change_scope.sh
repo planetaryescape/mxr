@@ -50,7 +50,7 @@ cli_changed=false
 while IFS= read -r path; do
   [[ -z "${path}" ]] && continue
   case "${path}" in
-    crates/*/Cargo.toml|Cargo.toml|Cargo.lock|apps/desktop/package.json|apps/desktop/package-lock.json)
+    crates/*/Cargo.toml|Cargo.toml|Cargo.lock)
       ;;
     .github/workflows/release.yml|scripts/release_change_scope.sh)
       cli_changed=true

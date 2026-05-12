@@ -8,11 +8,6 @@ homepage.workspace = true
 description = "Internal: ratatui-based TUI client for mxr"
 publish = false
 
-
-[[example]]
-name = "export_desktop_manifest"
-path = "examples/export_desktop_manifest.rs"
-
 [lints]
 workspace = true
 

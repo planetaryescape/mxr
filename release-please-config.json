@@ -17,8 +17,7 @@
         { "type": "style", "section": "Style", "hidden": true }
       ],
       "extra-files": [
-        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.package.version" },
-        { "type": "json", "path": "apps/desktop/package.json", "jsonpath": "$.version" }
+        { "type": "toml", "path": "Cargo.toml", "jsonpath": "$.workspace.package.version" }
       ]
     }
   },

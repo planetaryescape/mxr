@@ -81,15 +81,19 @@ See [01-delight-plan.md §Phase 3](./01-delight-plan.md#phase-3--sender-as-unit-
 - [x] CLI `mxr summarize <thread-id>` (table or JSON output, model id surfaced)
 - [x] Returns clear `LLM is disabled` error when LLM is off
 
+- [x] Content-hash cache reuses unchanged thread summaries
+- [x] Cache hash includes weak relationship context, so relationship-summary/style changes invalidate stale summaries
+
 **Deferred**
-- [ ] Content-hash cache (re-summarising an unchanged thread re-prompts unnecessarily; small efficiency win but not correctness-critical)
 - [ ] TUI `S` keybinding to invoke summarise on the focused thread
 
 ### 3.5 Draft assist grounded on sent corpus ✅
 
-- [x] IPC: `Request::DraftAssist { thread_id, instruction }` → `ResponseData::DraftSuggestion { body, model }`
+- [x] IPC: `Request::DraftAssist { thread_id, instruction }` → `ResponseData::DraftSuggestion { body, model, voice_match, humanizer, rewrite_iterations }`
 - [x] Handler `crates/daemon/src/handler/draft_assist.rs` constructs a prompt with thread transcript + the user's plain-language instruction
 - [x] Semantic grounding retrieves similar prior outbound messages, excludes inbound/current-thread hits, and includes up to 3 examples as voice context when semantic search is enabled
+- [x] Relationship profile data is injected as weak background guidance when available; current thread and instruction override it
+- [x] Draft output includes deterministic humanizer scoring and voice-match metadata
 - [x] System prompt tuned for "no greeting, no signature, match thread formality"
 - [x] CLI `mxr draft-assist <thread-id> "<instruction>"`
 - [x] Result printed to stdout for the user to pipe / edit / paste — never auto-sent

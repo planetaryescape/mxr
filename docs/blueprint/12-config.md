@@ -36,7 +36,7 @@ max_results = 200
 default_mode = "lexical"   # lexical | hybrid | semantic
 
 [search.semantic]
-enabled = false
+enabled = true
 auto_download_models = true
 active_profile = "bge-small-en-v1.5"
 max_pending_jobs = 256
@@ -55,7 +55,7 @@ query_timeout_ms = 1500
 
 ### `enabled`
 
-Semantic retrieval toggle.
+Semantic retrieval toggle. The built-in default is `true`, but `default_mode` remains `lexical`; dense retrieval is used only when a request asks for `hybrid` or `semantic`.
 
 Current behavior:
 
@@ -68,13 +68,16 @@ Current behavior:
   - mxr installs the active local profile if needed
   - generates embeddings from stored chunks
   - rebuilds/uses the dense ANN index
+  - falls back to lexical results if dense retrieval is unavailable or errors
 
 This is deliberate. `enabled = false` does **not** mean “no semantic-ready data exists.” It means “do not generate/use embeddings right now.”
+
+Default-on semantic is opportunistic. It must not block sync, read, send, or lexical search. Builds without the local semantic backend behave as degraded lexical-first builds even when the config value is `true`.
 
 ### `auto_download_models`
 
 - `true`: first enable/profile use may download the selected local model automatically
-- `false`: semantic commands/search will fail until the active local model is already installed
+- `false`: profile activation/reindex may fail until the active local model is already installed; hybrid/semantic search should fall back to lexical ranking on backend errors
 
 ### `active_profile`
 
@@ -96,7 +99,7 @@ Currently parsed and persisted in config, but the dense search path does not yet
 
 ## What happens when semantic is enabled later
 
-If you sync mail for a while with `enabled = false`, mxr still stores semantic chunks for changed messages.
+If you explicitly sync mail for a while with `enabled = false`, mxr still stores semantic chunks for changed messages.
 
 When you later enable semantic search:
 

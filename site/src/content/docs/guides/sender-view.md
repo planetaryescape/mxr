@@ -24,11 +24,23 @@ Prints a profile:
 - **Cadence** — median response latency in both directions, both clock-time and business-hours
 - **Open threads** — threads where the most recent message is theirs and you haven't replied
 - **Open commitments** — questions you've asked them, sorted by age
-- **Recent activity** — the last N exchanges
+- **Recent activity** — the last N messages from that sender, including thread ids for direct navigation in clients
+- **Relationship memory** — local style, summaries, known topics, and open commitments when the background profile has been built
 
 ```bash
 mxr sender alice@example.com --format json | jq .
 ```
+
+## Web app
+
+In the web app, click **Sender** while reading a message. The right rail shows the sender profile as structured sections:
+
+- Identity and relationship stats
+- Inbound/outbound volume and reply cadence
+- Storage and attachment-heavy context when available
+- **Other emails from sender** — recent messages from the same sender, excluding the currently open thread
+
+Each item in **Other emails from sender** links directly to that conversation, so you can jump to the mail you remember without building a manual search query.
 
 ## Common workflows
 
@@ -70,7 +82,9 @@ mxr search 'newer_than:1d' --format json \
 Inside the TUI, open the **sender profile modal** for the focused message:
 
 - `Ctrl-p` (palette) → "Sender View"
-- The modal shows the same profile sections plus "Open in CLI" — copies the equivalent `mxr sender ...` invocation to the clipboard.
+- The modal shows the same profile sections plus **Other emails from sender**.
+- Use `j` / `k` to move through that list, then `Enter` or `o` to open the selected conversation.
+- "Open in CLI" copies the equivalent `mxr sender ...` invocation to the clipboard.
 
 ## Why this matters for agents
 
@@ -82,6 +96,12 @@ mxr sender alice@example.com --format json \
 ```
 
 The agent gets relationship _shape_ as JSON, without needing to read every email.
+
+## Relationship-aware drafting
+
+Draft assist can use sender profile data as weak background context. It helps match cadence and tone, but it is not treated as truth over the current thread. The prompt explicitly tells the model that current message content and your instruction win, and that anything not listed as a known topic is unknown.
+
+Generated drafts return humanizer and voice-match metadata so clients can warn when a reply sounds robotic or drifts away from the known relationship style.
 
 ## See also
 

@@ -130,11 +130,13 @@ Two cross-view interactions:
   `Ctrl-p → Reply Queue`
 - Snippets browser — read-only list with body preview; CRUD flows
   through `mxr snippets`
-- Sender profile — volume, cadence, open commitments for the focused
-  message's sender, opened with `Ctrl-p → Sender View`
+- Sender profile — volume, cadence, open commitments, and other recent
+  emails from the focused message's sender, opened with
+  `Ctrl-p → Sender View`. Inside the modal, `j` / `k` selects another
+  email and `Enter` / `o` opens it.
 - Screener queue — triage list with `a`/`d`/`f`/`p` disposition keys
   (allow / deny / feed / paper-trail) wired to `Request::SetScreenerDecision`
-- Thread summary — LLM-generated 2-3 sentence summary, opened with
+- Thread summary — LLM-generated Markdown summary and next steps, opened with
   `Ctrl-p → Summarize Thread`
 - Welcome / setup — first-launch modal with `d` (demo), `g` (Gmail),
   `i` (IMAP) shortcuts; `Enter` opens the new-account form

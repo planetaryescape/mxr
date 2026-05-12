@@ -53,6 +53,7 @@ Current release shape:
 - lexical + hybrid + semantic search with Gmail-style operators (`is:unread`, `from:`, `older_than:30d`, etc.)
 - CLI, TUI, daemon socket, agent skill
 - Inbox tooling: snooze with presets, undoable mutations (60s window), saved searches, deterministic rules with `--dry-run`
+- LLM-assisted summarize and draft-assist surfaces with local relationship context and deterministic humanizer scoring
 - Analytics: stale-thread queue, response-time percentiles, contact decay, year-in-review (`mxr wrapped`), storage rollups
 
 ## Search modes
@@ -63,9 +64,9 @@ mxr supports three local search modes:
 - `hybrid`: lexical + dense retrieval + RRF
 - `semantic`: dense retrieval only
 
-Semantic search is an optional `mxr-platform` feature layered on top of the mail runtime, not a core mail requirement. Sync/read/send still work without it.
+Semantic search is an `mxr-platform` feature layered on top of the mail runtime, not a core mail requirement. It is enabled in the default config so semantic-ready work happens opportunistically, while `lexical` remains the default search mode. Sync/read/send still work without a semantic backend.
 
-Embeddings stay local. First enable may download the selected local model and build embeddings for the active profile. Sync now prepares semantic chunks for changed messages even while semantic retrieval is off, so later enablement is cheaper.
+Embeddings stay local. First profile activation may download the selected local model and build embeddings for the active profile. Sync prepares semantic chunks for changed messages even while semantic retrieval is explicitly off, so later enablement is cheaper.
 
 High-level enablement:
 
@@ -89,6 +90,8 @@ mxr semantic reindex
 
 OCR is not used for semantic indexing. Image attachments and scanned/image-only PDFs are skipped unless real text extraction succeeds.
 
+If semantic retrieval is disabled, unavailable in the current binary, or errors at query time, mxr falls back to lexical ranking and explains the fallback when `--explain` is requested.
+
 ## What happens after new mail syncs in?
 
 Current lifecycle:
@@ -97,13 +100,19 @@ Current lifecycle:
 2. Tantivy is updated during that same batch
 3. the lexical batch is committed before sync completes, so lexical search is fresh immediately after sync
 4. the daemon then persists semantic chunks for the upserted messages
-5. embeddings are generated only if semantic retrieval is enabled
+5. embeddings are generated if semantic retrieval is enabled and the local backend/profile is available
 
 So:
 
 - `mxr search ... --mode lexical` is the immediate freshness path
-- `mxr search ... --mode hybrid` and `--mode semantic` depend on semantic profile readiness
+- `mxr search ... --mode hybrid` and `--mode semantic` depend on semantic profile readiness, and degrade to lexical when dense retrieval is unavailable
 - turning semantic on later can reuse stored chunks instead of rebuilding all semantic prep from scratch
+
+## Relationship-aware LLM drafting
+
+`mxr summarize` and `mxr draft-assist` read from local SQLite and call the configured LLM provider only for generation. Relationship memory is local-first: contact style, relationship summaries, commitments, and user voice data live in SQLite and are exposed through daemon surfaces and sender/profile views.
+
+Draft assist adds relationship data as weak background context. The current thread and user instruction always override it, and prompts explicitly tell the model not to invent familiarity. Generated drafts include deterministic humanizer scoring and voice-match metadata so clients can warn when output sounds robotic or drifts from the known voice profile.
 
 Useful checks:
 

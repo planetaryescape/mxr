@@ -179,7 +179,13 @@ The "delight features" land here. Each maps 1-1 to its CLI/TUI counterpart.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/mail/sender?account_id=...&email=...` | Per-sender aggregates |
+| `GET` | `/mail/sender?account_id=...&email=...` | Per-sender aggregates plus recent messages from that sender |
+
+The response is `SenderProfile { profile }`. When present, `profile`
+includes `recent_messages`: the newest messages from that sender with
+`message_id`, `thread_id`, `subject`, `snippet`, `date`, `direction`,
+and an attachment-present flag. Clients use this to render "Other
+emails from sender" and deep-link directly into the matching thread.
 
 ### Screener
 
@@ -196,8 +202,8 @@ The "delight features" land here. Each maps 1-1 to its CLI/TUI counterpart.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/mail/threads/{thread_id}/summarize` | 2-3 sentence thread summary |
-| `POST` | `/mail/threads/draft-assist` | `{thread_id, instruction}` → suggested reply body |
+| `POST` | `/mail/threads/{thread_id}/summarize` | Concise Markdown thread summary + next steps |
+| `POST` | `/mail/threads/draft-assist` | `{thread_id, instruction}` → suggested reply body plus model/humanizer/voice metadata |
 
 ```bash
 curl -X POST -H "Authorization: Bearer $MXR_TOKEN" \

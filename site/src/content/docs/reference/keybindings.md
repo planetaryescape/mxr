@@ -296,7 +296,7 @@ The Analytics screen has six views. Cycle them with `Tab` / `Shift-Tab`; refresh
 | Snooze (custom mode) | typing, `Enter` parse + snooze, `Backspace`, `Esc` back to presets |
 | Reply queue | `j` / `k`, `Esc` close |
 | Snippets browser | `j` / `k`, `Esc` close |
-| Sender profile | `Esc` close |
+| Sender profile | `j` / `k` select other sender email, `Enter` / `o` open selected email, `Esc` close |
 | Screener queue | `j` / `k` navigate, `a` allow, `d` deny, `f` feed, `p` paper-trail, `Esc` close |
 | Thread summary | `Esc` close |
 | Welcome / setup | `d` demo, `g` Gmail, `i` IMAP, `Enter` open form, `Esc` dismiss |

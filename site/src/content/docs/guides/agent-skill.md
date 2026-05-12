@@ -44,7 +44,7 @@ The skill is intentionally short — it documents the CLI surface in a form an a
 ```bash
 # Read / search
 mxr search "is:unread"                       # Lexical BM25
-mxr search "from:alice" --mode hybrid        # Lexical + dense (semantic enabled)
+mxr search "from:alice" --mode hybrid        # Lexical + dense when semantic is ready
 mxr cat <id>                                 # Reader mode
 mxr thread <id>                              # Whole thread
 mxr export <thread_id>                       # Markdown export
@@ -73,7 +73,7 @@ mxr screener allow|deny|feed|paper-trail <email>
 
 # LLM-assisted (never auto-sends)
 mxr summarize <thread_id>
-mxr draft-assist <thread_id> "decline politely"
+mxr draft-assist <thread_id> "decline politely"  # Relationship-aware when profile data exists
 
 # Analytics (local SQLite)
 mxr sender alice@x.com
@@ -95,7 +95,7 @@ mxr web                                      # Open the web app via local bridge
 3. **`--dry-run`** — available on every mutation, compose flow, `rules dry-run`, `reset --dry-run`, and `undo --dry-run`. Preview the count and sample before committing.
 4. **Output formats** — `--format table|json|jsonl|csv|ids`. `ids` is the cheapest form to pipe into other commands; `jsonl` is best for streams (`events`, `history`, search).
 5. **`mxr undo` window is ~60s** — destructive ops (`archive`, `trash`, `spam`, `read`, `read-archive`) print a mutation ID; capture it if you might need to reverse.
-6. **`draft-assist` never sends** — output goes to stdout. Pipe into `mxr reply --body "$(...)"`.
+6. **`draft-assist` never sends** — output goes to stdout. JSON output includes model, humanizer, and voice-match metadata when available. Pipe the body into `mxr reply --body "$(...)"`.
 7. **Daemon auto-starts** — no need to launch it manually.
 
 ### Typical workflows the skill seeds

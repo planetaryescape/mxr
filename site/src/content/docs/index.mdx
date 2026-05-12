@@ -143,7 +143,7 @@ cargo install --git \
 </div>
 
 <div class="search-coda">
-  <p>Find a 2019 contract by the supplier's name. Pull every receipt from a vendor. List the apology email you sent in March. mxr indexes your mail with <a href="https://github.com/quickwit-oss/tantivy">Tantivy</a>, the BM25 engine behind Quickwit, with field boosts on subject, body, sender, and attachment names. Optional local hybrid retrieval when you turn it on. No round trips, no rate limits, no "loading more."</p>
+  <p>Find a 2019 contract by the supplier's name. Pull every receipt from a vendor. List the apology email you sent in March. mxr indexes your mail with <a href="https://github.com/quickwit-oss/tantivy">Tantivy</a>, the BM25 engine behind Quickwit, with field boosts on subject, body, sender, and attachment names. Local hybrid retrieval is opportunistic; lexical search stays instant and exact. No round trips, no rate limits, no "loading more."</p>
 
 ```bash
 mxr storage --by sender --limit 20
@@ -440,7 +440,7 @@ would archive 142 messages.`}</code></pre>
     <ul class="lineage-deltas">
       <li><span class="delta-add">+</span> daemon-backed: TUI, CLI, HTTP bridge, your agent share one engine</li>
       <li><span class="delta-add">+</span> eager body fetch: opening a message is a SQLite read, not a fetch</li>
-      <li><span class="delta-add">+</span> Tantivy BM25 with field boosts; optional local hybrid retrieval</li>
+      <li><span class="delta-add">+</span> Tantivy BM25 with field boosts; opportunistic local hybrid retrieval</li>
       <li><span class="delta-add">+</span> agent-native pipeable JSON across every command</li>
       <li><span class="delta-add">+</span> OpenAPI HTTP bridge for browser apps, mobile, custom clients</li>
       <li><span class="delta-add">+</span> analytics that self-heal post-sync</li>

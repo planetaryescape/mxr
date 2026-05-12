@@ -5,10 +5,10 @@
 Search is navigation, not a mailbox filter bolted on later.
 
 - lexical search stays exact and fast
-- semantic retrieval is optional recall expansion
+- semantic retrieval is opportunistic recall expansion
 - hybrid search should help without blurring away literal intent
 
-Semantic search is an `mxr-platform` feature layered on top of the mail runtime. Mail sync, read, labels, drafts, send, and export still fundamentally work without it.
+Semantic search is an `mxr-platform` feature layered on top of the mail runtime. The default config enables semantic work opportunistically, but mail sync, read, labels, drafts, send, and export still fundamentally work without a semantic backend.
 
 ## Search modes
 
@@ -18,7 +18,7 @@ mxr has three search modes:
 - `hybrid`: Tantivy BM25 + dense retrieval + Reciprocal Rank Fusion (RRF)
 - `semantic`: dense retrieval only, with the same structured filters applied afterward
 
-`lexical` remains the default until semantic search is explicitly enabled.
+`lexical` remains the default search mode. Semantic retrieval may be enabled in config by default, but `hybrid`/`semantic` modes are explicit request modes and fall back to lexical ranking when dense retrieval is unavailable.
 
 ## Architecture
 
@@ -44,6 +44,13 @@ Semantic retrieval lives in `mxr-semantic` and stays local:
 - model weights are cached locally under the mxr data dir
 
 Dense retrieval is derived state, not a new source of truth.
+
+Semantic failures must not break core mail workflows:
+
+- sync still commits SQLite and Tantivy before semantic work runs
+- semantic ingest errors are logged and treated as degraded platform state
+- hybrid/semantic search falls back to lexical results when dense retrieval errors
+- `--explain` includes a note describing semantic fallback behavior
 
 ## Semantic storage
 
@@ -226,8 +233,8 @@ Current behavior:
 
 1. During sync, envelopes/bodies are stored and Tantivy is updated.
 2. During the same sync pass, semantic chunks are prepared and persisted for changed messages, even if semantic retrieval is disabled.
-3. If semantic is disabled, mxr stops there.
-4. If semantic is enabled, mxr generates embeddings for the active profile from stored chunks and refreshes the dense ANN index.
+3. If semantic is explicitly disabled or unavailable in the current binary, mxr stops there.
+4. If semantic is enabled and the local backend/profile is available, mxr generates embeddings for the active profile from stored chunks and refreshes the dense ANN index.
 
 ### `enabled = false`
 

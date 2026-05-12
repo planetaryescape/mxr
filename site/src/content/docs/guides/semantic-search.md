@@ -1,6 +1,6 @@
 ---
 title: Semantic search
-description: Enable and operate local semantic search in mxr.
+description: Operate mxr's local, opportunistic semantic search layer.
 ---
 
 ## What it is
@@ -11,12 +11,13 @@ mxr supports three search modes:
 - `hybrid`
 - `semantic`
 
-Semantic search is an optional `mxr-platform` feature layered on top of the core mail runtime.
+Semantic search is an `mxr-platform` feature layered on top of the core mail runtime. The default config enables semantic work opportunistically, but `lexical` remains the default search mode and the immediate correctness path.
 
 - mail still works without it
 - embeddings stay local
 - hybrid keeps lexical BM25 and adds dense recall with RRF
 - OCR is not used for semantic indexing
+- dense retrieval falls back to lexical ranking when unavailable or unhealthy
 
 ## What gets indexed semantically
 
@@ -37,11 +38,11 @@ mxr does **not** use OCR for:
 
 If PDF text extraction fails, that PDF is skipped for semantic text extraction.
 
-## Enable it
+## Default config
 
 ```toml
 [search]
-default_mode = "hybrid"
+default_mode = "lexical"
 
 [search.semantic]
 enabled = true
@@ -49,22 +50,29 @@ auto_download_models = true
 active_profile = "bge-small-en-v1.5"
 ```
 
-Then:
+Use hybrid or semantic mode explicitly when you want dense recall:
+
+```bash
+mxr search "house of cards" --mode hybrid
+mxr search "house of cards" --mode semantic
+```
+
+Check runtime readiness with:
 
 ```bash
 mxr semantic status
 ```
 
-## First enable expectations
+## First profile activation expectations
 
-On first enable, mxr may:
+On first profile activation, mxr may:
 
 1. install/download the selected local model
 2. backfill missing semantic chunks
 3. generate embeddings from stored chunks
 4. rebuild the dense ANN index
 
-This can take longer than a normal search. After that, sync keeps semantic chunk prep warm for changed messages.
+This can take longer than a normal search. After that, sync keeps semantic chunk prep warm for changed messages. If model/profile work fails, lexical search still works.
 
 ## When semantic search is ready
 
@@ -74,6 +82,7 @@ Lexical search freshness and semantic readiness are different things:
 - lexical search is fresh after the sync batch commit
 - semantic chunks are also persisted after sync
 - semantic search becomes ready when the active profile has embeddings + ANN state
+- hybrid/semantic search falls back to lexical ranking when dense retrieval is unavailable
 
 Use:
 
@@ -84,7 +93,7 @@ mxr doctor --semantic-status
 
 to see whether the active profile is actually ready.
 
-## What `enabled = false` means
+## What explicit `enabled = false` means
 
 `enabled = false` does **not** mean semantic-ready data is absent.
 
@@ -97,11 +106,11 @@ Current behavior:
 
 That makes later enablement cheaper.
 
-## Turn semantic on later
+## Turn semantic back on later
 
 Typical flow:
 
-1. run with `enabled = false` for normal sync/read/search
+1. explicitly run with `enabled = false` for normal sync/read/search
 2. later enable or `mxr semantic profile use ...`
 3. mxr reuses stored chunks, backfills only missing ones, then builds embeddings
 
@@ -161,6 +170,7 @@ mxr falls back to lexical behavior when:
 
 - semantic support is unavailable in the binary
 - semantic is disabled
+- dense retrieval errors
 - the query has no semantic text terms
 - the query negates semantic text terms
 - dense retrieval returns no candidates

@@ -49,7 +49,7 @@ After this pass, the semantic lifecycle is intentionally split into four stages:
 Current behavior:
 
 - Sync still writes envelopes/bodies and updates Tantivy immediately.
-- Sync now also prepares and persists semantic chunk data for changed messages even when semantic retrieval is disabled.
+- Sync now also prepares and persists semantic chunk data for changed messages even when semantic retrieval is explicitly disabled.
 - `enabled = false` now means:
   - no embedding generation
   - no dense retrieval
@@ -60,6 +60,8 @@ Current behavior:
   - generate embeddings for the active local profile
   - persist embedding rows
   - rebuild/use the dense ANN index
+
+`enabled = true` is the default config value now, but this remains opportunistic platform state. Sync, read, send, and lexical search must continue when the local semantic backend is unavailable or errors.
 
 Store shape:
 
@@ -85,6 +87,8 @@ Current behavior after the cleanup:
   - rebuilds the ANN index
 
 This keeps later enablement cheaper without removing the existing full rebuild path.
+
+Hybrid/semantic query execution falls back to lexical ranking when dense retrieval is disabled, unavailable in the binary, empty, or errors. Explain output records the fallback reason.
 
 ## Current hybrid query semantics
 

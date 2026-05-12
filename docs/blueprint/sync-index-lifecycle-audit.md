@@ -60,14 +60,14 @@ Current behavior after sync:
 - the daemon takes `upserted_message_ids` from sync
 - semantic ingest prepares normalized chunks for those messages
 - semantic ingest persists `semantic_chunks` even if semantic retrieval is disabled
-- if semantic retrieval is disabled, ingest stops there
-- if semantic retrieval is enabled, ingest also:
+- if semantic retrieval is explicitly disabled or unavailable in the current binary, ingest stops there
+- if semantic retrieval is enabled and the local backend/profile is available, ingest also:
   - installs/uses the active local profile
   - generates embeddings from the stored chunks
   - persists `semantic_embeddings`
   - refreshes the active in-memory ANN index
 
-This means semantic-ready text storage is warmed continuously, while embeddings remain feature-gated derived state.
+This means semantic-ready text storage is warmed continuously, while embeddings remain feature-gated derived state. Semantic failures are degraded platform state: they should be logged, surfaced in status/doctor where available, and must not invalidate the completed SQLite/Tantivy sync batch.
 
 ## What repair and recovery behavior exists
 
@@ -111,21 +111,21 @@ When new mail arrives:
 2. Tantivy is updated immediately for lexical search and committed per sync batch
 3. labels, label counts, threading, and cursor updates complete as usual
 4. the daemon ingests semantic chunks for newly upserted messages and persists `semantic_chunks`
-5. if semantic is disabled, mxr stops there
-6. if semantic is enabled, mxr generates embeddings from the stored chunks, persists them, and refreshes the ANN index
+5. if semantic is explicitly disabled or unavailable, mxr stops there
+6. if semantic is enabled and available, mxr generates embeddings from the stored chunks, persists them, and refreshes the ANN index
 7. if semantic is enabled later, mxr reuses stored chunks and only backfills missing ones before embedding
 
 Net effect:
 
 - lexical search stays immediately fresh after sync
-- semantic readiness is optional/platform-level
+- semantic retrieval is opportunistic/platform-level, even though the default config enables it
 - later semantic enablement is cheaper because chunk prep is already done
 - embeddings remain local
 - OCR is not part of active semantic indexing
 
 ## Practical examples
 
-### Normal sync, semantic disabled
+### Normal sync, semantic explicitly disabled
 
 - `mxr sync`
 - SQLite has the new envelope/body
@@ -140,6 +140,8 @@ Net effect:
 - semantic ingest persists chunks
 - active-profile embeddings are generated from those chunks
 - hybrid/semantic search can use the refreshed ANN index
+
+If embedding/profile work fails, the synced mail is still present in SQLite and lexical search. Hybrid/semantic search falls back to lexical ranking until the semantic backend is healthy again.
 
 ### Enable semantic later
 

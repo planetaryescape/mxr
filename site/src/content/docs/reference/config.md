@@ -55,7 +55,7 @@ max_results = 200
 default_mode = "lexical"           # lexical | hybrid | semantic
 
 [search.semantic]
-enabled = false
+enabled = true
 auto_download_models = true
 active_profile = "bge-small-en-v1.5"
 max_pending_jobs = 256
@@ -221,7 +221,7 @@ default_mode = "lexical"
 
 ```toml
 [search.semantic]
-enabled = false
+enabled = true
 auto_download_models = true
 active_profile = "bge-small-en-v1.5"
 max_pending_jobs = 256
@@ -244,6 +244,9 @@ Current runtime meaning:
   - mxr installs the active local model if needed
   - generates embeddings from stored chunks
   - rebuilds/uses the dense ANN index
+  - hybrid/semantic search falls back to lexical ranking if dense retrieval is unavailable or errors
+
+The built-in default is `enabled = true`, but `default_mode` remains `lexical`. Semantic retrieval is used only for requests that ask for `hybrid` or `semantic` mode.
 
 Current profiles:
 
@@ -255,6 +258,7 @@ Notes:
 
 - embeddings stay local
 - OCR is not used for semantic indexing
+- semantic readiness is opportunistic and must not block sync, read, send, or lexical search
 - `max_pending_jobs` and `query_timeout_ms` are currently parsed config fields, not active runtime guarantees yet
 
 ## `snooze`

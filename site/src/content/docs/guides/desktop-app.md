@@ -31,8 +31,8 @@ following surfaces have first-class dialogs:
   buttons (allow / deny / feed / paper-trail). Decisions fire
   `Request::SetScreenerDecision` and the queue refreshes after each
   disposition.
-- **Thread Summary** — LLM-generated 2-3 sentence summary of the
-  focused thread. Renders the model name in the title.
+- **Thread Summary** — LLM-generated Markdown summary and next steps for
+  the focused thread. Renders the model name in the title.
 - **Draft Assist** — text-input prompt, streamed result, and a "Copy
   to clipboard" button so the suggestion lands in compose for review.
   Never auto-sends.

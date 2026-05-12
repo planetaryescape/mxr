@@ -2527,6 +2527,76 @@
           }
         }
       },
+      "CommitmentData": {
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "email",
+          "thread_id",
+          "direction",
+          "status",
+          "who_owes",
+          "what",
+          "evidence_msg_id",
+          "extracted_at"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "by_when": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/CommitmentDirectionData"
+          },
+          "email": {
+            "type": "string"
+          },
+          "evidence_msg_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "extracted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CommitmentStatusData"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "what": {
+            "type": "string"
+          },
+          "who_owes": {
+            "type": "string"
+          }
+        }
+      },
+      "CommitmentDirectionData": {
+        "type": "string",
+        "enum": [
+          "yours",
+          "theirs"
+        ]
+      },
+      "CommitmentStatusData": {
+        "type": "string",
+        "enum": [
+          "open",
+          "resolved",
+          "expired"
+        ]
+      },
       "ContactAsymmetryRow": {
         "type": "object",
         "required": [
@@ -2607,6 +2677,85 @@
               "null"
             ],
             "format": "date-time"
+          }
+        }
+      },
+      "ContactRelationshipSummaryData": {
+        "type": "object",
+        "required": [
+          "text",
+          "model",
+          "known_topics",
+          "computed_at",
+          "source_hash"
+        ],
+        "properties": {
+          "computed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "known_topics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "model": {
+            "type": "string"
+          },
+          "source_hash": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "ContactStyleData": {
+        "type": "object",
+        "required": [
+          "formality_score",
+          "formality_score_theirs",
+          "avg_sentence_len",
+          "avg_sentence_len_theirs",
+          "msg_count_used",
+          "msg_count_used_theirs",
+          "computed_at",
+          "source_hash"
+        ],
+        "properties": {
+          "avg_sentence_len": {
+            "type": "number",
+            "format": "double"
+          },
+          "avg_sentence_len_theirs": {
+            "type": "number",
+            "format": "double"
+          },
+          "computed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "formality_score": {
+            "type": "number",
+            "format": "double"
+          },
+          "formality_score_theirs": {
+            "type": "number",
+            "format": "double"
+          },
+          "msg_count_used": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "msg_count_used_theirs": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "source_hash": {
+            "type": "string"
           }
         }
       },
@@ -3640,6 +3789,47 @@
           "file"
         ]
       },
+      "HumanizerHitData": {
+        "type": "object",
+        "required": [
+          "category",
+          "matched"
+        ],
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "matched": {
+            "type": "string"
+          },
+          "suggestion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "HumanizerReportSummaryData": {
+        "type": "object",
+        "required": [
+          "score",
+          "hits"
+        ],
+        "properties": {
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HumanizerHitData"
+            }
+          },
+          "score": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "IndexFreshness": {
         "type": "string",
         "enum": [
@@ -4219,6 +4409,47 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "RelationshipProfileData": {
+        "type": "object",
+        "required": [
+          "account_id",
+          "email"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "email": {
+            "type": "string"
+          },
+          "open_commitments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommitmentData"
+            }
+          },
+          "style": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ContactStyleData"
+              }
+            ]
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ContactRelationshipSummaryData"
+              }
+            ]
           }
         }
       },
@@ -6254,6 +6485,193 @@
           },
           {
             "type": "object",
+            "description": "List outgoing compose signatures, alphabetically by name.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListSignatures"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "List scoped signature defaults.",
+            "required": [
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListSignatureDefaults"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Create or update a signature by name.",
+            "required": [
+              "name",
+              "body",
+              "cmd"
+            ],
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetSignature"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Delete a signature by name. Also clears defaults pointing at it.",
+            "required": [
+              "name",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "DeleteSignature"
+                ]
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Set the default signature for a global/account/from-address scope.",
+            "required": [
+              "name",
+              "kind",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "SetSignatureDefault"
+                ]
+              },
+              "from_email": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "$ref": "#/components/schemas/SignatureContextData"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Clear the default signature for a global/account/from-address scope.",
+            "required": [
+              "kind",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ClearSignatureDefault"
+                ]
+              },
+              "from_email": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "$ref": "#/components/schemas/SignatureContextData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Resolve the signature to insert into a compose draft.",
+            "required": [
+              "kind",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccountId"
+                  }
+                ]
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ResolveSignature"
+                ]
+              },
+              "from_email": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "$ref": "#/components/schemas/SignatureContextData"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Per-sender relationship aggregates: volume, response cadence,\nopen threads. Returns `None` (via `Ok`/`SenderProfileData` with\n`present=false`) if the contact is unknown.",
             "required": [
               "account_id",
@@ -6271,6 +6689,182 @@
                 ]
               },
               "email": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "account_id",
+              "email",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetRelationshipProfile"
+                ]
+              },
+              "email": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "account_id",
+              "email",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RebuildRelationshipProfile"
+                ]
+              },
+              "email": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "account_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ListCommitments"
+                ]
+              },
+              "email": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "status": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CommitmentStatusData"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commitment_id",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "ResolveCommitment"
+                ]
+              },
+              "commitment_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "account_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "GetUserVoice"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "account_id",
+              "cmd"
+            ],
+            "properties": {
+              "account_id": {
+                "$ref": "#/components/schemas/AccountId"
+              },
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "RebuildUserVoice"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "text",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "HumanizerScore"
+                ]
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "text",
+              "cmd"
+            ],
+            "properties": {
+              "cmd": {
+                "type": "string",
+                "enum": [
+                  "HumanizerRewrite"
+                ]
+              },
+              "max_iterations": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              },
+              "text": {
                 "type": "string"
               }
             }
@@ -6882,6 +7476,16 @@
                   "$ref": "#/components/schemas/Envelope"
                 }
               },
+              "summary": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ThreadSummaryData"
+                  }
+                ]
+              },
               "thread": {
                 "$ref": "#/components/schemas/Thread"
               }
@@ -7183,6 +7787,90 @@
           {
             "type": "object",
             "required": [
+              "signatures",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Signatures"
+                ]
+              },
+              "signatures": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SignatureData"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "signature",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SignatureData"
+                ]
+              },
+              "signature": {
+                "$ref": "#/components/schemas/SignatureData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "defaults",
+              "kind"
+            ],
+            "properties": {
+              "defaults": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SignatureDefaultData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "SignatureDefaults"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ResolvedSignature"
+                ]
+              },
+              "signature": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SignatureData"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "kind"
             ],
             "properties": {
@@ -7201,6 +7889,121 @@
                     "$ref": "#/components/schemas/SenderProfileData"
                   }
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "RelationshipProfile"
+                ]
+              },
+              "profile": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RelationshipProfileData"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commitments",
+              "kind"
+            ],
+            "properties": {
+              "commitments": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CommitmentData"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "CommitmentList"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "UserVoice"
+                ]
+              },
+              "profile": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/UserVoiceProfileData"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "report",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "HumanizerReport"
+                ]
+              },
+              "report": {
+                "$ref": "#/components/schemas/HumanizerReportSummaryData"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "text",
+              "report",
+              "iterations",
+              "kind"
+            ],
+            "properties": {
+              "iterations": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "HumanizedText"
+                ]
+              },
+              "report": {
+                "$ref": "#/components/schemas/HumanizerReportSummaryData"
+              },
+              "text": {
+                "type": "string"
               }
             }
           },
@@ -7279,6 +8082,16 @@
               "body": {
                 "type": "string"
               },
+              "humanizer": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/HumanizerReportSummaryData"
+                  }
+                ]
+              },
               "kind": {
                 "type": "string",
                 "enum": [
@@ -7287,6 +8100,21 @@
               },
               "model": {
                 "type": "string"
+              },
+              "rewrite_iterations": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "voice_match": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VoiceMatchData"
+                  }
+                ]
               }
             }
           },
@@ -8619,6 +9447,52 @@
           }
         }
       },
+      "SenderEmailReferenceData": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "thread_id",
+          "subject",
+          "snippet",
+          "from_email",
+          "date",
+          "direction",
+          "has_attachments"
+        ],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "from_email": {
+            "type": "string"
+          },
+          "from_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_attachments": {
+            "type": "boolean"
+          },
+          "message_id": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        }
+      },
       "SenderProfileData": {
         "type": "object",
         "required": [
@@ -8635,6 +9509,16 @@
         "properties": {
           "account_id": {
             "$ref": "#/components/schemas/AccountId"
+          },
+          "attachment_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "attachment_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           },
           "cadence_days_p50": {
             "type": [
@@ -8655,6 +9539,11 @@
           "first_seen_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "inbound_storage_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           },
           "is_list_sender": {
             "type": "boolean"
@@ -8688,6 +9577,27 @@
             "format": "int32",
             "minimum": 0
           },
+          "outbound_storage_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "recent_messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SenderEmailReferenceData"
+            }
+          },
+          "relationship": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RelationshipProfileData"
+              }
+            ]
+          },
           "replied_count": {
             "type": "integer",
             "format": "int32",
@@ -8704,6 +9614,87 @@
             "minimum": 0
           }
         }
+      },
+      "SignatureContextData": {
+        "type": "string",
+        "enum": [
+          "new",
+          "reply"
+        ]
+      },
+      "SignatureData": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "body",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "$ref": "#/components/schemas/SignatureId"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SignatureDefaultData": {
+        "type": "object",
+        "required": [
+          "kind",
+          "signature",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "account_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AccountId"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "from_email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SignatureContextData"
+          },
+          "signature": {
+            "$ref": "#/components/schemas/SignatureData"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SignatureId": {
+        "type": "string",
+        "format": "uuid"
       },
       "SnippetData": {
         "type": "object",
@@ -9020,6 +10011,26 @@
         "type": "string",
         "format": "uuid"
       },
+      "ThreadSummaryData": {
+        "type": "object",
+        "required": [
+          "text",
+          "model",
+          "generated_at"
+        ],
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "model": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
       "UnsubscribeMethod": {
         "oneOf": [
           {
@@ -9110,6 +10121,116 @@
               "None"
             ]
           }
+        ]
+      },
+      "UserVoiceProfileData": {
+        "type": "object",
+        "required": [
+          "account_id",
+          "formality_score",
+          "avg_sentence_len",
+          "msg_count_used",
+          "register_modes",
+          "computed_at",
+          "source_hash"
+        ],
+        "properties": {
+          "account_id": {
+            "$ref": "#/components/schemas/AccountId"
+          },
+          "avg_sentence_len": {
+            "type": "number",
+            "format": "double"
+          },
+          "computed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "formality_score": {
+            "type": "number",
+            "format": "double"
+          },
+          "msg_count_used": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "register_modes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserVoiceRegisterModeData"
+            }
+          },
+          "source_hash": {
+            "type": "string"
+          }
+        }
+      },
+      "UserVoiceRegisterModeData": {
+        "type": "object",
+        "required": [
+          "register",
+          "formality_score",
+          "avg_sentence_len",
+          "exemplar_message_ids"
+        ],
+        "properties": {
+          "avg_sentence_len": {
+            "type": "number",
+            "format": "double"
+          },
+          "exemplar_message_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "formality_score": {
+            "type": "number",
+            "format": "double"
+          },
+          "register": {
+            "$ref": "#/components/schemas/VoiceRegisterData"
+          }
+        }
+      },
+      "VoiceMatchConfidenceData": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "VoiceMatchData": {
+        "type": "object",
+        "required": [
+          "score",
+          "confidence",
+          "notable_deltas"
+        ],
+        "properties": {
+          "confidence": {
+            "$ref": "#/components/schemas/VoiceMatchConfidenceData"
+          },
+          "notable_deltas": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "score": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "VoiceRegisterData": {
+        "type": "string",
+        "enum": [
+          "casual",
+          "neutral",
+          "formal"
         ]
       },
       "WrappedContactRank": {

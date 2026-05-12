@@ -323,7 +323,7 @@ mxr is designed so agents can run it directly. Three rules keep the interaction 
 ```bash
 mxr search '<query>' --format json     # full search
 mxr cat MESSAGE_ID --view reader         # rendered, distraction-free
-mxr summarize THREAD_ID                # LLM 2-3 sentence summary
+mxr summarize THREAD_ID                # LLM Markdown summary + next steps
 mxr sender alice@example.com           # per-sender aggregates
 mxr stale --mine --older-than-days 7 --format json
 mxr count <query>                      # count without payload

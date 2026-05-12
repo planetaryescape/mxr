@@ -7,12 +7,12 @@ description: Configure Ollama, LM Studio, OpenAI, or any OpenAI-compatible endpo
 
 mxr ships two LLM-driven features today:
 
-- `mxr summarize <thread-id>` — 2 to 3 sentence summary focused on
-  what's actionable for a busy reader.
+- `mxr summarize <thread-id>` — concise Markdown summary with per-message
+  bullets and concrete next steps.
 - `mxr draft-assist <thread-id> "<instruction>"` — generate a draft
   reply grounded on the thread context, your instruction, and similar
-  prior sent mail when semantic search is enabled. Output goes to
-  stdout; **never auto-sends**.
+  prior sent mail when semantic search is ready. Output goes to stdout;
+  **never auto-sends**.
 
 Both are off by default. Enable them by setting `[llm] enabled = true`
 in your config and pointing at any backend that speaks the
@@ -116,20 +116,34 @@ mxr summarize THREAD_ID --format json
 mxr draft-assist THREAD_ID "..." --format json
 ```
 
+Draft JSON includes the generated body, model id, humanizer score summary,
+voice-match metadata when a relationship profile exists, and rewrite iteration
+count.
+
 ## What the prompts look like
 
 Both features use a tuned system prompt followed by the thread
-context. The summariser asks for **2 to 3 short sentences focused on
-what's actionable for a busy reader**, no pleasantries. The draft
-assistant asks for **just the reply body, no greeting line if the
-thread is mid-conversation, no signature, plain prose, matching the
-formality and length of the thread**.
+context. The summarizer asks for concise Markdown that names who said
+what, preserves concrete dates/deadlines/asks, and ends with next
+steps. The draft assistant asks for **just the reply body, no greeting
+line if the thread is mid-conversation, no signature, plain prose,
+matching the formality and length of the thread**.
 
 When semantic search is enabled and indexed, draft assist first looks
 for similar prior outbound messages, filters out inbound mail and the
 current thread, and includes up to three examples as voice grounding.
 If semantic search is disabled or unavailable, draft assist still works
 with only the current thread and instruction.
+
+When relationship data exists for a contact, mxr injects it as weak
+background guidance. The current thread and your explicit instruction
+override it, and the prompt tells the model not to invent familiarity
+outside stored known topics, commitments, or summaries.
+
+Every generated draft also runs through a deterministic local humanizer
+detector. It flags common AI-writing patterns such as stock vocabulary,
+em-dash overuse, sycophantic openers, filler phrases, and rule-of-three
+formatting. Detection does not require an LLM.
 
 You'll get the best results with models that follow instructions well
 and stay close to the source — Qwen 2.5 instruct, Llama 3 instruct,
@@ -141,12 +155,13 @@ and the GPT-4o family all do this reliably.
   short-form (≤2KB outputs); a single round-trip beats streaming for
   this use case.
 - **24KB prompt budget** — long threads truncate oldest-first.
-- **Semantic grounding is optional** — prior sent examples are included
-  only when semantic search is enabled and has indexed matching sent
-  messages.
-- **No cache for summaries** — re-running `mxr summarize` on the same
-  thread re-prompts the model. Inexpensive for local Ollama; worth
-  thinking about for cloud APIs with metered costs.
+- **Semantic grounding is opportunistic** — prior sent examples are included
+  only when semantic search is ready and has indexed matching sent messages.
+- **Summary cache** — unchanged threads reuse the cached summary. The cache
+  hash includes weak relationship context, so changed relationship summaries
+  or style data invalidate stale summaries.
+- **Humanizer auto-rewrite is not the core contract** — deterministic scoring
+  is available locally; automatic rewrite loops are a separate pipeline layer.
 
 ## Disabling
 

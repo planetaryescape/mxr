@@ -81,7 +81,7 @@ Or in one call with `--search`:
 mxr export --search 'from:sarah@example.com OR to:sarah@example.com after:2026-04-23' --format markdown > /tmp/sarah-context.md
 ```
 
-Agent feeds the markdown into its summariser, then uses `mxr draft-assist` to generate a suggested reply body on stdout. The agent can show that body to the user or pass it into `mxr compose --body-stdin` / `mxr reply --body-stdin` after approval:
+Agent feeds the markdown into its summariser, then uses `mxr draft-assist` to generate a suggested reply body on stdout. Draft assist can use local relationship context when available and JSON output includes humanizer/voice-match metadata. The agent can show the body to the user or pass it into `mxr compose --body-stdin` / `mxr reply --body-stdin` after approval:
 
 ```bash
 mxr draft-assist <thread_id> "Build a 1:1 agenda. Group by open question, decision needed, status update."

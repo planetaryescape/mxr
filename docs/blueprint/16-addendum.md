@@ -726,7 +726,7 @@ use_tls = true
 
 9. **Provider-fake is selectable from config.** `[accounts.foo.sync] type = "fake"` and `[accounts.foo.send] type = "fake"` route the daemon to `mxr-provider-fake`. This is the seam used by the binary-level CLI smoke test (`crates/daemon/tests/cli_journey.rs`). (D088)
 
-10. **Default Cargo features exclude semantic-local; release artifacts opt in.** The root `mxr` crate's default feature set is empty so local `cargo build`/`cargo test` stay fast (~1 min vs ~6 min). CI runs both lanes (`Test (fast / no semantic)` and `Test (semantic-local)`). Release builds in `.github/workflows/release.yml` pass `--features semantic-local` for `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`; the embedding model is still fetched lazily at runtime by `mxr semantic enable`. The Intel mac (`x86_64-apple-darwin`) release stays on `--no-default-features` because fastembed/onnxruntime does not build on that target. (D089)
+10. **Default Cargo features exclude semantic-local; release artifacts opt in.** The root `mxr` crate's default feature set is empty so local `cargo build`/`cargo test` stay fast (~1 min vs ~6 min). CI runs both lanes (`Test (fast / no semantic)` and `Test (semantic-local)`). Release builds in `.github/workflows/release.yml` pass `--features semantic-local` for `x86_64-unknown-linux-gnu` and `aarch64-apple-darwin`; the embedding model is still fetched lazily at runtime by `mxr semantic enable`. Intel mac (`x86_64-apple-darwin`) release artifacts are not built. (D089)
 
 ### Decision records
 
@@ -750,6 +750,28 @@ use_tls = true
 
 ---
 
+## A011: Opportunistic semantic and relationship-aware drafting
+
+**Affects**: 05-search.md, 12-config.md, sync-index-lifecycle-audit.md, phase-3-sender-as-unit.md
+
+**What changed**: Semantic retrieval is now default-on in configuration, but remains opportunistic platform state. `lexical` is still the default search mode and the immediate correctness path. Relationship memory and humanizer scoring are wired into LLM draft/summarize flows without making them core mail dependencies.
+
+**The rule**:
+
+1. Semantic work must not block core mail workflows. Sync commits SQLite and Tantivy first. Semantic chunking/embedding errors degrade semantic readiness but do not fail sync, send, read, or lexical search.
+2. Hybrid/semantic search falls back to lexical ranking when dense retrieval is disabled, unavailable in the binary, empty, or errors. Explain output should state why fallback happened.
+3. Relationship context is weak prompt context. Current thread content and explicit user instruction override it. Prompts must not imply familiarity beyond stored known topics, commitments, or summaries.
+4. Relationship/user voice/humanizer state stays local-first and inspectable. Contact style, relationship summaries, commitments, and user voice profiles live in SQLite and are exposed through daemon/profile surfaces; generated drafts return humanizer and voice-match metadata.
+5. Humanizer detection is deterministic Rust code. Auto-rewrite is a later pipeline layer; detector scoring can run without any LLM.
+
+### Decision records
+
+- **D090**: Semantic config defaults to enabled while `search.default_mode` remains `lexical`; semantic retrieval is opt-in per query mode and graceful on failure.
+- **D091**: Relationship profile data may shape draft/summarize prompts only as weak background context, never as invented relationship truth.
+- **D092**: Humanizer scoring is a local deterministic quality gate independent of LLM availability.
+
+---
+
 ## End of addendum
 
-Any future refinements should be appended below as A011, A012, etc. following the same format.
+Any future refinements should be appended above this section as A012, A013, etc. following the same format.

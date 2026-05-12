@@ -80,9 +80,7 @@ export function useDesktopKeyboardShortcuts(props: {
         ) {
           event.preventDefault();
           if (filteredCommandCount > 0) {
-            setSelectedCommandIndex(
-              Math.min(selectedCommandIndex + 1, filteredCommandCount - 1),
-            );
+            setSelectedCommandIndex(Math.min(selectedCommandIndex + 1, filteredCommandCount - 1));
           }
           return;
         }
@@ -195,16 +193,30 @@ export function useDesktopKeyboardShortcuts(props: {
         }
       }
 
-      if (
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        event.key === "/"
-      ) {
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key === "/") {
         event.preventDefault();
         setPendingBinding(null);
         dispatchAction("search_all_mail");
         return;
+      }
+
+      if (
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        (focusContext === "mailList" || focusContext === "search")
+      ) {
+        if (pendingBinding?.tokens[0] === "g" && /^[0-9]$/u.test(event.key)) {
+          event.preventDefault();
+          setPendingBinding(null);
+          dispatchAction(`open_saved_search_by_index:${event.key}`);
+          return;
+        }
+        if (event.key === "g") {
+          event.preventDefault();
+          setPendingBinding({ tokens: ["g"], deadline: Date.now() + 1500 });
+          return;
+        }
       }
 
       if (
@@ -240,23 +252,11 @@ export function useDesktopKeyboardShortcuts(props: {
 
       const now = Date.now();
       const next =
-        resolveBindingAction(
-          keymap,
-          bindingContext,
-          token,
-          pendingBinding,
-          now,
-        ) ??
+        resolveBindingAction(keymap, bindingContext, token, pendingBinding, now) ??
         (bindingContext === "rules" ||
         bindingContext === "accounts" ||
         bindingContext === "diagnostics"
-          ? resolveBindingAction(
-              keymap,
-              "mailList",
-              token,
-              pendingBinding,
-              now,
-            )
+          ? resolveBindingAction(keymap, "mailList", token, pendingBinding, now)
           : null);
       if (!next) {
         return;

@@ -147,6 +147,105 @@ async fn spawn_outlook_auth_session(
     }
 }
 
+fn format_platform_response(data: &ResponseData) -> String {
+    match data {
+        ResponseData::DraftSuggestion {
+            body,
+            model,
+            voice_match,
+            humanizer,
+            rewrite_iterations,
+        } => {
+            let mut lines = vec![
+                body.trim().to_string(),
+                String::new(),
+                format!("Model: {model}"),
+            ];
+            if let Some(voice_match) = voice_match {
+                lines.push(format!(
+                    "Voice match: {:.0}% ({:?})",
+                    voice_match.score * 100.0,
+                    voice_match.confidence
+                ));
+                if !voice_match.notable_deltas.is_empty() {
+                    lines.push(format!("Deltas: {}", voice_match.notable_deltas.join(", ")));
+                }
+            }
+            if let Some(humanizer) = humanizer {
+                lines.push(format!("Humanizer: {}/100", humanizer.score));
+            }
+            if *rewrite_iterations > 0 {
+                lines.push(format!("Rewritten: {rewrite_iterations}x"));
+            }
+            lines.join("\n")
+        }
+        ResponseData::CommitmentList { commitments } => {
+            if commitments.is_empty() {
+                return "No open commitments.".into();
+            }
+            commitments
+                .iter()
+                .map(|commitment| {
+                    let due = commitment
+                        .by_when
+                        .map(|date| format!(" due {}", date.format("%Y-%m-%d")))
+                        .unwrap_or_default();
+                    format!(
+                        "- {:?} · {}{}\n  {}\n  id: {}",
+                        commitment.direction,
+                        commitment.who_owes,
+                        due,
+                        commitment.what,
+                        commitment.id
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+        ResponseData::UserVoice { profile } => match profile {
+            Some(profile) => {
+                let mut lines = vec![
+                    format!("Samples: {} outbound messages", profile.msg_count_used),
+                    format!("Formality: {:.2}", profile.formality_score),
+                    format!("Average sentence: {:.1} words", profile.avg_sentence_len),
+                    String::new(),
+                    "Registers:".into(),
+                ];
+                for mode in &profile.register_modes {
+                    lines.push(format!(
+                        "- {:?}: formality {:.2}, avg sentence {:.1}, exemplars {}",
+                        mode.register,
+                        mode.formality_score,
+                        mode.avg_sentence_len,
+                        mode.exemplar_message_ids.len()
+                    ));
+                }
+                lines.join("\n")
+            }
+            None => "No usable voice profile yet. Send more outbound mail, then rebuild.".into(),
+        },
+        ResponseData::HumanizerReport { report } => {
+            format!(
+                "Humanizer: {}/100\n{} hits",
+                report.score,
+                report.hits.len()
+            )
+        }
+        ResponseData::HumanizedText {
+            text,
+            report,
+            iterations,
+        } => format!(
+            "{}\n\nHumanizer: {}/100\nRewritten: {}x",
+            text.trim(),
+            report.score,
+            iterations
+        ),
+        ResponseData::Ack => "Done.".into(),
+        other => serde_json::to_string_pretty(other).unwrap_or_else(|_| format!("{other:?}")),
+    }
+}
+
 pub async fn run() -> anyhow::Result<()> {
     let socket_path = daemon_socket_path();
     let mut client = Client::connect(&socket_path).await?;
@@ -742,6 +841,21 @@ pub async fn run() -> anyhow::Result<()> {
                     Err(e) => Err(e),
                 };
                 AsyncResult::SemanticOperationResult(result)
+            });
+        }
+
+        let platform_dispatch = app.take_pending_platform_dispatch();
+        for pending in platform_dispatch {
+            let bg = bg.clone();
+            let title = pending.title.clone();
+            let _ = submit_task(&queued, async move {
+                let resp = ipc_call(&bg, pending.request).await;
+                let result: Result<String, MxrError> = match resp {
+                    Ok(Response::Ok { data }) => Ok(format_platform_response(&data)),
+                    Ok(Response::Error { message, .. }) => Err(MxrError::Ipc(message)),
+                    Err(e) => Err(e),
+                };
+                AsyncResult::PlatformModalLoaded { title, result }
             });
         }
 
@@ -1921,6 +2035,13 @@ pub async fn run() -> anyhow::Result<()> {
                                 "Semantic action failed",
                                 format!("The daemon returned: {e}"),
                             );
+                        }
+                        AsyncResult::PlatformModalLoaded { title, result } => {
+                            app.modals.platform.title = title;
+                            match result {
+                                Ok(body) => app.modals.platform.set_body(body),
+                                Err(e) => app.modals.platform.set_error(e.to_string()),
+                            }
                         }
                         AsyncResult::AnalyticsResult { view, result } => {
                             // Drop responses for a view the user already
@@ -7504,6 +7625,24 @@ mod tests {
         }
     }
 
+    #[test]
+    fn platform_palette_entries_present_in_default_commands() {
+        let commands = crate::ui::command_palette::default_commands();
+        let labels: Vec<&str> = commands.iter().map(|c| c.label.as_str()).collect();
+        for needle in [
+            "Draft: Assist Current Thread",
+            "Draft: New For Sender",
+            "Voice: Show Profile",
+            "Voice: Rebuild Profile",
+            "Commitments: Show Open",
+        ] {
+            assert!(
+                labels.contains(&needle),
+                "expected `{needle}` in palette; got {labels:?}"
+            );
+        }
+    }
+
     /// Phase 2.2 / Behavior 1: dispatching `EnableSemantic` queues exactly
     /// one `Request::EnableSemantic { enabled: true }` for the
     /// dispatcher.
@@ -7587,6 +7726,124 @@ mod tests {
                 assert_eq!(p.as_str(), profile.as_str());
             }
             other => panic!("expected InstallSemanticProfile, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn draft_assist_action_queues_selected_thread_request() {
+        use crate::action::Action;
+        let mut app = App::new();
+        let envelope = TestEnvelopeBuilder::new()
+            .with_from_address("Sender", "sender@example.com")
+            .subject("Quarterly plan")
+            .build();
+        let thread_id = envelope.thread_id.clone();
+        app.mailbox.envelopes = vec![envelope];
+
+        app.apply(Action::DraftAssistCurrentThread);
+
+        let queue = app.take_pending_platform_dispatch();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].title, "Draft assist");
+        match &queue[0].request {
+            Request::DraftAssist {
+                thread_id: queued,
+                instruction,
+            } => {
+                assert_eq!(queued, &thread_id);
+                assert_eq!(instruction, "Draft a concise reply.");
+            }
+            other => panic!("expected DraftAssist, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn draft_new_for_sender_action_queues_selected_sender_request() {
+        use crate::action::Action;
+        let mut app = App::new();
+        let account_id = AccountId::new();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .with_from_address("Sender", "sender@example.com")
+            .subject("Quarterly plan")
+            .build();
+        app.mailbox.envelopes = vec![envelope];
+
+        app.apply(Action::DraftNewForSender);
+
+        let queue = app.take_pending_platform_dispatch();
+        assert_eq!(queue.len(), 1);
+        match &queue[0].request {
+            Request::DraftNew {
+                account_id: queued_account,
+                to,
+                purpose,
+                register,
+                length_hint,
+            } => {
+                assert_eq!(queued_account, &account_id);
+                assert_eq!(to.email, "sender@example.com");
+                assert_eq!(purpose, "Follow up on the selected thread: Quarterly plan");
+                assert!(register.is_none());
+                assert!(length_hint.is_none());
+            }
+            other => panic!("expected DraftNew, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn commitments_action_queues_open_commitments_for_selected_sender() {
+        use crate::action::Action;
+        let mut app = App::new();
+        let account_id = AccountId::new();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .with_from_address("Sender", "sender@example.com")
+            .subject("Quarterly plan")
+            .build();
+        app.mailbox.envelopes = vec![envelope];
+
+        app.apply(Action::OpenCommitments);
+
+        let queue = app.take_pending_platform_dispatch();
+        assert_eq!(queue.len(), 1);
+        match &queue[0].request {
+            Request::ListCommitments {
+                account_id: queued_account,
+                email,
+                status,
+            } => {
+                assert_eq!(queued_account, &account_id);
+                assert_eq!(email.as_deref(), Some("sender@example.com"));
+                assert_eq!(*status, Some(mxr_protocol::CommitmentStatusData::Open));
+            }
+            other => panic!("expected ListCommitments, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn voice_actions_queue_selected_account_requests() {
+        use crate::action::Action;
+        let mut app = App::new();
+        let account_id = AccountId::new();
+        let envelope = TestEnvelopeBuilder::new()
+            .account_id(account_id.clone())
+            .with_from_address("Sender", "sender@example.com")
+            .build();
+        app.mailbox.envelopes = vec![envelope];
+
+        app.apply(Action::OpenVoiceProfile);
+        app.apply(Action::RebuildUserVoice);
+
+        let queue = app.take_pending_platform_dispatch();
+        assert_eq!(queue.len(), 2);
+        match &queue[0].request {
+            Request::GetUserVoice { account_id: queued } => assert_eq!(queued, &account_id),
+            other => panic!("expected GetUserVoice, got {other:?}"),
+        }
+        match &queue[1].request {
+            Request::RebuildUserVoice { account_id: queued } => assert_eq!(queued, &account_id),
+            other => panic!("expected RebuildUserVoice, got {other:?}"),
         }
     }
 

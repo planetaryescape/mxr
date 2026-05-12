@@ -40,11 +40,10 @@ const tmpSpec = resolve(here, "..", ".openapi-spec.json");
 writeFileSync(tmpSpec, dump.stdout);
 
 console.log("[gen:types] running openapi-typescript…");
-const gen = spawnSync(
-  "npx",
-  ["--yes", "openapi-typescript", tmpSpec, "--output", target],
-  { cwd: resolve(here, ".."), stdio: "inherit" },
-);
+const gen = spawnSync("npx", ["--yes", "openapi-typescript", tmpSpec, "--output", target], {
+  cwd: resolve(here, ".."),
+  stdio: "inherit",
+});
 if (gen.status !== 0) {
   console.error("[gen:types] openapi-typescript failed");
   process.exit(gen.status ?? 1);

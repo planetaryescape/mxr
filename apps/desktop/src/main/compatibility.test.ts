@@ -83,7 +83,7 @@ describe("compatibility", () => {
   });
 
   it("throws on invalid JSON in parseStatusOutput", () => {
-    expect(() => parseStatusOutput("not json")).toThrow();
+    expect(() => parseStatusOutput("not json")).toThrow("not valid JSON");
   });
 
   it("throws when protocol_version is missing from status output", () => {

@@ -5,8 +5,7 @@ import { basename, join } from "node:path";
 import { shell } from "electron";
 import type { DesktopUpdateState } from "../shared/types.js";
 
-const RELEASES_LATEST_URL =
-  "https://api.github.com/repos/planetaryescape/mxr/releases/latest";
+const RELEASES_LATEST_URL = "https://api.github.com/repos/planetaryescape/mxr/releases/latest";
 
 type FetchLike = typeof fetch;
 
@@ -36,8 +35,7 @@ export class LinuxUpdateManager {
   private readonly arch: NodeJS.Architecture;
   private readonly fetchImpl: FetchLike;
   private lastUpdate: ResolvedUpdate | null = null;
-  private downloaded: Extract<DesktopUpdateState, { status: "downloaded" }> | null =
-    null;
+  private downloaded: Extract<DesktopUpdateState, { status: "downloaded" }> | null = null;
 
   constructor(options: {
     currentVersion: string;
@@ -224,11 +222,7 @@ function preferredInstallerExtensions(): string[] {
   return ["deb", "rpm", "zip"];
 }
 
-async function downloadFile(
-  fetchImpl: FetchLike,
-  url: string,
-  path: string,
-): Promise<void> {
+async function downloadFile(fetchImpl: FetchLike, url: string, path: string): Promise<void> {
   const response = await fetchImpl(url, {
     headers: { "user-agent": "mxr-desktop-updater" },
   });

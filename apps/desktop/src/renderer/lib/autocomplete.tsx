@@ -23,6 +23,7 @@ export function ContactInput(props: {
   const mountedRef = useRef(true);
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = props.inputRef ?? internalRef;
+  const { fetchSuggestions, onChange, value } = props;
 
   const fetchDebounced = useCallback(
     (query: string) => {
@@ -38,7 +39,7 @@ export function ContactInput(props: {
       const requestId = ++requestIdRef.current;
       debounceRef.current = setTimeout(async () => {
         try {
-          const results = await props.fetchSuggestions(query);
+          const results = await fetchSuggestions(query);
           if (!mountedRef.current || requestIdRef.current !== requestId) {
             return;
           }
@@ -54,7 +55,7 @@ export function ContactInput(props: {
         }
       }, 200);
     },
-    [props.fetchSuggestions],
+    [fetchSuggestions],
   );
 
   // Extract the last segment after comma for autocomplete context
@@ -64,15 +65,15 @@ export function ContactInput(props: {
   };
 
   const handleChange = (newValue: string) => {
-    props.onChange(newValue);
+    onChange(newValue);
     fetchDebounced(getActiveSegment(newValue));
   };
 
   const acceptSuggestion = (suggestion: Suggestion) => {
-    const parts = props.value.split(",").map((p) => p.trim());
+    const parts = value.split(",").map((p) => p.trim());
     parts[parts.length - 1] = suggestion.value;
     const newValue = parts.join(", ") + ", ";
-    props.onChange(newValue);
+    onChange(newValue);
     setSuggestions([]);
     setShowSuggestions(false);
     inputRef.current?.focus();

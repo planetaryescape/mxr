@@ -82,6 +82,23 @@ export function fetchSenderProfile(input: { accountId: string; email: string }):
   return apiFetch<unknown>(`/api/v1/mail/sender?${query.toString()}`);
 }
 
+export function listCommitments(input: {
+  accountId: string;
+  email?: string;
+  status?: "open" | "resolved" | "expired";
+}): Promise<unknown> {
+  const query = new URLSearchParams({ account_id: input.accountId });
+  if (input.email) query.set("email", input.email);
+  if (input.status) query.set("status", input.status);
+  return apiFetch<unknown>(`/api/v1/mail/commitments?${query.toString()}`);
+}
+
+export function resolveCommitment(commitmentId: string): Promise<unknown> {
+  return apiFetch<unknown>(`/api/v1/mail/commitments/${encodeURIComponent(commitmentId)}/resolve`, {
+    method: "POST",
+  });
+}
+
 interface AttachmentActionInput {
   messageId: string;
   attachmentId: string;

@@ -332,6 +332,62 @@ export function useComposeActions(props: {
     },
   );
 
+  const scheduleComposeSend = useEffectEvent(async (sendAt: string) => {
+    const snapshot = captureComposeSnapshot();
+    const bridge = props.bridge;
+    if (bridge.kind !== "ready" || !snapshot) {
+      return;
+    }
+
+    props.setComposeBusy("Scheduling");
+    props.setComposeError(null);
+
+    try {
+      const result = await props.requestCoordinator.queueComposeLatest(
+        composeQueueKey(snapshot.draftPath),
+        async () => {
+          const session = await performPersistComposeDraft(snapshot);
+          const saved = await fetchJson<ActionAckResponse>(
+            bridge.baseUrl,
+            bridge.authToken,
+            "/compose/session/save",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                draft_path: session.draftPath,
+                account_id: session.accountId,
+              }),
+              requestLabel: "compose:save",
+            },
+          );
+          if (!saved.draft_id) {
+            throw new Error("Bridge did not return a draft id for scheduling");
+          }
+          await fetchJson<ActionAckResponse>(bridge.baseUrl, bridge.authToken, "/scheduled-sends", {
+            method: "POST",
+            body: JSON.stringify({
+              draft_id: saved.draft_id,
+              send_at: sendAt,
+            }),
+            requestLabel: "scheduled-sends:create",
+          });
+          return session;
+        },
+      );
+      if (result.status !== "committed") {
+        return;
+      }
+
+      closeComposeUi();
+      props.showNotice("Send scheduled");
+      await props.refreshCurrentView({ preserveReader: true });
+    } catch (error) {
+      props.setComposeError(error instanceof Error ? error.message : "Failed to schedule send");
+    } finally {
+      props.setComposeBusy(null);
+    }
+  });
+
   const discardComposeSession = useEffectEvent(async () => {
     const bridge = props.bridge;
     if (bridge.kind !== "ready" || !props.composeSession) {
@@ -385,6 +441,7 @@ export function useComposeActions(props: {
     openSavedDraft,
     closeComposeShell,
     submitComposeAction,
+    scheduleComposeSend,
     discardComposeSession,
     launchComposeEditor,
     setComposeBody: (body: string) => {

@@ -20,6 +20,7 @@ impl App {
                     representative: envelope.clone(),
                     message_count: 1,
                     unread_count: usize::from(!envelope.flags.contains(MessageFlags::READ)),
+                    pending_mutation: false,
                 })
                 .collect(),
             MailListMode::Threads => {
@@ -33,6 +34,7 @@ impl App {
                             representative: envelope.clone(),
                             message_count: 0,
                             unread_count: 0,
+                            pending_mutation: false,
                         }
                     });
                     entry.message_count += 1;

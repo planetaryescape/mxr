@@ -1,6 +1,12 @@
 import { Archive, ChevronDown, ChevronRight, Paperclip, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AttachmentMeta, MailboxRow, ReaderMode, ThreadBody, ThreadResponse } from "../../shared/types";
+import type {
+  AttachmentMeta,
+  MailboxRow,
+  ReaderMode,
+  ThreadBody,
+  ThreadResponse,
+} from "../../shared/types";
 import { cn } from "../lib/cn";
 import { buildSanitizedEmailDocument } from "../lib/emailHtml";
 import { SkeletonReaderBody } from "../lib/skeleton";
@@ -232,14 +238,14 @@ function MessageCard(props: {
       {/* Message body -- shown when expanded */}
       {expanded ? (
         <div className="px-4 pb-4 pl-[3.75rem]">
-            <MessageBody
-              body={props.body}
-              readerMode={props.readerMode}
-              remoteContentEnabled={props.remoteContentEnabled}
-              setRemoteContentEnabled={props.setRemoteContentEnabled}
-              signatureExpanded={props.signatureExpanded}
-              snippet={props.message.snippet}
-            />
+          <MessageBody
+            body={props.body}
+            readerMode={props.readerMode}
+            remoteContentEnabled={props.remoteContentEnabled}
+            setRemoteContentEnabled={props.setRemoteContentEnabled}
+            signatureExpanded={props.signatureExpanded}
+            snippet={props.message.snippet}
+          />
           {/* Inline attachments */}
           {props.body && props.body.attachments.length > 0 ? (
             <AttachmentList attachments={props.body.attachments} />
@@ -395,19 +401,12 @@ function HtmlMessageFrame(props: { html: string }) {
         return;
       }
 
-      const bodyHeight = Math.max(
-        doc.body?.scrollHeight ?? 0,
-        doc.body?.offsetHeight ?? 0,
-      );
+      const bodyHeight = Math.max(doc.body?.scrollHeight ?? 0, doc.body?.offsetHeight ?? 0);
       const rootHeight = Math.max(
         doc.documentElement?.scrollHeight ?? 0,
         doc.documentElement?.offsetHeight ?? 0,
       );
-      const nextHeight = Math.max(
-        MIN_HTML_FRAME_HEIGHT_PX,
-        bodyHeight,
-        rootHeight,
-      );
+      const nextHeight = Math.max(MIN_HTML_FRAME_HEIGHT_PX, bodyHeight, rootHeight);
 
       setFrameHeight(nextHeight);
     };
@@ -534,8 +533,16 @@ function getInitials(sender: string): string {
 }
 
 const AVATAR_COLORS = [
-  "#4f6d7a", "#5b8a72", "#7a6b5d", "#6b5b7a", "#5b6b7a",
-  "#7a5b5b", "#5b7a6b", "#6b7a5b", "#7a6b7a", "#5b7a7a",
+  "#4f6d7a",
+  "#5b8a72",
+  "#7a6b5d",
+  "#6b5b7a",
+  "#5b6b7a",
+  "#7a5b5b",
+  "#5b7a6b",
+  "#6b7a5b",
+  "#7a6b7a",
+  "#5b7a7a",
 ];
 
 function getAvatarColor(sender: string): string {

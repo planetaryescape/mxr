@@ -1,9 +1,12 @@
-import { Paperclip, X } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, Paperclip, X } from "lucide-react";
 import { useEffect } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { resolveCommitment as resolveCommitmentApi } from "@/features/mailbox/api";
 import { AttachmentActions } from "@/features/thread/AttachmentActions";
 import type { AttachmentView } from "@/features/mailbox/types";
 import { useModals } from "@/state/modalStore";
@@ -67,6 +70,9 @@ function RailContent({ kind, payload }: { kind: string; payload: unknown }) {
   if (kind === "sender-profile") {
     return <SenderProfilePanel payload={payload} />;
   }
+  if (kind === "commitments") {
+    return <CommitmentsPanel payload={payload} />;
+  }
   return <pre className="font-mono text-2xs">{JSON.stringify(payload ?? null, null, 2)}</pre>;
 }
 
@@ -120,7 +126,11 @@ interface RelationshipSummary {
 
 interface Commitment {
   id: string;
+  account_id?: string;
+  email?: string;
+  thread_id?: string;
   direction: string;
+  status?: string;
   who_owes: string;
   what: string;
   by_when?: string | null;
@@ -245,7 +255,9 @@ function SenderProfilePanel({ payload }: { payload: unknown }) {
         <ProfileRow label="List sender" value={profile.is_list_sender ? "Yes" : "No"} />
       </div>
 
-      {profile.relationship ? <RelationshipPanel relationship={profile.relationship} /> : null}
+      {profile.relationship ? (
+        <RelationshipPanel payload={payload} relationship={profile.relationship} />
+      ) : null}
 
       <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
         <h4 className="text-xs font-medium">Storage</h4>
@@ -292,8 +304,25 @@ function SenderProfilePanel({ payload }: { payload: unknown }) {
   );
 }
 
-function RelationshipPanel({ relationship }: { relationship: RelationshipProfile }) {
+function RelationshipPanel({
+  payload,
+  relationship,
+}: {
+  payload: unknown;
+  relationship: RelationshipProfile;
+}) {
   const commitments = relationship.open_commitments ?? [];
+  const queryClient = useQueryClient();
+  const openRail = useModals((state) => state.openRightRail);
+  const resolveCommitment = useMutation({
+    mutationFn: resolveCommitmentApi,
+    onSuccess: (_result, commitmentId) => {
+      openRail("sender-profile", removeCommitmentFromSenderPayload(payload, commitmentId));
+      void queryClient.invalidateQueries({ queryKey: ["thread"] });
+      toast.success("Commitment resolved");
+    },
+    onError: (error) => toast.error("Resolve failed", { description: error.message }),
+  });
   return (
     <div className="space-y-3 rounded-md border border-border bg-muted/30 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -337,15 +366,86 @@ function RelationshipPanel({ relationship }: { relationship: RelationshipProfile
               key={commitment.id}
               className="rounded border border-border/70 bg-background/50 px-2 py-1.5"
             >
-              <div className="font-medium">{commitment.what}</div>
-              <div className="mt-0.5 text-2xs text-muted-foreground">
-                {commitment.who_owes} · {commitment.direction}
-                {commitment.by_when ? ` · due ${formatShortDate(commitment.by_when)}` : ""}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium">{commitment.what}</div>
+                  <div className="mt-0.5 text-2xs text-muted-foreground">
+                    {commitment.who_owes} · {commitment.direction}
+                    {commitment.by_when ? ` · due ${formatShortDate(commitment.by_when)}` : ""}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 shrink-0 px-2 text-2xs"
+                  disabled={resolveCommitment.isPending}
+                  onClick={() => resolveCommitment.mutate(commitment.id)}
+                >
+                  <CheckCircle2 className="size-3" />
+                  Resolve
+                </Button>
               </div>
             </div>
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function CommitmentsPanel({ payload }: { payload: unknown }) {
+  const commitments = extractCommitments(payload);
+  const queryClient = useQueryClient();
+  const openRail = useModals((state) => state.openRightRail);
+  const resolveCommitment = useMutation({
+    mutationFn: resolveCommitmentApi,
+    onSuccess: (_result, commitmentId) => {
+      openRail("commitments", {
+        commitments: commitments.filter((item) => item.id !== commitmentId),
+      });
+      void queryClient.invalidateQueries({ queryKey: ["thread"] });
+      toast.success("Commitment resolved");
+    },
+    onError: (error) => toast.error("Resolve failed", { description: error.message }),
+  });
+
+  if (commitments.length === 0) {
+    return (
+      <div className="rounded-md border border-border bg-muted/40 px-3 py-4 text-sm text-foreground">
+        No open commitments.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 text-foreground">
+      <h3 className="text-sm font-semibold">Open commitments</h3>
+      {commitments.map((commitment) => (
+        <div key={commitment.id} className="rounded-md border border-border bg-muted/30 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              <div className="text-xs font-medium">{commitment.what}</div>
+              <div className="text-2xs text-muted-foreground">
+                {commitment.who_owes} · {commitment.direction}
+                {commitment.email ? ` · ${commitment.email}` : ""}
+                {commitment.by_when ? ` · due ${formatShortDate(commitment.by_when)}` : ""}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 shrink-0 px-2 text-2xs"
+              disabled={resolveCommitment.isPending}
+              onClick={() => resolveCommitment.mutate(commitment.id)}
+            >
+              <CheckCircle2 className="size-3" />
+              Resolve
+            </Button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -379,6 +479,42 @@ function extractSenderProfile(value: unknown): SenderProfile | null {
   const candidate = isRecord(value.profile) ? value.profile : value;
   if (typeof candidate.email !== "string") return null;
   return candidate as unknown as SenderProfile;
+}
+
+function extractCommitments(value: unknown): Commitment[] {
+  if (Array.isArray(value)) return value.filter(isCommitment);
+  if (!isRecord(value)) return [];
+  const commitments = value.commitments;
+  return Array.isArray(commitments) ? commitments.filter(isCommitment) : [];
+}
+
+function isCommitment(value: unknown): value is Commitment {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.what === "string" &&
+    typeof value.who_owes === "string" &&
+    typeof value.direction === "string"
+  );
+}
+
+function removeCommitmentFromSenderPayload(payload: unknown, commitmentId: string): unknown {
+  if (!isRecord(payload)) return payload;
+  const profile = isRecord(payload.profile) ? payload.profile : payload;
+  const relationship = isRecord(profile.relationship) ? profile.relationship : null;
+  const openCommitments = relationship?.open_commitments;
+  if (!relationship || !Array.isArray(openCommitments)) return payload;
+
+  const nextProfile = {
+    ...profile,
+    relationship: {
+      ...relationship,
+      open_commitments: openCommitments.filter(
+        (commitment) => !isRecord(commitment) || commitment.id !== commitmentId,
+      ),
+    },
+  };
+  return profile === payload ? nextProfile : { ...payload, profile: nextProfile };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,19 +1,5 @@
-import {
-  Database,
-  Inbox,
-  ScanSearch,
-  Sparkles,
-  UserRoundCog,
-} from "lucide-react";
-import {
-  startTransition,
-  useDeferredValue,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Database, Inbox, ScanSearch, Sparkles, UserRoundCog } from "lucide-react";
+import { startTransition, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { RefObject, SetStateAction } from "react";
 import type {
   ActionAckResponse,
@@ -69,10 +55,7 @@ import { useRulesAccountsActions } from "./state/useRulesAccountsActions";
 import { useEventStream, type ConnectionStatus } from "./state/useEventStream";
 import { useWorkbenchShellActions } from "./state/useWorkbenchShellActions";
 import { useWorkbenchCoreState } from "./state/useWorkbenchCoreState";
-import {
-  useContextMenu,
-  ContextMenuOverlay,
-} from "./lib/context-menu";
+import { useContextMenu, ContextMenuOverlay } from "./lib/context-menu";
 import { BrowserDialogs } from "./dialogs/BrowserDialogs";
 import { DesktopDialogs } from "./surfaces/DesktopDialogs";
 import {
@@ -91,11 +74,7 @@ import {
   findMailboxSelectionIdByThreadId,
   mailboxRowSelectionId,
 } from "./lib/mailboxSelection";
-import {
-  NavigationSidebar,
-  WorkbenchHeader,
-  WorkbenchStatusBar,
-} from "./surfaces/WorkbenchChrome";
+import { NavigationSidebar, WorkbenchHeader, WorkbenchStatusBar } from "./surfaces/WorkbenchChrome";
 
 const UPDATE_STEPS = [
   "Homebrew: brew upgrade mxr",
@@ -342,7 +321,7 @@ export default function App() {
     closeAllDialogs,
   } = useDesktopAppState();
 
-  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const deferredSearchQuery = useDebouncedValue(searchQuery, 250);
   const requestCoordinator = useDesktopRequestCoordinator();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const commandInputRef = useRef<HTMLInputElement | null>(null);
@@ -355,30 +334,20 @@ export default function App() {
     if (typeof navigator === "undefined") {
       return false;
     }
-    return /Mac|iPhone|iPad|iPod/.test(
-      navigator.platform || navigator.userAgent,
-    );
+    return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
   }, []);
 
-  const mailboxRows = useMemo(
-    () => flattenGroups(mailbox.groups),
-    [mailbox.groups],
-  );
-  const searchRows = useMemo(
-    () => flattenGroups(searchState.groups),
-    [searchState.groups],
-  );
+  const mailboxRows = useMemo(() => flattenGroups(mailbox.groups), [mailbox.groups]);
+  const searchRows = useMemo(() => flattenGroups(searchState.groups), [searchState.groups]);
   const selectedMailboxRow = useMemo(
     () => findMailboxRowBySelectionId(mailbox.groups, selectedMailboxThreadId),
     [mailbox.groups, selectedMailboxThreadId],
   );
   const selectedSearchRow = useMemo(
-    () =>
-      findMailboxRowBySelectionId(searchState.groups, selectedSearchThreadId),
+    () => findMailboxRowBySelectionId(searchState.groups, selectedSearchThreadId),
     [searchState.groups, selectedSearchThreadId],
   );
-  const selectedRow =
-    screen === "search" ? selectedSearchRow : selectedMailboxRow;
+  const selectedRow = screen === "search" ? selectedSearchRow : selectedMailboxRow;
   const currentThreadId = selectedRow?.thread_id ?? null;
   const effectiveReaderMode = resolveReaderMode(readerMode, thread);
   const platformShell = useMemo(
@@ -388,15 +357,10 @@ export default function App() {
     }),
     [isMacPlatform, shell],
   );
-  const utilityRail =
-    thread?.right_rail ?? defaultUtilityRail(platformShell, selectedRow);
-  const activeSidebarItem = useMemo(
-    () => findActiveSidebarItem(sidebar),
-    [sidebar],
-  );
+  const utilityRail = thread?.right_rail ?? defaultUtilityRail(platformShell, selectedRow);
+  const activeSidebarItem = useMemo(() => findActiveSidebarItem(sidebar), [sidebar]);
   useEffect(() => {
-    const fallbackSidebarItemId =
-      activeSidebarItem?.id ?? firstSidebarItemId(sidebar);
+    const fallbackSidebarItemId = activeSidebarItem?.id ?? firstSidebarItemId(sidebar);
     if (focusContext === "sidebar") {
       if (selectedSidebarItemId && sidebarHasItem(sidebar, selectedSidebarItemId)) {
         return;
@@ -409,40 +373,22 @@ export default function App() {
     if (selectedSidebarItemId !== fallbackSidebarItemId) {
       setSelectedSidebarItemId(fallbackSidebarItemId);
     }
-  }, [
-    activeSidebarItem,
-    focusContext,
-    selectedSidebarItemId,
-    setSelectedSidebarItemId,
-    sidebar,
-  ]);
+  }, [activeSidebarItem, focusContext, selectedSidebarItemId, setSelectedSidebarItemId, sidebar]);
   const labelOptions = useMemo(() => collectLabelOptions(sidebar), [sidebar]);
-  const editableLabels = useMemo(
-    () => collectEditableLabels(sidebar),
-    [sidebar],
-  );
-  const jumpLabelOptions = useMemo(
-    () => collectJumpTargets(sidebar),
-    [sidebar],
-  );
-  const savedSearchItems = useMemo(
-    () => collectSavedSearchItems(sidebar),
-    [sidebar],
-  );
+  const editableLabels = useMemo(() => collectEditableLabels(sidebar), [sidebar]);
+  const jumpLabelOptions = useMemo(() => collectJumpTargets(sidebar), [sidebar]);
+  const savedSearchItems = useMemo(() => collectSavedSearchItems(sidebar), [sidebar]);
   const threadLinks = useMemo(() => collectLinks(thread), [thread]);
   const threadAttachments = useMemo(() => collectAttachments(thread), [thread]);
   const selectedRule = useMemo(
     () =>
-      rulesState.rules.find(
-        (rule) => String(rule.id ?? rule.name ?? "") === selectedRuleId,
-      ) ?? null,
+      rulesState.rules.find((rule) => String(rule.id ?? rule.name ?? "") === selectedRuleId) ??
+      null,
     [rulesState.rules, selectedRuleId],
   );
   const selectedAccount = useMemo(
     () =>
-      accountsState.accounts.find(
-        (account) => account.account_id === selectedAccountId,
-      ) ?? null,
+      accountsState.accounts.find((account) => account.account_id === selectedAccountId) ?? null,
     [accountsState.accounts, selectedAccountId],
   );
   // Default account for IPC requests that need an account_id but don't
@@ -450,11 +396,7 @@ export default function App() {
   // any message is selected). Falls back to the first available account.
   const primaryAccountId = useMemo<string | null>(() => {
     const defaultAccount = accountsState.accounts.find((account) => account.is_default);
-    return (
-      defaultAccount?.account_id ??
-      accountsState.accounts[0]?.account_id ??
-      null
-    );
+    return defaultAccount?.account_id ?? accountsState.accounts[0]?.account_id ?? null;
   }, [accountsState.accounts]);
   const composeCanSend = useMemo(() => {
     if (!composeSession) {
@@ -470,11 +412,7 @@ export default function App() {
   }, [accountsState.accounts, composeSession]);
   const effectiveSelection = useMemo(
     () =>
-      selectedMessageIds.size > 0
-        ? [...selectedMessageIds]
-        : selectedRow
-          ? [selectedRow.id]
-          : [],
+      selectedMessageIds.size > 0 ? [...selectedMessageIds] : selectedRow ? [selectedRow.id] : [],
     [selectedMessageIds, selectedRow],
   );
   const pendingMessageIds = useMemo(
@@ -494,12 +432,12 @@ export default function App() {
         : screen === "diagnostics"
           ? "diagnostics"
           : focusContext === "reader"
-      ? "messageView"
-      : focusContext === "sidebar"
-        ? "mailList"
-        : layoutMode === "twoPane"
-          ? "mailList"
-          : "threadView";
+            ? "messageView"
+            : focusContext === "sidebar"
+              ? "mailList"
+              : layoutMode === "twoPane"
+                ? "mailList"
+                : "threadView";
   const helpSections = useMemo(
     () => [
       {
@@ -532,9 +470,7 @@ export default function App() {
 
   const [mailboxFilterOpen, setMailboxFilterOpen] = useState(false);
   const [mailboxFilterQuery, setMailboxFilterQuery] = useState("");
-  const [mailboxLoadingLabel, setMailboxLoadingLabel] = useState<string | null>(
-    null,
-  );
+  const [mailboxLoadingLabel, setMailboxLoadingLabel] = useState<string | null>(null);
   const contextMenu = useContextMenu();
 
   useEffect(() => {
@@ -553,17 +489,10 @@ export default function App() {
   }, [bridge]);
 
   useActionNoticeTimeout(actionNotice, setActionNotice);
-  usePruneSelectedMessages(
-    mailbox.groups,
-    searchState.groups,
-    setSelectedMessageIds,
-  );
+  usePruneSelectedMessages(mailbox.groups, searchState.groups, setSelectedMessageIds);
 
   useEffect(() => {
-    document.body.setAttribute(
-      "data-remote-content",
-      String(remoteContentEnabled),
-    );
+    document.body.setAttribute("data-remote-content", String(remoteContentEnabled));
   }, [remoteContentEnabled]);
 
   const showNotice = useEffectEvent((message: string) => {
@@ -582,10 +511,8 @@ export default function App() {
         label: "Filter mailbox",
         shortcut: displayShortcut(
           "filter_mailbox",
-          shortcutForAction(effectiveKeymap, "filter_mailbox", [
-            "mailList",
-            "threadView",
-          ]) ?? "Ctrl-F",
+          shortcutForAction(effectiveKeymap, "filter_mailbox", ["mailList", "threadView"]) ??
+            "Ctrl-F",
           isMacPlatform,
         ),
       },
@@ -631,11 +558,27 @@ export default function App() {
         label: "Toggle remote content",
         shortcut: displayShortcut(
           "toggle_remote_content",
-          shortcutForAction(effectiveKeymap, "toggle_remote_content", [
-            "messageView",
-          ]) ?? "M",
+          shortcutForAction(effectiveKeymap, "toggle_remote_content", ["messageView"]) ?? "M",
           isMacPlatform,
         ),
+      },
+      {
+        action: "set_auto_reminder",
+        category: "Follow-up",
+        label: "Set auto-reminder for selected message",
+        shortcut: "",
+      },
+      {
+        action: "cancel_auto_reminder",
+        category: "Follow-up",
+        label: "Cancel auto-reminder for selected message",
+        shortcut: "",
+      },
+      {
+        action: "setup_demo",
+        category: "Account",
+        label: "Start demo setup",
+        shortcut: "",
       },
       {
         action: "open_diagnostics_section:overview",
@@ -651,29 +594,25 @@ export default function App() {
         category: "Diagnostics",
         label: "Open diagnostics drafts",
         shortcut:
-          shortcutForAction(effectiveKeymap, "open_diagnostics_section:drafts", [
-            "diagnostics",
-          ]) ?? "D",
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:drafts", ["diagnostics"]) ??
+          "D",
       },
       {
         action: "open_diagnostics_section:subscriptions",
         category: "Diagnostics",
         label: "Open diagnostics subscriptions",
         shortcut:
-          shortcutForAction(
-            effectiveKeymap,
-            "open_diagnostics_section:subscriptions",
-            ["diagnostics"],
-          ) ?? "S",
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:subscriptions", [
+            "diagnostics",
+          ]) ?? "S",
       },
       {
         action: "open_diagnostics_section:snoozed",
         category: "Diagnostics",
         label: "Open diagnostics snoozed",
         shortcut:
-          shortcutForAction(effectiveKeymap, "open_diagnostics_section:snoozed", [
-            "diagnostics",
-          ]) ?? "Z",
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:snoozed", ["diagnostics"]) ??
+          "Z",
       },
       {
         action: "open_diagnostics_section:semantic",
@@ -689,20 +628,17 @@ export default function App() {
         category: "Diagnostics",
         label: "Open diagnostics labels",
         shortcut:
-          shortcutForAction(effectiveKeymap, "open_diagnostics_section:labels", [
-            "diagnostics",
-          ]) ?? "L",
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:labels", ["diagnostics"]) ??
+          "L",
       },
       {
         action: "open_diagnostics_section:saved-searches",
         category: "Diagnostics",
         label: "Open diagnostics saved searches",
         shortcut:
-          shortcutForAction(
-            effectiveKeymap,
-            "open_diagnostics_section:saved-searches",
-            ["diagnostics"],
-          ) ?? "A",
+          shortcutForAction(effectiveKeymap, "open_diagnostics_section:saved-searches", [
+            "diagnostics",
+          ]) ?? "A",
       },
       {
         action: "open_diagnostics_section:settings",
@@ -817,6 +753,7 @@ export default function App() {
     openSavedDraft,
     closeComposeShell,
     submitComposeAction,
+    scheduleComposeSend,
     discardComposeSession,
     launchComposeEditor,
     setComposeBody,
@@ -844,9 +781,7 @@ export default function App() {
     try {
       await persistComposeDraft();
     } catch (error) {
-      setComposeError(
-        error instanceof Error ? error.message : "Failed to update draft",
-      );
+      setComposeError(error instanceof Error ? error.message : "Failed to update draft");
     }
   });
 
@@ -867,18 +802,11 @@ export default function App() {
       return;
     }
 
-    const result = await requestCoordinator.runReplaceable(
-      "drafts:list",
-      ({ signal }) =>
-        fetchJson<SavedDraftsResponse>(
-          bridge.baseUrl,
-          bridge.authToken,
-          "/drafts",
-          {
-            signal,
-            requestLabel: "drafts",
-          },
-        ),
+    const result = await requestCoordinator.runReplaceable("drafts:list", ({ signal }) =>
+      fetchJson<SavedDraftsResponse>(bridge.baseUrl, bridge.authToken, "/drafts", {
+        signal,
+        requestLabel: "drafts",
+      }),
     );
     if (result.status !== "committed") {
       return;
@@ -1042,18 +970,11 @@ export default function App() {
     if (bridge.kind !== "ready") {
       return null;
     }
-    const result = await requestCoordinator.runReplaceable(
-      "diagnostics:report",
-      ({ signal }) =>
-        fetchJson<DiagnosticsResponse>(
-          bridge.baseUrl,
-          bridge.authToken,
-          "/diagnostics",
-          {
-            signal,
-            requestLabel: "diagnostics",
-          },
-        ),
+    const result = await requestCoordinator.runReplaceable("diagnostics:report", ({ signal }) =>
+      fetchJson<DiagnosticsResponse>(bridge.baseUrl, bridge.authToken, "/diagnostics", {
+        signal,
+        requestLabel: "diagnostics",
+      }),
     );
     if (result.status !== "committed") {
       return null;
@@ -1081,11 +1002,7 @@ export default function App() {
       setReportOpen(true);
       setFocusContext("dialog");
     } catch (error) {
-      showNotice(
-        error instanceof Error
-          ? error.message
-          : "Failed to open diagnostics details",
-      );
+      showNotice(error instanceof Error ? error.message : "Failed to open diagnostics details");
     }
   });
 
@@ -1094,9 +1011,7 @@ export default function App() {
       await window.mxrDesktop.openConfigFile();
       showNotice("Opened config file");
     } catch (error) {
-      showNotice(
-        error instanceof Error ? error.message : "Failed to open config file",
-      );
+      showNotice(error instanceof Error ? error.message : "Failed to open config file");
     }
   });
 
@@ -1110,9 +1025,7 @@ export default function App() {
       await window.mxrDesktop.openLocalPath(report.log_path);
       showNotice("Opened log file");
     } catch (error) {
-      showNotice(
-        error instanceof Error ? error.message : "Failed to open log file",
-      );
+      showNotice(error instanceof Error ? error.message : "Failed to open log file");
     }
   });
 
@@ -1146,23 +1059,21 @@ export default function App() {
     await loadDiagnostics();
   });
 
-  const renameLabelFromDiagnostics = useEffectEvent(
-    async (oldName: string, newName: string) => {
-      if (bridge.kind !== "ready") {
-        return;
-      }
-      await requestCoordinator.enqueueMutation(() =>
-        fetchJson(bridge.baseUrl, bridge.authToken, "/labels/rename", {
-          method: "POST",
-          body: JSON.stringify({ old: oldName, new: newName }),
-          requestLabel: "labels:rename",
-        }),
-      );
-      showNotice(`Renamed ${oldName} to ${newName}`);
-      await refreshCurrentView({ preserveReader: true });
-      await loadDiagnostics();
-    },
-  );
+  const renameLabelFromDiagnostics = useEffectEvent(async (oldName: string, newName: string) => {
+    if (bridge.kind !== "ready") {
+      return;
+    }
+    await requestCoordinator.enqueueMutation(() =>
+      fetchJson(bridge.baseUrl, bridge.authToken, "/labels/rename", {
+        method: "POST",
+        body: JSON.stringify({ old: oldName, new: newName }),
+        requestLabel: "labels:rename",
+      }),
+    );
+    showNotice(`Renamed ${oldName} to ${newName}`);
+    await refreshCurrentView({ preserveReader: true });
+    await loadDiagnostics();
+  });
 
   const deleteLabelFromDiagnostics = useEffectEvent(async (name: string) => {
     if (bridge.kind !== "ready") {
@@ -1180,23 +1091,21 @@ export default function App() {
     await loadDiagnostics();
   });
 
-  const deleteSavedSearchFromDiagnostics = useEffectEvent(
-    async (name: string) => {
-      if (bridge.kind !== "ready") {
-        return;
-      }
-      await requestCoordinator.enqueueMutation(() =>
-        fetchJson(bridge.baseUrl, bridge.authToken, "/saved-searches/delete", {
-          method: "POST",
-          body: JSON.stringify({ name }),
-          requestLabel: "saved-searches:delete",
-        }),
-      );
-      showNotice(`Deleted saved search ${name}`);
-      await refreshCurrentView({ preserveReader: true });
-      await loadDiagnostics();
-    },
-  );
+  const deleteSavedSearchFromDiagnostics = useEffectEvent(async (name: string) => {
+    if (bridge.kind !== "ready") {
+      return;
+    }
+    await requestCoordinator.enqueueMutation(() =>
+      fetchJson(bridge.baseUrl, bridge.authToken, "/saved-searches/delete", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+        requestLabel: "saved-searches:delete",
+      }),
+    );
+    showNotice(`Deleted saved search ${name}`);
+    await refreshCurrentView({ preserveReader: true });
+    await loadDiagnostics();
+  });
 
   const openSubscriptionFromDiagnostics = useEffectEvent(
     async (subscription: { sender_email: string }) => {
@@ -1247,9 +1156,7 @@ export default function App() {
       setSelectedCommandIndex(0);
       return;
     }
-    setSelectedCommandIndex((current) =>
-      Math.min(current, filteredCommands.length - 1),
-    );
+    setSelectedCommandIndex((current) => Math.min(current, filteredCommands.length - 1));
   }, [commandPaletteOpen, filteredCommands.length]);
 
   const runSelectedCommand = useEffectEvent(() => {
@@ -1278,9 +1185,7 @@ export default function App() {
       );
       setComposeError(null);
     } catch (error) {
-      setComposeError(
-        error instanceof Error ? error.message : "Failed to pick attachments",
-      );
+      setComposeError(error instanceof Error ? error.message : "Failed to pick attachments");
     }
   });
 
@@ -1293,6 +1198,48 @@ export default function App() {
           }
         : current,
     );
+  });
+
+  const scheduleReminderForSelected = useEffectEvent(async () => {
+    if (bridge.kind !== "ready" || !selectedRow) {
+      showNotice("Select a sent message first");
+      return;
+    }
+    const defaultAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const remindAt = window.prompt("Remind at ISO time", defaultAt);
+    if (!remindAt) {
+      return;
+    }
+    await requestCoordinator.enqueueMutation(() =>
+      fetchJson(bridge.baseUrl, bridge.authToken, "/reminders", {
+        method: "POST",
+        body: JSON.stringify({
+          sent_message_id: selectedRow.id,
+          remind_at: remindAt,
+        }),
+        requestLabel: "reminders:set",
+      }),
+    );
+    showNotice("Reminder scheduled");
+  });
+
+  const cancelReminderForSelected = useEffectEvent(async () => {
+    if (bridge.kind !== "ready" || !selectedRow) {
+      showNotice("Select a sent message first");
+      return;
+    }
+    await requestCoordinator.enqueueMutation(() =>
+      fetchJson(
+        bridge.baseUrl,
+        bridge.authToken,
+        `/reminders/${encodeURIComponent(selectedRow.id)}`,
+        {
+          method: "DELETE",
+          requestLabel: "reminders:cancel",
+        },
+      ),
+    );
+    showNotice("Reminder cancelled");
   });
 
   const dispatchAction = useDesktopActionDispatcher({
@@ -1342,6 +1289,8 @@ export default function App() {
     openMoveDialog,
     setUnsubscribeDialogOpen,
     openSnoozeDialog,
+    scheduleReminderForSelected,
+    cancelReminderForSelected,
     sidebar,
     openSelectedInBrowser,
     openAttachmentsPanel,
@@ -1448,11 +1397,9 @@ export default function App() {
     },
   );
 
-  const handleSyncErrorEvent = useEffectEvent(
-    (event: { account_id: string; error: string }) => {
-      showNotice(event.error);
-    },
-  );
+  const handleSyncErrorEvent = useEffectEvent((event: { account_id: string; error: string }) => {
+    showNotice(event.error);
+  });
 
   const handleMailboxChangedEvent = useEffectEvent(() => {
     void refreshCurrentView({ preserveReader: true });
@@ -1609,6 +1556,7 @@ export default function App() {
     removeComposeAttachment,
     refreshComposeSession,
     submitComposeAction,
+    scheduleComposeSend,
     persistComposeDraft,
     discardComposeSession,
     setComposeBody,
@@ -1708,9 +1656,7 @@ function flattenGroups(groups: MailboxGroup[]): FlattenedEntry[] {
   ]);
 }
 
-function buildKnownSenders(
-  groups: MailboxGroup[],
-): Array<{ name: string; email: string }> {
+function buildKnownSenders(groups: MailboxGroup[]): Array<{ name: string; email: string }> {
   const seen = new Map<string, { name: string; email: string }>();
   for (const group of groups) {
     for (const row of group.rows) {
@@ -1721,17 +1667,11 @@ function buildKnownSenders(
     }
   }
   const senders = Array.from(seen.values());
-  senders.sort((a, b) =>
-    a.email.toLowerCase().localeCompare(b.email.toLowerCase()),
-  );
+  senders.sort((a, b) => a.email.toLowerCase().localeCompare(b.email.toLowerCase()));
   return senders;
 }
 
-function displayShortcut(
-  action: string,
-  display: string,
-  isMacPlatform: boolean,
-) {
+function displayShortcut(action: string, display: string, isMacPlatform: boolean) {
   if (isMacPlatform && action === "command_palette" && display === "Ctrl-p") {
     return "⌘P";
   }
@@ -1762,10 +1702,7 @@ function renderDesktopWorkbench(props: {
   setComposeOpen: StateSetter<boolean>;
   setFocusContext: StateSetter<FocusContext>;
   selectedRow: MailboxRow | null;
-  openComposeShell: (
-    kind: "new" | "reply" | "forward",
-    messageId?: string,
-  ) => Promise<void>;
+  openComposeShell: (kind: "new" | "reply" | "forward", messageId?: string) => Promise<void>;
   openSavedDraft: (draft: SavedDraftSummary) => Promise<void>;
   openApplyLabelDialog: () => void;
   openSnoozeDialog: () => Promise<void>;
@@ -1839,18 +1776,11 @@ function renderDesktopWorkbench(props: {
   savedSearchItems: SidebarItem[];
   triggerSemanticReindex: () => Promise<void>;
   createLabelFromDiagnostics: (name: string) => Promise<void>;
-  renameLabelFromDiagnostics: (
-    oldName: string,
-    newName: string,
-  ) => Promise<void>;
+  renameLabelFromDiagnostics: (oldName: string, newName: string) => Promise<void>;
   deleteLabelFromDiagnostics: (name: string) => Promise<void>;
   deleteSavedSearchFromDiagnostics: (name: string) => Promise<void>;
-  openSubscriptionFromDiagnostics: (subscription: {
-    sender_email: string;
-  }) => Promise<void>;
-  openSnoozedThreadFromDiagnostics: (message: {
-    thread_id: string;
-  }) => Promise<void>;
+  openSubscriptionFromDiagnostics: (subscription: { sender_email: string }) => Promise<void>;
+  openSnoozedThreadFromDiagnostics: (message: { thread_id: string }) => Promise<void>;
   focusContext: FocusContext;
   commandPaletteOpen: boolean;
   commandInputRef: RefObject<HTMLInputElement | null>;
@@ -1891,6 +1821,7 @@ function renderDesktopWorkbench(props: {
     path: "/compose/session/send" | "/compose/session/save",
     successMessage: string,
   ) => Promise<void>;
+  scheduleComposeSend: (sendAt: string) => Promise<void>;
   persistComposeDraft: () => Promise<ComposeSession | null>;
   discardComposeSession: () => Promise<void>;
   setComposeBody: (body: string) => void;
@@ -1967,18 +1898,9 @@ function renderDesktopWorkbench(props: {
   browserDialog: import("./dialogs/BrowserDialogs").BrowserDialogState;
   setBrowserDialog: StateSetter<import("./dialogs/BrowserDialogs").BrowserDialogState>;
 }) {
-  const shortcut = (
-    action: string,
-    preferredContexts?: DesktopBindingContext[],
-  ) => {
-    const display = shortcutForAction(
-      props.effectiveKeymap,
-      action,
-      preferredContexts,
-    );
-    return display
-      ? displayShortcut(action, display, props.isMacPlatform)
-      : null;
+  const shortcut = (action: string, preferredContexts?: DesktopBindingContext[]) => {
+    const display = shortcutForAction(props.effectiveKeymap, action, preferredContexts);
+    return display ? displayShortcut(action, display, props.isMacPlatform) : null;
   };
 
   return (
@@ -1991,9 +1913,7 @@ function renderDesktopWorkbench(props: {
           statusMessage={props.shell.statusMessage}
           pendingBindingTokens={props.pendingBinding?.tokens ?? null}
           actionNotice={props.actionNotice}
-          pendingMailboxLabel={
-            props.screen === "mailbox" ? props.mailboxLoadingLabel : null
-          }
+          pendingMailboxLabel={props.screen === "mailbox" ? props.mailboxLoadingLabel : null}
           pendingMutationLabel={props.pendingMutation?.label ?? null}
           canResumeDraft={Boolean(
             (props.composeSession && !props.composeOpen) ||
@@ -2014,13 +1934,11 @@ function renderDesktopWorkbench(props: {
           onCompose={() => void props.openComposeShell("new")}
           composeShortcut={shortcut("compose", ["mailList", "threadView"])}
           onReply={() =>
-            props.selectedRow &&
-            void props.openComposeShell("reply", props.selectedRow.id)
+            props.selectedRow && void props.openComposeShell("reply", props.selectedRow.id)
           }
           replyShortcut={shortcut("reply", ["mailList", "messageView"])}
           onForward={() =>
-            props.selectedRow &&
-            void props.openComposeShell("forward", props.selectedRow.id)
+            props.selectedRow && void props.openComposeShell("forward", props.selectedRow.id)
           }
           forwardShortcut={shortcut("forward", ["mailList", "messageView"])}
           onLabel={() => props.selectedRow && props.openApplyLabelDialog()}
@@ -2116,21 +2034,18 @@ function renderDesktopWorkbench(props: {
                   },
                   {
                     label: "Mark read",
-                    shortcut:
-                      shortcut("mark_read", ["mailList", "messageView"]) ?? "I",
+                    shortcut: shortcut("mark_read", ["mailList", "messageView"]) ?? "I",
                     onClick: () => props.dispatchAction("mark_read"),
                     separator: true,
                   },
                   {
                     label: "Apply label",
-                    shortcut:
-                      shortcut("apply_label", ["mailList", "messageView"]) ?? "L",
+                    shortcut: shortcut("apply_label", ["mailList", "messageView"]) ?? "L",
                     onClick: () => props.dispatchAction("apply_label"),
                   },
                   {
                     label: "Move to",
-                    shortcut:
-                      shortcut("move_to_label", ["mailList", "messageView"]) ?? "V",
+                    shortcut: shortcut("move_to_label", ["mailList", "messageView"]) ?? "V",
                     onClick: () => props.dispatchAction("move_to_label"),
                   },
                   {
@@ -2146,29 +2061,23 @@ function renderDesktopWorkbench(props: {
                   },
                   {
                     label: "Reply all",
-                    shortcut:
-                      shortcut("reply_all", ["mailList", "messageView"]) ?? "A",
+                    shortcut: shortcut("reply_all", ["mailList", "messageView"]) ?? "A",
                     onClick: () => props.dispatchAction("reply_all"),
                   },
                   {
                     label: "Forward",
-                    shortcut:
-                      shortcut("forward", ["mailList", "messageView"]) ?? "F",
+                    shortcut: shortcut("forward", ["mailList", "messageView"]) ?? "F",
                     onClick: () => props.dispatchAction("forward"),
                     separator: true,
                   },
                   {
                     label: "Open in browser",
-                    shortcut:
-                      shortcut("open_in_browser", ["mailList", "messageView"]) ??
-                      "O",
+                    shortcut: shortcut("open_in_browser", ["mailList", "messageView"]) ?? "O",
                     onClick: () => props.dispatchAction("open_in_browser"),
                   },
                   {
                     label: "Export",
-                    shortcut:
-                      shortcut("export_thread", ["mailList", "messageView"]) ??
-                      "E",
+                    shortcut: shortcut("export_thread", ["mailList", "messageView"]) ?? "E",
                     onClick: () => props.dispatchAction("export_thread"),
                     separator: true,
                   },
@@ -2180,8 +2089,7 @@ function renderDesktopWorkbench(props: {
                   },
                   {
                     label: "Trash",
-                    shortcut:
-                      shortcut("trash", ["mailList", "messageView"]) ?? "#",
+                    shortcut: shortcut("trash", ["mailList", "messageView"]) ?? "#",
                     danger: true,
                     onClick: () => props.dispatchAction("trash"),
                   },
@@ -2207,18 +2115,10 @@ function renderDesktopWorkbench(props: {
               }}
               onLoadMoreSearch={props.loadMoreSearch}
               onOpenSearchAttachment={(attachmentId, messageId) =>
-                void props.runAttachmentAction(
-                  "/attachments/open",
-                  attachmentId,
-                  messageId,
-                )
+                void props.runAttachmentAction("/attachments/open", attachmentId, messageId)
               }
               onDownloadSearchAttachment={(attachmentId, messageId) =>
-                void props.runAttachmentAction(
-                  "/attachments/download",
-                  attachmentId,
-                  messageId,
-                )
+                void props.runAttachmentAction("/attachments/download", attachmentId, messageId)
               }
               rulesState={props.rulesState}
               selectedRuleId={props.selectedRuleId}
@@ -2241,9 +2141,7 @@ function renderDesktopWorkbench(props: {
               onSelectAccount={props.setSelectedAccountId}
               onNewAccount={props.openAccountForm}
               onTestAccount={() => void props.testCurrentAccount()}
-              onSetDefaultAccount={() =>
-                void props.makeSelectedAccountDefault()
-              }
+              onSetDefaultAccount={() => void props.makeSelectedAccountDefault()}
               bridge={props.readyBridge}
               diagnosticsState={props.diagnosticsState}
               diagnosticsSection={props.diagnosticsSection}
@@ -2255,22 +2153,14 @@ function renderDesktopWorkbench(props: {
               onOpenSubscription={(subscription) =>
                 void props.openSubscriptionFromDiagnostics(subscription)
               }
-              onOpenSnoozed={(message) =>
-                void props.openSnoozedThreadFromDiagnostics(message)
-              }
+              onOpenSnoozed={(message) => void props.openSnoozedThreadFromDiagnostics(message)}
               onSemanticReindex={() => void props.triggerSemanticReindex()}
-              onCreateLabel={(name) =>
-                void props.createLabelFromDiagnostics(name)
-              }
+              onCreateLabel={(name) => void props.createLabelFromDiagnostics(name)}
               onRenameLabel={(oldName, newName) =>
                 void props.renameLabelFromDiagnostics(oldName, newName)
               }
-              onDeleteLabel={(name) =>
-                void props.deleteLabelFromDiagnostics(name)
-              }
-              onDeleteSavedSearch={(name) =>
-                void props.deleteSavedSearchFromDiagnostics(name)
-              }
+              onDeleteLabel={(name) => void props.deleteLabelFromDiagnostics(name)}
+              onDeleteSavedSearch={(name) => void props.deleteSavedSearchFromDiagnostics(name)}
             />
 
             <WorkbenchStatusBar
@@ -2346,9 +2236,8 @@ function renderDesktopWorkbench(props: {
           }
           void props.submitComposeAction("/compose/session/send", "Sent");
         }}
-        onSaveCompose={() =>
-          void props.submitComposeAction("/compose/session/save", "Draft saved")
-        }
+        onScheduleComposeSend={(sendAt) => void props.scheduleComposeSend(sendAt)}
+        onSaveCompose={() => void props.submitComposeAction("/compose/session/save", "Draft saved")}
         onDiscardCompose={() => void props.discardComposeSession()}
         onPersistComposeDraft={async () => {
           await props.persistComposeDraft();
@@ -2397,9 +2286,7 @@ function renderDesktopWorkbench(props: {
         customLabel={props.customLabel}
         onCloseLabelDialog={() => {
           props.setLabelDialogOpen(false);
-          props.setFocusContext(
-            props.screen === "search" ? "search" : "mailList",
-          );
+          props.setFocusContext(props.screen === "search" ? "search" : "mailList");
         }}
         onToggleLabel={(label) =>
           props.setSelectedLabels((current) =>
@@ -2414,9 +2301,7 @@ function renderDesktopWorkbench(props: {
         moveTargetLabel={props.moveTargetLabel}
         onCloseMoveDialog={() => {
           props.setMoveDialogOpen(false);
-          props.setFocusContext(
-            props.screen === "search" ? "search" : "mailList",
-          );
+          props.setFocusContext(props.screen === "search" ? "search" : "mailList");
         }}
         onMoveTargetChange={props.setMoveTargetLabel}
         onSubmitMove={() => void props.moveSelectedMessage()}
@@ -2425,18 +2310,14 @@ function renderDesktopWorkbench(props: {
         selectedSnooze={props.selectedSnooze}
         onCloseSnoozeDialog={() => {
           props.setSnoozeDialogOpen(false);
-          props.setFocusContext(
-            props.screen === "search" ? "search" : "mailList",
-          );
+          props.setFocusContext(props.screen === "search" ? "search" : "mailList");
         }}
         onSelectedSnoozeChange={props.setSelectedSnooze}
         onSubmitSnooze={() => void props.snoozeSelectedMessage()}
         unsubscribeDialogOpen={props.unsubscribeDialogOpen}
         onCloseUnsubscribeDialog={() => {
           props.setUnsubscribeDialogOpen(false);
-          props.setFocusContext(
-            props.screen === "search" ? "search" : "mailList",
-          );
+          props.setFocusContext(props.screen === "search" ? "search" : "mailList");
         }}
         onSubmitUnsubscribe={() => void props.confirmUnsubscribe()}
         goToLabelOpen={props.goToLabelOpen}
@@ -2444,9 +2325,7 @@ function renderDesktopWorkbench(props: {
         jumpTargetLabel={props.jumpTargetLabel}
         onCloseGoToLabelDialog={() => {
           props.setGoToLabelOpen(false);
-          props.setFocusContext(
-            props.screen === "search" ? "search" : "mailList",
-          );
+          props.setFocusContext(props.screen === "search" ? "search" : "mailList");
         }}
         onJumpTargetLabelChange={props.setJumpTargetLabel}
         onSubmitJumpTarget={() => void props.applyJumpTarget()}
@@ -2456,9 +2335,7 @@ function renderDesktopWorkbench(props: {
         savedSearchMode={props.searchMode}
         onCloseSavedSearchDialog={() => {
           props.setSavedSearchDialogOpen(false);
-          props.setFocusContext(
-            props.screen === "search" ? "search" : "mailList",
-          );
+          props.setFocusContext(props.screen === "search" ? "search" : "mailList");
         }}
         onSavedSearchNameChange={props.setSavedSearchName}
         onSubmitSavedSearch={() => void props.submitSavedSearch()}
@@ -2466,31 +2343,19 @@ function renderDesktopWorkbench(props: {
         threadAttachments={props.threadAttachments}
         onCloseAttachmentDialog={() => {
           props.setAttachmentDialogOpen(false);
-          props.setFocusContext(
-            props.screen === "search" ? "search" : "mailList",
-          );
+          props.setFocusContext(props.screen === "search" ? "search" : "mailList");
         }}
         onOpenAttachment={(attachmentId, messageId) =>
-          void props.runAttachmentAction(
-            "/attachments/open",
-            attachmentId,
-            messageId,
-          )
+          void props.runAttachmentAction("/attachments/open", attachmentId, messageId)
         }
         onDownloadAttachment={(attachmentId, messageId) =>
-          void props.runAttachmentAction(
-            "/attachments/download",
-            attachmentId,
-            messageId,
-          )
+          void props.runAttachmentAction("/attachments/download", attachmentId, messageId)
         }
         linksDialogOpen={props.linksDialogOpen}
         threadLinks={props.threadLinks}
         onCloseLinksDialog={() => {
           props.setLinksDialogOpen(false);
-          props.setFocusContext(
-            props.screen === "search" ? "search" : "mailList",
-          );
+          props.setFocusContext(props.screen === "search" ? "search" : "mailList");
         }}
         onOpenLink={(url) => void props.openExternalUrl(url)}
         reportOpen={props.reportOpen}
@@ -2498,9 +2363,7 @@ function renderDesktopWorkbench(props: {
         reportContent={props.reportContent}
         onCloseReportDialog={() => {
           props.setReportOpen(false);
-          props.setFocusContext(
-            props.screen === "search" ? "search" : "mailList",
-          );
+          props.setFocusContext(props.screen === "search" ? "search" : "mailList");
         }}
         ruleFormOpen={props.ruleFormOpen}
         ruleFormBusy={props.ruleFormBusy}
@@ -2529,10 +2392,7 @@ function renderDesktopWorkbench(props: {
         onClose={() => props.setBrowserDialog(null)}
         onShowNotice={props.showNotice}
       />
-      <ContextMenuOverlay
-        menu={props.contextMenu.menu}
-        onClose={props.contextMenu.close}
-      />
+      <ContextMenuOverlay menu={props.contextMenu.menu} onClose={props.contextMenu.close} />
     </div>
   );
 }
@@ -2558,37 +2418,24 @@ function useMailboxMutationActions(props: {
   setThread: StateSetter<ThreadResponse | null>;
   loadSearch: () => Promise<void>;
   loadThread: (threadId: string) => Promise<void>;
-  loadMailbox: (
-    lens?: SidebarLens,
-    options?: { preserveReader?: boolean },
-  ) => Promise<void>;
+  loadMailbox: (lens?: SidebarLens, options?: { preserveReader?: boolean }) => Promise<void>;
   closeReader: () => void;
   showNotice: (message: string) => void;
 }) {
-  const refreshCurrentView = useEffectEvent(
-    async (options?: { preserveReader?: boolean }) => {
-      if (props.screen === "search") {
-        await props.loadSearch();
-        if (
-          options?.preserveReader &&
-          props.currentThreadId &&
-          props.layoutMode !== "twoPane"
-        ) {
-          await props.loadThread(props.currentThreadId);
-        }
-        return;
-      }
-
-      await props.loadMailbox(props.activeSidebarItem?.lens, options);
-      if (
-        options?.preserveReader &&
-        props.currentThreadId &&
-        props.layoutMode !== "twoPane"
-      ) {
+  const refreshCurrentView = useEffectEvent(async (options?: { preserveReader?: boolean }) => {
+    if (props.screen === "search") {
+      await props.loadSearch();
+      if (options?.preserveReader && props.currentThreadId && props.layoutMode !== "twoPane") {
         await props.loadThread(props.currentThreadId);
       }
-    },
-  );
+      return;
+    }
+
+    await props.loadMailbox(props.activeSidebarItem?.lens, options);
+    if (options?.preserveReader && props.currentThreadId && props.layoutMode !== "twoPane") {
+      await props.loadThread(props.currentThreadId);
+    }
+  });
 
   const runPendingMutation = useEffectEvent(
     async (messageIds: string[], label: string, work: () => Promise<void>) => {
@@ -2609,9 +2456,7 @@ function useMailboxMutationActions(props: {
       const ids = new Set(messageIds);
       startTransition(() => {
         props.setMailbox((current) => patchMailboxPayload(current, ids, patch));
-        props.setSearchState((current) =>
-          patchSearchResponse(current, ids, patch),
-        );
+        props.setSearchState((current) => patchSearchResponse(current, ids, patch));
         props.setThread((current) => patchThreadResponse(current, ids, patch));
       });
     },
@@ -2653,10 +2498,7 @@ function useMailboxMutationActions(props: {
         await runPendingMutation(
           props.effectiveSelection,
           options?.pendingLabel ??
-            formatPendingMutationLabel(
-              "Updating",
-              props.effectiveSelection.length,
-            ),
+            formatPendingMutationLabel("Updating", props.effectiveSelection.length),
           async () => {
             await props.requestCoordinator.enqueueMutation(() =>
               fetchJson(baseUrl, authToken, path, {
@@ -2678,9 +2520,7 @@ function useMailboxMutationActions(props: {
             props.setThread(rollback.thread);
           });
         }
-        props.showNotice(
-          error instanceof Error ? error.message : "Mutation failed",
-        );
+        props.showNotice(error instanceof Error ? error.message : "Mutation failed");
       }
     },
   );
@@ -2694,10 +2534,7 @@ function useMailboxMutationActions(props: {
       { message_ids: props.effectiveSelection },
       {
         closeReader: true,
-        pendingLabel: formatPendingMutationLabel(
-          "Archiving",
-          props.effectiveSelection.length,
-        ),
+        pendingLabel: formatPendingMutationLabel("Archiving", props.effectiveSelection.length),
       },
     );
   });
@@ -2711,9 +2548,7 @@ function useMailboxMutationActions(props: {
   };
 }
 
-function useDesktopActionDispatcher(
-  context: Parameters<typeof runDesktopAction>[1],
-) {
+function useDesktopActionDispatcher(context: Parameters<typeof runDesktopAction>[1]) {
   return useEffectEvent((action: DesktopAction | string) => {
     runDesktopAction(action, context);
   });
@@ -2739,20 +2574,14 @@ function useWorkbenchLifecycle(props: {
   setBridge: StateSetter<BridgeState>;
   setShell: StateSetter<WorkbenchShellPayload>;
   setSidebar: StateSetter<SidebarPayload>;
-  loadMailbox: (
-    lens?: SidebarLens,
-    options?: { preserveReader?: boolean },
-  ) => Promise<void>;
+  loadMailbox: (lens?: SidebarLens, options?: { preserveReader?: boolean }) => Promise<void>;
   loadSearch: () => Promise<void>;
   loadThread: (threadId: string) => Promise<void>;
   loadRules: () => Promise<void>;
   loadAccounts: () => Promise<void>;
   loadDiagnostics: () => Promise<void>;
   loadSelectedRuleDetail: (ruleId?: string | null) => Promise<void>;
-  applyOptimisticRowPatch: (
-    messageIds: string[],
-    patch: OptimisticRowPatch,
-  ) => void;
+  applyOptimisticRowPatch: (messageIds: string[], patch: OptimisticRowPatch) => void;
   runPendingMutation: (
     messageIds: string[],
     label: string,
@@ -2823,12 +2652,9 @@ function useWorkbenchLifecycle(props: {
         setShell(payload.shell);
         setSidebar(payload.sidebar);
         setMailbox(payload.mailbox);
-        setSelectedMailboxThreadId(
-          firstMailboxRowSelectionId(payload.mailbox.groups),
-        );
+        setSelectedMailboxThreadId(firstMailboxRowSelectionId(payload.mailbox.groups));
         setShowInboxZero(
-          payload.mailbox.groups.length === 0 &&
-            payload.mailbox.lensLabel === "Inbox",
+          payload.mailbox.groups.length === 0 && payload.mailbox.lensLabel === "Inbox",
         );
         setWorkbenchReady(true);
       });
@@ -2886,6 +2712,7 @@ function useWorkbenchLifecycle(props: {
       void bootstrapMailbox();
       void loadAccounts();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadAccounts is an effect event; adding it causes the bootstrap effect to loop.
   }, [bridge.kind, bridgeGeneration, mailListMode]);
 
   useEffect(() => {
@@ -2904,11 +2731,7 @@ function useWorkbenchLifecycle(props: {
   });
 
   const commitPreviewRead = useEffectEvent(async (messageId: string) => {
-    if (
-      bridge.kind !== "ready" ||
-      screen !== "mailbox" ||
-      layoutMode === "twoPane"
-    ) {
+    if (bridge.kind !== "ready" || screen !== "mailbox" || layoutMode === "twoPane") {
       return;
     }
     if (!selectedRow || selectedRow.id !== messageId || !selectedRow.unread) {
@@ -2930,19 +2753,14 @@ function useWorkbenchLifecycle(props: {
         formatPendingMutationLabel("Marking", 1, "read"),
         async () => {
           await props.requestCoordinator.enqueueMutation(() =>
-            fetchJson<ActionAckResponse>(
-              baseUrl,
-              authToken,
-              "/mutations/read",
-              {
-                method: "POST",
-                body: JSON.stringify({
-                  message_ids: [messageId],
-                  read: true,
-                }),
-                requestLabel: "mutations:read",
-              },
-            ),
+            fetchJson<ActionAckResponse>(baseUrl, authToken, "/mutations/read", {
+              method: "POST",
+              body: JSON.stringify({
+                message_ids: [messageId],
+                read: true,
+              }),
+              requestLabel: "mutations:read",
+            }),
           );
           await refreshCurrentView({ preserveReader: true });
         },
@@ -3030,6 +2848,17 @@ function useActionNoticeTimeout(
   }, [actionNotice, setActionNotice]);
 }
 
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timeout);
+  }, [value, delayMs]);
+
+  return debounced;
+}
+
 function useComposeWindowRefresh(
   composeOpen: boolean,
   composeSession: unknown,
@@ -3056,9 +2885,7 @@ function useComposeWindowRefresh(
 function usePruneSelectedMessages(
   mailboxGroups: MailboxGroup[],
   searchGroups: MailboxGroup[],
-  setSelectedMessageIds: (
-    updater: (current: Set<string>) => Set<string>,
-  ) => void,
+  setSelectedMessageIds: (updater: (current: Set<string>) => Set<string>) => void,
 ) {
   useEffect(() => {
     const available = new Set([
@@ -3089,14 +2916,10 @@ function renderBridgeGate(props: {
         bridge={props.bridge}
         externalPath={props.externalPath}
         onExternalPathChange={props.setExternalPath}
-        onUseBundled={() =>
-          void window.mxrDesktop.useBundledMxr().then(props.setBridge)
-        }
+        onUseBundled={() => void window.mxrDesktop.useBundledMxr().then(props.setBridge)}
         onRetry={() => void props.refreshBridge()}
         onTryExternal={() =>
-          void window.mxrDesktop
-            .setExternalBinaryPath(props.externalPath)
-            .then(props.setBridge)
+          void window.mxrDesktop.setExternalBinaryPath(props.externalPath).then(props.setBridge)
         }
       />
     );
@@ -3167,15 +2990,10 @@ function firstSidebarItemId(sidebar: SidebarPayload): string | null {
 }
 
 function sidebarHasItem(sidebar: SidebarPayload, itemId: string): boolean {
-  return sidebar.sections.some((section) =>
-    section.items.some((item) => item.id === itemId),
-  );
+  return sidebar.sections.some((section) => section.items.some((item) => item.id === itemId));
 }
 
-function resolveReaderMode(
-  mode: ReaderMode,
-  thread: ThreadResponse | null,
-): ReaderMode {
+function resolveReaderMode(mode: ReaderMode, thread: ThreadResponse | null): ReaderMode {
   if (mode !== "auto") {
     return mode;
   }
@@ -3211,9 +3029,7 @@ function collectLabelOptions(sidebar: SidebarPayload) {
 
 function collectJumpTargets(sidebar: SidebarPayload) {
   return sidebar.sections
-    .filter(
-      (section) => section.title === "System" || section.title === "Labels",
-    )
+    .filter((section) => section.title === "System" || section.title === "Labels")
     .flatMap((section) => section.items);
 }
 
@@ -3376,15 +3192,9 @@ function patchThreadResponse(
   return changed ? { ...thread, messages } : thread;
 }
 
-function formatPendingMutationLabel(
-  verb: string,
-  count: number,
-  detail?: string,
-) {
+function formatPendingMutationLabel(verb: string, count: number, detail?: string) {
   const unit = count === 1 ? "message" : "messages";
-  return detail
-    ? `${verb} ${count} ${unit} ${detail}`
-    : `${verb} ${count} ${unit}`;
+  return detail ? `${verb} ${count} ${unit} ${detail}` : `${verb} ${count} ${unit}`;
 }
 
 function buildStatusHints(
@@ -3395,16 +3205,8 @@ function buildStatusHints(
   layoutMode: LayoutMode,
   isMacPlatform: boolean,
 ) {
-  const hintKey = (
-    action: string,
-    contexts: DesktopBindingContext[],
-    fallback: string,
-  ) =>
-    displayShortcut(
-      action,
-      shortcutForAction(keymap, action, contexts) ?? fallback,
-      isMacPlatform,
-    );
+  const hintKey = (action: string, contexts: DesktopBindingContext[], fallback: string) =>
+    displayShortcut(action, shortcutForAction(keymap, action, contexts) ?? fallback, isMacPlatform);
 
   if (selectedCount > 0) {
     return [
@@ -3414,35 +3216,19 @@ function buildStatusHints(
         label: "Archive",
       },
       {
-        key: hintKey(
-          "apply_label",
-          ["mailList", "threadView", "messageView"],
-          "l",
-        ),
+        key: hintKey("apply_label", ["mailList", "threadView", "messageView"], "l"),
         label: "Label",
       },
       {
-        key: hintKey(
-          "move_to_label",
-          ["mailList", "threadView", "messageView"],
-          "v",
-        ),
+        key: hintKey("move_to_label", ["mailList", "threadView", "messageView"], "v"),
         label: "Move",
       },
       {
-        key: hintKey(
-          "mark_read",
-          ["mailList", "threadView", "messageView"],
-          "I",
-        ),
+        key: hintKey("mark_read", ["mailList", "threadView", "messageView"], "I"),
         label: "Read",
       },
       {
-        key: hintKey(
-          "mark_unread",
-          ["mailList", "threadView", "messageView"],
-          "U",
-        ),
+        key: hintKey("mark_unread", ["mailList", "threadView", "messageView"], "U"),
         label: "Unread",
       },
     ];
@@ -3522,11 +3308,7 @@ function buildStatusHints(
         label: "Drafts",
       },
       {
-        key: hintKey(
-          "open_diagnostics_section:subscriptions",
-          ["diagnostics"],
-          "S",
-        ),
+        key: hintKey("open_diagnostics_section:subscriptions", ["diagnostics"], "S"),
         label: "Subs",
       },
       {
@@ -3542,11 +3324,7 @@ function buildStatusHints(
         label: "Labels",
       },
       {
-        key: hintKey(
-          "open_diagnostics_section:saved-searches",
-          ["diagnostics"],
-          "A",
-        ),
+        key: hintKey("open_diagnostics_section:saved-searches", ["diagnostics"], "A"),
         label: "Searches",
       },
       {
@@ -3565,11 +3343,7 @@ function buildStatusHints(
       label: "Reply",
     },
     {
-      key: hintKey(
-        "apply_label",
-        ["mailList", "threadView", "messageView"],
-        "l",
-      ),
+      key: hintKey("apply_label", ["mailList", "threadView", "messageView"], "l"),
       label: "Label",
     },
     { key: "/", label: "Search" },
@@ -3586,21 +3360,25 @@ function formatDiagnosticsDetails(report: DiagnosticsResponse["report"]) {
     report.database_path ? `Database: ${report.database_path}` : null,
     report.index_path ? `Index: ${report.index_path}` : null,
     report.log_path ? `Log file: ${report.log_path}` : null,
-    typeof report.log_size_bytes === "number"
-      ? `Log size: ${report.log_size_bytes} bytes`
-      : null,
+    typeof report.log_size_bytes === "number" ? `Log size: ${report.log_size_bytes} bytes` : null,
     `Lexical index: ${report.lexical_index_freshness}`,
     `Semantic index: ${report.semantic_index_freshness}`,
     "",
-    "Recommended next steps:",
-    ...(report.recommended_next_steps.length > 0
-      ? report.recommended_next_steps
+    "Doctor findings:",
+    ...((report.findings ?? []).length > 0
+      ? (report.findings ?? []).flatMap((finding) => [
+          `[${finding.severity}] ${finding.category}: ${finding.message}`,
+          ...((finding.remediation ?? []).length > 0
+            ? (finding.remediation ?? []).map((command) => `  ${command}`)
+            : []),
+        ])
       : ["None"]),
     "",
+    "Recommended next steps:",
+    ...(report.recommended_next_steps.length > 0 ? report.recommended_next_steps : ["None"]),
+    "",
     "Recent errors:",
-    ...(report.recent_error_logs.length > 0
-      ? report.recent_error_logs
-      : ["None"]),
+    ...(report.recent_error_logs.length > 0 ? report.recent_error_logs : ["None"]),
   ];
 
   return lines.filter((line): line is string => line !== null).join("\n");

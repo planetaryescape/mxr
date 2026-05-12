@@ -83,6 +83,7 @@ fn sample_mail_row() -> MailListRow {
         representative: sample_envelope(),
         message_count: 3,
         unread_count: 1,
+        pending_mutation: false,
     }
 }
 

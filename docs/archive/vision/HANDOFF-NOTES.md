@@ -8,7 +8,7 @@
 
 The canonical plan lives at `docs/vision/01-delight-plan.md`. Per-phase trackers are `docs/vision/phase-{1..4}-*.md`. Read those for design intent. This file captures **operational state**: how to build, test, and extend.
 
-## Current implementation state (2026-05-08)
+## Current implementation state (2026-05-12)
 
 **Workspace builds clean. ~908 lib tests pass.**
 
@@ -20,21 +20,21 @@ The canonical plan lives at `docs/vision/01-delight-plan.md`. Per-phase trackers
 | 1.2 Cmd+K palette ranking + recents | ✅ TUI core | 5-tier match (exact > prefix > word-prefix > substring > shortcut/category) + FIFO recents |
 | 1.3 Inbox row formatters | ✅ formatters; render integration partial | `format_date_relative`, `format_sender`, `format_attachment_chip`, `format_subject_line` |
 | 1.4 Type-ahead search | ✅ verified | 250ms debounce, cancellation-on-keystroke |
-| 1.5 Saved-search keyboard nav | ✅ keyboard | `g 0..9` chord; visual tab strip TBD |
-| 2.1 Reply-later | ✅ store + daemon + CLI + TUI `b` | `mxr replies`, `Action::FlagReplyLater` |
+| 1.5 Saved-search keyboard nav | ✅ keyboard + visual strip | `g 0..9` chord; TUI saved-search tab strip; desktop `g`+digit parity |
+| 2.1 Reply-later | ✅ store + daemon + CLI + TUI `b` | `mxr replies`, `mxr replies walk`, `Action::FlagReplyLater` |
 | 2.2 Custom-time snooze | ✅ wired | `mxr snooze --until "in 2h" / "tomorrow 9am" / "monday 17:00" / RFC3339` |
-| 2.3 Auto-reminders | ✅ store + daemon + loop + CLI | `mxr remind <id> --when ... / --cancel`; `auto_reminders_loop` |
-| 2.4 Send Later | ✅ store + daemon + flusher + CLI | `mxr send <id> --at ...`; `mxr unsend <id>`; `scheduled_sends_loop` |
+| 2.3 Auto-reminders | ✅ store + daemon + loop + CLI + desktop | `mxr remind <id> --when ... / --cancel`; desktop selected-message reminder UX; `auto_reminders_loop` |
+| 2.4 Send Later | ✅ store + daemon + flusher + CLI + desktop | `mxr send <id> --at ...`; `mxr unsend <id>`; desktop compose send-later UX; `scheduled_sends_loop` |
 | 2.5 Screener | ✅ store + daemon + CLI | `mxr screener queue/list/allow/deny/feed/paper-trail/clear` |
 | 2.6 Bulk unsubscribe | ✅ pre-existing | `crate::unsubscribe::execute_unsubscribe` already wired |
-| 3.1 Snippets | ✅ store + IPC + CLI | `mxr snippets list/set/remove`; compose-time expansion TBD |
+| 3.1 Snippets | ✅ store + IPC + CLI + compose expansion | `mxr snippets list/set/remove`; compose expands known `;name` snippets before save/send |
 | 3.2 Sender view | ✅ store + IPC + CLI | `mxr sender <addr>` |
 | 3.3 LLM provider trait | ✅ via OpenAI-compatible HTTP | Covers Ollama, LM Studio, OpenAI, Groq, OpenRouter |
 | 3.4 Thread summarize | ✅ end-to-end | `mxr summarize <thread-id>` |
 | 3.5 Draft assist | ✅ basic (no semantic retrieval yet) | `mxr draft-assist <thread-id> "<instruction>"` |
 | 4.1 Crash-safe drafts | ✅ store + daemon-startup recovery | Heartbeat column + auto-reset orphaned `'sending'` drafts on startup |
-| 4.2 Doctor 2.0 | ✅ structured findings + CLI render | DoctorFinding with category/severity/remediation classifier |
-| 4.3 Setup wizard | ✅ demo + quick-start | `mxr setup --demo` writes Fake account; quick-start guidance |
+| 4.2 Doctor 2.0 | ✅ structured findings + CLI/TUI/desktop render | DoctorFinding with category/severity/remediation classifier |
+| 4.3 Setup wizard | ✅ demo + quick-start + desktop affordance | `mxr setup --demo` writes Fake account; quick-start guidance; desktop palette/onboarding points users to demo setup |
 
 ### Pending parity work (this is the current ask)
 
@@ -42,17 +42,17 @@ For each feature, parity = surfaced in TUI, CLI, HTTP-bridge, and desktop app wh
 
 **TUI parity gaps**
 
-- Reply-later walk mode (CLI walk also TBD)
-- Sender view full-screen page (`Screen::SenderProfile`)
+- ~~Reply-later walk mode (CLI walk also TBD)~~ ✅ `mxr replies walk` implemented (2026-05-12)
+- Sender view full-screen page (`Screen::SenderProfile`) — intentionally deferred; current modal stays
 - Screener queue page + 3-key disposition
 - Snippet manager modal
 - Summarize/draft-assist invocation from thread view
 - Setup wizard TUI screen
 - Custom-snooze modal "Custom..." entry
-- Visual saved-search tab strip
+- ~~Visual saved-search tab strip~~ ✅ TUI saved-search tab strip added (2026-05-12)
 - Render integration: `format_subject_line` / `format_attachment_chip` in `build_row`
 - Live heartbeat plumbing in compose flow
-- Optimistic visual indicator on flagged rows (currently just a status message)
+- ~~Optimistic visual indicator on flagged rows (currently just a status message)~~ ✅ pending mutation row marker added (2026-05-12)
 - Doctor findings rendering in TUI diagnostics page
 
 **HTTP bridge gaps**
@@ -71,8 +71,13 @@ For each feature, parity = surfaced in TUI, CLI, HTTP-bridge, and desktop app wh
 
 **Desktop app gaps**
 
-- TypeScript types for new IPC need regeneration (`pnpm gen:types` or whatever the codegen step is)
-- See `apps/desktop/`
+- ~~Doctor findings rendering~~ ✅ structured findings render in Diagnostics overview + details report (2026-05-12)
+- ~~Auto-reminder UX~~ ✅ selected-message set/cancel reminder commands use existing bridge routes (2026-05-12)
+- ~~Send-later UX~~ ✅ compose dialog can schedule saved drafts through existing bridge routes (2026-05-12)
+- ~~Saved-search keyboard parity~~ ✅ desktop `g`+digit opens inbox/saved searches (2026-05-12)
+- ~~Search pacing parity~~ ✅ explicit desktop debounce plus request cancellation (2026-05-12)
+- ~~Setup/demo onboarding affordance~~ ✅ desktop command/palette path points to `mxr setup --demo` (2026-05-12)
+- TypeScript types for new IPC need regeneration (`pnpm gen:types` or whatever the codegen step is) — route-specific types are now reflected in desktop local types where used
 
 **Persistence/UX**
 

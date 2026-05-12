@@ -25,10 +25,7 @@ import type {
   WorkbenchScreen,
   WorkbenchShellPayload,
 } from "../../shared/types";
-import {
-  firstMailboxRowSelectionId,
-  mailboxRowSelectionId,
-} from "../lib/mailboxSelection";
+import { firstMailboxRowSelectionId, mailboxRowSelectionId } from "../lib/mailboxSelection";
 import { fetchJson } from "./bridgeHttp";
 import type { DesktopRequestCoordinator } from "./requestCoordinator";
 
@@ -79,10 +76,7 @@ export function useWorkbenchShellActions(props: {
   const mailboxLoadRequestIdRef = useRef(0);
 
   const loadMailbox = useEffectEvent(
-    async (
-      lens?: SidebarLens,
-      options?: { preserveReader?: boolean; pendingLabel?: string },
-    ) => {
+    async (lens?: SidebarLens, options?: { preserveReader?: boolean; pendingLabel?: string }) => {
       const bridge = props.bridge;
       if (bridge.kind !== "ready") {
         return;
@@ -118,14 +112,10 @@ export function useWorkbenchShellActions(props: {
             props.setThread(null);
           }
           props.setSelectedMailboxThreadId(
-            findPreservedSelectionId(
-              payload.mailbox.groups,
-              props.selectedMailboxThreadId,
-            ),
+            findPreservedSelectionId(payload.mailbox.groups, props.selectedMailboxThreadId),
           );
           props.setShowInboxZero(
-            payload.mailbox.groups.length === 0 &&
-              payload.mailbox.lensLabel === "Inbox",
+            payload.mailbox.groups.length === 0 && payload.mailbox.lensLabel === "Inbox",
           );
           props.setWorkbenchReady(true);
         });
@@ -317,15 +307,10 @@ export function useWorkbenchShellActions(props: {
             signal,
             requestLabel: "subscriptions",
           }),
-          fetchJson<SemanticStatusResponse>(
-            bridge.baseUrl,
-            bridge.authToken,
-            "/semantic/status",
-            {
-              signal,
-              requestLabel: "semantic:status",
-            },
-          ),
+          fetchJson<SemanticStatusResponse>(bridge.baseUrl, bridge.authToken, "/semantic/status", {
+            signal,
+            requestLabel: "semantic:status",
+          }),
         ]),
     );
     if (result.status !== "committed") {

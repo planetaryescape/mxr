@@ -197,6 +197,7 @@ fn build_row<'a>(
         (true, true) => "*",
         (true, false) => ">",
         (false, true) => "+",
+        (false, false) if row.pending_mutation => "!",
         (false, false) => " ",
     };
     let line_number_style = match (is_selected, is_in_set) {
@@ -641,6 +642,7 @@ mod tests {
             },
             message_count,
             unread_count: message_count,
+            pending_mutation: false,
         }
     }
 

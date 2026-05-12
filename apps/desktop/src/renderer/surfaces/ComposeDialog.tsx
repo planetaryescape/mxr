@@ -1,6 +1,14 @@
 import { Dialog } from "@base-ui/react";
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { flushSync } from "react-dom";
 import type { ComposeFrontmatter, ComposeSession, UtilityRailPayload } from "../../shared/types";
 import { cn } from "../lib/cn";
@@ -22,6 +30,7 @@ export function ComposeDialog(props: {
   onRemoveAttachment: (path: string) => void;
   onRefresh: () => void;
   onSend: () => void;
+  onScheduleSend: (sendAt: string) => void;
   onSave: () => void;
   onDiscard: () => void;
   onPersistDraft: () => Promise<void>;
@@ -32,6 +41,10 @@ export function ComposeDialog(props: {
   const toRef = useRef<HTMLInputElement>(null);
   const [body, setBody] = useState("");
   const [showCc, setShowCc] = useState(false);
+  const { onDraftChange, onSave, onScheduleSend, onSend } = props;
+  const sessionBody = props.session?.bodyMarkdown ?? "";
+  const draftCc = props.draft?.cc ?? "";
+  const draftBcc = props.draft?.bcc ?? "";
 
   // Contact picker state
   const [contactQuery, setContactQuery] = useState("");
@@ -41,13 +54,13 @@ export function ComposeDialog(props: {
   // Initialize body from session
   useEffect(() => {
     if (open && props.session) {
-      setBody(props.session.bodyMarkdown || "");
-      setShowCc(Boolean(props.draft?.cc || props.draft?.bcc));
+      setBody(sessionBody);
+      setShowCc(Boolean(draftCc || draftBcc));
       setContactQuery("");
       setShowContacts(false);
       setTimeout(() => toRef.current?.focus(), 50);
     }
-  }, [open]);
+  }, [draftBcc, draftCc, open, props.session, sessionBody]);
 
   // Parse recipients
   const recipients = (props.draft?.to || "")
@@ -65,12 +78,14 @@ export function ComposeDialog(props: {
       .slice(0, 8);
   }, [contactQuery, props.knownSenders, recipients]);
 
-  useEffect(() => { setContactIndex(0); }, [contactQuery]);
+  useEffect(() => {
+    setContactIndex(0);
+  }, [contactQuery]);
 
   const addRecipient = (email: string) => {
     const current = recipients.filter(Boolean);
     if (!current.includes(email)) current.push(email);
-    props.onDraftChange((c) => c ? { ...c, to: current.join(", ") } : c);
+    onDraftChange((c) => (c ? { ...c, to: current.join(", ") } : c));
     setContactQuery("");
     setShowContacts(false);
     toRef.current?.focus();
@@ -86,7 +101,7 @@ export function ComposeDialog(props: {
     }
 
     flushSync(() => {
-      props.onDraftChange((current) => {
+      onDraftChange((current) => {
         if (!current) {
           return current;
         }
@@ -104,26 +119,48 @@ export function ComposeDialog(props: {
       setContactQuery("");
       setShowContacts(false);
     });
-  }, [contactQuery, props.onDraftChange]);
+  }, [contactQuery, onDraftChange]);
 
   const handleSend = useCallback(() => {
     if (!props.canSend) {
       return;
     }
     commitPendingRecipients();
-    props.onSend();
-  }, [commitPendingRecipients, props.canSend, props.onSend]);
+    onSend();
+  }, [commitPendingRecipients, onSend, props.canSend]);
 
   const handleSave = useCallback(() => {
     commitPendingRecipients();
-    props.onSave();
-  }, [commitPendingRecipients, props.onSave]);
+    onSave();
+  }, [commitPendingRecipients, onSave]);
+
+  const handleScheduleSend = useCallback(() => {
+    const defaultAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const sendAt = window.prompt("Schedule send at ISO time", defaultAt);
+    if (!sendAt) {
+      return;
+    }
+    commitPendingRecipients();
+    onScheduleSend(sendAt);
+  }, [commitPendingRecipients, onScheduleSend]);
 
   const handleToKeyDown = (e: React.KeyboardEvent) => {
     if (showContacts && filteredContacts.length > 0) {
-      if (e.key === "ArrowDown") { e.preventDefault(); setContactIndex((i) => Math.min(i + 1, filteredContacts.length - 1)); return; }
-      if (e.key === "ArrowUp") { e.preventDefault(); setContactIndex((i) => Math.max(i - 1, 0)); return; }
-      if (e.key === "Tab" || e.key === "Enter") { e.preventDefault(); addRecipient(filteredContacts[contactIndex].email); return; }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setContactIndex((i) => Math.min(i + 1, filteredContacts.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setContactIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault();
+        addRecipient(filteredContacts[contactIndex].email);
+        return;
+      }
     }
     if (e.key === "Enter") {
       e.preventDefault();
@@ -135,9 +172,11 @@ export function ComposeDialog(props: {
     if (e.key === "Backspace" && !contactQuery && recipients.length > 0) {
       e.preventDefault();
       const updated = recipients.slice(0, -1);
-      props.onDraftChange((c) => c ? { ...c, to: updated.join(", ") } : c);
+      props.onDraftChange((c) => (c ? { ...c, to: updated.join(", ") } : c));
     }
-    if (e.key === "Escape") { setShowContacts(false); }
+    if (e.key === "Escape") {
+      setShowContacts(false);
+    }
   };
 
   const handleToChange = (value: string) => {
@@ -146,15 +185,26 @@ export function ComposeDialog(props: {
   };
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => { if (!next) props.onClose(); }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) props.onClose();
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-30 bg-canvas/72 backdrop-blur-sm" />
         <Dialog.Popup
           className="fixed inset-4 z-40 flex flex-col overflow-hidden border border-outline bg-panel outline-none"
           style={{ borderRadius: "var(--radius-md)" }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSend(); }
-            if (e.key === "s" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSave(); }
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              handleSend();
+            }
+            if (e.key === "s" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              handleSave();
+            }
           }}
         >
           {props.session && props.draft ? (
@@ -176,15 +226,29 @@ export function ComposeDialog(props: {
                     <span className="mx-1">·</span>
                     <kbd className="font-mono text-foreground-muted">Esc</kbd> close
                   </span>
+                  <button
+                    type="button"
+                    className="border border-outline bg-panel-elevated px-2 py-1 text-[length:var(--text-xs)] text-foreground-muted hover:text-foreground"
+                    style={{ borderRadius: "var(--radius-sm)" }}
+                    onClick={handleScheduleSend}
+                  >
+                    Send later
+                  </button>
                 </div>
               </div>
 
               {/* To field with contact picker */}
               <div className="relative flex shrink-0 items-center gap-3 border-b border-outline/50 px-4 py-2">
-                <span className="w-14 shrink-0 text-right text-[length:var(--text-xs)] text-foreground-subtle">To</span>
+                <span className="w-14 shrink-0 text-right text-[length:var(--text-xs)] text-foreground-subtle">
+                  To
+                </span>
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
                   {recipients.map((email) => (
-                    <span key={email} className="bg-accent/12 px-2 py-0.5 text-[length:var(--text-xs)] text-accent" style={{ borderRadius: "var(--radius-sm)" }}>
+                    <span
+                      key={email}
+                      className="bg-accent/12 px-2 py-0.5 text-[length:var(--text-xs)] text-accent"
+                      style={{ borderRadius: "var(--radius-sm)" }}
+                    >
                       {email}
                     </span>
                   ))}
@@ -195,32 +259,53 @@ export function ComposeDialog(props: {
                     placeholder={recipients.length === 0 ? "Type a name or email..." : ""}
                     onChange={(e) => handleToChange(e.target.value)}
                     onKeyDown={handleToKeyDown}
-                    onFocus={() => { if (contactQuery) setShowContacts(true); }}
+                    onFocus={() => {
+                      if (contactQuery) setShowContacts(true);
+                    }}
                     onBlur={() => setTimeout(() => setShowContacts(false), 150)}
                   />
                 </div>
                 {!showCc ? (
-                  <button type="button" tabIndex={-1} className="shrink-0 text-[length:var(--text-xs)] text-foreground-subtle hover:text-accent" onClick={() => setShowCc(true)}>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="shrink-0 text-[length:var(--text-xs)] text-foreground-subtle hover:text-accent"
+                    onClick={() => setShowCc(true)}
+                  >
                     Cc
                   </button>
                 ) : null}
 
                 {/* Contact dropdown */}
                 {showContacts && filteredContacts.length > 0 ? (
-                  <div className="absolute left-16 right-4 top-full z-20 mt-1 max-h-48 overflow-y-auto border border-outline bg-panel shadow-xl" style={{ borderRadius: "var(--radius-sm)" }}>
+                  <div
+                    className="absolute left-16 right-4 top-full z-20 mt-1 max-h-48 overflow-y-auto border border-outline bg-panel shadow-xl"
+                    style={{ borderRadius: "var(--radius-sm)" }}
+                  >
                     {filteredContacts.map((c, i) => (
                       <button
                         key={c.email}
                         type="button"
                         className={cn(
                           "flex w-full items-center gap-3 px-3 py-1.5 text-left",
-                          i === contactIndex ? "bg-panel-elevated text-foreground" : "text-foreground-muted hover:bg-panel-elevated/50",
+                          i === contactIndex
+                            ? "bg-panel-elevated text-foreground"
+                            : "text-foreground-muted hover:bg-panel-elevated/50",
                         )}
-                        onMouseDown={(e) => { e.preventDefault(); addRecipient(c.email); }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          addRecipient(c.email);
+                        }}
                         onMouseEnter={() => setContactIndex(i)}
                       >
-                        <span className="truncate text-[length:var(--text-sm)]">{c.name || c.email}</span>
-                        {c.name ? <span className="truncate text-[length:var(--text-xs)] text-foreground-subtle">{c.email}</span> : null}
+                        <span className="truncate text-[length:var(--text-sm)]">
+                          {c.name || c.email}
+                        </span>
+                        {c.name ? (
+                          <span className="truncate text-[length:var(--text-xs)] text-foreground-subtle">
+                            {c.email}
+                          </span>
+                        ) : null}
                       </button>
                     ))}
                   </div>
@@ -230,13 +315,26 @@ export function ComposeDialog(props: {
               {/* Cc/Bcc */}
               {showCc ? (
                 <>
-                  <FieldRow label="Cc" value={props.draft.cc} onChange={(v) => props.onDraftChange((c) => c ? { ...c, cc: v } : c)} />
-                  <FieldRow label="Bcc" value={props.draft.bcc} onChange={(v) => props.onDraftChange((c) => c ? { ...c, bcc: v } : c)} />
+                  <FieldRow
+                    label="Cc"
+                    value={props.draft.cc}
+                    onChange={(v) => props.onDraftChange((c) => (c ? { ...c, cc: v } : c))}
+                  />
+                  <FieldRow
+                    label="Bcc"
+                    value={props.draft.bcc}
+                    onChange={(v) => props.onDraftChange((c) => (c ? { ...c, bcc: v } : c))}
+                  />
                 </>
               ) : null}
 
               {/* Subject */}
-              <FieldRow label="Subject" value={props.draft.subject} onChange={(v) => props.onDraftChange((c) => c ? { ...c, subject: v } : c)} placeholder="Subject" />
+              <FieldRow
+                label="Subject"
+                value={props.draft.subject}
+                onChange={(v) => props.onDraftChange((c) => (c ? { ...c, subject: v } : c))}
+                placeholder="Subject"
+              />
 
               <div className="flex shrink-0 items-start gap-3 border-b border-outline/50 px-4 py-2">
                 <span className="w-14 shrink-0 pt-1 text-right text-[length:var(--text-xs)] text-foreground-subtle">
@@ -278,24 +376,44 @@ export function ComposeDialog(props: {
               <div className="min-h-0 flex-1 border-t border-outline">
                 <VimEditor
                   value={body}
-                  onChange={(v) => { setBody(v); props.onBodyChange(v); }}
+                  onChange={(v) => {
+                    setBody(v);
+                    props.onBodyChange(v);
+                  }}
                   onFocusFields={() => toRef.current?.focus()}
                 />
               </div>
               {/* Vim status line */}
-              <div id="vim-status" className="shrink-0 border-t border-outline/50 px-4 py-0.5 font-mono text-[length:var(--text-2xs)] text-foreground-subtle" />
+              <div
+                id="vim-status"
+                className="shrink-0 border-t border-outline/50 px-4 py-0.5 font-mono text-[length:var(--text-2xs)] text-foreground-subtle"
+              />
 
               {/* Footer */}
               <div className="flex shrink-0 items-center justify-between border-t border-outline px-4 py-2">
-                <span className="font-mono text-[length:var(--text-xs)] text-foreground-subtle">{props.draft.from}</span>
+                <span className="font-mono text-[length:var(--text-xs)] text-foreground-subtle">
+                  {props.draft.from}
+                </span>
                 <div className="flex items-center gap-1.5">
-                  <button type="button" className="px-2 py-1 text-[length:var(--text-xs)] text-foreground-subtle hover:text-foreground" onClick={props.onOpenEditor}>
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-[length:var(--text-xs)] text-foreground-subtle hover:text-foreground"
+                    onClick={props.onOpenEditor}
+                  >
                     Open in $EDITOR
                   </button>
-                  <button type="button" className="px-2 py-1 text-[length:var(--text-xs)] text-foreground-subtle hover:text-danger" onClick={props.onDiscard}>
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-[length:var(--text-xs)] text-foreground-subtle hover:text-danger"
+                    onClick={props.onDiscard}
+                  >
                     Discard
                   </button>
-                  <button type="button" className="px-2 py-1 text-[length:var(--text-xs)] text-foreground-muted hover:text-foreground" onClick={handleSave}>
+                  <button
+                    type="button"
+                    className="px-2 py-1 text-[length:var(--text-xs)] text-foreground-muted hover:text-foreground"
+                    onClick={handleSave}
+                  >
                     Save
                   </button>
                   <button
@@ -309,11 +427,7 @@ export function ComposeDialog(props: {
                     style={{ borderRadius: "var(--radius-sm)" }}
                     onClick={handleSend}
                     disabled={!props.canSend}
-                    title={
-                      props.canSend
-                        ? undefined
-                        : "Send is not configured for this account"
-                    }
+                    title={props.canSend ? undefined : "Send is not configured for this account"}
                   >
                     Send
                   </button>
@@ -327,10 +441,17 @@ export function ComposeDialog(props: {
   );
 }
 
-function FieldRow(props: { label: string; value: string; placeholder?: string; onChange: (v: string) => void }) {
+function FieldRow(props: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <label className="flex shrink-0 items-center gap-3 border-b border-outline/50 px-4 py-2">
-      <span className="w-14 shrink-0 text-right text-[length:var(--text-xs)] text-foreground-subtle">{props.label}</span>
+      <span className="w-14 shrink-0 text-right text-[length:var(--text-xs)] text-foreground-subtle">
+        {props.label}
+      </span>
       <input
         className="min-w-0 flex-1 bg-transparent text-[length:var(--text-sm)] text-foreground outline-none placeholder:text-foreground-subtle"
         value={props.value}
@@ -346,45 +467,55 @@ function attachmentLabel(path: string) {
   return parts[parts.length - 1] || path;
 }
 
-function VimEditor(props: { value: string; onChange: (value: string) => void; onFocusFields?: () => void }) {
+function VimEditor(props: {
+  value: string;
+  onChange: (value: string) => void;
+  onFocusFields?: () => void;
+}) {
   const vimRef = useRef<{ dispose: () => void } | null>(null);
+  const { onFocusFields } = props;
 
-  const handleMount: OnMount = useCallback((editor, monaco) => {
-    // Shift+Tab moves focus back to fields
-    editor.addAction({
-      id: "mxr.focusFields",
-      label: "Focus compose fields",
-      keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Tab],
-      run: () => { props.onFocusFields?.(); },
-    });
-    // Define mxr dark theme
-    monaco.editor.defineTheme("mxr-dark", {
-      base: "vs-dark",
-      inherit: true,
-      rules: [],
-      colors: {
-        "editor.background": "#0f1520",
-        "editor.foreground": "#edf3ff",
-        "editor.lineHighlightBackground": "#182132",
-        "editor.selectionBackground": "#293852",
-        "editorCursor.foreground": "#6ab7ff",
-        "editorLineNumber.foreground": "#4a5568",
-        "editorLineNumber.activeForeground": "#8091ab",
-      },
-    });
-    monaco.editor.setTheme("mxr-dark");
+  const handleMount: OnMount = useCallback(
+    (editor, monaco) => {
+      // Shift+Tab moves focus back to fields
+      editor.addAction({
+        id: "mxr.focusFields",
+        label: "Focus compose fields",
+        keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Tab],
+        run: () => {
+          onFocusFields?.();
+        },
+      });
+      // Define mxr dark theme
+      monaco.editor.defineTheme("mxr-dark", {
+        base: "vs-dark",
+        inherit: true,
+        rules: [],
+        colors: {
+          "editor.background": "#0f1520",
+          "editor.foreground": "#edf3ff",
+          "editor.lineHighlightBackground": "#182132",
+          "editor.selectionBackground": "#293852",
+          "editorCursor.foreground": "#6ab7ff",
+          "editorLineNumber.foreground": "#4a5568",
+          "editorLineNumber.activeForeground": "#8091ab",
+        },
+      });
+      monaco.editor.setTheme("mxr-dark");
 
-    // Enable vim mode
-    import("monaco-vim").then((monacoVim) => {
-      const statusEl = document.getElementById("vim-status");
-      if (statusEl) {
-        const vim = monacoVim.initVimMode(editor, statusEl);
-        vimRef.current = vim;
-      }
-    });
+      // Enable vim mode
+      import("monaco-vim").then((monacoVim) => {
+        const statusEl = document.getElementById("vim-status");
+        if (statusEl) {
+          const vim = monacoVim.initVimMode(editor, statusEl);
+          vimRef.current = vim;
+        }
+      });
 
-    editor.focus();
-  }, []);
+      editor.focus();
+    },
+    [onFocusFields],
+  );
 
   useEffect(() => {
     return () => {

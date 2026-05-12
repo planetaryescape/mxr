@@ -120,6 +120,10 @@ pub(crate) enum AsyncResult {
     /// so a missing `semantic-local` feature is visible to the user
     /// rather than silently swallowed.
     SemanticOperationResult(Result<(), MxrError>),
+    PlatformModalLoaded {
+        title: String,
+        result: Result<String, MxrError>,
+    },
     /// Result of one of the four analytics list requests. The
     /// dispatcher keys the response to the active view at the time
     /// the request was sent — late responses for a switched-away

@@ -1,16 +1,5 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-import type {
-  DesktopSettings,
-  DesktopSettingsPatch,
-  DesktopThemeId,
-} from "../../shared/types";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import type { DesktopSettings, DesktopSettingsPatch, DesktopThemeId } from "../../shared/types";
 import { configureRendererTelemetry } from "./telemetry";
 
 const DEFAULT_SETTINGS: DesktopSettings = {
@@ -26,9 +15,7 @@ interface DesktopSettingsContextValue {
   settings: DesktopSettings;
   theme: DesktopThemeId;
   setTheme: (theme: DesktopThemeId) => Promise<DesktopSettings>;
-  updateDesktopSettings: (
-    patch: DesktopSettingsPatch,
-  ) => Promise<DesktopSettings>;
+  updateDesktopSettings: (patch: DesktopSettingsPatch) => Promise<DesktopSettings>;
 }
 
 const DesktopSettingsContext = createContext<DesktopSettingsContextValue>({
@@ -106,9 +93,5 @@ export function ThemeProvider(props: { children: ReactNode }) {
     [loaded, settings],
   );
 
-  return (
-    <DesktopSettingsContext value={value}>
-      {props.children}
-    </DesktopSettingsContext>
-  );
+  return <DesktopSettingsContext value={value}>{props.children}</DesktopSettingsContext>;
 }

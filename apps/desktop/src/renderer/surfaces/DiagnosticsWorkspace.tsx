@@ -47,8 +47,7 @@ export function DiagnosticsWorkspace(props: {
   const [keymapStatus, setKeymapStatus] = useState<string | null>(null);
   const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
-  const { theme, setTheme, settings, updateDesktopSettings } =
-    useDesktopSettings();
+  const { theme, setTheme, settings, updateDesktopSettings } = useDesktopSettings();
 
   const semanticStatus = props.diagnostics?.semanticStatus;
   const workspaceTabClass = cn(
@@ -69,12 +68,8 @@ export function DiagnosticsWorkspace(props: {
   );
 
   useEffect(() => {
-    const nextKeymapText = formatKeymapBindings(
-      serializeKeymapBindings(effectiveKeymap),
-    );
-    setKeymapText((current) =>
-      current === nextKeymapText ? current : nextKeymapText,
-    );
+    const nextKeymapText = formatKeymapBindings(serializeKeymapBindings(effectiveKeymap));
+    setKeymapText((current) => (current === nextKeymapText ? current : nextKeymapText));
     setKeymapError(null);
   }, [effectiveKeymap]);
 
@@ -86,9 +81,7 @@ export function DiagnosticsWorkspace(props: {
       setKeymapStatus("Keymap saved");
     } catch (error) {
       setKeymapStatus(null);
-      setKeymapError(
-        error instanceof Error ? error.message : "Invalid keymap JSON",
-      );
+      setKeymapError(error instanceof Error ? error.message : "Invalid keymap JSON");
     }
   };
 
@@ -125,17 +118,12 @@ export function DiagnosticsWorkspace(props: {
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <HeaderActionButton
-            label="Generate bug report"
-            onClick={props.onGenerateBugReport}
-          />
+          <HeaderActionButton label="Generate bug report" onClick={props.onGenerateBugReport} />
         </div>
         <Tabs.Root
           value={props.activeSection}
           onValueChange={(value) =>
-            props.onSectionChange(
-              (value ?? "overview") as DiagnosticsWorkspaceSection,
-            )
+            props.onSectionChange((value ?? "overview") as DiagnosticsWorkspaceSection)
           }
           className="space-y-4"
         >
@@ -205,14 +193,8 @@ export function DiagnosticsWorkspace(props: {
 
           <Tabs.Panel value="overview" className="space-y-4">
             <div className="grid gap-4 md:grid-cols-4">
-              <StatCard
-                label="Daemon version"
-                value={props.bridge.daemonVersion ?? "unknown"}
-              />
-              <StatCard
-                label="Protocol"
-                value={String(props.bridge.protocolVersion)}
-              />
+              <StatCard label="Daemon version" value={props.bridge.daemonVersion ?? "unknown"} />
+              <StatCard label="Protocol" value={String(props.bridge.protocolVersion)} />
               <StatCard
                 label="Health"
                 value={props.diagnostics?.report.health_class ?? "loading"}
@@ -237,9 +219,7 @@ export function DiagnosticsWorkspace(props: {
                       props.onResumeDraft(draft);
                     }
                   }}
-                  primaryLabel={
-                    workspaceCounts.drafts > 0 ? "Resume latest" : "Ready"
-                  }
+                  primaryLabel={workspaceCounts.drafts > 0 ? "Resume latest" : "Ready"}
                   primaryDisabled={workspaceCounts.drafts === 0}
                 />
                 <ActionRow
@@ -252,9 +232,7 @@ export function DiagnosticsWorkspace(props: {
                       props.onOpenSubscription(subscription);
                     }
                   }}
-                  primaryLabel={
-                    workspaceCounts.subscriptions > 0 ? "Open latest" : "Ready"
-                  }
+                  primaryLabel={workspaceCounts.subscriptions > 0 ? "Open latest" : "Ready"}
                   primaryDisabled={workspaceCounts.subscriptions === 0}
                 />
                 <ActionRow
@@ -267,44 +245,60 @@ export function DiagnosticsWorkspace(props: {
                       props.onOpenSnoozed(message);
                     }
                   }}
-                  primaryLabel={
-                    workspaceCounts.snoozed > 0 ? "Open latest" : "Ready"
-                  }
+                  primaryLabel={workspaceCounts.snoozed > 0 ? "Open latest" : "Ready"}
                   primaryDisabled={workspaceCounts.snoozed === 0}
                 />
               </Panel>
-              <Panel title="Recommended next steps">
-                {(props.diagnostics?.report.recommended_next_steps ?? [])
-                  .length === 0 ? (
-                  <p className="text-sm text-foreground-muted">
-                    No follow-up actions reported.
-                  </p>
+              <Panel title="Doctor findings">
+                {(props.diagnostics?.report.findings ?? []).length === 0 ? (
+                  <p className="text-sm text-foreground-muted">No structured findings reported.</p>
                 ) : (
-                  props.diagnostics?.report.recommended_next_steps.map(
-                    (item) => (
-                      <p
-                        key={item}
-                        className="text-sm leading-6 text-foreground-muted"
-                      >
-                        {item}
+                  props.diagnostics?.report.findings?.map((finding, index) => (
+                    <div
+                      key={`${finding.category}-${finding.message}-${index}`}
+                      className="rounded border border-outline bg-panel-elevated px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="mono-meta">{finding.severity}</span>
+                        <span className="mono-meta">{finding.category}</span>
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-foreground-muted">
+                        {finding.message}
                       </p>
-                    ),
-                  )
+                      {(finding.remediation ?? []).length > 0 ? (
+                        <div className="mt-2 grid gap-1">
+                          {(finding.remediation ?? []).map((command) => (
+                            <code
+                              key={command}
+                              className="rounded bg-canvas px-2 py-1 font-mono text-xs text-foreground"
+                            >
+                              {command}
+                            </code>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))
                 )}
               </Panel>
             </div>
+            <Panel title="Recommended next steps">
+              {(props.diagnostics?.report.recommended_next_steps ?? []).length === 0 ? (
+                <p className="text-sm text-foreground-muted">No follow-up actions reported.</p>
+              ) : (
+                props.diagnostics?.report.recommended_next_steps.map((item) => (
+                  <p key={item} className="text-sm leading-6 text-foreground-muted">
+                    {item}
+                  </p>
+                ))
+              )}
+            </Panel>
             <Panel title="Recent errors">
-              {(props.diagnostics?.report.recent_error_logs ?? []).length ===
-              0 ? (
-                <p className="text-sm text-foreground-muted">
-                  No recent error logs.
-                </p>
+              {(props.diagnostics?.report.recent_error_logs ?? []).length === 0 ? (
+                <p className="text-sm text-foreground-muted">No recent error logs.</p>
               ) : (
                 props.diagnostics?.report.recent_error_logs.map((item) => (
-                  <p
-                    key={item}
-                    className="font-mono text-xs leading-6 text-foreground-muted"
-                  >
+                  <p key={item} className="font-mono text-xs leading-6 text-foreground-muted">
                     {item}
                   </p>
                 ))
@@ -313,28 +307,21 @@ export function DiagnosticsWorkspace(props: {
           </Tabs.Panel>
 
           <Tabs.Panel value="drafts">
-            <Panel
-              title="Saved drafts"
-              subtitle={`${workspaceCounts.drafts} drafts recoverable`}
-            >
+            <Panel title="Saved drafts" subtitle={`${workspaceCounts.drafts} drafts recoverable`}>
               {(props.diagnostics?.drafts ?? []).map((draft) => (
                 <ActionRow
                   key={draft.id}
                   title={draft.subject || "(no subject)"}
                   detail={draft.recipients || "No recipients yet"}
                   meta={
-                    draft.attachment_count > 0
-                      ? `${draft.attachment_count} attachments`
-                      : "Draft"
+                    draft.attachment_count > 0 ? `${draft.attachment_count} attachments` : "Draft"
                   }
                   onPrimary={() => props.onResumeDraft(draft)}
                   primaryLabel="Resume"
                 />
               ))}
               {(props.diagnostics?.drafts ?? []).length === 0 ? (
-                <p className="text-sm text-foreground-muted">
-                  No saved drafts on disk.
-                </p>
+                <p className="text-sm text-foreground-muted">No saved drafts on disk.</p>
               ) : null}
             </Panel>
           </Tabs.Panel>
@@ -355,18 +342,13 @@ export function DiagnosticsWorkspace(props: {
                 />
               ))}
               {(props.diagnostics?.subscriptions ?? []).length === 0 ? (
-                <p className="text-sm text-foreground-muted">
-                  No subscriptions detected.
-                </p>
+                <p className="text-sm text-foreground-muted">No subscriptions detected.</p>
               ) : null}
             </Panel>
           </Tabs.Panel>
 
           <Tabs.Panel value="snoozed">
-            <Panel
-              title="Snoozed"
-              subtitle={`${workspaceCounts.snoozed} messages waiting`}
-            >
+            <Panel title="Snoozed" subtitle={`${workspaceCounts.snoozed} messages waiting`}>
               {(props.diagnostics?.snoozed ?? []).map((message) => (
                 <ActionRow
                   key={message.message_id}
@@ -378,44 +360,28 @@ export function DiagnosticsWorkspace(props: {
                 />
               ))}
               {(props.diagnostics?.snoozed ?? []).length === 0 ? (
-                <p className="text-sm text-foreground-muted">
-                  No snoozed messages queued.
-                </p>
+                <p className="text-sm text-foreground-muted">No snoozed messages queued.</p>
               ) : null}
             </Panel>
           </Tabs.Panel>
 
           <Tabs.Panel value="semantic" className="space-y-4">
             <div className="flex justify-end">
-              <HeaderActionButton
-                label="Reindex semantic"
-                onClick={props.onSemanticReindex}
-              />
+              <HeaderActionButton label="Reindex semantic" onClick={props.onSemanticReindex} />
             </div>
             <div className="grid gap-4 md:grid-cols-4">
-              <StatCard
-                label="Enabled"
-                value={semanticStatus?.enabled ? "yes" : "no"}
-              />
-              <StatCard
-                label="Profile"
-                value={semanticStatus?.active_profile ?? "disabled"}
-              />
+              <StatCard label="Enabled" value={semanticStatus?.enabled ? "yes" : "no"} />
+              <StatCard label="Profile" value={semanticStatus?.active_profile ?? "disabled"} />
               <StatCard
                 label="Queue depth"
                 value={String(semanticStatus?.runtime.queue_depth ?? 0)}
               />
-              <StatCard
-                label="In flight"
-                value={String(semanticStatus?.runtime.in_flight ?? 0)}
-              />
+              <StatCard label="In flight" value={String(semanticStatus?.runtime.in_flight ?? 0)} />
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               <Panel title="Profiles">
                 {(semanticStatus?.profiles ?? []).length === 0 ? (
-                  <p className="text-sm text-foreground-muted">
-                    No semantic profiles configured.
-                  </p>
+                  <p className="text-sm text-foreground-muted">No semantic profiles configured.</p>
                 ) : (
                   semanticStatus?.profiles.map((profile) => (
                     <div
@@ -423,12 +389,8 @@ export function DiagnosticsWorkspace(props: {
                       className="flex items-center justify-between gap-3 border-t border-outline/60 py-2 first:border-t-0 first:pt-0"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-foreground">
-                          {profile.profile}
-                        </p>
-                        <p className="text-xs text-foreground-subtle">
-                          {profile.dimensions} dims
-                        </p>
+                        <p className="truncate text-sm text-foreground">{profile.profile}</p>
+                        <p className="text-xs text-foreground-subtle">{profile.dimensions} dims</p>
                       </div>
                       <span className="text-xs text-foreground-subtle">
                         {profile.enabled ? "Enabled" : "Disabled"}
@@ -440,21 +402,15 @@ export function DiagnosticsWorkspace(props: {
               <Panel title="Runtime">
                 <RuntimeMetric
                   label="Last queue wait"
-                  value={formatDuration(
-                    semanticStatus?.runtime.last_queue_wait_ms,
-                  )}
+                  value={formatDuration(semanticStatus?.runtime.last_queue_wait_ms)}
                 />
                 <RuntimeMetric
                   label="Last extract"
-                  value={formatDuration(
-                    semanticStatus?.runtime.last_extract_ms,
-                  )}
+                  value={formatDuration(semanticStatus?.runtime.last_extract_ms)}
                 />
                 <RuntimeMetric
                   label="Last embedding prep"
-                  value={formatDuration(
-                    semanticStatus?.runtime.last_embedding_prep_ms,
-                  )}
+                  value={formatDuration(semanticStatus?.runtime.last_embedding_prep_ms)}
                 />
                 <RuntimeMetric
                   label="Last ingest"
@@ -465,10 +421,7 @@ export function DiagnosticsWorkspace(props: {
           </Tabs.Panel>
 
           <Tabs.Panel value="labels">
-            <Panel
-              title="Labels"
-              subtitle={`${workspaceCounts.labels} editable labels`}
-            >
+            <Panel title="Labels" subtitle={`${workspaceCounts.labels} editable labels`}>
               <form
                 className="mb-3 flex gap-2"
                 onSubmit={(event) => {
@@ -517,9 +470,7 @@ export function DiagnosticsWorkspace(props: {
                         className="min-w-0 flex-1 border border-outline bg-canvas-elevated px-2 py-1 text-sm text-foreground outline-none"
                         style={{ borderRadius: "var(--radius-sm)" }}
                         value={editingValue}
-                        onChange={(event) =>
-                          setEditingValue(event.target.value)
-                        }
+                        onChange={(event) => setEditingValue(event.target.value)}
                       />
                       <button
                         type="submit"
@@ -532,12 +483,8 @@ export function DiagnosticsWorkspace(props: {
                   ) : (
                     <>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-foreground">
-                          {label.label}
-                        </p>
-                        <p className="text-xs text-foreground-subtle">
-                          {label.total} total
-                        </p>
+                        <p className="truncate text-sm text-foreground">{label.label}</p>
+                        <p className="text-xs text-foreground-subtle">{label.total} total</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -563,18 +510,13 @@ export function DiagnosticsWorkspace(props: {
                 </div>
               ))}
               {props.labels.length === 0 ? (
-                <p className="text-sm text-foreground-muted">
-                  No editable labels.
-                </p>
+                <p className="text-sm text-foreground-muted">No editable labels.</p>
               ) : null}
             </Panel>
           </Tabs.Panel>
 
           <Tabs.Panel value="saved-searches">
-            <Panel
-              title="Saved searches"
-              subtitle={`${workspaceCounts.savedSearches} configured`}
-            >
+            <Panel title="Saved searches" subtitle={`${workspaceCounts.savedSearches} configured`}>
               {props.savedSearches.map((search) => (
                 <div
                   key={search.id}
@@ -584,9 +526,7 @@ export function DiagnosticsWorkspace(props: {
                   )}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-foreground">
-                      {search.label}
-                    </p>
+                    <p className="truncate text-sm text-foreground">{search.label}</p>
                   </div>
                   <button
                     type="button"
@@ -598,19 +538,14 @@ export function DiagnosticsWorkspace(props: {
                 </div>
               ))}
               {props.savedSearches.length === 0 ? (
-                <p className="text-sm text-foreground-muted">
-                  No saved searches configured.
-                </p>
+                <p className="text-sm text-foreground-muted">No saved searches configured.</p>
               ) : null}
             </Panel>
           </Tabs.Panel>
 
           <Tabs.Panel value="settings">
             <div className="grid gap-4 xl:grid-cols-2">
-              <Panel
-                title="Appearance"
-                subtitle="Desktop presentation stays local to this machine"
-              >
+              <Panel title="Appearance" subtitle="Desktop presentation stays local to this machine">
                 <label className="flex flex-col gap-1.5 text-sm text-foreground">
                   <span className="mono-meta">Theme</span>
                   <select
@@ -618,9 +553,7 @@ export function DiagnosticsWorkspace(props: {
                     className="border border-outline bg-canvas-elevated px-2 py-1.5 text-sm text-foreground outline-none"
                     style={{ borderRadius: "var(--radius-sm)" }}
                     value={theme}
-                    onChange={(event) =>
-                      void setTheme(event.target.value as typeof theme)
-                    }
+                    onChange={(event) => void setTheme(event.target.value as typeof theme)}
                   >
                     {desktopThemes.map((option) => (
                       <option key={option.id} value={option.id}>
@@ -650,8 +583,8 @@ export function DiagnosticsWorkspace(props: {
                       Send redacted crash/error metadata
                     </span>
                     <span className="mt-1 block text-xs leading-5 text-foreground-subtle">
-                      Subjects, bodies, recipients, paths, tokens, and bug-report
-                      content are stripped before upload.
+                      Subjects, bodies, recipients, paths, tokens, and bug-report content are
+                      stripped before upload.
                     </span>
                   </span>
                 </label>
@@ -690,10 +623,7 @@ export function DiagnosticsWorkspace(props: {
                 </p>
               </Panel>
 
-              <Panel
-                title="Keymaps"
-                subtitle="JSONC overrides by context then shortcut"
-              >
+              <Panel title="Keymaps" subtitle="JSONC overrides by context then shortcut">
                 <label className="flex flex-col gap-1.5 text-sm text-foreground">
                   <span className="mono-meta">Keymap JSON</span>
                   <textarea
@@ -710,16 +640,11 @@ export function DiagnosticsWorkspace(props: {
                   />
                 </label>
                 <p className="text-xs leading-5 text-foreground-subtle">
-                  Contexts: <code>mailList</code>, <code>threadView</code>,{" "}
-                  <code>messageView</code>, <code>rules</code>,{" "}
-                  <code>accounts</code>, <code>diagnostics</code>.
+                  Contexts: <code>mailList</code>, <code>threadView</code>, <code>messageView</code>
+                  , <code>rules</code>, <code>accounts</code>, <code>diagnostics</code>.
                 </p>
-                {keymapError ? (
-                  <p className="text-xs text-danger">{keymapError}</p>
-                ) : null}
-                {keymapStatus ? (
-                  <p className="text-xs text-success">{keymapStatus}</p>
-                ) : null}
+                {keymapError ? <p className="text-xs text-danger">{keymapError}</p> : null}
+                {keymapStatus ? <p className="text-xs text-success">{keymapStatus}</p> : null}
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -733,9 +658,7 @@ export function DiagnosticsWorkspace(props: {
                     type="button"
                     className="border border-outline px-2 py-1.5 text-xs text-foreground-subtle hover:bg-panel hover:text-foreground"
                     style={{ borderRadius: "var(--radius-sm)" }}
-                    onClick={() =>
-                      void updateDesktopSettings({ keymapOverrides: {} })
-                    }
+                    onClick={() => void updateDesktopSettings({ keymapOverrides: {} })}
                   >
                     Reset to defaults
                   </button>
@@ -757,20 +680,14 @@ function TabCount(props: { value: number }) {
   );
 }
 
-function Panel(props: {
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-}) {
+function Panel(props: { title: string; subtitle?: string; children: ReactNode }) {
   return (
     <section className="border border-outline bg-panel-elevated px-3 py-3">
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
           <p className="mono-meta">{props.title}</p>
           {props.subtitle ? (
-            <p className="mt-1 text-xs text-foreground-subtle">
-              {props.subtitle}
-            </p>
+            <p className="mt-1 text-xs text-foreground-subtle">{props.subtitle}</p>
           ) : null}
         </div>
       </div>
@@ -800,9 +717,7 @@ function ActionRow(props: {
           disabled={props.primaryDisabled}
           className={cn(
             "border border-outline px-2 py-1 text-xs text-foreground-muted",
-            props.primaryDisabled
-              ? "opacity-60"
-              : "hover:bg-panel hover:text-foreground",
+            props.primaryDisabled ? "opacity-60" : "hover:bg-panel hover:text-foreground",
           )}
           style={{ borderRadius: "var(--radius-sm)" }}
           onClick={props.onPrimary}
@@ -831,9 +746,7 @@ function RuntimeMetric(props: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3 border-t border-outline/60 py-2 first:border-t-0 first:pt-0">
       <span className="text-sm text-foreground">{props.label}</span>
-      <span className="font-mono text-xs text-foreground-subtle">
-        {props.value}
-      </span>
+      <span className="font-mono text-xs text-foreground-subtle">{props.value}</span>
     </div>
   );
 }

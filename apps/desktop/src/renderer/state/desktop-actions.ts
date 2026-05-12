@@ -68,10 +68,7 @@ export type DesktopActionContext = {
   loadAccounts: () => Promise<void>;
   loadDiagnostics: () => Promise<void>;
   applySidebarLensById: (itemId: string) => Promise<void>;
-  applySidebarLens: (
-    item: SidebarItem,
-    options?: { preserveFocus?: boolean },
-  ) => Promise<void>;
+  applySidebarLens: (item: SidebarItem, options?: { preserveFocus?: boolean }) => Promise<void>;
   archiveSelected: () => Promise<void>;
   mutateSelected: (
     path: string,
@@ -84,14 +81,13 @@ export type DesktopActionContext = {
   openThreadAndFocusReader: () => void;
   refreshCurrentView: (options?: { preserveReader?: boolean }) => Promise<void>;
   showNotice: (message: string) => void;
-  openComposeShell: (
-    kind: ComposeSessionKind,
-    messageId?: string,
-  ) => Promise<void>;
+  openComposeShell: (kind: ComposeSessionKind, messageId?: string) => Promise<void>;
   openApplyLabelDialog: () => void;
   openMoveDialog: () => void;
   setUnsubscribeDialogOpen: Dispatch<SetStateAction<boolean>>;
   openSnoozeDialog: () => Promise<void>;
+  scheduleReminderForSelected: () => Promise<void>;
+  cancelReminderForSelected: () => Promise<void>;
   sidebar: SidebarPayload;
   openSelectedInBrowser: () => Promise<void>;
   openAttachmentsPanel: () => void;
@@ -126,11 +122,7 @@ export type DesktopActionContext = {
   primaryAccountId: string | null;
   testCurrentAccount: () => Promise<void>;
   makeSelectedAccountDefault: () => Promise<void>;
-  formatPendingMutationLabel: (
-    verb: string,
-    count: number,
-    detail?: string,
-  ) => string;
+  formatPendingMutationLabel: (verb: string, count: number, detail?: string) => string;
   switchAccount?: (key: string) => Promise<void>;
   triggerSync: () => Promise<void>;
   composeOpen: boolean;
@@ -139,20 +131,33 @@ export type DesktopActionContext = {
   setComposeDraft: Dispatch<SetStateAction<ComposeFrontmatter | null>>;
 };
 
-export function runDesktopAction(
-  action: DesktopAction | string,
-  context: DesktopActionContext,
-) {
-  if (
-    typeof action === "string" &&
-    action.startsWith("open_diagnostics_section:")
-  ) {
-    const section = action.slice(
-      "open_diagnostics_section:".length,
-    ) as DiagnosticsWorkspaceSection;
+export function runDesktopAction(action: DesktopAction | string, context: DesktopActionContext) {
+  if (typeof action === "string" && action.startsWith("open_diagnostics_section:")) {
+    const section = action.slice("open_diagnostics_section:".length) as DiagnosticsWorkspaceSection;
     context.switchScreen("diagnostics");
     context.setDiagnosticsSection(section);
     context.setFocusContext("mailList");
+    return;
+  }
+
+  if (typeof action === "string" && action.startsWith("open_saved_search_by_index:")) {
+    const rawIndex = Number(action.slice("open_saved_search_by_index:".length));
+    const savedSearches = context.sidebar.sections
+      .flatMap((section) => section.items)
+      .filter((item) => item.lens.kind === "saved_search");
+    if (rawIndex === 0) {
+      const inbox = context.sidebar.sections
+        .flatMap((section) => section.items)
+        .find((item) => item.lens.kind === "inbox");
+      if (inbox) {
+        void context.applySidebarLens(inbox);
+      }
+      return;
+    }
+    const target = savedSearches[rawIndex - 1];
+    if (target) {
+      void context.applySidebarLens(target);
+    }
     return;
   }
 
@@ -281,16 +286,10 @@ export function runDesktopAction(
       }
       maybeExtendVisualSelection(
         context,
-        jumpSelection(
-          "top",
-          context.screen,
-          context.mailboxRows,
-          context.searchRows,
-          {
-            setMailbox: context.setSelectedMailboxThreadId,
-            setSearch: context.setSelectedSearchThreadId,
-          },
-        ),
+        jumpSelection("top", context.screen, context.mailboxRows, context.searchRows, {
+          setMailbox: context.setSelectedMailboxThreadId,
+          setSearch: context.setSelectedSearchThreadId,
+        }),
       );
       return;
     case "jump_bottom":
@@ -301,23 +300,15 @@ export function runDesktopAction(
       }
       maybeExtendVisualSelection(
         context,
-        jumpSelection(
-          "bottom",
-          context.screen,
-          context.mailboxRows,
-          context.searchRows,
-          {
-            setMailbox: context.setSelectedMailboxThreadId,
-            setSearch: context.setSelectedSearchThreadId,
-          },
-        ),
+        jumpSelection("bottom", context.screen, context.mailboxRows, context.searchRows, {
+          setMailbox: context.setSelectedMailboxThreadId,
+          setSearch: context.setSelectedSearchThreadId,
+        }),
       );
       return;
     case "visible_middle":
     case "center_current":
-      context.setFocusContext(
-        context.layoutMode === "twoPane" ? "mailList" : "reader",
-      );
+      context.setFocusContext(context.layoutMode === "twoPane" ? "mailList" : "reader");
       return;
     case "next_search_result":
       maybeExtendVisualSelection(
@@ -385,9 +376,7 @@ export function runDesktopAction(
       if (context.commandPaletteOpen) {
         context.setCommandPaletteOpen(false);
         context.setCommandQuery("");
-        context.setFocusContext(
-          context.screen === "search" ? "search" : "mailList",
-        );
+        context.setFocusContext(context.screen === "search" ? "search" : "mailList");
         return;
       }
       if (context.layoutMode === "fullScreen") {
@@ -575,17 +564,13 @@ export function runDesktopAction(
       if (!context.thread) {
         return;
       }
-      context.setLayoutMode((current) =>
-        current === "fullScreen" ? "threePane" : "fullScreen",
-      );
+      context.setLayoutMode((current) => (current === "fullScreen" ? "threePane" : "fullScreen"));
       return;
     case "toggle_reader_mode":
       context.setReaderMode((current) => nextReaderMode(current));
       return;
     case "toggle_html_view":
-      context.setReaderMode((current) =>
-        current === "html" ? "reader" : "html",
-      );
+      context.setReaderMode((current) => (current === "html" ? "reader" : "html"));
       return;
     case "toggle_remote_content":
       context.setRemoteContentEnabled((current) => !current);
@@ -607,9 +592,7 @@ export function runDesktopAction(
       void context.loadDiagnostics();
       return;
     case "sync":
-      void context
-        .triggerSync()
-        .then(() => context.refreshCurrentView({ preserveReader: true }));
+      void context.triggerSync().then(() => context.refreshCurrentView({ preserveReader: true }));
       context.showNotice("Syncing with server");
       return;
     case "compose":
@@ -655,6 +638,12 @@ export function runDesktopAction(
         void context.openSnoozeDialog();
       }
       return;
+    case "set_auto_reminder":
+      void context.scheduleReminderForSelected();
+      return;
+    case "cancel_auto_reminder":
+      void context.cancelReminderForSelected();
+      return;
     case "open_subscriptions": {
       const subscription = context.sidebar.sections
         .flatMap((section) => section.items)
@@ -684,9 +673,7 @@ export function runDesktopAction(
       } else {
         context.setVisualAnchorMessageId(null);
       }
-      context.showNotice(
-        !context.visualMode ? "-- VISUAL LINE --" : "Visual mode off",
-      );
+      context.showNotice(!context.visualMode ? "-- VISUAL LINE --" : "Visual mode off");
       return;
     case "export_thread":
       void context.exportSelectedThread();
@@ -718,9 +705,7 @@ export function runDesktopAction(
     case "select_all": {
       const rows = activeRows(context);
       const ids = new Set(
-        rows
-          .filter((e) => e.kind === "row")
-          .map((e) => (e.kind === "row" ? e.row.id : "")),
+        rows.filter((e) => e.kind === "row").map((e) => (e.kind === "row" ? e.row.id : "")),
       );
       context.setSelectedMessageIds(ids);
       context.showNotice(`${ids.size} selected`);
@@ -774,9 +759,7 @@ export function runDesktopAction(
       context.openSavedSearchDialog();
       return;
     case "toggle_mail_list_mode":
-      context.setMailListMode((current) =>
-        current === "threads" ? "messages" : "threads",
-      );
+      context.setMailListMode((current) => (current === "threads" ? "messages" : "threads"));
       return;
     case "generate_bug_report":
       void context.generateBugReport();
@@ -811,6 +794,10 @@ export function runDesktopAction(
     case "open_account_form_new":
       context.openAccountForm();
       return;
+    case "setup_demo":
+      context.setOnboardingOpen(true);
+      context.showNotice("Demo setup is available from the CLI: mxr setup --demo");
+      return;
     case "test_account_form":
       void context.testCurrentAccount();
       return;
@@ -825,9 +812,7 @@ export function runDesktopAction(
       return;
     case "open_screener_queue":
       if (!context.primaryAccountId) {
-        context.showNotice(
-          "Configure an account before opening the screener queue.",
-        );
+        context.showNotice("Configure an account before opening the screener queue.");
         return;
       }
       context.setBrowserDialog({
@@ -836,16 +821,13 @@ export function runDesktopAction(
       });
       return;
     case "open_sender_view": {
-      const senderEmail =
-        context.selectedRow?.sender_detail ?? context.selectedRow?.sender ?? null;
+      const senderEmail = context.selectedRow?.sender_detail ?? context.selectedRow?.sender ?? null;
       if (!senderEmail) {
         context.showNotice("No message selected to look up sender for.");
         return;
       }
       if (!context.primaryAccountId) {
-        context.showNotice(
-          "Configure an account before opening the sender view.",
-        );
+        context.showNotice("Configure an account before opening the sender view.");
         return;
       }
       context.setBrowserDialog({
@@ -901,11 +883,7 @@ export function isTypingTarget(element: Element | null) {
   if (!(element instanceof HTMLElement)) {
     return false;
   }
-  return (
-    element.tagName === "INPUT" ||
-    element.tagName === "TEXTAREA" ||
-    element.isContentEditable
-  );
+  return element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.isContentEditable;
 }
 
 export function normalizeKeyToken(event: KeyboardEvent) {
@@ -955,9 +933,7 @@ export function nextFocusContext(
 const READER_SCROLL_STEP = 72;
 
 function scrollReaderBy(delta: number) {
-  const readers = document.querySelectorAll<HTMLElement>(
-    '[data-reader-scroll-container="true"]',
-  );
+  const readers = document.querySelectorAll<HTMLElement>('[data-reader-scroll-container="true"]');
   for (const reader of readers) {
     if (typeof reader.scrollBy === "function") {
       reader.scrollBy({ top: delta, behavior: "auto" });
@@ -977,15 +953,11 @@ function moveSelection(
   setters: SelectionSetters,
 ): Extract<FlattenedEntry, { kind: "row" }>["row"] | null {
   const entries = (screen === "search" ? searchRows : mailboxRows).filter(
-    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> =>
-      entry.kind === "row",
+    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> => entry.kind === "row",
   );
   const current = screen === "search" ? searchThreadId : mailboxThreadId;
   const currentIndex = entries.findIndex((entry) => entry.id === current);
-  const nextIndex = clampIndex(
-    currentIndex < 0 ? 0 : currentIndex + delta,
-    entries.length,
-  );
+  const nextIndex = clampIndex(currentIndex < 0 ? 0 : currentIndex + delta, entries.length);
   const next = entries[nextIndex]?.id ?? null;
   if (screen === "search") {
     setters.setSearch(next);
@@ -1003,13 +975,10 @@ function jumpSelection(
   setters: SelectionSetters,
 ): Extract<FlattenedEntry, { kind: "row" }>["row"] | null {
   const entries = (screen === "search" ? searchRows : mailboxRows).filter(
-    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> =>
-      entry.kind === "row",
+    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> => entry.kind === "row",
   );
   const next =
-    direction === "top"
-      ? (entries[0]?.id ?? null)
-      : (entries[entries.length - 1]?.id ?? null);
+    direction === "top" ? (entries[0]?.id ?? null) : (entries[entries.length - 1]?.id ?? null);
   if (screen === "search") {
     setters.setSearch(next);
   } else {
@@ -1038,14 +1007,10 @@ function maybeExtendVisualSelection(
     return;
   }
 
-  const entries = (
-    context.screen === "search" ? context.searchRows : context.mailboxRows
-  ).filter(
-    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> =>
-      entry.kind === "row",
+  const entries = (context.screen === "search" ? context.searchRows : context.mailboxRows).filter(
+    (entry): entry is Extract<FlattenedEntry, { kind: "row" }> => entry.kind === "row",
   );
-  const anchorId =
-    context.visualAnchorMessageId ?? context.selectedRow?.id ?? nextRow.id;
+  const anchorId = context.visualAnchorMessageId ?? context.selectedRow?.id ?? nextRow.id;
   const anchorIndex = entries.findIndex((entry) => entry.row.id === anchorId);
   const targetIndex = entries.findIndex((entry) => entry.row.id === nextRow.id);
 
@@ -1056,9 +1021,7 @@ function maybeExtendVisualSelection(
   }
 
   const [start, end] =
-    anchorIndex < targetIndex
-      ? [anchorIndex, targetIndex]
-      : [targetIndex, anchorIndex];
+    anchorIndex < targetIndex ? [anchorIndex, targetIndex] : [targetIndex, anchorIndex];
   context.setSelectedMessageIds(
     new Set(entries.slice(start, end + 1).map((entry) => entry.row.id)),
   );
@@ -1082,10 +1045,7 @@ async function moveSidebarSelection(
     return;
   }
   const currentIndex = items.findIndex((item) => item.id === selectedSidebarItemId);
-  const nextIndex = clampIndex(
-    currentIndex < 0 ? 0 : currentIndex + delta,
-    items.length,
-  );
+  const nextIndex = clampIndex(currentIndex < 0 ? 0 : currentIndex + delta, items.length);
   const next = items[nextIndex];
   if (next) {
     setSelectedSidebarItemId(next.id);

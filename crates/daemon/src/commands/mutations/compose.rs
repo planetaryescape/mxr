@@ -5,6 +5,7 @@ use crate::ipc_client::IpcClient;
 use crate::output::{jsonl, resolve_format};
 use mxr_core::{AccountId, Address, Draft, DraftId, ReplyHeaders};
 use mxr_protocol::*;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::helpers::parse_message_id;
@@ -102,6 +103,7 @@ pub async fn compose(options: ComposeOptions) -> anyhow::Result<()> {
         let (frontmatter, body) = mxr_compose::frontmatter::parse_compose_file(&content)?;
         (frontmatter, body, Some(path))
     };
+    let body = expand_compose_snippets(&mut client, body).await?;
 
     let draft = draft_from_frontmatter(account.account_id, &frontmatter, body)?;
     validate_compose_draft(&frontmatter, &draft.body_markdown, options.yes)?;
@@ -382,6 +384,7 @@ async fn finalize_compose(
     dry_run: bool,
     format: Option<OutputFormat>,
 ) -> anyhow::Result<()> {
+    let body = expand_compose_snippets(client, body).await?;
     let draft = draft_from_frontmatter(account_id, &frontmatter, body)?;
     validate_compose_draft(&frontmatter, &draft.body_markdown, yes)?;
 
@@ -781,6 +784,80 @@ fn apply_signature_to_body(
     }
 }
 
+async fn expand_compose_snippets(client: &mut IpcClient, body: String) -> anyhow::Result<String> {
+    if !body.contains(';') {
+        return Ok(body);
+    }
+
+    let response = client.request(Request::ListSnippets).await?;
+    let snippets = crate::commands::expect_response(response, |response| match response {
+        Response::Ok {
+            data: ResponseData::Snippets { snippets },
+        } => Some(snippets),
+        _ => None,
+    })?;
+    Ok(expand_snippet_keywords(&body, &snippets))
+}
+
+fn expand_snippet_keywords(body: &str, snippets: &[SnippetData]) -> String {
+    let by_name = snippets
+        .iter()
+        .map(|snippet| (snippet.name.as_str(), snippet.body.as_str()))
+        .collect::<HashMap<_, _>>();
+    if by_name.is_empty() {
+        return body.to_string();
+    }
+
+    let mut output = String::with_capacity(body.len());
+    let mut index = 0;
+    while index < body.len() {
+        let rest = &body[index..];
+        if !rest.starts_with(';') || !is_snippet_boundary(body, index) {
+            let ch = rest.chars().next().expect("non-empty rest");
+            output.push(ch);
+            index += ch.len_utf8();
+            continue;
+        }
+
+        let name_start = index + 1;
+        let mut name_end = name_start;
+        for (offset, ch) in body[name_start..].char_indices() {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                name_end = name_start + offset + ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+
+        if name_end == name_start {
+            output.push(';');
+            index += 1;
+            continue;
+        }
+
+        let name = &body[name_start..name_end];
+        if let Some(replacement) = by_name.get(name) {
+            output.push_str(replacement);
+            index = name_end;
+        } else {
+            output.push_str(&body[index..name_end]);
+            index = name_end;
+        }
+    }
+
+    output
+}
+
+fn is_snippet_boundary(body: &str, semicolon_index: usize) -> bool {
+    if semicolon_index == 0 {
+        return true;
+    }
+    body[..semicolon_index]
+        .chars()
+        .next_back()
+        .is_some_and(|ch| ch.is_whitespace() || matches!(ch, '(' | '[' | '{' | '"' | '\''))
+}
+
 fn rewrite_compose_frontmatter(
     path: &std::path::Path,
     cc: Option<String>,
@@ -1100,6 +1177,50 @@ mod tests {
             draft.reply_headers.unwrap().in_reply_to,
             "<reply@example.com>"
         );
+    }
+
+    fn snippet(name: &str, body: &str) -> SnippetData {
+        let now = chrono::Utc::now();
+        SnippetData {
+            name: name.into(),
+            body: body.into(),
+            vars: Vec::new(),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn snippet_keywords_expand_at_word_boundaries() {
+        let body = "Hi ;thanks\n\n;sig".to_string();
+        let snippets = vec![
+            snippet("thanks", "thanks for reaching out"),
+            snippet("sig", "Best,\nmxr"),
+        ];
+
+        let expanded = expand_snippet_keywords(&body, &snippets);
+
+        assert_eq!(expanded, "Hi thanks for reaching out\n\nBest,\nmxr");
+    }
+
+    #[test]
+    fn unknown_snippet_keywords_remain_literal() {
+        let body = "Keep ;missing and expand ;ok.".to_string();
+        let snippets = vec![snippet("ok", "done")];
+
+        let expanded = expand_snippet_keywords(&body, &snippets);
+
+        assert_eq!(expanded, "Keep ;missing and expand done.");
+    }
+
+    #[test]
+    fn snippet_keywords_do_not_expand_mid_word() {
+        let body = "value;ok but (;ok)".to_string();
+        let snippets = vec![snippet("ok", "done")];
+
+        let expanded = expand_snippet_keywords(&body, &snippets);
+
+        assert_eq!(expanded, "value;ok but (done)");
     }
 
     fn test_envelope(subject: &str) -> Envelope {

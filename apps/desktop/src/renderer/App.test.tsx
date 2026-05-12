@@ -1,18 +1,9 @@
-import {
-  act,
-  fireEvent,
-  render as rtlRender,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BridgeState } from "../shared/types";
 import App from "./App";
 import { ThemeProvider } from "./lib/theme";
-import {
-  configureDesktopMockServer,
-  getRecordedDesktopRequests,
-} from "./test/desktopMockServer";
+import { configureDesktopMockServer, getRecordedDesktopRequests } from "./test/desktopMockServer";
 
 const initialMailbox = {
   mailbox: {
@@ -100,8 +91,7 @@ const mismatchBridge = {
     "Release install: rerun ./install.sh",
     "Source install: git pull && cargo install --path crates/daemon --locked",
   ],
-  detail:
-    "mxr Desktop needs a compatible version of mxr before it can connect.",
+  detail: "mxr Desktop needs a compatible version of mxr before it can connect.",
 };
 
 class MockWebSocket {
@@ -193,9 +183,7 @@ function installFetchMocks(options?: {
 }
 
 function readMutationCalls() {
-  return getRecordedDesktopRequests().filter(
-    (request) => request.path === "/mutations/read",
-  );
+  return getRecordedDesktopRequests().filter((request) => request.path === "/mutations/read");
 }
 
 function findRequest(path: string, method = "GET") {
@@ -205,9 +193,7 @@ function findRequest(path: string, method = "GET") {
 }
 
 function findRequestMatching(
-  predicate: (
-    request: ReturnType<typeof getRecordedDesktopRequests>[number],
-  ) => boolean,
+  predicate: (request: ReturnType<typeof getRecordedDesktopRequests>[number]) => boolean,
 ) {
   return getRecordedDesktopRequests().find(predicate);
 }
@@ -283,12 +269,8 @@ describe("App", () => {
     await screen.findByRole("button", { name: "Mailbox" });
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Rules" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Accounts" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Diagnostics" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Accounts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Diagnostics" })).toBeInTheDocument();
     expect(screen.getByText("Local-first and ready")).toBeInTheDocument();
     expect(screen.getByText("System")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Inbox/i })).toBeInTheDocument();
@@ -332,17 +314,13 @@ describe("App", () => {
     await act(async () => {
       await flushAsyncWork();
     });
-    expect(
-      screen.getAllByRole("button", { name: "Archive" }).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Archive" }).length).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "Escape" });
     await act(async () => {
       await flushAsyncWork();
     });
-    expect(screen.queryAllByRole("button", { name: "Archive" })).toHaveLength(
-      0,
-    );
+    expect(screen.queryAllByRole("button", { name: "Archive" })).toHaveLength(0);
   });
 
   it("opens with o and scrolls the reader instead of moving the mail list selection", async () => {
@@ -351,15 +329,12 @@ describe("App", () => {
     renderApp();
 
     await findActiveLens("Inbox");
-    expect(screen.getAllByTestId("mail-row")[0]?.className).toContain(
-      "bg-panel-elevated",
-    );
+    expect(screen.getAllByTestId("mail-row")[0]?.className).toContain("bg-panel-elevated");
 
     fireEvent.keyDown(window, { key: "o" });
 
     expect(
-      (await screen.findAllByRole("heading", { name: "Deploy complete" }))
-        .length,
+      (await screen.findAllByRole("heading", { name: "Deploy complete" })).length,
     ).toBeGreaterThan(0);
 
     const readerRegions = screen.getAllByTestId("reader-scroll-region");
@@ -374,17 +349,11 @@ describe("App", () => {
     fireEvent.keyDown(window, { key: "j" });
 
     await waitFor(() => {
-      expect(
-        readerRegions.every((region) => (region as HTMLDivElement).scrollTop > 0),
-      ).toBe(true);
+      expect(readerRegions.every((region) => (region as HTMLDivElement).scrollTop > 0)).toBe(true);
     });
 
-    expect(screen.getAllByTestId("mail-row")[0]?.className).toContain(
-      "bg-panel-elevated",
-    );
-    expect(
-      screen.getAllByRole("heading", { name: "Deploy complete" }).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByTestId("mail-row")[0]?.className).toContain("bg-panel-elevated");
+    expect(screen.getAllByRole("heading", { name: "Deploy complete" }).length).toBeGreaterThan(0);
   });
 
   it("wires the live event stream and refreshes the mailbox on sync completion", async () => {
@@ -395,9 +364,7 @@ describe("App", () => {
     await findActiveLens("Inbox");
     expect(MockWebSocket.instances).toHaveLength(1);
     expect(
-      getRecordedDesktopRequests().filter(
-        (request) => request.path === "/mailbox",
-      ),
+      getRecordedDesktopRequests().filter((request) => request.path === "/mailbox"),
     ).toHaveLength(1);
 
     act(() => {
@@ -411,9 +378,7 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(
-        getRecordedDesktopRequests().filter(
-          (request) => request.path === "/mailbox",
-        ),
+        getRecordedDesktopRequests().filter((request) => request.path === "/mailbox"),
       ).toHaveLength(2);
     });
   });
@@ -450,9 +415,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /All Mail/i }));
 
-    expect(
-      await screen.findAllByText("Loading All Mail..."),
-    ).not.toHaveLength(0);
+    expect(await screen.findAllByText("Loading All Mail...")).not.toHaveLength(0);
 
     resolveMailbox?.();
 
@@ -481,9 +444,7 @@ describe("App", () => {
 
     window.dispatchEvent(new CustomEvent("mxr:command-palette"));
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Search commands..."),
-      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search commands...")).toBeInTheDocument();
     });
 
     fireEvent.keyDown(window, { key: "Escape" });
@@ -492,9 +453,7 @@ describe("App", () => {
     await act(async () => {
       await flushAsyncWork();
     });
-    expect(
-      screen.queryByRole("tab", { name: "Threads" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Threads" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mailbox" })).toBeInTheDocument();
   });
 
@@ -507,9 +466,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "p", ctrlKey: true });
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Search commands..."),
-      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search commands...")).toBeInTheDocument();
     });
 
     fireEvent.change(screen.getByPlaceholderText("Search commands..."), {
@@ -537,17 +494,13 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "p", ctrlKey: true });
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Search commands..."),
-      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search commands...")).toBeInTheDocument();
     });
 
     await waitFor(() => {
       expect(document.querySelector('[aria-selected="true"]')).not.toBeNull();
     });
-    const firstSelectedText = document.querySelector(
-      '[aria-selected="true"]',
-    )?.textContent;
+    const firstSelectedText = document.querySelector('[aria-selected="true"]')?.textContent;
 
     fireEvent.keyDown(window, { key: "j" });
 
@@ -589,13 +542,9 @@ describe("App", () => {
     fireEvent.keyDown(window, { key: "j" });
 
     await waitFor(() => {
-      expect(screen.getByText("Vercel").closest("button")?.className).toContain(
-        "bg-success",
-      );
+      expect(screen.getByText("Vercel").closest("button")?.className).toContain("bg-success");
     });
-    expect(screen.getByText("Stripe").closest("button")?.className).toContain(
-      "bg-panel-elevated",
-    );
+    expect(screen.getByText("Stripe").closest("button")?.className).toContain("bg-panel-elevated");
   });
 
   it("keeps the search selection in view while navigating with j", async () => {
@@ -643,9 +592,7 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.keyDown(window, { key: "Enter" });
-    expect(
-      (await screen.findAllByRole("button", { name: "Archive" })).length,
-    ).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("button", { name: "Archive" })).length).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "h" });
     fireEvent.keyDown(window, { key: "j" });
@@ -662,8 +609,7 @@ describe("App", () => {
       expect(getActiveLens("All Mail")).toBeInTheDocument();
     });
     expect(
-      getRecordedDesktopRequests().filter((request) => request.path === "/mailbox")
-        .length,
+      getRecordedDesktopRequests().filter((request) => request.path === "/mailbox").length,
     ).toBe(requestCountBeforeOpen + 1);
 
     fireEvent.keyDown(window, { key: "j" });
@@ -673,8 +619,7 @@ describe("App", () => {
     });
 
     expect(
-      getRecordedDesktopRequests().filter((request) => request.path === "/mailbox")
-        .length,
+      getRecordedDesktopRequests().filter((request) => request.path === "/mailbox").length,
     ).toBe(requestCountBeforeOpen + 1);
   });
 
@@ -687,9 +632,7 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.keyDown(window, { key: "Enter" });
-    expect(
-      (await screen.findAllByRole("button", { name: "Archive" })).length,
-    ).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("button", { name: "Archive" })).length).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "h" });
     fireEvent.keyDown(window, { key: "j" });
@@ -706,8 +649,7 @@ describe("App", () => {
       expect(getActiveLens("All Mail")).toBeInTheDocument();
     });
     expect(
-      getRecordedDesktopRequests().filter((request) => request.path === "/mailbox")
-        .length,
+      getRecordedDesktopRequests().filter((request) => request.path === "/mailbox").length,
     ).toBe(requestCountBeforeOpen + 1);
 
     fireEvent.keyDown(window, { key: "j" });
@@ -717,8 +659,7 @@ describe("App", () => {
     });
 
     expect(
-      getRecordedDesktopRequests().filter((request) => request.path === "/mailbox")
-        .length,
+      getRecordedDesktopRequests().filter((request) => request.path === "/mailbox").length,
     ).toBe(requestCountBeforeOpen + 1);
   });
 
@@ -769,9 +710,7 @@ describe("App", () => {
     resolveRead();
 
     await waitFor(() => {
-      expect(
-        screen.queryByText("Marking 1 message read"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Marking 1 message read")).not.toBeInTheDocument();
     });
   });
 
@@ -809,9 +748,7 @@ describe("App", () => {
 
       expect(readMutationCalls()).toHaveLength(1);
       expect(
-        parseRequestBody<{ message_ids: string[]; read: boolean }>(
-          readMutationCalls()[0],
-        ),
+        parseRequestBody<{ message_ids: string[]; read: boolean }>(readMutationCalls()[0]),
       ).toEqual({
         message_ids: ["msg-2"],
         read: true,
@@ -847,9 +784,7 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(
-        getRecordedDesktopRequests().filter(
-          (request) => request.path === "/mailbox",
-        ).length,
+        getRecordedDesktopRequests().filter((request) => request.path === "/mailbox").length,
       ).toBeGreaterThan(1);
     });
     expect(screen.getByText("Billing alert").closest("button")?.className).toContain(
@@ -867,14 +802,10 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "c" });
 
-    expect(
-      await screen.findByRole("heading", { name: "New message" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New message" })).toBeInTheDocument();
 
     // Step 1: recipient picker shown with contact list
-    expect(
-      screen.getByPlaceholderText("Type a name or email..."),
-    ).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Type a name or email...")).toBeInTheDocument();
   });
 
   it("opens a reply shell for the selected message", async () => {
@@ -887,15 +818,11 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "r" });
 
-    expect(
-      await screen.findByRole("heading", { name: "Reply" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Reply" })).toBeInTheDocument();
 
     const composeCall = findRequest("/compose/session", "POST");
     expect(composeCall).toBeDefined();
-    expect(
-      parseRequestBody<{ kind: string; message_id: string }>(composeCall),
-    ).toMatchObject({
+    expect(parseRequestBody<{ kind: string; message_id: string }>(composeCall)).toMatchObject({
       kind: "reply",
       message_id: "msg-1",
     });
@@ -915,9 +842,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "c" });
 
-    expect(
-      await screen.findByRole("heading", { name: "New message" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New message" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
 
@@ -927,9 +852,7 @@ describe("App", () => {
     expect(screen.getByText("deploy.log")).toBeInTheDocument();
     expect(screen.getByText("screenshot.png")).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Remove attachment deploy.log" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove attachment deploy.log" }));
     expect(screen.queryByText("deploy.log")).not.toBeInTheDocument();
 
     const toInput = screen.getByPlaceholderText("Type a name or email...");
@@ -941,9 +864,9 @@ describe("App", () => {
     await waitFor(() => {
       const updateRequest = findRequest("/compose/session/update", "POST");
       expect(updateRequest).toBeDefined();
-      expect(
-        parseRequestBody<{ attach: string[] }>(updateRequest)?.attach,
-      ).toEqual(["/tmp/screenshot.png"]);
+      expect(parseRequestBody<{ attach: string[] }>(updateRequest)?.attach).toEqual([
+        "/tmp/screenshot.png",
+      ]);
     });
   });
 
@@ -957,9 +880,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "c" });
 
-    expect(
-      await screen.findByRole("heading", { name: "New message" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New message" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("Type a name or email..."), {
       target: { value: "typed@example.com" },
@@ -969,9 +890,7 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(
-        parseRequestBody<{ to: string }>(
-          findRequest("/compose/session/update", "POST"),
-        )?.to,
+        parseRequestBody<{ to: string }>(findRequest("/compose/session/update", "POST"))?.to,
       ).toBe("typed@example.com");
     });
   });
@@ -986,9 +905,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "c" });
 
-    expect(
-      await screen.findByRole("heading", { name: "New message" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New message" })).toBeInTheDocument();
 
     const toInput = screen.getByPlaceholderText("Type a name or email...");
     fireEvent.change(toInput, { target: { value: "race@example.com" } });
@@ -1005,16 +922,12 @@ describe("App", () => {
 
     expect(
       getRecordedDesktopRequests().filter(
-        (request) =>
-          request.path === "/compose/session/update" &&
-          request.method === "POST",
+        (request) => request.path === "/compose/session/update" && request.method === "POST",
       ),
     ).toHaveLength(1);
     expect(
       getRecordedDesktopRequests().filter(
-        (request) =>
-          request.path === "/compose/session/send" &&
-          request.method === "POST",
+        (request) => request.path === "/compose/session/send" && request.method === "POST",
       ),
     ).toHaveLength(1);
   });
@@ -1032,9 +945,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "c" });
 
-    expect(
-      await screen.findByRole("heading", { name: "New message" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New message" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("Type a name or email..."), {
       target: { value: "client@example.com" },
@@ -1043,18 +954,12 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     expect(
-      await screen.findByText((content) =>
-        content.includes("mxr accounts repair consulting"),
-      ),
+      await screen.findByText((content) => content.includes("mxr accounts repair consulting")),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "New message" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "New message" })).toBeInTheDocument();
     expect(
       getRecordedDesktopRequests().filter(
-        (request) =>
-          request.path === "/compose/session/send" &&
-          request.method === "POST",
+        (request) => request.path === "/compose/session/send" && request.method === "POST",
       ),
     ).toHaveLength(1);
   });
@@ -1072,9 +977,7 @@ describe("App", () => {
     });
     fireEvent.click(resumeButton);
 
-    expect(
-      await screen.findByRole("heading", { name: "New message" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New message" })).toBeInTheDocument();
     await waitFor(() => {
       expect(findRequest("/compose/session/restore", "POST")).toBeDefined();
     });
@@ -1109,9 +1012,7 @@ describe("App", () => {
     });
     expect(document.body.textContent).toContain("Move message");
     expect(screen.getByLabelText("Target")).toHaveValue("Inbox");
-    expect(
-      screen.getByRole("option", { name: "Follow Up" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Follow Up" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Move" })).toBeInTheDocument();
   });
 
@@ -1151,9 +1052,7 @@ describe("App", () => {
     await waitFor(() => {
       const request = findRequest("/mutations/labels", "POST");
       expect(request).toBeDefined();
-      expect(
-        parseRequestBody<{ add: string[] }>(request)?.add,
-      ).toEqual(["Waiting"]);
+      expect(parseRequestBody<{ add: string[] }>(request)?.add).toEqual(["Waiting"]);
     });
   });
 
@@ -1167,8 +1066,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "o" });
     expect(
-      (await screen.findAllByRole("heading", { name: "Deploy complete" }))
-        .length,
+      (await screen.findAllByRole("heading", { name: "Deploy complete" })).length,
     ).toBeGreaterThan(0);
 
     expect(document.body.textContent).toContain("lLabel");
@@ -1199,25 +1097,21 @@ describe("App", () => {
       target: { value: "recent" },
     });
     fireEvent.click(screen.getByRole("checkbox", { name: "Explain" }));
-    fireEvent.change(
-      screen.getByPlaceholderText("Search subjects, senders, snippets"),
-      {
-        target: { value: "deploy" },
-      },
-    );
-
-    await act(async () => {
-      await flushAsyncWork();
+    fireEvent.change(screen.getByPlaceholderText("Search subjects, senders, snippets"), {
+      target: { value: "deploy" },
     });
-    const searchCall = findRequestMatching(
-      (request) =>
-        request.path === "/search" &&
-        request.url.includes("mode=semantic") &&
-        request.url.includes("sort=recent") &&
-        request.url.includes("explain=true") &&
-        request.url.includes("q=deploy"),
-    );
-    expect(searchCall).toBeDefined();
+
+    await waitFor(() => {
+      const searchCall = findRequestMatching(
+        (request) =>
+          request.path === "/search" &&
+          request.url.includes("mode=semantic") &&
+          request.url.includes("sort=recent") &&
+          request.url.includes("explain=true") &&
+          request.url.includes("q=deploy"),
+      );
+      expect(searchCall).toBeDefined();
+    });
     expect(document.body.textContent).toContain("semantic");
     expect(document.body.textContent).toContain('"query": "deploy"');
     expect(await screen.findByText("Deploy complete")).toBeInTheDocument();
@@ -1225,9 +1119,7 @@ describe("App", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.keyDown(window, { key: "Z" });
 
-    expect(
-      await screen.findByRole("heading", { name: "Snooze message" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Snooze message" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Snooze" }));
 
     await act(async () => {
@@ -1237,9 +1129,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "D" });
 
-    expect(
-      await screen.findByRole("heading", { name: "Unsubscribe" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Unsubscribe" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
 
     await act(async () => {
@@ -1257,9 +1147,7 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    const input = await screen.findByPlaceholderText(
-      "Search subjects, senders, snippets",
-    );
+    const input = await screen.findByPlaceholderText("Search subjects, senders, snippets");
 
     fireEvent.change(input, {
       target: { value: "deploy" },
@@ -1284,9 +1172,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "/" });
 
-    const input = await screen.findByPlaceholderText(
-      "Search subjects, senders, snippets",
-    );
+    const input = await screen.findByPlaceholderText("Search subjects, senders, snippets");
     expect(screen.getByRole("tab", { name: "Threads" })).toBeInTheDocument();
     expect(document.activeElement).toBe(input);
   });
@@ -1300,15 +1186,12 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "o" });
     expect(
-      (await screen.findAllByRole("heading", { name: "Deploy complete" }))
-        .length,
+      (await screen.findAllByRole("heading", { name: "Deploy complete" })).length,
     ).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "/" });
 
-    const input = await screen.findByPlaceholderText(
-      "Search subjects, senders, snippets",
-    );
+    const input = await screen.findByPlaceholderText("Search subjects, senders, snippets");
     expect(screen.getByRole("tab", { name: "Threads" })).toBeInTheDocument();
     expect(document.activeElement).toBe(input);
   });
@@ -1322,23 +1205,17 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    const input = await screen.findByPlaceholderText(
-      "Search subjects, senders, snippets",
-    );
+    const input = await screen.findByPlaceholderText("Search subjects, senders, snippets");
 
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.keyDown(window, { key: "Enter" });
 
-    expect(
-      (await screen.findAllByRole("button", { name: "Archive" })).length,
-    ).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("button", { name: "Archive" })).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0]!);
 
     await waitFor(() => {
-      expect(screen.queryAllByRole("button", { name: "Archive" })).toHaveLength(
-        0,
-      );
+      expect(screen.queryAllByRole("button", { name: "Archive" })).toHaveLength(0);
     });
   });
 
@@ -1351,16 +1228,12 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    const input = await screen.findByPlaceholderText(
-      "Search subjects, senders, snippets",
-    );
+    const input = await screen.findByPlaceholderText("Search subjects, senders, snippets");
 
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.keyDown(window, { key: "Enter" });
 
-    fireEvent.click(
-      (await screen.findAllByRole("button", { name: "Archive" }))[0]!,
-    );
+    fireEvent.click((await screen.findAllByRole("button", { name: "Archive" }))[0]!);
 
     await waitFor(() => {
       expect(findRequest("/mutations/archive", "POST")).toBeDefined();
@@ -1376,16 +1249,13 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    const input = await screen.findByPlaceholderText(
-      "Search subjects, senders, snippets",
-    );
+    const input = await screen.findByPlaceholderText("Search subjects, senders, snippets");
 
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.keyDown(window, { key: "o" });
 
     expect(
-      (await screen.findAllByRole("heading", { name: "Deploy complete" }))
-        .length,
+      (await screen.findAllByRole("heading", { name: "Deploy complete" })).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("Reading View")).toBeInTheDocument();
     expect(screen.getAllByText("Reply").length).toBeGreaterThan(0);
@@ -1400,9 +1270,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "f", ctrlKey: true });
 
-    const input = await screen.findByPlaceholderText(
-      "Filter by sender, subject, snippet...",
-    );
+    const input = await screen.findByPlaceholderText("Filter by sender, subject, snippet...");
     expect(document.activeElement).toBe(input);
   });
 
@@ -1421,9 +1289,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(
         findRequestMatching(
-          (request) =>
-            request.path === "/mailbox" &&
-            request.url.includes("view=messages"),
+          (request) => request.path === "/mailbox" && request.url.includes("view=messages"),
         ),
       ).toBeDefined();
     });
@@ -1449,12 +1315,12 @@ describe("App", () => {
     );
 
     fireEvent.keyDown(window, { key: "j" });
-    expect(
-      screen.getByText("Deploy follow-up").closest("button")?.className,
-    ).toContain("border-l-accent");
-    expect(
-      screen.getByText("Deploy complete").closest("button")?.className,
-    ).not.toContain("border-l-accent");
+    expect(screen.getByText("Deploy follow-up").closest("button")?.className).toContain(
+      "border-l-accent",
+    );
+    expect(screen.getByText("Deploy complete").closest("button")?.className).not.toContain(
+      "border-l-accent",
+    );
   });
 
   it("updates the open reader as mailbox selection moves", async () => {
@@ -1466,8 +1332,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "Enter" });
     expect(
-      (await screen.findAllByRole("heading", { name: "Deploy complete" }))
-        .length,
+      (await screen.findAllByRole("heading", { name: "Deploy complete" })).length,
     ).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "j" });
@@ -1486,8 +1351,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "o" });
     expect(
-      (await screen.findAllByRole("heading", { name: "Deploy complete" }))
-        .length,
+      (await screen.findAllByRole("heading", { name: "Deploy complete" })).length,
     ).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "h" });
@@ -1509,15 +1373,12 @@ describe("App", () => {
     fireEvent.keyDown(window, { key: "Enter" });
 
     expect(
-      (await screen.findAllByRole("heading", { name: "Deploy complete" }))
-        .length,
+      (await screen.findAllByRole("heading", { name: "Deploy complete" })).length,
     ).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "H" });
 
-    expect(
-      (await screen.findAllByTitle("HTML message")).length,
-    ).toBeGreaterThan(0);
+    expect((await screen.findAllByTitle("HTML message")).length).toBeGreaterThan(0);
   });
 
   it("renders attachment-native search rows with open and download actions", async () => {
@@ -1533,20 +1394,14 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Attachments" }));
 
-    expect((await screen.findAllByText("deploy.log")).length).toBeGreaterThan(
-      0,
-    );
+    expect((await screen.findAllByText("deploy.log")).length).toBeGreaterThan(0);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open attachment deploy.log" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Open attachment deploy.log" }));
     await waitFor(() => {
       expect(findRequest("/attachments/open", "POST")).toBeDefined();
     });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Download attachment deploy.log" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Download attachment deploy.log" }));
     await waitFor(() => {
       expect(findRequest("/attachments/download", "POST")).toBeDefined();
     });
@@ -1561,18 +1416,14 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "p", ctrlKey: true });
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Search commands..."),
-      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search commands...")).toBeInTheDocument();
     });
     fireEvent.change(screen.getByPlaceholderText("Search commands..."), {
       target: { value: "Start Here" },
     });
     fireEvent.keyDown(window, { key: "Enter" });
 
-    expect(
-      await screen.findByRole("heading", { name: "Start here" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Start here" })).toBeInTheDocument();
   });
 
   it("surfaces diagnostics operations for drafts, subscriptions, snoozed mail, and semantic reindex", async () => {
@@ -1585,12 +1436,8 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
 
-    expect(
-      await screen.findByRole("tab", { name: /Drafts/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("tab", { name: /Subscriptions/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: /Drafts/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Subscriptions/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Snoozed/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /Subscriptions/i }));
@@ -1600,9 +1447,7 @@ describe("App", () => {
     expect(await screen.findByText("Billing alert")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /Semantic/i }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Reindex semantic" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Reindex semantic" }));
     await waitFor(() => {
       expect(findRequest("/semantic/reindex", "POST")).toBeDefined();
     });
@@ -1647,9 +1492,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
     fireEvent.click(await screen.findByRole("tab", { name: /Labels/i }));
-    expect(
-      await screen.findByPlaceholderText("Create label"),
-    ).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText("Create label")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Rename" })[0]!);
     fireEvent.change(screen.getByDisplayValue("Follow Up"), {
@@ -1671,9 +1514,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
     fireEvent.click(await screen.findByRole("tab", { name: /Labels/i }));
-    expect(
-      await screen.findByPlaceholderText("Create label"),
-    ).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText("Create label")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
     await waitFor(() => {
@@ -1692,9 +1533,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
     fireEvent.click(await screen.findByRole("tab", { name: /Saved Searches/i }));
 
-    fireEvent.click(
-      (await screen.findAllByRole("button", { name: "Delete" }))[0]!,
-    );
+    fireEvent.click((await screen.findAllByRole("button", { name: "Delete" }))[0]!);
     await waitFor(() => {
       expect(findRequest("/saved-searches/delete", "POST")).toBeDefined();
     });
@@ -1710,18 +1549,14 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "p", ctrlKey: true });
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Search commands..."),
-      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search commands...")).toBeInTheDocument();
     });
     fireEvent.change(screen.getByPlaceholderText("Search commands..."), {
       target: { value: "Open diagnostics labels" },
     });
     fireEvent.keyDown(window, { key: "Enter" });
 
-    expect(
-      await screen.findByPlaceholderText("Create label"),
-    ).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText("Create label")).toBeInTheDocument();
   });
 
   it("opens diagnostics settings from the keyboard and persists the selected theme", async () => {
@@ -1745,10 +1580,7 @@ describe("App", () => {
       expect(desktopApi.updateDesktopSettings).toHaveBeenCalledWith({
         theme: "catppuccin-mocha",
       });
-      expect(document.documentElement).toHaveAttribute(
-        "data-theme",
-        "catppuccin-mocha",
-      );
+      expect(document.documentElement).toHaveAttribute("data-theme", "catppuccin-mocha");
     });
   });
 
@@ -1786,18 +1618,14 @@ describe("App", () => {
         },
       });
     });
-    expect(screen.getByRole("button", { name: "Compose" }).textContent).toContain(
-      "Ctrl-k",
-    );
+    expect(screen.getByRole("button", { name: "Compose" }).textContent).toContain("Ctrl-k");
 
     fireEvent.keyDown(window, { key: "1" });
     await findActiveLens("Inbox");
 
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
 
-    expect(
-      await screen.findByRole("heading", { name: "New message" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New message" })).toBeInTheDocument();
   });
 
   it("toggles remote content in the active HTML reader", async () => {
@@ -1810,15 +1638,16 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "Enter" });
     expect(
-      (await screen.findAllByRole("heading", { name: "Deploy complete" }))
-        .length,
+      (await screen.findAllByRole("heading", { name: "Deploy complete" })).length,
     ).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "H" });
     expect(
-      (await screen.findAllByRole("button", {
-        name: "Load remote content (M)",
-      })).length,
+      (
+        await screen.findAllByRole("button", {
+          name: "Load remote content (M)",
+        })
+      ).length,
     ).toBeGreaterThan(0);
 
     const htmlFrames = await screen.findAllByTitle("HTML message");
@@ -1829,9 +1658,7 @@ describe("App", () => {
       expect(
         htmlFrames.every(
           (frame) =>
-            !(frame.getAttribute("srcdoc") ?? "").includes(
-              "https://cdn.example.com/deploy.png",
-            ),
+            !(frame.getAttribute("srcdoc") ?? "").includes("https://cdn.example.com/deploy.png"),
         ),
       ).toBe(true);
     });
@@ -1843,9 +1670,7 @@ describe("App", () => {
         screen
           .getAllByTitle("HTML message")
           .every((frame) =>
-            (frame.getAttribute("srcdoc") ?? "").includes(
-              "https://cdn.example.com/deploy.png",
-            ),
+            (frame.getAttribute("srcdoc") ?? "").includes("https://cdn.example.com/deploy.png"),
           ),
       ).toBe(true);
     });
@@ -1861,8 +1686,7 @@ describe("App", () => {
 
     fireEvent.keyDown(window, { key: "o" });
     expect(
-      (await screen.findAllByRole("heading", { name: "Deploy complete" }))
-        .length,
+      (await screen.findAllByRole("heading", { name: "Deploy complete" })).length,
     ).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "H" });
@@ -1881,9 +1705,7 @@ describe("App", () => {
     await waitFor(() => {
       expect((frame as HTMLIFrameElement).style.height).toBe("960px");
     });
-    expect((frame as HTMLIFrameElement).getAttribute("srcdoc")).toContain(
-      "max-width: 100%",
-    );
+    expect((frame as HTMLIFrameElement).getAttribute("srcdoc")).toContain("max-width: 100%");
   });
 
   it("opens a rendered browser document, exports threads, and opens attachment/link dialogs", async () => {
@@ -1895,9 +1717,7 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.keyDown(window, { key: "Enter" });
-    expect(
-      (await screen.findAllByRole("button", { name: "Archive" })).length,
-    ).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("button", { name: "Archive" })).length).toBeGreaterThan(0);
 
     fireEvent.keyDown(window, { key: "O" });
 
@@ -1916,9 +1736,7 @@ describe("App", () => {
     });
 
     fireEvent.keyDown(window, { key: "A" });
-    expect(
-      await screen.findByRole("heading", { name: "Attachments" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Attachments" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
 
     await waitFor(() => {
@@ -1928,9 +1746,7 @@ describe("App", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.keyDown(window, { key: "E" });
 
-    expect(
-      await screen.findByRole("heading", { name: "Thread export" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Thread export" })).toBeInTheDocument();
     expect(await screen.findByText(/Export body/)).toBeInTheDocument();
   });
 
@@ -1942,27 +1758,19 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.click(screen.getByRole("button", { name: "Rules" }));
-    expect(
-      await screen.findByRole("heading", { name: "Rules" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Rules" })).toBeInTheDocument();
     expect(await screen.findByText("Archive receipts")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "History" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dry run" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "New" }));
-    expect(
-      await screen.findByRole("heading", { name: "New rule" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New rule" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Accounts" }));
-    expect(
-      await screen.findByRole("heading", { name: "Accounts" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Accounts" })).toBeInTheDocument();
     expect((await screen.findAllByText("Personal")).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Test" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Set default" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set default" })).toBeInTheDocument();
   });
 
   it("opens a new rule from the keyboard on the rules screen", async () => {
@@ -1973,15 +1781,11 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.click(screen.getByRole("button", { name: "Rules" }));
-    expect(
-      await screen.findByRole("heading", { name: "Rules" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Rules" })).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "n" });
 
-    expect(
-      await screen.findByRole("heading", { name: "New rule" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New rule" })).toBeInTheDocument();
   });
 
   it("opens a new account from the keyboard on the accounts screen", async () => {
@@ -1992,15 +1796,11 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.click(screen.getByRole("button", { name: "Accounts" }));
-    expect(
-      await screen.findByRole("heading", { name: "Accounts" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Accounts" })).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "n" });
 
-    expect(
-      await screen.findByRole("heading", { name: "New account" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New account" })).toBeInTheDocument();
   });
 
   it("supports mark-read-and-archive from the TUI manifest action set", async () => {
@@ -2016,17 +1816,11 @@ describe("App", () => {
     await act(async () => {
       await flushAsyncWork();
     });
-    expect(
-      document.querySelector('input[placeholder="Search commands..."]'),
-    ).not.toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: /Mark Read and Archive/i }),
-    );
+    expect(document.querySelector('input[placeholder="Search commands..."]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Mark Read and Archive/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Marking 1 message read and archiving"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Marking 1 message read and archiving")).toBeInTheDocument();
     });
   });
 
@@ -2038,17 +1832,11 @@ describe("App", () => {
     await findActiveLens("Inbox");
 
     fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
-    expect(
-      await screen.findByRole("heading", { name: "Diagnostics" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Diagnostics" })).toBeInTheDocument();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Generate bug report" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Generate bug report" }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Bug report" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Bug report" })).toBeInTheDocument();
     expect(await screen.findByText(/bug report body/)).toBeInTheDocument();
   });
 
@@ -2083,16 +1871,10 @@ describe("App", () => {
     await act(async () => {
       await flushAsyncWork();
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: /Open Diagnostics Details/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /Open Diagnostics Details/i }));
 
-    expect(
-      await screen.findByRole("heading", { name: "Diagnostics details" }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText(/Log file: \/tmp\/mxr\.log/),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Diagnostics details" })).toBeInTheDocument();
+    expect(await screen.findByText(/Log file: \/tmp\/mxr\.log/)).toBeInTheDocument();
   });
 
   it("triggers daemon sync via command palette", async () => {
@@ -2106,9 +1888,7 @@ describe("App", () => {
     // Open command palette and run sync
     fireEvent.keyDown(window, { key: "p", ctrlKey: true });
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Search commands..."),
-      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search commands...")).toBeInTheDocument();
     });
     fireEvent.change(screen.getByPlaceholderText("Search commands..."), {
       target: { value: "Sync now" },
@@ -2150,9 +1930,7 @@ describe("App", () => {
     // Open command palette and toggle remote content
     window.dispatchEvent(new CustomEvent("mxr:command-palette"));
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Search commands..."),
-      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search commands...")).toBeInTheDocument();
     });
     fireEvent.change(screen.getByPlaceholderText("Search commands..."), {
       target: { value: "Toggle remote content" },
@@ -2175,9 +1953,7 @@ describe("App", () => {
     // Open command palette and run save search
     fireEvent.keyDown(window, { key: "p", ctrlKey: true });
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Search commands..."),
-      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search commands...")).toBeInTheDocument();
     });
     fireEvent.change(screen.getByPlaceholderText("Search commands..."), {
       target: { value: "Save current search" },
@@ -2196,9 +1972,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      const createRequest = requests().find(
-        (r) => r.path === "/saved-searches/create",
-      );
+      const createRequest = requests().find((r) => r.path === "/saved-searches/create");
       expect(createRequest).toBeDefined();
       const body = JSON.parse(createRequest!.body!);
       expect(body.name).toBe("deploy alerts");
@@ -2244,9 +2018,7 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Archive"));
 
     await waitFor(() => {
-      const archiveRequest = requests().find(
-        (r) => r.path === "/mutations/archive",
-      );
+      const archiveRequest = requests().find((r) => r.path === "/mutations/archive");
       expect(archiveRequest).toBeDefined();
     });
   });
@@ -2299,14 +2071,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
 
     await waitFor(() => {
-      const moveRequest = requests().find(
-        (request) => request.path === "/mutations/move",
-      );
+      const moveRequest = requests().find((request) => request.path === "/mutations/move");
       expect(moveRequest).toBeDefined();
       expect(
-        parseRequestBody<{ message_ids: string[]; target_label: string }>(
-          moveRequest,
-        ),
+        parseRequestBody<{ message_ids: string[]; target_label: string }>(moveRequest),
       ).toEqual({
         message_ids: ["msg-1"],
         target_label: "Follow Up",

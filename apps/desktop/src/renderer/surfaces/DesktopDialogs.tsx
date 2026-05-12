@@ -44,6 +44,7 @@ export function DesktopDialogs(props: {
   onRemoveComposeAttachment: (path: string) => void;
   onRefreshCompose: () => void;
   onSendCompose: () => void;
+  onScheduleComposeSend: (sendAt: string) => void;
   onSaveCompose: () => void;
   onDiscardCompose: () => void;
   onPersistComposeDraft: () => Promise<void>;
@@ -137,6 +138,7 @@ export function DesktopDialogs(props: {
         onRemoveAttachment={props.onRemoveComposeAttachment}
         onRefresh={props.onRefreshCompose}
         onSend={props.onSendCompose}
+        onScheduleSend={props.onScheduleComposeSend}
         onSave={props.onSaveCompose}
         onDiscard={props.onDiscardCompose}
         onPersistDraft={props.onPersistComposeDraft}

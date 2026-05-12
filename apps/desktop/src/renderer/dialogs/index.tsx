@@ -109,17 +109,13 @@ export function LabelDialog(props: {
 
             if (event.key === "j" || event.key === "ArrowDown") {
               event.preventDefault();
-              setActiveOptionIndex((current) =>
-                clampIndex(current + 1, props.options.length),
-              );
+              setActiveOptionIndex((current) => clampIndex(current + 1, props.options.length));
               return;
             }
 
             if (event.key === "k" || event.key === "ArrowUp") {
               event.preventDefault();
-              setActiveOptionIndex((current) =>
-                clampIndex(current - 1, props.options.length),
-              );
+              setActiveOptionIndex((current) => clampIndex(current - 1, props.options.length));
               return;
             }
 
@@ -142,8 +138,7 @@ export function LabelDialog(props: {
             Apply label
           </Dialog.Title>
           <Dialog.Description className="mt-3 text-sm text-foreground-muted">
-            Toggle existing labels from the list. Use Tab only when you want the
-            custom-label field.
+            Toggle existing labels from the list. Use Tab only when you want the custom-label field.
           </Dialog.Description>
           <div
             ref={listRef}
@@ -206,7 +201,7 @@ export function LabelDialog(props: {
             ))}
           </div>
           <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.18em] text-foreground-subtle">
-            j/k move  space toggle  enter apply  tab custom labels  esc close
+            j/k move space toggle enter apply tab custom labels esc close
           </p>
           <label
             className="mt-5 grid gap-2 border border-outline bg-canvas-elevated px-3 py-3"
@@ -843,9 +838,7 @@ export function AccountFormDialog(props: {
                     <summary className="cursor-pointer text-sm text-foreground-muted">
                       Advanced JSON
                     </summary>
-                    {jsonError ? (
-                      <p className="mt-3 text-xs text-danger">{jsonError}</p>
-                    ) : null}
+                    {jsonError ? <p className="mt-3 text-xs text-danger">{jsonError}</p> : null}
                     <textarea
                       className="mt-3 min-h-64 w-full rounded-md border border-outline bg-panel-muted px-5 py-5 font-mono text-sm leading-7 text-foreground outline-none"
                       value={props.draftJson}
@@ -938,16 +931,8 @@ function ImapSmtpFields(props: {
   const send = props.account.send?.type === "smtp" ? props.account.send : smtpSend(props.account);
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <ServerFields
-        title="IMAP"
-        value={sync}
-        onChange={(next) => props.onSyncChange(next)}
-      />
-      <ServerFields
-        title="SMTP"
-        value={send}
-        onChange={(next) => props.onSendChange(next)}
-      />
+      <ServerFields title="IMAP" value={sync} onChange={(next) => props.onSyncChange(next)} />
+      <ServerFields title="SMTP" value={send} onChange={(next) => props.onSendChange(next)} />
     </div>
   );
 }
@@ -957,22 +942,12 @@ function SmtpFields(props: {
   onSendChange: (send: AccountSendConfig) => void;
 }) {
   const send = props.account.send?.type === "smtp" ? props.account.send : smtpSend(props.account);
-  return (
-    <ServerFields
-      title="SMTP"
-      value={send}
-      onChange={(next) => props.onSendChange(next)}
-    />
-  );
+  return <ServerFields title="SMTP" value={send} onChange={(next) => props.onSendChange(next)} />;
 }
 
-function ServerFields<T extends Extract<AccountSyncConfig | AccountSendConfig, { type: "imap" | "smtp" }>>(
-  props: {
-    title: string;
-    value: T;
-    onChange: (value: T) => void;
-  },
-) {
+function ServerFields<
+  T extends Extract<AccountSyncConfig | AccountSendConfig, { type: "imap" | "smtp" }>,
+>(props: { title: string; value: T; onChange: (value: T) => void }) {
   const update = (patch: Partial<T>) => props.onChange({ ...props.value, ...patch });
   return (
     <section className="grid gap-4 rounded border border-outline bg-panel-muted px-4 py-4">

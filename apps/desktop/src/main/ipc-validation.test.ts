@@ -77,11 +77,11 @@ describe("ipc validation", () => {
       telemetry: { sentryEnabled: true },
     });
     expect(() => validateDesktopSettingsPatch({ theme: "unknown" })).toThrow("theme");
-    expect(() =>
-      validateDesktopSettingsPatch({ telemetry: { sentryEnabled: "yes" } }),
-    ).toThrow("Sentry telemetry");
-    expect(() =>
-      validateDesktopSettingsPatch({ keymapOverrides: { nope: {} } }),
-    ).toThrow("Unknown keymap context");
+    expect(() => validateDesktopSettingsPatch({ telemetry: { sentryEnabled: "yes" } })).toThrow(
+      "Sentry telemetry",
+    );
+    expect(() => validateDesktopSettingsPatch({ keymapOverrides: { nope: {} } })).toThrow(
+      "Unknown keymap context",
+    );
   });
 });

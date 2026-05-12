@@ -1,7 +1,4 @@
-import type {
-  DesktopKeymapBindings,
-  DesktopKeymapContext,
-} from "../../shared/types";
+import type { DesktopKeymapBindings, DesktopKeymapContext } from "../../shared/types";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { tuiDesktopManifest } from "../../shared/generated/tui-manifest";
 
@@ -35,10 +32,7 @@ export type DesktopCommand = {
   shortcut: string;
 };
 
-export type EffectiveDesktopKeymap = Record<
-  DesktopKeymapContext,
-  DesktopBinding[]
->;
+export type EffectiveDesktopKeymap = Record<DesktopKeymapContext, DesktopBinding[]>;
 
 export type PendingBinding = {
   tokens: string[];
@@ -98,9 +92,7 @@ const ACTION_LABELS = new Map<string, string>([
   ["open_diagnostics_section:settings", "Open diagnostics settings"],
 ]);
 
-export function createEffectiveKeymap(
-  overrides: DesktopKeymapBindings,
-): EffectiveDesktopKeymap {
+export function createEffectiveKeymap(overrides: DesktopKeymapBindings): EffectiveDesktopKeymap {
   const base = buildDefaultKeymap();
 
   return {
@@ -120,9 +112,7 @@ export function bindingsForContext(
   return keymap[context];
 }
 
-export function commandPaletteEntries(
-  keymap: EffectiveDesktopKeymap,
-): DesktopCommand[] {
+export function commandPaletteEntries(keymap: EffectiveDesktopKeymap): DesktopCommand[] {
   return tuiDesktopManifest.commands.map((command) => ({
     ...command,
     shortcut: shortcutForAction(keymap, command.action) ?? command.shortcut,
@@ -184,9 +174,7 @@ export function resolveBindingAction(
   return null;
 }
 
-export function serializeKeymapBindings(
-  keymap: EffectiveDesktopKeymap,
-): DesktopKeymapBindings {
+export function serializeKeymapBindings(keymap: EffectiveDesktopKeymap): DesktopKeymapBindings {
   return {
     mailList: serializeContext(keymap.mailList),
     threadView: serializeContext(keymap.threadView),
@@ -210,9 +198,7 @@ export function parseKeymapBindings(input: string): DesktopKeymapBindings {
 
   if (errors.length > 0) {
     const error = errors[0]!;
-    throw new Error(
-      `${printParseErrorCode(error.error)} at offset ${error.offset}`,
-    );
+    throw new Error(`${printParseErrorCode(error.error)} at offset ${error.offset}`);
   }
 
   return validateKeymapBindings(parsed);
@@ -232,9 +218,7 @@ function applyOverrides(
 
   let next = [...defaults];
   for (const [display, action] of Object.entries(overrideContext)) {
-    next = next.filter(
-      (binding) => binding.action !== action && binding.display !== display,
-    );
+    next = next.filter((binding) => binding.action !== action && binding.display !== display);
     next.push(createBinding(display, action));
   }
 
@@ -254,9 +238,7 @@ function buildDefaultKeymap(): EffectiveDesktopKeymap {
 
 function buildBindingsFromMap(bindings: Record<string, DesktopAction>) {
   return sortBindings(
-    Object.entries(bindings).map(([display, action]) =>
-      createBinding(display, action),
-    ),
+    Object.entries(bindings).map(([display, action]) => createBinding(display, action)),
   );
 }
 
@@ -272,8 +254,7 @@ function createBinding(display: string, action: DesktopAction): DesktopBinding {
 function sortBindings(bindings: readonly DesktopBinding[]) {
   return [...bindings].sort(
     (left, right) =>
-      left.display.localeCompare(right.display) ||
-      left.label.localeCompare(right.label),
+      left.display.localeCompare(right.display) || left.label.localeCompare(right.label),
   );
 }
 

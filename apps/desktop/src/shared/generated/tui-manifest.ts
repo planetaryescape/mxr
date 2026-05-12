@@ -451,6 +451,14 @@ export const tuiDesktopManifest = {
         ]
       },
       {
+        "action": "summarize_current_thread",
+        "label": "Summary",
+        "display": "y",
+        "tokens": [
+          "y"
+        ]
+      },
+      {
         "action": "center_current",
         "label": "Center Current",
         "display": "zz",
@@ -693,6 +701,14 @@ export const tuiDesktopManifest = {
         "display": "s",
         "tokens": [
           "s"
+        ]
+      },
+      {
+        "action": "summarize_current_thread",
+        "label": "Summary",
+        "display": "y",
+        "tokens": [
+          "y"
         ]
       }
     ],
@@ -938,6 +954,14 @@ export const tuiDesktopManifest = {
         "tokens": [
           "s"
         ]
+      },
+      {
+        "action": "summarize_current_thread",
+        "label": "Summary",
+        "display": "y",
+        "tokens": [
+          "y"
+        ]
       }
     ]
   },
@@ -1052,7 +1076,7 @@ export const tuiDesktopManifest = {
     },
     {
       "label": "Summarize Thread",
-      "shortcut": "",
+      "shortcut": "y",
       "action": "summarize_current_thread",
       "category": "AI"
     },
@@ -1373,6 +1397,42 @@ export const tuiDesktopManifest = {
       "shortcut": "",
       "action": "reindex_semantic",
       "category": "Semantic"
+    },
+    {
+      "label": "Semantic: Backfill Missing",
+      "shortcut": "",
+      "action": "backfill_semantic",
+      "category": "Semantic"
+    },
+    {
+      "label": "Draft: Assist Current Thread",
+      "shortcut": "",
+      "action": "draft_assist_thread",
+      "category": "AI"
+    },
+    {
+      "label": "Draft: New For Sender",
+      "shortcut": "",
+      "action": "draft_new_for_sender",
+      "category": "AI"
+    },
+    {
+      "label": "Voice: Show Profile",
+      "shortcut": "",
+      "action": "open_voice_profile",
+      "category": "AI"
+    },
+    {
+      "label": "Voice: Rebuild Profile",
+      "shortcut": "",
+      "action": "rebuild_user_voice",
+      "category": "AI"
+    },
+    {
+      "label": "Commitments: Show Open",
+      "shortcut": "",
+      "action": "open_commitments",
+      "category": "AI"
     },
     {
       "label": "Semantic: Install Profile (BGE Small EN)",

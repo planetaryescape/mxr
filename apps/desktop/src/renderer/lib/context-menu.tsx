@@ -29,10 +29,7 @@ export function useContextMenu() {
   return { menu, show, close } as const;
 }
 
-export function ContextMenuOverlay(props: {
-  menu: ContextMenuState | null;
-  onClose: () => void;
-}) {
+export function ContextMenuOverlay(props: { menu: ContextMenuState | null; onClose: () => void }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const { menu, onClose } = props;
@@ -57,24 +54,14 @@ export function ContextMenuOverlay(props: {
 
       if (e.key === "ArrowDown" || e.key === "j") {
         e.preventDefault();
-        setActiveIndex((current) =>
-          findNextInteractiveIndex(
-            menu.items,
-            current ?? -1,
-            1,
-          ),
-        );
+        setActiveIndex((current) => findNextInteractiveIndex(menu.items, current ?? -1, 1));
         return;
       }
 
       if (e.key === "ArrowUp" || e.key === "k") {
         e.preventDefault();
         setActiveIndex((current) =>
-          findNextInteractiveIndex(
-            menu.items,
-            current ?? menu.items.length,
-            -1,
-          ),
+          findNextInteractiveIndex(menu.items, current ?? menu.items.length, -1),
         );
         return;
       }
@@ -158,11 +145,7 @@ export function ContextMenuOverlay(props: {
   );
 }
 
-function findNextInteractiveIndex(
-  items: ContextMenuItem[],
-  start: number,
-  direction: 1 | -1,
-) {
+function findNextInteractiveIndex(items: ContextMenuItem[], start: number, direction: 1 | -1) {
   if (items.length === 0) {
     return null;
   }

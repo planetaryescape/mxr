@@ -109,7 +109,12 @@ export class BridgeManager {
   }
 
   async getState(): Promise<BridgeState> {
-    if (this.state.kind === "ready" && this.bridgeProcess && !this.draining && !this.pendingIntent) {
+    if (
+      this.state.kind === "ready" &&
+      this.bridgeProcess &&
+      !this.draining &&
+      !this.pendingIntent
+    ) {
       return await this.verifyCachedReadyState(this.state, this.bridgeProcess);
     }
     if (this.state.kind !== "idle" && !this.draining && !this.pendingIntent) {
@@ -571,9 +576,7 @@ async function childExitDetails(
   });
 }
 
-async function verifyBridgeContract(
-  connection: BridgeConnection,
-): Promise<MailboxResponse> {
+async function verifyBridgeContract(connection: BridgeConnection): Promise<MailboxResponse> {
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), BRIDGE_VERIFY_TIMEOUT_MS);
   try {

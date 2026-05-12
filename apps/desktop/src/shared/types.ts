@@ -50,16 +50,10 @@ export interface DesktopApi {
   useBundledMxr(): Promise<BridgeState>;
   setExternalBinaryPath(path: string): Promise<BridgeState>;
   getDesktopSettings(): Promise<DesktopSettings>;
-  updateDesktopSettings(
-    patch: DesktopSettingsPatch,
-  ): Promise<DesktopSettings>;
+  updateDesktopSettings(patch: DesktopSettingsPatch): Promise<DesktopSettings>;
   pickAttachments(): Promise<FilePickerResponse>;
-  openDraftInEditor(
-    request: OpenDraftInEditorRequest,
-  ): Promise<ActionAckResponse>;
-  openBrowserDocument(
-    request: OpenBrowserDocumentRequest,
-  ): Promise<ActionAckResponse>;
+  openDraftInEditor(request: OpenDraftInEditorRequest): Promise<ActionAckResponse>;
+  openBrowserDocument(request: OpenBrowserDocumentRequest): Promise<ActionAckResponse>;
   openExternalUrl(url: string): Promise<ActionAckResponse>;
   openLocalPath(path: string): Promise<ActionAckResponse>;
   openConfigFile(): Promise<ActionAckResponse>;
@@ -68,12 +62,7 @@ export interface DesktopApi {
   openDownloadedUpdate(): Promise<ActionAckResponse>;
 }
 
-export type WorkbenchScreen =
-  | "mailbox"
-  | "search"
-  | "rules"
-  | "accounts"
-  | "diagnostics";
+export type WorkbenchScreen = "mailbox" | "search" | "rules" | "accounts" | "diagnostics";
 
 export type LayoutMode = "twoPane" | "threePane" | "fullScreen";
 
@@ -111,9 +100,7 @@ export type DesktopKeymapContext =
   | "accounts"
   | "diagnostics";
 
-export type DesktopKeymapBindings = Partial<
-  Record<DesktopKeymapContext, Record<string, string>>
->;
+export type DesktopKeymapBindings = Partial<Record<DesktopKeymapContext, Record<string, string>>>;
 
 export interface DesktopSettings {
   theme: DesktopThemeId;
@@ -125,9 +112,7 @@ export interface DesktopTelemetrySettings {
   sentryEnabled: boolean;
 }
 
-export type DesktopSettingsPatch = Partial<
-  Omit<DesktopSettings, "telemetry">
-> & {
+export type DesktopSettingsPatch = Partial<Omit<DesktopSettings, "telemetry">> & {
   telemetry?: Partial<DesktopTelemetrySettings>;
 };
 
@@ -179,12 +164,7 @@ export interface SidebarItem {
   lens: SidebarLens;
 }
 
-export type SidebarLensKind =
-  | "inbox"
-  | "all_mail"
-  | "label"
-  | "saved_search"
-  | "subscription";
+export type SidebarLensKind = "inbox" | "all_mail" | "label" | "saved_search" | "subscription";
 
 export interface SidebarLens {
   kind: SidebarLensKind;
@@ -465,6 +445,27 @@ export interface DiagnosticsReport {
   log_size_bytes?: number;
   recommended_next_steps: string[];
   recent_error_logs: string[];
+  findings?: DoctorFinding[];
+}
+
+export type DoctorFindingSeverity = "info" | "warning" | "error";
+
+export type DoctorFindingCategory =
+  | "generic"
+  | "sync"
+  | "o_auth"
+  | "network"
+  | "search_index"
+  | "semantic"
+  | "sqlite_lock"
+  | "storage"
+  | "daemon";
+
+export interface DoctorFinding {
+  category: DoctorFindingCategory;
+  message: string;
+  remediation?: string[];
+  severity: DoctorFindingSeverity;
 }
 
 export interface DiagnosticsResponse {
@@ -606,6 +607,7 @@ export interface SnoozePresetsResponse {
 export interface ActionAckResponse {
   ok: boolean;
   wake_at?: string;
+  draft_id?: string;
 }
 
 export interface ExportThreadResponse {

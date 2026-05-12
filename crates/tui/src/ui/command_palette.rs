@@ -675,6 +675,36 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Semantic".into(),
         },
         PaletteCommand {
+            label: "Draft: Assist Current Thread".into(),
+            shortcut: "".into(),
+            action: Action::DraftAssistCurrentThread,
+            category: "AI".into(),
+        },
+        PaletteCommand {
+            label: "Draft: New For Sender".into(),
+            shortcut: "".into(),
+            action: Action::DraftNewForSender,
+            category: "AI".into(),
+        },
+        PaletteCommand {
+            label: "Voice: Show Profile".into(),
+            shortcut: "".into(),
+            action: Action::OpenVoiceProfile,
+            category: "AI".into(),
+        },
+        PaletteCommand {
+            label: "Voice: Rebuild Profile".into(),
+            shortcut: "".into(),
+            action: Action::RebuildUserVoice,
+            category: "AI".into(),
+        },
+        PaletteCommand {
+            label: "Commitments: Show Open".into(),
+            shortcut: "".into(),
+            action: Action::OpenCommitments,
+            category: "AI".into(),
+        },
+        PaletteCommand {
             label: "Semantic: Install Profile (BGE Small EN)".into(),
             shortcut: "".into(),
             action: Action::InstallSemanticProfile(mxr_core::types::SemanticProfile::BgeSmallEnV15),

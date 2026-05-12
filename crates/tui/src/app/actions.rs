@@ -200,6 +200,11 @@ impl App {
             | Action::ReindexSemantic
             | Action::BackfillSemantic
             | Action::InstallSemanticProfile(_) => self.apply_semantic_action(action),
+            Action::DraftAssistCurrentThread
+            | Action::DraftNewForSender
+            | Action::OpenVoiceProfile
+            | Action::RebuildUserVoice
+            | Action::OpenCommitments => self.apply_platform_action(action),
             Action::RefreshDiagnostics
             | Action::GenerateBugReport
             | Action::EditConfig

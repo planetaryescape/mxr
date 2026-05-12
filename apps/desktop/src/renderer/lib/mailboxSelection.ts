@@ -1,8 +1,6 @@
 import type { MailboxGroup, MailboxRow } from "../../shared/types";
 
-export function mailboxRowSelectionId(
-  row: Pick<MailboxRow, "id" | "kind" | "attachment_id">,
-) {
+export function mailboxRowSelectionId(row: Pick<MailboxRow, "id" | "kind" | "attachment_id">) {
   if (row.kind === "attachment" && row.attachment_id) {
     return `${row.id}:${row.attachment_id}`;
   }
@@ -18,10 +16,7 @@ export function firstMailboxRowSelectionId(groups: MailboxGroup[]) {
   return null;
 }
 
-export function findMailboxRowBySelectionId(
-  groups: MailboxGroup[],
-  selectionId: string | null,
-) {
+export function findMailboxRowBySelectionId(groups: MailboxGroup[], selectionId: string | null) {
   if (!selectionId) {
     return null;
   }
@@ -35,10 +30,7 @@ export function findMailboxRowBySelectionId(
   return null;
 }
 
-export function findMailboxSelectionIdByThreadId(
-  groups: MailboxGroup[],
-  threadId: string | null,
-) {
+export function findMailboxSelectionIdByThreadId(groups: MailboxGroup[], threadId: string | null) {
   if (!threadId) {
     return null;
   }

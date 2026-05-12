@@ -468,7 +468,10 @@ fn classify_log_line(line: &str) -> Option<mxr_protocol::DoctorFinding> {
             category: DoctorFindingCategory::OAuth,
             severity: DoctorFindingSeverity::Warning,
             message: "OAuth token issue in recent logs".into(),
-            remediation: vec!["Re-authenticate: `mxr accounts add` (same key) or the web app account OAuth flow.".into()],
+            remediation: vec![
+                "Re-authenticate: `mxr accounts add` (same key) or the web app account OAuth flow."
+                    .into(),
+            ],
         });
     }
     if lower.contains("database is locked") {

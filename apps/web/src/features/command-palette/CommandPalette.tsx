@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Archive,
@@ -16,6 +16,7 @@ import {
   UserCog,
 } from "lucide-react";
 import { useMemo } from "react";
+import { toast } from "sonner";
 
 import {
   CommandDialog,
@@ -27,7 +28,9 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
-import { fetchShell } from "@/features/mailbox/api";
+import { fetchAccounts } from "@/features/accounts/api";
+import { backfillSemantic } from "@/features/diagnostics/api";
+import { fetchShell, listCommitments } from "@/features/mailbox/api";
 import type { SidebarItem } from "@/features/mailbox/types";
 import { useModals } from "@/state/modalStore";
 
@@ -39,6 +42,15 @@ interface ActionItem {
   run: () => void;
 }
 
+const commandActionIds = new Set([
+  "compose",
+  "draft-to",
+  "show-commitments",
+  "semantic-backfill",
+  "rules-new",
+  "accounts-new",
+]);
+
 export function CommandPaletteMount() {
   const navigate = useNavigate();
   const path = useRouterState({ select: (state) => state.location.pathname });
@@ -46,12 +58,33 @@ export function CommandPaletteMount() {
   const setOpen = useModals((state) => state.setCommandPaletteOpen);
   const setSearchOpen = useModals((state) => state.setSearchPaletteOpen);
   const setComposeOpen = useModals((state) => state.setComposeLauncherOpen);
+  const openRail = useModals((state) => state.openRightRail);
   const shell = useQuery({
     queryKey: ["shell"],
     queryFn: fetchShell,
     staleTime: 60_000,
     enabled: open,
   });
+  const accounts = useQuery({
+    queryKey: ["accounts"],
+    queryFn: fetchAccounts,
+    staleTime: 60_000,
+    enabled: open,
+  });
+  const semanticBackfill = useMutation({
+    mutationFn: backfillSemantic,
+    onSuccess: () => toast.success("Semantic backfill queued"),
+    onError: (error) => toast.error("Semantic backfill failed", { description: error.message }),
+  });
+  const commitments = useMutation({
+    mutationFn: (accountId: string) => listCommitments({ accountId, status: "open" }),
+    onSuccess: (result) => openRail("commitments", result),
+    onError: (error) => toast.error("Commitments unavailable", { description: error.message }),
+  });
+  const defaultAccount =
+    accounts.data?.accounts.find((account) => account.enabled && account.is_default) ??
+    accounts.data?.accounts.find((account) => account.enabled) ??
+    accounts.data?.accounts[0];
 
   const actions = useMemo<ActionItem[]>(() => {
     const go = (to: string) => () => {
@@ -67,6 +100,37 @@ export function CommandPaletteMount() {
         run: () => {
           setOpen(false);
           setComposeOpen(true);
+        },
+      },
+      {
+        id: "draft-to",
+        label: "Draft to...",
+        description: "Pick a recipient, then use Draft for me",
+        run: () => {
+          setOpen(false);
+          setComposeOpen(true);
+        },
+      },
+      {
+        id: "show-commitments",
+        label: "Show commitments...",
+        description: "Open unresolved relationship commitments",
+        run: () => {
+          setOpen(false);
+          if (!defaultAccount?.account_id) {
+            toast.error("No account available");
+            return;
+          }
+          commitments.mutate(defaultAccount.account_id);
+        },
+      },
+      {
+        id: "semantic-backfill",
+        label: "Backfill semantic now",
+        description: "Queue local semantic chunk and embedding repair",
+        run: () => {
+          setOpen(false);
+          semanticBackfill.mutate();
         },
       },
       {
@@ -163,15 +227,20 @@ export function CommandPaletteMount() {
       });
     }
     return items;
-  }, [navigate, path, setComposeOpen, setOpen, setSearchOpen]);
+  }, [
+    commitments,
+    defaultAccount?.account_id,
+    navigate,
+    path,
+    semanticBackfill,
+    setComposeOpen,
+    setOpen,
+    setSearchOpen,
+  ]);
 
   const sidebarItems = shell.data?.sidebar?.sections?.flatMap((section) => section.items) ?? [];
-  const commandActions = actions.filter((action) =>
-    ["compose", "rules-new", "accounts-new"].includes(action.id),
-  );
-  const navigationActions = actions.filter(
-    (action) => !["compose", "rules-new", "accounts-new"].includes(action.id),
-  );
+  const commandActions = actions.filter((action) => commandActionIds.has(action.id));
+  const navigationActions = actions.filter((action) => !commandActionIds.has(action.id));
   const settings = settingsActions((to) => () => {
     setOpen(false);
     void navigate({ to });
@@ -253,6 +322,9 @@ export function CommandPaletteMount() {
 function iconForAction(id: string) {
   if (id.includes("new")) return <Plus className="size-3.5" />;
   if (id.includes("compose")) return <Mail className="size-3.5" />;
+  if (id.includes("draft")) return <Mail className="size-3.5" />;
+  if (id.includes("commitments")) return <FileText className="size-3.5" />;
+  if (id.includes("semantic")) return <Shield className="size-3.5" />;
   if (id.includes("search")) return <Search className="size-3.5" />;
   if (id.includes("sent")) return <Send className="size-3.5" />;
   if (id.includes("analytics")) return <BarChart3 className="size-3.5" />;
@@ -276,6 +348,7 @@ function settingsActions(go: (to: string) => () => void): ActionItem[] {
       "/settings/notifications",
     ],
     ["settings-compose", "Compose settings", "Choose editor preference", "/settings/compose"],
+    ["settings-voice", "Voice settings", "Inspect local voice profile", "/settings/voice"],
     ["settings-llm", "LLM settings", "Configure summaries and draft assist", "/settings/llm"],
     ["settings-snippets", "Snippets", "Manage compose snippets", "/settings/snippets"],
     ["settings-token", "Bridge token", "Paste or inspect the bridge token", "/settings/token"],

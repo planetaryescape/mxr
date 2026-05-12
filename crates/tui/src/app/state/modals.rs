@@ -88,6 +88,10 @@ pub struct ModalsState {
     /// Populated by palette actions (Enable/Disable/Reindex/Install
     /// Profile); drained one-at-a-time by the lib.rs dispatcher.
     pub pending_semantic_dispatch: Vec<Request>,
+    /// Queue of one-shot platform/AI requests whose result should be
+    /// shown in a read-only modal (draft suggestions, commitments, voice).
+    pub pending_platform_dispatch: Vec<PendingPlatformDispatch>,
+    pub platform: PlatformModalState,
     /// Modal for editing the active analytics view's filter
     /// parameters in one form. Populated when the user presses `f`
     /// inside the Analytics screen; cleared on Esc/Enter.
@@ -114,6 +118,51 @@ pub struct ModalsState {
     /// summary of the focused thread. Loading / error / disabled
     /// states all surface inline.
     pub summary: ThreadSummaryModalState,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingPlatformDispatch {
+    pub request: Request,
+    pub title: String,
+    pub loading: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PlatformModalState {
+    pub visible: bool,
+    pub loading: bool,
+    pub title: String,
+    pub body: Option<String>,
+    pub error: Option<String>,
+}
+
+impl PlatformModalState {
+    pub fn open_loading(&mut self, title: impl Into<String>, loading: impl Into<String>) {
+        self.visible = true;
+        self.loading = true;
+        self.title = title.into();
+        self.body = Some(loading.into());
+        self.error = None;
+    }
+
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.loading = false;
+        self.body = None;
+        self.error = None;
+    }
+
+    pub fn set_body(&mut self, body: String) {
+        self.loading = false;
+        self.body = Some(body);
+        self.error = None;
+    }
+
+    pub fn set_error(&mut self, message: String) {
+        self.loading = false;
+        self.body = None;
+        self.error = Some(message);
+    }
 }
 
 /// Read-only state for the snippets browser modal. `visible=true`

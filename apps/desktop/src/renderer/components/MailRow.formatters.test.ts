@@ -52,20 +52,18 @@ describe("smartSenderDisplay", () => {
   });
 
   it("falls back to email local-part when display is blank", () => {
-    expect(
-      smartSenderDisplay(row({ sender: "   ", sender_detail: "bob@example.com" })),
-    ).toBe("bob");
+    expect(smartSenderDisplay(row({ sender: "   ", sender_detail: "bob@example.com" }))).toBe(
+      "bob",
+    );
   });
 
   it("returns the full email when no @ is present", () => {
-    expect(
-      smartSenderDisplay(row({ sender: "", sender_detail: "weird-handle" })),
-    ).toBe("weird-handle");
+    expect(smartSenderDisplay(row({ sender: "", sender_detail: "weird-handle" }))).toBe(
+      "weird-handle",
+    );
   });
 
   it("returns a placeholder when both fields are empty", () => {
-    expect(smartSenderDisplay(row({ sender: "", sender_detail: null }))).toBe(
-      "(unknown sender)",
-    );
+    expect(smartSenderDisplay(row({ sender: "", sender_detail: null }))).toBe("(unknown sender)");
   });
 });

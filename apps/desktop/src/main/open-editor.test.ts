@@ -10,7 +10,12 @@ describe("buildEditorLaunch", () => {
   });
 
   it("preserves quoted editor args", () => {
-    expect(buildEditorLaunch('"/Applications/Editor App.app/Contents/MacOS/editor" --reuse-window', "/tmp/mxr-draft.md")).toEqual({
+    expect(
+      buildEditorLaunch(
+        '"/Applications/Editor App.app/Contents/MacOS/editor" --reuse-window',
+        "/tmp/mxr-draft.md",
+      ),
+    ).toEqual({
       executable: "/Applications/Editor App.app/Contents/MacOS/editor",
       args: ["--reuse-window", "/tmp/mxr-draft.md"],
     });
@@ -29,8 +34,6 @@ describe("buildEditorLaunch", () => {
   });
 
   it("rejects shell syntax", () => {
-    expect(() => buildEditorLaunch("vim; rm -rf /", "/tmp/mxr-draft.md")).toThrow(
-      "shell syntax",
-    );
+    expect(() => buildEditorLaunch("vim; rm -rf /", "/tmp/mxr-draft.md")).toThrow("shell syntax");
   });
 });

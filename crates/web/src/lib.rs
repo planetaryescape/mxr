@@ -1217,6 +1217,7 @@ async fn send_compose_session(
         "bridge compose send requested"
     );
     let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    let draft_id = draft.id.clone();
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
@@ -1248,7 +1249,7 @@ async fn send_compose_session(
     }
     remove_compose_file(Path::new(&request.draft_path)).await?;
     remove_compose_attachment_dir(Path::new(&request.draft_path)).await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(json!({ "ok": true, "draft_id": draft_id })))
 }
 
 async fn save_compose_session(
@@ -1271,6 +1272,7 @@ async fn save_compose_session(
         "bridge compose save requested"
     );
     let draft = compose_draft_from_file(&request.draft_path, &request.account_id).await?;
+    let draft_id = draft.id.clone();
     match ipc_request_with_id(
         &state.config.socket_path,
         request_id,
@@ -1300,7 +1302,7 @@ async fn save_compose_session(
             return Err(error);
         }
     }
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(json!({ "ok": true, "draft_id": draft_id })))
 }
 
 async fn upload_compose_attachment(

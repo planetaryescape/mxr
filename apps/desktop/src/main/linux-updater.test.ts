@@ -53,9 +53,9 @@ describe("LinuxUpdateManager", () => {
       status: "downloaded",
       sha256: sha,
     });
-    if (downloaded.status === "downloaded") {
-      await expect(readFile(downloaded.path, "utf8")).resolves.toBe("installer bytes");
-    }
+    expect(downloaded.status).toBe("downloaded");
+    const downloadedPath = downloaded.status === "downloaded" ? downloaded.path : "";
+    await expect(readFile(downloadedPath, "utf8")).resolves.toBe("installer bytes");
   });
 
   it("refuses an unverified installer", async () => {

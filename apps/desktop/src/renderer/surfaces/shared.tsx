@@ -34,7 +34,10 @@ export function HeaderActionButton(props: {
     >
       <span>{props.label}</span>
       {props.shortcut ? (
-        <kbd aria-hidden="true" className="font-mono text-[length:var(--text-2xs)] uppercase text-foreground-subtle">
+        <kbd
+          aria-hidden="true"
+          className="font-mono text-[length:var(--text-2xs)] uppercase text-foreground-subtle"
+        >
           {props.shortcut}
         </kbd>
       ) : null}

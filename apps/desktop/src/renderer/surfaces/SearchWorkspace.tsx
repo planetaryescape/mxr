@@ -137,13 +137,25 @@ export function SearchWorkspace(props: {
             className="mt-2"
           >
             <Tabs.List className="flex gap-0.5">
-              <Tabs.Tab value="threads" className={scopeTabClass} style={{ borderRadius: "var(--radius-sm)" }}>
+              <Tabs.Tab
+                value="threads"
+                className={scopeTabClass}
+                style={{ borderRadius: "var(--radius-sm)" }}
+              >
                 Threads
               </Tabs.Tab>
-              <Tabs.Tab value="messages" className={scopeTabClass} style={{ borderRadius: "var(--radius-sm)" }}>
+              <Tabs.Tab
+                value="messages"
+                className={scopeTabClass}
+                style={{ borderRadius: "var(--radius-sm)" }}
+              >
                 Messages
               </Tabs.Tab>
-              <Tabs.Tab value="attachments" className={scopeTabClass} style={{ borderRadius: "var(--radius-sm)" }}>
+              <Tabs.Tab
+                value="attachments"
+                className={scopeTabClass}
+                style={{ borderRadius: "var(--radius-sm)" }}
+              >
                 Attachments
               </Tabs.Tab>
             </Tabs.List>
@@ -166,10 +178,7 @@ export function SearchWorkspace(props: {
         </div>
 
         {/* Results */}
-        <div
-          ref={resultsRef}
-          className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto"
-        >
+        <div ref={resultsRef} className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto">
           {props.explain && props.state.explain ? (
             <div className="border-b border-outline bg-panel-muted px-3 py-2">
               <p className="mono-meta">Explain</p>
@@ -187,9 +196,7 @@ export function SearchWorkspace(props: {
                 <AttachmentSearchRow
                   key={entry.id}
                   row={entry.row}
-                  selected={
-                    props.selectedThreadId === mailboxRowSelectionId(entry.row)
-                  }
+                  selected={props.selectedThreadId === mailboxRowSelectionId(entry.row)}
                   multiSelected={props.selectedMessageIds.has(entry.row.id)}
                   pending={props.pendingMessageIds.has(entry.row.id)}
                   onSelect={() => props.onSelect(mailboxRowSelectionId(entry.row))}
@@ -205,9 +212,7 @@ export function SearchWorkspace(props: {
                 <MailRow
                   key={entry.id}
                   row={entry.row}
-                  selected={
-                    props.selectedThreadId === mailboxRowSelectionId(entry.row)
-                  }
+                  selected={props.selectedThreadId === mailboxRowSelectionId(entry.row)}
                   multiSelected={props.selectedMessageIds.has(entry.row.id)}
                   pending={props.pendingMessageIds.has(entry.row.id)}
                   removing={false}
@@ -233,9 +238,7 @@ export function SearchWorkspace(props: {
       {showReader ? (
         <ReaderPane
           className={cn(
-            props.layoutMode === "fullScreen"
-              ? "min-h-0 flex"
-              : "hidden min-h-0 xl:flex",
+            props.layoutMode === "fullScreen" ? "min-h-0 flex" : "hidden min-h-0 xl:flex",
             props.layoutMode === "fullScreen" ? "xl:col-span-2" : "",
           )}
           thread={props.thread}

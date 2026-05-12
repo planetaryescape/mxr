@@ -48,16 +48,9 @@ export function BrowserDialogs(props: {
   }
   switch (props.state.kind) {
     case "snippets":
-      return (
-        <SnippetsBrowserDialog bridge={props.bridge} onClose={props.onClose} />
-      );
+      return <SnippetsBrowserDialog bridge={props.bridge} onClose={props.onClose} />;
     case "reply_queue":
-      return (
-        <ReplyQueueBrowserDialog
-          bridge={props.bridge}
-          onClose={props.onClose}
-        />
-      );
+      return <ReplyQueueBrowserDialog bridge={props.bridge} onClose={props.onClose} />;
     case "sender":
       return (
         <SenderProfileBrowserDialog
@@ -150,9 +143,7 @@ function EmptyHint(props: { title: string; cli: string; body: string }) {
     <div className="mt-6 rounded border border-outline bg-panel-elevated px-5 py-8 text-sm">
       <p className="text-foreground">{props.title}</p>
       <p className="mt-3 text-foreground-muted">{props.body}</p>
-      <p className="mt-4 font-mono text-[12px] text-foreground-subtle">
-        {props.cli}
-      </p>
+      <p className="mt-4 font-mono text-[12px] text-foreground-subtle">{props.cli}</p>
     </div>
   );
 }
@@ -161,16 +152,13 @@ function EmptyHint(props: { title: string; cli: string; body: string }) {
 /*                              Snippets browser                              */
 /* -------------------------------------------------------------------------- */
 
-export function SnippetsBrowserDialog(props: {
-  bridge: BridgeReadyState;
-  onClose: () => void;
-}) {
+export function SnippetsBrowserDialog(props: { bridge: BridgeReadyState; onClose: () => void }) {
   const { snippets, loading, error } = useBridgeQuery<SnippetData[]>({
     bridge: props.bridge,
     path: `${BRIDGE_BASE_PATH}/snippets`,
     label: "snippets:list",
     selector: (data: { kind: string; snippets?: SnippetData[] }) =>
-      data.kind === "Snippets" ? data.snippets ?? [] : [],
+      data.kind === "Snippets" ? (data.snippets ?? []) : [],
   });
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -247,21 +235,17 @@ export function SnippetsBrowserDialog(props: {
 /*                              Reply-later queue                             */
 /* -------------------------------------------------------------------------- */
 
-export function ReplyQueueBrowserDialog(props: {
-  bridge: BridgeReadyState;
-  onClose: () => void;
-}) {
-  const { messages, loading, error } = useBridgeQuery<EnvelopeRow[]>({
-    bridge: props.bridge,
-    path: `${BRIDGE_BASE_PATH}/reply-later`,
-    label: "reply-later:list",
-    selector: (
-      data: { kind: string; messages?: EnvelopeFromBridge[] },
-    ) =>
-      data.kind === "ReplyQueue"
-        ? (data.messages ?? []).map(envelopeToRow)
-        : [],
-  }, "messages");
+export function ReplyQueueBrowserDialog(props: { bridge: BridgeReadyState; onClose: () => void }) {
+  const { messages, loading, error } = useBridgeQuery<EnvelopeRow[]>(
+    {
+      bridge: props.bridge,
+      path: `${BRIDGE_BASE_PATH}/reply-later`,
+      label: "reply-later:list",
+      selector: (data: { kind: string; messages?: EnvelopeFromBridge[] }) =>
+        data.kind === "ReplyQueue" ? (data.messages ?? []).map(envelopeToRow) : [],
+    },
+    "messages",
+  );
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
@@ -323,9 +307,7 @@ export function ReplyQueueBrowserDialog(props: {
                 <DefField label="Subject" value={selected.subject || "(no subject)"} />
                 <DefField label="From" value={selected.from.email} />
                 <DefField label="Date" value={selected.date} />
-                <p className="mt-4 whitespace-pre-wrap text-foreground-muted">
-                  {selected.snippet}
-                </p>
+                <p className="mt-4 whitespace-pre-wrap text-foreground-muted">{selected.snippet}</p>
               </>
             ) : null}
           </section>
@@ -349,13 +331,16 @@ export function SenderProfileBrowserDialog(props: {
   const path = `${BRIDGE_BASE_PATH}/sender?account_id=${encodeURIComponent(
     props.accountId,
   )}&email=${encodeURIComponent(props.email)}`;
-  const { profile, loading, error } = useBridgeQuery<SenderProfileData | null>({
-    bridge: props.bridge,
-    path,
-    label: "sender:profile",
-    selector: (data: { kind: string; profile?: SenderProfileData | null }) =>
-      data.kind === "SenderProfile" ? data.profile ?? null : null,
-  }, "profile");
+  const { profile, loading, error } = useBridgeQuery<SenderProfileData | null>(
+    {
+      bridge: props.bridge,
+      path,
+      label: "sender:profile",
+      selector: (data: { kind: string; profile?: SenderProfileData | null }) =>
+        data.kind === "SenderProfile" ? (data.profile ?? null) : null,
+    },
+    "profile",
+  );
 
   return (
     <ModalShell
@@ -375,42 +360,22 @@ export function SenderProfileBrowserDialog(props: {
       ) : null}
       {!loading && !error && profile ? (
         <div className="mt-5 grid gap-3 text-sm">
-          {profile.display_name ? (
-            <DefField label="Name" value={profile.display_name} />
-          ) : null}
+          {profile.display_name ? <DefField label="Name" value={profile.display_name} /> : null}
           <DefField
             label="Volume"
             value={`${profile.total_inbound} inbound · ${profile.total_outbound} outbound · ${profile.replied_count} replied`}
           />
           {profile.cadence_days_p50 != null ? (
-            <DefField
-              label="Cadence p50"
-              value={`${profile.cadence_days_p50.toFixed(1)} days`}
-            />
+            <DefField label="Cadence p50" value={`${profile.cadence_days_p50.toFixed(1)} days`} />
           ) : null}
-          <DefField
-            label="Open threads"
-            value={String(profile.open_thread_count)}
-          />
-          <DefField
-            label="First seen"
-            value={shortDate(profile.first_seen_at)}
-          />
-          <DefField
-            label="Last seen"
-            value={shortDate(profile.last_seen_at)}
-          />
+          <DefField label="Open threads" value={String(profile.open_thread_count)} />
+          <DefField label="First seen" value={shortDate(profile.first_seen_at)} />
+          <DefField label="Last seen" value={shortDate(profile.last_seen_at)} />
           {profile.last_inbound_at ? (
-            <DefField
-              label="Last from"
-              value={shortDate(profile.last_inbound_at)}
-            />
+            <DefField label="Last from" value={shortDate(profile.last_inbound_at)} />
           ) : null}
           {profile.last_outbound_at ? (
-            <DefField
-              label="Last to"
-              value={shortDate(profile.last_outbound_at)}
-            />
+            <DefField label="Last to" value={shortDate(profile.last_outbound_at)} />
           ) : null}
           {profile.is_list_sender ? (
             <p className="mt-2 rounded border border-warning/30 bg-warning/10 px-3 py-2 text-foreground">
@@ -454,7 +419,7 @@ export function ScreenerBrowserDialog(props: {
       path,
       label: "screener:queue",
       selector: (data: { kind: string; entries?: ScreenerQueueEntry[] }) =>
-        data.kind === "ScreenerQueue" ? data.entries ?? [] : [],
+        data.kind === "ScreenerQueue" ? (data.entries ?? []) : [],
     },
     "entries",
     refreshKey,
@@ -489,9 +454,7 @@ export function ScreenerBrowserDialog(props: {
           requestLabel: "screener:dispose",
         },
       );
-      props.onShowNotice(
-        `Screener: ${disposition.replace("_", " ")} ${senderEmail}`,
-      );
+      props.onShowNotice(`Screener: ${disposition.replace("_", " ")} ${senderEmail}`);
       setRefreshKey((current) => current + 1);
     } catch (cause) {
       props.onShowNotice(
@@ -539,9 +502,7 @@ export function ScreenerBrowserDialog(props: {
                   )}
                   onClick={() => setSelectedIndex(index)}
                 >
-                  <span className="block truncate">
-                    {entry.display_name ?? entry.sender_email}
-                  </span>
+                  <span className="block truncate">{entry.display_name ?? entry.sender_email}</span>
                   <span className="mt-0.5 block truncate text-foreground-subtle">
                     {entry.message_count} message
                     {entry.message_count === 1 ? "" : "s"}
@@ -559,10 +520,7 @@ export function ScreenerBrowserDialog(props: {
                 ) : null}
                 <DefField label="Latest" value={selected.latest_subject} />
                 <DefField label="Latest at" value={shortDate(selected.latest_at)} />
-                <DefField
-                  label="Messages"
-                  value={String(selected.message_count)}
-                />
+                <DefField label="Messages" value={String(selected.message_count)} />
                 <div className="mt-5 flex flex-wrap gap-2">
                   {DISPOSITIONS.map((item) => (
                     <button
@@ -760,9 +718,7 @@ export function SummaryBrowserDialog(props: {
     };
   }, [props.bridge.baseUrl, props.bridge.authToken, props.threadId]);
 
-  const title = summary
-    ? `Thread summary · ${summary.model}`
-    : "Thread summary";
+  const title = summary ? `Thread summary · ${summary.model}` : "Thread summary";
 
   return (
     <ModalShell
@@ -774,9 +730,7 @@ export function SummaryBrowserDialog(props: {
       {error ? <ErrorBanner message={error} /> : null}
       {loading ? <LoadingPlaceholder label="Summarizing thread..." /> : null}
       {!loading && !error && summary ? (
-        <p className="mt-5 whitespace-pre-wrap text-sm leading-7 text-foreground">
-          {summary.text}
-        </p>
+        <p className="mt-5 whitespace-pre-wrap text-sm leading-7 text-foreground">{summary.text}</p>
       ) : null}
       <CloseFooter onClose={props.onClose} />
     </ModalShell>
@@ -894,4 +848,3 @@ export function DraftAssistBrowserDialog(props: {
     </ModalShell>
   );
 }
-

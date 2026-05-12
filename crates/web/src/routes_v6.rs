@@ -1977,16 +1977,10 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         )
         .route("/drafts/{draft_id}/send-stored", post(send_stored_draft))
         .route("/drafts/{draft_id}/stored", delete(delete_draft_stored))
-        .route(
-            "/signatures",
-            get(list_signatures).post(set_signature),
-        )
+        .route("/signatures", get(list_signatures).post(set_signature))
         .route("/signature-defaults", get(list_signature_defaults))
         .route("/signatures/resolve", post(resolve_signature))
-        .route(
-            "/signatures/default/clear",
-            post(clear_signature_default),
-        )
+        .route("/signatures/default/clear", post(clear_signature_default))
         .route("/signatures/default", post(set_signature_default))
         .route("/signatures/{name}", delete(delete_signature))
         .route("/mutations/undo", post(undo_mutation))

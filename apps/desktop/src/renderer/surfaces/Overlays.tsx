@@ -157,7 +157,10 @@ export function CommandPaletteOverlay(props: {
   }
 
   // Group commands by category
-  const grouped: Array<{ category: string; items: Array<{ index: number; action: string; label: string; shortcut: string }> }> = [];
+  const grouped: Array<{
+    category: string;
+    items: Array<{ index: number; action: string; label: string; shortcut: string }>;
+  }> = [];
   let currentCategory = "";
   for (let i = 0; i < props.commands.length; i++) {
     const cmd = props.commands[i];
@@ -165,7 +168,12 @@ export function CommandPaletteOverlay(props: {
       currentCategory = cmd.category;
       grouped.push({ category: cmd.category, items: [] });
     }
-    grouped[grouped.length - 1].items.push({ index: i, action: cmd.action, label: cmd.label, shortcut: cmd.shortcut });
+    grouped[grouped.length - 1].items.push({
+      index: i,
+      action: cmd.action,
+      label: cmd.label,
+      shortcut: cmd.shortcut,
+    });
   }
 
   return (
@@ -290,10 +298,7 @@ export function HelpOverlay(props: {
   );
 }
 
-export function OnboardingOverlay(props: {
-  open: boolean;
-  onClose: () => void;
-}) {
+export function OnboardingOverlay(props: { open: boolean; onClose: () => void }) {
   if (!props.open) {
     return null;
   }
@@ -341,8 +346,8 @@ export function OnboardingOverlay(props: {
             <p className="mono-meta">3. Compose</p>
             <h3 className="mt-2 text-sm font-semibold text-foreground">Draft in $EDITOR</h3>
             <p className="mt-2 text-sm leading-6 text-foreground-muted">
-              New mail, replies, and forwards all share the same draft session so save, reopen,
-              and send stay predictable.
+              New mail, replies, and forwards all share the same draft session so save, reopen, and
+              send stay predictable.
             </p>
           </article>
         </div>

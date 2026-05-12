@@ -5,7 +5,7 @@ Contributor- and agent-facing docs. User-facing docs live in [`site/src/content/
 | Area | Path | Purpose |
 |---|---|---|
 | Blueprint | [blueprint/README.md](./blueprint/README.md) | What to build: requirements, design, decisions. |
-| Implementation | [implementation/README.md](./implementation/README.md) | How to build it: phased build plans. |
+| Implementation journey | [implementation-journey.md](./implementation-journey.md) | Historical phased delivery, superseded plans, bridge/semantic context, future reauth + distro packaging. |
 | Web app | [web-app/README.md](./web-app/README.md) | Per-phase execution briefs for `apps/web/`. |
 | Vision | [vision/README.md](./vision/README.md) | Delight plan + AI-email roadmap. |
 | Reference | [reference/](./reference/) | Rust, email standards, tokio, test-quality audits. |

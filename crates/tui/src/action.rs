@@ -154,6 +154,11 @@ pub enum Action {
     ReindexSemantic,
     BackfillSemantic,
     InstallSemanticProfile(mxr_core::types::SemanticProfile),
+    DraftAssistCurrentThread,
+    DraftNewForSender,
+    OpenVoiceProfile,
+    RebuildUserVoice,
+    OpenCommitments,
     RefreshDiagnostics,
     RefreshAccounts,
     OpenAccountFormNew,
@@ -341,6 +346,9 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | EditConfig
                 | OpenLogs
                 | ShowOnboarding
+                | OpenVoiceProfile
+                | RebuildUserVoice
+                | OpenCommitments
                 | Help
                 | QuitView
                 | MoveDown
@@ -379,6 +387,9 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ReindexSemantic
                 | BackfillSemantic
                 | InstallSemanticProfile(_)
+                | OpenVoiceProfile
+                | RebuildUserVoice
+                | OpenCommitments
         ),
         SearchResults | SearchPreview => !matches!(
             action,
@@ -436,6 +447,9 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ReindexSemantic
                 | BackfillSemantic
                 | InstallSemanticProfile(_)
+                | OpenVoiceProfile
+                | RebuildUserVoice
+                | OpenCommitments
         ),
         Diagnostics => matches!(
             action,
@@ -458,6 +472,9 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ReindexSemantic
                 | BackfillSemantic
                 | InstallSemanticProfile(_)
+                | OpenVoiceProfile
+                | RebuildUserVoice
+                | OpenCommitments
                 | RefreshDiagnostics
                 | GenerateBugReport
                 | OpenDiagnosticsPaneDetails
@@ -496,6 +513,9 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | ReindexSemantic
                 | BackfillSemantic
                 | InstallSemanticProfile(_)
+                | OpenVoiceProfile
+                | RebuildUserVoice
+                | OpenCommitments
                 | SyncNow
                 | EditConfig
                 | OpenLogs

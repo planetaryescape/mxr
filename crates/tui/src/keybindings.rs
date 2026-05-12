@@ -153,6 +153,11 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "open_links" => Some(Action::OpenLinks),
         "sync" => Some(Action::SyncNow),
         "backfill_semantic" => Some(Action::BackfillSemantic),
+        "draft_assist" | "draft_assist_thread" => Some(Action::DraftAssistCurrentThread),
+        "draft_new_for_sender" => Some(Action::DraftNewForSender),
+        "open_voice_profile" | "voice_profile" => Some(Action::OpenVoiceProfile),
+        "rebuild_user_voice" => Some(Action::RebuildUserVoice),
+        "open_commitments" | "commitments" => Some(Action::OpenCommitments),
         // Go-to navigation (A005)
         "go_inbox" => Some(Action::GoToInbox),
         "go_starred" => Some(Action::GoToStarred),

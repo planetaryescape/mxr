@@ -173,7 +173,7 @@ When adding or changing an adapter:
 
 ## Architecture pointer
 
-Start with [ARCHITECTURE.md](ARCHITECTURE.md), then use the blueprint and implementation docs for the settled design and phase plans.
+Start with [ARCHITECTURE.md](ARCHITECTURE.md), then use the blueprint and [implementation journey](docs/implementation-journey.md) for phased history and maintainer context.
 
 ## Good first issues
 
@@ -183,7 +183,7 @@ Look for the [`good first issue`](https://github.com/planetaryescape/mxr/labels/
 
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - `docs/blueprint/`
-- `docs/implementation/`
+- `docs/implementation-journey.md`
 - `docs/blueprint/15-decision-log.md`
 - `docs/blueprint/17-release-pipeline.md`
 - `docs/blueprint/18-bug-reporting.md`

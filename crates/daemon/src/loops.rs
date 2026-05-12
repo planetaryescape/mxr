@@ -124,6 +124,7 @@ async fn sync_loop_for_account(
 ) {
     let mut backoff_secs: u64 = 0;
     let mut skip_sleep = true;
+    let mut last_message_sync_at = chrono::Utc::now();
     // Phase 3.1: wake the sleep early when an IDLE watcher signals.
     let idle_notify = state.idle_notify_for_account(&account_id);
 
@@ -204,6 +205,10 @@ async fn sync_loop_for_account(
             Ok(outcome) => {
                 let count = outcome.synced_count;
                 backoff_secs = 0;
+                let idle_for = chrono::Utc::now() - last_message_sync_at;
+                if count > 0 {
+                    last_message_sync_at = chrono::Utc::now();
+                }
                 let post_sync_cursor = state
                     .store
                     .get_sync_cursor(&account_id)
@@ -297,6 +302,30 @@ async fn sync_loop_for_account(
                             .await;
                         });
                     }
+                }
+
+                if count == 0
+                    && state.config_snapshot().search.semantic.enabled
+                    && idle_for >= chrono::Duration::minutes(30)
+                {
+                    let semantic = state.semantic.clone();
+                    tokio::spawn(async move {
+                        match semantic.backfill_active_limited(200).await {
+                            Ok(record) if record.progress_completed > 0 => {
+                                tracing::info!(
+                                    profile = record.profile.as_str(),
+                                    completed = record.progress_completed,
+                                    total = record.progress_total,
+                                    "semantic idle backfill processed missing messages"
+                                );
+                            }
+                            Ok(_) => {}
+                            Err(error) => {
+                                tracing::warn!("semantic idle backfill failed: {error}");
+                            }
+                        }
+                    });
+                    last_message_sync_at = chrono::Utc::now();
                 }
 
                 // Self-heal analytics derived data inline. Each step

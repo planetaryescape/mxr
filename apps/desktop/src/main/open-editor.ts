@@ -15,20 +15,14 @@ export async function openDraftInEditor(request: {
   editorCommand: string;
   cursorLine?: number;
 }): Promise<{ ok: true }> {
-  const launch = buildEditorLaunch(
-    request.editorCommand,
-    request.draftPath,
-    request.cursorLine,
-  );
+  const launch = buildEditorLaunch(request.editorCommand, request.draftPath, request.cursorLine);
 
   if (process.platform === "darwin" && looksTerminalEditor(launch.executable)) {
     await execFileAsync("osascript", [
       "-e",
       'tell application "Terminal" to activate',
       "-e",
-      `tell application "Terminal" to do script ${appleScriptString(
-        buildTerminalCommand(launch),
-      )}`,
+      `tell application "Terminal" to do script ${appleScriptString(buildTerminalCommand(launch))}`,
     ]);
     return { ok: true };
   }

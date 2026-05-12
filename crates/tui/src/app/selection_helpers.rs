@@ -23,11 +23,53 @@ impl App {
     }
 
     pub fn mail_list_rows(&self) -> Vec<MailListRow> {
-        Self::build_mail_list_rows(&self.mailbox.envelopes, self.mailbox.mail_list_mode)
+        self.with_pending_mutation_markers(Self::build_mail_list_rows(
+            &self.mailbox.envelopes,
+            self.mailbox.mail_list_mode,
+        ))
     }
 
     pub fn search_mail_list_rows(&self) -> Vec<MailListRow> {
-        Self::build_mail_list_rows(&self.search.page.results, self.search_list_mode())
+        self.with_pending_mutation_markers(Self::build_mail_list_rows(
+            &self.search.page.results,
+            self.search_list_mode(),
+        ))
+    }
+
+    fn with_pending_mutation_markers(&self, mut rows: Vec<MailListRow>) -> Vec<MailListRow> {
+        let pending_ids = self.pending_mutation_message_ids();
+        if pending_ids.is_empty() {
+            return rows;
+        }
+
+        for row in &mut rows {
+            row.pending_mutation = self
+                .mailbox
+                .envelopes
+                .iter()
+                .chain(self.search.page.results.iter())
+                .any(|env| env.thread_id == row.thread_id && pending_ids.contains(&env.id));
+        }
+        rows
+    }
+
+    fn pending_mutation_message_ids(&self) -> HashSet<MessageId> {
+        self.pending_mutation_queue
+            .iter()
+            .flat_map(|queued| match &queued.effect {
+                MutationEffect::RemoveFromList(message_id)
+                | MutationEffect::UpdateFlags { message_id, .. } => vec![message_id.clone()],
+                MutationEffect::RemoveFromListMany(message_ids) => message_ids.clone(),
+                MutationEffect::UpdateFlagsMany { updates } => updates
+                    .iter()
+                    .map(|(message_id, _)| message_id.clone())
+                    .collect(),
+                MutationEffect::ModifyLabels { message_ids, .. } => message_ids.clone(),
+                MutationEffect::RefreshList
+                | MutationEffect::StatusOnly(_)
+                | MutationEffect::SentSuccess { .. } => Vec::new(),
+            })
+            .collect()
     }
 
     pub fn selected_mail_row(&self) -> Option<MailListRow> {

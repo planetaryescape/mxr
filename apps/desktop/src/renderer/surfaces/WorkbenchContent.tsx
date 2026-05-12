@@ -42,9 +42,7 @@ export function WorkbenchContent(props: {
   layoutMode: LayoutMode;
   thread: ThreadResponse | null;
   readerMode: ReaderMode;
-  setReaderMode: (
-    mode: ReaderMode | ((current: ReaderMode) => ReaderMode),
-  ) => void;
+  setReaderMode: (mode: ReaderMode | ((current: ReaderMode) => ReaderMode)) => void;
   remoteContentEnabled: boolean;
   setRemoteContentEnabled: (value: boolean) => void;
   signatureExpanded: boolean;
@@ -62,9 +60,7 @@ export function WorkbenchContent(props: {
   searchScope: SearchScope;
   onSearchScopeChange: (value: SearchScope) => void;
   searchMode: SearchMode;
-  onSearchModeChange: (
-    value: SearchMode | ((current: SearchMode) => SearchMode),
-  ) => void;
+  onSearchModeChange: (value: SearchMode | ((current: SearchMode) => SearchMode)) => void;
   searchSort: SearchSort;
   onSearchSortChange: (value: SearchSort) => void;
   searchExplain: boolean;
@@ -75,10 +71,7 @@ export function WorkbenchContent(props: {
   onSelectSearchThread: (threadId: string | null) => void;
   onLoadMoreSearch?: () => void;
   onOpenSearchAttachment?: (attachmentId: string, messageId: string) => void;
-  onDownloadSearchAttachment?: (
-    attachmentId: string,
-    messageId: string,
-  ) => void;
+  onDownloadSearchAttachment?: (attachmentId: string, messageId: string) => void;
   rulesState: RulesResponse;
   selectedRuleId: string | null;
   rulePanelMode: "details" | "history" | "dryRun";

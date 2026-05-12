@@ -12,22 +12,22 @@ For each delight-plan feature, a ✅/⏳/◯ in each surface column. ✅ = fully
 | 1.1 Optimistic mutation rollback | ✅ | n/a | ✅ | n/a | ◯ |
 | 1.2 Cmd+K palette ranking + recents | n/a | n/a | ✅ | n/a | ✅ (palette wired) |
 | 1.3 Inbox row formatters | n/a | n/a | ✅ | n/a | ✅ (smart sender + chip) |
-| 1.4 Type-ahead search debounce | ✅ | n/a | ✅ | n/a | ◯ |
-| 1.5 Saved-search keyboard nav | n/a | ✅ | ✅ | n/a | ◯ |
-| 2.1 Reply-later | ✅ | ✅ | ✅ (b mark + queue modal) | ✅ | ✅ (queue dialog) |
+| 1.4 Type-ahead search debounce | ✅ | n/a | ✅ | n/a | ✅ (explicit debounce + cancellation) |
+| 1.5 Saved-search keyboard nav | n/a | ✅ | ✅ (g+digit + tab strip) | n/a | ✅ (g+digit) |
+| 2.1 Reply-later | ✅ | ✅ (`list/add/remove/walk`) | ✅ (b mark + queue modal) | ✅ | ✅ (queue dialog) |
 | 2.2 Custom-time snooze | ✅ | ✅ | ✅ (Custom… modal entry) | n/a (uses snooze) | ◯ |
-| 2.3 Auto-reminders | ✅ | ✅ | n/a | ✅ | ◯ |
-| 2.4 Send Later | ✅ | ✅ | n/a | ✅ | ◯ |
+| 2.3 Auto-reminders | ✅ | ✅ | n/a | ✅ | ✅ (selected-message commands) |
+| 2.4 Send Later | ✅ | ✅ | n/a | ✅ | ✅ (compose send-later) |
 | 2.5 Screener | ✅ | ✅ | ✅ (queue modal + a/d/f/p) | ✅ | ✅ (queue + dispose) |
 | 2.6 Bulk unsubscribe | ✅ | ✅ (existing) | ✅ (existing) | ✅ (existing) | n/a |
-| 3.1 Snippets | ✅ | ✅ | ✅ (browser modal, read-only) | ✅ | ✅ (browser dialog) |
+| 3.1 Snippets | ✅ | ✅ (compose expands `;name`) | ✅ (browser modal, read-only) | ✅ | ✅ (browser dialog) |
 | 3.2 Sender view | ✅ | ✅ | ✅ (profile modal) | ✅ | ✅ (profile dialog) |
 | 3.3 LLM provider trait | ✅ | n/a | n/a | n/a | n/a |
 | 3.4 Thread summarize | ✅ | ✅ | ✅ (summary modal) | ✅ | ✅ (summary dialog) |
 | 3.5 Draft assist | ✅ | ✅ | n/a | ✅ | ✅ (assist dialog) |
 | 4.1 Crash-safe drafts | ✅ + heartbeat | ✅ (recover/resume/discard) | ◯ (CLI-led) | ✅ (ListOrphaned + Reset) | ◯ (CLI-led) |
-| 4.2 Doctor 2.0 findings | ✅ | ✅ | ✅ (Status pane) | ✅ (in DoctorReport) | ◯ |
-| 4.3 Setup wizard demo | ✅ | ✅ | ✅ (welcome modal w/ d/g/i shortcuts) | n/a | ◯ |
+| 4.2 Doctor 2.0 findings | ✅ | ✅ | ✅ (Status pane) | ✅ (in DoctorReport) | ✅ (structured findings) |
+| 4.3 Setup wizard demo | ✅ | ✅ | ✅ (welcome modal w/ d/g/i shortcuts) | n/a | ✅ (command/palette affordance) |
 
 **Legend update**: TUI entries marked ✅ on 2026-05-08 use the modal-browser pattern (Snippets, Sender View, Screener Queue, Reply Queue) — read-only viewers that surface daemon data with the same key conventions across modals (Esc close, j/k navigate). Editing/state changes flow through the CLI; this satisfies the discoverability ask without rebuilding text editors in-TUI. Full-screen page rebuilds (Screen::SenderProfile etc.) are deferred as a separate polish pass when richer rendering (charts, sparklines) is wanted.
 
@@ -52,6 +52,13 @@ For each delight-plan feature, a ✅/⏳/◯ in each surface column. ✅ = fully
 - ~~**Desktop inbox row formatters.**~~ ✅ Smart sender display (display-name → email local-part → email → placeholder) + attachment chip with size readout matching the TUI's `format_attachment_chip`. Helpers in `MailRow.formatters.ts` with isolated unit tests (2026-05-08).
 - ~~**TUI setup-wizard onboarding.**~~ ✅ Welcome modal now lists three setup paths with shortcuts: `d` (`mxr setup --demo`), `g` (Gmail form), `i` (IMAP form). `Enter` opens the new-account form, `Esc` dismisses (2026-05-08).
 - ~~**Docs site coverage**~~ ✅ `cli.md` covers `drafts recover/resume/discard`, custom-snooze TUI entry, and TUI/desktop access for summarize+draft-assist. `keybindings.md` documents all the new modal key conventions. `tui.md` lists the new modal/overlay surfaces. New `guides/crash-safe-drafts.md` and `guides/desktop-app.md` registered in `astro.config.mjs`. Site builds clean (37 pages) (2026-05-08).
+- ~~**Reply-later walk mode.**~~ ✅ `mxr replies walk` walks queue items interactively with reply/clear/skip/quit and reuses existing reply compose flow (2026-05-12).
+- ~~**Compose-time snippet expansion.**~~ ✅ Known `;name` snippets expand before compose validation/save/send; unknown snippets remain literal (2026-05-12).
+- ~~**TUI saved-search visual strip.**~~ ✅ Mailbox view renders saved-search tabs above the list and reuses `g`+digit selection semantics (2026-05-12).
+- ~~**TUI optimistic row indicator.**~~ ✅ Rows touched by queued optimistic mutations show a pending marker instead of only a status-bar message (2026-05-12).
+- ~~**Desktop Doctor findings rendering.**~~ ✅ Diagnostics overview and details report render structured category/severity/remediation findings (2026-05-12).
+- ~~**Desktop auto-reminders + send-later.**~~ ✅ Selected-message reminder commands and compose send-later use the existing bridge routes (2026-05-12).
+- ~~**Desktop saved-search shortcuts/search pacing/setup affordance.**~~ ✅ `g`+digit saved-search shortcuts, explicit search debounce, and setup/demo command affordance are wired (2026-05-12).
 
 ## Outstanding work plan (this session)
 

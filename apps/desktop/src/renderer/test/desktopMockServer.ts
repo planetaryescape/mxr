@@ -63,17 +63,18 @@ export const desktopMockServer = setupServer(
       const view = url.searchParams.get("view") ?? "threads";
       if (
         currentOptions.delayMailbox &&
-        (!currentOptions.delayMailboxLensKind ||
-          currentOptions.delayMailboxLensKind === lens)
+        (!currentOptions.delayMailboxLensKind || currentOptions.delayMailboxLensKind === lens)
       ) {
         await currentOptions.delayMailbox;
       }
       const isAllMail = lens === "all_mail";
       const isSubscriptions = lens === "subscription";
       const rows = (
-        isSubscriptions ? currentState.allMailRows.slice(0, 2)
-        : isAllMail ? currentState.allMailRows
-        : currentState.inboxRows
+        isSubscriptions
+          ? currentState.allMailRows.slice(0, 2)
+          : isAllMail
+            ? currentState.allMailRows
+            : currentState.inboxRows
       ).map((row) => rowWithFlags(currentState, row));
       const displayRows = view === "messages" ? rows : dedupeByThread(rows);
       return HttpResponse.json({

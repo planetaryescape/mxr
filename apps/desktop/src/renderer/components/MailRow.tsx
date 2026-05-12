@@ -80,9 +80,7 @@ export function MailRow(props: {
         <p
           className={cn(
             "mt-0.5 truncate text-[length:var(--text-sm)] leading-snug",
-            props.row.unread
-              ? "font-medium text-foreground"
-              : "text-foreground",
+            props.row.unread ? "font-medium text-foreground" : "text-foreground",
           )}
         >
           {props.row.subject}

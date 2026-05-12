@@ -109,6 +109,7 @@ pub struct MailListRow {
     pub representative: Envelope,
     pub message_count: usize,
     pub unread_count: usize,
+    pub pending_mutation: bool,
 }
 
 #[derive(Debug, Clone)]

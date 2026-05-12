@@ -40,9 +40,7 @@ export function ToastProvider(props: { children: ReactNode }) {
   const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   const dismiss = useCallback((id: number) => {
-    setToasts((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)),
-    );
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)));
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 200);
@@ -73,8 +71,9 @@ export function ToastProvider(props: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    const activeTimers = timers.current;
     return () => {
-      for (const timer of timers.current.values()) clearTimeout(timer);
+      for (const timer of activeTimers.values()) clearTimeout(timer);
     };
   }, []);
 
@@ -88,9 +87,7 @@ export function ToastProvider(props: { children: ReactNode }) {
             className={cn(
               "flex items-center gap-3 border px-3 py-2 text-[length:var(--text-sm)] shadow-lg",
               "transition-all duration-200",
-              t.exiting
-                ? "translate-x-full opacity-0"
-                : "translate-x-0 opacity-100",
+              t.exiting ? "translate-x-full opacity-0" : "translate-x-0 opacity-100",
               t.variant === "success" && "border-success/30 bg-success/10 text-success",
               t.variant === "error" && "border-danger/30 bg-danger/10 text-danger",
               t.variant === "info" && "border-outline bg-panel-elevated text-foreground-muted",
@@ -102,7 +99,8 @@ export function ToastProvider(props: { children: ReactNode }) {
             {t.variant === "shortcut" && t.shortcutKey ? (
               <span className="flex items-center gap-1.5 text-[length:var(--text-xs)] text-foreground-subtle">
                 Next time, try
-                <kbd className="inline-flex h-5 min-w-5 items-center justify-center border border-outline bg-canvas-elevated px-1.5 font-mono text-[length:var(--text-xs)] uppercase text-accent"
+                <kbd
+                  className="inline-flex h-5 min-w-5 items-center justify-center border border-outline bg-canvas-elevated px-1.5 font-mono text-[length:var(--text-xs)] uppercase text-accent"
                   style={{ borderRadius: "var(--radius-sm)" }}
                 >
                   {t.shortcutKey}

@@ -160,6 +160,18 @@ impl App {
             };
         }
 
+        if self.modals.platform.visible {
+            return match (key.code, key.modifiers) {
+                (KeyCode::Esc | KeyCode::Enter, _)
+                | (KeyCode::Char('q'), _)
+                | (KeyCode::Char('x'), _) => {
+                    self.modals.platform.close();
+                    None
+                }
+                _ => None,
+            };
+        }
+
         if self.accounts.page.onboarding_modal_open {
             return match (key.code, key.modifiers) {
                 (KeyCode::Enter | KeyCode::Char(' '), _) => {

@@ -179,6 +179,11 @@ impl SemanticEngine {
             .await
     }
 
+    pub async fn backfill_active_limited(&mut self, limit: u32) -> Result<SemanticProfileRecord> {
+        self.backfill_missing_for_profile_limited(self.config.active_profile, limit)
+            .await
+    }
+
     /// Sync-time semantic ingest path.
     ///
     /// This always prepares and persists chunks for the changed messages so later
@@ -343,21 +348,31 @@ impl SemanticEngine {
         &mut self,
         profile: SemanticProfile,
     ) -> Result<SemanticProfileRecord> {
+        self.backfill_missing_for_profile_limited(profile, 10_000)
+            .await
+    }
+
+    async fn backfill_missing_for_profile_limited(
+        &mut self,
+        profile: SemanticProfile,
+        limit: u32,
+    ) -> Result<SemanticProfileRecord> {
         let mut record = self.install_profile(profile).await?;
         record.status = SemanticProfileStatus::Indexing;
         record.progress_completed = 0;
         record.last_error = None;
 
         let now = chrono::Utc::now();
+        let limit = limit.max(1);
         let missing_chunks = self
             .store
-            .list_message_ids_missing_semantic_chunks(10_000)
+            .list_message_ids_missing_semantic_chunks(limit)
             .await?;
         self.prepare_message_chunks(&missing_chunks, now).await?;
 
         let mut missing_embeddings = self
             .store
-            .list_message_ids_missing_semantic_embeddings(&record.id, 10_000)
+            .list_message_ids_missing_semantic_embeddings(&record.id, limit)
             .await?;
         for message_id in missing_chunks {
             if !missing_embeddings.contains(&message_id) {
@@ -695,6 +710,10 @@ impl SemanticEngine {
     }
 
     pub async fn backfill_active(&mut self) -> Result<SemanticProfileRecord> {
+        Err(semantic_unavailable_error())
+    }
+
+    pub async fn backfill_active_limited(&mut self, _limit: u32) -> Result<SemanticProfileRecord> {
         Err(semantic_unavailable_error())
     }
 

@@ -222,7 +222,7 @@ See `docs/blueprint/15-decision-log.md` for full context. Highlights:
 
 - `docs/blueprint/` — What to build (requirements, design, decisions)
 - `docs/blueprint/16-addendum.md` — Post-blueprint amendments A001-A008 (inline compose, full CLI surface, vim+Gmail keybindings, observability, batch ops, IMAP)
-- `docs/implementation/` — How to build it (step-by-step implementation plans per phase)
+- `docs/implementation-journey.md` — How we phased delivery, what superseded, bridge/semantic notes, planned account reauth + AUR/Nix
 
 ## Workspace Layout
 

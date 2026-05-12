@@ -1282,6 +1282,8 @@ pub enum CommitmentStatusArg {
 pub enum RepliesAction {
     /// List messages flagged for reply-later (default if no subcommand given)
     List,
+    /// Walk the reply-later queue interactively
+    Walk,
     /// Mark a message for reply-later
     Add { message_id: String },
     /// Clear the reply-later flag on a message

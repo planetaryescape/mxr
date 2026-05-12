@@ -1,13 +1,6 @@
 import type { IpcMainInvokeEvent } from "electron";
 import { tmpdir } from "node:os";
-import {
-  basename,
-  dirname,
-  isAbsolute,
-  normalize,
-  relative,
-  sep,
-} from "node:path";
+import { basename, dirname, isAbsolute, normalize, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type {
   DesktopKeymapContext,
@@ -36,10 +29,7 @@ const KEYMAP_CONTEXTS = new Set<DesktopKeymapContext>([
   "diagnostics",
 ]);
 
-export function assertTrustedSender(
-  event: IpcMainInvokeEvent,
-  rendererEntry: string,
-): void {
+export function assertTrustedSender(event: IpcMainInvokeEvent, rendererEntry: string): void {
   const senderUrl = event.senderFrame?.url;
   if (!senderUrl) {
     throw new Error("Rejected IPC from unknown sender");
@@ -110,9 +100,7 @@ export function validateDesktopSettingsPatch(value: unknown): DesktopSettingsPat
   return patch;
 }
 
-export function validateOpenDraftInEditorRequest(
-  value: unknown,
-): OpenDraftInEditorRequest {
+export function validateOpenDraftInEditorRequest(value: unknown): OpenDraftInEditorRequest {
   if (!isPlainObject(value)) {
     throw new Error("Editor request must be an object");
   }
@@ -138,9 +126,7 @@ export function validateOpenDraftInEditorRequest(
   return request;
 }
 
-export function validateOpenBrowserDocumentRequest(
-  value: unknown,
-): OpenBrowserDocumentRequest {
+export function validateOpenBrowserDocumentRequest(value: unknown): OpenBrowserDocumentRequest {
   if (!isPlainObject(value)) {
     throw new Error("Browser document request must be an object");
   }
@@ -149,11 +135,7 @@ export function validateOpenBrowserDocumentRequest(
   const request: OpenBrowserDocumentRequest = { title, html };
 
   if (value.suggestedFilename !== undefined) {
-    request.suggestedFilename = boundedString(
-      value.suggestedFilename,
-      "document filename",
-      255,
-    );
+    request.suggestedFilename = boundedString(value.suggestedFilename, "document filename", 255);
   }
   return request;
 }

@@ -180,33 +180,31 @@ export function MailboxWorkspace(props: {
 
         {/* Mail list */}
         <div className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto">
-        {hasRows ? (
-          <div>
-            {displayRows.map((entry) =>
-              entry.kind === "header" ? (
-                <DateGroupHeader key={entry.id} label={entry.label} />
-              ) : (
-                <MailRow
-                  key={entry.id}
-                  row={entry.row}
-                  selected={
-                    props.selectedThreadId === mailboxRowSelectionId(entry.row)
-                  }
-                  multiSelected={props.selectedMessageIds.has(entry.row.id)}
-                  pending={props.pendingMessageIds.has(entry.row.id)}
-                  removing={props.removingIds?.has(entry.row.id) ?? false}
-                  onSelect={() => props.onSelect(mailboxRowSelectionId(entry.row))}
-                  onOpen={props.onOpen}
-                  onContextMenu={(e) =>
-                    props.onRowContextMenu?.(e, mailboxRowSelectionId(entry.row))
-                  }
-                />
-              ),
-            )}
-          </div>
-        ) : (
-          <SkeletonMailList />
-        )}
+          {hasRows ? (
+            <div>
+              {displayRows.map((entry) =>
+                entry.kind === "header" ? (
+                  <DateGroupHeader key={entry.id} label={entry.label} />
+                ) : (
+                  <MailRow
+                    key={entry.id}
+                    row={entry.row}
+                    selected={props.selectedThreadId === mailboxRowSelectionId(entry.row)}
+                    multiSelected={props.selectedMessageIds.has(entry.row.id)}
+                    pending={props.pendingMessageIds.has(entry.row.id)}
+                    removing={props.removingIds?.has(entry.row.id) ?? false}
+                    onSelect={() => props.onSelect(mailboxRowSelectionId(entry.row))}
+                    onOpen={props.onOpen}
+                    onContextMenu={(e) =>
+                      props.onRowContextMenu?.(e, mailboxRowSelectionId(entry.row))
+                    }
+                  />
+                ),
+              )}
+            </div>
+          ) : (
+            <SkeletonMailList />
+          )}
         </div>
       </section>
 

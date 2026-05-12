@@ -4,6229 +4,6451 @@
  */
 
 export interface paths {
-    "/api/v1/admin/diagnostics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Diagnostics report */
-        get: operations["admin_diagnostics"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/diagnostics/bug-report": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Sanitized bug report */
-        get: operations["admin_bug_report"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Persisted daemon events */
-        get: operations["admin_events"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/logs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Recent daemon logs */
-        get: operations["admin_logs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/ping": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Bridge round-trip ping */
-        post: operations["admin_ping"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/shutdown": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Request daemon shutdown */
-        post: operations["admin_shutdown"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Daemon status snapshot */
-        get: operations["admin_status"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/desktop/shell": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Desktop shell manifest */
-        get: operations["desktop_shell"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/docs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Swagger UI */
-        get: operations["swagger_ui"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** WebSocket daemon event stream */
-        get: operations["events_ws"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Unauthenticated bridge liveness probe */
-        get: operations["health"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/actions/snooze": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Snooze messages */
-        post: operations["action_snooze"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/actions/snooze/presets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List snooze presets */
-        get: operations["action_snooze_presets"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/actions/unsubscribe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Unsubscribe from list mail */
-        post: operations["action_unsubscribe"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/attachments/download": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Download an attachment */
-        post: operations["attachment_download"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/attachments/open": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Open an attachment */
-        post: operations["attachment_open"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/compose/session": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Start compose session */
-        post: operations["compose_session_start"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/compose/session/discard": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Discard compose session */
-        post: operations["compose_session_discard"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/compose/session/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Refresh compose session */
-        post: operations["compose_session_refresh"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/compose/session/restore": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Restore compose session */
-        post: operations["compose_session_restore"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/compose/session/save": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Save compose session */
-        post: operations["compose_session_save"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/compose/session/send": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Send compose session */
-        post: operations["compose_session_send"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/compose/session/update": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Update compose session */
-        post: operations["compose_session_update"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/count": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Count matching messages */
-        get: operations["mail_count"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/drafts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List drafts */
-        get: operations["mail_drafts"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/labels/create": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create a label */
-        post: operations["label_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/labels/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Delete a label */
-        post: operations["label_delete"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/labels/rename": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rename a label */
-        post: operations["label_rename"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/mailbox": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Mailbox view */
-        get: operations["mail_mailbox"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/mutations/archive": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Archive messages */
-        post: operations["mutation_archive"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/mutations/labels": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Add or remove labels */
-        post: operations["mutation_labels"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/mutations/move": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Move messages to a label or folder */
-        post: operations["mutation_move"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/mutations/read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Mark messages read or unread */
-        post: operations["mutation_read"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/mutations/read-and-archive": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Read and archive messages */
-        post: operations["mutation_read_archive"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/mutations/spam": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Mark messages as spam */
-        post: operations["mutation_spam"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/mutations/star": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Star or unstar messages */
-        post: operations["mutation_star"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/mutations/trash": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Trash messages */
-        post: operations["mutation_trash"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/mutations/undo": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Undo a recent mutation */
-        post: operations["mutation_undo"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/reminders": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Schedule an auto-reminder */
-        post: operations["reminders_set"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/reminders/{message_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Cancel an auto-reminder */
-        delete: operations["reminders_cancel"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/reply-later": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List reply-later messages */
-        get: operations["reply_later_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/reply-later/{message_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Set or clear reply-later */
-        post: operations["reply_later_set"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/scheduled-sends": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Schedule a draft send */
-        post: operations["scheduled_sends_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/scheduled-sends/{draft_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Cancel a scheduled send */
-        delete: operations["scheduled_sends_cancel"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/screener/decisions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List screener decisions */
-        get: operations["screener_decisions_list"];
-        put?: never;
-        /** Set screener decision */
-        post: operations["screener_decisions_set"];
-        /** Clear screener decision */
-        delete: operations["screener_decisions_clear"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/screener/queue": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List screener queue */
-        get: operations["screener_queue"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Run a mail search */
-        get: operations["mail_search"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/sender": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Sender profile */
-        get: operations["sender_profile"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/snippets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List snippets */
-        get: operations["snippets_list"];
-        put?: never;
-        /** Create or update a snippet */
-        post: operations["snippets_set"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/snippets/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete a snippet */
-        delete: operations["snippets_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/snoozed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List snoozed messages */
-        get: operations["mail_snoozed"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/snoozed/{message_id}/wake": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Wake one snoozed message */
-        post: operations["mail_unsnooze_one"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/sync": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Trigger sync */
-        post: operations["mail_sync"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/sync/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Sync status */
-        get: operations["mail_sync_status"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/threads/draft-assist": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Generate a draft body */
-        post: operations["draft_assist"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/threads/{thread_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read a thread */
-        get: operations["mail_thread"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/threads/{thread_id}/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Export a thread */
-        get: operations["mail_thread_export"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/mail/threads/{thread_id}/summarize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Summarize a thread */
-        post: operations["thread_summarize"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/openapi.json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** OpenAPI 3.1 document */
-        get: operations["openapi_json"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/accounts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List runtime accounts */
-        get: operations["accounts_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/accounts/config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List configured accounts */
-        get: operations["accounts_config"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/accounts/default": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Set default account */
-        post: operations["account_set_default"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/accounts/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Test account connectivity */
-        post: operations["account_test"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/accounts/upsert": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create or update account */
-        post: operations["account_upsert"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/accounts/{account_id}/addresses": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List account addresses */
-        get: operations["account_addresses_list"];
-        put?: never;
-        /** Add account address */
-        post: operations["account_addresses_add"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/accounts/{account_id}/addresses/primary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Set primary account address */
-        post: operations["account_addresses_primary"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/accounts/{account_id}/addresses/remove": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Remove account address */
-        post: operations["account_addresses_remove"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/accounts/{key}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Remove account */
-        delete: operations["account_remove"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/accounts/{key}/disable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Disable account */
-        post: operations["account_disable"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/analytics/contact-asymmetry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Contact asymmetry */
-        get: operations["analytics_contact_asymmetry"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/analytics/contact-decay": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Contact decay */
-        get: operations["analytics_contact_decay"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/analytics/largest-messages": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Largest messages */
-        get: operations["analytics_largest_messages"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/analytics/rebuild": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rebuild analytics */
-        post: operations["analytics_rebuild"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/analytics/refresh-contacts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Refresh contacts */
-        post: operations["analytics_refresh_contacts"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/analytics/response-time": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Response-time analytics */
-        get: operations["analytics_response_time"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/analytics/stale-threads": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Stale threads */
-        get: operations["analytics_stale_threads"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/analytics/storage-breakdown": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Storage breakdown */
-        get: operations["analytics_storage_breakdown"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/analytics/wrapped": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Wrapped analytics */
-        get: operations["analytics_wrapped"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/auth/sessions/start": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Start OAuth session */
-        post: operations["auth_session_start"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/auth/sessions/{session_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get OAuth session */
-        get: operations["auth_session_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/auth/sessions/{session_id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Cancel OAuth session */
-        post: operations["auth_session_cancel"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/auth/sessions/{session_id}/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Complete OAuth session */
-        post: operations["auth_session_complete"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/rules": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List rules */
-        get: operations["rules_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/rules/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Delete rule */
-        post: operations["rule_delete"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/rules/detail": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Rule detail */
-        get: operations["rule_detail"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/rules/dry-run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Dry-run rules */
-        get: operations["rule_dry_run"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/rules/form": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Rule form payload */
-        get: operations["rule_form"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/rules/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Rule history */
-        get: operations["rule_history"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/rules/upsert": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create or update rule */
-        post: operations["rule_upsert"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/rules/upsert-form": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create or update rule from form */
-        post: operations["rule_upsert_form"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/saved-searches": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List saved searches */
-        get: operations["saved_searches_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/saved-searches/create": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create saved search */
-        post: operations["saved_searches_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/saved-searches/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Delete saved search */
-        post: operations["saved_searches_delete"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/saved-searches/run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Run saved search */
-        post: operations["saved_searches_run"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/semantic/enable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Enable semantic search */
-        post: operations["semantic_enable"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/semantic/profiles/install": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Install semantic profile */
-        post: operations["semantic_profile_install"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/semantic/profiles/use": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Use semantic profile */
-        post: operations["semantic_profile_use"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/semantic/reindex": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reindex semantic search */
-        post: operations["semantic_reindex"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/semantic/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Semantic index status */
-        get: operations["semantic_status"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/platform/subscriptions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List subscriptions */
-        get: operations["subscriptions_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
+  "/api/v1/admin/diagnostics": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Diagnostics report */
+    get: operations["admin_diagnostics"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/admin/diagnostics/bug-report": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Sanitized bug report */
+    get: operations["admin_bug_report"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/admin/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Persisted daemon events */
+    get: operations["admin_events"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/admin/logs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Recent daemon logs */
+    get: operations["admin_logs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/admin/ping": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Bridge round-trip ping */
+    post: operations["admin_ping"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/admin/shutdown": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Request daemon shutdown */
+    post: operations["admin_shutdown"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/admin/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Daemon status snapshot */
+    get: operations["admin_status"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/desktop/shell": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Desktop shell manifest */
+    get: operations["desktop_shell"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/docs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Swagger UI */
+    get: operations["swagger_ui"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** WebSocket daemon event stream */
+    get: operations["events_ws"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Unauthenticated bridge liveness probe */
+    get: operations["health"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/actions/snooze": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Snooze messages */
+    post: operations["action_snooze"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/actions/snooze/presets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List snooze presets */
+    get: operations["action_snooze_presets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/actions/unsubscribe": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Unsubscribe from list mail */
+    post: operations["action_unsubscribe"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/attachments/download": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Download an attachment */
+    post: operations["attachment_download"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/attachments/open": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Open an attachment */
+    post: operations["attachment_open"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/compose/session": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start compose session */
+    post: operations["compose_session_start"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/compose/session/discard": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Discard compose session */
+    post: operations["compose_session_discard"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/compose/session/refresh": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Refresh compose session */
+    post: operations["compose_session_refresh"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/compose/session/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Restore compose session */
+    post: operations["compose_session_restore"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/compose/session/save": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Save compose session */
+    post: operations["compose_session_save"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/compose/session/send": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Send compose session */
+    post: operations["compose_session_send"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/compose/session/update": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Update compose session */
+    post: operations["compose_session_update"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/count": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Count matching messages */
+    get: operations["mail_count"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/drafts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List drafts */
+    get: operations["mail_drafts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/labels/create": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create a label */
+    post: operations["label_create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/labels/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Delete a label */
+    post: operations["label_delete"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/labels/rename": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Rename a label */
+    post: operations["label_rename"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/mailbox": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Mailbox view */
+    get: operations["mail_mailbox"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/mutations/archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Archive messages */
+    post: operations["mutation_archive"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/mutations/labels": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Add or remove labels */
+    post: operations["mutation_labels"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/mutations/move": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Move messages to a label or folder */
+    post: operations["mutation_move"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/mutations/read": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Mark messages read or unread */
+    post: operations["mutation_read"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/mutations/read-and-archive": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Read and archive messages */
+    post: operations["mutation_read_archive"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/mutations/spam": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Mark messages as spam */
+    post: operations["mutation_spam"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/mutations/star": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Star or unstar messages */
+    post: operations["mutation_star"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/mutations/trash": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Trash messages */
+    post: operations["mutation_trash"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/mutations/undo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Undo a recent mutation */
+    post: operations["mutation_undo"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/reminders": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Schedule an auto-reminder */
+    post: operations["reminders_set"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/reminders/{message_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Cancel an auto-reminder */
+    delete: operations["reminders_cancel"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/reply-later": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List reply-later messages */
+    get: operations["reply_later_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/reply-later/{message_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set or clear reply-later */
+    post: operations["reply_later_set"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/scheduled-sends": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Schedule a draft send */
+    post: operations["scheduled_sends_create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/scheduled-sends/{draft_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Cancel a scheduled send */
+    delete: operations["scheduled_sends_cancel"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/screener/decisions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List screener decisions */
+    get: operations["screener_decisions_list"];
+    put?: never;
+    /** Set screener decision */
+    post: operations["screener_decisions_set"];
+    /** Clear screener decision */
+    delete: operations["screener_decisions_clear"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/screener/queue": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List screener queue */
+    get: operations["screener_queue"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/search": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Run a mail search */
+    get: operations["mail_search"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/sender": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Sender profile */
+    get: operations["sender_profile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/snippets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List snippets */
+    get: operations["snippets_list"];
+    put?: never;
+    /** Create or update a snippet */
+    post: operations["snippets_set"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/snippets/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete a snippet */
+    delete: operations["snippets_delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/snoozed": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List snoozed messages */
+    get: operations["mail_snoozed"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/snoozed/{message_id}/wake": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Wake one snoozed message */
+    post: operations["mail_unsnooze_one"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/sync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Trigger sync */
+    post: operations["mail_sync"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/sync/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Sync status */
+    get: operations["mail_sync_status"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/threads/draft-assist": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Generate a draft body */
+    post: operations["draft_assist"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/threads/{thread_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read a thread */
+    get: operations["mail_thread"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/threads/{thread_id}/export": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Export a thread */
+    get: operations["mail_thread_export"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/mail/threads/{thread_id}/summarize": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Summarize a thread */
+    post: operations["thread_summarize"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/openapi.json": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** OpenAPI 3.1 document */
+    get: operations["openapi_json"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List runtime accounts */
+    get: operations["accounts_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List configured accounts */
+    get: operations["accounts_config"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts/default": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set default account */
+    post: operations["account_set_default"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Test account connectivity */
+    post: operations["account_test"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts/upsert": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create or update account */
+    post: operations["account_upsert"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts/{account_id}/addresses": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List account addresses */
+    get: operations["account_addresses_list"];
+    put?: never;
+    /** Add account address */
+    post: operations["account_addresses_add"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts/{account_id}/addresses/primary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set primary account address */
+    post: operations["account_addresses_primary"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts/{account_id}/addresses/remove": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Remove account address */
+    post: operations["account_addresses_remove"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts/{key}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove account */
+    delete: operations["account_remove"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/accounts/{key}/disable": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Disable account */
+    post: operations["account_disable"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/analytics/contact-asymmetry": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Contact asymmetry */
+    get: operations["analytics_contact_asymmetry"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/analytics/contact-decay": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Contact decay */
+    get: operations["analytics_contact_decay"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/analytics/largest-messages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Largest messages */
+    get: operations["analytics_largest_messages"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/analytics/rebuild": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Rebuild analytics */
+    post: operations["analytics_rebuild"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/analytics/refresh-contacts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Refresh contacts */
+    post: operations["analytics_refresh_contacts"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/analytics/response-time": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Response-time analytics */
+    get: operations["analytics_response_time"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/analytics/stale-threads": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Stale threads */
+    get: operations["analytics_stale_threads"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/analytics/storage-breakdown": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Storage breakdown */
+    get: operations["analytics_storage_breakdown"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/analytics/wrapped": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Wrapped analytics */
+    get: operations["analytics_wrapped"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/auth/sessions/start": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start OAuth session */
+    post: operations["auth_session_start"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/auth/sessions/{session_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get OAuth session */
+    get: operations["auth_session_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/auth/sessions/{session_id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Cancel OAuth session */
+    post: operations["auth_session_cancel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/auth/sessions/{session_id}/complete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Complete OAuth session */
+    post: operations["auth_session_complete"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/rules": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List rules */
+    get: operations["rules_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/rules/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Delete rule */
+    post: operations["rule_delete"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/rules/detail": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Rule detail */
+    get: operations["rule_detail"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/rules/dry-run": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Dry-run rules */
+    get: operations["rule_dry_run"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/rules/form": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Rule form payload */
+    get: operations["rule_form"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/rules/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Rule history */
+    get: operations["rule_history"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/rules/upsert": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create or update rule */
+    post: operations["rule_upsert"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/rules/upsert-form": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create or update rule from form */
+    post: operations["rule_upsert_form"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/saved-searches": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List saved searches */
+    get: operations["saved_searches_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/saved-searches/create": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create saved search */
+    post: operations["saved_searches_create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/saved-searches/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Delete saved search */
+    post: operations["saved_searches_delete"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/saved-searches/run": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Run saved search */
+    post: operations["saved_searches_run"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/semantic/enable": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Enable semantic search */
+    post: operations["semantic_enable"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/semantic/profiles/install": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Install semantic profile */
+    post: operations["semantic_profile_install"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/semantic/profiles/use": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Use semantic profile */
+    post: operations["semantic_profile_use"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/semantic/reindex": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reindex semantic search */
+    post: operations["semantic_reindex"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/semantic/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Semantic index status */
+    get: operations["semantic_status"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/platform/subscriptions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List subscriptions */
+    get: operations["subscriptions_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        /**
-         * @description One owned email address per account. Direction inference compares
-         *     `messages.from_email` against this set to decide inbound vs outbound.
-         */
-        AccountAddress: {
-            account_id: components["schemas"]["AccountId"];
-            email: string;
-            is_primary: boolean;
-        };
-        AccountCapabilitiesData: {
-            batch_operations: boolean;
-            delta_sync: boolean;
-            labels: boolean;
-            native_thread_ids: boolean;
-            push: boolean;
-            server_search: boolean;
-            supports_local_drafts: boolean;
-            supports_send: boolean;
-            supports_server_drafts: boolean;
-        };
-        AccountConfigData: {
-            email: string;
-            enabled?: boolean;
-            is_default: boolean;
-            key: string;
-            name: string;
-            send?: null | components["schemas"]["AccountSendConfigData"];
-            sync?: null | components["schemas"]["AccountSyncConfigData"];
-        };
-        /** @enum {string} */
-        AccountEditModeData: "full" | "runtime_only";
-        /** Format: uuid */
-        AccountId: string;
-        AccountMutationResultData: {
-            account_id: components["schemas"]["AccountId"];
-            account_name: string;
-            error?: string | null;
-            /** Format: int32 */
-            failed: number;
-            /** Format: int32 */
-            skipped: number;
-            /** Format: int32 */
-            succeeded: number;
-        };
-        AccountOperationResult: {
-            auth?: null | components["schemas"]["AccountOperationStep"];
-            device_code_url?: string | null;
-            device_code_user_code?: string | null;
-            ok: boolean;
-            save?: null | components["schemas"]["AccountOperationStep"];
-            send?: null | components["schemas"]["AccountOperationStep"];
-            summary: string;
-            sync?: null | components["schemas"]["AccountOperationStep"];
-        };
-        AccountOperationStep: {
-            detail: string;
-            ok: boolean;
-        };
-        AccountSendConfigData: {
-            /** @enum {string} */
-            type: "gmail";
-        } | {
-            client_id?: string | null;
-            token_ref: string;
-            /** @enum {string} */
-            type: "outlook_personal";
-        } | {
-            client_id?: string | null;
-            token_ref: string;
-            /** @enum {string} */
-            type: "outlook_work";
-        } | {
-            auth_required?: boolean;
-            host: string;
-            password?: string | null;
-            password_ref: string;
-            /** Format: int32 */
-            port: number;
-            /** @enum {string} */
-            type: "smtp";
-            use_tls: boolean;
-            username: string;
-        } | {
-            /** @enum {string} */
-            type: "fake";
-        };
-        /** @enum {string} */
-        AccountSourceData: "runtime" | "config" | "both";
-        AccountSummaryData: {
-            account_id: components["schemas"]["AccountId"];
-            capabilities?: components["schemas"]["AccountCapabilitiesData"];
-            editable: components["schemas"]["AccountEditModeData"];
-            email: string;
-            enabled: boolean;
-            is_default: boolean;
-            key?: string | null;
-            name: string;
-            provider_kind: string;
-            send?: null | components["schemas"]["AccountSendConfigData"];
-            send_kind?: string | null;
-            source: components["schemas"]["AccountSourceData"];
-            sync?: null | components["schemas"]["AccountSyncConfigData"];
-            sync_kind?: string | null;
-        };
-        AccountSyncConfigData: {
-            client_id: string;
-            client_secret?: string | null;
-            credential_source?: components["schemas"]["GmailCredentialSourceData"];
-            token_ref: string;
-            /** @enum {string} */
-            type: "gmail";
-        } | {
-            auth_required?: boolean;
-            host: string;
-            password?: string | null;
-            password_ref: string;
-            /** Format: int32 */
-            port: number;
-            /** @enum {string} */
-            type: "imap";
-            use_tls: boolean;
-            username: string;
-        } | {
-            client_id?: string | null;
-            token_ref: string;
-            /** @enum {string} */
-            type: "outlook_personal";
-        } | {
-            client_id?: string | null;
-            token_ref: string;
-            /** @enum {string} */
-            type: "outlook_work";
-        } | {
-            /** @enum {string} */
-            type: "fake";
-        };
-        AccountSyncStatus: {
-            account_id: components["schemas"]["AccountId"];
-            account_name: string;
-            backoff_until?: string | null;
-            /** Format: int32 */
-            consecutive_failures: number;
-            current_cursor_summary?: string | null;
-            failure_class?: string | null;
-            healthy: boolean;
-            last_attempt_at?: string | null;
-            last_error?: string | null;
-            last_success_at?: string | null;
-            /** Format: int32 */
-            last_synced_count: number;
-            sync_in_progress: boolean;
-        };
-        Address: {
-            email: string;
-            name?: string | null;
-        };
-        /** @enum {string} */
-        AttachmentDisposition: "attachment" | "inline" | "unspecified";
-        AttachmentFile: {
-            attachment_id: components["schemas"]["AttachmentId"];
-            filename: string;
-            path: string;
-        };
-        /** Format: uuid */
-        AttachmentId: string;
-        AttachmentMeta: {
-            content_id?: string | null;
-            content_location?: string | null;
-            disposition?: components["schemas"]["AttachmentDisposition"];
-            filename: string;
-            id: components["schemas"]["AttachmentId"];
-            local_path?: string | null;
-            message_id: components["schemas"]["MessageId"];
-            mime_type: string;
-            provider_id: string;
-            /** Format: int64 */
-            size_bytes: number;
-        };
-        /** @enum {string} */
-        AuthFlowData: "auto" | "installed" | "device";
-        AuthSessionData: {
-            account_key: string;
-            auth_url?: string | null;
-            error?: string | null;
-            /** Format: int64 */
-            expires_at_unix?: number | null;
-            flow: components["schemas"]["AuthFlowData"];
-            message?: string | null;
-            /** Format: int64 */
-            poll_interval_secs?: number | null;
-            session_id: components["schemas"]["AuthSessionId"];
-            state: components["schemas"]["AuthSessionStateData"];
-            user_code?: string | null;
-            verification_uri?: string | null;
-        };
-        AuthSessionId: string;
-        /** @enum {string} */
-        AuthSessionStateData: "starting" | "waiting_for_user" | "authorized" | "failed" | "cancelled";
-        BodyFailure: {
-            error: string;
-            message_id: components["schemas"]["MessageId"];
-        };
-        /** @enum {string} */
-        BodyPartSource: "exact" | "derived_from_plain" | "derived_from_html" | "best_effort_summary";
-        CalendarMetadata: {
-            method?: string | null;
-            summary?: string | null;
-        };
-        ContactAsymmetryRow: {
-            /**
-             * Format: double
-             * @description `|inbound - outbound| / max(inbound, outbound)` in `[0, 1]`. 0 means
-             *     perfectly balanced; 1 means I never responded (or vice versa).
-             */
-            asymmetry: number;
-            display_name?: string | null;
-            email: string;
-            /** Format: date-time */
-            last_seen_at: string;
-            /** Format: int32 */
-            total_inbound: number;
-            /** Format: int32 */
-            total_outbound: number;
-        };
-        ContactDecayRow: {
-            /** Format: int32 */
-            days_since_inbound: number;
-            /** Format: int32 */
-            days_since_outbound?: number | null;
-            display_name?: string | null;
-            email: string;
-            /** Format: date-time */
-            last_inbound_at: string;
-            /** Format: date-time */
-            last_outbound_at?: string | null;
-        };
-        DaemonEvent: {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            event: "SyncCompleted";
-            /** Format: int32 */
-            messages_synced: number;
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            error: string;
-            /** @enum {string} */
-            event: "SyncError";
-        } | {
-            envelopes: components["schemas"]["Envelope"][];
-            /** @enum {string} */
-            event: "NewMessages";
-        } | {
-            /** @enum {string} */
-            event: "MessageUnsnoozed";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            event: "ReminderTriggered";
-            sent_message_id: components["schemas"]["MessageId"];
-        } | {
-            counts: components["schemas"]["LabelCount"][];
-            /** @enum {string} */
-            event: "LabelCountsUpdated";
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            event: "OperationStarted";
-            message: string;
-            operation: string;
-            operation_id: string;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** Format: int32 */
-            current: number;
-            /** @enum {string} */
-            event: "OperationProgress";
-            message: string;
-            operation: string;
-            operation_id: string;
-            /** Format: int32 */
-            total?: number | null;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            event: "OperationCompleted";
-            message: string;
-            operation: string;
-            operation_id: string;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            error: string;
-            /** @enum {string} */
-            event: "OperationFailed";
-            operation: string;
-            operation_id: string;
-            retryable: boolean;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            event: "OperationCancelled";
-            message: string;
-            operation: string;
-            operation_id: string;
-        };
-        /** @enum {string} */
-        DaemonHealthClass: "healthy" | "degraded" | "restart_required" | "repair_required";
-        DoctorDataStats: {
-            /** Format: int32 */
-            accounts: number;
-            /** Format: int32 */
-            attachments: number;
-            /** Format: int32 */
-            bodies: number;
-            /** Format: int32 */
-            drafts: number;
-            /** Format: int32 */
-            event_log: number;
-            /** Format: int32 */
-            labels: number;
-            /** Format: int32 */
-            message_labels: number;
-            /** Format: int32 */
-            messages: number;
-            /** Format: int32 */
-            messages_with_attachments: number;
-            /** Format: int32 */
-            rule_logs: number;
-            /** Format: int32 */
-            rules: number;
-            /** Format: int32 */
-            saved_searches: number;
-            /** Format: int32 */
-            semantic_chunks: number;
-            /** Format: int32 */
-            semantic_embeddings: number;
-            /** Format: int32 */
-            semantic_profiles: number;
-            /** Format: int32 */
-            snoozed: number;
-            /** Format: int32 */
-            starred_messages: number;
-            /** Format: int32 */
-            sync_log: number;
-            /** Format: int32 */
-            sync_runtime_statuses: number;
-            /** Format: int32 */
-            unread_messages: number;
-        };
-        /**
-         * @description One actionable issue identified by `mxr doctor`. Combines a short
-         *     human-readable message with optional shell commands the user can
-         *     run to remediate.
-         */
-        DoctorFinding: {
-            category: components["schemas"]["DoctorFindingCategory"];
-            message: string;
-            /**
-             * @description Shell-runnable suggestions the user can copy-paste. Empty when
-             *     no automated remediation is available.
-             */
-            remediation?: string[];
-            severity: components["schemas"]["DoctorFindingSeverity"];
-        };
-        /**
-         * @description Coarse category of a doctor finding. Lets clients group related
-         *     issues without parsing free text.
-         * @enum {string}
-         */
-        DoctorFindingCategory: "generic" | "sync" | "o_auth" | "network" | "search_index" | "semantic" | "sqlite_lock" | "storage" | "daemon";
-        /**
-         * @description Severity of a doctor finding. Drives whether the CLI exits non-zero
-         *     (`Error`) and how the TUI styles the entry.
-         * @enum {string}
-         */
-        DoctorFindingSeverity: "info" | "warning" | "error";
-        DoctorReport: {
-            daemon_build_id?: string | null;
-            /** Format: int32 */
-            daemon_pid?: number | null;
-            /** Format: int32 */
-            daemon_protocol_version?: number;
-            daemon_running: boolean;
-            daemon_version?: string | null;
-            data_dir_exists: boolean;
-            data_stats?: components["schemas"]["DoctorDataStats"];
-            database_exists: boolean;
-            database_path: string;
-            /** Format: int64 */
-            database_size_bytes: number;
-            /**
-             * @description Structured findings: per-issue category, severity, and
-             *     shell-runnable remediation steps. Replaces the freeform
-             *     `recommended_next_steps` for clients that want to reason about
-             *     individual problems (TUI, future agent integrations). The
-             *     freeform field is preserved for backwards-compatibility.
-             */
-            findings?: components["schemas"]["DoctorFinding"][];
-            health_class?: components["schemas"]["DaemonHealthClass"];
-            healthy: boolean;
-            index_exists: boolean;
-            index_lock_error?: string | null;
-            index_lock_held: boolean;
-            index_path: string;
-            /** Format: int64 */
-            index_size_bytes: number;
-            last_successful_sync_at?: string | null;
-            lexical_index_freshness?: components["schemas"]["IndexFreshness"];
-            lexical_last_rebuilt_at?: string | null;
-            log_path: string;
-            /** Format: int64 */
-            log_size_bytes: number;
-            recent_error_logs: string[];
-            recent_sync_events: components["schemas"]["EventLogEntry"][];
-            recommended_next_steps: string[];
-            repair_required?: boolean;
-            restart_required?: boolean;
-            semantic_active_profile?: string | null;
-            semantic_enabled?: boolean;
-            semantic_index_freshness?: components["schemas"]["IndexFreshness"];
-            semantic_last_indexed_at?: string | null;
-            socket_exists: boolean;
-            socket_reachable: boolean;
-            stale_socket: boolean;
-            sync_statuses: components["schemas"]["AccountSyncStatus"][];
-        };
-        Draft: {
-            account_id: components["schemas"]["AccountId"];
-            attachments: string[];
-            bcc: components["schemas"]["Address"][];
-            body_markdown: string;
-            cc: components["schemas"]["Address"][];
-            /** Format: date-time */
-            created_at: string;
-            id: components["schemas"]["DraftId"];
-            reply_headers?: null | components["schemas"]["ReplyHeaders"];
-            subject: string;
-            to: components["schemas"]["Address"][];
-            /** Format: date-time */
-            updated_at: string;
-        };
-        /** Format: uuid */
-        DraftId: string;
-        Envelope: {
-            account_id: components["schemas"]["AccountId"];
-            bcc: components["schemas"]["Address"][];
-            cc: components["schemas"]["Address"][];
-            /** Format: date-time */
-            date: string;
-            /** Format: int32 */
-            flags: number;
-            from: components["schemas"]["Address"];
-            has_attachments: boolean;
-            id: components["schemas"]["MessageId"];
-            in_reply_to?: string | null;
-            /**
-             * @description Provider-specific label IDs (e.g. "INBOX", "SENT", "Label_123").
-             *     Transient: used during sync to populate the message_labels junction table.
-             */
-            label_provider_ids?: string[];
-            message_id_header?: string | null;
-            /**
-             * @description Provider-instance identity used for sync and mutations.
-             *
-             *     Stable for Gmail message IDs.
-             *     For IMAP, this is mailbox-scoped today and may change across moves/copies.
-             */
-            provider_id: string;
-            references: string[];
-            /** Format: int64 */
-            size_bytes: number;
-            snippet: string;
-            subject: string;
-            thread_id: components["schemas"]["ThreadId"];
-            to: components["schemas"]["Address"][];
-            unsubscribe: components["schemas"]["UnsubscribeMethod"];
-        };
-        EventLogEntry: {
-            account_id?: null | components["schemas"]["AccountId"];
-            category: string;
-            details?: string | null;
-            level: string;
-            message_id?: string | null;
-            rule_id?: string | null;
-            summary: string;
-            /** Format: int64 */
-            timestamp: number;
-        };
-        /** @enum {string} */
-        ExportFormat: "Markdown" | "Json" | "Mbox" | "LlmContext";
-        /** @description Forward context returned by PrepareForward. */
-        ForwardContext: {
-            account_id: components["schemas"]["AccountId"];
-            forwarded_content: string;
-            from: string;
-            subject: string;
-        };
-        /** @enum {string} */
-        GmailCredentialSourceData: "bundled" | "custom";
-        HtmlImageAsset: {
-            detail?: string | null;
-            kind: components["schemas"]["HtmlImageSourceKind"];
-            mime_type?: string | null;
-            path?: string | null;
-            source: string;
-            status: components["schemas"]["HtmlImageAssetStatus"];
-        };
-        /** @enum {string} */
-        HtmlImageAssetStatus: "ready" | "blocked" | "missing" | "unsupported" | "failed";
-        /** @enum {string} */
-        HtmlImageSourceKind: "cid" | "data_uri" | "remote" | "content_location" | "file";
-        /** @enum {string} */
-        IndexFreshness: "unknown" | "current" | "stale" | "disabled" | "indexing" | "error" | "repair_required";
-        /** @enum {string} */
-        IpcErrorKind: "invalid_request" | "not_found" | "auth" | "policy" | "provider" | "rate_limited" | "store" | "unsupported" | "internal";
-        Label: {
-            account_id: components["schemas"]["AccountId"];
-            color?: string | null;
-            id: components["schemas"]["LabelId"];
-            kind: components["schemas"]["LabelKind"];
-            name: string;
-            provider_id: string;
-            /** Format: int32 */
-            total_count: number;
-            /** Format: int32 */
-            unread_count: number;
-        };
-        LabelCount: {
-            label_id: components["schemas"]["LabelId"];
-            /** Format: int32 */
-            total_count: number;
-            /** Format: int32 */
-            unread_count: number;
-        };
-        /** Format: uuid */
-        LabelId: string;
-        /** @enum {string} */
-        LabelKind: "System" | "Folder" | "User";
-        /**
-         * @description Single message ranked by its envelope `size_bytes`. Powers
-         *     `mxr storage --by message`: lets users find and act on the single
-         *     biggest emails (the 250 MB attachment from a courier service, the
-         *     massive zip a colleague sent in 2017) instead of just the bucket totals.
-         */
-        LargestMessageRow: {
-            /** Format: date-time */
-            date: string;
-            from_email: string;
-            message_id: components["schemas"]["MessageId"];
-            /** Format: int64 */
-            size_bytes: number;
-            subject: string;
-        };
-        MessageBody: {
-            attachments: components["schemas"]["AttachmentMeta"][];
-            /** Format: date-time */
-            fetched_at: string;
-            message_id: components["schemas"]["MessageId"];
-            metadata?: components["schemas"]["MessageMetadata"];
-            text_html?: string | null;
-            text_plain?: string | null;
-        };
-        /** Format: uuid */
-        MessageId: string;
-        MessageMetadata: {
-            auth_results?: string[];
-            calendar?: null | components["schemas"]["CalendarMetadata"];
-            content_language?: string[];
-            list_id?: string | null;
-            raw_headers?: string | null;
-            text_html_source?: null | components["schemas"]["BodyPartSource"];
-            text_plain_format?: null | components["schemas"]["TextPlainFormat"];
-            text_plain_source?: null | components["schemas"]["BodyPartSource"];
-        };
-        /** @description Mutation commands for modifying messages. */
-        MutationCommand: {
-            message_ids: components["schemas"]["MessageId"][];
-            /** @enum {string} */
-            mutation: "Archive";
-        } | {
-            message_ids: components["schemas"]["MessageId"][];
-            /** @enum {string} */
-            mutation: "ReadAndArchive";
-        } | {
-            message_ids: components["schemas"]["MessageId"][];
-            /** @enum {string} */
-            mutation: "Trash";
-        } | {
-            message_ids: components["schemas"]["MessageId"][];
-            /** @enum {string} */
-            mutation: "Spam";
-        } | {
-            message_ids: components["schemas"]["MessageId"][];
-            /** @enum {string} */
-            mutation: "Star";
-            starred: boolean;
-        } | {
-            message_ids: components["schemas"]["MessageId"][];
-            /** @enum {string} */
-            mutation: "SetRead";
-            read: boolean;
-        } | {
-            add: string[];
-            message_ids: components["schemas"]["MessageId"][];
-            /** @enum {string} */
-            mutation: "ModifyLabels";
-            remove: string[];
-        } | {
-            message_ids: components["schemas"]["MessageId"][];
-            /** @enum {string} */
-            mutation: "Move";
-            target_label: string;
-        };
-        MutationResultData: {
-            accounts: components["schemas"]["AccountMutationResultData"][];
-            /** Format: int32 */
-            failed: number;
-            /**
-             * @description Set by undoable mutations (Archive / Trash / Spam / SetRead /
-             *     ReadAndArchive). Identifies a row in the daemon's
-             *     `mutation_undo_log` that the client can reference via
-             *     `Request::UndoMutation` for ~60s after the mutation lands.
-             *     `None` for non-undoable mutations (Star, ModifyLabels, Move).
-             */
-            mutation_id?: string | null;
-            /** Format: int32 */
-            requested: number;
-            /** Format: int32 */
-            skipped: number;
-            /** Format: int32 */
-            succeeded: number;
-        };
-        /** @description Reply context returned by PrepareReply. */
-        ReplyContext: {
-            account_id: components["schemas"]["AccountId"];
-            cc: string;
-            from: string;
-            in_reply_to: string;
-            references: string[];
-            reply_to: string;
-            subject: string;
-            thread_context: string;
-            /** @description Provider-native thread hint (e.g. Gmail thread id). None for IMAP. */
-            thread_id?: string | null;
-        };
-        ReplyHeaders: {
-            in_reply_to: string;
-            references?: string[];
-            /**
-             * @description Provider-native thread hint. Gmail uses this to keep replies in-thread;
-             *     IMAP relies on the In-Reply-To/References headers and ignores it.
-             */
-            thread_id?: string | null;
-        };
-        Request: {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListEnvelopes";
-            label_id?: null | components["schemas"]["LabelId"];
-            /** Format: int32 */
-            limit: number;
-            /** Format: int32 */
-            offset: number;
-        } | {
-            /** @enum {string} */
-            cmd: "ListEnvelopesByIds";
-            message_ids: components["schemas"]["MessageId"][];
-        } | {
-            /** @enum {string} */
-            cmd: "GetEnvelope";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            cmd: "GetBody";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            allow_remote: boolean;
-            /** @enum {string} */
-            cmd: "GetHtmlImageAssets";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            attachment_id: components["schemas"]["AttachmentId"];
-            /** @enum {string} */
-            cmd: "DownloadAttachment";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            attachment_id: components["schemas"]["AttachmentId"];
-            /** @enum {string} */
-            cmd: "OpenAttachment";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            cmd: "ListBodies";
-            message_ids: components["schemas"]["MessageId"][];
-        } | {
-            /** @enum {string} */
-            cmd: "GetThread";
-            thread_id: components["schemas"]["ThreadId"];
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListLabels";
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "CreateLabel";
-            color?: string | null;
-            name: string;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "DeleteLabel";
-            name: string;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "RenameLabel";
-            new: string;
-            old: string;
-        } | {
-            /** @enum {string} */
-            cmd: "ListAccounts";
-        } | {
-            /** @enum {string} */
-            cmd: "ListAccountsConfig";
-        } | {
-            account: components["schemas"]["AccountConfigData"];
-            /** @enum {string} */
-            cmd: "AuthorizeAccountConfig";
-            reauthorize: boolean;
-        } | {
-            account: components["schemas"]["AccountConfigData"];
-            /** @enum {string} */
-            cmd: "StartAuthSession";
-            flow?: components["schemas"]["AuthFlowData"];
-            reauthorize: boolean;
-        } | {
-            /** @enum {string} */
-            cmd: "GetAuthSession";
-            session_id: components["schemas"]["AuthSessionId"];
-        } | {
-            /** @enum {string} */
-            cmd: "CancelAuthSession";
-            session_id: components["schemas"]["AuthSessionId"];
-        } | {
-            /** @enum {string} */
-            cmd: "CompleteAuthSession";
-            save_account: boolean;
-            session_id: components["schemas"]["AuthSessionId"];
-        } | {
-            account: components["schemas"]["AccountConfigData"];
-            /** @enum {string} */
-            cmd: "UpsertAccountConfig";
-        } | {
-            /** @enum {string} */
-            cmd: "SetDefaultAccount";
-            key: string;
-        } | {
-            account: components["schemas"]["AccountConfigData"];
-            /** @enum {string} */
-            cmd: "TestAccountConfig";
-        } | {
-            /** @enum {string} */
-            cmd: "DisableAccountConfig";
-            key: string;
-        } | {
-            /** @enum {string} */
-            cmd: "RemoveAccountConfig";
-            dry_run: boolean;
-            key: string;
-            purge_local_data: boolean;
-        } | {
-            account: components["schemas"]["AccountConfigData"];
-            /** @enum {string} */
-            cmd: "RepairAccountConfig";
-        } | {
-            /** @enum {string} */
-            cmd: "ListRules";
-        } | {
-            /** @enum {string} */
-            cmd: "GetRule";
-            rule: string;
-        } | {
-            /** @enum {string} */
-            cmd: "GetRuleForm";
-            rule: string;
-        } | {
-            /** @enum {string} */
-            cmd: "UpsertRule";
-            rule: unknown;
-        } | {
-            action: string;
-            /** @enum {string} */
-            cmd: "UpsertRuleForm";
-            condition: string;
-            enabled: boolean;
-            existing_rule?: string | null;
-            name: string;
-            /** Format: int32 */
-            priority: number;
-        } | {
-            /** @enum {string} */
-            cmd: "DeleteRule";
-            rule: string;
-        } | {
-            after?: string | null;
-            all: boolean;
-            /** @enum {string} */
-            cmd: "DryRunRules";
-            rule?: string | null;
-        } | {
-            /** @enum {string} */
-            cmd: "ListSavedSearches";
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListSubscriptions";
-            /** Format: int32 */
-            limit: number;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListStorageBreakdown";
-            group_by: components["schemas"]["StorageGroupBy"];
-            /** Format: int32 */
-            limit: number;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListLargestMessages";
-            /** Format: int32 */
-            limit: number;
-            /** Format: int32 */
-            since_days?: number | null;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "Wrapped";
-            label: string;
-            /** Format: int64 */
-            since_unix: number;
-            /** Format: int64 */
-            until_unix: number;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListStaleThreads";
-            /** Format: int32 */
-            limit: number;
-            /** Format: int32 */
-            older_than_days: number;
-            perspective: components["schemas"]["StaleBallInCourt"];
-            /** Format: int32 */
-            within_days: number;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListContactAsymmetry";
-            /** Format: int32 */
-            limit: number;
-            /** Format: int32 */
-            min_inbound: number;
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListContactDecay";
-            /** Format: int32 */
-            limit: number;
-            /** Format: int32 */
-            max_lookback_days: number;
-            /** Format: int32 */
-            threshold_days: number;
-        } | {
-            /** @enum {string} */
-            cmd: "RefreshContacts";
-        } | {
-            /** @enum {string} */
-            cmd: "RebuildAnalytics";
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListResponseTime";
-            counterparty?: string | null;
-            direction: components["schemas"]["ResponseTimeDirection"];
-            /** Format: int32 */
-            since_days?: number | null;
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListAccountAddresses";
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "AddAccountAddress";
-            email: string;
-            primary: boolean;
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "RemoveAccountAddress";
-            email: string;
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "SetPrimaryAccountAddress";
-            email: string;
-        } | {
-            /** @enum {string} */
-            cmd: "GetSemanticStatus";
-        } | {
-            /** @enum {string} */
-            cmd: "EnableSemantic";
-            enabled: boolean;
-        } | {
-            /** @enum {string} */
-            cmd: "InstallSemanticProfile";
-            profile: components["schemas"]["SemanticProfile"];
-        } | {
-            /** @enum {string} */
-            cmd: "UseSemanticProfile";
-            profile: components["schemas"]["SemanticProfile"];
-        } | {
-            /** @enum {string} */
-            cmd: "ReindexSemantic";
-        } | {
-            /** @enum {string} */
-            cmd: "CreateSavedSearch";
-            name: string;
-            query: string;
-            search_mode: components["schemas"]["SearchMode"];
-        } | {
-            /** @enum {string} */
-            cmd: "DeleteSavedSearch";
-            name: string;
-        } | {
-            /** @enum {string} */
-            cmd: "RunSavedSearch";
-            /** Format: int32 */
-            limit: number;
-            name: string;
-        } | {
-            category?: string | null;
-            /** @enum {string} */
-            cmd: "ListEvents";
-            level?: string | null;
-            /** Format: int32 */
-            limit: number;
-        } | {
-            /** @enum {string} */
-            cmd: "GetLogs";
-            level?: string | null;
-            /** Format: int32 */
-            limit: number;
-        } | {
-            /** @enum {string} */
-            cmd: "GetDoctorReport";
-        } | {
-            /** @enum {string} */
-            cmd: "GenerateBugReport";
-            full_logs: boolean;
-            since?: string | null;
-            verbose: boolean;
-        } | {
-            /** @enum {string} */
-            cmd: "Search";
-            explain: boolean;
-            /** Format: int32 */
-            limit: number;
-            mode?: null | components["schemas"]["SearchMode"];
-            /** Format: int32 */
-            offset?: number;
-            query: string;
-            sort?: null | components["schemas"]["SortOrder"];
-        } | {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "SyncNow";
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "GetSyncStatus";
-        } | {
-            /** @enum {string} */
-            cmd: "SetFlags";
-            /** Format: int32 */
-            flags: number;
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            cmd: "Count";
-            mode?: null | components["schemas"]["SearchMode"];
-            query: string;
-        } | {
-            /** @enum {string} */
-            cmd: "GetHeaders";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            cmd: "ListRuleHistory";
-            /** Format: int32 */
-            limit: number;
-            rule?: string | null;
-        } | (components["schemas"]["MutationCommand"] & {
-            /** @enum {string} */
-            cmd: "Mutation";
-        }) | {
-            /** @enum {string} */
-            cmd: "UndoMutation";
-            mutation_id: string;
-        } | {
-            /** @enum {string} */
-            cmd: "Unsubscribe";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            cmd: "Snooze";
-            message_id: components["schemas"]["MessageId"];
-            /** Format: date-time */
-            wake_at: string;
-        } | {
-            /** @enum {string} */
-            cmd: "Unsnooze";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            cmd: "ListSnoozed";
-        } | {
-            /** @enum {string} */
-            cmd: "SetReplyLater";
-            flag: boolean;
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            cmd: "ListReplyQueue";
-        } | {
-            /** @enum {string} */
-            cmd: "SetAutoReminder";
-            /** Format: date-time */
-            remind_at: string;
-            sent_message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            cmd: "CancelAutoReminder";
-            sent_message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            cmd: "ScheduleSend";
-            draft_id: components["schemas"]["DraftId"];
-            /** Format: date-time */
-            send_at: string;
-        } | {
-            /** @enum {string} */
-            cmd: "CancelScheduledSend";
-            draft_id: components["schemas"]["DraftId"];
-        } | {
-            /** @enum {string} */
-            cmd: "ListSnippets";
-        } | {
-            body: string;
-            /** @enum {string} */
-            cmd: "SetSnippet";
-            name: string;
-            vars: string[];
-        } | {
-            /** @enum {string} */
-            cmd: "DeleteSnippet";
-            name: string;
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "GetSenderProfile";
-            email: string;
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListScreenerQueue";
-            /** Format: int32 */
-            limit?: number;
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ListScreenerDecisions";
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "SetScreenerDecision";
-            disposition: components["schemas"]["ScreenerDispositionData"];
-            route_label?: string | null;
-            sender_email: string;
-        } | {
-            account_id: components["schemas"]["AccountId"];
-            /** @enum {string} */
-            cmd: "ClearScreenerDecision";
-            sender_email: string;
-        } | {
-            /** @enum {string} */
-            cmd: "SummarizeThread";
-            thread_id: components["schemas"]["ThreadId"];
-        } | {
-            /** @enum {string} */
-            cmd: "DraftAssist";
-            instruction: string;
-            thread_id: components["schemas"]["ThreadId"];
-        } | {
-            /** @enum {string} */
-            cmd: "PrepareReply";
-            message_id: components["schemas"]["MessageId"];
-            reply_all: boolean;
-        } | {
-            /** @enum {string} */
-            cmd: "PrepareForward";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            /** @enum {string} */
-            cmd: "SendDraft";
-            draft: components["schemas"]["Draft"];
-        } | {
-            /** @enum {string} */
-            cmd: "SaveDraft";
-            draft: components["schemas"]["Draft"];
-        } | {
-            /** @enum {string} */
-            cmd: "SendStoredDraft";
-            draft_id: components["schemas"]["DraftId"];
-        } | {
-            /** @enum {string} */
-            cmd: "DeleteDraft";
-            draft_id: components["schemas"]["DraftId"];
-        } | {
-            /** @enum {string} */
-            cmd: "SaveDraftToServer";
-            draft: components["schemas"]["Draft"];
-        } | {
-            /** @enum {string} */
-            cmd: "ListDrafts";
-        } | {
-            /** @enum {string} */
-            cmd: "ListOrphanedDrafts";
-        } | {
-            /** @enum {string} */
-            cmd: "ResetOrphanedDraft";
-            draft_id: components["schemas"]["DraftId"];
-        } | {
-            /** @enum {string} */
-            cmd: "ExportThread";
-            format: components["schemas"]["ExportFormat"];
-            thread_id: components["schemas"]["ThreadId"];
-        } | {
-            /** @enum {string} */
-            cmd: "ExportSearch";
-            format: components["schemas"]["ExportFormat"];
-            query: string;
-        } | {
-            /** @enum {string} */
-            cmd: "GetStatus";
-        } | {
-            /** @enum {string} */
-            cmd: "Ping";
-        } | {
-            /** @enum {string} */
-            cmd: "Shutdown";
-        };
-        Response: {
-            data: components["schemas"]["ResponseData"];
-            /** @enum {string} */
-            status: "Ok";
-        } | {
-            code?: string;
-            details?: unknown;
-            kind?: components["schemas"]["IpcErrorKind"];
-            message: string;
-            retryable?: boolean;
-            /** @enum {string} */
-            status: "Error";
-        };
-        ResponseData: {
-            envelopes: components["schemas"]["Envelope"][];
-            /** @enum {string} */
-            kind: "Envelopes";
-        } | {
-            envelope: components["schemas"]["Envelope"];
-            /** @enum {string} */
-            kind: "Envelope";
-        } | {
-            body: components["schemas"]["MessageBody"];
-            /** @enum {string} */
-            kind: "Body";
-        } | {
-            assets: components["schemas"]["HtmlImageAsset"][];
-            /** @enum {string} */
-            kind: "HtmlImageAssets";
-            message_id: components["schemas"]["MessageId"];
-        } | {
-            file: components["schemas"]["AttachmentFile"];
-            /** @enum {string} */
-            kind: "AttachmentFile";
-        } | {
-            bodies: components["schemas"]["MessageBody"][];
-            failures?: components["schemas"]["BodyFailure"][];
-            /** @enum {string} */
-            kind: "Bodies";
-        } | {
-            /** @enum {string} */
-            kind: "Thread";
-            messages: components["schemas"]["Envelope"][];
-            thread: components["schemas"]["Thread"];
-        } | {
-            /** @enum {string} */
-            kind: "Labels";
-            labels: components["schemas"]["Label"][];
-        } | {
-            /** @enum {string} */
-            kind: "Label";
-            label: components["schemas"]["Label"];
-        } | {
-            explain?: null | components["schemas"]["SearchExplain"];
-            has_more?: boolean;
-            /** @enum {string} */
-            kind: "SearchResults";
-            /** Format: int32 */
-            next_offset?: number | null;
-            results: components["schemas"]["SearchResultItem"][];
-            /** Format: int32 */
-            total?: number;
-        } | {
-            /** @enum {string} */
-            kind: "SyncStatus";
-            sync: components["schemas"]["AccountSyncStatus"];
-        } | {
-            /** Format: int32 */
-            count: number;
-            /** @enum {string} */
-            kind: "Count";
-        } | {
-            headers: [
-                string,
-                string
-            ][];
-            /** @enum {string} */
-            kind: "Headers";
-        } | {
-            context: components["schemas"]["ReplyContext"];
-            /** @enum {string} */
-            kind: "ReplyContext";
-        } | {
-            context: components["schemas"]["ForwardContext"];
-            /** @enum {string} */
-            kind: "ForwardContext";
-        } | {
-            drafts: components["schemas"]["Draft"][];
-            /** @enum {string} */
-            kind: "Drafts";
-        } | {
-            /** @enum {string} */
-            kind: "SnoozedMessages";
-            snoozed: components["schemas"]["Snoozed"][];
-        } | {
-            /** @enum {string} */
-            kind: "ReplyQueue";
-            messages: components["schemas"]["Envelope"][];
-        } | {
-            /** @enum {string} */
-            kind: "Snippets";
-            snippets: components["schemas"]["SnippetData"][];
-        } | {
-            /** @enum {string} */
-            kind: "SnippetData";
-            snippet: components["schemas"]["SnippetData"];
-        } | {
-            /** @enum {string} */
-            kind: "SenderProfile";
-            profile?: null | components["schemas"]["SenderProfileData"];
-        } | {
-            entries: components["schemas"]["ScreenerQueueEntryData"][];
-            /** @enum {string} */
-            kind: "ScreenerQueue";
-        } | {
-            decisions: components["schemas"]["ScreenerDecisionData"][];
-            /** @enum {string} */
-            kind: "ScreenerDecisions";
-        } | {
-            /** @enum {string} */
-            kind: "ThreadSummary";
-            model: string;
-            text: string;
-        } | {
-            body: string;
-            /** @enum {string} */
-            kind: "DraftSuggestion";
-            model: string;
-        } | {
-            content: string;
-            /** @enum {string} */
-            kind: "ExportResult";
-        } | {
-            /** @enum {string} */
-            kind: "MutationResult";
-            result: components["schemas"]["MutationResultData"];
-        } | {
-            /** @enum {string} */
-            kind: "Rules";
-            rules: unknown[];
-        } | {
-            /** @enum {string} */
-            kind: "RuleData";
-            rule: unknown;
-        } | {
-            accounts: components["schemas"]["AccountSummaryData"][];
-            /** @enum {string} */
-            kind: "Accounts";
-        } | {
-            accounts: components["schemas"]["AccountConfigData"][];
-            /** @enum {string} */
-            kind: "AccountsConfig";
-        } | {
-            /** @enum {string} */
-            kind: "AccountOperation";
-            result: components["schemas"]["AccountOperationResult"];
-        } | {
-            /** @enum {string} */
-            kind: "AuthSession";
-            session: components["schemas"]["AuthSessionData"];
-        } | {
-            form: components["schemas"]["RuleFormData"];
-            /** @enum {string} */
-            kind: "RuleFormData";
-        } | {
-            /** @enum {string} */
-            kind: "RuleDryRun";
-            results: unknown[];
-        } | {
-            /** @enum {string} */
-            kind: "SavedSearches";
-            searches: components["schemas"]["SavedSearch"][];
-        } | {
-            /** @enum {string} */
-            kind: "Subscriptions";
-            subscriptions: components["schemas"]["SubscriptionSummary"][];
-        } | {
-            /** @enum {string} */
-            kind: "StorageBreakdown";
-            rows: components["schemas"]["StorageBucket"][];
-        } | {
-            /** @enum {string} */
-            kind: "LargestMessages";
-            rows: components["schemas"]["LargestMessageRow"][];
-        } | {
-            /** @enum {string} */
-            kind: "Wrapped";
-            summary: components["schemas"]["WrappedSummary"];
-        } | {
-            /** @enum {string} */
-            kind: "StaleThreads";
-            rows: components["schemas"]["StaleThreadRow"][];
-        } | {
-            /** @enum {string} */
-            kind: "ContactAsymmetry";
-            rows: components["schemas"]["ContactAsymmetryRow"][];
-        } | {
-            /** @enum {string} */
-            kind: "ContactDecay";
-            rows: components["schemas"]["ContactDecayRow"][];
-        } | {
-            /** @enum {string} */
-            kind: "RefreshedContacts";
-            /** Format: int32 */
-            rows: number;
-        } | {
-            /** Format: int32 */
-            business_hours_backfilled: number;
-            /** Format: int32 */
-            contacts_rows: number;
-            /** Format: int32 */
-            directions_reclassified: number;
-            /** @enum {string} */
-            kind: "AnalyticsRebuildSummary";
-            /** Format: int32 */
-            list_ids_backfilled: number;
-            /** Format: int32 */
-            reply_pairs_resolved: number;
-        } | {
-            /** @enum {string} */
-            kind: "ResponseTime";
-            summary: components["schemas"]["ResponseTimeSummary"];
-        } | {
-            addresses: components["schemas"]["AccountAddress"][];
-            /** @enum {string} */
-            kind: "AccountAddresses";
-        } | {
-            /** @enum {string} */
-            kind: "SemanticStatus";
-            snapshot: components["schemas"]["SemanticStatusSnapshot"];
-        } | {
-            /** @enum {string} */
-            kind: "SavedSearchData";
-            search: components["schemas"]["SavedSearch"];
-        } | {
-            entries: components["schemas"]["EventLogEntry"][];
-            /** @enum {string} */
-            kind: "EventLogEntries";
-        } | {
-            /** @enum {string} */
-            kind: "LogLines";
-            lines: string[];
-        } | {
-            /** @enum {string} */
-            kind: "DoctorReport";
-            report: components["schemas"]["DoctorReport"];
-        } | {
-            content: string;
-            /** @enum {string} */
-            kind: "BugReport";
-        } | {
-            entries: unknown[];
-            /** @enum {string} */
-            kind: "RuleHistory";
-        } | {
-            accounts: string[];
-            daemon_build_id?: string | null;
-            /** Format: int32 */
-            daemon_pid?: number | null;
-            daemon_version?: string | null;
-            /** @enum {string} */
-            kind: "Status";
-            /** Format: int32 */
-            protocol_version?: number;
-            repair_required?: boolean;
-            semantic_runtime?: null | components["schemas"]["SemanticRuntimeMetrics"];
-            sync_statuses?: components["schemas"]["AccountSyncStatus"][];
-            /** Format: int32 */
-            total_messages: number;
-            /** Format: int64 */
-            uptime_secs: number;
-        } | {
-            /** @enum {string} */
-            kind: "Pong";
-        } | {
-            /** @enum {string} */
-            kind: "Ack";
-        } | {
-            /** @enum {string} */
-            kind: "SendReceipt";
-            local_message_id: components["schemas"]["MessageId"];
-            provider_message_id?: string | null;
-            rfc2822_message_id: string;
-        };
-        /**
-         * @description A single bucket of the response-time histogram. `count` rows had a
-         *     clock latency in `(prev_upper, upper_bound_seconds]`. The last
-         *     bucket uses `u32::MAX` as `upper_bound_seconds` to mean "no upper
-         *     limit".
-         */
-        ResponseTimeBucket: {
-            /** Format: int32 */
-            count: number;
-            /** Format: int32 */
-            upper_bound_seconds: number;
-        };
-        /** @enum {string} */
-        ResponseTimeDirection: "i_replied" | "they_replied";
-        /**
-         * @description Aggregate response-time summary for `mxr response-time`. p50/p90 in
-         *     seconds; business-hours percentiles are `None` until the reconciler has
-         *     backfilled the relevant rows.
-         */
-        ResponseTimeSummary: {
-            /** Format: int32 */
-            business_hours_p50_seconds?: number | null;
-            /** Format: int32 */
-            business_hours_p90_seconds?: number | null;
-            /** Format: int32 */
-            clock_p50_seconds: number;
-            /** Format: int32 */
-            clock_p90_seconds: number;
-            direction: components["schemas"]["ResponseTimeDirection"];
-            /**
-             * @description Distribution of clock latencies (seconds) bucketed for the
-             *     histogram view in the TUI / future CLI surface. Ordered from
-             *     shortest to longest by `upper_bound_seconds`. `#[serde(default)]`
-             *     so older daemons returning the previous payload deserialize
-             *     cleanly during a rolling upgrade.
-             */
-            histogram?: components["schemas"]["ResponseTimeBucket"][];
-            /** Format: int32 */
-            sample_count: number;
-        };
-        RuleFormData: {
-            action: string;
-            condition: string;
-            enabled: boolean;
-            id?: string | null;
-            name: string;
-            /** Format: int32 */
-            priority: number;
-        };
-        SavedSearch: {
-            account_id?: null | components["schemas"]["AccountId"];
-            /** Format: date-time */
-            created_at: string;
-            icon?: string | null;
-            id: components["schemas"]["SavedSearchId"];
-            name: string;
-            /** Format: int32 */
-            position: number;
-            query: string;
-            search_mode?: components["schemas"]["SearchMode"];
-            sort: components["schemas"]["SortOrder"];
-        };
-        /** Format: uuid */
-        SavedSearchId: string;
-        ScreenerDecisionData: {
-            account_id: components["schemas"]["AccountId"];
-            /** Format: date-time */
-            decided_at: string;
-            disposition: components["schemas"]["ScreenerDispositionData"];
-            route_label?: string | null;
-            sender_email: string;
-        };
-        /** @enum {string} */
-        ScreenerDispositionData: "allow" | "deny" | "feed" | "paper_trail" | "unknown";
-        ScreenerQueueEntryData: {
-            display_name?: string | null;
-            /** Format: date-time */
-            latest_at: string;
-            latest_subject: string;
-            /** Format: int32 */
-            message_count: number;
-            sender_email: string;
-        };
-        SearchExplain: {
-            /** Format: int32 */
-            dense_candidates: number;
-            /** Format: int32 */
-            dense_window?: number | null;
-            executed_mode: components["schemas"]["SearchMode"];
-            /** Format: int32 */
-            final_results: number;
-            /** Format: int32 */
-            lexical_candidates: number;
-            /** Format: int32 */
-            lexical_window: number;
-            notes: string[];
-            requested_mode: components["schemas"]["SearchMode"];
-            results: components["schemas"]["SearchExplainResult"][];
-            /** Format: int32 */
-            rrf_k?: number | null;
-            semantic_query?: string | null;
-        };
-        SearchExplainResult: {
-            /** Format: int32 */
-            dense_rank?: number | null;
-            /** Format: float */
-            dense_score?: number | null;
-            /** Format: float */
-            final_score: number;
-            /** Format: int32 */
-            lexical_rank?: number | null;
-            /** Format: float */
-            lexical_score?: number | null;
-            message_id: components["schemas"]["MessageId"];
-            /** Format: int32 */
-            rank: number;
-        };
-        /** @enum {string} */
-        SearchMode: "lexical" | "hybrid" | "semantic";
-        SearchResultItem: {
-            account_id: components["schemas"]["AccountId"];
-            message_id: components["schemas"]["MessageId"];
-            mode: components["schemas"]["SearchMode"];
-            /** Format: float */
-            score: number;
-            thread_id: components["schemas"]["ThreadId"];
-        };
-        /** @enum {string} */
-        SemanticProfile: "bge-small-en-v1.5" | "multilingual-e5-small" | "bge-m3";
-        /** Format: uuid */
-        SemanticProfileId: string;
-        SemanticProfileRecord: {
-            /** Format: date-time */
-            activated_at?: string | null;
-            backend: string;
-            /** Format: int32 */
-            dimensions: number;
-            id: components["schemas"]["SemanticProfileId"];
-            /** Format: date-time */
-            installed_at?: string | null;
-            last_error?: string | null;
-            /** Format: date-time */
-            last_indexed_at?: string | null;
-            model_revision: string;
-            profile: components["schemas"]["SemanticProfile"];
-            /** Format: int32 */
-            progress_completed: number;
-            /** Format: int32 */
-            progress_total: number;
-            status: components["schemas"]["SemanticProfileStatus"];
-        };
-        /** @enum {string} */
-        SemanticProfileStatus: "pending" | "ready" | "indexing" | "error";
-        SemanticRuntimeMetrics: {
-            /** Format: int32 */
-            in_flight?: number;
-            /** Format: int64 */
-            last_embedding_prep_ms?: number | null;
-            /** Format: int64 */
-            last_extract_ms?: number | null;
-            /** Format: int64 */
-            last_ingest_ms?: number | null;
-            /** Format: int64 */
-            last_queue_wait_ms?: number | null;
-            /** Format: int32 */
-            queue_depth?: number;
-        };
-        SemanticStatusSnapshot: {
-            active_profile: components["schemas"]["SemanticProfile"];
-            enabled: boolean;
-            profiles: components["schemas"]["SemanticProfileRecord"][];
-            runtime?: components["schemas"]["SemanticRuntimeMetrics"];
-        };
-        SenderProfileData: {
-            account_id: components["schemas"]["AccountId"];
-            /** Format: double */
-            cadence_days_p50?: number | null;
-            display_name?: string | null;
-            email: string;
-            /** Format: date-time */
-            first_seen_at: string;
-            is_list_sender: boolean;
-            /** Format: date-time */
-            last_inbound_at?: string | null;
-            /** Format: date-time */
-            last_outbound_at?: string | null;
-            /** Format: date-time */
-            last_seen_at: string;
-            list_id?: string | null;
-            /** Format: int32 */
-            open_thread_count: number;
-            /** Format: int32 */
-            replied_count: number;
-            /** Format: int32 */
-            total_inbound: number;
-            /** Format: int32 */
-            total_outbound: number;
-        };
-        SnippetData: {
-            body: string;
-            /** Format: date-time */
-            created_at: string;
-            name: string;
-            /** Format: date-time */
-            updated_at: string;
-            vars?: string[];
-        };
-        Snoozed: {
-            account_id: components["schemas"]["AccountId"];
-            message_id: components["schemas"]["MessageId"];
-            original_labels: components["schemas"]["LabelId"][];
-            /** Format: date-time */
-            snoozed_at: string;
-            /** Format: date-time */
-            wake_at: string;
-        };
-        /** @enum {string} */
-        SortOrder: "DateDesc" | "DateAsc" | "Relevance";
-        /** @enum {string} */
-        StaleBallInCourt: "mine" | "theirs";
-        /**
-         * @description Single row of `mxr stale` output: a thread whose latest message points
-         *     at one party and has been silent past the threshold.
-         */
-        StaleThreadRow: {
-            counterparty_email: string;
-            /** Format: int32 */
-            days_stale: number;
-            /** Format: date-time */
-            latest_date: string;
-            latest_message_id: components["schemas"]["MessageId"];
-            latest_subject: string;
-            thread_id: components["schemas"]["ThreadId"];
-        };
-        /**
-         * @description Single row of `mxr storage` output: how many bytes / how many items
-         *     rolled up under a particular grouping key (sender, mimetype, label).
-         */
-        StorageBucket: {
-            /** Format: int64 */
-            bytes: number;
-            /** Format: int32 */
-            count: number;
-            key: string;
-        };
-        /** @enum {string} */
-        StorageGroupBy: "mimetype" | "sender" | "label";
-        SubscriptionSummary: {
-            account_id: components["schemas"]["AccountId"];
-            /**
-             * Format: int32
-             * @description Messages that landed in ARCHIVE without ever being read. Strong
-             *     "this is noise" signal for the unsubscribe ranker.
-             */
-            archived_unread_count?: number;
-            /** Format: date-time */
-            latest_date: string;
-            /** Format: int32 */
-            latest_flags: number;
-            latest_has_attachments: boolean;
-            latest_message_id: components["schemas"]["MessageId"];
-            latest_provider_id: string;
-            /** Format: int64 */
-            latest_size_bytes: number;
-            latest_snippet: string;
-            latest_subject: string;
-            latest_thread_id: components["schemas"]["ThreadId"];
-            /** Format: int32 */
-            message_count: number;
-            /**
-             * Format: int32
-             * @description Number of messages from this sender that have been marked READ.
-             *     Combined with `message_count` gives the open-rate used by `unsub --rank`.
-             */
-            opened_count?: number;
-            /**
-             * Format: int32
-             * @description Number of messages where I replied. Placeholder zero until Slice 9
-             *     wires `reply_pairs`. Field exists so the JSON contract is stable.
-             */
-            replied_count?: number;
-            sender_email: string;
-            sender_name?: string | null;
-            unsubscribe: components["schemas"]["UnsubscribeMethod"];
-        };
-        TextPlainFormat: "Fixed" | {
-            Flowed: {
-                delsp: boolean;
-            };
-        };
-        Thread: {
-            account_id: components["schemas"]["AccountId"];
-            id: components["schemas"]["ThreadId"];
-            /** Format: date-time */
-            latest_date: string;
-            /** Format: int32 */
-            message_count: number;
-            participants: components["schemas"]["Address"][];
-            snippet: string;
-            subject: string;
-            /** Format: int32 */
-            unread_count: number;
-        };
-        /** Format: uuid */
-        ThreadId: string;
-        UnsubscribeMethod: {
-            OneClick: {
-                url: string;
-            };
-        } | {
-            HttpLink: {
-                url: string;
-            };
-        } | {
-            Mailto: {
-                address: string;
-                subject?: string | null;
-            };
-        } | {
-            BodyLink: {
-                url: string;
-            };
-        } | "None";
-        WrappedContactRank: {
-            /** Format: int32 */
-            count: number;
-            display_name?: string | null;
-            email: string;
-        };
-        WrappedLongestThread: {
-            /** Format: int32 */
-            message_count: number;
-            subject: string;
-            thread_id: components["schemas"]["ThreadId"];
-        };
-        WrappedMostGhosted: {
-            email: string;
-            /** Format: int32 */
-            inbound_count: number;
-            /** Format: int32 */
-            outbound_count: number;
-        };
-        WrappedNewsletters: {
-            /**
-             * Format: double
-             * @description 0.0–100.0; share of inbound messages that came via a list_id.
-             */
-            list_share_of_inbound_pct: number;
-            top_list?: null | components["schemas"]["WrappedTopList"];
-            /** Format: int32 */
-            unique_lists: number;
-        };
-        WrappedReplyDiscipline: {
-            /** Format: int32 */
-            business_hours_p50_seconds?: number | null;
-            /** Format: int32 */
-            business_hours_p90_seconds?: number | null;
-            /** Format: int32 */
-            clock_p50_seconds: number;
-            /** Format: int32 */
-            clock_p90_seconds: number;
-            fastest?: null | components["schemas"]["WrappedReplyExtreme"];
-            /** Format: int32 */
-            sample_count: number;
-            slowest?: null | components["schemas"]["WrappedReplyExtreme"];
-        };
-        WrappedReplyExtreme: {
-            counterparty_email: string;
-            /** Format: int32 */
-            latency_seconds: number;
-            /** Format: date-time */
-            replied_at: string;
-        };
-        WrappedStorage: {
-            heaviest_message?: null | components["schemas"]["LargestMessageRow"];
-            top_mimetype?: null | components["schemas"]["WrappedStorageBucket"];
-            /** Format: int64 */
-            total_bytes: number;
-        };
-        WrappedStorageBucket: {
-            /** Format: int64 */
-            bytes: number;
-            /** Format: int32 */
-            count: number;
-            key: string;
-        };
-        /**
-         * @description Year-in-review summary returned by `mxr wrapped`. Combines volume,
-         *     time-pattern, contact, reply-discipline, storage, newsletter, and
-         *     superlative sections so the CLI can render a single narrative panel.
-         */
-        WrappedSummary: {
-            label: string;
-            newsletters: components["schemas"]["WrappedNewsletters"];
-            reply_discipline?: null | components["schemas"]["WrappedReplyDiscipline"];
-            storage: components["schemas"]["WrappedStorage"];
-            superlatives: components["schemas"]["WrappedSuperlatives"];
-            time_patterns: components["schemas"]["WrappedTimePatterns"];
-            top_contacts: components["schemas"]["WrappedTopContacts"];
-            volume: components["schemas"]["WrappedVolume"];
-            /** Format: date-time */
-            window_end: string;
-            /** Format: date-time */
-            window_start: string;
-        };
-        WrappedSuperlatives: {
-            longest_thread?: null | components["schemas"]["WrappedLongestThread"];
-            most_ghosted?: null | components["schemas"]["WrappedMostGhosted"];
-        };
-        WrappedTimePatterns: {
-            /**
-             * Format: date-time
-             * @description The single calendar day with the most activity, and its count.
-             */
-            busiest_date?: string | null;
-            /** Format: int32 */
-            busiest_date_count: number;
-            /** @description Day name and message count for the busiest day-of-week (Mon–Sun). */
-            busiest_day_of_week?: string | null;
-            /** Format: int32 */
-            busiest_day_of_week_count: number;
-            /** Format: int32 */
-            busiest_hour_count: number;
-            /**
-             * Format: int32
-             * @description Hour 0–23 (UTC) and message count for the busiest hour-of-day.
-             */
-            busiest_hour_utc?: number | null;
-            /**
-             * @description Per-day-of-week message counts. Index 0 = Monday … 6 = Sunday.
-             *     `#[serde(default)]` keeps older daemons compatible.
-             */
-            day_of_week_distribution?: number[];
-            /**
-             * @description Per-hour message counts (UTC), indexed 0..=23. Powers the
-             *     hour-of-day chart in the TUI Wrapped view.
-             *     `#[serde(default)]` keeps older daemons compatible.
-             */
-            hour_distribution?: number[];
-        };
-        WrappedTopContacts: {
-            /** @description Top 3 most-asymmetric counterparties (inbound-heavy). */
-            most_asymmetric: components["schemas"]["ContactAsymmetryRow"][];
-            /** @description Top 5 recipients I emailed by outbound count. */
-            most_emailed_by_me: components["schemas"]["WrappedContactRank"][];
-            /** @description Top 5 senders to me by inbound count. */
-            most_emailed_to_me: components["schemas"]["WrappedContactRank"][];
-        };
-        WrappedTopList: {
-            list_id: string;
-            /** Format: int32 */
-            message_count: number;
-            /** Format: int32 */
-            opened_count: number;
-        };
-        WrappedVolume: {
-            /** Format: int32 */
-            inbound_count: number;
-            /** Format: int32 */
-            outbound_count: number;
-            /** Format: int32 */
-            thread_count: number;
-        };
+  schemas: {
+    /**
+     * @description One owned email address per account. Direction inference compares
+     *     `messages.from_email` against this set to decide inbound vs outbound.
+     */
+    AccountAddress: {
+      account_id: components["schemas"]["AccountId"];
+      email: string;
+      is_primary: boolean;
     };
-    responses: never;
-    parameters: never;
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    AccountCapabilitiesData: {
+      batch_operations: boolean;
+      delta_sync: boolean;
+      labels: boolean;
+      native_thread_ids: boolean;
+      push: boolean;
+      server_search: boolean;
+      supports_local_drafts: boolean;
+      supports_send: boolean;
+      supports_server_drafts: boolean;
+    };
+    AccountConfigData: {
+      email: string;
+      enabled?: boolean;
+      is_default: boolean;
+      key: string;
+      name: string;
+      send?: null | components["schemas"]["AccountSendConfigData"];
+      sync?: null | components["schemas"]["AccountSyncConfigData"];
+    };
+    /** @enum {string} */
+    AccountEditModeData: "full" | "runtime_only";
+    /** Format: uuid */
+    AccountId: string;
+    AccountMutationResultData: {
+      account_id: components["schemas"]["AccountId"];
+      account_name: string;
+      error?: string | null;
+      /** Format: int32 */
+      failed: number;
+      /** Format: int32 */
+      skipped: number;
+      /** Format: int32 */
+      succeeded: number;
+    };
+    AccountOperationResult: {
+      auth?: null | components["schemas"]["AccountOperationStep"];
+      device_code_url?: string | null;
+      device_code_user_code?: string | null;
+      ok: boolean;
+      save?: null | components["schemas"]["AccountOperationStep"];
+      send?: null | components["schemas"]["AccountOperationStep"];
+      summary: string;
+      sync?: null | components["schemas"]["AccountOperationStep"];
+    };
+    AccountOperationStep: {
+      detail: string;
+      ok: boolean;
+    };
+    AccountSendConfigData:
+      | {
+          /** @enum {string} */
+          type: "gmail";
+        }
+      | {
+          client_id?: string | null;
+          token_ref: string;
+          /** @enum {string} */
+          type: "outlook_personal";
+        }
+      | {
+          client_id?: string | null;
+          token_ref: string;
+          /** @enum {string} */
+          type: "outlook_work";
+        }
+      | {
+          auth_required?: boolean;
+          host: string;
+          password?: string | null;
+          password_ref: string;
+          /** Format: int32 */
+          port: number;
+          /** @enum {string} */
+          type: "smtp";
+          use_tls: boolean;
+          username: string;
+        }
+      | {
+          /** @enum {string} */
+          type: "fake";
+        };
+    /** @enum {string} */
+    AccountSourceData: "runtime" | "config" | "both";
+    AccountSummaryData: {
+      account_id: components["schemas"]["AccountId"];
+      capabilities?: components["schemas"]["AccountCapabilitiesData"];
+      editable: components["schemas"]["AccountEditModeData"];
+      email: string;
+      enabled: boolean;
+      is_default: boolean;
+      key?: string | null;
+      name: string;
+      provider_kind: string;
+      send?: null | components["schemas"]["AccountSendConfigData"];
+      send_kind?: string | null;
+      source: components["schemas"]["AccountSourceData"];
+      sync?: null | components["schemas"]["AccountSyncConfigData"];
+      sync_kind?: string | null;
+    };
+    AccountSyncConfigData:
+      | {
+          client_id: string;
+          client_secret?: string | null;
+          credential_source?: components["schemas"]["GmailCredentialSourceData"];
+          token_ref: string;
+          /** @enum {string} */
+          type: "gmail";
+        }
+      | {
+          auth_required?: boolean;
+          host: string;
+          password?: string | null;
+          password_ref: string;
+          /** Format: int32 */
+          port: number;
+          /** @enum {string} */
+          type: "imap";
+          use_tls: boolean;
+          username: string;
+        }
+      | {
+          client_id?: string | null;
+          token_ref: string;
+          /** @enum {string} */
+          type: "outlook_personal";
+        }
+      | {
+          client_id?: string | null;
+          token_ref: string;
+          /** @enum {string} */
+          type: "outlook_work";
+        }
+      | {
+          /** @enum {string} */
+          type: "fake";
+        };
+    AccountSyncStatus: {
+      account_id: components["schemas"]["AccountId"];
+      account_name: string;
+      backoff_until?: string | null;
+      /** Format: int32 */
+      consecutive_failures: number;
+      current_cursor_summary?: string | null;
+      failure_class?: string | null;
+      healthy: boolean;
+      last_attempt_at?: string | null;
+      last_error?: string | null;
+      last_success_at?: string | null;
+      /** Format: int32 */
+      last_synced_count: number;
+      sync_in_progress: boolean;
+    };
+    Address: {
+      email: string;
+      name?: string | null;
+    };
+    /** @enum {string} */
+    AttachmentDisposition: "attachment" | "inline" | "unspecified";
+    AttachmentFile: {
+      attachment_id: components["schemas"]["AttachmentId"];
+      filename: string;
+      path: string;
+    };
+    /** Format: uuid */
+    AttachmentId: string;
+    AttachmentMeta: {
+      content_id?: string | null;
+      content_location?: string | null;
+      disposition?: components["schemas"]["AttachmentDisposition"];
+      filename: string;
+      id: components["schemas"]["AttachmentId"];
+      local_path?: string | null;
+      message_id: components["schemas"]["MessageId"];
+      mime_type: string;
+      provider_id: string;
+      /** Format: int64 */
+      size_bytes: number;
+    };
+    /** @enum {string} */
+    AuthFlowData: "auto" | "installed" | "device";
+    AuthSessionData: {
+      account_key: string;
+      auth_url?: string | null;
+      error?: string | null;
+      /** Format: int64 */
+      expires_at_unix?: number | null;
+      flow: components["schemas"]["AuthFlowData"];
+      message?: string | null;
+      /** Format: int64 */
+      poll_interval_secs?: number | null;
+      session_id: components["schemas"]["AuthSessionId"];
+      state: components["schemas"]["AuthSessionStateData"];
+      user_code?: string | null;
+      verification_uri?: string | null;
+    };
+    AuthSessionId: string;
+    /** @enum {string} */
+    AuthSessionStateData: "starting" | "waiting_for_user" | "authorized" | "failed" | "cancelled";
+    BodyFailure: {
+      error: string;
+      message_id: components["schemas"]["MessageId"];
+    };
+    /** @enum {string} */
+    BodyPartSource: "exact" | "derived_from_plain" | "derived_from_html" | "best_effort_summary";
+    CalendarMetadata: {
+      method?: string | null;
+      summary?: string | null;
+    };
+    ContactAsymmetryRow: {
+      /**
+       * Format: double
+       * @description `|inbound - outbound| / max(inbound, outbound)` in `[0, 1]`. 0 means
+       *     perfectly balanced; 1 means I never responded (or vice versa).
+       */
+      asymmetry: number;
+      display_name?: string | null;
+      email: string;
+      /** Format: date-time */
+      last_seen_at: string;
+      /** Format: int32 */
+      total_inbound: number;
+      /** Format: int32 */
+      total_outbound: number;
+    };
+    ContactDecayRow: {
+      /** Format: int32 */
+      days_since_inbound: number;
+      /** Format: int32 */
+      days_since_outbound?: number | null;
+      display_name?: string | null;
+      email: string;
+      /** Format: date-time */
+      last_inbound_at: string;
+      /** Format: date-time */
+      last_outbound_at?: string | null;
+    };
+    DaemonEvent:
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          event: "SyncCompleted";
+          /** Format: int32 */
+          messages_synced: number;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          error: string;
+          /** @enum {string} */
+          event: "SyncError";
+        }
+      | {
+          envelopes: components["schemas"]["Envelope"][];
+          /** @enum {string} */
+          event: "NewMessages";
+        }
+      | {
+          /** @enum {string} */
+          event: "MessageUnsnoozed";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          event: "ReminderTriggered";
+          sent_message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          counts: components["schemas"]["LabelCount"][];
+          /** @enum {string} */
+          event: "LabelCountsUpdated";
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          event: "OperationStarted";
+          message: string;
+          operation: string;
+          operation_id: string;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** Format: int32 */
+          current: number;
+          /** @enum {string} */
+          event: "OperationProgress";
+          message: string;
+          operation: string;
+          operation_id: string;
+          /** Format: int32 */
+          total?: number | null;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          event: "OperationCompleted";
+          message: string;
+          operation: string;
+          operation_id: string;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          error: string;
+          /** @enum {string} */
+          event: "OperationFailed";
+          operation: string;
+          operation_id: string;
+          retryable: boolean;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          event: "OperationCancelled";
+          message: string;
+          operation: string;
+          operation_id: string;
+        };
+    /** @enum {string} */
+    DaemonHealthClass: "healthy" | "degraded" | "restart_required" | "repair_required";
+    DoctorDataStats: {
+      /** Format: int32 */
+      accounts: number;
+      /** Format: int32 */
+      attachments: number;
+      /** Format: int32 */
+      bodies: number;
+      /** Format: int32 */
+      drafts: number;
+      /** Format: int32 */
+      event_log: number;
+      /** Format: int32 */
+      labels: number;
+      /** Format: int32 */
+      message_labels: number;
+      /** Format: int32 */
+      messages: number;
+      /** Format: int32 */
+      messages_with_attachments: number;
+      /** Format: int32 */
+      rule_logs: number;
+      /** Format: int32 */
+      rules: number;
+      /** Format: int32 */
+      saved_searches: number;
+      /** Format: int32 */
+      semantic_chunks: number;
+      /** Format: int32 */
+      semantic_embeddings: number;
+      /** Format: int32 */
+      semantic_profiles: number;
+      /** Format: int32 */
+      snoozed: number;
+      /** Format: int32 */
+      starred_messages: number;
+      /** Format: int32 */
+      sync_log: number;
+      /** Format: int32 */
+      sync_runtime_statuses: number;
+      /** Format: int32 */
+      unread_messages: number;
+    };
+    /**
+     * @description One actionable issue identified by `mxr doctor`. Combines a short
+     *     human-readable message with optional shell commands the user can
+     *     run to remediate.
+     */
+    DoctorFinding: {
+      category: components["schemas"]["DoctorFindingCategory"];
+      message: string;
+      /**
+       * @description Shell-runnable suggestions the user can copy-paste. Empty when
+       *     no automated remediation is available.
+       */
+      remediation?: string[];
+      severity: components["schemas"]["DoctorFindingSeverity"];
+    };
+    /**
+     * @description Coarse category of a doctor finding. Lets clients group related
+     *     issues without parsing free text.
+     * @enum {string}
+     */
+    DoctorFindingCategory:
+      | "generic"
+      | "sync"
+      | "o_auth"
+      | "network"
+      | "search_index"
+      | "semantic"
+      | "sqlite_lock"
+      | "storage"
+      | "daemon";
+    /**
+     * @description Severity of a doctor finding. Drives whether the CLI exits non-zero
+     *     (`Error`) and how the TUI styles the entry.
+     * @enum {string}
+     */
+    DoctorFindingSeverity: "info" | "warning" | "error";
+    DoctorReport: {
+      daemon_build_id?: string | null;
+      /** Format: int32 */
+      daemon_pid?: number | null;
+      /** Format: int32 */
+      daemon_protocol_version?: number;
+      daemon_running: boolean;
+      daemon_version?: string | null;
+      data_dir_exists: boolean;
+      data_stats?: components["schemas"]["DoctorDataStats"];
+      database_exists: boolean;
+      database_path: string;
+      /** Format: int64 */
+      database_size_bytes: number;
+      /**
+       * @description Structured findings: per-issue category, severity, and
+       *     shell-runnable remediation steps. Replaces the freeform
+       *     `recommended_next_steps` for clients that want to reason about
+       *     individual problems (TUI, future agent integrations). The
+       *     freeform field is preserved for backwards-compatibility.
+       */
+      findings?: components["schemas"]["DoctorFinding"][];
+      health_class?: components["schemas"]["DaemonHealthClass"];
+      healthy: boolean;
+      index_exists: boolean;
+      index_lock_error?: string | null;
+      index_lock_held: boolean;
+      index_path: string;
+      /** Format: int64 */
+      index_size_bytes: number;
+      last_successful_sync_at?: string | null;
+      lexical_index_freshness?: components["schemas"]["IndexFreshness"];
+      lexical_last_rebuilt_at?: string | null;
+      log_path: string;
+      /** Format: int64 */
+      log_size_bytes: number;
+      recent_error_logs: string[];
+      recent_sync_events: components["schemas"]["EventLogEntry"][];
+      recommended_next_steps: string[];
+      repair_required?: boolean;
+      restart_required?: boolean;
+      semantic_active_profile?: string | null;
+      semantic_enabled?: boolean;
+      semantic_index_freshness?: components["schemas"]["IndexFreshness"];
+      semantic_last_indexed_at?: string | null;
+      socket_exists: boolean;
+      socket_reachable: boolean;
+      stale_socket: boolean;
+      sync_statuses: components["schemas"]["AccountSyncStatus"][];
+    };
+    Draft: {
+      account_id: components["schemas"]["AccountId"];
+      attachments: string[];
+      bcc: components["schemas"]["Address"][];
+      body_markdown: string;
+      cc: components["schemas"]["Address"][];
+      /** Format: date-time */
+      created_at: string;
+      id: components["schemas"]["DraftId"];
+      reply_headers?: null | components["schemas"]["ReplyHeaders"];
+      subject: string;
+      to: components["schemas"]["Address"][];
+      /** Format: date-time */
+      updated_at: string;
+    };
+    /** Format: uuid */
+    DraftId: string;
+    Envelope: {
+      account_id: components["schemas"]["AccountId"];
+      bcc: components["schemas"]["Address"][];
+      cc: components["schemas"]["Address"][];
+      /** Format: date-time */
+      date: string;
+      /** Format: int32 */
+      flags: number;
+      from: components["schemas"]["Address"];
+      has_attachments: boolean;
+      id: components["schemas"]["MessageId"];
+      in_reply_to?: string | null;
+      /**
+       * @description Provider-specific label IDs (e.g. "INBOX", "SENT", "Label_123").
+       *     Transient: used during sync to populate the message_labels junction table.
+       */
+      label_provider_ids?: string[];
+      message_id_header?: string | null;
+      /**
+       * @description Provider-instance identity used for sync and mutations.
+       *
+       *     Stable for Gmail message IDs.
+       *     For IMAP, this is mailbox-scoped today and may change across moves/copies.
+       */
+      provider_id: string;
+      references: string[];
+      /** Format: int64 */
+      size_bytes: number;
+      snippet: string;
+      subject: string;
+      thread_id: components["schemas"]["ThreadId"];
+      to: components["schemas"]["Address"][];
+      unsubscribe: components["schemas"]["UnsubscribeMethod"];
+    };
+    EventLogEntry: {
+      account_id?: null | components["schemas"]["AccountId"];
+      category: string;
+      details?: string | null;
+      level: string;
+      message_id?: string | null;
+      rule_id?: string | null;
+      summary: string;
+      /** Format: int64 */
+      timestamp: number;
+    };
+    /** @enum {string} */
+    ExportFormat: "Markdown" | "Json" | "Mbox" | "LlmContext";
+    /** @description Forward context returned by PrepareForward. */
+    ForwardContext: {
+      account_id: components["schemas"]["AccountId"];
+      forwarded_content: string;
+      from: string;
+      subject: string;
+    };
+    /** @enum {string} */
+    GmailCredentialSourceData: "bundled" | "custom";
+    HtmlImageAsset: {
+      detail?: string | null;
+      kind: components["schemas"]["HtmlImageSourceKind"];
+      mime_type?: string | null;
+      path?: string | null;
+      source: string;
+      status: components["schemas"]["HtmlImageAssetStatus"];
+    };
+    /** @enum {string} */
+    HtmlImageAssetStatus: "ready" | "blocked" | "missing" | "unsupported" | "failed";
+    /** @enum {string} */
+    HtmlImageSourceKind: "cid" | "data_uri" | "remote" | "content_location" | "file";
+    /** @enum {string} */
+    IndexFreshness:
+      | "unknown"
+      | "current"
+      | "stale"
+      | "disabled"
+      | "indexing"
+      | "error"
+      | "repair_required";
+    /** @enum {string} */
+    IpcErrorKind:
+      | "invalid_request"
+      | "not_found"
+      | "auth"
+      | "policy"
+      | "provider"
+      | "rate_limited"
+      | "store"
+      | "unsupported"
+      | "internal";
+    Label: {
+      account_id: components["schemas"]["AccountId"];
+      color?: string | null;
+      id: components["schemas"]["LabelId"];
+      kind: components["schemas"]["LabelKind"];
+      name: string;
+      provider_id: string;
+      /** Format: int32 */
+      total_count: number;
+      /** Format: int32 */
+      unread_count: number;
+    };
+    LabelCount: {
+      label_id: components["schemas"]["LabelId"];
+      /** Format: int32 */
+      total_count: number;
+      /** Format: int32 */
+      unread_count: number;
+    };
+    /** Format: uuid */
+    LabelId: string;
+    /** @enum {string} */
+    LabelKind: "System" | "Folder" | "User";
+    /**
+     * @description Single message ranked by its envelope `size_bytes`. Powers
+     *     `mxr storage --by message`: lets users find and act on the single
+     *     biggest emails (the 250 MB attachment from a courier service, the
+     *     massive zip a colleague sent in 2017) instead of just the bucket totals.
+     */
+    LargestMessageRow: {
+      /** Format: date-time */
+      date: string;
+      from_email: string;
+      message_id: components["schemas"]["MessageId"];
+      /** Format: int64 */
+      size_bytes: number;
+      subject: string;
+    };
+    MessageBody: {
+      attachments: components["schemas"]["AttachmentMeta"][];
+      /** Format: date-time */
+      fetched_at: string;
+      message_id: components["schemas"]["MessageId"];
+      metadata?: components["schemas"]["MessageMetadata"];
+      text_html?: string | null;
+      text_plain?: string | null;
+    };
+    /** Format: uuid */
+    MessageId: string;
+    MessageMetadata: {
+      auth_results?: string[];
+      calendar?: null | components["schemas"]["CalendarMetadata"];
+      content_language?: string[];
+      list_id?: string | null;
+      raw_headers?: string | null;
+      text_html_source?: null | components["schemas"]["BodyPartSource"];
+      text_plain_format?: null | components["schemas"]["TextPlainFormat"];
+      text_plain_source?: null | components["schemas"]["BodyPartSource"];
+    };
+    /** @description Mutation commands for modifying messages. */
+    MutationCommand:
+      | {
+          message_ids: components["schemas"]["MessageId"][];
+          /** @enum {string} */
+          mutation: "Archive";
+        }
+      | {
+          message_ids: components["schemas"]["MessageId"][];
+          /** @enum {string} */
+          mutation: "ReadAndArchive";
+        }
+      | {
+          message_ids: components["schemas"]["MessageId"][];
+          /** @enum {string} */
+          mutation: "Trash";
+        }
+      | {
+          message_ids: components["schemas"]["MessageId"][];
+          /** @enum {string} */
+          mutation: "Spam";
+        }
+      | {
+          message_ids: components["schemas"]["MessageId"][];
+          /** @enum {string} */
+          mutation: "Star";
+          starred: boolean;
+        }
+      | {
+          message_ids: components["schemas"]["MessageId"][];
+          /** @enum {string} */
+          mutation: "SetRead";
+          read: boolean;
+        }
+      | {
+          add: string[];
+          message_ids: components["schemas"]["MessageId"][];
+          /** @enum {string} */
+          mutation: "ModifyLabels";
+          remove: string[];
+        }
+      | {
+          message_ids: components["schemas"]["MessageId"][];
+          /** @enum {string} */
+          mutation: "Move";
+          target_label: string;
+        };
+    MutationResultData: {
+      accounts: components["schemas"]["AccountMutationResultData"][];
+      /** Format: int32 */
+      failed: number;
+      /**
+       * @description Set by undoable mutations (Archive / Trash / Spam / SetRead /
+       *     ReadAndArchive). Identifies a row in the daemon's
+       *     `mutation_undo_log` that the client can reference via
+       *     `Request::UndoMutation` for ~60s after the mutation lands.
+       *     `None` for non-undoable mutations (Star, ModifyLabels, Move).
+       */
+      mutation_id?: string | null;
+      /** Format: int32 */
+      requested: number;
+      /** Format: int32 */
+      skipped: number;
+      /** Format: int32 */
+      succeeded: number;
+    };
+    /** @description Reply context returned by PrepareReply. */
+    ReplyContext: {
+      account_id: components["schemas"]["AccountId"];
+      cc: string;
+      from: string;
+      in_reply_to: string;
+      references: string[];
+      reply_to: string;
+      subject: string;
+      thread_context: string;
+      /** @description Provider-native thread hint (e.g. Gmail thread id). None for IMAP. */
+      thread_id?: string | null;
+    };
+    ReplyHeaders: {
+      in_reply_to: string;
+      references?: string[];
+      /**
+       * @description Provider-native thread hint. Gmail uses this to keep replies in-thread;
+       *     IMAP relies on the In-Reply-To/References headers and ignores it.
+       */
+      thread_id?: string | null;
+    };
+    Request:
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListEnvelopes";
+          label_id?: null | components["schemas"]["LabelId"];
+          /** Format: int32 */
+          limit: number;
+          /** Format: int32 */
+          offset: number;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListEnvelopesByIds";
+          message_ids: components["schemas"]["MessageId"][];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetEnvelope";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetBody";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          allow_remote: boolean;
+          /** @enum {string} */
+          cmd: "GetHtmlImageAssets";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          attachment_id: components["schemas"]["AttachmentId"];
+          /** @enum {string} */
+          cmd: "DownloadAttachment";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          attachment_id: components["schemas"]["AttachmentId"];
+          /** @enum {string} */
+          cmd: "OpenAttachment";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListBodies";
+          message_ids: components["schemas"]["MessageId"][];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetThread";
+          thread_id: components["schemas"]["ThreadId"];
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListLabels";
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "CreateLabel";
+          color?: string | null;
+          name: string;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "DeleteLabel";
+          name: string;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "RenameLabel";
+          new: string;
+          old: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListAccounts";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListAccountsConfig";
+        }
+      | {
+          account: components["schemas"]["AccountConfigData"];
+          /** @enum {string} */
+          cmd: "AuthorizeAccountConfig";
+          reauthorize: boolean;
+        }
+      | {
+          account: components["schemas"]["AccountConfigData"];
+          /** @enum {string} */
+          cmd: "StartAuthSession";
+          flow?: components["schemas"]["AuthFlowData"];
+          reauthorize: boolean;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetAuthSession";
+          session_id: components["schemas"]["AuthSessionId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "CancelAuthSession";
+          session_id: components["schemas"]["AuthSessionId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "CompleteAuthSession";
+          save_account: boolean;
+          session_id: components["schemas"]["AuthSessionId"];
+        }
+      | {
+          account: components["schemas"]["AccountConfigData"];
+          /** @enum {string} */
+          cmd: "UpsertAccountConfig";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "SetDefaultAccount";
+          key: string;
+        }
+      | {
+          account: components["schemas"]["AccountConfigData"];
+          /** @enum {string} */
+          cmd: "TestAccountConfig";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "DisableAccountConfig";
+          key: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "RemoveAccountConfig";
+          dry_run: boolean;
+          key: string;
+          purge_local_data: boolean;
+        }
+      | {
+          account: components["schemas"]["AccountConfigData"];
+          /** @enum {string} */
+          cmd: "RepairAccountConfig";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListRules";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetRule";
+          rule: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetRuleForm";
+          rule: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "UpsertRule";
+          rule: unknown;
+        }
+      | {
+          action: string;
+          /** @enum {string} */
+          cmd: "UpsertRuleForm";
+          condition: string;
+          enabled: boolean;
+          existing_rule?: string | null;
+          name: string;
+          /** Format: int32 */
+          priority: number;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "DeleteRule";
+          rule: string;
+        }
+      | {
+          after?: string | null;
+          all: boolean;
+          /** @enum {string} */
+          cmd: "DryRunRules";
+          rule?: string | null;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListSavedSearches";
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListSubscriptions";
+          /** Format: int32 */
+          limit: number;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListStorageBreakdown";
+          group_by: components["schemas"]["StorageGroupBy"];
+          /** Format: int32 */
+          limit: number;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListLargestMessages";
+          /** Format: int32 */
+          limit: number;
+          /** Format: int32 */
+          since_days?: number | null;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "Wrapped";
+          label: string;
+          /** Format: int64 */
+          since_unix: number;
+          /** Format: int64 */
+          until_unix: number;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListStaleThreads";
+          /** Format: int32 */
+          limit: number;
+          /** Format: int32 */
+          older_than_days: number;
+          perspective: components["schemas"]["StaleBallInCourt"];
+          /** Format: int32 */
+          within_days: number;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListContactAsymmetry";
+          /** Format: int32 */
+          limit: number;
+          /** Format: int32 */
+          min_inbound: number;
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListContactDecay";
+          /** Format: int32 */
+          limit: number;
+          /** Format: int32 */
+          max_lookback_days: number;
+          /** Format: int32 */
+          threshold_days: number;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "RefreshContacts";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "RebuildAnalytics";
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListResponseTime";
+          counterparty?: string | null;
+          direction: components["schemas"]["ResponseTimeDirection"];
+          /** Format: int32 */
+          since_days?: number | null;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListAccountAddresses";
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "AddAccountAddress";
+          email: string;
+          primary: boolean;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "RemoveAccountAddress";
+          email: string;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "SetPrimaryAccountAddress";
+          email: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetSemanticStatus";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "EnableSemantic";
+          enabled: boolean;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "InstallSemanticProfile";
+          profile: components["schemas"]["SemanticProfile"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "UseSemanticProfile";
+          profile: components["schemas"]["SemanticProfile"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ReindexSemantic";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "CreateSavedSearch";
+          name: string;
+          query: string;
+          search_mode: components["schemas"]["SearchMode"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "DeleteSavedSearch";
+          name: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "RunSavedSearch";
+          /** Format: int32 */
+          limit: number;
+          name: string;
+        }
+      | {
+          category?: string | null;
+          /** @enum {string} */
+          cmd: "ListEvents";
+          level?: string | null;
+          /** Format: int32 */
+          limit: number;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetLogs";
+          level?: string | null;
+          /** Format: int32 */
+          limit: number;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetDoctorReport";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GenerateBugReport";
+          full_logs: boolean;
+          since?: string | null;
+          verbose: boolean;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "Search";
+          explain: boolean;
+          /** Format: int32 */
+          limit: number;
+          mode?: null | components["schemas"]["SearchMode"];
+          /** Format: int32 */
+          offset?: number;
+          query: string;
+          sort?: null | components["schemas"]["SortOrder"];
+        }
+      | {
+          account_id?: null | components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "SyncNow";
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "GetSyncStatus";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "SetFlags";
+          /** Format: int32 */
+          flags: number;
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "Count";
+          mode?: null | components["schemas"]["SearchMode"];
+          query: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetHeaders";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListRuleHistory";
+          /** Format: int32 */
+          limit: number;
+          rule?: string | null;
+        }
+      | (components["schemas"]["MutationCommand"] & {
+          /** @enum {string} */
+          cmd: "Mutation";
+        })
+      | {
+          /** @enum {string} */
+          cmd: "UndoMutation";
+          mutation_id: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "Unsubscribe";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "Snooze";
+          message_id: components["schemas"]["MessageId"];
+          /** Format: date-time */
+          wake_at: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "Unsnooze";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListSnoozed";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "SetReplyLater";
+          flag: boolean;
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListReplyQueue";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "SetAutoReminder";
+          /** Format: date-time */
+          remind_at: string;
+          sent_message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "CancelAutoReminder";
+          sent_message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ScheduleSend";
+          draft_id: components["schemas"]["DraftId"];
+          /** Format: date-time */
+          send_at: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "CancelScheduledSend";
+          draft_id: components["schemas"]["DraftId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListSnippets";
+        }
+      | {
+          body: string;
+          /** @enum {string} */
+          cmd: "SetSnippet";
+          name: string;
+          vars: string[];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "DeleteSnippet";
+          name: string;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "GetSenderProfile";
+          email: string;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListScreenerQueue";
+          /** Format: int32 */
+          limit?: number;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ListScreenerDecisions";
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "SetScreenerDecision";
+          disposition: components["schemas"]["ScreenerDispositionData"];
+          route_label?: string | null;
+          sender_email: string;
+        }
+      | {
+          account_id: components["schemas"]["AccountId"];
+          /** @enum {string} */
+          cmd: "ClearScreenerDecision";
+          sender_email: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "SummarizeThread";
+          thread_id: components["schemas"]["ThreadId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "DraftAssist";
+          instruction: string;
+          thread_id: components["schemas"]["ThreadId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "PrepareReply";
+          message_id: components["schemas"]["MessageId"];
+          reply_all: boolean;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "PrepareForward";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "SendDraft";
+          draft: components["schemas"]["Draft"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "SaveDraft";
+          draft: components["schemas"]["Draft"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "SendStoredDraft";
+          draft_id: components["schemas"]["DraftId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "DeleteDraft";
+          draft_id: components["schemas"]["DraftId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "SaveDraftToServer";
+          draft: components["schemas"]["Draft"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListDrafts";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ListOrphanedDrafts";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ResetOrphanedDraft";
+          draft_id: components["schemas"]["DraftId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ExportThread";
+          format: components["schemas"]["ExportFormat"];
+          thread_id: components["schemas"]["ThreadId"];
+        }
+      | {
+          /** @enum {string} */
+          cmd: "ExportSearch";
+          format: components["schemas"]["ExportFormat"];
+          query: string;
+        }
+      | {
+          /** @enum {string} */
+          cmd: "GetStatus";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "Ping";
+        }
+      | {
+          /** @enum {string} */
+          cmd: "Shutdown";
+        };
+    Response:
+      | {
+          data: components["schemas"]["ResponseData"];
+          /** @enum {string} */
+          status: "Ok";
+        }
+      | {
+          code?: string;
+          details?: unknown;
+          kind?: components["schemas"]["IpcErrorKind"];
+          message: string;
+          retryable?: boolean;
+          /** @enum {string} */
+          status: "Error";
+        };
+    ResponseData:
+      | {
+          envelopes: components["schemas"]["Envelope"][];
+          /** @enum {string} */
+          kind: "Envelopes";
+        }
+      | {
+          envelope: components["schemas"]["Envelope"];
+          /** @enum {string} */
+          kind: "Envelope";
+        }
+      | {
+          body: components["schemas"]["MessageBody"];
+          /** @enum {string} */
+          kind: "Body";
+        }
+      | {
+          assets: components["schemas"]["HtmlImageAsset"][];
+          /** @enum {string} */
+          kind: "HtmlImageAssets";
+          message_id: components["schemas"]["MessageId"];
+        }
+      | {
+          file: components["schemas"]["AttachmentFile"];
+          /** @enum {string} */
+          kind: "AttachmentFile";
+        }
+      | {
+          bodies: components["schemas"]["MessageBody"][];
+          failures?: components["schemas"]["BodyFailure"][];
+          /** @enum {string} */
+          kind: "Bodies";
+        }
+      | {
+          /** @enum {string} */
+          kind: "Thread";
+          messages: components["schemas"]["Envelope"][];
+          thread: components["schemas"]["Thread"];
+        }
+      | {
+          /** @enum {string} */
+          kind: "Labels";
+          labels: components["schemas"]["Label"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "Label";
+          label: components["schemas"]["Label"];
+        }
+      | {
+          explain?: null | components["schemas"]["SearchExplain"];
+          has_more?: boolean;
+          /** @enum {string} */
+          kind: "SearchResults";
+          /** Format: int32 */
+          next_offset?: number | null;
+          results: components["schemas"]["SearchResultItem"][];
+          /** Format: int32 */
+          total?: number;
+        }
+      | {
+          /** @enum {string} */
+          kind: "SyncStatus";
+          sync: components["schemas"]["AccountSyncStatus"];
+        }
+      | {
+          /** Format: int32 */
+          count: number;
+          /** @enum {string} */
+          kind: "Count";
+        }
+      | {
+          headers: [string, string][];
+          /** @enum {string} */
+          kind: "Headers";
+        }
+      | {
+          context: components["schemas"]["ReplyContext"];
+          /** @enum {string} */
+          kind: "ReplyContext";
+        }
+      | {
+          context: components["schemas"]["ForwardContext"];
+          /** @enum {string} */
+          kind: "ForwardContext";
+        }
+      | {
+          drafts: components["schemas"]["Draft"][];
+          /** @enum {string} */
+          kind: "Drafts";
+        }
+      | {
+          /** @enum {string} */
+          kind: "SnoozedMessages";
+          snoozed: components["schemas"]["Snoozed"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "ReplyQueue";
+          messages: components["schemas"]["Envelope"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "Snippets";
+          snippets: components["schemas"]["SnippetData"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "SnippetData";
+          snippet: components["schemas"]["SnippetData"];
+        }
+      | {
+          /** @enum {string} */
+          kind: "SenderProfile";
+          profile?: null | components["schemas"]["SenderProfileData"];
+        }
+      | {
+          entries: components["schemas"]["ScreenerQueueEntryData"][];
+          /** @enum {string} */
+          kind: "ScreenerQueue";
+        }
+      | {
+          decisions: components["schemas"]["ScreenerDecisionData"][];
+          /** @enum {string} */
+          kind: "ScreenerDecisions";
+        }
+      | {
+          /** @enum {string} */
+          kind: "ThreadSummary";
+          model: string;
+          text: string;
+        }
+      | {
+          body: string;
+          /** @enum {string} */
+          kind: "DraftSuggestion";
+          model: string;
+        }
+      | {
+          content: string;
+          /** @enum {string} */
+          kind: "ExportResult";
+        }
+      | {
+          /** @enum {string} */
+          kind: "MutationResult";
+          result: components["schemas"]["MutationResultData"];
+        }
+      | {
+          /** @enum {string} */
+          kind: "Rules";
+          rules: unknown[];
+        }
+      | {
+          /** @enum {string} */
+          kind: "RuleData";
+          rule: unknown;
+        }
+      | {
+          accounts: components["schemas"]["AccountSummaryData"][];
+          /** @enum {string} */
+          kind: "Accounts";
+        }
+      | {
+          accounts: components["schemas"]["AccountConfigData"][];
+          /** @enum {string} */
+          kind: "AccountsConfig";
+        }
+      | {
+          /** @enum {string} */
+          kind: "AccountOperation";
+          result: components["schemas"]["AccountOperationResult"];
+        }
+      | {
+          /** @enum {string} */
+          kind: "AuthSession";
+          session: components["schemas"]["AuthSessionData"];
+        }
+      | {
+          form: components["schemas"]["RuleFormData"];
+          /** @enum {string} */
+          kind: "RuleFormData";
+        }
+      | {
+          /** @enum {string} */
+          kind: "RuleDryRun";
+          results: unknown[];
+        }
+      | {
+          /** @enum {string} */
+          kind: "SavedSearches";
+          searches: components["schemas"]["SavedSearch"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "Subscriptions";
+          subscriptions: components["schemas"]["SubscriptionSummary"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "StorageBreakdown";
+          rows: components["schemas"]["StorageBucket"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "LargestMessages";
+          rows: components["schemas"]["LargestMessageRow"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "Wrapped";
+          summary: components["schemas"]["WrappedSummary"];
+        }
+      | {
+          /** @enum {string} */
+          kind: "StaleThreads";
+          rows: components["schemas"]["StaleThreadRow"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "ContactAsymmetry";
+          rows: components["schemas"]["ContactAsymmetryRow"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "ContactDecay";
+          rows: components["schemas"]["ContactDecayRow"][];
+        }
+      | {
+          /** @enum {string} */
+          kind: "RefreshedContacts";
+          /** Format: int32 */
+          rows: number;
+        }
+      | {
+          /** Format: int32 */
+          business_hours_backfilled: number;
+          /** Format: int32 */
+          contacts_rows: number;
+          /** Format: int32 */
+          directions_reclassified: number;
+          /** @enum {string} */
+          kind: "AnalyticsRebuildSummary";
+          /** Format: int32 */
+          list_ids_backfilled: number;
+          /** Format: int32 */
+          reply_pairs_resolved: number;
+        }
+      | {
+          /** @enum {string} */
+          kind: "ResponseTime";
+          summary: components["schemas"]["ResponseTimeSummary"];
+        }
+      | {
+          addresses: components["schemas"]["AccountAddress"][];
+          /** @enum {string} */
+          kind: "AccountAddresses";
+        }
+      | {
+          /** @enum {string} */
+          kind: "SemanticStatus";
+          snapshot: components["schemas"]["SemanticStatusSnapshot"];
+        }
+      | {
+          /** @enum {string} */
+          kind: "SavedSearchData";
+          search: components["schemas"]["SavedSearch"];
+        }
+      | {
+          entries: components["schemas"]["EventLogEntry"][];
+          /** @enum {string} */
+          kind: "EventLogEntries";
+        }
+      | {
+          /** @enum {string} */
+          kind: "LogLines";
+          lines: string[];
+        }
+      | {
+          /** @enum {string} */
+          kind: "DoctorReport";
+          report: components["schemas"]["DoctorReport"];
+        }
+      | {
+          content: string;
+          /** @enum {string} */
+          kind: "BugReport";
+        }
+      | {
+          entries: unknown[];
+          /** @enum {string} */
+          kind: "RuleHistory";
+        }
+      | {
+          accounts: string[];
+          daemon_build_id?: string | null;
+          /** Format: int32 */
+          daemon_pid?: number | null;
+          daemon_version?: string | null;
+          /** @enum {string} */
+          kind: "Status";
+          /** Format: int32 */
+          protocol_version?: number;
+          repair_required?: boolean;
+          semantic_runtime?: null | components["schemas"]["SemanticRuntimeMetrics"];
+          sync_statuses?: components["schemas"]["AccountSyncStatus"][];
+          /** Format: int32 */
+          total_messages: number;
+          /** Format: int64 */
+          uptime_secs: number;
+        }
+      | {
+          /** @enum {string} */
+          kind: "Pong";
+        }
+      | {
+          /** @enum {string} */
+          kind: "Ack";
+        }
+      | {
+          /** @enum {string} */
+          kind: "SendReceipt";
+          local_message_id: components["schemas"]["MessageId"];
+          provider_message_id?: string | null;
+          rfc2822_message_id: string;
+        };
+    /**
+     * @description A single bucket of the response-time histogram. `count` rows had a
+     *     clock latency in `(prev_upper, upper_bound_seconds]`. The last
+     *     bucket uses `u32::MAX` as `upper_bound_seconds` to mean "no upper
+     *     limit".
+     */
+    ResponseTimeBucket: {
+      /** Format: int32 */
+      count: number;
+      /** Format: int32 */
+      upper_bound_seconds: number;
+    };
+    /** @enum {string} */
+    ResponseTimeDirection: "i_replied" | "they_replied";
+    /**
+     * @description Aggregate response-time summary for `mxr response-time`. p50/p90 in
+     *     seconds; business-hours percentiles are `None` until the reconciler has
+     *     backfilled the relevant rows.
+     */
+    ResponseTimeSummary: {
+      /** Format: int32 */
+      business_hours_p50_seconds?: number | null;
+      /** Format: int32 */
+      business_hours_p90_seconds?: number | null;
+      /** Format: int32 */
+      clock_p50_seconds: number;
+      /** Format: int32 */
+      clock_p90_seconds: number;
+      direction: components["schemas"]["ResponseTimeDirection"];
+      /**
+       * @description Distribution of clock latencies (seconds) bucketed for the
+       *     histogram view in the TUI / future CLI surface. Ordered from
+       *     shortest to longest by `upper_bound_seconds`. `#[serde(default)]`
+       *     so older daemons returning the previous payload deserialize
+       *     cleanly during a rolling upgrade.
+       */
+      histogram?: components["schemas"]["ResponseTimeBucket"][];
+      /** Format: int32 */
+      sample_count: number;
+    };
+    RuleFormData: {
+      action: string;
+      condition: string;
+      enabled: boolean;
+      id?: string | null;
+      name: string;
+      /** Format: int32 */
+      priority: number;
+    };
+    SavedSearch: {
+      account_id?: null | components["schemas"]["AccountId"];
+      /** Format: date-time */
+      created_at: string;
+      icon?: string | null;
+      id: components["schemas"]["SavedSearchId"];
+      name: string;
+      /** Format: int32 */
+      position: number;
+      query: string;
+      search_mode?: components["schemas"]["SearchMode"];
+      sort: components["schemas"]["SortOrder"];
+    };
+    /** Format: uuid */
+    SavedSearchId: string;
+    ScreenerDecisionData: {
+      account_id: components["schemas"]["AccountId"];
+      /** Format: date-time */
+      decided_at: string;
+      disposition: components["schemas"]["ScreenerDispositionData"];
+      route_label?: string | null;
+      sender_email: string;
+    };
+    /** @enum {string} */
+    ScreenerDispositionData: "allow" | "deny" | "feed" | "paper_trail" | "unknown";
+    ScreenerQueueEntryData: {
+      display_name?: string | null;
+      /** Format: date-time */
+      latest_at: string;
+      latest_subject: string;
+      /** Format: int32 */
+      message_count: number;
+      sender_email: string;
+    };
+    SearchExplain: {
+      /** Format: int32 */
+      dense_candidates: number;
+      /** Format: int32 */
+      dense_window?: number | null;
+      executed_mode: components["schemas"]["SearchMode"];
+      /** Format: int32 */
+      final_results: number;
+      /** Format: int32 */
+      lexical_candidates: number;
+      /** Format: int32 */
+      lexical_window: number;
+      notes: string[];
+      requested_mode: components["schemas"]["SearchMode"];
+      results: components["schemas"]["SearchExplainResult"][];
+      /** Format: int32 */
+      rrf_k?: number | null;
+      semantic_query?: string | null;
+    };
+    SearchExplainResult: {
+      /** Format: int32 */
+      dense_rank?: number | null;
+      /** Format: float */
+      dense_score?: number | null;
+      /** Format: float */
+      final_score: number;
+      /** Format: int32 */
+      lexical_rank?: number | null;
+      /** Format: float */
+      lexical_score?: number | null;
+      message_id: components["schemas"]["MessageId"];
+      /** Format: int32 */
+      rank: number;
+    };
+    /** @enum {string} */
+    SearchMode: "lexical" | "hybrid" | "semantic";
+    SearchResultItem: {
+      account_id: components["schemas"]["AccountId"];
+      message_id: components["schemas"]["MessageId"];
+      mode: components["schemas"]["SearchMode"];
+      /** Format: float */
+      score: number;
+      thread_id: components["schemas"]["ThreadId"];
+    };
+    /** @enum {string} */
+    SemanticProfile: "bge-small-en-v1.5" | "multilingual-e5-small" | "bge-m3";
+    /** Format: uuid */
+    SemanticProfileId: string;
+    SemanticProfileRecord: {
+      /** Format: date-time */
+      activated_at?: string | null;
+      backend: string;
+      /** Format: int32 */
+      dimensions: number;
+      id: components["schemas"]["SemanticProfileId"];
+      /** Format: date-time */
+      installed_at?: string | null;
+      last_error?: string | null;
+      /** Format: date-time */
+      last_indexed_at?: string | null;
+      model_revision: string;
+      profile: components["schemas"]["SemanticProfile"];
+      /** Format: int32 */
+      progress_completed: number;
+      /** Format: int32 */
+      progress_total: number;
+      status: components["schemas"]["SemanticProfileStatus"];
+    };
+    /** @enum {string} */
+    SemanticProfileStatus: "pending" | "ready" | "indexing" | "error";
+    SemanticRuntimeMetrics: {
+      /** Format: int32 */
+      in_flight?: number;
+      /** Format: int64 */
+      last_embedding_prep_ms?: number | null;
+      /** Format: int64 */
+      last_extract_ms?: number | null;
+      /** Format: int64 */
+      last_ingest_ms?: number | null;
+      /** Format: int64 */
+      last_queue_wait_ms?: number | null;
+      /** Format: int32 */
+      queue_depth?: number;
+    };
+    SemanticStatusSnapshot: {
+      active_profile: components["schemas"]["SemanticProfile"];
+      enabled: boolean;
+      profiles: components["schemas"]["SemanticProfileRecord"][];
+      runtime?: components["schemas"]["SemanticRuntimeMetrics"];
+    };
+    SenderProfileData: {
+      account_id: components["schemas"]["AccountId"];
+      /** Format: double */
+      cadence_days_p50?: number | null;
+      display_name?: string | null;
+      email: string;
+      /** Format: date-time */
+      first_seen_at: string;
+      is_list_sender: boolean;
+      /** Format: date-time */
+      last_inbound_at?: string | null;
+      /** Format: date-time */
+      last_outbound_at?: string | null;
+      /** Format: date-time */
+      last_seen_at: string;
+      list_id?: string | null;
+      /** Format: int32 */
+      open_thread_count: number;
+      /** Format: int32 */
+      replied_count: number;
+      /** Format: int32 */
+      total_inbound: number;
+      /** Format: int32 */
+      total_outbound: number;
+    };
+    SnippetData: {
+      body: string;
+      /** Format: date-time */
+      created_at: string;
+      name: string;
+      /** Format: date-time */
+      updated_at: string;
+      vars?: string[];
+    };
+    Snoozed: {
+      account_id: components["schemas"]["AccountId"];
+      message_id: components["schemas"]["MessageId"];
+      original_labels: components["schemas"]["LabelId"][];
+      /** Format: date-time */
+      snoozed_at: string;
+      /** Format: date-time */
+      wake_at: string;
+    };
+    /** @enum {string} */
+    SortOrder: "DateDesc" | "DateAsc" | "Relevance";
+    /** @enum {string} */
+    StaleBallInCourt: "mine" | "theirs";
+    /**
+     * @description Single row of `mxr stale` output: a thread whose latest message points
+     *     at one party and has been silent past the threshold.
+     */
+    StaleThreadRow: {
+      counterparty_email: string;
+      /** Format: int32 */
+      days_stale: number;
+      /** Format: date-time */
+      latest_date: string;
+      latest_message_id: components["schemas"]["MessageId"];
+      latest_subject: string;
+      thread_id: components["schemas"]["ThreadId"];
+    };
+    /**
+     * @description Single row of `mxr storage` output: how many bytes / how many items
+     *     rolled up under a particular grouping key (sender, mimetype, label).
+     */
+    StorageBucket: {
+      /** Format: int64 */
+      bytes: number;
+      /** Format: int32 */
+      count: number;
+      key: string;
+    };
+    /** @enum {string} */
+    StorageGroupBy: "mimetype" | "sender" | "label";
+    SubscriptionSummary: {
+      account_id: components["schemas"]["AccountId"];
+      /**
+       * Format: int32
+       * @description Messages that landed in ARCHIVE without ever being read. Strong
+       *     "this is noise" signal for the unsubscribe ranker.
+       */
+      archived_unread_count?: number;
+      /** Format: date-time */
+      latest_date: string;
+      /** Format: int32 */
+      latest_flags: number;
+      latest_has_attachments: boolean;
+      latest_message_id: components["schemas"]["MessageId"];
+      latest_provider_id: string;
+      /** Format: int64 */
+      latest_size_bytes: number;
+      latest_snippet: string;
+      latest_subject: string;
+      latest_thread_id: components["schemas"]["ThreadId"];
+      /** Format: int32 */
+      message_count: number;
+      /**
+       * Format: int32
+       * @description Number of messages from this sender that have been marked READ.
+       *     Combined with `message_count` gives the open-rate used by `unsub --rank`.
+       */
+      opened_count?: number;
+      /**
+       * Format: int32
+       * @description Number of messages where I replied. Placeholder zero until Slice 9
+       *     wires `reply_pairs`. Field exists so the JSON contract is stable.
+       */
+      replied_count?: number;
+      sender_email: string;
+      sender_name?: string | null;
+      unsubscribe: components["schemas"]["UnsubscribeMethod"];
+    };
+    TextPlainFormat:
+      | "Fixed"
+      | {
+          Flowed: {
+            delsp: boolean;
+          };
+        };
+    Thread: {
+      account_id: components["schemas"]["AccountId"];
+      id: components["schemas"]["ThreadId"];
+      /** Format: date-time */
+      latest_date: string;
+      /** Format: int32 */
+      message_count: number;
+      participants: components["schemas"]["Address"][];
+      snippet: string;
+      subject: string;
+      /** Format: int32 */
+      unread_count: number;
+    };
+    /** Format: uuid */
+    ThreadId: string;
+    UnsubscribeMethod:
+      | {
+          OneClick: {
+            url: string;
+          };
+        }
+      | {
+          HttpLink: {
+            url: string;
+          };
+        }
+      | {
+          Mailto: {
+            address: string;
+            subject?: string | null;
+          };
+        }
+      | {
+          BodyLink: {
+            url: string;
+          };
+        }
+      | "None";
+    WrappedContactRank: {
+      /** Format: int32 */
+      count: number;
+      display_name?: string | null;
+      email: string;
+    };
+    WrappedLongestThread: {
+      /** Format: int32 */
+      message_count: number;
+      subject: string;
+      thread_id: components["schemas"]["ThreadId"];
+    };
+    WrappedMostGhosted: {
+      email: string;
+      /** Format: int32 */
+      inbound_count: number;
+      /** Format: int32 */
+      outbound_count: number;
+    };
+    WrappedNewsletters: {
+      /**
+       * Format: double
+       * @description 0.0–100.0; share of inbound messages that came via a list_id.
+       */
+      list_share_of_inbound_pct: number;
+      top_list?: null | components["schemas"]["WrappedTopList"];
+      /** Format: int32 */
+      unique_lists: number;
+    };
+    WrappedReplyDiscipline: {
+      /** Format: int32 */
+      business_hours_p50_seconds?: number | null;
+      /** Format: int32 */
+      business_hours_p90_seconds?: number | null;
+      /** Format: int32 */
+      clock_p50_seconds: number;
+      /** Format: int32 */
+      clock_p90_seconds: number;
+      fastest?: null | components["schemas"]["WrappedReplyExtreme"];
+      /** Format: int32 */
+      sample_count: number;
+      slowest?: null | components["schemas"]["WrappedReplyExtreme"];
+    };
+    WrappedReplyExtreme: {
+      counterparty_email: string;
+      /** Format: int32 */
+      latency_seconds: number;
+      /** Format: date-time */
+      replied_at: string;
+    };
+    WrappedStorage: {
+      heaviest_message?: null | components["schemas"]["LargestMessageRow"];
+      top_mimetype?: null | components["schemas"]["WrappedStorageBucket"];
+      /** Format: int64 */
+      total_bytes: number;
+    };
+    WrappedStorageBucket: {
+      /** Format: int64 */
+      bytes: number;
+      /** Format: int32 */
+      count: number;
+      key: string;
+    };
+    /**
+     * @description Year-in-review summary returned by `mxr wrapped`. Combines volume,
+     *     time-pattern, contact, reply-discipline, storage, newsletter, and
+     *     superlative sections so the CLI can render a single narrative panel.
+     */
+    WrappedSummary: {
+      label: string;
+      newsletters: components["schemas"]["WrappedNewsletters"];
+      reply_discipline?: null | components["schemas"]["WrappedReplyDiscipline"];
+      storage: components["schemas"]["WrappedStorage"];
+      superlatives: components["schemas"]["WrappedSuperlatives"];
+      time_patterns: components["schemas"]["WrappedTimePatterns"];
+      top_contacts: components["schemas"]["WrappedTopContacts"];
+      volume: components["schemas"]["WrappedVolume"];
+      /** Format: date-time */
+      window_end: string;
+      /** Format: date-time */
+      window_start: string;
+    };
+    WrappedSuperlatives: {
+      longest_thread?: null | components["schemas"]["WrappedLongestThread"];
+      most_ghosted?: null | components["schemas"]["WrappedMostGhosted"];
+    };
+    WrappedTimePatterns: {
+      /**
+       * Format: date-time
+       * @description The single calendar day with the most activity, and its count.
+       */
+      busiest_date?: string | null;
+      /** Format: int32 */
+      busiest_date_count: number;
+      /** @description Day name and message count for the busiest day-of-week (Mon–Sun). */
+      busiest_day_of_week?: string | null;
+      /** Format: int32 */
+      busiest_day_of_week_count: number;
+      /** Format: int32 */
+      busiest_hour_count: number;
+      /**
+       * Format: int32
+       * @description Hour 0–23 (UTC) and message count for the busiest hour-of-day.
+       */
+      busiest_hour_utc?: number | null;
+      /**
+       * @description Per-day-of-week message counts. Index 0 = Monday … 6 = Sunday.
+       *     `#[serde(default)]` keeps older daemons compatible.
+       */
+      day_of_week_distribution?: number[];
+      /**
+       * @description Per-hour message counts (UTC), indexed 0..=23. Powers the
+       *     hour-of-day chart in the TUI Wrapped view.
+       *     `#[serde(default)]` keeps older daemons compatible.
+       */
+      hour_distribution?: number[];
+    };
+    WrappedTopContacts: {
+      /** @description Top 3 most-asymmetric counterparties (inbound-heavy). */
+      most_asymmetric: components["schemas"]["ContactAsymmetryRow"][];
+      /** @description Top 5 recipients I emailed by outbound count. */
+      most_emailed_by_me: components["schemas"]["WrappedContactRank"][];
+      /** @description Top 5 senders to me by inbound count. */
+      most_emailed_to_me: components["schemas"]["WrappedContactRank"][];
+    };
+    WrappedTopList: {
+      list_id: string;
+      /** Format: int32 */
+      message_count: number;
+      /** Format: int32 */
+      opened_count: number;
+    };
+    WrappedVolume: {
+      /** Format: int32 */
+      inbound_count: number;
+      /** Format: int32 */
+      outbound_count: number;
+      /** Format: int32 */
+      thread_count: number;
+    };
+  };
+  responses: never;
+  parameters: never;
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    admin_diagnostics: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    admin_bug_report: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    admin_events: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    admin_logs: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    admin_ping: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    admin_shutdown: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    admin_status: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    desktop_shell: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    swagger_ui: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    events_ws: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    health: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    action_snooze: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    action_snooze_presets: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    action_unsubscribe: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    attachment_download: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    attachment_open: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    compose_session_start: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    compose_session_discard: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    compose_session_refresh: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    compose_session_restore: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    compose_session_save: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    compose_session_send: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    compose_session_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_count: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_drafts: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    label_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    label_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    label_rename: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_mailbox: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mutation_archive: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mutation_labels: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mutation_move: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mutation_read: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mutation_read_archive: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mutation_spam: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mutation_star: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mutation_trash: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mutation_undo: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    reminders_set: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    reminders_cancel: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    reply_later_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    reply_later_set: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    scheduled_sends_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    scheduled_sends_cancel: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    screener_decisions_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    screener_decisions_set: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    screener_decisions_clear: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    screener_queue: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_search: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    sender_profile: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    snippets_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    snippets_set: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    snippets_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_snoozed: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_unsnooze_one: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_sync: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_sync_status: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    draft_assist: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_thread: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mail_thread_export: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    thread_summarize: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    openapi_json: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    accounts_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    accounts_config: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    account_set_default: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    account_test: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    account_upsert: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    account_addresses_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    account_addresses_add: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    account_addresses_primary: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    account_addresses_remove: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    account_remove: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    account_disable: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    analytics_contact_asymmetry: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    analytics_contact_decay: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    analytics_largest_messages: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    analytics_rebuild: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    analytics_refresh_contacts: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    analytics_response_time: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    analytics_stale_threads: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    analytics_storage_breakdown: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    analytics_wrapped: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    auth_session_start: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    auth_session_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    auth_session_cancel: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    auth_session_complete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    rules_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    rule_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    rule_detail: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    rule_dry_run: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    rule_form: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    rule_history: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    rule_upsert: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    rule_upsert_form: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    saved_searches_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    saved_searches_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    saved_searches_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    saved_searches_run: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    semantic_enable: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    semantic_profile_install: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    semantic_profile_use: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    semantic_reindex: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    semantic_status: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    subscriptions_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Missing or invalid bridge token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
+  admin_diagnostics: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  admin_bug_report: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  admin_events: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  admin_logs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  admin_ping: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  admin_shutdown: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  admin_status: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  desktop_shell: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  swagger_ui: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  events_ws: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  health: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  action_snooze: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  action_snooze_presets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  action_unsubscribe: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  attachment_download: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  attachment_open: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  compose_session_start: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  compose_session_discard: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  compose_session_refresh: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  compose_session_restore: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  compose_session_save: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  compose_session_send: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  compose_session_update: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_count: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_drafts: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  label_create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  label_delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  label_rename: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_mailbox: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mutation_archive: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mutation_labels: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mutation_move: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mutation_read: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mutation_read_archive: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mutation_spam: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mutation_star: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mutation_trash: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mutation_undo: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reminders_set: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reminders_cancel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reply_later_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reply_later_set: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  scheduled_sends_create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  scheduled_sends_cancel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  screener_decisions_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  screener_decisions_set: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  screener_decisions_clear: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  screener_queue: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_search: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  sender_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  snippets_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  snippets_set: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  snippets_delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_snoozed: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_unsnooze_one: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_sync: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_sync_status: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  draft_assist: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_thread: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  mail_thread_export: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  thread_summarize: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  openapi_json: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  accounts_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  accounts_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  account_set_default: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  account_test: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  account_upsert: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  account_addresses_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  account_addresses_add: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  account_addresses_primary: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  account_addresses_remove: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  account_remove: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  account_disable: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  analytics_contact_asymmetry: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  analytics_contact_decay: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  analytics_largest_messages: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  analytics_rebuild: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  analytics_refresh_contacts: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  analytics_response_time: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  analytics_stale_threads: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  analytics_storage_breakdown: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  analytics_wrapped: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  auth_session_start: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  auth_session_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  auth_session_cancel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  auth_session_complete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  rules_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  rule_delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  rule_detail: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  rule_dry_run: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  rule_form: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  rule_history: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  rule_upsert: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  rule_upsert_form: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  saved_searches_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  saved_searches_create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  saved_searches_delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  saved_searches_run: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  semantic_enable: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  semantic_profile_install: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  semantic_profile_use: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  semantic_reindex: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  semantic_status: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  subscriptions_list: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or invalid bridge token */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
 }

@@ -36,8 +36,7 @@ Object.defineProperty(globalThis, "sessionStorage", {
   configurable: true,
 });
 
-const { desktopMockServer, resetDesktopMockServer } =
-  await import("./test/desktopMockServer");
+const { desktopMockServer, resetDesktopMockServer } = await import("./test/desktopMockServer");
 
 beforeAll(() => {
   desktopMockServer.listen({ onUnhandledRequest: "error" });

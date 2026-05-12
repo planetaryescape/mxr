@@ -16,6 +16,7 @@ mod modal_actions;
 mod mutation_actions;
 mod mutation_helpers;
 pub mod mutation_snapshot;
+mod platform_actions;
 mod recorder;
 mod rule_actions;
 mod runtime_helpers;

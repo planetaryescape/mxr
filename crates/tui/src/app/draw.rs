@@ -75,109 +75,140 @@ impl App {
         );
 
         match self.screen {
-            Screen::Mailbox => match self.mailbox.layout_mode {
-                LayoutMode::TwoPane => {
-                    let chunks = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
-                        .split(content_area);
-
-                    ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
-
-                    if self.mailbox.mailbox_view == MailboxView::Subscriptions {
-                        let preview_blocks = self.thread_message_blocks();
-                        ui::subscriptions_page::draw(
-                            frame,
-                            chunks[1],
-                            &mut ui::subscriptions_page::SubscriptionsPageView {
-                                entries: &self.mailbox.subscriptions_page.entries,
-                                selected_index: self.mailbox.selected_index,
-                                scroll_offset: self.mailbox.scroll_offset,
-                                active_pane: &self.mailbox.active_pane,
-                                preview_blocks: &preview_blocks,
-                                message_scroll_offset: self.mailbox.message_scroll_offset,
-                                html_images: &mut self.html_image_assets,
-                            },
-                            theme,
-                        );
-                    } else {
-                        let mail_title = self.mail_list_title();
-                        ui::mail_list::draw_view(
-                            frame,
-                            chunks[1],
-                            &ui::mail_list::MailListView {
-                                rows: &self.mail_list_rows(),
-                                selected_index: self.mailbox.selected_index,
-                                scroll_offset: self.mailbox.scroll_offset,
-                                active_pane: &self.mailbox.active_pane,
-                                title: &mail_title,
-                                selected_set: &self.mailbox.selected_set,
-                                mode: self.mailbox.mail_list_mode,
-                                loading_message: self.mailbox.mailbox_loading_message.as_deref(),
-                                loading_throbber: self
-                                    .mailbox
-                                    .mailbox_loading_message
-                                    .as_ref()
-                                    .map(|_| &self.mailbox.mailbox_loading_throbber),
-                            },
-                            theme,
-                        );
-                    }
-                }
-                LayoutMode::ThreePane => {
-                    let chunks = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
-                        .split(content_area);
-
-                    ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
-
-                    if self.mailbox.mailbox_view == MailboxView::Subscriptions {
-                        let preview_blocks = self.thread_message_blocks();
-                        ui::subscriptions_page::draw(
-                            frame,
-                            chunks[1],
-                            &mut ui::subscriptions_page::SubscriptionsPageView {
-                                entries: &self.mailbox.subscriptions_page.entries,
-                                selected_index: self.mailbox.selected_index,
-                                scroll_offset: self.mailbox.scroll_offset,
-                                active_pane: &self.mailbox.active_pane,
-                                preview_blocks: &preview_blocks,
-                                message_scroll_offset: self.mailbox.message_scroll_offset,
-                                html_images: &mut self.html_image_assets,
-                            },
-                            theme,
-                        );
-                    } else {
-                        let inner = Layout::default()
+            Screen::Mailbox => {
+                let content_area = self.draw_saved_search_tabs(frame, content_area, theme);
+                match self.mailbox.layout_mode {
+                    LayoutMode::TwoPane => {
+                        let chunks = Layout::default()
                             .direction(Direction::Horizontal)
-                            .constraints([Constraint::Percentage(41), Constraint::Percentage(59)])
-                            .split(chunks[1]);
-                        let mail_title = self.mail_list_title();
-                        ui::mail_list::draw_view(
-                            frame,
-                            inner[0],
-                            &ui::mail_list::MailListView {
-                                rows: &self.mail_list_rows(),
-                                selected_index: self.mailbox.selected_index,
-                                scroll_offset: self.mailbox.scroll_offset,
-                                active_pane: &self.mailbox.active_pane,
-                                title: &mail_title,
-                                selected_set: &self.mailbox.selected_set,
-                                mode: self.mailbox.mail_list_mode,
-                                loading_message: self.mailbox.mailbox_loading_message.as_deref(),
-                                loading_throbber: self
-                                    .mailbox
-                                    .mailbox_loading_message
-                                    .as_ref()
-                                    .map(|_| &self.mailbox.mailbox_loading_throbber),
-                            },
-                            theme,
-                        );
+                            .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+                            .split(content_area);
+
+                        ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
+
+                        if self.mailbox.mailbox_view == MailboxView::Subscriptions {
+                            let preview_blocks = self.thread_message_blocks();
+                            ui::subscriptions_page::draw(
+                                frame,
+                                chunks[1],
+                                &mut ui::subscriptions_page::SubscriptionsPageView {
+                                    entries: &self.mailbox.subscriptions_page.entries,
+                                    selected_index: self.mailbox.selected_index,
+                                    scroll_offset: self.mailbox.scroll_offset,
+                                    active_pane: &self.mailbox.active_pane,
+                                    preview_blocks: &preview_blocks,
+                                    message_scroll_offset: self.mailbox.message_scroll_offset,
+                                    html_images: &mut self.html_image_assets,
+                                },
+                                theme,
+                            );
+                        } else {
+                            let mail_title = self.mail_list_title();
+                            ui::mail_list::draw_view(
+                                frame,
+                                chunks[1],
+                                &ui::mail_list::MailListView {
+                                    rows: &self.mail_list_rows(),
+                                    selected_index: self.mailbox.selected_index,
+                                    scroll_offset: self.mailbox.scroll_offset,
+                                    active_pane: &self.mailbox.active_pane,
+                                    title: &mail_title,
+                                    selected_set: &self.mailbox.selected_set,
+                                    mode: self.mailbox.mail_list_mode,
+                                    loading_message: self
+                                        .mailbox
+                                        .mailbox_loading_message
+                                        .as_deref(),
+                                    loading_throbber: self
+                                        .mailbox
+                                        .mailbox_loading_message
+                                        .as_ref()
+                                        .map(|_| &self.mailbox.mailbox_loading_throbber),
+                                },
+                                theme,
+                            );
+                        }
+                    }
+                    LayoutMode::ThreePane => {
+                        let chunks = Layout::default()
+                            .direction(Direction::Horizontal)
+                            .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
+                            .split(content_area);
+
+                        ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
+
+                        if self.mailbox.mailbox_view == MailboxView::Subscriptions {
+                            let preview_blocks = self.thread_message_blocks();
+                            ui::subscriptions_page::draw(
+                                frame,
+                                chunks[1],
+                                &mut ui::subscriptions_page::SubscriptionsPageView {
+                                    entries: &self.mailbox.subscriptions_page.entries,
+                                    selected_index: self.mailbox.selected_index,
+                                    scroll_offset: self.mailbox.scroll_offset,
+                                    active_pane: &self.mailbox.active_pane,
+                                    preview_blocks: &preview_blocks,
+                                    message_scroll_offset: self.mailbox.message_scroll_offset,
+                                    html_images: &mut self.html_image_assets,
+                                },
+                                theme,
+                            );
+                        } else {
+                            let inner = Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints([
+                                    Constraint::Percentage(41),
+                                    Constraint::Percentage(59),
+                                ])
+                                .split(chunks[1]);
+                            let mail_title = self.mail_list_title();
+                            ui::mail_list::draw_view(
+                                frame,
+                                inner[0],
+                                &ui::mail_list::MailListView {
+                                    rows: &self.mail_list_rows(),
+                                    selected_index: self.mailbox.selected_index,
+                                    scroll_offset: self.mailbox.scroll_offset,
+                                    active_pane: &self.mailbox.active_pane,
+                                    title: &mail_title,
+                                    selected_set: &self.mailbox.selected_set,
+                                    mode: self.mailbox.mail_list_mode,
+                                    loading_message: self
+                                        .mailbox
+                                        .mailbox_loading_message
+                                        .as_deref(),
+                                    loading_throbber: self
+                                        .mailbox
+                                        .mailbox_loading_message
+                                        .as_ref()
+                                        .map(|_| &self.mailbox.mailbox_loading_throbber),
+                                },
+                                theme,
+                            );
+                            let preview_blocks = self.thread_message_blocks();
+                            ui::message_view::draw(
+                                frame,
+                                inner[1],
+                                &preview_blocks,
+                                self.mailbox.message_scroll_offset,
+                                &self.mailbox.active_pane,
+                                theme,
+                                &mut self.html_image_assets,
+                            );
+                        }
+                    }
+                    LayoutMode::FullScreen => {
+                        let chunks = Layout::default()
+                            .direction(Direction::Horizontal)
+                            .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
+                            .split(content_area);
+
+                        ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
+
                         let preview_blocks = self.thread_message_blocks();
                         ui::message_view::draw(
                             frame,
-                            inner[1],
+                            chunks[1],
                             &preview_blocks,
                             self.mailbox.message_scroll_offset,
                             &self.mailbox.active_pane,
@@ -186,26 +217,7 @@ impl App {
                         );
                     }
                 }
-                LayoutMode::FullScreen => {
-                    let chunks = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints([Constraint::Percentage(15), Constraint::Percentage(85)])
-                        .split(content_area);
-
-                    ui::sidebar::draw(frame, chunks[0], &self.sidebar_view(), theme);
-
-                    let preview_blocks = self.thread_message_blocks();
-                    ui::message_view::draw(
-                        frame,
-                        chunks[1],
-                        &preview_blocks,
-                        self.mailbox.message_scroll_offset,
-                        &self.mailbox.active_pane,
-                        theme,
-                        &mut self.html_image_assets,
-                    );
-                }
-            },
+            }
             Screen::Search => {
                 let rows = self.search_mail_list_rows();
                 let preview_blocks = self.thread_message_blocks();
@@ -355,10 +367,38 @@ impl App {
         // Thread summary modal (LLM result).
         ui::summary_modal::draw(frame, area, &self.modals.summary, theme);
 
+        // Generic platform/AI result modal (voice, commitments, draft suggestions).
+        ui::platform_modal::draw(frame, area, &self.modals.platform, theme);
+
         // Account setup onboarding (shown on any page when no accounts configured)
         if self.accounts.page.onboarding_modal_open {
             ui::accounts_page::draw_account_setup_onboarding(frame, area, theme);
         }
+    }
+
+    fn draw_saved_search_tabs(&self, frame: &mut Frame, area: Rect, theme: &Theme) -> Rect {
+        if self.mailbox.saved_searches.is_empty()
+            || self.mailbox.mailbox_view == MailboxView::Subscriptions
+        {
+            return area;
+        }
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .split(area);
+        let active_query = self.search.active.then_some(self.search.bar.query.as_str());
+        ui::saved_search_tabs::draw(
+            frame,
+            chunks[0],
+            &ui::saved_search_tabs::SavedSearchTabsView {
+                searches: &self.mailbox.saved_searches,
+                active_query,
+                active_mode: self.search.active.then_some(self.search.bar.mode),
+            },
+            theme,
+        );
+        chunks[1]
     }
 }
 

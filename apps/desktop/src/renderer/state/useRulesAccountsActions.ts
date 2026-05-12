@@ -288,27 +288,28 @@ export function useRulesAccountsActions(props: {
     }
     props.setAccountFormBusy("Saving");
     try {
-      const result = account.sync?.type === "gmail"
-        ? await saveGmailAccountWithAuthSession(
-            bridge,
-            props.requestCoordinator,
-            account,
-            props.setAccountStatus,
-          )
-        : (
-            await props.requestCoordinator.enqueueMutation(() =>
-              fetchJson<AccountOperationResponse>(
-                bridge.baseUrl,
-                bridge.authToken,
-                "/accounts/upsert",
-                {
-                  method: "POST",
-                  body: JSON.stringify(account),
-                  requestLabel: "accounts:upsert",
-                },
-              ),
+      const result =
+        account.sync?.type === "gmail"
+          ? await saveGmailAccountWithAuthSession(
+              bridge,
+              props.requestCoordinator,
+              account,
+              props.setAccountStatus,
             )
-          ).result;
+          : (
+              await props.requestCoordinator.enqueueMutation(() =>
+                fetchJson<AccountOperationResponse>(
+                  bridge.baseUrl,
+                  bridge.authToken,
+                  "/accounts/upsert",
+                  {
+                    method: "POST",
+                    body: JSON.stringify(account),
+                    requestLabel: "accounts:upsert",
+                  },
+                ),
+              )
+            ).result;
       props.setAccountResult(result);
       props.setAccountStatus(result.summary);
       if (result.ok) {
@@ -405,20 +406,15 @@ async function saveGmailAccountWithAuthSession(
 ): Promise<AccountOperationResponse["result"]> {
   let session = (
     await requestCoordinator.enqueueMutation(() =>
-      fetchJson<AuthSessionResponse>(
-        bridge.baseUrl,
-        bridge.authToken,
-        "/auth/sessions/start",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            account,
-            reauthorize: false,
-            flow: "auto",
-          }),
-          requestLabel: "auth-session:start",
-        },
-      ),
+      fetchJson<AuthSessionResponse>(bridge.baseUrl, bridge.authToken, "/auth/sessions/start", {
+        method: "POST",
+        body: JSON.stringify({
+          account,
+          reauthorize: false,
+          flow: "auto",
+        }),
+        requestLabel: "auth-session:start",
+      }),
     )
   ).session;
   let openedAuthUrl = false;
@@ -466,16 +462,11 @@ async function saveGmailAccountWithAuthSession(
 
   return (
     await requestCoordinator.enqueueMutation(() =>
-      fetchJson<AccountOperationResponse>(
-        bridge.baseUrl,
-        bridge.authToken,
-        "/accounts/test",
-        {
-          method: "POST",
-          body: JSON.stringify(account),
-          requestLabel: "accounts:test",
-        },
-      ),
+      fetchJson<AccountOperationResponse>(bridge.baseUrl, bridge.authToken, "/accounts/test", {
+        method: "POST",
+        body: JSON.stringify(account),
+        requestLabel: "accounts:test",
+      }),
     )
   ).result;
 }
@@ -490,9 +481,7 @@ function authSessionStatus(session: AuthSession) {
   return session.error ?? session.message ?? `Google auth ${session.state}`;
 }
 
-function accountOperationFromAuthSession(
-  session: AuthSession,
-): AccountOperationResponse["result"] {
+function accountOperationFromAuthSession(session: AuthSession): AccountOperationResponse["result"] {
   const detail = session.error ?? session.message ?? `Google auth ${session.state}`;
   return {
     ok: false,

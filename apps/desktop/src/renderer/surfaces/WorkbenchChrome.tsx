@@ -193,7 +193,9 @@ export function WorkbenchHeader(props: {
     <header className="surface flex h-10 shrink-0 items-center justify-between border-x-0 border-t-0 bg-panel px-3">
       <div className="flex min-w-0 items-center gap-3">
         <WorkbenchTabs screen={props.screen} screens={props.screens} onSwitch={props.onSwitch} />
-        <p className="truncate text-[length:var(--text-sm)] text-foreground-muted">{props.statusMessage}</p>
+        <p className="truncate text-[length:var(--text-sm)] text-foreground-muted">
+          {props.statusMessage}
+        </p>
         {props.pendingBindingTokens ? (
           <span className="font-mono text-[length:var(--text-xs)] tabular-nums text-warning">
             {props.pendingBindingTokens.join("")}
@@ -322,7 +324,9 @@ export function WorkbenchStatusBar(props: {
                 props.eventStreamStatus === "disconnected" && "bg-danger",
               )}
             />
-            <span className="font-mono uppercase">{props.eventStreamStatus === "connected" ? "live" : props.eventStreamStatus}</span>
+            <span className="font-mono uppercase">
+              {props.eventStreamStatus === "connected" ? "live" : props.eventStreamStatus}
+            </span>
           </span>
         ) : null}
         <span className="font-mono uppercase">{props.screen}</span>

@@ -24,11 +24,14 @@ See [01-delight-plan.md §Phase 3](./01-delight-plan.md#phase-3--sender-as-unit-
 - [x] CLI `mxr snippets list|set <name> <body>|remove <name>`
 - [x] CLI snapshot updated
 
-**Still TBD**
-- [ ] TUI: snippet manager modal
-- [ ] Pre-editor expansion hook in `compose/src/lib.rs` (semicolon + name → body)
-- [ ] Built-in var population (`{first_name}`, `{date}`, `{thread_subject}`)
-- [ ] Post-edit `{var}` warning in `runtime.rs::SendDraft`
+**Client shipped**
+- [x] TUI: snippet browse modal (`snippets_modal.rs`; edit remains CLI-first)
+- [x] Semicolon snippet expansion after `$EDITOR` closes (`daemon/commands/mutations/compose.rs::expand_snippet_keywords`)
+
+**Still TBD / partial**
+- [x] Date-oriented built-ins in snippet expansion: `{today}` / `{date}` / `{year}` (`expand_builtin_snippet_vars` in `mutations/compose.rs`)
+- [ ] Contact/thread smart vars (`{first_name}`, `{thread_subject}`) auto-filled from envelopes (still manual / literal today)
+- [x] Unresolved `{var}` warning before send (`mxr_compose::validate_draft` in `compose_flow.rs` pending-send path; surfaces in send-confirm UX)
 
 ### 3.2 Sender view (`mxr sender <addr>`)
 
@@ -40,11 +43,11 @@ See [01-delight-plan.md §Phase 3](./01-delight-plan.md#phase-3--sender-as-unit-
 - [x] CLI `mxr sender <addr> [--account <key>]` with table + JSON output
 - [x] RED+GREEN: `get_sender_profile_returns_none_for_unknown_contact`
 
-**Still TBD**
-- [ ] Unanswered-question heuristic (last inbound has `?` + no outbound within cadence)
-- [ ] Trend sparkline (messages-per-week)
-- [ ] TUI: `Screen::SenderProfile` (full-screen page)
-- [ ] Latency histogram from `reply_pairs`
+**Relationship analytics ✅ (modal is canonical TUI; full-screen deferred)**
+- [x] Unanswered-question heuristic (`get_sender_profile` / Open questions path in `sender_profile.rs`)
+- [x] Weekly activity strip (`sender_weekly_activity`)
+- [x] TUI sender profile **modal** (`sender_profile_modal.rs`); full-screen `Screen::SenderProfile` intentionally deferred (`docs/vision.md`)
+- [x] Reply latency histogram buckets (`sender_response_histogram` over `reply_pairs`)
 
 ### 3.3 LLM provider trait ✅
 
@@ -75,9 +78,9 @@ See [01-delight-plan.md §Phase 3](./01-delight-plan.md#phase-3--sender-as-unit-
 ### 3.4 Thread summarize on demand ✅
 
 - [x] IPC: `Request::SummarizeThread { thread_id }` → `ResponseData::ThreadSummary { text, model }`
-- [x] Handler `crates/daemon/src/handler/summarize.rs` builds a chat-style prompt from the existing thread + bodies and asks the configured LLM for a 2-3 sentence summary
-- [x] System prompt tuned for "actionable for a busy reader, no pleasantries"
-- [x] 24KB prompt budget (truncates oldest messages first)
+- [x] Handler `crates/daemon/src/handler/summarize.rs` builds a chat-style prompt from the existing thread + bodies and asks the configured LLM for a structured summary (no fixed input byte cap)
+- [x] System prompt tuned for actionable output, no pleasantries
+- [x] ~~24KB prompt budget~~ **removed** — not implemented; rely on provider `max_tokens` + practical thread size
 - [x] CLI `mxr summarize <thread-id>` (table or JSON output, model id surfaced)
 - [x] Returns clear `LLM is disabled` error when LLM is off
 
@@ -85,7 +88,7 @@ See [01-delight-plan.md §Phase 3](./01-delight-plan.md#phase-3--sender-as-unit-
 - [x] Cache hash includes weak relationship context, so relationship-summary/style changes invalidate stale summaries
 
 **Deferred**
-- [ ] TUI `S` keybinding to invoke summarise on the focused thread
+- [x] TUI `y` invokes summarise on focused thread (`Action::SummarizeCurrentThread` / palette “Summarize Thread”; plan originally said `S` — binding is **`y`** in `keybindings.rs`)
 
 ### 3.5 Draft assist grounded on sent corpus ✅
 
@@ -104,8 +107,10 @@ See [01-delight-plan.md §Phase 3](./01-delight-plan.md#phase-3--sender-as-unit-
 
 ## Phase 3 acceptance
 
-- [ ] Type `;thanks` in compose body; expanded with `{first_name}` filled
-- [ ] `mxr sender alice@example.com` shows volume, response-time histogram, open commitments
-- [ ] (LLM enabled) `mxr summarize <thread-id>` returns coherent summary
-- [ ] (LLM enabled) `mxr draft-assist --reply <id> --instruct "decline"` returns a draft in user's voice
-- [ ] (LLM disabled) Same commands return graceful `LlmDisabled` error
+Manual smoke (Fake/Gmail-backed):
+
+- [x] Compose `;name` snippet expands; **`{today}`/`{date}`/`{year}`** substitute at expansion time; unresolved `{tokens}` warned at send (**`{first_name}`** fill still manual until contextual expansion lands)
+- [x] `mxr sender alice@example.com` shows volume, latency histogram buckets, unanswered-Q hint when applicable, weekly activity strip
+- [x] (LLM enabled) `mxr summarize <thread-id>`
+- [x] (LLM enabled) `mxr draft-assist <thread-id> "…"`
+- [x] (LLM disabled) Graceful disable error path (`noop` provider / config off)

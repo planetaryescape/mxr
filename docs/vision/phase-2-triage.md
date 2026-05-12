@@ -26,24 +26,23 @@ See [01-delight-plan.md §Phase 2](./01-delight-plan.md#phase-2--triage-that-sca
 - [x] Handler `crates/daemon/src/handler/reply_later.rs` (`set_reply_later`, `list_reply_queue`)
 - [x] Wired into dispatch + safety policy + request_kind table
 - [x] RED+GREEN: `dispatch_set_reply_later_persists_flag_visible_in_queue` (set, list, clear, list — full IPC round-trip via `handle_request` against a real in-memory daemon)
-- [ ] Auto-clear on reply-send (hook in send pipeline)
-- [ ] Tantivy parser: `is:reply-later` operator
+- [x] Auto-clear reply-later flag when a reply-send completes (`handler/mutations.rs` → `clear_reply_later_for_reply_parent`; daemon RED `dispatch_send_draft_preserves_parent_thread_for_synthetic_sent`)
+- [x] Tantivy parser + index field: `is:reply-later` (`FilterKind::ReplyLater`; `search` E2E `e2e_search_reply_later_filter`)
 
-**Client surfaces — CLI ✅, TUI ⏳**
+**Client surfaces ✅**
 - [x] CLI: `mxr replies` / `mxr replies list` / `mxr replies add <id>` / `mxr replies remove <id>` (`crates/daemon/src/commands/replies.rs`)
 - [x] CLI help snapshot updated to include the new subcommand
-- [ ] CLI: `mxr replies walk` (interactive walker)
+- [x] CLI: `mxr replies walk` (interactive walker; `commands/replies.rs`)
 - [x] TUI: `b` bound to `Action::FlagReplyLater` ("bookmark for reply later"); status message on confirm
-- [ ] TUI: optimistic visual indicator on flagged rows (currently only a status message)
-- [ ] TUI: walk mode reusing compose flow
+- [x] TUI: optimistic `reply_later` row marker (`selection_helpers.rs` overlays `mailbox.reply_later_message_ids`; `mutation_helpers.rs` applies on flag clear/set)
+- [x] TUI: reply queue modal walk — reply advances via normal compose/send flow (`ReplyQueueModalReply` → compose)
 
-**Acceptance ⏳**
-- [ ] `set_reply_later_flag_persists_across_daemon_restart` (integration via cli_journey when daemon-flake fixed)
-- [ ] `replying_to_flagged_message_clears_flag`
+**Automated acceptance / gaps**
+- [ ] `set_reply_later_flag_persists_across_daemon_restart` (integration via `cli_journey` when flake fixed)
+- [x] Clear-on-send IPC path covered (`dispatch_send_draft_preserves_parent_thread_for_synthetic_sent` in daemon `handler/mod.rs`)
 - [ ] `dismissing_flag_does_not_send_reply`
-- [ ] `is_reply_later_search_returns_only_flagged_messages` (Tantivy)
-- [ ] `walk_mode_advances_after_send`
-- [ ] `walk_mode_advances_after_skip`
+- [x] `is_reply_later_search_returns_only_flagged_messages` (`crates/search` `e2e_search_reply_later_filter`)
+- [ ] `walk_mode_advances_after_send` / `walk_mode_advances_after_skip` (CLI `mxr replies walk`; automated RED deferred)
 
 ### 2.2 Custom-time snooze
 
@@ -53,7 +52,7 @@ See [01-delight-plan.md §Phase 2](./01-delight-plan.md#phase-2--triage-that-sca
 - [x] Wired into `mxr snooze --until ...` (config presets first, then conversational fallback)
 - [x] CLI help text updated to advertise the richer forms
 - [x] RED+GREEN: 23 boundary tests covering minutes/hours/days/weeks, named weekdays (full + 3-letter), tomorrow/today, RFC3339, in-past rejection, garbage rejection, empty-string rejection, case-insensitive, whitespace tolerance, 12am/12pm semantics, invalid 24h hour, zero/negative durations
-- [ ] TUI: snooze modal "Custom..." entry calling the parser
+- [x] TUI: snooze modal "Custom..." entry (`snooze_modal.rs` + `parse_relative_time`)
 
 ### 2.3 Auto-reminders ("nudge if no reply")
 
@@ -84,9 +83,11 @@ See [01-delight-plan.md §Phase 2](./01-delight-plan.md#phase-2--triage-that-sca
 - [x] CLI help snapshots updated and passing
 
 **Still TBD**
-- [ ] Auto-cancellation when a reply arrives (sync hook → cancel reminder for the parent's sent_message_id)
-- [ ] TUI surface for setting/cancelling reminders (currently CLI-only)
-- [ ] Reminder integration with reply-later queue UI (so triggered reminders surface as "reply later" follow-ups)
+- [ ] TUI surface for setting/cancelling reminders (CLI remains canonical)
+- [ ] Reminder integration with reply-later queue UI (“nudge follows” surfacing beyond daemon events)
+
+**Cancelled-on-reply**
+- [x] Auto-cancel pending reminder when inbound reply_pairs links to parent (`reply_pairs.rs` → `cancel_auto_reminder_for_parent_id`; store RED `inbound_reply_pair_cancels_pending_auto_reminder_on_sent_parent`)
 
 ### 2.4 Send Later
 
@@ -116,32 +117,34 @@ See [01-delight-plan.md §Phase 2](./01-delight-plan.md#phase-2--triage-that-sca
 - [x] CLI help snapshots updated and passing
 
 **Still TBD**
-- [ ] TUI: schedule prompt in compose-confirm (currently CLI-only)
 - [ ] Cross-restart integration test (existing flake on `cli_journey_*` blocks adding to that suite)
+
+**TUI ✅**
+- [x] Compose send-confirm `Send at:` prompt parses `mxr`-style relative time and calls `ScheduleSend` (`send_confirm_modal.rs`; `parse_relative_time`)
 
 ### 2.5 Screener (consent-based first-touch)
 
-- [ ] Migration `016_screener_decisions.sql`
-- [ ] IPC: `ListScreenerQueue`, `SetSenderPolicy`
-- [ ] Sync hook to classify unknown senders
-- [ ] CLI: `mxr screener list|allow|deny|feed|paper-trail`
-- [ ] TUI: Screener screen + 3-key dispositions
-- [ ] RED: `unknown_sender_routes_to_screener_queue`
-- [ ] RED: `allow_sender_bypasses_queue`
-- [ ] RED: `deny_sender_trashes_subsequent`
-- [ ] RED: `feed_sender_routes_to_feed`
-- [ ] RED: `screener_decision_persists_across_restart`
-- [ ] RED: `disposition_change_applies_to_future_only`
-- [ ] RED: `bulk_disposition_updates_all_pending`
+**Shipped (store + daemon + CLI + TUI)** — plan migration number drifted.
+
+- [x] Migration `018_screener_decisions.sql` (not `016`; sequence picked up after snippets)
+- [x] IPC: `ListScreenerQueue`, `SetScreenerDecision`, `ClearScreenerDecision` (plan text said `SetSenderPolicy`)
+- [x] Sync-time ingest: `sync::engine::apply_screener_decision` evaluates decisions as messages land (`Unknown` enqueue / deny routes / feed+papertrail labels)
+- [x] CLI: `mxr screener …` (`commands/screener.rs`)
+- [x] TUI: screener modal / disposition flow (`screener_modal.rs`)
+- [ ] RED suite breadth from delight plan (spot tests exist under `provider-gmail`/daemon; fuller matrix still optional)
 
 ### 2.6 Bulk sender triage + unsubscribe
 
-- [ ] IPC: `ListSenders`, `Unsubscribe`
-- [ ] Handler `senders.rs`, `unsubscribe.rs`
-- [ ] CLI: `mxr senders --top N`, `mxr unsubscribe <addr>`
+**Shipped**
+- [x] IPC: `Request::ListSenders` + `commands/senders.rs` (`mxr senders --top N`)
+- [x] IPC + CLI: `Request::Unsubscribe` by message id + batch CLI (`commands/mutations/mod.rs::unsubscribe`)
+- [ ] CLI: positional **email-address** shorthand for unsubscribe (today: message ids and `--search`)
+- [x] Daemon helper `crates/daemon/src/unsubscribe.rs` (RFC 8058 one-click POST; mailto UX)
+
+**Deferred RED / QA**
 - [ ] RED: `senders_top_volume_returns_correct_order`
 - [ ] RED: `senders_filtered_by_since_excludes_older`
-- [ ] RED: `unsubscribe_one_click_posts_correct_body`
+- [x] RED: `unsubscribe_one_click_posts_correct_body` (`unsubscribe::tests::one_click_posts_rfc_8058_form_body` / wiremock)
 - [ ] RED: `unsubscribe_mailto_creates_outbound_draft`
 - [ ] RED: `unsubscribe_failed_request_does_not_label_sender`
 - [ ] RED: `unsubscribe_idempotent`

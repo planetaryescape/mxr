@@ -18,9 +18,13 @@ See [01-delight-plan.md §Phase 4](./01-delight-plan.md#phase-4--onboarding--res
 - [x] RED+GREEN: `reset_orphaned_returns_to_draft_status`
 - [x] RED+GREEN: `reset_orphaned_is_noop_for_drafts_not_in_sending`
 
-**Still TBD**
-- [ ] Live heartbeat plumbing in compose flow (currently only the recovery side runs; the heartbeat column is wired but `touch_draft_heartbeat` isn't called by the send pipeline yet — works because the cutoff is 1h and real sends finish in seconds)
-- [ ] CLI `mxr drafts recover` (manual trigger; today the daemon does it on startup automatically)
+**Operational gaps**
+
+- [ ] Periodic heartbeat while `$EDITOR` is open (`$EDITOR`-long-lived sessions vs send-path heartbeat only)
+
+**Shipped ✅**
+- [x] `touch_draft_heartbeat` called on stored-draft send (`handler/mutations.rs` after CAS to `Sending`)
+- [x] CLI `mxr drafts recover` (`ListOrphanedDrafts` IPC, `commands/mutations/compose.rs`)
 
 ### 4.2 Doctor 2.0
 
@@ -35,9 +39,9 @@ See [01-delight-plan.md §Phase 4](./01-delight-plan.md#phase-4--onboarding--res
 - [x] Each finding carries copy-pasteable shell commands as remediation
 - [x] `mxr doctor` CLI renders Findings section with severity glyphs + indented remediation
 
-**Still TBD**
-- [ ] Behavior tests asserting OAuth/network/sqlite-lock classification
-- [ ] `mxr doctor --json` already works (existing); JSON output already contains structured findings
+**Tests + IPC/CLI parity ✅**
+- [x] Behavior tests via `handler/status_helpers.rs` unit tests covering OAuth/network/rate-limit/sqlite-lock classifications (`classify_sync_error_*`, `classify_log_line_*`)
+- [x] `mxr doctor --json` uses daemon-side `build_doctor_findings` for parity (`commands/doctor.rs`, same helper as IPC `GetDoctorReport`)
 
 ### 4.3 `mxr setup` wizard
 
@@ -48,11 +52,10 @@ See [01-delight-plan.md §Phase 4](./01-delight-plan.md#phase-4--onboarding--res
 - [x] CLI prints next-step commands so the user can immediately try `mxr daemon --foreground` then `mxr` (TUI)
 - [x] CLI help snapshot covers the command
 
-**Still TBD (would need its own session)**
-- [ ] `dialoguer`-based interactive Gmail OAuth flow
-- [ ] Interactive IMAP credential collection
-- [ ] Optional LLM step (enable + model name choice)
-- [ ] FakeProvider's existing fixture seed already produces synthetic mail on first sync; richer demo seeder (50 messages, 12 senders, varied subjects) would need updates to `crates/provider-fake/`
+**Interactive + curated demo ✅**
+
+- [x] `inquire` setup flow — presets, Gmail path, IMAP/SMTP wizard, optional LLM (`daemon/commands/setup.rs`)
+- [x] Curated fake inbox seed for `--demo` (`provider-fake` fixtures + setup wiring)
 
 ## Phase 4 acceptance
 

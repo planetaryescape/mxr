@@ -349,7 +349,7 @@ The agent doesn't need a special API. The same flags humans use are the same one
 - [CLI reference](/reference/cli/) — every command and flag.
 - [Automation contract](/guides/automation-contract/) — which commands support `--format json`, `--dry-run`, stdin IDs.
 - [JSON output schemas](/reference/json-output/) — canonical field names for piping into `jq`.
-- [HTTP bridge](/reference/bridge/) — same surface over HTTP for desktop / web / mobile clients.
+- [HTTP bridge](/reference/bridge/) — same surface over HTTP for web, mobile, and agent clients.
 - [API explorer](/api/bridge/) — interactive Scalar reference; try requests against your local daemon.
 - [For agents](/guides/for-agents/) — boundaries and safe defaults when an LLM is driving.
 - [AI agent skill](/guides/agent-skill/) — install the mxr skill into Claude / Cursor / Continue.

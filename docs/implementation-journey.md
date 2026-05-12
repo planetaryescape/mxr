@@ -107,7 +107,7 @@ Early development used **phase documents** (0 → 4) so agents and contributors 
 
 ## 8. HTTP bridge v0.5
 
-**Why:** Terminal users are core, but **local HTTP** unlocks desktop shells, web SPA, and agents. The bridge must be a **first-class, reviewable contract**, not an ad-hoc pile of routes.
+**Why:** Terminal users are core, but **local HTTP** unlocks the web SPA, mobile clients, and agents. The bridge must be a **first-class, reviewable contract**, not an ad-hoc pile of routes.
 
 **Decisions:**
 

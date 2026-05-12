@@ -3,7 +3,7 @@
 > This document covers the full CI/CD pipeline: PR checks, release automation, cross-compiled binary builds, Homebrew, changelog generation, and docs deployment.
 
 > **Current state note (`v0.4.22`)**
-> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). That workflow currently builds CLI archives for macOS Apple Silicon, macOS Intel, and Linux x86_64, creates the GitHub Release, and updates the `planetaryescape/homebrew-mxr` tap. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. Desktop packaging is conditional on desktop-source changes, and docs deploy independently on pushes to `main`. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
+> The live release flow is: pushes to `main` run `release-please`, merged release PRs create `vX.Y.Z` tags, and tag pushes run [.github/workflows/release.yml](../../.github/workflows/release.yml). That workflow currently builds CLI archives for macOS Apple Silicon and Linux x86_64, creates the GitHub Release, and updates the `planetaryescape/homebrew-mxr` tap. Supported Cargo installs are `cargo install --git ...` and `cargo install --path .`; crates.io publication is no longer part of the current release model. The web app is embedded into the CLI release binary, and docs deploy independently on pushes to `main`. Read the checked-in workflows as the source of truth; the sections below include historical design context and earlier release-shape examples.
 
 ---
 

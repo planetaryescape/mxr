@@ -22,7 +22,7 @@ These are the **execution-side** docs for building the mxr web app at `apps/web/
 
 - This is **autonomous execution**: make decisions and keep moving. Document any non-obvious calls in the relevant phase doc.
 - If context approaches 50% utilisation, run `/compact`, then re-load `00-overview.md` plus the in-progress phase doc plus `STATUS.md` to continue.
-- Do not import or share UI from `apps/desktop/`. The web app is a fresh codebase. The only cross-cutting surface is the daemon HTTP bridge contract.
+- Keep the web app as its own surface. The only cross-cutting surface is the daemon HTTP bridge contract.
 - Test against a real running daemon with the FakeProvider when smoke-checking. Don't trust unit tests alone (CLAUDE.md mandate).
 - Every TUI action must have a CLI equivalent and now a web equivalent. Web parity is non-negotiable.
 - Optimistic UI for archive/trash/star/markRead/markUnread/move/label/snooze. 60-second undo affordance.

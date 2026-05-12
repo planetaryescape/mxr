@@ -4,9 +4,9 @@ description: How the mxr web SPA is served, how it auto-authenticates on the loc
 ---
 
 The mxr web app is a React SPA that talks to the daemon through the
-same HTTP/WebSocket bridge as the TUI, CLI, and desktop app. It's
-embedded into the `mxr` binary when built with `--features web-ui` and
-served at the daemon's bridge port.
+same HTTP/WebSocket bridge as the TUI and CLI. It's embedded into the
+`mxr` binary when built with `--features web-ui` and served at the
+daemon's bridge port.
 
 ## Quick start
 
@@ -148,8 +148,7 @@ still controlled separately by the remote-images toggle.
 |---|---|
 | **CLI** (`mxr ...`) | Scripts, automation, agents, one-off ops. |
 | **TUI** (`mxr` no args) | Daily keyboard-driven mail triage in the terminal. |
-| **Web app** (`mxr web`) | Multi-account mail in the browser — same daemon, vim-compatible compose editor, full keyboard model. |
-| **Desktop app** | Native window around the same web stack. Same auth, same data. |
+| **Web app** (`mxr web`) | Multi-account mail in the browser, installable as a PWA — same daemon, vim-compatible compose editor, full keyboard model. |
 
 The web app is the youngest surface; the CLI is the canonical one. If a
 feature only exists in the web app it's incomplete by mxr's product
@@ -160,4 +159,4 @@ rules — see the [why-mxr guide](/guides/why-mxr/).
 - [HTTP bridge reference](/reference/bridge/) — auth, endpoint table, OpenAPI spec.
 - [`mxr web` CLI reference](/reference/cli/web/) — every flag and what it does.
 - [Config reference](/reference/config/#bridge) — `[bridge]` keys including `auto_local_token` and `port`.
-- [Desktop app guide](/guides/desktop-app/) — the Electron-shelled sibling.
+- [No native desktop app](/guides/no-native-desktop-app/) — why the web app is installable without an Electron shell.

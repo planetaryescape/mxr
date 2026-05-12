@@ -41,7 +41,7 @@ export default defineConfig({
             { label: 'Sender View', slug: 'guides/sender-view' },
             { label: 'Snippets', slug: 'guides/snippets' },
             { label: 'Web App', slug: 'guides/web-app' },
-            { label: 'Desktop App', slug: 'guides/desktop-app' },
+            { label: 'No Native Desktop App', slug: 'guides/no-native-desktop-app' },
             { label: 'Recipes (fzf, jq, xargs, cron)', slug: 'guides/recipes' },
           ],
         },

@@ -5,14 +5,14 @@ description: Every endpoint the daemon exposes over HTTP, with auth, request/res
 
 The HTTP bridge runs alongside the daemon when `[bridge] enabled = true`
 in `mxr.toml`. It exposes the same IPC contract the TUI uses, but over
-HTTP — so desktop apps, mobile clients, agent runners, and your own
-shell scripts all talk to the same daemon through one stable surface.
+HTTP — so the web app, mobile clients, agent runners, and your own shell
+scripts all talk to the same daemon through one stable surface.
 
 The bridge serves an OpenAPI 3.1 spec at
 `http://mxr.localhost:42829/api/v1/openapi.json` (port and host configurable
-in `[bridge]`). The desktop app generates its TypeScript client from
-this spec — you can do the same for any language with `openapi-generator`
-or `openapi-typescript`.
+in `[bridge]`). The web app generates its TypeScript client from this
+spec — you can do the same for any language with `openapi-generator` or
+`openapi-typescript`.
 
 :::tip[curl-friendly auth]
 Get the auth token from `~/.config/mxr/bridge-token` (or wherever
@@ -77,7 +77,7 @@ Response:
 | `GET` | `/api/v1/openapi.json` | OpenAPI 3.1 spec |
 | `GET` | `/api/v1/docs` | Swagger UI |
 | `GET` | `/api/v1/events` | WebSocket — daemon events stream |
-| `GET` | `/api/v1/desktop/shell` | Desktop manifest (sidebar + commands) |
+| `GET` | `/api/v1/client/shell` | Client shell data (sidebar + status) |
 
 ## `/api/v1/admin/*` — Daemon health and operations
 
@@ -396,8 +396,7 @@ The daemon owns OAuth flows so the renderer never sees a refresh token.
 
 Connect a WebSocket to `/api/v1/events` and you'll receive a JSON line
 per daemon event. The TypeScript shapes are in
-`apps/desktop/src/shared/api.generated.ts` under `DaemonEvent`. Common
-ones:
+`apps/web/src/api/generated.ts` under `DaemonEvent`. Common ones:
 
 - `MutationCompleted` — your last mutation landed (or rolled back)
 - `SyncStarted` / `SyncFinished`
@@ -428,6 +427,6 @@ openapi-generator generate -i $MXR_BASE/api/v1/openapi.json -g rust -o ./mxr-rs
 
 - [CLI reference](/reference/cli/) — same surface, terminal-friendly.
 - [Recipes](/guides/recipes/) — composing the bridge with curl/jq/agents.
-- [Desktop app](/guides/desktop-app/) — first-party consumer of this bridge.
+- [Web app](/guides/web-app/) — first-party browser client for this bridge.
 - [For agents](/guides/for-agents/) — boundaries when an LLM drives the API.
 - Contributors: see `docs/guides/http-bridge.md` in the repo for the internal architecture and security model.

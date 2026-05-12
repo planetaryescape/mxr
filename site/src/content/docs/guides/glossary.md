@@ -20,7 +20,7 @@ Every IPC request the daemon serves falls into one of four buckets. The buckets 
 - **`core-mail`** — read mail, send mail, mutate mail. The settled, stable surface.
 - **`mxr-platform`** — accounts, rules, saved searches, subscriptions, semantic runtime. mxr-product features that aren't strictly _mail_.
 - **`admin-maintenance`** — status, events, logs, doctor, bug reports, local reset, repair. Diagnostic and operational.
-- **`client-specific`** — pane-shape, view-model, screen-state. Not part of the daemon contract; clients (TUI, web, desktop) shape these themselves.
+- **`client-specific`** — pane-shape, view-model, screen-state. Not part of the daemon contract; clients (TUI and web) shape these themselves.
 
 See [Architecture](/guides/architecture/) for why this split matters.
 

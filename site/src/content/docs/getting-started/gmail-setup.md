@@ -5,7 +5,7 @@ description: Connect a Gmail account to mxr.
 
 mxr connects to Gmail through the Gmail API using OAuth. You have two options for credentials:
 
-1. **Bundled credentials** — mxr ships with a default OAuth client. You can use it to get started fast, but Google will show a scary "unverified app" warning during authorization because the app hasn't gone through Google's verification process (and likely never will — Google's verification requirements don't fit open-source desktop apps well).
+1. **Bundled credentials** — mxr ships with a default OAuth client. You can use it to get started fast, but Google will show a scary "unverified app" warning during authorization because the OAuth client hasn't gone through Google's verification process.
 
 2. **Your own credentials** (recommended) — create your own Google Cloud project. Takes about 5 minutes. No warning screens, full control over your OAuth tokens, and no dependency on mxr's bundled client. Your credentials talk directly to Google with your own project — mxr never sees them.
 

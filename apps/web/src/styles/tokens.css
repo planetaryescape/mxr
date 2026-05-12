@@ -1,8 +1,7 @@
 /*
  * mxr web — design tokens.
  *
- * Fresh palette designed for the web app. Not derived from the desktop
- * Electron app's tokens. Dark by default; light theme available.
+ * Palette designed for the web app. Dark by default; light theme available.
  *
  * Token naming follows shadcn/ui's HSL-channel convention so shadcn
  * components drop in unchanged. Density tokens drive row heights for

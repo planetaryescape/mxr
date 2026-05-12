@@ -121,7 +121,7 @@ where one user shouldn't auto-claim another's bridge token).
 /api/v1/admin/*       — daemon health, diagnostics, status
 /api/v1/mail/*        — read, search, mutate, sync, compose
 /api/v1/platform/*    — accounts, rules, saved searches, LLM, semantic, analytics
-/api/v1/desktop/*     — client-specific UI shaping (transitional)
+/api/v1/client/*      — client-specific UI shaping
 /api/v1/events        — WebSocket event stream (10 DaemonEvent variants)
 /api/v1/health        — unauthenticated liveness probe
 /api/v1/openapi.json  — OpenAPI 3.1 spec
@@ -155,8 +155,8 @@ Both will be removed in v0.6. Migrate by:
    for the mapping.
 2. Switch the header to `Authorization: Bearer <token>`.
 
-The desktop app (`apps/desktop`) sends both headers in v0.5 for
-forward+backward compat.
+Web clients should use `Authorization: Bearer <token>` for HTTP and
+`Sec-WebSocket-Protocol: bearer, <token>` for WebSocket connections.
 
 ## Examples
 

@@ -8,11 +8,11 @@ A Vite + React 19 SPA at `apps/web/` that talks to the mxr daemon's existing HTT
 
 ## Why now
 
-The bridge has been stable since v0.5; the daemon is the system, clients are additive. The user already has an Electron desktop app at `apps/desktop/` but explicitly does **not** want to copy or share UI from it. The web app is its own surface.
+The bridge has been stable since v0.5; the daemon is the system, clients are additive. The web app is the installable GUI surface, not a wrapper around another native shell.
 
 ## Locked decisions (do not re-debate)
 
-- **Path**: `apps/web/` (sibling to `apps/desktop/` and `site/`).
+- **Path**: `apps/web/` (sibling to `site/`).
 - **Stack**: React 19 + TypeScript (strict) + Vite 7 + Tailwind 4 (`@tailwindcss/vite`).
 - **Components**: shadcn/ui (Radix + Tailwind, copy-paste into the project) plus shadcn-recommended deps (cmdk, sonner).
 - **Routing**: TanStack Router (typed, file-based, auto-code-splitting).

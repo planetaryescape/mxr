@@ -4109,6 +4109,8 @@ dependencies = [
  "anyhow",
  "chrono",
  "mxr-core",
+ "mxr-llm",
+ "mxr-reader",
  "mxr-store",
  "serde",
  "serde_json",

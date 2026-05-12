@@ -499,6 +499,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "user_voice_profile",
         kind: MigrationKind::Sql(include_str!("../migrations/025_user_voice_profile.sql")),
     },
+    Migration {
+        version: 26,
+        name: "contact_style_drift",
+        kind: MigrationKind::Sql(include_str!("../migrations/026_contact_style_drift.sql")),
+    },
 ];
 
 const REQUIRED_COLUMNS: &[(&str, &[&str])] = &[

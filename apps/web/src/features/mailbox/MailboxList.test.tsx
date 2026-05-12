@@ -163,6 +163,23 @@ describe("MailboxList keyboard selection", () => {
     });
   });
 
+  test("escape closes an open clicked thread when there is no active selection", async () => {
+    render(
+      <MailboxList
+        groups={groups}
+        mailboxPath="/m/inbox"
+        activeThreadId="thread-1"
+        previewOnFocus
+      />,
+    );
+
+    expect(await screen.findByText(/3 loaded/i)).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(router.navigate).toHaveBeenCalledWith({ to: "/m/inbox" });
+  });
+
   test("shows attachment status in the mailbox row", async () => {
     render(
       <MailboxRow

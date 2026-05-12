@@ -202,10 +202,32 @@ pub enum Command {
         #[arg(long)]
         format: Option<OutputFormat>,
     },
+    /// Draft a new email or refine an existing local draft with LLM assistance.
+    Draft {
+        #[command(subcommand)]
+        action: Option<DraftAction>,
+        /// Recipient email for a new draft.
+        #[arg(long, requires = "purpose")]
+        to: Option<String>,
+        /// Plain-language purpose for a new draft.
+        #[arg(long, requires = "to")]
+        purpose: Option<String>,
+        /// Account key, email, or id.
+        #[arg(long)]
+        account: Option<String>,
+        /// Register to use when recipient has no relationship profile.
+        #[arg(long, value_enum)]
+        register: Option<VoiceRegisterArg>,
+        /// Desired length.
+        #[arg(long, value_enum)]
+        length: Option<DraftLengthArg>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
     /// First-run setup wizard for demo, Gmail, or IMAP/SMTP.
     Setup {
         /// Legacy helper that drops a fake-provider account into the current
-        /// config. Prefer `mxr demo` for an isolated 50k-message demo profile.
+        /// config. Prefer `mxr demo` for an isolated two-account demo profile.
         #[arg(long)]
         demo: bool,
         /// Account key to use when writing the demo entry. Defaults to
@@ -253,6 +275,45 @@ pub enum Command {
         /// account if exactly one is configured.
         #[arg(long)]
         account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Show or rebuild the inspectable relationship profile for a contact.
+    Profile {
+        email: String,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        rebuild: bool,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// List or resolve relationship commitments.
+    Commitments {
+        #[command(subcommand)]
+        action: Option<CommitmentsAction>,
+        #[arg(long = "contact")]
+        contact: Option<String>,
+        #[arg(long)]
+        status: Option<CommitmentStatusArg>,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Show or rebuild the account-level user voice profile.
+    Voice {
+        #[command(subcommand)]
+        action: Option<VoiceAction>,
+        #[arg(long)]
+        account: Option<String>,
+        #[arg(long)]
+        format: Option<OutputFormat>,
+    },
+    /// Score or rewrite text using the deterministic humanizer gate.
+    Humanize {
+        #[command(subcommand)]
+        action: HumanizeAction,
         #[arg(long)]
         format: Option<OutputFormat>,
     },
@@ -421,8 +482,7 @@ pub enum Command {
         /// Bind address for the bridge. Defaults to loopback.
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
-        /// Bridge port. On EADDRINUSE the bridge walks up to the next
-        /// available port unless `--strict-port` is set. `0` picks an
+        /// Bridge port. Defaults to a fixed local URL port. `0` picks an
         /// ephemeral port (useful for tests).
         #[arg(long, default_value_t = 42829)]
         port: u16,
@@ -432,12 +492,15 @@ pub enum Command {
         /// Do not open the system browser; just print the URL.
         #[arg(long)]
         no_open: bool,
-        /// Fail immediately if `--port` is in use instead of trying the
-        /// next available port. Off by default — port conflicts retry.
+        /// Try the next available port if `--port` is in use.
+        #[arg(long)]
+        auto_port: bool,
+        /// Fail immediately if `--port` is in use. This is the default;
+        /// kept as an explicit compatibility flag.
         #[arg(long)]
         strict_port: bool,
-        /// Open the browser pointed at a remote daemon instead of binding locally.
-        /// Use when the daemon runs on a VPS or remote host with TLS terminated.
+        /// Open the browser pointed at a manually configured remote bridge.
+        /// Prefer SSH/Tailscale tunnels unless you've set up TLS, CORS, and Host allowlists.
         /// Format: `host[:port]`, e.g. `mxr.example.com` or `mxr.example.com:443`.
         /// Reads the per-host token from `~/.config/mxr/bridge-tokens/<host>.token`.
         #[arg(long, value_name = "HOST")]
@@ -551,6 +614,9 @@ pub enum Command {
         reindex: bool,
         #[arg(long)]
         reindex_semantic: bool,
+        /// Backfill semantic chunks/embeddings for existing messages.
+        #[arg(long)]
+        backfill_semantic: bool,
         #[arg(long)]
         check: bool,
         #[arg(long)]
@@ -1080,6 +1146,38 @@ pub enum DraftsAction {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum DraftAction {
+    /// Refine an existing local draft.
+    Refine {
+        draft_id: String,
+        #[arg(long)]
+        shorter: bool,
+        #[arg(long)]
+        warmer: bool,
+        #[arg(long = "more-formal")]
+        more_formal: bool,
+        #[arg(long = "less-emoji")]
+        less_emoji: bool,
+        #[arg(long = "add-context")]
+        add_context: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum VoiceRegisterArg {
+    Casual,
+    Neutral,
+    Formal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum DraftLengthArg {
+    Short,
+    Medium,
+    Long,
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum SnippetsAction {
     /// List all snippets (default if no subcommand)
     List,
@@ -1145,6 +1243,39 @@ pub enum SignatureDefaultKindArg {
     All,
     New,
     Reply,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum CommitmentsAction {
+    /// Mark a commitment resolved by id.
+    Resolve { id: String },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum VoiceAction {
+    /// Show the profile (default if omitted).
+    Show,
+    /// Rebuild the profile from outbound mail.
+    Rebuild,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum HumanizeAction {
+    /// Score arbitrary text.
+    Score { text: String },
+    /// Rewrite arbitrary text using the LLM rewrite pass.
+    Rewrite {
+        text: String,
+        #[arg(long = "max-iterations")]
+        max_iterations: Option<u8>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CommitmentStatusArg {
+    Open,
+    Resolved,
+    Expired,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -1308,6 +1439,7 @@ mod tests {
                 port,
                 print_url,
                 no_open,
+                auto_port,
                 strict_port,
                 remote_host,
                 foreground,
@@ -1318,6 +1450,7 @@ mod tests {
                 assert_eq!(port, 4321);
                 assert!(print_url);
                 assert!(!no_open);
+                assert!(!auto_port);
                 assert!(!strict_port);
                 assert!(remote_host.is_none());
                 assert!(!foreground);
@@ -1380,6 +1513,20 @@ mod tests {
             }) => {
                 assert_eq!(port, 9999);
                 assert!(strict_port);
+            }
+            other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
+        }
+    }
+
+    #[test]
+    fn parses_web_subcommand_with_auto_port() {
+        let cli = Cli::parse_from(["mxr", "web", "--port", "9999", "--auto-port"]);
+        match cli.command {
+            Some(Command::Web {
+                port, auto_port, ..
+            }) => {
+                assert_eq!(port, 9999);
+                assert!(auto_port);
             }
             other => panic!("unexpected parse result: {:?}", other.map(|_| "command")),
         }

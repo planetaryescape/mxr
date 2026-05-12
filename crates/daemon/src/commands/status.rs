@@ -119,6 +119,7 @@ pub async fn run(format: Option<OutputFormat>, watch: bool) -> anyhow::Result<()
                         daemon_build_id,
                         repair_required,
                         semantic_runtime,
+                        feature_health: _,
                     },
             } => {
                 let restart_required = crate::server::daemon_requires_restart(

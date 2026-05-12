@@ -16,6 +16,7 @@ pub struct Args {
     pub port: u16,
     pub print_url: bool,
     pub no_open: bool,
+    pub auto_port: bool,
     pub strict_port: bool,
     pub remote_host: Option<String>,
     pub foreground: bool,
@@ -49,7 +50,17 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 
 async fn run_local_detached(args: Args) -> anyhow::Result<()> {
     let host = parse_host(&args.host)?;
+    validate_local_bind_host(host)?;
     let fallback_host = display_host(host);
+
+    if let Some(port) = mxr_config::read_bridge_port() {
+        if probe_bridge_health("127.0.0.1", port).await {
+            let host = display_host(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+            let (bridge_url, display_url) = local_bridge_url(&host, port)?;
+            present_launch_url(&bridge_url, &display_url, args.print_url, args.no_open);
+            return Ok(());
+        }
+    }
 
     if let Some(pid) = live_web_pid() {
         if let Some(port) = read_web_port() {
@@ -74,23 +85,17 @@ async fn run_local_detached(args: Args) -> anyhow::Result<()> {
 
 async fn run_local_foreground(args: Args) -> anyhow::Result<()> {
     let host = parse_host(&args.host)?;
+    validate_local_bind_host(host)?;
 
-    // Retry on EADDRINUSE unless the caller explicitly asked for strict
-    // port binding. The default is retry — a colliding port shouldn't
-    // be the difference between the user seeing their inbox and not.
-    let listener = bind_listener(host, args.port, !args.strict_port)
+    let listener = bind_listener(host, args.port, should_retry_port(&args))
         .await
         .map_err(|error| {
-            anyhow::anyhow!(
-                "failed to bind {}:{}: {error}{}",
-                args.host,
+            anyhow::anyhow!(bind_error_message(
+                &args.host,
                 args.port,
-                if args.strict_port {
-                    "\n(pass `--strict-port` only when you really need that exact port)"
-                } else {
-                    ""
-                }
-            )
+                args.auto_port,
+                &error
+            ))
         })?;
     let addr = listener.local_addr()?;
     if addr.port() != args.port {
@@ -119,7 +124,7 @@ async fn run_local_foreground(args: Args) -> anyhow::Result<()> {
     if args.detached_child {
         write_web_state(&display_host, addr.port())?;
     }
-    let bridge_url = format!("http://{display_host}:{}/#token={auth_token}", addr.port());
+    let bridge_url = format!("http://{display_host}:{}", addr.port());
 
     if args.print_url {
         println!("{bridge_url}");
@@ -202,11 +207,23 @@ fn parse_host(host: &str) -> anyhow::Result<IpAddr> {
         .map_err(|error| anyhow::anyhow!("invalid host `{host}`: {error}"))
 }
 
-fn display_host(host: IpAddr) -> String {
-    if host.is_unspecified() {
-        "127.0.0.1".to_string()
+fn validate_local_bind_host(host: IpAddr) -> anyhow::Result<()> {
+    if host.is_loopback() {
+        Ok(())
     } else {
-        host.to_string()
+        anyhow::bail!(
+            "local web bridge bind address {host} is non-loopback; public/LAN bridge serving is reserved for future TLS remote mode"
+        )
+    }
+}
+
+fn display_host(host: IpAddr) -> String {
+    match host {
+        IpAddr::V4(ip) if ip == std::net::Ipv4Addr::LOCALHOST => "mxr.localhost".to_string(),
+        IpAddr::V4(ip) if ip.is_unspecified() => "127.0.0.1".to_string(),
+        IpAddr::V6(ip) if ip == std::net::Ipv6Addr::LOCALHOST => "[::1]".to_string(),
+        IpAddr::V6(ip) => format!("[{ip}]"),
+        IpAddr::V4(ip) => ip.to_string(),
     }
 }
 
@@ -223,9 +240,97 @@ fn load_auth_token() -> anyhow::Result<String> {
 }
 
 fn local_bridge_url(host: &str, port: u16) -> anyhow::Result<(String, String)> {
-    let auth_token = load_auth_token()?;
     let display_url = format!("http://{host}:{port}");
-    Ok((format!("{display_url}/#token={auth_token}"), display_url))
+    Ok((display_url.clone(), display_url))
+}
+
+fn should_retry_port(args: &Args) -> bool {
+    args.auto_port && !args.strict_port
+}
+
+fn bind_error_message(host: &str, port: u16, auto_port: bool, error: &std::io::Error) -> String {
+    let mut message = format!("failed to bind {host}:{port}: {error}");
+    if let Some(owner) = port_owner_description(port) {
+        message.push_str(&format!("\nport {port} appears to be used by {owner}"));
+    }
+    if !auto_port {
+        message.push_str(
+            "\nmxr web uses a fixed local URL by default; stop the process using this port or pass `--auto-port` to try the next available port.",
+        );
+    }
+    message
+}
+
+fn port_owner_description(port: u16) -> Option<String> {
+    lsof_port_owner(port).or_else(|| ss_port_owner(port))
+}
+
+async fn probe_bridge_health(host: &str, port: u16) -> bool {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let Ok(Ok(mut stream)) = tokio::time::timeout(
+        Duration::from_millis(500),
+        tokio::net::TcpStream::connect((host, port)),
+    )
+    .await
+    else {
+        return false;
+    };
+    let request =
+        format!("GET /api/v1/health HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n\r\n");
+    if tokio::time::timeout(
+        Duration::from_millis(500),
+        stream.write_all(request.as_bytes()),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .is_none()
+    {
+        return false;
+    }
+    let mut buf = [0_u8; 512];
+    let Ok(Ok(read)) =
+        tokio::time::timeout(Duration::from_millis(500), stream.read(&mut buf)).await
+    else {
+        return false;
+    };
+    let status = std::str::from_utf8(&buf[..read]).unwrap_or_default();
+    (status.starts_with("HTTP/1.1 200") || status.starts_with("HTTP/1.0 200"))
+        && status.contains("mxr-bridge")
+}
+
+fn lsof_port_owner(port: u16) -> Option<String> {
+    let output = std::process::Command::new("lsof")
+        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.lines().skip(1).find_map(|line| {
+        let mut parts = line.split_whitespace();
+        let command = parts.next()?;
+        let pid = parts.next()?;
+        Some(format!("{command} (pid {pid})"))
+    })
+}
+
+fn ss_port_owner(port: u16) -> Option<String> {
+    let output = std::process::Command::new("ss")
+        .args(["-ltnp", &format!("sport = :{port}")])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .skip(1)
+        .find(|line| line.contains(&format!(":{port}")))
+        .map(|line| line.trim().to_string())
 }
 
 fn present_launch_url(bridge_url: &str, display_url: &str, print_url: bool, no_open: bool) {
@@ -258,6 +363,9 @@ fn spawn_detached_web_child(args: &Args) -> anyhow::Result<u32> {
 
     if args.strict_port {
         command.arg("--strict-port");
+    }
+    if args.auto_port {
+        command.arg("--auto-port");
     }
 
     #[cfg(unix)]
@@ -425,4 +533,138 @@ fn clear_web_state() {
     let _ = std::fs::remove_file(web_pid_path());
     let _ = std::fs::remove_file(web_port_path());
     let _ = std::fs::remove_file(web_host_path());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    #[test]
+    fn default_loopback_launch_url_uses_mxr_localhost_without_token_fragment() {
+        let host = display_host(IpAddr::V4(Ipv4Addr::LOCALHOST));
+        assert_eq!(host, "mxr.localhost");
+
+        temp_env::with_var("MXR_WEB_BRIDGE_TOKEN", Some("test-token"), || {
+            let (launch_url, display_url) = local_bridge_url(&host, 42829).unwrap();
+            assert_eq!(display_url, "http://mxr.localhost:42829");
+            assert_eq!(launch_url, display_url);
+        });
+    }
+
+    #[test]
+    fn local_foreground_fails_fast_when_fixed_port_is_busy() {
+        let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let temp = tempfile::TempDir::new().unwrap();
+        let config_dir = temp.path().join("config");
+        let data_dir = temp.path().join("data");
+        let socket_path = temp.path().join("mxr.sock");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        temp_env::with_vars(
+            [
+                ("MXR_CONFIG_DIR", Some(config_dir)),
+                ("MXR_DATA_DIR", Some(data_dir)),
+                ("MXR_SOCKET_PATH", Some(socket_path)),
+                ("MXR_WEB_BRIDGE_TOKEN", Some(temp.path().join("token"))),
+            ],
+            || {
+                let result = runtime.block_on(async {
+                    tokio::time::timeout(
+                        Duration::from_secs(2),
+                        run_local_foreground(Args {
+                            action: None,
+                            host: "127.0.0.1".into(),
+                            port,
+                            print_url: false,
+                            no_open: true,
+                            auto_port: false,
+                            strict_port: false,
+                            remote_host: None,
+                            foreground: true,
+                            detached_child: false,
+                        }),
+                    )
+                    .await
+                });
+
+                let error = result
+                    .expect("fixed-port conflict should fail, not hang")
+                    .expect_err("fixed-port conflict should return an error");
+                let message = error.to_string();
+                assert!(message.contains(&format!("127.0.0.1:{port}")));
+                assert!(message.contains("--auto-port"));
+            },
+        );
+    }
+
+    #[test]
+    fn local_web_rejects_non_loopback_bind_hosts() {
+        assert!(validate_local_bind_host(IpAddr::V4(Ipv4Addr::LOCALHOST)).is_ok());
+        let error = validate_local_bind_host(IpAddr::V4(Ipv4Addr::UNSPECIFIED)).unwrap_err();
+        assert!(
+            error.to_string().contains("non-loopback"),
+            "non-loopback bind rejection should explain the safety boundary: {error}"
+        );
+    }
+
+    #[test]
+    fn strict_port_conflict_message_points_to_auto_port_escape_hatch() {
+        let error = std::io::Error::new(std::io::ErrorKind::AddrInUse, "address in use");
+        let message = bind_error_message("127.0.0.1", 42829, false, &error);
+
+        assert!(message.contains("127.0.0.1:42829"));
+        assert!(message.contains("--auto-port"));
+        assert!(message.contains("fixed local URL"));
+    }
+
+    #[tokio::test]
+    async fn bridge_health_probe_detects_running_local_bridge() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = [0_u8; 1024];
+            let _ = stream.read(&mut buf).await.unwrap();
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 24\r\n\r\n{\"service\":\"mxr-bridge\"}",
+                )
+                .await
+                .unwrap();
+        });
+
+        assert!(probe_bridge_health("127.0.0.1", addr.port()).await);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn bridge_health_probe_rejects_non_mxr_healthy_service() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = [0_u8; 1024];
+            let _ = stream.read(&mut buf).await.unwrap();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok")
+                .await
+                .unwrap();
+        });
+
+        assert!(!probe_bridge_health("127.0.0.1", addr.port()).await);
+        server.await.unwrap();
+    }
 }

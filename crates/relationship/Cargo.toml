@@ -13,6 +13,8 @@ workspace = true
 
 [dependencies]
 mxr-core = { workspace = true }
+mxr-llm = { workspace = true }
+mxr-reader = { workspace = true }
 mxr-store = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }

@@ -1,6 +1,6 @@
 ---
 source: crates/web/src/lib.rs
-assertion_line: 3785
+assertion_line: 3819
 expression: summary
 ---
 {
@@ -48,9 +48,13 @@ expression: summary
     "DoctorReport",
     "Draft",
     "DraftId",
+    "DraftLengthHintData",
+    "DraftRefineKnobsData",
     "Envelope",
     "EventLogEntry",
     "ExportFormat",
+    "FeatureHealth",
+    "FeatureHealthReport",
     "ForwardContext",
     "GmailCredentialSourceData",
     "HtmlImageAsset",
@@ -72,6 +76,7 @@ expression: summary
     "MessageMetadata",
     "MutationCommand",
     "MutationResultData",
+    "RelationshipDriftData",
     "RelationshipProfileData",
     "ReplyContext",
     "ReplyHeaders",

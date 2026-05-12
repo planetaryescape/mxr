@@ -100,6 +100,7 @@ export function shortcutSections({ path, activePane }: ShortcutContext): Shortcu
           { key: "r", label: "Reply" },
           { key: "a", label: "Reply all" },
           { key: "f", label: "Forward" },
+          { key: "F", label: "Full reader" },
           { key: "s", label: "Star" },
           { key: "m", label: "Read/unread" },
           { key: "l", label: "Labels" },

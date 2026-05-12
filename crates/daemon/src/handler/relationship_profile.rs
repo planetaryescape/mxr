@@ -3,7 +3,7 @@ use crate::state::AppState;
 use mxr_core::id::AccountId;
 use mxr_protocol::{
     CommitmentData, CommitmentDirectionData, CommitmentStatusData, ContactRelationshipSummaryData,
-    ContactStyleData, RelationshipProfileData, ResponseData,
+    ContactStyleData, RelationshipDriftData, RelationshipProfileData, ResponseData,
 };
 use mxr_store::{CommitmentDirection, CommitmentStatus, ContactCommitmentRecord, Store};
 
@@ -43,19 +43,32 @@ pub(crate) async fn load_relationship_profile_for_store(
     account_id: &AccountId,
     email: &str,
 ) -> Result<Option<RelationshipProfileData>, String> {
+    let mut drift = None;
     let style = store
         .get_contact_style(account_id, email)
         .await
         .map_err(|error| error.to_string())?
-        .map(|style| ContactStyleData {
-            formality_score: style.formality_score,
-            formality_score_theirs: style.formality_score_theirs,
-            avg_sentence_len: style.avg_sentence_len,
-            avg_sentence_len_theirs: style.avg_sentence_len_theirs,
-            msg_count_used: style.msg_count_used,
-            msg_count_used_theirs: style.msg_count_used_theirs,
-            computed_at: style.computed_at,
-            source_hash: style.source_hash,
+        .map(|style| {
+            if style.drift_detected {
+                if let (Some(detected_at), Some(reason)) =
+                    (style.drift_detected_at, style.drift_reason.clone())
+                {
+                    drift = Some(RelationshipDriftData {
+                        detected_at,
+                        reason,
+                    });
+                }
+            }
+            ContactStyleData {
+                formality_score: style.formality_score,
+                formality_score_theirs: style.formality_score_theirs,
+                avg_sentence_len: style.avg_sentence_len,
+                avg_sentence_len_theirs: style.avg_sentence_len_theirs,
+                msg_count_used: style.msg_count_used,
+                msg_count_used_theirs: style.msg_count_used_theirs,
+                computed_at: style.computed_at,
+                source_hash: style.source_hash,
+            }
         });
     let summary = store
         .get_contact_relationship_summary(account_id, email)
@@ -84,6 +97,7 @@ pub(crate) async fn load_relationship_profile_for_store(
         style,
         summary,
         open_commitments: commitments,
+        drift,
     }))
 }
 

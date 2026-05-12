@@ -152,6 +152,7 @@ pub enum Action {
     EnableSemantic,
     DisableSemantic,
     ReindexSemantic,
+    BackfillSemantic,
     InstallSemanticProfile(mxr_core::types::SemanticProfile),
     RefreshDiagnostics,
     RefreshAccounts,
@@ -376,6 +377,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | EnableSemantic
                 | DisableSemantic
                 | ReindexSemantic
+                | BackfillSemantic
                 | InstallSemanticProfile(_)
         ),
         SearchResults | SearchPreview => !matches!(
@@ -432,6 +434,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | EnableSemantic
                 | DisableSemantic
                 | ReindexSemantic
+                | BackfillSemantic
                 | InstallSemanticProfile(_)
         ),
         Diagnostics => matches!(
@@ -453,6 +456,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | EnableSemantic
                 | DisableSemantic
                 | ReindexSemantic
+                | BackfillSemantic
                 | InstallSemanticProfile(_)
                 | RefreshDiagnostics
                 | GenerateBugReport
@@ -490,6 +494,7 @@ pub fn action_allowed_in_context(action: &Action, context: UiContext) -> bool {
                 | EnableSemantic
                 | DisableSemantic
                 | ReindexSemantic
+                | BackfillSemantic
                 | InstallSemanticProfile(_)
                 | SyncNow
                 | EditConfig

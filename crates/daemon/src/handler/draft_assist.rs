@@ -91,14 +91,21 @@ pub(super) async fn draft_assist(
     {
         Ok(response) => {
             let body = response.content.trim().to_string();
-            let humanizer = humanizer_summary(humanizer_score(&body, &HumanizerOpts::default()));
+            let (body, humanizer, rewrite_iterations) =
+                if state.config_snapshot().humanizer.apply_to_drafts {
+                    super::humanizer::rewrite_to_threshold(state, body, None).await?
+                } else {
+                    let humanizer =
+                        humanizer_summary(humanizer_score(&body, &HumanizerOpts::default()));
+                    (body, humanizer, 0)
+                };
             let voice_match = voice_match_for_body(&body, &relationship_context);
             Ok(ResponseData::DraftSuggestion {
                 body,
                 model: response.model,
                 voice_match,
                 humanizer: Some(humanizer),
-                rewrite_iterations: 0,
+                rewrite_iterations,
             })
         }
         Err(LlmError::Disabled) => Err(
@@ -190,6 +197,9 @@ async fn relationship_context_for_thread(
             }
         }
         if let Some(style) = profile.style {
+            if style.msg_count_used < 5 || style.msg_count_used_theirs < 1 {
+                continue;
+            }
             prompt.push_str(&format!(
                 "- Your style to them: formality {:.2}, avg sentence {:.1} words, based on {} messages\n",
                 style.formality_score, style.avg_sentence_len, style.msg_count_used
@@ -504,12 +514,15 @@ mod tests {
                 formality_score_theirs: 0.4,
                 avg_sentence_len: 8.0,
                 avg_sentence_len_theirs: 10.0,
-                msg_count_used: 4,
+                msg_count_used: 5,
                 msg_count_used_theirs: 3,
                 metrics_json: "{}".to_string(),
                 metrics_json_theirs: "{}".to_string(),
                 computed_at,
                 source_hash: "style-v1".to_string(),
+                drift_detected: false,
+                drift_reason: None,
+                drift_detected_at: None,
             })
             .await
             .unwrap();

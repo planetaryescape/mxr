@@ -23,6 +23,9 @@ pub struct StoreRecordCounts {
     pub semantic_profiles: u32,
     pub semantic_chunks: u32,
     pub semantic_embeddings: u32,
+    pub messages_missing_semantic_chunks: u32,
+    pub semantic_chunks_missing_embeddings: u32,
+    pub relationship_drifts: u32,
 }
 
 impl super::Store {
@@ -68,6 +71,21 @@ impl super::Store {
             semantic_chunks: count_rows(pool, "SELECT COUNT(*) FROM semantic_chunks").await?,
             semantic_embeddings: count_rows(pool, "SELECT COUNT(*) FROM semantic_embeddings")
                 .await?,
+            messages_missing_semantic_chunks: count_rows(
+                pool,
+                "SELECT COUNT(*) FROM messages m WHERE NOT EXISTS (SELECT 1 FROM semantic_chunks c WHERE c.message_id = m.id)",
+            )
+            .await?,
+            semantic_chunks_missing_embeddings: count_rows(
+                pool,
+                "SELECT COUNT(*) FROM semantic_chunks c WHERE NOT EXISTS (SELECT 1 FROM semantic_embeddings e WHERE e.chunk_id = c.id)",
+            )
+            .await?,
+            relationship_drifts: count_rows(
+                pool,
+                "SELECT COUNT(*) FROM contact_style WHERE drift_detected = 1",
+            )
+            .await?,
         })
     }
 }
@@ -324,6 +342,9 @@ mod tests {
                 semantic_profiles: 1,
                 semantic_chunks: 1,
                 semantic_embeddings: 1,
+                messages_missing_semantic_chunks: 0,
+                semantic_chunks_missing_embeddings: 0,
+                relationship_drifts: 0,
             }
         );
     }

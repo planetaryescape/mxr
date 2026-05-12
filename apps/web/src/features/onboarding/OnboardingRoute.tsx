@@ -97,7 +97,9 @@ export function OnboardingRoute() {
               <h1 className="text-3xl font-semibold tracking-tight">Bring your mailbox local.</h1>
               <p className="mt-3 text-sm text-muted-foreground">
                 mxr keeps SQLite as truth, syncs in the daemon, and makes search fast before
-                anything else.
+                anything else. Start with your mailbox, or try <code>mxr demo</code> for a
+                two-account inbox with threads, attachments, newsletters, promos, spam, rules, and
+                analytics.
               </p>
               <Button className="mt-6" onClick={() => setStep(2)}>
                 Connect first account
@@ -105,9 +107,11 @@ export function OnboardingRoute() {
             </div>
             <div className="rounded-xl border border-border bg-background p-4">
               <ShieldCheck className="mb-3 size-6 text-primary" />
-              <div className="text-sm font-medium">No config-file initiation</div>
+              <div className="text-sm font-medium">A real workflow, not a blank slate</div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Choose OAuth or IMAP here. The daemon handles secrets.
+                The demo seed is built to exercise search, sender profiles, LLM summaries,
+                unsubscribe, attachments, links, images, repeat contacts, suspicious mail, and
+                prewarmed analytics.
               </p>
             </div>
           </section>

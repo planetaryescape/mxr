@@ -65,8 +65,8 @@ pub struct WebServerConfig {
     pub socket_path: PathBuf,
     pub auth_token: String,
     /// Origins allowed for CORS in addition to the loopback defaults
-    /// (`http://localhost`, `https://localhost`, `http://127.0.0.1`,
-    /// `https://127.0.0.1`). Empty by default. Configurable via
+    /// (`http://localhost`, `http://mxr.localhost`, `http://127.0.0.1`,
+    /// and their HTTPS forms). Empty by default. Configurable via
     /// `[bridge].cors_allowlist` in `~/.config/mxr/config.toml`.
     pub cors_allowlist: Vec<String>,
     /// Hostnames allowed in the HTTP `Host` header in addition to the
@@ -521,6 +521,7 @@ async fn status(
             daemon_build_id,
             repair_required,
             semantic_runtime,
+            feature_health,
         } => Ok(Json(serde_json::json!({
             "uptime_secs": uptime_secs,
             "accounts": accounts,
@@ -532,6 +533,7 @@ async fn status(
             "daemon_build_id": daemon_build_id,
             "repair_required": repair_required,
             "semantic_runtime": semantic_runtime,
+            "feature_health": feature_health,
         }))),
         _ => Err(BridgeError::UnexpectedResponse),
     }
@@ -3084,6 +3086,7 @@ mod tests {
                         daemon_build_id: Some("build-123".into()),
                         repair_required: false,
                         semantic_runtime: None,
+                        feature_health: None,
                     },
                 }),
                 _ => None,
@@ -3390,6 +3393,7 @@ mod tests {
                         daemon_build_id: None,
                         repair_required: false,
                         semantic_runtime: None,
+                        feature_health: None,
                     },
                 })
             },
@@ -3581,6 +3585,35 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn host_header_allowlist_accepts_mxr_localhost() {
+        use reqwest::header::HOST;
+
+        let temp = TempDir::new().unwrap();
+        let socket_path = temp.path().join("mxr.sock");
+        let _ipc = spawn_fake_ipc_server(&socket_path, |_| None, None).await;
+
+        let addr = bind_and_serve(
+            std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+            0,
+            WebServerConfig::new(socket_path, TEST_AUTH_TOKEN.into()),
+        )
+        .await
+        .unwrap();
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/api/v1/health"))
+            .header(HOST, "mxr.localhost")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            reqwest::StatusCode::OK,
+            "mxr.localhost should be a canonical loopback host without /etc/hosts changes"
+        );
+    }
+
     /// Slice 3 — every flat path returns a method-preserving permanent
     /// redirect (308) with a Location header pointing at the new bucketed
     /// v1 path. Sampled across each bucket so a typo in any single redirect
@@ -3667,6 +3700,7 @@ mod tests {
                         daemon_build_id: Some("v1-test".into()),
                         repair_required: false,
                         semantic_runtime: None,
+                        feature_health: None,
                     },
                 }),
                 _ => None,
@@ -4039,6 +4073,7 @@ mod tests {
                         daemon_build_id: Some("build-123".into()),
                         repair_required: false,
                         semantic_runtime: None,
+                        feature_health: None,
                     },
                 }),
                 Request::ListLabels { account_id: None } => Some(Response::Ok {
@@ -4133,6 +4168,7 @@ mod tests {
                         daemon_build_id: Some("build-123".into()),
                         repair_required: false,
                         semantic_runtime: None,
+                        feature_health: None,
                     },
                 }),
                 Request::ListLabels { account_id: None } => Some(Response::Ok {
@@ -4232,6 +4268,7 @@ mod tests {
                         daemon_build_id: Some("build-123".into()),
                         repair_required: false,
                         semantic_runtime: None,
+                        feature_health: None,
                     },
                 }),
                 Request::ListLabels { account_id: None } => Some(Response::Ok {

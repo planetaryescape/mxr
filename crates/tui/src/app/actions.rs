@@ -198,6 +198,7 @@ impl App {
             Action::EnableSemantic
             | Action::DisableSemantic
             | Action::ReindexSemantic
+            | Action::BackfillSemantic
             | Action::InstallSemanticProfile(_) => self.apply_semantic_action(action),
             Action::RefreshDiagnostics
             | Action::GenerateBugReport

@@ -10,6 +10,7 @@ import { RightRail } from "@/components/RightRail";
 import type { ThreadResponse } from "@/features/mailbox/types";
 import { useMailboxPane } from "@/state/mailboxPaneStore";
 import { useModals } from "@/state/modalStore";
+import { useUiPrefs } from "@/state/uiPrefsStore";
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn<(options: unknown) => Promise<void>>(),
@@ -143,6 +144,7 @@ const thread: ThreadResponse = {
 describe("ThreadRoute", () => {
   beforeEach(() => {
     useMailboxPane.setState({ activePane: "reader", sidebarIndex: 0 });
+    useUiPrefs.setState({ readerLayout: "split" });
     api.fetchThread.mockResolvedValue(thread);
     api.fetchShell.mockResolvedValue({
       shell: {},
@@ -183,6 +185,7 @@ describe("ThreadRoute", () => {
       suppressNextReaderFocus: false,
     });
     useModals.setState({ rightRail: null });
+    useUiPrefs.setState({ readerLayout: "split" });
   });
 
   test("opens label editing from the reader keyboard shortcut and saves add/remove changes", async () => {
@@ -266,6 +269,46 @@ describe("ThreadRoute", () => {
 
     expect(useMailboxPane.getState().activePane).toBe("mailbox");
     expect(useMailboxPane.getState().suppressNextReaderFocus).toBe(true);
+  });
+
+  test("keeps lowercase f as forward and uses uppercase F for full reader", async () => {
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "f" });
+
+    expect(router.navigate).toHaveBeenCalledWith({
+      to: "/compose/new",
+      search: { reply: "msg-1", mode: "forward" },
+    });
+    expect(useUiPrefs.getState().readerLayout).toBe("split");
+
+    fireEvent.keyDown(window, { key: "F", shiftKey: true });
+
+    expect(useUiPrefs.getState().readerLayout).toBe("full");
+  });
+
+  test("linkifies URLs in plain reader bodies", async () => {
+    api.fetchThread.mockResolvedValueOnce({
+      ...thread,
+      bodies: [
+        {
+          message_id: "msg-1",
+          text_plain: "Read https://example.com/docs for details",
+          reader_text: "Read https://example.com/docs for details",
+          text_html: null,
+          attachments: [],
+        },
+      ],
+    });
+    renderWithQueryClient(<ThreadRoute />);
+
+    expect(await screen.findByRole("heading", { name: "Label workflow" })).toBeVisible();
+
+    const link = screen.getByRole("link", { name: "https://example.com/docs" });
+    expect(link).toHaveAttribute("href", "https://example.com/docs");
+    expect(link).toHaveAttribute("target", "_blank");
   });
 
   test("keeps secondary reader actions in the overflow menu", async () => {

@@ -1,7 +1,7 @@
 use crate::app::{DiagnosticsPageState, DiagnosticsPaneKind};
 use mxr_protocol::{
     AccountSyncStatus, DoctorDataStats, DoctorFinding, DoctorFindingCategory,
-    DoctorFindingSeverity, EventLogEntry,
+    DoctorFindingSeverity, EventLogEntry, FeatureHealth, FeatureHealthReport,
 };
 use ratatui::prelude::*;
 use ratatui::widgets::*;
@@ -465,6 +465,12 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
         .into_iter()
         .chain(
             doctor
+                .and_then(|report| report.feature_health.as_ref())
+                .into_iter()
+                .flat_map(feature_health_lines),
+        )
+        .chain(
+            doctor
                 .map(|report| report.findings.as_slice())
                 .unwrap_or(&[])
                 .iter()
@@ -499,12 +505,19 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
                 data_stats.event_log, data_stats.sync_log, data_stats.rule_logs,
             ),
             format!(
-                "Semantic: {} p={} e={} at={}",
+                "Semantic: {} p={} chunks={} e={} missing_chunks={} missing_embeddings={} drift={}",
                 doctor
                     .map(|report| report.semantic_index_freshness.as_str())
                     .unwrap_or("unknown"),
                 data_stats.semantic_profiles,
+                data_stats.semantic_chunks,
                 data_stats.semantic_embeddings,
+                data_stats.messages_missing_semantic_chunks,
+                data_stats.semantic_chunks_missing_embeddings,
+                data_stats.relationship_drifts,
+            ),
+            format!(
+                "Semantic indexed at: {}",
                 doctor
                     .map(|report| format_timestamp_compact(
                         report.semantic_last_indexed_at.as_deref(),
@@ -608,6 +621,33 @@ fn pane_lines(state: &DiagnosticsPageState, pane: DiagnosticsPaneKind) -> Vec<St
     }
 }
 
+fn feature_health_lines(report: &FeatureHealthReport) -> Vec<String> {
+    vec![
+        "Feature health:".to_string(),
+        format!(
+            "  semantic={} summarize={} relationship={}",
+            feature_health_label(&report.semantic),
+            feature_health_label(&report.summarize),
+            feature_health_label(&report.relationship_profile),
+        ),
+        format!(
+            "  commitments={} draft_assist={} voice_match={} humanizer={}",
+            feature_health_label(&report.commitments),
+            feature_health_label(&report.draft_assist),
+            feature_health_label(&report.voice_match),
+            feature_health_label(&report.humanizer),
+        ),
+    ]
+}
+
+fn feature_health_label(health: &FeatureHealth) -> String {
+    match health {
+        FeatureHealth::Healthy => "healthy".into(),
+        FeatureHealth::Disabled => "disabled".into(),
+        FeatureHealth::Degraded { reason } => format!("degraded({})", reason.replace('\n', " ")),
+    }
+}
+
 /// Render a single doctor finding as one or more lines: a leading
 /// "<glyph> <category>: <message>" line, then any remediation steps as
 /// indented "→ <command>" lines so the user can copy-paste.
@@ -686,6 +726,7 @@ mod tests {
             semantic_active_profile: None,
             semantic_index_freshness: mxr_protocol::IndexFreshness::Current,
             semantic_last_indexed_at: None,
+            feature_health: None,
             data_stats: DoctorDataStats::default(),
             data_dir_exists: true,
             database_exists: true,
@@ -778,6 +819,40 @@ mod tests {
         assert!(
             lines.iter().any(|line| line == "Findings: none"),
             "Status pane must show 'Findings: none' on a clean doctor; got {lines:?}",
+        );
+    }
+
+    #[test]
+    fn status_pane_renders_feature_health() {
+        let mut doctor = empty_doctor_with_findings(vec![]);
+        doctor.feature_health = Some(FeatureHealthReport {
+            semantic: FeatureHealth::Healthy,
+            summarize: FeatureHealth::Disabled,
+            relationship_profile: FeatureHealth::Healthy,
+            commitments: FeatureHealth::Degraded {
+                reason: "LLM disabled".into(),
+            },
+            draft_assist: FeatureHealth::Healthy,
+            voice_match: FeatureHealth::Healthy,
+            humanizer: FeatureHealth::Healthy,
+        });
+        let state = DiagnosticsPageState {
+            doctor: Some(doctor),
+            ..Default::default()
+        };
+
+        let lines = pane_lines(&state, DiagnosticsPaneKind::Status);
+
+        assert!(lines.iter().any(|line| line == "Feature health:"));
+        assert!(
+            lines.iter().any(|line| line.contains("semantic=healthy")),
+            "feature health must surface semantic status; got {lines:?}",
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("commitments=degraded(LLM disabled)")),
+            "feature health must surface degraded reasons; got {lines:?}",
         );
     }
 }

@@ -18,6 +18,15 @@ describe("sanitizeHtml", () => {
     expect(clean).toMatch(/style="color: #777; font-size: 12px; line-height: 18px"/);
   });
 
+  it("keeps safe link hrefs and adds external-link attributes", () => {
+    const dirty = `<a href="https://example.com/path">open</a>`;
+    const clean = sanitizeHtml(dirty);
+
+    expect(clean).toMatch(/href="https:\/\/example\.com\/path"/);
+    expect(clean).toMatch(/target="_blank"/);
+    expect(clean).toMatch(/rel="noopener noreferrer"/);
+  });
+
   it("removes dangerous CSS from style attributes", () => {
     const dirty = `<p style="color:#777;background:url(http://evil/leak);position:fixed">hi</p>`;
     const clean = sanitizeHtml(dirty);

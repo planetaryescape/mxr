@@ -29,3 +29,9 @@ export function fetchSyncStatus(accountId: string) {
 export function fetchSemanticStatus() {
   return apiFetch<Record<string, unknown>>("/api/v1/platform/semantic/status");
 }
+
+export function backfillSemantic() {
+  return apiFetch<Record<string, unknown>>("/api/v1/platform/semantic/backfill", {
+    method: "POST",
+  });
+}

@@ -15,6 +15,8 @@ mod commitments;
 #[path = "diagnostics/mod.rs"]
 pub(crate) mod diagnostics_impl;
 mod draft_assist;
+mod draft_new;
+mod draft_refine;
 mod helpers;
 mod humanizer;
 mod mailbox;
@@ -316,6 +318,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             platform::use_semantic_profile(state, *profile).await
         }
         Request::ReindexSemantic => platform::reindex_semantic(state).await,
+        Request::BackfillSemantic => platform::backfill_semantic(state).await,
         Request::CreateSavedSearch {
             name,
             query,
@@ -483,7 +486,7 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
         Request::HumanizerRewrite {
             text,
             max_iterations,
-        } => humanizer::rewrite_text(text, *max_iterations).await,
+        } => humanizer::rewrite_text(state, text, *max_iterations).await,
         Request::ListScreenerQueue { account_id, limit } => {
             screener::list_queue(state, account_id, *limit).await
         }
@@ -516,6 +519,26 @@ async fn dispatch(state: &Arc<AppState>, req: &Request) -> Response {
             thread_id,
             instruction,
         } => draft_assist::draft_assist(state, thread_id, instruction).await,
+        Request::DraftNew {
+            account_id,
+            to,
+            purpose,
+            register,
+            length_hint,
+        } => {
+            draft_new::draft_new(
+                state,
+                account_id,
+                to.clone(),
+                purpose,
+                *register,
+                *length_hint,
+            )
+            .await
+        }
+        Request::DraftRefine { draft_id, knobs } => {
+            draft_refine::draft_refine(state, draft_id, knobs.clone()).await
+        }
         Request::ListDrafts => mutations::list_drafts(state).await,
         Request::ListOrphanedDrafts => mutations::list_orphaned_drafts(state).await,
         Request::ResetOrphanedDraft { draft_id } => {
@@ -645,6 +668,8 @@ fn request_is_read_only(req: &Request) -> bool {
             | Request::ListScreenerQueue { .. }
             | Request::ListScreenerDecisions { .. }
             | Request::SummarizeThread { .. }
+            | Request::DraftNew { .. }
+            | Request::DraftRefine { .. }
             | Request::ListDrafts
             | Request::ListOrphanedDrafts
             | Request::PrepareReply { .. }
@@ -725,6 +750,7 @@ fn request_kind(req: &Request) -> &'static str {
         Request::InstallSemanticProfile { .. } => "install_semantic_profile",
         Request::UseSemanticProfile { .. } => "use_semantic_profile",
         Request::ReindexSemantic => "reindex_semantic",
+        Request::BackfillSemantic => "backfill_semantic",
         Request::CreateSavedSearch { .. } => "create_saved_search",
         Request::DeleteSavedSearch { .. } => "delete_saved_search",
         Request::RunSavedSearch { .. } => "run_saved_search",
@@ -765,6 +791,8 @@ fn request_kind(req: &Request) -> &'static str {
         Request::ClearScreenerDecision { .. } => "clear_screener_decision",
         Request::SummarizeThread { .. } => "summarize_thread",
         Request::DraftAssist { .. } => "draft_assist",
+        Request::DraftNew { .. } => "draft_new",
+        Request::DraftRefine { .. } => "draft_refine",
         Request::PrepareReply { .. } => "prepare_reply",
         Request::PrepareForward { .. } => "prepare_forward",
         Request::SendDraft { .. } => "send_draft",
@@ -820,7 +848,8 @@ fn request_account_id(req: &Request) -> Option<&mxr_core::AccountId> {
         | Request::RebuildRelationshipProfile { account_id, .. }
         | Request::ListCommitments { account_id, .. }
         | Request::GetUserVoice { account_id }
-        | Request::RebuildUserVoice { account_id } => Some(account_id),
+        | Request::RebuildUserVoice { account_id }
+        | Request::DraftNew { account_id, .. } => Some(account_id),
         Request::SetSignatureDefault { account_id, .. }
         | Request::ClearSignatureDefault { account_id, .. }
         | Request::ResolveSignature { account_id, .. } => account_id.as_ref(),

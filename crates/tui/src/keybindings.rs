@@ -152,6 +152,7 @@ pub fn action_from_name(name: &str) -> Option<Action> {
         "attachment_list" => Some(Action::AttachmentList),
         "open_links" => Some(Action::OpenLinks),
         "sync" => Some(Action::SyncNow),
+        "backfill_semantic" => Some(Action::BackfillSemantic),
         // Go-to navigation (A005)
         "go_inbox" => Some(Action::GoToInbox),
         "go_starred" => Some(Action::GoToStarred),

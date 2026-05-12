@@ -1,6 +1,6 @@
 use crate::{decode_id, decode_json, decode_timestamp, encode_json};
 use chrono::{DateTime, Utc};
-use mxr_core::id::AccountId;
+use mxr_core::id::{AccountId, MessageId};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
@@ -22,6 +22,13 @@ pub struct UserVoiceProfileRecord {
     pub register_modes: Vec<UserVoiceRegisterMode>,
     pub computed_at: DateTime<Utc>,
     pub source_hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UserVoiceMessageSample {
+    pub message_id: MessageId,
+    pub body: String,
+    pub date: DateTime<Utc>,
 }
 
 impl super::Store {
@@ -81,5 +88,38 @@ impl super::Store {
             })
         })
         .transpose()
+    }
+
+    pub async fn recent_user_voice_messages(
+        &self,
+        account_id: &AccountId,
+        limit: u32,
+    ) -> Result<Vec<UserVoiceMessageSample>, sqlx::Error> {
+        let rows = sqlx::query(
+            r#"SELECT m.id, m.snippet, m.date, b.text_plain, b.text_html
+               FROM messages m
+               LEFT JOIN bodies b ON b.message_id = m.id
+               WHERE m.account_id = ?
+                 AND m.direction = 'outbound'
+                 AND m.list_id IS NULL
+               ORDER BY m.date DESC
+               LIMIT ?"#,
+        )
+        .bind(account_id.as_str())
+        .bind(limit as i64)
+        .fetch_all(self.reader())
+        .await?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(UserVoiceMessageSample {
+                    message_id: decode_id(row.get::<String, _>("id").as_str())?,
+                    body: row
+                        .get::<Option<String>, _>("text_plain")
+                        .or_else(|| row.get::<Option<String>, _>("text_html"))
+                        .unwrap_or_else(|| row.get::<String, _>("snippet")),
+                    date: decode_timestamp(row.get("date"))?,
+                })
+            })
+            .collect()
     }
 }

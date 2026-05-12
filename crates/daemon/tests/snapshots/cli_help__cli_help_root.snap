@@ -19,10 +19,15 @@ Commands:
   replies        Manage the reply-later queue
   summarize      Summarise an email thread using the configured LLM (Ollama, LM Studio, OpenAI, etc.). Requires `[llm] enabled = true` in config. Pass a positional thread ID or use `--search QUERY` plus `--first` (most recent match) or `--limit N` to summarize multiple threads in one go. Multi-summary output is separated by `--- THREAD_ID ---`
   draft-assist   Generate a draft reply for a thread, grounded on the thread context plus the user's instruction. Output goes to stdout — pipe it into `$EDITOR` or your scratch buffer. Never auto-sends. Two equivalent forms:
+  draft          Draft a new email or refine an existing local draft with LLM assistance
   setup          First-run setup wizard for demo, Gmail, or IMAP/SMTP
   demo           Launch an isolated, realistic demo inbox without touching your real config
   screener       Triage unknown senders: classify them as allow / deny / feed / paper-trail. Local-only consent metadata; never roundtrips to the provider
   sender         Show per-sender relationship aggregates: volume, response cadence, open threads. The unfair advantage of having local SQLite — every other email tool reasons over messages, not people
+  profile        Show or rebuild the inspectable relationship profile for a contact
+  commitments    List or resolve relationship commitments
+  voice          Show or rebuild the account-level user voice profile
+  humanize       Score or rewrite text using the deterministic humanizer gate
   snippets       Manage compose snippets (`;name` expansions)
   signatures     Manage outgoing compose signatures
   remind         Set or cancel a follow-up reminder on an outbound message. Reminders fire if no reply has arrived by the given time — surfacing the message back to the user as a follow-up

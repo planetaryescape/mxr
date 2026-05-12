@@ -1,6 +1,5 @@
 ---
 source: crates/daemon/tests/cli_help.rs
-assertion_line: 13
 expression: stdout
 ---
 First-run setup wizard for demo, Gmail, or IMAP/SMTP
@@ -8,7 +7,7 @@ First-run setup wizard for demo, Gmail, or IMAP/SMTP
 Usage: mxr setup [OPTIONS]
 
 Options:
-      --demo       Legacy helper that drops a fake-provider account into the current config. Prefer `mxr demo` for an isolated 50k-message demo profile
+      --demo       Legacy helper that drops a fake-provider account into the current config. Prefer `mxr demo` for an isolated two-account demo profile
       --key <KEY>  Account key to use when writing the demo entry. Defaults to `demo`. Used to namespace the entry — handy if you want to keep a real account configured alongside [default: demo]
       --force      Skip the safety check that refuses to overwrite an existing account with the same key
   -h, --help       Print help

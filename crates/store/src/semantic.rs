@@ -226,6 +226,86 @@ impl super::Store {
             })
             .collect()
     }
+
+    pub async fn count_messages_missing_semantic_chunks(&self) -> Result<u32, sqlx::Error> {
+        count_semantic_gap(
+            self.reader(),
+            r#"SELECT COUNT(*)
+               FROM messages m
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM semantic_chunks c WHERE c.message_id = m.id
+               )"#,
+        )
+        .await
+    }
+
+    pub async fn count_messages_missing_semantic_embeddings(
+        &self,
+        profile_id: &SemanticProfileId,
+    ) -> Result<u32, sqlx::Error> {
+        Ok(sqlx::query_scalar::<_, i64>(
+            r#"SELECT COUNT(DISTINCT c.message_id)
+               FROM semantic_chunks c
+               WHERE NOT EXISTS (
+                   SELECT 1
+                   FROM semantic_embeddings e
+                   WHERE e.chunk_id = c.id AND e.profile_id = ?
+               )"#,
+        )
+        .bind(profile_id.as_str())
+        .fetch_one(self.reader())
+        .await?
+        .max(0) as u32)
+    }
+
+    pub async fn list_message_ids_missing_semantic_chunks(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<MessageId>, sqlx::Error> {
+        let rows = sqlx::query_scalar::<_, String>(
+            r#"SELECT m.id
+               FROM messages m
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM semantic_chunks c WHERE c.message_id = m.id
+               )
+               ORDER BY m.date DESC
+               LIMIT ?"#,
+        )
+        .bind(limit as i64)
+        .fetch_all(self.reader())
+        .await?;
+        rows.into_iter().map(|id| decode_id(&id)).collect()
+    }
+
+    pub async fn list_message_ids_missing_semantic_embeddings(
+        &self,
+        profile_id: &SemanticProfileId,
+        limit: u32,
+    ) -> Result<Vec<MessageId>, sqlx::Error> {
+        let rows = sqlx::query_scalar::<_, String>(
+            r#"SELECT DISTINCT c.message_id
+               FROM semantic_chunks c
+               WHERE NOT EXISTS (
+                   SELECT 1
+                   FROM semantic_embeddings e
+                   WHERE e.chunk_id = c.id AND e.profile_id = ?
+               )
+               ORDER BY c.updated_at DESC
+               LIMIT ?"#,
+        )
+        .bind(profile_id.as_str())
+        .bind(limit as i64)
+        .fetch_all(self.reader())
+        .await?;
+        rows.into_iter().map(|id| decode_id(&id)).collect()
+    }
+}
+
+async fn count_semantic_gap(pool: &sqlx::SqlitePool, sql: &str) -> Result<u32, sqlx::Error> {
+    Ok(sqlx::query_scalar::<_, i64>(sql)
+        .fetch_one(pool)
+        .await?
+        .max(0) as u32)
 }
 
 fn row_to_semantic_chunk(row: sqlx::sqlite::SqliteRow) -> Result<SemanticChunkRecord, sqlx::Error> {

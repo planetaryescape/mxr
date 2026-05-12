@@ -249,6 +249,10 @@ async fn sync_loop_for_account(
                     )
                     .await;
                 if count > 0 {
+                    let initial_backfill_in_progress = matches!(
+                        post_sync_cursor.as_ref(),
+                        Some(SyncCursor::GmailBackfill { .. })
+                    );
                     if let Err(error) = state
                         .semantic
                         .enqueue_ingest_messages(&outcome.upserted_message_ids)
@@ -263,7 +267,9 @@ async fn sync_loop_for_account(
                     {
                         tracing::warn!(account = %account_id, "Contacts refresh enqueue failed: {error}");
                     }
-                    if let Err(error) = state
+                    if initial_backfill_in_progress {
+                        tracing::debug!(account = %account_id, "relationship profile refresh deferred during initial backfill");
+                    } else if let Err(error) = state
                         .relationship
                         .enqueue_contacts_from_messages(&outcome.upserted_message_ids)
                         .await

@@ -16,7 +16,7 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 /// Loopback hosts always allowed regardless of operator config. These are
 /// the only hosts that don't expose us to DNS-rebinding attacks because
 /// they cannot be poisoned by a malicious authoritative DNS server.
-const LOOPBACK_HOSTS: &[&str] = &["localhost", "127.0.0.1", "[::1]", "::1"];
+const LOOPBACK_HOSTS: &[&str] = &["localhost", "mxr.localhost", "127.0.0.1", "[::1]", "::1"];
 
 /// Strip an optional `:port` suffix from a Host header value.
 fn host_only(raw: &str) -> &str {
@@ -73,9 +73,8 @@ fn reject_host(reason: &'static str) -> Response {
 }
 
 /// Build a CORS layer that allows the loopback defaults plus any extra
-/// origins the operator configured. Localhost on any port is allowed
-/// (matches the source-doc behaviour `http://localhost:*` /
-/// `https://localhost:*`).
+/// origins the operator configured. Localhost names on any port are
+/// allowed (for example `http://localhost:*` and `http://mxr.localhost:*`).
 pub fn cors_layer(extra_origins: &[String]) -> CorsLayer {
     let mut allowed: Vec<HeaderValue> = Vec::new();
     for origin in extra_origins {
@@ -123,6 +122,7 @@ mod tests {
     #[test]
     fn loopback_origins_are_recognised() {
         assert!(is_loopback_origin("http://localhost"));
+        assert!(is_loopback_origin("http://mxr.localhost:42829"));
         assert!(is_loopback_origin("https://localhost"));
         assert!(is_loopback_origin("http://localhost:5173"));
         assert!(is_loopback_origin("http://127.0.0.1:7777"));

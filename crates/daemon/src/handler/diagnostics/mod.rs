@@ -6,6 +6,7 @@ use search_execute::execute_search;
 use super::helpers::recent_log_lines;
 use super::status_helpers::{
     build_account_sync_status, collect_doctor_report, collect_status_snapshot,
+    feature_health_report,
 };
 use super::{
     handle_export_search, handle_export_thread, helpers::protocol_event_entry, HandlerResult,
@@ -651,6 +652,8 @@ fn normalize_llm_config(config: LlmConfigData) -> Result<mxr_config::LlmConfig, 
         api_key_env: config.api_key_env.trim().to_string(),
         context_window: config.context_window,
         request_timeout_secs: config.request_timeout_secs,
+        allow_cloud_relationship_data: false,
+        overrides: mxr_config::LlmOverrides::default(),
     })
 }
 
@@ -701,6 +704,15 @@ pub(crate) async fn reindex_semantic(state: &AppState) -> HandlerResult {
     state
         .semantic
         .reindex_active()
+        .await
+        .map_err(|e| e.to_string())?;
+    semantic_status(state).await
+}
+
+pub(crate) async fn backfill_semantic(state: &AppState) -> HandlerResult {
+    state
+        .semantic
+        .backfill_active()
         .await
         .map_err(|e| e.to_string())?;
     semantic_status(state).await
@@ -789,6 +801,7 @@ pub(crate) async fn get_status(state: &AppState) -> HandlerResult {
         daemon_build_id: Some(crate::server::current_build_id()),
         repair_required,
         semantic_runtime,
+        feature_health: Some(feature_health_report(state)),
     })
 }
 

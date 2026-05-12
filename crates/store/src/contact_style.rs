@@ -19,6 +19,9 @@ pub struct ContactStyleRecord {
     pub metrics_json_theirs: String,
     pub computed_at: DateTime<Utc>,
     pub source_hash: String,
+    pub drift_detected: bool,
+    pub drift_reason: Option<String>,
+    pub drift_detected_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +31,7 @@ pub struct RelationshipMessageSample {
     pub thread_id: ThreadId,
     pub direction: MessageDirection,
     pub from_email: String,
+    pub is_list_sender: bool,
     pub body: String,
     pub date: DateTime<Utc>,
 }
@@ -42,8 +46,8 @@ impl super::Store {
                (account_id, email, formality_score, formality_score_theirs,
                 avg_sentence_len, avg_sentence_len_theirs, msg_count_used,
                 msg_count_used_theirs, metrics_json, metrics_json_theirs,
-                computed_at, source_hash)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                computed_at, source_hash, drift_detected, drift_reason, drift_detected_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(account_id, email) DO UPDATE SET
                  formality_score = excluded.formality_score,
                  formality_score_theirs = excluded.formality_score_theirs,
@@ -54,7 +58,10 @@ impl super::Store {
                  metrics_json = excluded.metrics_json,
                  metrics_json_theirs = excluded.metrics_json_theirs,
                  computed_at = excluded.computed_at,
-                 source_hash = excluded.source_hash"#,
+                 source_hash = excluded.source_hash,
+                 drift_detected = excluded.drift_detected,
+                 drift_reason = excluded.drift_reason,
+                 drift_detected_at = excluded.drift_detected_at"#,
         )
         .bind(record.account_id.as_str())
         .bind(&record.email)
@@ -68,6 +75,9 @@ impl super::Store {
         .bind(&record.metrics_json_theirs)
         .bind(record.computed_at.timestamp())
         .bind(&record.source_hash)
+        .bind(record.drift_detected as i64)
+        .bind(&record.drift_reason)
+        .bind(record.drift_detected_at.map(|value| value.timestamp()))
         .execute(self.writer())
         .await?;
         Ok(())
@@ -83,7 +93,7 @@ impl super::Store {
             r#"SELECT account_id, email, formality_score, formality_score_theirs,
                       avg_sentence_len, avg_sentence_len_theirs, msg_count_used,
                       msg_count_used_theirs, metrics_json, metrics_json_theirs,
-                      computed_at, source_hash
+                       computed_at, source_hash, drift_detected, drift_reason, drift_detected_at
                FROM contact_style
                WHERE account_id = ? AND email = ? COLLATE NOCASE"#,
         )
@@ -153,8 +163,9 @@ impl super::Store {
     ) -> Result<Vec<RelationshipMessageSample>, sqlx::Error> {
         let started_at = std::time::Instant::now();
         let rows = sqlx::query(
-            r#"SELECT m.id, m.account_id, m.thread_id, m.direction, m.from_email, m.snippet,
-                      m.date, b.text_plain, b.text_html
+            r#"SELECT m.id, m.account_id, m.thread_id, m.direction, m.from_email,
+                      CASE WHEN m.list_id IS NOT NULL THEN 1 ELSE 0 END AS is_list_sender,
+                      m.snippet, m.date, b.text_plain, b.text_html
                FROM messages m
                LEFT JOIN bodies b ON b.message_id = m.id
                WHERE m.account_id = ?
@@ -194,6 +205,9 @@ fn row_to_contact_style(row: sqlx::sqlite::SqliteRow) -> Result<ContactStyleReco
         metrics_json_theirs: row.get("metrics_json_theirs"),
         computed_at: decode_timestamp(row.get("computed_at"))?,
         source_hash: row.get("source_hash"),
+        drift_detected: row.get::<i64, _>("drift_detected") != 0,
+        drift_reason: row.get("drift_reason"),
+        drift_detected_at: crate::decode_optional_timestamp(row.get("drift_detected_at"))?,
     })
 }
 
@@ -211,6 +225,7 @@ fn row_to_message_sample(
         direction: MessageDirection::from_db_str(row.get::<String, _>("direction").as_str())
             .unwrap_or(MessageDirection::Unknown),
         from_email: row.get("from_email"),
+        is_list_sender: row.get::<i64, _>("is_list_sender") != 0,
         body,
         date: decode_timestamp(row.get("date"))?,
     })

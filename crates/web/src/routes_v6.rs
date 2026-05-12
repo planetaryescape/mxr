@@ -21,10 +21,16 @@ use axum::{
 };
 use mxr_core::{
     id::{AccountId, DraftId, MessageId, ThreadId},
-    types::{ResponseTimeDirection, SemanticProfile, StaleBallInCourt, StorageGroupBy},
+    types::{
+        Address, Draft, ExportFormat, MessageFlags, ResponseTimeDirection, SemanticProfile,
+        StaleBallInCourt, StorageGroupBy,
+    },
     SearchMode,
 };
-use mxr_protocol::{Request, ResponseData, ScreenerDispositionData};
+use mxr_protocol::{
+    AccountConfigData, CommitmentStatusData, DraftLengthHintData, DraftRefineKnobsData, Request,
+    ResponseData, ScreenerDispositionData, SignatureContextData, VoiceRegisterData,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::str::FromStr;
@@ -1102,6 +1108,106 @@ async fn get_sender_profile(
 }
 
 #[derive(Debug, Deserialize)]
+struct RelationshipProfileQuery {
+    #[serde(default)]
+    token: Option<String>,
+    account_id: String,
+    email: String,
+}
+
+async fn get_relationship_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<RelationshipProfileQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&query.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetRelationshipProfile {
+            account_id,
+            email: query.email,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct RebuildRelationshipBody {
+    account_id: String,
+    email: String,
+}
+
+async fn rebuild_relationship_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<RebuildRelationshipBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&body.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::RebuildRelationshipProfile {
+            account_id,
+            email: body.email,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct CommitmentsQuery {
+    #[serde(default)]
+    token: Option<String>,
+    account_id: String,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    status: Option<CommitmentStatusData>,
+}
+
+async fn list_commitments(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<CommitmentsQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&query.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::ListCommitments {
+            account_id,
+            email: query.email,
+            status: query.status,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn resolve_commitment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(commitment_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ResolveCommitment { commitment_id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
 struct ScreenerQueueQuery {
     #[serde(default)]
     token: Option<String>,
@@ -1258,6 +1364,587 @@ async fn draft_assist(
     passthrough(response)
 }
 
+#[derive(Debug, Deserialize)]
+struct DraftNewBody {
+    account_id: String,
+    to: Address,
+    purpose: String,
+    #[serde(default)]
+    register: Option<VoiceRegisterData>,
+    #[serde(default)]
+    length_hint: Option<DraftLengthHintData>,
+}
+
+async fn draft_new(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<DraftNewBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&body.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::DraftNew {
+            account_id,
+            to: body.to,
+            purpose: body.purpose,
+            register: body.register,
+            length_hint: body.length_hint,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct DraftRefineBody {
+    draft_id: String,
+    knobs: DraftRefineKnobsData,
+}
+
+async fn draft_refine(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<DraftRefineBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let draft_id = DraftId::from_str(&body.draft_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::DraftRefine {
+            draft_id,
+            knobs: body.knobs,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct HumanizerTextBody {
+    text: String,
+    #[serde(default)]
+    max_iterations: Option<u8>,
+}
+
+async fn humanizer_score(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<HumanizerTextBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::HumanizerScore { text: body.text },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn humanizer_rewrite(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<HumanizerTextBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::HumanizerRewrite {
+            text: body.text,
+            max_iterations: body.max_iterations,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn get_user_voice(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AccountQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&query.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetUserVoice { account_id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn rebuild_user_voice(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<AccountQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = parse_account_id(&query.account_id)?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::RebuildUserVoice { account_id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn semantic_backfill(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::BackfillSemantic,
+    )
+    .await?;
+    passthrough(response)
+}
+
+// ---------------------------------------------------------------------------
+// mail — body/headers/flags, export-search, draft IPC, signatures
+
+async fn get_message_body(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = MessageId::from_str(&message_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::GetBody { message_id: id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct HtmlImagesQuery {
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default)]
+    allow_remote: bool,
+}
+
+async fn get_html_image_assets(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<String>,
+    Query(query): Query<HtmlImagesQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = MessageId::from_str(&message_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        query.token.as_deref(),
+        Request::GetHtmlImageAssets {
+            message_id: id,
+            allow_remote: query.allow_remote,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn get_message_headers_ipc(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = MessageId::from_str(&message_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::GetHeaders { message_id: id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct SetFlagsBody {
+    flags: u32,
+}
+
+async fn set_message_flags(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(message_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<SetFlagsBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = MessageId::from_str(&message_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid message_id: {err}")))?;
+    let flags = MessageFlags::from_bits(body.flags).ok_or_else(|| {
+        BridgeError::Ipc(format!(
+            "invalid MessageFlags bits 0x{:x} (unknown bits set)",
+            body.flags
+        ))
+    })?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SetFlags {
+            message_id: id,
+            flags,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct ExportSearchBody {
+    query: String,
+    format: ExportFormat,
+}
+
+async fn export_search(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<ExportSearchBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ExportSearch {
+            query: body.query,
+            format: body.format,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn list_orphaned_drafts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ListOrphanedDrafts,
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn reset_orphaned_draft(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = DraftId::from_str(&draft_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ResetOrphanedDraft { draft_id: id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn send_stored_draft(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = DraftId::from_str(&draft_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SendStoredDraft { draft_id: id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn save_draft_local(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(draft): Json<Draft>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SaveDraft { draft },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn delete_draft_stored(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let id = DraftId::from_str(&draft_id)
+        .map_err(|err| BridgeError::Ipc(format!("invalid draft_id: {err}")))?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::DeleteDraft { draft_id: id },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn list_signatures(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ListSignatures,
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn list_signature_defaults(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ListSignatureDefaults,
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct SetSignatureBody {
+    name: String,
+    body: String,
+}
+
+async fn set_signature(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<SetSignatureBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SetSignature {
+            name: body.name,
+            body: body.body,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn delete_signature(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Query(auth): Query<AuthQuery>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::DeleteSignature { name },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct SetSignatureDefaultBody {
+    name: String,
+    kind: SignatureContextData,
+    #[serde(default)]
+    account_id: Option<String>,
+    #[serde(default)]
+    from_email: Option<String>,
+}
+
+async fn set_signature_default(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<SetSignatureDefaultBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = body
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::SetSignatureDefault {
+            name: body.name,
+            kind: body.kind,
+            account_id,
+            from_email: body.from_email,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct ClearSignatureDefaultBody {
+    kind: SignatureContextData,
+    #[serde(default)]
+    account_id: Option<String>,
+    #[serde(default)]
+    from_email: Option<String>,
+}
+
+async fn clear_signature_default(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<ClearSignatureDefaultBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = body
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ClearSignatureDefault {
+            kind: body.kind,
+            account_id,
+            from_email: body.from_email,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct ResolveSignatureBody {
+    #[serde(default)]
+    name: Option<String>,
+    kind: SignatureContextData,
+    #[serde(default)]
+    account_id: Option<String>,
+    #[serde(default)]
+    from_email: Option<String>,
+}
+
+async fn resolve_signature(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<ResolveSignatureBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let account_id = body
+        .account_id
+        .as_deref()
+        .map(parse_account_id)
+        .transpose()?;
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::ResolveSignature {
+            name: body.name,
+            kind: body.kind,
+            account_id,
+            from_email: body.from_email,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
+async fn repair_account_config(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(account): Json<AccountConfigData>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::RepairAccountConfig { account },
+    )
+    .await?;
+    passthrough(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthorizeAccountBody {
+    account: AccountConfigData,
+    #[serde(default)]
+    reauthorize: bool,
+}
+
+async fn authorize_account_config(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(auth): Query<AuthQuery>,
+    Json(body): Json<AuthorizeAccountBody>,
+) -> Result<Json<Value>, BridgeError> {
+    let response = dispatch(
+        &state,
+        &headers,
+        auth.token.as_deref(),
+        Request::AuthorizeAccountConfig {
+            account: body.account,
+            reauthorize: body.reauthorize,
+        },
+    )
+    .await?;
+    passthrough(response)
+}
+
 // ---------------------------------------------------------------------------
 // router builders — extend the bucket sub-routers in lib.rs
 
@@ -1271,6 +1958,37 @@ pub fn extend_admin(router: Router<AppState>) -> Router<AppState> {
 
 pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
     router
+        .route("/messages/{message_id}/body", get(get_message_body))
+        .route(
+            "/messages/{message_id}/html-images",
+            get(get_html_image_assets),
+        )
+        .route(
+            "/messages/{message_id}/headers",
+            get(get_message_headers_ipc),
+        )
+        .route("/messages/{message_id}/flags", post(set_message_flags))
+        .route("/export-search", post(export_search))
+        .route("/drafts/orphaned", get(list_orphaned_drafts))
+        .route("/drafts/save-local", post(save_draft_local))
+        .route(
+            "/drafts/{draft_id}/reset-orphan",
+            post(reset_orphaned_draft),
+        )
+        .route("/drafts/{draft_id}/send-stored", post(send_stored_draft))
+        .route("/drafts/{draft_id}/stored", delete(delete_draft_stored))
+        .route(
+            "/signatures",
+            get(list_signatures).post(set_signature),
+        )
+        .route("/signature-defaults", get(list_signature_defaults))
+        .route("/signatures/resolve", post(resolve_signature))
+        .route(
+            "/signatures/default/clear",
+            post(clear_signature_default),
+        )
+        .route("/signatures/default", post(set_signature_default))
+        .route("/signatures/{name}", delete(delete_signature))
         .route("/mutations/undo", post(undo_mutation))
         .route("/count", get(count_messages))
         .route("/sync/status", get(sync_status))
@@ -1289,6 +2007,13 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         .route("/snippets/{name}", delete(delete_snippet))
         // sender view
         .route("/sender", get(get_sender_profile))
+        .route("/relationship", get(get_relationship_profile))
+        .route("/relationship/rebuild", post(rebuild_relationship_profile))
+        .route("/commitments", get(list_commitments))
+        .route(
+            "/commitments/{commitment_id}/resolve",
+            post(resolve_commitment),
+        )
         // screener
         .route("/screener/queue", get(list_screener_queue))
         .route(
@@ -1300,6 +2025,10 @@ pub fn extend_mail(router: Router<AppState>) -> Router<AppState> {
         // LLM features
         .route("/threads/{thread_id}/summarize", post(summarize_thread))
         .route("/threads/draft-assist", post(draft_assist))
+        .route("/drafts/new", post(draft_new))
+        .route("/drafts/refine", post(draft_refine))
+        .route("/humanizer/score", post(humanizer_score))
+        .route("/humanizer/rewrite", post(humanizer_rewrite))
 }
 
 pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
@@ -1331,6 +2060,8 @@ pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
         .route("/saved-searches/run", post(run_saved_search))
         // accounts: config / lifecycle
         .route("/accounts/config", get(list_accounts_config))
+        .route("/accounts/authorize", post(authorize_account_config))
+        .route("/accounts/repair", post(repair_account_config))
         .route("/accounts/{key}", delete(remove_account))
         .route("/accounts/{key}/disable", post(disable_account))
         // account addresses
@@ -1352,6 +2083,9 @@ pub fn extend_platform(router: Router<AppState>) -> Router<AppState> {
         )
         // semantic
         .route("/semantic/enable", post(semantic_enable))
+        .route("/semantic/backfill", post(semantic_backfill))
         .route("/semantic/profiles/install", post(semantic_install_profile))
         .route("/semantic/profiles/use", post(semantic_use_profile))
+        .route("/voice", get(get_user_voice))
+        .route("/voice/rebuild", post(rebuild_user_voice))
 }

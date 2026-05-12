@@ -53,7 +53,9 @@ pub use sync_log::{SyncLogEntry, SyncStatus};
 pub use sync_runtime_status::{SyncRuntimeStatus, SyncRuntimeStatusUpdate};
 pub use thread_summary::{thread_summary_content_hash, ThreadSummaryRecord};
 pub use undo::{UndoEntry, UndoEntrySnapshot, UndoableMutationKind};
-pub use user_voice_profile::{UserVoiceProfileRecord, UserVoiceRegisterMode};
+pub use user_voice_profile::{
+    UserVoiceMessageSample, UserVoiceProfileRecord, UserVoiceRegisterMode,
+};
 
 use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;

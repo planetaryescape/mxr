@@ -19,6 +19,10 @@ impl App {
                 self.queue_semantic_request(mxr_protocol::Request::ReindexSemantic);
                 self.status_message = Some("Reindexing semantic search...".into());
             }
+            Action::BackfillSemantic => {
+                self.queue_semantic_request(mxr_protocol::Request::BackfillSemantic);
+                self.status_message = Some("Backfilling semantic search...".into());
+            }
             Action::InstallSemanticProfile(profile) => {
                 self.queue_semantic_request(mxr_protocol::Request::InstallSemanticProfile {
                     profile,

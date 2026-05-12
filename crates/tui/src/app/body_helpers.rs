@@ -26,6 +26,7 @@ impl App {
     pub fn status_bar_state(&self) -> ui::status_bar::StatusBarState {
         let starred_count = self.global_starred_count();
         let body_status = self.active_body_status();
+        let feature_health_status = self.feature_health_status_label();
 
         if self.mailbox.mailbox_view == MailboxView::Subscriptions {
             let unread_count = self
@@ -42,6 +43,7 @@ impl App {
                 starred_count,
                 body_status: body_status.clone(),
                 sync_status: self.last_sync_status.clone(),
+                feature_health_status: feature_health_status.clone(),
                 status_message: self
                     .connection_state_label()
                     .or_else(|| self.current_user_warn(std::time::Instant::now()))
@@ -69,6 +71,7 @@ impl App {
                 starred_count,
                 body_status: body_status.clone(),
                 sync_status: self.last_sync_status.clone(),
+                feature_health_status: feature_health_status.clone(),
                 status_message: self
                     .connection_state_label()
                     .or_else(|| self.current_user_warn(std::time::Instant::now()))
@@ -87,6 +90,7 @@ impl App {
                 starred_count,
                 body_status: body_status.clone(),
                 sync_status: self.last_sync_status.clone(),
+                feature_health_status: feature_health_status.clone(),
                 status_message: self
                     .connection_state_label()
                     .or_else(|| self.current_user_warn(std::time::Instant::now()))
@@ -115,10 +119,45 @@ impl App {
             starred_count,
             body_status,
             sync_status: self.last_sync_status.clone(),
+            feature_health_status,
             status_message: self.status_message.clone(),
             pending_mutation_count: self.pending_mutation_count,
             pending_mutation_status: self.pending_mutation_status.clone(),
         }
+    }
+
+    fn feature_health_status_label(&self) -> Option<String> {
+        let report = self
+            .diagnostics
+            .page
+            .doctor
+            .as_ref()?
+            .feature_health
+            .as_ref()?;
+        let features = [
+            &report.semantic,
+            &report.summarize,
+            &report.relationship_profile,
+            &report.commitments,
+            &report.draft_assist,
+            &report.voice_match,
+            &report.humanizer,
+        ];
+        let degraded = features
+            .iter()
+            .filter(|health| matches!(health, mxr_protocol::FeatureHealth::Degraded { .. }))
+            .count();
+        if degraded > 0 {
+            return Some(format!("AI degraded:{degraded}"));
+        }
+        let disabled = features
+            .iter()
+            .filter(|health| matches!(health, mxr_protocol::FeatureHealth::Disabled))
+            .count();
+        if disabled > 0 {
+            return Some(format!("AI partial:{disabled}"));
+        }
+        Some("AI ok".into())
     }
 
     pub(super) fn summarize_sync_status(

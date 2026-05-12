@@ -340,6 +340,7 @@ mod tests {
                 IpcCategory::MxrPlatform,
             ),
             (Request::ReindexSemantic, IpcCategory::MxrPlatform),
+            (Request::BackfillSemantic, IpcCategory::MxrPlatform),
             (
                 Request::CreateSavedSearch {
                     name: "Unread".into(),
@@ -614,6 +615,7 @@ mod tests {
                     daemon_build_id: None,
                     repair_required: false,
                     semantic_runtime: None,
+                    feature_health: None,
                 },
                 IpcCategory::AdminMaintenance,
             ),
@@ -766,6 +768,7 @@ mod tests {
                         semantic_active_profile: None,
                         semantic_index_freshness: IndexFreshness::Disabled,
                         semantic_last_indexed_at: None,
+                        feature_health: None,
                         data_stats: DoctorDataStats::default(),
                         data_dir_exists: true,
                         database_exists: true,

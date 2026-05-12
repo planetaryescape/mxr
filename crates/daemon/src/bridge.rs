@@ -72,11 +72,10 @@ pub async fn spawn_bridge_loop(
         .with_host_allowlist(bridge_cfg.host_allowlist.clone())
         .with_auto_local_token(bridge_cfg.auto_local_token);
 
-    // The daemon-managed bridge always retries free ports on conflict —
-    // we don't want a colliding port to prevent the daemon from starting
-    // at all. The actual bound port is published to `bridge_port_path()`
-    // so clients (Vite proxy, scripts) can discover it.
-    let listener = bind_listener(bind, bridge_cfg.port, true)
+    // Keep the local web URL stable. If the preferred port is busy, the
+    // daemon keeps running without its managed bridge; `mxr web` will surface
+    // a user-facing conflict message with process-owner diagnostics.
+    let listener = bind_listener(bind, bridge_cfg.port, false)
         .await
         .map_err(|error| BridgeStartupError::Bind {
             addr,

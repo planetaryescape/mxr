@@ -237,6 +237,7 @@ fn action_name(action: &Action) -> Option<&'static str> {
         Action::EnableSemantic => Some("enable_semantic"),
         Action::DisableSemantic => Some("disable_semantic"),
         Action::ReindexSemantic => Some("reindex_semantic"),
+        Action::BackfillSemantic => Some("backfill_semantic"),
         Action::InstallSemanticProfile(_) => Some("install_semantic_profile"),
         Action::OpenAccountFormNew => Some("open_account_form_new"),
         Action::TestAccountForm => Some("test_account_form"),

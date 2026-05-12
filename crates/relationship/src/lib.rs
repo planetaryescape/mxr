@@ -1,5 +1,7 @@
+pub mod commitments;
 pub mod service;
 pub mod stylometry;
+pub mod summary;
 pub mod user_voice;
 pub mod voice_match;
 

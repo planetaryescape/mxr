@@ -1,7 +1,7 @@
 use super::helpers::{dir_size, file_size, protocol_event_entry, recent_log_lines};
 use crate::state::AppState;
 use mxr_core::{Account, AccountId};
-use mxr_protocol::AccountSyncStatus;
+use mxr_protocol::{AccountSyncStatus, FeatureHealth, FeatureHealthReport};
 use mxr_store::SyncRuntimeStatus;
 use std::collections::HashMap;
 
@@ -201,6 +201,8 @@ pub(super) async fn collect_doctor_report(
         socket_exists,
         repair_required,
         restart_required,
+        semantic_enabled,
+        &data_stats,
     );
 
     let report = mxr_protocol::DoctorReport {
@@ -213,6 +215,7 @@ pub(super) async fn collect_doctor_report(
         semantic_active_profile,
         semantic_index_freshness,
         semantic_last_indexed_at,
+        feature_health: Some(feature_health_report(state)),
         data_stats,
         data_dir_exists,
         database_exists,
@@ -250,6 +253,66 @@ pub(super) async fn collect_doctor_report(
     Ok(report)
 }
 
+pub(super) fn feature_health_report(state: &AppState) -> FeatureHealthReport {
+    let config = state.config_snapshot();
+    let llm_health = if config.llm.enabled {
+        FeatureHealth::Healthy
+    } else {
+        FeatureHealth::Disabled
+    };
+    let relationship_summary_health = llm_feature_health(
+        state,
+        mxr_llm::LlmFeature::RelationshipSummary,
+        FeatureHealth::Healthy,
+    );
+    let commitments_health = llm_feature_health(
+        state,
+        mxr_llm::LlmFeature::Commitments,
+        if config.llm.enabled {
+            FeatureHealth::Healthy
+        } else {
+            FeatureHealth::Degraded {
+                reason: "LLM disabled; stored commitments remain readable".to_string(),
+            }
+        },
+    );
+    let voice_match_health = llm_feature_health(
+        state,
+        mxr_llm::LlmFeature::VoiceMatch,
+        FeatureHealth::Healthy,
+    );
+
+    FeatureHealthReport {
+        semantic: if config.search.semantic.enabled {
+            FeatureHealth::Healthy
+        } else {
+            FeatureHealth::Disabled
+        },
+        summarize: llm_health.clone(),
+        relationship_profile: relationship_summary_health,
+        commitments: commitments_health,
+        draft_assist: llm_health,
+        voice_match: voice_match_health,
+        humanizer: if config.humanizer.enabled {
+            FeatureHealth::Healthy
+        } else {
+            FeatureHealth::Disabled
+        },
+    }
+}
+
+fn llm_feature_health(
+    state: &AppState,
+    feature: mxr_llm::LlmFeature,
+    default: FeatureHealth,
+) -> FeatureHealth {
+    state
+        .llm
+        .feature_block_reason(feature)
+        .map(|reason| FeatureHealth::Degraded { reason })
+        .unwrap_or(default)
+}
+
 /// Classify the doctor's raw signals into structured findings with
 /// remediation. Pattern-matches recent error log lines for common
 /// failure modes — OAuth refresh failed, rate-limited, network
@@ -264,6 +327,8 @@ fn build_doctor_findings(
     socket_exists: bool,
     repair_required: bool,
     restart_required: bool,
+    semantic_enabled: bool,
+    data_stats: &mxr_protocol::DoctorDataStats,
 ) -> Vec<mxr_protocol::DoctorFinding> {
     use mxr_protocol::{DoctorFinding, DoctorFindingCategory, DoctorFindingSeverity};
     let mut findings = Vec::new();
@@ -309,6 +374,33 @@ fn build_doctor_findings(
         });
     }
 
+    if semantic_enabled {
+        let missing_messages = data_stats.messages_missing_semantic_chunks;
+        let missing_embeddings = data_stats.semantic_chunks_missing_embeddings;
+        if missing_messages > 0 || missing_embeddings > 0 {
+            findings.push(DoctorFinding {
+                category: DoctorFindingCategory::Semantic,
+                severity: DoctorFindingSeverity::Warning,
+                message: format!(
+                    "Semantic backfill pending: {missing_messages} message(s) need chunks, {missing_embeddings} chunk(s) need embeddings"
+                ),
+                remediation: vec!["mxr doctor --backfill-semantic".into()],
+            });
+        }
+    }
+
+    if data_stats.relationship_drifts > 0 {
+        findings.push(DoctorFinding {
+            category: DoctorFindingCategory::Generic,
+            severity: DoctorFindingSeverity::Info,
+            message: format!(
+                "Relationship voice drift detected for {} contact(s)",
+                data_stats.relationship_drifts
+            ),
+            remediation: vec!["mxr profile <email> --rebuild".into()],
+        });
+    }
+
     for status in sync_statuses {
         if let Some(err) = status.last_error.as_deref() {
             findings.push(classify_sync_error(&status.account_name, err));
@@ -334,7 +426,9 @@ fn classify_sync_error(account: &str, err: &str) -> mxr_protocol::DoctorFinding 
     {
         (
             DoctorFindingCategory::OAuth,
-            vec![format!("mxr accounts reauth {account}")],
+            vec![format!(
+                "Re-authenticate `{account}`: run `mxr accounts add` for the same provider/account key, or use the account OAuth flow in the web app."
+            )],
         )
     } else if lower.contains("connection refused")
         || lower.contains("dns")
@@ -374,7 +468,7 @@ fn classify_log_line(line: &str) -> Option<mxr_protocol::DoctorFinding> {
             category: DoctorFindingCategory::OAuth,
             severity: DoctorFindingSeverity::Warning,
             message: "OAuth token issue in recent logs".into(),
-            remediation: vec!["mxr accounts reauth <account>".into()],
+            remediation: vec!["Re-authenticate: `mxr accounts add` (same key) or the web app account OAuth flow.".into()],
         });
     }
     if lower.contains("database is locked") {
@@ -412,6 +506,9 @@ pub(crate) fn doctor_data_stats(
         semantic_profiles: counts.semantic_profiles,
         semantic_chunks: counts.semantic_chunks,
         semantic_embeddings: counts.semantic_embeddings,
+        messages_missing_semantic_chunks: counts.messages_missing_semantic_chunks,
+        semantic_chunks_missing_embeddings: counts.semantic_chunks_missing_embeddings,
+        relationship_drifts: counts.relationship_drifts,
     }
 }
 

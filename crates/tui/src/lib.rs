@@ -1909,6 +1909,7 @@ pub async fn run() -> anyhow::Result<()> {
                                 if status.starts_with("Enabling")
                                     || status.starts_with("Disabling")
                                     || status.starts_with("Reindexing")
+                                    || status.starts_with("Backfilling")
                                     || status.starts_with("Installing semantic profile")
                                 {
                                     app.status_message = Some("Semantic action complete".into());
@@ -7491,6 +7492,7 @@ mod tests {
             "Semantic: Enable",
             "Semantic: Disable",
             "Semantic: Reindex",
+            "Semantic: Backfill Missing",
             "Semantic: Install Profile (BGE Small EN)",
             "Semantic: Install Profile (Multilingual E5)",
             "Semantic: Install Profile (BGE-M3)",
@@ -7550,6 +7552,20 @@ mod tests {
         assert!(
             matches!(queue[0], mxr_protocol::Request::ReindexSemantic),
             "expected ReindexSemantic, got {:?}",
+            queue[0]
+        );
+    }
+
+    #[test]
+    fn backfill_semantic_action_queues_backfill_request() {
+        use crate::action::Action;
+        let mut app = App::new();
+        app.apply(Action::BackfillSemantic);
+        let queue = app.take_pending_semantic_dispatch();
+        assert_eq!(queue.len(), 1);
+        assert!(
+            matches!(queue[0], mxr_protocol::Request::BackfillSemantic),
+            "expected BackfillSemantic, got {:?}",
             queue[0]
         );
     }

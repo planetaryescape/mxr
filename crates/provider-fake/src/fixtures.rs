@@ -575,12 +575,13 @@ pub fn generate_demo_fixtures(
     target_count: usize,
 ) -> (Vec<Envelope>, HashMap<String, MessageBody>, Vec<Label>) {
     let target_count = target_count.clamp(1, MAX_DEMO_MESSAGE_COUNT);
-    let mut envelopes = Vec::with_capacity(target_count);
-    let mut bodies = HashMap::with_capacity(target_count);
+    let profile = demo_account_profile(account_id, target_count);
+    let mut envelopes = Vec::with_capacity(profile.target_count);
+    let mut bodies = HashMap::with_capacity(profile.target_count);
     let now = Utc::now();
     let self_addr = Address {
-        name: Some("Alex Demo".to_string()),
-        email: "alex@demo.mxr.local".to_string(),
+        name: Some(profile.display_name.to_string()),
+        email: profile.email.to_string(),
     };
 
     let labels = vec![
@@ -597,6 +598,13 @@ pub fn generate_demo_fixtures(
         make_label(account_id, "Alerts", LabelKind::User, "alerts"),
         make_label(account_id, "Hiring", LabelKind::User, "hiring"),
         make_label(account_id, "Waiting", LabelKind::User, "waiting"),
+        make_label(account_id, "Promotions", LabelKind::User, "promotions"),
+        make_label(
+            account_id,
+            "Potential Spam",
+            LabelKind::User,
+            "potential_spam",
+        ),
     ];
 
     let people = [
@@ -624,6 +632,20 @@ pub fn generate_demo_fixtures(
         ("Uptime Robot", "uptime@alerts.demo.mxr.local"),
         ("Pager Relay", "pager@alerts.demo.mxr.local"),
     ];
+    let promo_senders = [
+        ("Cloud Deals", "offers@promo.demo.mxr.local"),
+        ("Desk Gear Outlet", "gear@promo.demo.mxr.local"),
+        ("Flight Fare Drop", "fares@promo.demo.mxr.local"),
+        ("Conference Passes", "events@promo.demo.mxr.local"),
+    ];
+    let spam_senders = [
+        (
+            "Account Verification",
+            "verify@security-mail.demo.mxr.local",
+        ),
+        ("Prize Desk", "winner@claim-now.demo.mxr.local"),
+        ("Payroll Notice", "payroll@notice-demo.mxr.local"),
+    ];
     let subject_templates = [
         "Launch checklist for Project Aurora",
         "Canary rollout notes",
@@ -641,16 +663,20 @@ pub fn generate_demo_fixtures(
         "Pricing page copy review",
         "API migration plan",
         "Research notes: terminal workflows",
+        "Action required: unusual sign-in attempt",
+        "Spring upgrade offer for your workspace",
+        "Limited-time launch bundle",
+        "Urgent password reset notice",
     ];
 
     let mut msg_num = 1usize;
     let mut thread_num = 0usize;
-    while envelopes.len() < target_count {
+    while envelopes.len() < profile.target_count {
         let template_idx = thread_num % subject_templates.len();
-        let category = thread_num % 10;
+        let category = thread_num % 13;
         let thread_len = match category {
             1 | 4 => 5,
-            2 | 7 => 1,
+            2 | 7 | 10 | 11 | 12 => 1,
             8 => 3,
             _ => 2 + (thread_num % 4),
         };
@@ -661,7 +687,7 @@ pub fn generate_demo_fixtures(
         let mut previous_message_id: Option<String> = None;
 
         for reply_idx in 0..thread_len {
-            if envelopes.len() >= target_count {
+            if envelopes.len() >= profile.target_count {
                 break;
             }
 
@@ -669,11 +695,23 @@ pub fn generate_demo_fixtures(
             let (name, email) = match category {
                 2 => newsletter_senders[thread_num % newsletter_senders.len()],
                 7 => alert_senders[thread_num % alert_senders.len()],
+                10 | 12 => spam_senders[thread_num % spam_senders.len()],
+                11 => promo_senders[thread_num % promo_senders.len()],
                 _ => people[(thread_num + reply_idx) % people.len()],
             };
             let peer = Address {
                 name: Some(name.to_string()),
                 email: email.to_string(),
+            };
+            let observer = people[(thread_num + reply_idx + 3) % people.len()];
+            let observer = Address {
+                name: Some(observer.0.to_string()),
+                email: observer.1.to_string(),
+            };
+            let cc = if matches!(category, 0 | 3 | 4 | 8) && observer.email != peer.email {
+                vec![observer]
+            } else {
+                Vec::new()
             };
             let (from, to) = if sent {
                 (self_addr.clone(), vec![peer.clone()])
@@ -702,6 +740,9 @@ pub fn generate_demo_fixtures(
             if starred {
                 flags |= MessageFlags::STARRED;
             }
+            if category == 10 {
+                flags |= MessageFlags::SPAM;
+            }
             if category == 9 && thread_num % 11 == 0 {
                 flags |= MessageFlags::ARCHIVED;
             }
@@ -709,6 +750,8 @@ pub fn generate_demo_fixtures(
             let mut provider_labels = Vec::new();
             if sent {
                 provider_labels.push("SENT".to_string());
+            } else if flags.contains(MessageFlags::SPAM) {
+                provider_labels.push("SPAM".to_string());
             } else if flags.contains(MessageFlags::ARCHIVED) {
                 provider_labels.push("ARCHIVE".to_string());
             } else {
@@ -728,6 +771,9 @@ pub fn generate_demo_fixtures(
                 6 => provider_labels.push("travel".to_string()),
                 7 => provider_labels.push("alerts".to_string()),
                 8 => provider_labels.push("hiring".to_string()),
+                10 => provider_labels.push("potential_spam".to_string()),
+                11 => provider_labels.push("promotions".to_string()),
+                12 => provider_labels.push("potential_spam".to_string()),
                 _ => {}
             }
             if matches!(category, 0 | 3 | 8) && !sent && reply_idx + 1 == thread_len {
@@ -742,9 +788,14 @@ pub fn generate_demo_fixtures(
                     address: "unsubscribe@lists.demo.mxr.local".to_string(),
                     subject: Some(format!("unsubscribe-{thread_num}")),
                 },
+                11 => UnsubscribeMethod::OneClick {
+                    url: format!("https://promo.demo.mxr.local/unsubscribe/{thread_num}"),
+                },
                 _ => UnsubscribeMethod::None,
             };
-            let has_attachments = matches!(category, 5 | 6) || thread_num % 41 == 0;
+            let has_attachments = matches!(category, 5 | 6 | 8)
+                || (matches!(category, 2 | 11) && thread_num % 8 == 0)
+                || thread_num % 41 == 0;
             let snippet = demo_snippet(root_subject, category, reply_idx, sent);
             let body = demo_body(root_subject, category, reply_idx, sent, &peer.email);
             let current_header = push_demo_msg(
@@ -755,12 +806,14 @@ pub fn generate_demo_fixtures(
                 &thread_id,
                 from,
                 to,
+                cc,
                 subject,
                 snippet,
                 body,
                 date,
                 flags,
                 has_attachments,
+                category,
                 unsubscribe,
                 provider_labels,
                 previous_message_id.clone(),
@@ -777,12 +830,46 @@ pub fn generate_demo_fixtures(
     (envelopes, bodies, labels)
 }
 
+struct DemoAccountProfile {
+    display_name: &'static str,
+    email: &'static str,
+    target_count: usize,
+}
+
+fn demo_account_profile(account_id: &AccountId, total_target: usize) -> DemoAccountProfile {
+    let work_id = AccountId::from_provider_id("fake", "alex@work.demo.mxr.local");
+    let personal_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+    let work_count = ((total_target as f32) * 0.45).round() as usize;
+    if *account_id == work_id {
+        DemoAccountProfile {
+            display_name: "Alex Work",
+            email: "alex@work.demo.mxr.local",
+            target_count: work_count.max(1),
+        }
+    } else if *account_id == personal_id {
+        DemoAccountProfile {
+            display_name: "Alex Demo",
+            email: "alex@demo.mxr.local",
+            target_count: total_target.saturating_sub(work_count).max(1),
+        }
+    } else {
+        DemoAccountProfile {
+            display_name: "Alex Demo",
+            email: "alex@demo.mxr.local",
+            target_count: total_target,
+        }
+    }
+}
+
 fn demo_snippet(subject: &str, category: usize, reply_idx: usize, sent: bool) -> String {
     let action = if sent { "You replied" } else { "New update" };
     match category {
         2 => format!("{subject}: links, notes, and unsubscribe metadata"),
         5 => format!("Receipt and invoice details for {subject}"),
         7 => format!("Alert #{reply_idx}: status changed, investigate if this is still active"),
+        10 => format!("{subject}: quarantined as spam in the demo dataset"),
+        11 => format!("{subject}: promotional offer with unsubscribe metadata"),
+        12 => format!("{subject}: still in inbox, but suspicious enough to flag"),
         _ => format!("{action} in thread: {subject}"),
     }
 }
@@ -800,19 +887,22 @@ fn demo_body(
         "Can you take a look and reply with the next concrete step?"
     };
     let detail = match category {
-        0 => "Rollout risk: watch sync latency, auth failures, and support tickets for the first hour.",
-        1 => "The review thread has enough detail to test search, replies, archive, and labels.",
-        2 => "Newsletter section: SQLite, terminal workflows, local-first apps, and unsubscribe links.",
-        3 => "Follow-up needed: customer context, owner, deadline, and decision history are all in one thread.",
-        4 => "Product notes: copy, onboarding friction, time-to-wow, and first-run experience.",
-        5 => "Finance note: receipt attached, amount approved, and billing period included below.",
-        6 => "Travel note: itinerary attached, hotel confirmation, and calendar details.",
-        7 => "Alert details: service recovered, but keep this searchable for the incident review.",
-        8 => "Hiring notes: interview plan, scorecard, and candidate follow-up.",
+        0 => "Rollout risk: watch sync latency, auth failures, and support tickets for the first hour. Decision: keep the canary at 5% until Maya confirms the dashboard is quiet. Link: https://demo.mxr.local/runbooks/aurora-rollout",
+        1 => "The review thread has enough detail to test search, replies, archive, and labels. Open question: whether the migration should batch 2k or 5k rows at a time.",
+        2 => "Newsletter section: SQLite, terminal workflows, local-first apps, and unsubscribe links. Top links: https://demo.mxr.local/articles/local-first-mail and https://sqlite.org/changes.html",
+        3 => "Follow-up needed: customer context, owner, deadline, and decision history are all in one thread. Ruth owes the final customer-facing note by Friday.",
+        4 => "Product notes: copy, onboarding friction, time-to-wow, and first-run experience. The screenshot in the HTML body is intentionally remote so the remote-images toggle has something to control.",
+        5 => "Finance note: receipt attached, amount approved, and billing period included below. Amount: $1,482.17. Cost center: ENG-DEMO.",
+        6 => "Travel note: itinerary attached, hotel confirmation, and calendar details. Booking reference: MXR-PORTLAND-42.",
+        7 => "Alert details: service recovered, but keep this searchable for the incident review. The first alert fired at 02:14 and recovery was confirmed at 02:31.",
+        8 => "Hiring notes: interview plan, scorecard, and candidate follow-up. Candidate strength: pragmatic systems debugging; concern: limited product collaboration examples.",
+        10 => "Spam sample: this message is already in Spam. It asks Alex to claim a prize using a suspicious link and includes mismatched sender identity, pressure language, and a throwaway reply address.",
+        11 => "Promotion sample: legitimate marketing mail with discount language, tracking links, remote images, and one-click unsubscribe metadata. Good for demoing promo filtering without treating it as spam.",
+        12 => "Potential spam sample: this is deliberately still in Inbox. It mentions urgent password reset, unusual sign-in, and action required language so rules and LLM summaries can flag risk without hiding the mail.",
         _ => "General work thread with enough text to make full-body search feel useful.",
     };
     format!(
-        "Subject: {subject}\n\nMessage {reply_idx} with {peer_email}. {perspective}\n\n{detail}\n\nDemo data is synthetic. It is designed to exercise mxr search, labels, threads, attachments, newsletters, saved searches, reply-later, and analytics without touching a real inbox."
+        "Subject: {subject}\n\nMessage {reply_idx} with {peer_email}. {perspective}\n\n{detail}\n\nSummary hint: capture who asked for the work, who owns the next step, the date or amount if present, and whether Alex already replied.\n\nDemo data is synthetic. It is designed to exercise mxr search, labels, threads, attachments, newsletters, saved searches, reply-later, sender profiles, LLM summaries, and analytics without touching a real inbox."
     )
 }
 
@@ -825,12 +915,14 @@ fn push_demo_msg(
     thread_id: &ThreadId,
     from: Address,
     to: Vec<Address>,
+    cc: Vec<Address>,
     subject: String,
     snippet: String,
     body_text: String,
     date: chrono::DateTime<chrono::Utc>,
     flags: MessageFlags,
     has_attachments: bool,
+    category: usize,
     unsubscribe: UnsubscribeMethod,
     label_provider_ids: Vec<String>,
     in_reply_to: Option<String>,
@@ -842,29 +934,8 @@ fn push_demo_msg(
     let message_id_header = format!("<demo-{current_num}@mxr.local>");
     *msg_num += 1;
 
-    let attachments = if has_attachments {
-        vec![AttachmentMeta {
-            id: AttachmentId::new(),
-            message_id: msg_id.clone(),
-            filename: match flags.contains(MessageFlags::SENT) {
-                true => format!("demo-followup-{current_num}.md"),
-                false => format!("demo-attachment-{current_num}.pdf"),
-            },
-            mime_type: if flags.contains(MessageFlags::SENT) {
-                "text/markdown".to_string()
-            } else {
-                "application/pdf".to_string()
-            },
-            disposition: AttachmentDisposition::Attachment,
-            content_id: None,
-            content_location: None,
-            size_bytes: 12_000 + (current_num as u64 % 250_000),
-            local_path: None,
-            provider_id: format!("demo-att-{current_num}"),
-        }]
-    } else {
-        Vec::new()
-    };
+    let attachments = demo_attachments(&msg_id, current_num, category, flags, has_attachments);
+    let text_html = demo_html_body(&subject, &body_text, category, current_num);
 
     let size_bytes = body_text.len() as u64
         + attachments
@@ -882,13 +953,13 @@ fn push_demo_msg(
         references,
         from,
         to,
-        cc: Vec::new(),
+        cc,
         bcc: Vec::new(),
         subject,
         date,
         flags,
         snippet,
-        has_attachments,
+        has_attachments: !attachments.is_empty(),
         size_bytes,
         unsubscribe,
         label_provider_ids,
@@ -899,7 +970,7 @@ fn push_demo_msg(
         MessageBody {
             message_id: msg_id,
             text_plain: Some(body_text),
-            text_html: None,
+            text_html: Some(text_html),
             attachments,
             fetched_at: chrono::Utc::now(),
             metadata: Default::default(),
@@ -909,16 +980,168 @@ fn push_demo_msg(
     message_id_header
 }
 
+fn demo_attachments(
+    message_id: &MessageId,
+    current_num: usize,
+    category: usize,
+    flags: MessageFlags,
+    has_attachments: bool,
+) -> Vec<AttachmentMeta> {
+    if !has_attachments {
+        return Vec::new();
+    }
+
+    let mut attachments = Vec::new();
+    let mut push_attachment = |filename: String,
+                               mime_type: &str,
+                               size_bytes: u64,
+                               disposition: AttachmentDisposition,
+                               content_id: Option<String>| {
+        let attachment_index = attachments.len() + 1;
+        attachments.push(AttachmentMeta {
+            id: AttachmentId::new(),
+            message_id: message_id.clone(),
+            filename,
+            mime_type: mime_type.to_string(),
+            disposition,
+            content_id,
+            content_location: None,
+            size_bytes,
+            local_path: None,
+            provider_id: format!("demo-att-{current_num}-{attachment_index}"),
+        });
+    };
+
+    match category {
+        2 => push_attachment(
+            format!("newsletter-chart-{current_num}.png"),
+            "image/png",
+            84_000 + (current_num as u64 % 40_000),
+            AttachmentDisposition::Inline,
+            Some(format!("hero-{current_num}@demo.mxr")),
+        ),
+        5 => {
+            push_attachment(
+                format!("receipt-{current_num}.pdf"),
+                "application/pdf",
+                140_000 + (current_num as u64 % 90_000),
+                AttachmentDisposition::Attachment,
+                None,
+            );
+            push_attachment(
+                format!("line-items-{current_num}.csv"),
+                "text/csv",
+                18_000 + (current_num as u64 % 5_000),
+                AttachmentDisposition::Attachment,
+                None,
+            );
+        }
+        6 => {
+            push_attachment(
+                format!("itinerary-{current_num}.pdf"),
+                "application/pdf",
+                220_000 + (current_num as u64 % 110_000),
+                AttachmentDisposition::Attachment,
+                None,
+            );
+            push_attachment(
+                format!("demo-day-{current_num}.ics"),
+                "text/calendar",
+                7_200,
+                AttachmentDisposition::Attachment,
+                None,
+            );
+        }
+        8 => push_attachment(
+            format!("candidate-scorecard-{current_num}.pdf"),
+            "application/pdf",
+            96_000 + (current_num as u64 % 30_000),
+            AttachmentDisposition::Attachment,
+            None,
+        ),
+        11 => push_attachment(
+            format!("promo-banner-{current_num}.png"),
+            "image/png",
+            92_000 + (current_num as u64 % 35_000),
+            AttachmentDisposition::Inline,
+            Some(format!("promo-{current_num}@demo.mxr")),
+        ),
+        _ if flags.contains(MessageFlags::SENT) => push_attachment(
+            format!("follow-up-notes-{current_num}.md"),
+            "text/markdown",
+            12_000 + (current_num as u64 % 8_000),
+            AttachmentDisposition::Attachment,
+            None,
+        ),
+        _ => push_attachment(
+            format!("demo-brief-{current_num}.pdf"),
+            "application/pdf",
+            52_000 + (current_num as u64 % 250_000),
+            AttachmentDisposition::Attachment,
+            None,
+        ),
+    }
+
+    attachments
+}
+
+fn demo_html_body(subject: &str, body_text: &str, category: usize, current_num: usize) -> String {
+    let image = if category == 2 {
+        format!(r#"<img alt="Newsletter chart" src="cid:hero-{current_num}@demo.mxr" />"#)
+    } else if category == 11 {
+        format!(r#"<img alt="Promotional banner" src="cid:promo-{current_num}@demo.mxr" />"#)
+    } else if category == 4 {
+        r#"<img alt="Onboarding screenshot" src="https://demo.mxr.local/assets/onboarding-shot.png" />"#.to_string()
+    } else {
+        String::new()
+    };
+    let extra_link = match category {
+        0 => {
+            r#"<a href="https://demo.mxr.local/runbooks/aurora-rollout">Aurora rollout runbook</a>"#
+        }
+        2 => {
+            r#"<a href="https://demo.mxr.local/newsletters/manage-preferences">Manage newsletter preferences</a>"#
+        }
+        5 => r#"<a href="https://billing.demo.mxr.local/invoices">Billing portal</a>"#,
+        6 => r#"<a href="https://travel.demo.mxr.local/trips/portland">Trip details</a>"#,
+        7 => r#"<a href="https://status.demo.mxr.local/incidents/sync-jobs">Incident timeline</a>"#,
+        10 => r#"<a href="https://claim-now.demo.mxr.local/prize">Claim prize now</a>"#,
+        11 => r#"<a href="https://promo.demo.mxr.local/offers/workspace">View promotion</a>"#,
+        12 => r#"<a href="https://security-mail.demo.mxr.local/reset">Urgent password reset</a>"#,
+        _ => r#"<a href="https://demo.mxr.local/docs">Project notes</a>"#,
+    };
+    format!(
+        r#"<!doctype html><html><body><h1>{subject}</h1>{image}<p>{}</p><p>{extra_link}</p></body></html>"#,
+        body_text.replace('\n', "<br />")
+    )
+}
+
 fn make_label(account_id: &AccountId, name: &str, kind: LabelKind, provider_id: &str) -> Label {
     Label {
         id: LabelId::new(),
         account_id: account_id.clone(),
         name: name.to_string(),
         kind,
-        color: None,
+        color: label_color(provider_id).map(str::to_string),
         provider_id: provider_id.to_string(),
         unread_count: 0,
         total_count: 0,
+    }
+}
+
+fn label_color(provider_id: &str) -> Option<&'static str> {
+    match provider_id {
+        "work" => Some("#3b82f6"),
+        "product" => Some("#8b5cf6"),
+        "newsletters" => Some("#22c55e"),
+        "receipts" => Some("#f59e0b"),
+        "travel" => Some("#06b6d4"),
+        "alerts" => Some("#ef4444"),
+        "hiring" => Some("#ec4899"),
+        "waiting" => Some("#f97316"),
+        "promotions" => Some("#14b8a6"),
+        "potential_spam" => Some("#f43f5e"),
+        _ => None,
     }
 }
 

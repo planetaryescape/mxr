@@ -273,6 +273,7 @@ pub enum Request {
         profile: SemanticProfile,
     },
     ReindexSemantic,
+    BackfillSemantic,
     CreateSavedSearch {
         name: String,
         query: String,
@@ -510,6 +511,19 @@ pub enum Request {
         thread_id: ThreadId,
         instruction: String,
     },
+    DraftNew {
+        account_id: AccountId,
+        to: Address,
+        purpose: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        register: Option<VoiceRegisterData>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        length_hint: Option<DraftLengthHintData>,
+    },
+    DraftRefine {
+        draft_id: DraftId,
+        knobs: DraftRefineKnobsData,
+    },
     PrepareReply {
         message_id: MessageId,
         reply_all: bool,
@@ -620,6 +634,8 @@ impl Request {
             | Self::ClearScreenerDecision { .. }
             | Self::SummarizeThread { .. }
             | Self::DraftAssist { .. }
+            | Self::DraftNew { .. }
+            | Self::DraftRefine { .. }
             | Self::PrepareReply { .. }
             | Self::PrepareForward { .. }
             | Self::SendDraft { .. }
@@ -675,6 +691,7 @@ impl Request {
             | Self::InstallSemanticProfile { .. }
             | Self::UseSemanticProfile { .. }
             | Self::ReindexSemantic
+            | Self::BackfillSemantic
             | Self::CreateSavedSearch { .. }
             | Self::DeleteSavedSearch { .. }
             | Self::RunSavedSearch { .. } => IpcCategory::MxrPlatform,
@@ -1151,6 +1168,8 @@ pub enum ResponseData {
         repair_required: bool,
         #[serde(default)]
         semantic_runtime: Option<SemanticRuntimeMetrics>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        feature_health: Option<FeatureHealthReport>,
     },
     Pong,
     Ack,
@@ -1519,6 +1538,15 @@ pub struct RelationshipProfileData {
     pub summary: Option<ContactRelationshipSummaryData>,
     #[serde(default)]
     pub open_commitments: Vec<CommitmentData>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drift: Option<RelationshipDriftData>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RelationshipDriftData {
+    pub detected_at: chrono::DateTime<chrono::Utc>,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1585,6 +1613,30 @@ pub enum VoiceRegisterData {
     Casual,
     Neutral,
     Formal,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DraftLengthHintData {
+    Short,
+    Medium,
+    Long,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DraftRefineKnobsData {
+    #[serde(default)]
+    pub shorter: bool,
+    #[serde(default)]
+    pub warmer: bool,
+    #[serde(default)]
+    pub more_formal: bool,
+    #[serde(default)]
+    pub less_emoji: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub add_context: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1724,6 +1776,8 @@ pub struct DoctorReport {
     pub semantic_index_freshness: IndexFreshness,
     #[serde(default)]
     pub semantic_last_indexed_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_health: Option<FeatureHealthReport>,
     #[serde(default)]
     pub data_stats: DoctorDataStats,
     pub data_dir_exists: bool,
@@ -1788,6 +1842,12 @@ pub struct DoctorDataStats {
     pub semantic_profiles: u32,
     pub semantic_chunks: u32,
     pub semantic_embeddings: u32,
+    #[serde(default)]
+    pub messages_missing_semantic_chunks: u32,
+    #[serde(default)]
+    pub semantic_chunks_missing_embeddings: u32,
+    #[serde(default)]
+    pub relationship_drifts: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

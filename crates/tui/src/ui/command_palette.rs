@@ -669,6 +669,12 @@ pub fn default_commands() -> Vec<PaletteCommand> {
             category: "Semantic".into(),
         },
         PaletteCommand {
+            label: "Semantic: Backfill Missing".into(),
+            shortcut: "".into(),
+            action: Action::BackfillSemantic,
+            category: "Semantic".into(),
+        },
+        PaletteCommand {
             label: "Semantic: Install Profile (BGE Small EN)".into(),
             shortcut: "".into(),
             action: Action::InstallSemanticProfile(mxr_core::types::SemanticProfile::BgeSmallEnV15),

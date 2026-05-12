@@ -198,7 +198,7 @@ impl RuntimeTasks {
 /// pointed at the configured `base_url` (Ollama / LM Studio / OpenAI
 /// / etc.) when enabled. The API key is read from `api_key_env` —
 /// keeping the secret out of the config file itself.
-fn build_llm_provider(config: &mxr_config::LlmConfig) -> Arc<dyn mxr_llm::LlmProvider> {
+fn build_llm_provider(config: &mxr_config::EffectiveLlmConfig) -> Arc<dyn mxr_llm::LlmProvider> {
     if !config.enabled {
         return Arc::new(mxr_llm::NoopProvider);
     }
@@ -218,6 +218,95 @@ fn build_llm_provider(config: &mxr_config::LlmConfig) -> Arc<dyn mxr_llm::LlmPro
             request_timeout: std::time::Duration::from_secs(config.request_timeout_secs),
         },
     ))
+}
+
+fn base_llm_config(config: &mxr_config::LlmConfig) -> mxr_config::EffectiveLlmConfig {
+    mxr_config::EffectiveLlmConfig {
+        enabled: config.enabled,
+        base_url: config.base_url.clone(),
+        model: config.model.clone(),
+        api_key_env: config.api_key_env.clone(),
+        context_window: config.context_window,
+        request_timeout_secs: config.request_timeout_secs,
+    }
+}
+
+fn build_llm_runtime(config: &mxr_config::LlmConfig) -> Arc<mxr_llm::LlmRuntime> {
+    let runtime = Arc::new(mxr_llm::LlmRuntime::new(build_llm_provider(
+        &base_llm_config(config),
+    )));
+    apply_llm_config_to_runtime(&runtime, config);
+    runtime
+}
+
+fn apply_llm_config_to_runtime(runtime: &Arc<mxr_llm::LlmRuntime>, config: &mxr_config::LlmConfig) {
+    runtime.replace(build_llm_provider(&base_llm_config(config)));
+    let mut providers = HashMap::<mxr_llm::LlmFeature, Arc<dyn mxr_llm::LlmProvider>>::new();
+    let mut blocked = HashMap::<mxr_llm::LlmFeature, String>::new();
+    for (feature, override_config) in llm_override_entries(&config.overrides) {
+        let effective = config.effective_override(override_config);
+        if relationship_data_feature(feature)
+            && !config.allow_cloud_relationship_data
+            && !is_local_llm_url(&effective.base_url)
+        {
+            blocked.insert(
+                feature,
+                format!(
+                    "{feature:?} override points at non-local endpoint {}; set llm.allow_cloud_relationship_data=true to permit this",
+                    effective.base_url
+                ),
+            );
+            continue;
+        }
+        providers.insert(feature, build_llm_provider(&effective));
+    }
+    runtime.replace_feature_providers(providers, blocked);
+}
+
+fn llm_override_entries(
+    overrides: &mxr_config::LlmOverrides,
+) -> Vec<(mxr_llm::LlmFeature, &mxr_config::LlmOverrideConfig)> {
+    use mxr_llm::LlmFeature;
+    [
+        (LlmFeature::Summarize, overrides.summarize.as_ref()),
+        (
+            LlmFeature::RelationshipSummary,
+            overrides.relationship_summary.as_ref(),
+        ),
+        (LlmFeature::Commitments, overrides.commitments.as_ref()),
+        (LlmFeature::DraftAssist, overrides.draft_assist.as_ref()),
+        (LlmFeature::DraftNew, overrides.draft_new.as_ref()),
+        (LlmFeature::DraftRefine, overrides.draft_refine.as_ref()),
+        (LlmFeature::VoiceMatch, overrides.voice_match.as_ref()),
+        (
+            LlmFeature::HumanizeRewrite,
+            overrides.humanize_rewrite.as_ref(),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(feature, config)| config.map(|config| (feature, config)))
+    .collect()
+}
+
+fn relationship_data_feature(feature: mxr_llm::LlmFeature) -> bool {
+    matches!(
+        feature,
+        mxr_llm::LlmFeature::RelationshipSummary
+            | mxr_llm::LlmFeature::Commitments
+            | mxr_llm::LlmFeature::VoiceMatch
+    )
+}
+
+fn is_local_llm_url(base_url: &str) -> bool {
+    let lower = base_url.trim().to_ascii_lowercase();
+    lower.starts_with("http://localhost")
+        || lower.starts_with("http://127.")
+        || lower.starts_with("http://[::1]")
+        || lower.starts_with("http://::1")
+        || lower.starts_with("https://localhost")
+        || lower.starts_with("https://127.")
+        || lower.starts_with("https://[::1]")
+        || lower.starts_with("https://::1")
 }
 
 /// Key for the in-memory `Wrapped` summary cache. Disambiguates by
@@ -318,7 +407,9 @@ impl AppState {
             config.search.semantic.clone(),
         ));
         runtime_tasks.set_semantic_worker(semantic_worker);
-        let (relationship, relationship_worker) = RelationshipServiceHandle::start(store.clone());
+        let llm = build_llm_runtime(&config.llm);
+        let (relationship, relationship_worker) =
+            RelationshipServiceHandle::start(store.clone(), llm.clone());
         runtime_tasks.set_relationship_worker(relationship_worker);
         let (contacts_refresh, contacts_refresh_worker) =
             ContactsRefreshHandle::start(store.clone());
@@ -347,8 +438,6 @@ impl AppState {
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
-
-        let llm = Arc::new(mxr_llm::LlmRuntime::new(build_llm_provider(&config.llm)));
 
         Ok(Self {
             store,
@@ -883,7 +972,7 @@ impl AppState {
             .apply_config(config.search.semantic.clone())
             .await
             .map_err(|e| e.to_string())?;
-        self.llm.replace(build_llm_provider(&config.llm));
+        apply_llm_config_to_runtime(&self.llm, &config.llm);
         *self.config.write() = config.clone();
         Ok(config)
     }
@@ -894,7 +983,7 @@ impl AppState {
             .apply_config(config.search.semantic.clone())
             .await
             .expect("apply semantic config");
-        self.llm.replace(build_llm_provider(&config.llm));
+        apply_llm_config_to_runtime(&self.llm, &config.llm);
         *self.config.write() = config;
     }
 
@@ -1022,7 +1111,7 @@ impl AppState {
             .apply_config(config.search.semantic.clone())
             .await
             .map_err(|e| e.to_string())?;
-        self.llm.replace(build_llm_provider(&config.llm));
+        apply_llm_config_to_runtime(&self.llm, &config.llm);
         *self.config.write() = config;
         crate::loops::spawn_sync_loops(self.clone());
         Ok(())
@@ -1055,7 +1144,9 @@ impl AppState {
             config.search.semantic.clone(),
         ));
         runtime_tasks.set_semantic_worker(semantic_worker);
-        let (relationship, relationship_worker) = RelationshipServiceHandle::start(store.clone());
+        let llm = build_llm_runtime(&config.llm);
+        let (relationship, relationship_worker) =
+            RelationshipServiceHandle::start(store.clone(), llm.clone());
         runtime_tasks.set_relationship_worker(relationship_worker);
         let (contacts_refresh, contacts_refresh_worker) =
             ContactsRefreshHandle::start(store.clone());
@@ -1076,8 +1167,6 @@ impl AppState {
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
-
-        let llm = Arc::new(mxr_llm::LlmRuntime::new(build_llm_provider(&config.llm)));
 
         Ok(Self {
             store,
@@ -1123,7 +1212,9 @@ impl AppState {
             config.search.semantic.clone(),
         ));
         runtime_tasks.set_semantic_worker(semantic_worker);
-        let (relationship, relationship_worker) = RelationshipServiceHandle::start(store.clone());
+        let llm = build_llm_runtime(&config.llm);
+        let (relationship, relationship_worker) =
+            RelationshipServiceHandle::start(store.clone(), llm.clone());
         runtime_tasks.set_relationship_worker(relationship_worker);
         let (contacts_refresh, contacts_refresh_worker) =
             ContactsRefreshHandle::start(store.clone());
@@ -1132,8 +1223,6 @@ impl AppState {
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
-
-        let llm = Arc::new(mxr_llm::LlmRuntime::new(build_llm_provider(&config.llm)));
 
         Ok(Self {
             store,
@@ -1180,7 +1269,9 @@ impl AppState {
             config.search.semantic.clone(),
         ));
         runtime_tasks.set_semantic_worker(semantic_worker);
-        let (relationship, relationship_worker) = RelationshipServiceHandle::start(store.clone());
+        let llm = build_llm_runtime(&config.llm);
+        let (relationship, relationship_worker) =
+            RelationshipServiceHandle::start(store.clone(), llm.clone());
         runtime_tasks.set_relationship_worker(relationship_worker);
         let (contacts_refresh, contacts_refresh_worker) =
             ContactsRefreshHandle::start(store.clone());
@@ -1213,10 +1304,6 @@ impl AppState {
         let (event_tx, _) = broadcast::channel(256);
         let (shutdown_tx, _) = watch::channel(false);
         let admin_blocking = Arc::new(Semaphore::new(2));
-
-        let llm = Arc::new(mxr_llm::LlmRuntime::new(build_llm_provider(
-            &mxr_config::LlmConfig::default(),
-        )));
 
         Ok((
             Self {

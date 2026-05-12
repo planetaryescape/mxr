@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import {
   Bell,
+  BookOpen,
   Bot,
   Code2,
   Info,
@@ -38,15 +39,18 @@ import {
   type ComposeEditor,
   type Density,
   type EmailHtmlTheme,
+  type ReaderLayout,
   type Theme,
 } from "@/state/uiPrefsStore";
 
 const sections = [
   ["theme", "Theme", Palette],
   ["density", "Density", Layers],
+  ["reader", "Reader", BookOpen],
   ["keybindings", "Keybindings", Keyboard],
   ["notifications", "Notifications", Bell],
   ["compose", "Compose", Pencil],
+  ["voice", "Voice", Bot],
   ["llm", "LLM", Bot],
   ["snippets", "Snippets", Code2],
   ["token", "Token", Code2],
@@ -80,6 +84,20 @@ interface LlmStatus {
   context_window: number;
   supports_streaming: boolean;
   request_timeout_secs: number;
+}
+
+interface UserVoiceProfile {
+  account_id: string;
+  formality_score: number;
+  avg_sentence_len: number;
+  msg_count_used: number;
+  register_modes?: Array<{
+    register: string;
+    formality_score: number;
+    avg_sentence_len: number;
+    exemplar_message_ids?: string[];
+  }>;
+  computed_at: string;
 }
 
 const defaultLlmConfig: LlmConfig = {
@@ -129,6 +147,7 @@ function SettingsSection({ section }: { section: string }) {
   const density = useUiPrefs((state) => state.density);
   const composeEditor = useUiPrefs((state) => state.composeEditor);
   const emailHtmlTheme = useUiPrefs((state) => state.emailHtmlTheme);
+  const readerLayout = useUiPrefs((state) => state.readerLayout);
   const notificationsEnabled = useUiPrefs((state) => state.notificationsEnabled);
   const notifyAllNewMail = useUiPrefs((state) => state.notifyAllNewMail);
   const vipAllowlist = useUiPrefs((state) => state.vipAllowlist);
@@ -136,6 +155,7 @@ function SettingsSection({ section }: { section: string }) {
   const setDensity = useUiPrefs((state) => state.setDensity);
   const setComposeEditor = useUiPrefs((state) => state.setComposeEditor);
   const setEmailHtmlTheme = useUiPrefs((state) => state.setEmailHtmlTheme);
+  const setReaderLayout = useUiPrefs((state) => state.setReaderLayout);
   const setNotificationsEnabled = useUiPrefs((state) => state.setNotificationsEnabled);
   const setNotifyAllNewMail = useUiPrefs((state) => state.setNotifyAllNewMail);
   const addVip = useUiPrefs((state) => state.addVip);
@@ -170,6 +190,17 @@ function SettingsSection({ section }: { section: string }) {
           value={density}
           values={["compact", "regular", "comfortable"]}
           onChange={(value) => setDensity(value as Density)}
+        />
+      </Shell>
+    );
+  if (section === "reader")
+    return (
+      <Shell title="Reader">
+        <SelectRow
+          label="Default reader layout"
+          value={readerLayout}
+          values={["split", "full"]}
+          onChange={(value) => setReaderLayout(value as ReaderLayout)}
         />
       </Shell>
     );
@@ -260,6 +291,7 @@ function SettingsSection({ section }: { section: string }) {
         </div>
       </Shell>
     );
+  if (section === "voice") return <VoiceSettingsSection />;
   if (section === "llm") return <LlmSettingsSection />;
   if (section === "snippets") return <SnippetsSection />;
   if (section === "about")
@@ -282,6 +314,118 @@ function SettingsSection({ section }: { section: string }) {
     <Shell title="Settings">
       <p className="text-xs text-muted-foreground">Unknown section.</p>
     </Shell>
+  );
+}
+
+function VoiceSettingsSection() {
+  const [accountId, setAccountId] = useState("");
+  const voice = useQuery({
+    queryKey: ["user-voice", accountId],
+    queryFn: () =>
+      apiFetch<{ profile: UserVoiceProfile }>(
+        `/api/v1/platform/voice?account_id=${encodeURIComponent(accountId)}`,
+      ),
+    enabled: accountId.trim().length > 0,
+  });
+  const rebuild = useMutation({
+    mutationFn: () =>
+      apiFetch<{ profile: UserVoiceProfile }>(
+        `/api/v1/platform/voice/rebuild?account_id=${encodeURIComponent(accountId)}`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      toast.success("Voice profile rebuilt");
+      void voice.refetch();
+    },
+    onError: (error) => toast.error("Voice rebuild failed", { description: error.message }),
+  });
+  const profile = voice.data?.profile;
+  return (
+    <Shell title="Voice">
+      <div className="space-y-4">
+        <Card className="space-y-3 p-4">
+          <div>
+            <h2 className="text-sm font-semibold">Inspectable user voice</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Paste an account id to inspect or rebuild the local outbound voice profile.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={accountId}
+              onChange={(event) => setAccountId(event.target.value)}
+              placeholder="account UUID"
+              aria-label="Account id"
+            />
+            <Button
+              variant="outline"
+              disabled={!accountId.trim() || rebuild.isPending}
+              onClick={() => rebuild.mutate()}
+            >
+              Rebuild
+            </Button>
+          </div>
+        </Card>
+        {voice.isError ? (
+          <Alert variant="warning" className="text-xs">
+            Could not load voice profile. It may need at least 20 outbound messages.
+          </Alert>
+        ) : null}
+        {profile ? (
+          <div className="grid gap-3 md:grid-cols-3">
+            <VoiceCard
+              title="Overall"
+              formality={profile.formality_score}
+              sentenceLen={profile.avg_sentence_len}
+              samples={profile.msg_count_used}
+            />
+            {(profile.register_modes ?? []).map((mode) => (
+              <VoiceCard
+                key={mode.register}
+                title={mode.register}
+                formality={mode.formality_score}
+                sentenceLen={mode.avg_sentence_len}
+                samples={mode.exemplar_message_ids?.length ?? 0}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {accountId ? "Loading voice profile..." : "No account selected."}
+          </p>
+        )}
+      </div>
+    </Shell>
+  );
+}
+
+function VoiceCard({
+  title,
+  formality,
+  sentenceLen,
+  samples,
+}: {
+  title: string;
+  formality: number;
+  sentenceLen: number;
+  samples: number;
+}) {
+  return (
+    <Card className="space-y-2 p-4">
+      <h3 className="text-sm font-semibold capitalize">{title}</h3>
+      <ProfileLikeRow label="Formality" value={formality.toFixed(2)} />
+      <ProfileLikeRow label="Sentence len" value={sentenceLen.toFixed(1)} />
+      <ProfileLikeRow label="Samples" value={String(samples)} />
+    </Card>
+  );
+}
+
+function ProfileLikeRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-mono text-foreground">{value}</span>
+    </div>
   );
 }
 

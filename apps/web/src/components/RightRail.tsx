@@ -94,6 +94,41 @@ interface SenderProfile {
   attachment_count?: number;
   attachment_bytes?: number;
   recent_messages?: SenderEmailReference[];
+  relationship?: RelationshipProfile | null;
+}
+
+interface RelationshipProfile {
+  style?: ContactStyle | null;
+  summary?: RelationshipSummary | null;
+  open_commitments?: Commitment[];
+  drift?: RelationshipDrift | null;
+}
+
+interface ContactStyle {
+  formality_score: number;
+  formality_score_theirs: number;
+  avg_sentence_len: number;
+  avg_sentence_len_theirs: number;
+  msg_count_used: number;
+  msg_count_used_theirs: number;
+}
+
+interface RelationshipSummary {
+  text: string;
+  known_topics?: string[];
+}
+
+interface Commitment {
+  id: string;
+  direction: string;
+  who_owes: string;
+  what: string;
+  by_when?: string | null;
+}
+
+interface RelationshipDrift {
+  detected_at: string;
+  reason: string;
 }
 
 interface SenderEmailReference {
@@ -210,6 +245,8 @@ function SenderProfilePanel({ payload }: { payload: unknown }) {
         <ProfileRow label="List sender" value={profile.is_list_sender ? "Yes" : "No"} />
       </div>
 
+      {profile.relationship ? <RelationshipPanel relationship={profile.relationship} /> : null}
+
       <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
         <h4 className="text-xs font-medium">Storage</h4>
         <ProfileRow label="From sender" value={formatBytes(inboundBytes)} />
@@ -253,6 +290,70 @@ function SenderProfilePanel({ payload }: { payload: unknown }) {
       </div>
     </div>
   );
+}
+
+function RelationshipPanel({ relationship }: { relationship: RelationshipProfile }) {
+  const commitments = relationship.open_commitments ?? [];
+  return (
+    <div className="space-y-3 rounded-md border border-border bg-muted/30 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-xs font-medium">Relationship</h4>
+        {commitments.length > 0 ? <Badge variant="outline">{commitments.length} open</Badge> : null}
+      </div>
+      {relationship.drift ? (
+        <div className="rounded-md border border-warning/40 bg-warning/10 px-2.5 py-2 text-2xs text-foreground">
+          Voice drift: {relationship.drift.reason}
+        </div>
+      ) : null}
+      {relationship.summary?.text ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">{relationship.summary.text}</p>
+      ) : null}
+      {relationship.summary?.known_topics?.length ? (
+        <div className="flex flex-wrap gap-1">
+          {relationship.summary.known_topics.slice(0, 12).map((topic) => (
+            <Badge key={topic} variant="secondary" className="text-2xs">
+              {topic}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+      {relationship.style ? (
+        <div className="grid gap-1.5">
+          <ProfileRow label="Your style" value={styleSummary(relationship.style.formality_score)} />
+          <ProfileRow
+            label="Their style"
+            value={styleSummary(relationship.style.formality_score_theirs)}
+          />
+          <ProfileRow
+            label="Samples"
+            value={`${relationship.style.msg_count_used} yours / ${relationship.style.msg_count_used_theirs} theirs`}
+          />
+        </div>
+      ) : null}
+      {commitments.length > 0 ? (
+        <div className="space-y-1.5">
+          {commitments.slice(0, 5).map((commitment) => (
+            <div
+              key={commitment.id}
+              className="rounded border border-border/70 bg-background/50 px-2 py-1.5"
+            >
+              <div className="font-medium">{commitment.what}</div>
+              <div className="mt-0.5 text-2xs text-muted-foreground">
+                {commitment.who_owes} · {commitment.direction}
+                {commitment.by_when ? ` · due ${formatShortDate(commitment.by_when)}` : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function styleSummary(score: number): string {
+  if (score >= 0.68) return `formal (${score.toFixed(2)})`;
+  if (score <= 0.38) return `casual (${score.toFixed(2)})`;
+  return `neutral (${score.toFixed(2)})`;
 }
 
 function ProfileStat({ label, value }: { label: string; value: string }) {

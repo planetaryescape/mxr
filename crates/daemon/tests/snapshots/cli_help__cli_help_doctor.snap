@@ -9,6 +9,7 @@ Usage: mxr doctor [OPTIONS]
 Options:
       --reindex
       --reindex-semantic
+      --backfill-semantic  Backfill semantic chunks/embeddings for existing messages
       --check
       --semantic-status
       --verbose

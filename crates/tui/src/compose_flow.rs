@@ -421,6 +421,11 @@ mod tests {
                     accounts: vec![account],
                 },
             }));
+            let request = rx.recv().await.expect("compose signature request");
+            assert!(matches!(request.request, Request::ResolveSignature { .. }));
+            let _ = request.reply.send(Ok(Response::Ok {
+                data: ResponseData::ResolvedSignature { signature: None },
+            }));
         });
 
         let ready = super::handle_compose_action(

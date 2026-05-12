@@ -182,6 +182,10 @@ pub(super) async fn reindex_semantic(state: &AppState) -> HandlerResult {
     diagnostics_impl::reindex_semantic(state).await
 }
 
+pub(super) async fn backfill_semantic(state: &AppState) -> HandlerResult {
+    diagnostics_impl::backfill_semantic(state).await
+}
+
 pub(super) async fn create_saved_search(
     state: &AppState,
     name: &str,

@@ -1,13 +1,20 @@
 use crate::ipc_client::IpcClient;
+use chrono::{Datelike, TimeZone};
 use mxr_config::{AccountConfig, SendProviderConfig, SyncProviderConfig};
 use mxr_core::id::AccountId;
+use mxr_core::types::SemanticProfileStatus;
 use mxr_protocol::{AccountSyncStatus, Request, Response, ResponseData};
+use mxr_rules::{Conditions, FieldCondition, Rule, RuleAction, RuleId, StringMatch};
 use std::path::PathBuf;
 use std::time::Duration;
 
-const DEMO_ACCOUNT_KEY: &str = "demo";
+const DEMO_ACCOUNT_KEY: &str = "personal";
+const DEMO_WORK_ACCOUNT_KEY: &str = "work";
+const DEMO_PERSONAL_EMAIL: &str = "alex@demo.mxr.local";
+const DEMO_WORK_EMAIL: &str = "alex@work.demo.mxr.local";
 const DEMO_INSTANCE: &str = "mxr-demo";
 const DEMO_COUNT_MARKER: &str = "demo-message-count";
+const DEMO_SEED_VERSION: u32 = 3;
 
 #[derive(Debug, Clone)]
 pub struct DemoPaths {
@@ -44,10 +51,10 @@ pub async fn reset_profile() -> anyhow::Result<()> {
 
 pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
     let prepared_paths = prepare_environment(messages)?;
-    if let Some(existing_count) = read_demo_message_count(&prepared_paths)? {
-        if existing_count != messages {
+    if let Some((existing_count, seed_version)) = read_demo_message_count(&prepared_paths)? {
+        if existing_count != messages || seed_version != DEMO_SEED_VERSION {
             println!(
-                "Demo profile has {existing_count} messages; resetting for {messages} messages..."
+                "Demo profile has seed v{seed_version} with {existing_count} messages; resetting for seed v{DEMO_SEED_VERSION} with {messages} messages..."
             );
             reset_profile().await?;
         }
@@ -60,18 +67,24 @@ pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
         paths.config_dir.join("config.toml").display()
     );
     println!("  data:   {}", paths.data_dir.display());
-    println!("  inbox:  {messages} synthetic messages");
+    println!("  inbox:  {messages} synthetic messages across 2 accounts");
     println!();
 
     crate::server::ensure_daemon_running().await?;
+    seed_demo_rules().await?;
     println!("Seeding demo mailbox...");
-    let status = trigger_demo_sync_and_wait(Duration::from_secs(180)).await?;
-    if status.last_synced_count > 0 {
-        println!("Synced {} demo messages.", status.last_synced_count);
+    let statuses = trigger_demo_sync_and_wait(Duration::from_secs(180)).await?;
+    let synced_count = statuses
+        .iter()
+        .map(|status| status.last_synced_count as usize)
+        .sum::<usize>();
+    if synced_count > 0 {
+        println!("Synced {synced_count} demo messages.");
         write_demo_message_count(&paths, messages)?;
     } else {
         println!("Demo mailbox is already up to date.");
     }
+    prewarm_demo_runtime(synced_count > 0).await?;
 
     if no_tui {
         println!();
@@ -90,8 +103,115 @@ pub async fn run(messages: usize, no_tui: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn trigger_demo_sync_and_wait(timeout: Duration) -> anyhow::Result<AccountSyncStatus> {
-    let account_id = demo_account_id();
+async fn prewarm_demo_runtime(force_semantic: bool) -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+
+    println!("Precomputing demo analytics...");
+    match client.request(Request::RebuildAnalytics).await? {
+        Response::Ok {
+            data: ResponseData::AnalyticsRebuildSummary { .. },
+        } => {}
+        Response::Error { message, .. } => {
+            println!("  analytics prewarm skipped: {message}");
+        }
+        other => anyhow::bail!("Unexpected analytics prewarm response: {other:?}"),
+    }
+
+    prewarm_wrapped(&mut client, None).await?;
+    for account_id in demo_account_ids() {
+        prewarm_wrapped(&mut client, Some(account_id)).await?;
+    }
+
+    let semantic_snapshot = match client.request(Request::GetSemanticStatus).await? {
+        Response::Ok {
+            data: ResponseData::SemanticStatus { snapshot },
+        } => snapshot,
+        Response::Error { message, .. } => {
+            println!("  semantic prewarm skipped: {message}");
+            return Ok(());
+        }
+        other => anyhow::bail!("Unexpected semantic status response: {other:?}"),
+    };
+
+    if !semantic_snapshot.enabled {
+        println!("  semantic prewarm skipped: semantic search is disabled");
+        return Ok(());
+    }
+
+    let active_profile = semantic_snapshot.active_profile;
+    let active_record = semantic_snapshot
+        .profiles
+        .iter()
+        .find(|profile| profile.profile == active_profile);
+    let semantic_ready = active_record.is_some_and(|profile| {
+        profile.status == SemanticProfileStatus::Ready && profile.last_indexed_at.is_some()
+    });
+    if !force_semantic && semantic_ready {
+        println!("  semantic vectors already warm");
+        return Ok(());
+    }
+
+    println!(
+        "Precomputing semantic vectors for {}...",
+        active_profile.as_str()
+    );
+    match client.request(Request::ReindexSemantic).await? {
+        Response::Ok {
+            data: ResponseData::SemanticStatus { .. },
+        } => {}
+        Response::Error { message, .. } => {
+            println!("  semantic prewarm skipped: {message}");
+        }
+        other => anyhow::bail!("Unexpected semantic prewarm response: {other:?}"),
+    }
+
+    Ok(())
+}
+
+async fn prewarm_wrapped(
+    client: &mut IpcClient,
+    account_id: Option<AccountId>,
+) -> anyhow::Result<()> {
+    let now = chrono::Utc::now();
+    let Some(start) = chrono::Utc
+        .with_ymd_and_hms(now.year(), 1, 1, 0, 0, 0)
+        .single()
+    else {
+        return Ok(());
+    };
+    let label = format!("{} year-to-date", now.year());
+    match client
+        .request(Request::Wrapped {
+            account_id,
+            since_unix: start.timestamp(),
+            until_unix: now.timestamp(),
+            label,
+        })
+        .await?
+    {
+        Response::Ok {
+            data: ResponseData::Wrapped { .. },
+        } => {}
+        Response::Error { message, .. } => {
+            println!("  wrapped prewarm skipped: {message}");
+        }
+        other => anyhow::bail!("Unexpected wrapped prewarm response: {other:?}"),
+    }
+    Ok(())
+}
+
+async fn trigger_demo_sync_and_wait(timeout: Duration) -> anyhow::Result<Vec<AccountSyncStatus>> {
+    let mut statuses = Vec::new();
+    for account_id in demo_account_ids() {
+        statuses.push(trigger_demo_account_sync_and_wait(account_id, timeout).await?);
+    }
+    Ok(statuses)
+}
+
+async fn trigger_demo_account_sync_and_wait(
+    account_id: AccountId,
+    timeout: Duration,
+) -> anyhow::Result<AccountSyncStatus> {
     let mut client = IpcClient::connect().await?;
     let before = fetch_demo_sync_status(&mut client, &account_id)
         .await
@@ -146,8 +266,124 @@ async fn fetch_demo_sync_status(
     }
 }
 
-fn demo_account_id() -> AccountId {
-    AccountId::from_provider_id("fake", "alex@demo.mxr.local")
+async fn seed_demo_rules() -> anyhow::Result<()> {
+    let mut client = IpcClient::connect().await?;
+    for rule in demo_rules() {
+        let value = serde_json::to_value(rule)?;
+        match client.request(Request::UpsertRule { rule: value }).await? {
+            Response::Ok {
+                data: ResponseData::RuleData { .. },
+            } => {}
+            Response::Error { message, .. } => anyhow::bail!("failed to seed demo rule: {message}"),
+            other => anyhow::bail!("Unexpected rule seed response: {other:?}"),
+        }
+    }
+    Ok(())
+}
+
+fn demo_rules() -> Vec<Rule> {
+    let now = chrono::Utc::now();
+    vec![
+        Rule {
+            id: RuleId("demo-newsletters".to_string()),
+            name: "Demo: newsletters are marked read".to_string(),
+            enabled: true,
+            priority: 10,
+            conditions: Conditions::Field(FieldCondition::HasUnsubscribe),
+            actions: vec![
+                RuleAction::AddLabel {
+                    label: "newsletters".to_string(),
+                },
+                RuleAction::MarkRead,
+            ],
+            created_at: now,
+            updated_at: now,
+        },
+        Rule {
+            id: RuleId("demo-build-failures".to_string()),
+            name: "Demo: star build failures".to_string(),
+            enabled: true,
+            priority: 20,
+            conditions: Conditions::Field(FieldCondition::Subject {
+                pattern: StringMatch::Contains("Build failed".to_string()),
+            }),
+            actions: vec![
+                RuleAction::AddLabel {
+                    label: "alerts".to_string(),
+                },
+                RuleAction::Star,
+            ],
+            created_at: now,
+            updated_at: now,
+        },
+        Rule {
+            id: RuleId("demo-receipts".to_string()),
+            name: "Demo: receipts leave the inbox after read".to_string(),
+            enabled: true,
+            priority: 30,
+            conditions: Conditions::And {
+                conditions: vec![
+                    Conditions::Field(FieldCondition::HasLabel {
+                        label: "receipts".to_string(),
+                    }),
+                    Conditions::Not {
+                        condition: Box::new(Conditions::Field(FieldCondition::IsUnread)),
+                    },
+                ],
+            },
+            actions: vec![RuleAction::Archive],
+            created_at: now,
+            updated_at: now,
+        },
+        Rule {
+            id: RuleId("demo-promotions".to_string()),
+            name: "Demo: promotions are marked read".to_string(),
+            enabled: true,
+            priority: 40,
+            conditions: Conditions::Field(FieldCondition::From {
+                pattern: StringMatch::Contains("@promo.demo.mxr.local".to_string()),
+            }),
+            actions: vec![
+                RuleAction::AddLabel {
+                    label: "promotions".to_string(),
+                },
+                RuleAction::MarkRead,
+            ],
+            created_at: now,
+            updated_at: now,
+        },
+        Rule {
+            id: RuleId("demo-potential-spam".to_string()),
+            name: "Demo: suspicious inbox mail gets flagged".to_string(),
+            enabled: true,
+            priority: 50,
+            conditions: Conditions::Or {
+                conditions: vec![
+                    Conditions::Field(FieldCondition::Subject {
+                        pattern: StringMatch::Contains("action required".to_string()),
+                    }),
+                    Conditions::Field(FieldCondition::BodyContains {
+                        pattern: StringMatch::Contains("urgent password reset".to_string()),
+                    }),
+                ],
+            },
+            actions: vec![
+                RuleAction::AddLabel {
+                    label: "potential_spam".to_string(),
+                },
+                RuleAction::Star,
+            ],
+            created_at: now,
+            updated_at: now,
+        },
+    ]
+}
+
+fn demo_account_ids() -> [AccountId; 2] {
+    [
+        AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL),
+        AccountId::from_provider_id("fake", DEMO_WORK_EMAIL),
+    ]
 }
 
 fn ensure_demo_config(messages: usize) -> anyhow::Result<DemoPaths> {
@@ -159,8 +395,18 @@ fn ensure_demo_config(messages: usize) -> anyhow::Result<DemoPaths> {
     config.accounts.insert(
         DEMO_ACCOUNT_KEY.to_string(),
         AccountConfig {
-            name: "Demo".to_string(),
-            email: "alex@demo.mxr.local".to_string(),
+            name: "Demo Personal".to_string(),
+            email: DEMO_PERSONAL_EMAIL.to_string(),
+            enabled: true,
+            sync: Some(SyncProviderConfig::Fake),
+            send: Some(SendProviderConfig::Fake),
+        },
+    );
+    config.accounts.insert(
+        DEMO_WORK_ACCOUNT_KEY.to_string(),
+        AccountConfig {
+            name: "Demo Work".to_string(),
+            email: DEMO_WORK_EMAIL.to_string(),
             enabled: true,
             sync: Some(SyncProviderConfig::Fake),
             send: Some(SendProviderConfig::Fake),
@@ -194,10 +440,21 @@ fn remove_dir_if_exists(path: &std::path::Path) -> anyhow::Result<()> {
     }
 }
 
-fn read_demo_message_count(paths: &DemoPaths) -> anyhow::Result<Option<usize>> {
+fn read_demo_message_count(paths: &DemoPaths) -> anyhow::Result<Option<(usize, u32)>> {
     let path = paths.data_dir.join(DEMO_COUNT_MARKER);
     match std::fs::read_to_string(path) {
-        Ok(contents) => Ok(contents.trim().parse::<usize>().ok()),
+        Ok(contents) => {
+            let trimmed = contents.trim();
+            let (version, count) = if let Some((version, count)) = trimmed.split_once(':') {
+                (
+                    version.parse::<u32>().unwrap_or(0),
+                    count.parse::<usize>().unwrap_or(0),
+                )
+            } else {
+                (0, trimmed.parse::<usize>().unwrap_or(0))
+            };
+            Ok((count > 0).then_some((count, version)))
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
@@ -205,7 +462,10 @@ fn read_demo_message_count(paths: &DemoPaths) -> anyhow::Result<Option<usize>> {
 
 fn write_demo_message_count(paths: &DemoPaths, messages: usize) -> anyhow::Result<()> {
     std::fs::create_dir_all(&paths.data_dir)?;
-    std::fs::write(paths.data_dir.join(DEMO_COUNT_MARKER), messages.to_string())?;
+    std::fs::write(
+        paths.data_dir.join(DEMO_COUNT_MARKER),
+        format!("{DEMO_SEED_VERSION}:{messages}"),
+    )?;
     Ok(())
 }
 
@@ -218,6 +478,18 @@ mod tests {
         let paths = demo_paths();
         assert!(paths.config_dir.ends_with(DEMO_INSTANCE));
         assert!(paths.data_dir.ends_with(DEMO_INSTANCE));
+    }
+
+    #[test]
+    fn demo_account_ids_cover_personal_and_work() {
+        let ids = demo_account_ids();
+        assert_eq!(ids.len(), 2);
+        assert_ne!(ids[0], ids[1]);
+        assert_eq!(
+            ids[0],
+            AccountId::from_provider_id("fake", DEMO_PERSONAL_EMAIL)
+        );
+        assert_eq!(ids[1], AccountId::from_provider_id("fake", DEMO_WORK_EMAIL));
     }
 
     #[test]
@@ -265,7 +537,24 @@ mod tests {
         write_demo_message_count(&paths, 50_000).expect("write marker");
         assert_eq!(
             read_demo_message_count(&paths).expect("read marker"),
-            Some(50_000)
+            Some((50_000, DEMO_SEED_VERSION))
+        );
+    }
+
+    #[test]
+    fn legacy_demo_message_count_marker_forces_seed_version_reset() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let paths = DemoPaths {
+            config_dir: temp_dir.path().join("config"),
+            data_dir: temp_dir.path().join("data"),
+        };
+        std::fs::create_dir_all(&paths.data_dir).expect("create data dir");
+        std::fs::write(paths.data_dir.join(DEMO_COUNT_MARKER), "50000")
+            .expect("write legacy marker");
+
+        assert_eq!(
+            read_demo_message_count(&paths).expect("read marker"),
+            Some((50_000, 0))
         );
     }
 }

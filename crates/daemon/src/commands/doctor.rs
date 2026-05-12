@@ -4,7 +4,7 @@ use crate::ipc_client::IpcClient;
 use crate::output::resolve_format;
 use mxr_protocol::{
     AccountSyncStatus, DaemonEvent, DaemonHealthClass, DoctorDataStats, DoctorReport,
-    EventLogEntry, Request, Response, ResponseData,
+    EventLogEntry, FeatureHealth, FeatureHealthReport, Request, Response, ResponseData,
 };
 use mxr_search::SearchIndex;
 use mxr_store::Store;
@@ -16,6 +16,7 @@ use tokio::time::{interval, Duration};
 pub struct DoctorRunOptions {
     pub reindex: bool,
     pub reindex_semantic: bool,
+    pub backfill_semantic: bool,
     pub check: bool,
     pub semantic_status: bool,
     pub verbose: bool,
@@ -33,6 +34,7 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
         || options.refresh_contacts
         || options.semantic_status
         || options.reindex_semantic
+        || options.backfill_semantic
     {
         crate::server::ensure_daemon_running().await?;
     }
@@ -143,9 +145,11 @@ pub async fn run(options: DoctorRunOptions) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    if options.semantic_status || options.reindex_semantic {
+    if options.semantic_status || options.reindex_semantic || options.backfill_semantic {
         let mut client = IpcClient::connect().await?;
-        let request = if options.reindex_semantic {
+        let request = if options.backfill_semantic {
+            Request::BackfillSemantic
+        } else if options.reindex_semantic {
             Request::ReindexSemantic
         } else {
             Request::GetSemanticStatus
@@ -269,6 +273,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
     let mut semantic_active_profile = None;
     let mut semantic_index_freshness = mxr_protocol::IndexFreshness::Disabled;
     let mut semantic_last_indexed_at = None;
+    let mut feature_health = None;
 
     if socket_reachable {
         if let Ok(mut client) = IpcClient::connect().await {
@@ -282,6 +287,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
                             daemon_version: version,
                             daemon_build_id: build_id,
                             repair_required: repair,
+                            feature_health: status_feature_health,
                             ..
                         },
                 }) => {
@@ -291,6 +297,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
                     daemon_version = version;
                     daemon_build_id = build_id;
                     repair_required = repair;
+                    feature_health = status_feature_health;
                     restart_required = crate::server::daemon_requires_restart(
                         daemon_protocol_version,
                         daemon_version.as_deref(),
@@ -399,6 +406,8 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         && !index_lock_held
         && matches!(health_class, DaemonHealthClass::Healthy);
 
+    let findings = semantic_findings(semantic_enabled, &data_stats);
+
     Ok(DoctorReport {
         healthy,
         health_class,
@@ -409,6 +418,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         semantic_active_profile,
         semantic_index_freshness,
         semantic_last_indexed_at,
+        feature_health,
         data_stats,
         data_dir_exists,
         database_exists,
@@ -435,7 +445,7 @@ async fn collect_report() -> anyhow::Result<DoctorReport> {
         recent_sync_events,
         recent_error_logs,
         recommended_next_steps,
-        findings: Vec::new(),
+        findings,
     })
 }
 
@@ -590,11 +600,23 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
                 || report.data_stats.semantic_embeddings > 0
             {
                 println!(
-                    "Semantic:     profiles={} chunks={} embeddings={}",
+                    "Semantic:     profiles={} chunks={} embeddings={} missing_chunks={} missing_embeddings={}",
                     report.data_stats.semantic_profiles,
                     report.data_stats.semantic_chunks,
                     report.data_stats.semantic_embeddings,
+                    report.data_stats.messages_missing_semantic_chunks,
+                    report.data_stats.semantic_chunks_missing_embeddings,
                 );
+            }
+            if report.data_stats.relationship_drifts > 0 {
+                println!(
+                    "Relationship: drift_contacts={}",
+                    report.data_stats.relationship_drifts
+                );
+            }
+
+            if let Some(feature_health) = &report.feature_health {
+                print_feature_health(feature_health);
             }
 
             if let Some(error) = &report.index_lock_error {
@@ -669,6 +691,59 @@ fn print_report(report: &DoctorReport, format: OutputFormat, verbose: bool) -> a
     }
 
     Ok(())
+}
+
+fn semantic_findings(
+    semantic_enabled: bool,
+    data_stats: &DoctorDataStats,
+) -> Vec<mxr_protocol::DoctorFinding> {
+    let mut findings = Vec::new();
+    if semantic_enabled
+        && (data_stats.messages_missing_semantic_chunks > 0
+            || data_stats.semantic_chunks_missing_embeddings > 0)
+    {
+        findings.push(mxr_protocol::DoctorFinding {
+            category: mxr_protocol::DoctorFindingCategory::Semantic,
+            severity: mxr_protocol::DoctorFindingSeverity::Warning,
+            message: format!(
+                "Semantic backfill pending: {} message(s) need chunks, {} chunk(s) need embeddings",
+                data_stats.messages_missing_semantic_chunks,
+                data_stats.semantic_chunks_missing_embeddings
+            ),
+            remediation: vec!["mxr doctor --backfill-semantic".into()],
+        });
+    }
+    if data_stats.relationship_drifts > 0 {
+        findings.push(mxr_protocol::DoctorFinding {
+            category: mxr_protocol::DoctorFindingCategory::Generic,
+            severity: mxr_protocol::DoctorFindingSeverity::Info,
+            message: format!(
+                "Relationship voice drift detected for {} contact(s)",
+                data_stats.relationship_drifts
+            ),
+            remediation: vec!["mxr profile <email> --rebuild".into()],
+        });
+    }
+    findings
+}
+
+fn print_feature_health(report: &FeatureHealthReport) {
+    println!("\nFeature health:");
+    print_feature_health_row("semantic", &report.semantic);
+    print_feature_health_row("summarize", &report.summarize);
+    print_feature_health_row("relationship_profile", &report.relationship_profile);
+    print_feature_health_row("commitments", &report.commitments);
+    print_feature_health_row("draft_assist", &report.draft_assist);
+    print_feature_health_row("voice_match", &report.voice_match);
+    print_feature_health_row("humanizer", &report.humanizer);
+}
+
+fn print_feature_health_row(name: &str, health: &FeatureHealth) {
+    match health {
+        FeatureHealth::Healthy => println!("  {name:<22} healthy"),
+        FeatureHealth::Disabled => println!("  {name:<22} disabled"),
+        FeatureHealth::Degraded { reason } => println!("  {name:<22} degraded: {reason}"),
+    }
 }
 
 fn daemon_pid_suffix(pid: Option<u32>) -> String {

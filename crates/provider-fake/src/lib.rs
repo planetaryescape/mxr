@@ -383,6 +383,84 @@ mod tests {
         assert!(with_attachments >= 3);
     }
 
+    #[test]
+    fn demo_fixtures_split_known_demo_accounts() {
+        let personal = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let work = AccountId::from_provider_id("fake", "alex@work.demo.mxr.local");
+        let (personal_env, _, _) = fixtures::generate_demo_fixtures(&personal, 100);
+        let (work_env, _, _) = fixtures::generate_demo_fixtures(&work, 100);
+
+        assert_eq!(personal_env.len(), 55);
+        assert_eq!(work_env.len(), 45);
+        assert!(personal_env.iter().all(|env| env.account_id == personal));
+        assert!(work_env.iter().all(|env| env.account_id == work));
+    }
+
+    #[test]
+    fn demo_fixtures_exercise_links_html_attachments_and_colors() {
+        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let (envelopes, bodies, labels) = fixtures::generate_demo_fixtures(&account_id, 120);
+        let html_with_links = bodies
+            .values()
+            .filter_map(|body| body.text_html.as_deref())
+            .filter(|html| html.contains("href=\"https://"))
+            .count();
+        let image_bodies = bodies
+            .values()
+            .filter_map(|body| body.text_html.as_deref())
+            .filter(|html| html.contains("<img "))
+            .count();
+        let attachment_messages = envelopes.iter().filter(|env| env.has_attachments).count();
+        let colored_labels = labels.iter().filter(|label| label.color.is_some()).count();
+
+        assert!(html_with_links > 20);
+        assert!(image_bodies > 0);
+        assert!(attachment_messages > 0);
+        assert!(colored_labels >= 6);
+    }
+
+    #[test]
+    fn demo_fixtures_include_spam_promotions_and_suspicious_inbox_mail() {
+        let account_id = AccountId::from_provider_id("fake", "alex@demo.mxr.local");
+        let (envelopes, _, labels) = fixtures::generate_demo_fixtures(&account_id, 160);
+        let spam = envelopes
+            .iter()
+            .filter(|env| {
+                env.flags.contains(MessageFlags::SPAM)
+                    && env.label_provider_ids.iter().any(|label| label == "SPAM")
+            })
+            .count();
+        let promotions = envelopes
+            .iter()
+            .filter(|env| {
+                env.label_provider_ids
+                    .iter()
+                    .any(|label| label == "promotions")
+            })
+            .count();
+        let potential_spam_inbox = envelopes
+            .iter()
+            .filter(|env| {
+                !env.flags.contains(MessageFlags::SPAM)
+                    && env.label_provider_ids.iter().any(|label| label == "INBOX")
+                    && env
+                        .label_provider_ids
+                        .iter()
+                        .any(|label| label == "potential_spam")
+            })
+            .count();
+
+        assert!(spam > 0);
+        assert!(promotions > 0);
+        assert!(potential_spam_inbox > 0);
+        assert!(labels
+            .iter()
+            .any(|label| label.provider_id == "promotions" && label.color.is_some()));
+        assert!(labels
+            .iter()
+            .any(|label| label.provider_id == "potential_spam" && label.color.is_some()));
+    }
+
     #[tokio::test]
     async fn sync_initial_returns_all_with_bodies() {
         let provider = FakeProvider::new(AccountId::new());

@@ -2,7 +2,7 @@
  * Bridge bearer-token storage.
  *
  * Bootstrap precedence on first load:
- *   1. URL fragment `#token=...` (set by `mxr web` when launching)
+ *   1. URL fragment `#token=...` (remote/manual launch only)
  *   2. localStorage `mxr.bridgeToken`
  *   3. nothing — UI surfaces a paste-token settings panel after first 401
  */

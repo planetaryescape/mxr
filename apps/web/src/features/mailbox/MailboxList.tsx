@@ -275,7 +275,11 @@ export function MailboxList({
       } else if (event.key === "Escape") {
         clearGoPrefix();
         event.preventDefault();
-        clearSelection();
+        if (selectedIds.size > 0) {
+          clearSelection();
+        } else if (activeThreadId) {
+          void navigate({ to: mailboxPath });
+        }
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -294,6 +298,7 @@ export function MailboxList({
     lastClickedId,
     mailboxPath,
     moveFocus,
+    navigate,
     openRow,
     previewOnFocus,
     read,

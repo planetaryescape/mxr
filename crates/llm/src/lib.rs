@@ -21,6 +21,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -104,6 +105,8 @@ pub enum LlmError {
     Timeout(Duration),
     #[error("LLM authentication failed (check API key)")]
     Unauthorized,
+    #[error("LLM feature blocked by privacy policy: {0}")]
+    PrivacyBlocked(String),
     #[error("LLM returned an empty completion")]
     Empty,
     #[error("LLM error: {0}")]
@@ -119,12 +122,21 @@ pub trait LlmProvider: Send + Sync {
 
 pub struct LlmRuntime {
     provider: RwLock<Arc<dyn LlmProvider>>,
+    feature_providers: RwLock<HashMap<LlmFeature, Arc<dyn LlmProvider>>>,
+    blocked_features: RwLock<HashMap<LlmFeature, String>>,
+}
+
+pub struct FeatureLlmRuntime {
+    runtime: Arc<LlmRuntime>,
+    feature: LlmFeature,
 }
 
 impl LlmRuntime {
     pub fn new(provider: Arc<dyn LlmProvider>) -> Self {
         Self {
             provider: RwLock::new(provider),
+            feature_providers: RwLock::new(HashMap::new()),
+            blocked_features: RwLock::new(HashMap::new()),
         }
     }
 
@@ -135,8 +147,26 @@ impl LlmRuntime {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = provider;
     }
 
-    pub fn for_feature(self: &Arc<Self>, _feature: LlmFeature) -> Arc<Self> {
-        self.clone()
+    pub fn replace_feature_providers(
+        &self,
+        providers: HashMap<LlmFeature, Arc<dyn LlmProvider>>,
+        blocked_features: HashMap<LlmFeature, String>,
+    ) {
+        *self
+            .feature_providers
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = providers;
+        *self
+            .blocked_features
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = blocked_features;
+    }
+
+    pub fn for_feature(self: &Arc<Self>, feature: LlmFeature) -> FeatureLlmRuntime {
+        FeatureLlmRuntime {
+            runtime: self.clone(),
+            feature,
+        }
     }
 
     pub async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
@@ -151,11 +181,57 @@ impl LlmRuntime {
         self.current().model_name().to_string()
     }
 
+    pub fn feature_block_reason(&self, feature: LlmFeature) -> Option<String> {
+        self.blocked_reason(feature)
+    }
+
     fn current(&self) -> Arc<dyn LlmProvider> {
         self.provider
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
+    }
+
+    fn provider_for_feature(&self, feature: LlmFeature) -> Arc<dyn LlmProvider> {
+        self.feature_providers
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&feature)
+            .cloned()
+            .unwrap_or_else(|| self.current())
+    }
+
+    fn blocked_reason(&self, feature: LlmFeature) -> Option<String> {
+        self.blocked_features
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&feature)
+            .cloned()
+    }
+}
+
+impl FeatureLlmRuntime {
+    pub async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        if let Some(reason) = self.runtime.blocked_reason(self.feature) {
+            return Err(LlmError::PrivacyBlocked(reason));
+        }
+        self.runtime
+            .provider_for_feature(self.feature)
+            .complete(req)
+            .await
+    }
+
+    pub fn capabilities(&self) -> LlmCapabilities {
+        self.runtime
+            .provider_for_feature(self.feature)
+            .capabilities()
+    }
+
+    pub fn model_name(&self) -> String {
+        self.runtime
+            .provider_for_feature(self.feature)
+            .model_name()
+            .to_string()
     }
 }
 
@@ -371,6 +447,7 @@ fn redact_key(s: String, key: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn noop_provider_returns_disabled_error() {
@@ -422,5 +499,75 @@ mod tests {
     fn capabilities_surface_context_window() {
         let p = OpenAiCompatibleProvider::ollama("llama3.2");
         assert_eq!(p.capabilities().context_window, 8192);
+    }
+
+    #[derive(Debug)]
+    struct StaticProvider {
+        model: &'static str,
+    }
+
+    #[async_trait]
+    impl LlmProvider for StaticProvider {
+        async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            Ok(CompletionResponse {
+                content: self.model.to_string(),
+                model: self.model.to_string(),
+                finish_reason: None,
+            })
+        }
+
+        fn capabilities(&self) -> LlmCapabilities {
+            LlmCapabilities {
+                context_window: 42,
+                supports_streaming: false,
+            }
+        }
+
+        fn model_name(&self) -> &str {
+            self.model
+        }
+    }
+
+    #[tokio::test]
+    async fn feature_override_routes_completion_to_feature_provider() {
+        let runtime = Arc::new(LlmRuntime::new(Arc::new(StaticProvider { model: "base" })));
+        let mut providers = HashMap::new();
+        providers.insert(
+            LlmFeature::DraftAssist,
+            Arc::new(StaticProvider { model: "draft" }) as Arc<dyn LlmProvider>,
+        );
+        runtime.replace_feature_providers(providers, HashMap::new());
+
+        let response = runtime
+            .for_feature(LlmFeature::DraftAssist)
+            .complete(CompletionRequest {
+                messages: vec![ChatMessage::user("hello")],
+                max_tokens: None,
+                temperature: None,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(response.model, "draft");
+    }
+
+    #[tokio::test]
+    async fn blocked_feature_returns_privacy_error_before_provider_call() {
+        let runtime = Arc::new(LlmRuntime::new(Arc::new(StaticProvider { model: "base" })));
+        let mut blocked = HashMap::new();
+        blocked.insert(LlmFeature::Commitments, "cloud endpoint".to_string());
+        runtime.replace_feature_providers(HashMap::new(), blocked);
+
+        let error = runtime
+            .for_feature(LlmFeature::Commitments)
+            .complete(CompletionRequest {
+                messages: vec![ChatMessage::user("hello")],
+                max_tokens: None,
+                temperature: None,
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, LlmError::PrivacyBlocked(_)));
     }
 }

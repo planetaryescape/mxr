@@ -1,8 +1,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Activity, Bug, Clipboard, RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
 import { toast } from "sonner";
 
 import {
+  backfillSemantic,
   fetchAdminStatus,
   fetchBugReport,
   fetchDiagnostics,
@@ -53,6 +55,16 @@ export function DiagnosticsRoute() {
     },
     onError: (error) => toast.error("Bug report failed", { description: error.message }),
   });
+  const semanticBackfill = useMutation({
+    mutationFn: backfillSemantic,
+    onSuccess: () => {
+      toast.success("Semantic backfill queued");
+      void semantic.refetch();
+      void doctor.refetch();
+      void status.refetch();
+    },
+    onError: (error) => toast.error("Semantic backfill failed", { description: error.message }),
+  });
 
   if (status.isError && doctor.isError)
     return (
@@ -78,6 +90,21 @@ export function DiagnosticsRoute() {
       </header>
       <main className="grid min-h-0 gap-4 overflow-auto p-6 xl:grid-cols-2">
         <Panel title="Daemon status" icon={Activity} value={status.data} />
+        <Panel
+          title="Feature health"
+          icon={Activity}
+          value={status.data?.feature_health ?? doctor.data?.report?.feature_health}
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => semanticBackfill.mutate()}
+              disabled={semanticBackfill.isPending}
+            >
+              Backfill semantic
+            </Button>
+          }
+        />
         <Panel title="Doctor report" icon={Clipboard} value={doctor.data?.report} />
         <Panel title="Sync status" icon={RefreshCw} value={sync.data} />
         <Panel title="Semantic status" icon={Activity} value={semantic.data} />
@@ -97,11 +124,13 @@ function Panel({
   title,
   icon: Icon,
   value,
+  action,
   wide,
 }: {
   title: string;
   icon: typeof Activity;
   value: unknown;
+  action?: ReactNode;
   wide?: boolean;
 }) {
   return (
@@ -112,10 +141,13 @@ function Panel({
           : "rounded-xl border border-border bg-surface p-4"
       }
     >
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <Icon className="size-3.5 text-primary" />
-        {title}
-      </h2>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <Icon className="size-3.5 text-primary" />
+          {title}
+        </h2>
+        {action}
+      </div>
       <DiagnosticValue value={value} />
     </section>
   );

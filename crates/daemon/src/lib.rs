@@ -72,6 +72,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
         Some(Command::Doctor {
             reindex,
             reindex_semantic,
+            backfill_semantic,
             check,
             semantic_status,
             verbose,
@@ -84,6 +85,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             commands::doctor::run(commands::doctor::DoctorRunOptions {
                 reindex,
                 reindex_semantic,
+                backfill_semantic,
                 check,
                 semantic_status,
                 verbose,
@@ -250,6 +252,37 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             crate::server::ensure_daemon_running().await?;
             commands::sender::run(email, account, format).await?;
         }
+        Some(Command::Profile {
+            email,
+            account,
+            rebuild,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::profile::run(email, account, rebuild, format).await?;
+        }
+        Some(Command::Commitments {
+            action,
+            contact,
+            status,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::commitments::run(action, contact, status, account, format).await?;
+        }
+        Some(Command::Voice {
+            action,
+            account,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::voice::run(action, account, format).await?;
+        }
+        Some(Command::Humanize { action, format }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::humanize::run(action, format).await?;
+        }
         Some(Command::Screener {
             action,
             account,
@@ -297,6 +330,18 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             })?;
             commands::draft_assist::run(thread_id, search, first, limit, instruction_text, format)
                 .await?;
+        }
+        Some(Command::Draft {
+            action,
+            to,
+            purpose,
+            account,
+            register,
+            length,
+            format,
+        }) => {
+            crate::server::ensure_daemon_running().await?;
+            commands::draft::run(action, to, purpose, account, register, length, format).await?;
         }
         Some(Command::Remind {
             message_id,
@@ -396,6 +441,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
             port,
             print_url,
             no_open,
+            auto_port,
             strict_port,
             remote_host,
             foreground,
@@ -410,6 +456,7 @@ pub async fn run_cli(args: Vec<String>) -> anyhow::Result<()> {
                 port,
                 print_url,
                 no_open,
+                auto_port,
                 strict_port,
                 remote_host,
                 foreground,

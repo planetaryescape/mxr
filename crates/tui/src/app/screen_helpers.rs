@@ -127,7 +127,7 @@ impl App {
     }
 
     pub fn advance_feature_onboarding(&mut self) {
-        if self.modals.onboarding.step >= 4 {
+        if self.modals.onboarding.step >= 5 {
             self.dismiss_feature_onboarding();
         } else {
             self.modals.onboarding.step += 1;

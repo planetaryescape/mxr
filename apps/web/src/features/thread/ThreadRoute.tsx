@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { find as findLinks } from "linkifyjs";
 import {
   Archive,
   Ban,
@@ -9,6 +10,8 @@ import {
   Forward,
   Mail,
   MailOpen,
+  Maximize2,
+  Minimize2,
   MoreVertical,
   Paperclip,
   Reply,
@@ -92,12 +95,19 @@ interface ThreadSummaryView {
 
 export function ThreadRoute() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const readerLayout = useUiPrefs((state) => state.readerLayout);
   const parts = pathname.split("/").filter(Boolean);
   const threadId = parts[parts.length - 1] ?? "";
   const mailboxPath = `/${parts.slice(0, -1).join("/")}`;
+  const readerFull = readerLayout === "full";
   return (
     <div className="flex min-h-0 min-w-0 flex-1 bg-background">
-      <div className="hidden w-[520px] shrink-0 xl:w-[560px] 2xl:w-[600px] lg:flex">
+      <div
+        className={cn(
+          "hidden w-[520px] shrink-0 xl:w-[560px] 2xl:w-[600px]",
+          readerFull ? "lg:hidden" : "lg:flex",
+        )}
+      >
         <MailboxRoute />
       </div>
       <ThreadReader threadId={threadId} mailboxPath={mailboxPath} />
@@ -144,6 +154,8 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
   const setActivePane = useMailboxPane((state) => state.setActivePane);
   const setSuppressNextReaderFocus = useMailboxPane((state) => state.setSuppressNextReaderFocus);
   const emailHtmlTheme = useUiPrefs((state) => state.emailHtmlTheme);
+  const readerLayout = useUiPrefs((state) => state.readerLayout);
+  const setReaderLayout = useUiPrefs((state) => state.setReaderLayout);
   const shell = useShellQuery();
   const archive = useOptimisticMailMutation("archive");
   const spam = useOptimisticMailMutation("spam");
@@ -194,6 +206,8 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       }
     },
   });
+  const summaryMutateRef = useRef(summary.mutate);
+  summaryMutateRef.current = summary.mutate;
   const senderProfile = useMutation({
     mutationFn: (email: string) => fetchSenderProfile({ accountId: data.thread.account_id, email }),
     onSuccess: (result) => openRail("sender-profile", result),
@@ -219,6 +233,10 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     [shell.data, threadLabels],
   );
   const primarySenderEmail = extractEmail(primaryMessage?.sender_detail ?? primaryMessage?.sender);
+  const readerFull = readerLayout === "full";
+  const toggleReaderLayout = useCallback(() => {
+    setReaderLayout(readerFull ? "split" : "full");
+  }, [readerFull, setReaderLayout]);
   const labelMutation = useMutation({
     mutationFn: ({ add, remove }: LabelChange) => modifyLabels(allMessageIds, add, remove),
     onSuccess: (response) => {
@@ -298,6 +316,9 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       } else if (event.key === "p") {
         event.preventDefault();
         if (primarySenderEmail) senderProfile.mutate(primarySenderEmail);
+      } else if (event.key === "F") {
+        event.preventDefault();
+        toggleReaderLayout();
       } else if (event.key === "l") {
         event.preventDefault();
         setLabelDialogOpen(true);
@@ -346,6 +367,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     trash,
     toggleRead,
     toggleStar,
+    toggleReaderLayout,
     compose,
   ]);
 
@@ -366,8 +388,8 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
     }
     if (autoSummaryThreadRef.current === data.thread.id) return;
     autoSummaryThreadRef.current = data.thread.id;
-    summary.mutate({ silent: true });
-  }, [data.thread.id, data.summary, summary.mutate]);
+    summaryMutateRef.current({ silent: true });
+  }, [data.thread.id, data.summary]);
 
   const overflowActions = useMemo<ReaderOverflowAction[]>(
     () => [
@@ -415,6 +437,12 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
         onSelect: () => setSnoozeOpen(true),
       },
       {
+        label: readerFull ? "Split reader" : "Full reader",
+        shortcut: "F",
+        icon: readerFull ? <Minimize2 className="size-3" /> : <Maximize2 className="size-3" />,
+        onSelect: toggleReaderLayout,
+      },
+      {
         label: "Context",
         shortcut: "L",
         icon: <UserRound className="size-3" />,
@@ -447,9 +475,11 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       data.right_rail,
       openRail,
       primarySenderEmail,
+      readerFull,
       senderProfile,
       spam,
       toggleRead,
+      toggleReaderLayout,
       toggleStar,
       trash,
     ],
@@ -460,6 +490,7 @@ function ThreadContent({ data, mailboxPath }: { data: ThreadResponse; mailboxPat
       aria-label="Thread reader"
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
       data-active-pane={activePane === "reader" ? "true" : undefined}
+      data-reader-layout={readerLayout}
       onMouseDown={() => {
         setSuppressNextReaderFocus(false);
         setActivePane("reader");
@@ -895,9 +926,7 @@ function ThreadMessage({
         {mode === "html" && html ? (
           <MessageBody html={html} allowRemoteImages={remoteImages} theme={emailHtmlTheme} />
         ) : (
-          <pre className="w-full whitespace-pre-wrap break-words font-sans text-[15px] leading-7 text-foreground">
-            {plain || "No readable body."}
-          </pre>
+          <LinkifiedPre text={plain || "No readable body."} />
         )}
       </div>
       {attachments.length > 0 ? (
@@ -912,6 +941,42 @@ function ThreadMessage({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function LinkifiedPre({ text }: { text: string }) {
+  const links = useMemo(() => findLinks(text, { defaultProtocol: "https" }), [text]);
+  if (links.length === 0) {
+    return (
+      <pre className="w-full whitespace-pre-wrap break-words font-sans text-[15px] leading-7 text-foreground">
+        {text}
+      </pre>
+    );
+  }
+
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  links.forEach((link) => {
+    if (link.start > cursor) nodes.push(text.slice(cursor, link.start));
+    nodes.push(
+      <a
+        key={`${link.href}-${link.start}-${link.end}`}
+        href={link.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary underline underline-offset-2 hover:text-primary/80"
+      >
+        {text.slice(link.start, link.end)}
+      </a>,
+    );
+    cursor = link.end;
+  });
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+
+  return (
+    <pre className="w-full whitespace-pre-wrap break-words font-sans text-[15px] leading-7 text-foreground">
+      {nodes}
+    </pre>
   );
 }
 
@@ -935,8 +1000,7 @@ function normalizeThreadSummary(payload: unknown): ThreadSummaryView | null {
   const text = typeof source?.text === "string" ? source.text.trim() : "";
   if (!text) return null;
   const model = typeof source?.model === "string" ? source.model : undefined;
-  const generatedAt =
-    typeof source?.generated_at === "string" ? source.generated_at : undefined;
+  const generatedAt = typeof source?.generated_at === "string" ? source.generated_at : undefined;
   return { generatedAt, model, text, bullets: summaryBullets(text) };
 }
 

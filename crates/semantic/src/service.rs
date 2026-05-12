@@ -41,6 +41,9 @@ enum SemanticCommand {
     ReindexActive {
         resp: oneshot::Sender<Result<SemanticProfileRecord>>,
     },
+    BackfillActive {
+        resp: oneshot::Sender<Result<SemanticProfileRecord>>,
+    },
     IngestMessages {
         message_ids: Vec<MessageId>,
         resp: oneshot::Sender<Result<()>>,
@@ -224,6 +227,15 @@ impl SemanticServiceHandle {
         resp_rx.await.map_err(|_| worker_stopped())?
     }
 
+    pub async fn backfill_active(&self) -> Result<SemanticProfileRecord> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.tx
+            .send(SemanticCommand::BackfillActive { resp: resp_tx })
+            .await
+            .map_err(closed_error)?;
+        resp_rx.await.map_err(|_| worker_stopped())?
+    }
+
     pub async fn ingest_messages(&self, message_ids: &[MessageId]) -> Result<()> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.tx
@@ -318,6 +330,9 @@ async fn handle_command(
         }
         SemanticCommand::ReindexActive { resp } => {
             let _ = resp.send(engine.reindex_active().await);
+        }
+        SemanticCommand::BackfillActive { resp } => {
+            let _ = resp.send(engine.backfill_active().await);
         }
         SemanticCommand::IngestMessages { message_ids, resp } => {
             let _ = resp.send(engine.ingest_messages(&message_ids).await);

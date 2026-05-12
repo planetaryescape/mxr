@@ -37,8 +37,10 @@ use utoipa::{
         scheduled_sends_create, scheduled_sends_cancel, snippets_list,
         snippets_set, snippets_delete, sender_profile, screener_queue,
         screener_decisions_list, screener_decisions_set,
-        screener_decisions_clear, thread_summarize, draft_assist,
-        compose_session_start, compose_session_refresh, compose_session_restore,
+        screener_decisions_clear, thread_summarize, draft_assist, mail_draft_new,
+        mail_draft_refine, mail_humanizer_score, mail_humanizer_rewrite,
+        mail_relationship_profile, mail_relationship_rebuild, mail_commitments_list,
+        mail_commitments_resolve, compose_session_start, compose_session_refresh, compose_session_restore,
         compose_session_update, compose_session_send, compose_session_save,
         compose_session_attachment, compose_session_discard, rules_list, rule_detail, rule_form,
         rule_history, rule_dry_run, rule_upsert, rule_upsert_form, rule_delete,
@@ -49,11 +51,19 @@ use utoipa::{
         account_addresses_primary, auth_session_start, auth_session_get,
         auth_session_cancel, auth_session_complete, subscriptions_list,
         llm_status, llm_config_get, llm_config_update, semantic_status, semantic_reindex, semantic_enable,
-        semantic_profile_install, semantic_profile_use, analytics_wrapped,
+        semantic_profile_install, semantic_profile_use, semantic_backfill, analytics_wrapped,
         analytics_storage_breakdown, analytics_largest_messages,
         analytics_stale_threads, analytics_contact_asymmetry,
         analytics_contact_decay, analytics_response_time,
-        analytics_refresh_contacts, analytics_rebuild
+        analytics_refresh_contacts, analytics_rebuild,
+        mail_message_body, mail_message_html_images, mail_message_raw_headers,
+        mail_message_set_flags, mail_export_search, mail_drafts_orphaned_list,
+        mail_drafts_save_local, mail_drafts_reset_orphan, mail_drafts_send_stored,
+        mail_drafts_delete_stored, mail_signatures_list, mail_signatures_upsert,
+        mail_signature_defaults_list, mail_signature_default_set,
+        mail_signature_default_clear, mail_signature_resolve, mail_signatures_delete,
+        platform_accounts_authorize, platform_accounts_repair, platform_voice_get,
+        platform_voice_rebuild
     ),
     components(schemas(
         Request,
@@ -143,6 +153,14 @@ endpoint!(post screener_decisions_set "/api/v1/mail/screener/decisions", "Set sc
 endpoint!(delete screener_decisions_clear "/api/v1/mail/screener/decisions", "Clear screener decision");
 endpoint!(post thread_summarize "/api/v1/mail/threads/{thread_id}/summarize", "Summarize a thread");
 endpoint!(post draft_assist "/api/v1/mail/threads/draft-assist", "Generate a draft body");
+endpoint!(post mail_draft_new "/api/v1/mail/drafts/new", "Start a new LLM-backed draft");
+endpoint!(post mail_draft_refine "/api/v1/mail/drafts/refine", "Refine draft text with LLM");
+endpoint!(post mail_humanizer_score "/api/v1/mail/humanizer/score", "Score draft for human-like voice");
+endpoint!(post mail_humanizer_rewrite "/api/v1/mail/humanizer/rewrite", "Rewrite draft toward target voice");
+endpoint!(get mail_relationship_profile "/api/v1/mail/relationship", "Relationship profile for a contact");
+endpoint!(post mail_relationship_rebuild "/api/v1/mail/relationship/rebuild", "Rebuild relationship analytics");
+endpoint!(get mail_commitments_list "/api/v1/mail/commitments", "List detected commitments");
+endpoint!(post mail_commitments_resolve "/api/v1/mail/commitments/{commitment_id}/resolve", "Resolve a commitment");
 
 endpoint!(post compose_session_start "/api/v1/mail/compose/session", "Start compose session");
 endpoint!(post compose_session_refresh "/api/v1/mail/compose/session/refresh", "Refresh compose session");
@@ -193,6 +211,7 @@ endpoint!(post semantic_reindex "/api/v1/platform/semantic/reindex", "Reindex se
 endpoint!(post semantic_enable "/api/v1/platform/semantic/enable", "Enable semantic search");
 endpoint!(post semantic_profile_install "/api/v1/platform/semantic/profiles/install", "Install semantic profile");
 endpoint!(post semantic_profile_use "/api/v1/platform/semantic/profiles/use", "Use semantic profile");
+endpoint!(post semantic_backfill "/api/v1/platform/semantic/backfill", "Backfill semantic chunks");
 
 endpoint!(get analytics_wrapped "/api/v1/platform/analytics/wrapped", "Wrapped analytics");
 endpoint!(get analytics_storage_breakdown "/api/v1/platform/analytics/storage-breakdown", "Storage breakdown");
@@ -203,6 +222,28 @@ endpoint!(get analytics_contact_decay "/api/v1/platform/analytics/contact-decay"
 endpoint!(get analytics_response_time "/api/v1/platform/analytics/response-time", "Response-time analytics");
 endpoint!(post analytics_refresh_contacts "/api/v1/platform/analytics/refresh-contacts", "Refresh contacts");
 endpoint!(post analytics_rebuild "/api/v1/platform/analytics/rebuild", "Rebuild analytics");
+
+endpoint!(get mail_message_body "/api/v1/mail/messages/{message_id}/body", "Get message body (IPC GetBody)");
+endpoint!(get mail_message_html_images "/api/v1/mail/messages/{message_id}/html-images", "List HTML-linked image assets");
+endpoint!(get mail_message_raw_headers "/api/v1/mail/messages/{message_id}/headers", "Raw RFC headers");
+endpoint!(post mail_message_set_flags "/api/v1/mail/messages/{message_id}/flags", "Set message flags bitmask");
+endpoint!(post mail_export_search "/api/v1/mail/export-search", "Export all threads matching a search");
+endpoint!(get mail_drafts_orphaned_list "/api/v1/mail/drafts/orphaned", "List orphaned mid-send drafts");
+endpoint!(post mail_drafts_save_local "/api/v1/mail/drafts/save-local", "Persist draft locally (SaveDraft)");
+endpoint!(post mail_drafts_reset_orphan "/api/v1/mail/drafts/{draft_id}/reset-orphan", "Reset orphaned sending draft");
+endpoint!(post mail_drafts_send_stored "/api/v1/mail/drafts/{draft_id}/send-stored", "Send stored draft by id");
+endpoint!(delete mail_drafts_delete_stored "/api/v1/mail/drafts/{draft_id}/stored", "Delete stored draft");
+endpoint!(get mail_signatures_list "/api/v1/mail/signatures", "List signatures");
+endpoint!(post mail_signatures_upsert "/api/v1/mail/signatures", "Create or update signature");
+endpoint!(get mail_signature_defaults_list "/api/v1/mail/signature-defaults", "List signature defaults");
+endpoint!(post mail_signature_default_set "/api/v1/mail/signatures/default", "Set default signature");
+endpoint!(post mail_signature_default_clear "/api/v1/mail/signatures/default/clear", "Clear default signature");
+endpoint!(post mail_signature_resolve "/api/v1/mail/signatures/resolve", "Resolve signature for compose");
+endpoint!(delete mail_signatures_delete "/api/v1/mail/signatures/{name}", "Delete signature");
+endpoint!(post platform_accounts_authorize "/api/v1/platform/accounts/authorize", "Authorize or re-authorize account config");
+endpoint!(post platform_accounts_repair "/api/v1/platform/accounts/repair", "Repair account credentials in keychain");
+endpoint!(get platform_voice_get "/api/v1/platform/voice", "User voice profile for drafting");
+endpoint!(post platform_voice_rebuild "/api/v1/platform/voice/rebuild", "Rebuild user voice profile from sent mail");
 
 /// Registers the bearer-token security scheme so the Swagger UI "Authorize"
 /// button works and so generated SDKs know the wire format.

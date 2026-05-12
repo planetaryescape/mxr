@@ -751,9 +751,9 @@ fn cli_journey_saved_search_create_list_delete_round_trip() {
 
 fn write_fake_config(config_dir: &Path) {
     // Disable the bridge so multiple cli_journey tests don't fight for
-    // TCP port 7777. The bridge defaults to `enabled = true` and binding
-    // 7777 — when port 7777 is busy (machine-wide, or another daemon
-    // hasn't released it yet), `run_daemon_with_overrides` calls
+    // the default fixed local web port. When that port is busy
+    // (machine-wide, or another daemon hasn't released it yet),
+    // `run_daemon_with_overrides` calls
     // `anyhow::bail!` and the daemon exits, leaving the client to time
     // out 40 retries on a half-up daemon. Tests don't exercise the
     // bridge — disabling it removes the collision entirely.

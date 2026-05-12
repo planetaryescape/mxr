@@ -21,6 +21,12 @@ pub enum HumanizerCategory {
     RuleOfThree,
     ExcessiveBoldface,
     GenericPositiveConclusion,
+    FigurativeLandscape,
+    FigurativeKey,
+    HighlightVerb,
+    Profanity,
+    FalseRange,
+    ChallengesProspects,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -186,6 +192,56 @@ pub fn score(text: &str, _opts: &HumanizerOpts) -> HumanizerReport {
             "step in the right direction",
         ],
         None,
+        &mut hits,
+    );
+    collect_dictionary_hits(
+        text,
+        HumanizerCategory::FigurativeLandscape,
+        &[
+            "digital landscape",
+            "business landscape",
+            "evolving landscape",
+        ],
+        Some("Name the concrete setting."),
+        &mut hits,
+    );
+    collect_dictionary_hits(
+        text,
+        HumanizerCategory::FigurativeKey,
+        &["key driver", "key pillar", "key enabler", "key factor"],
+        Some("Use specific importance instead of key."),
+        &mut hits,
+    );
+    collect_dictionary_hits(
+        text,
+        HumanizerCategory::HighlightVerb,
+        &["highlights the importance", "highlighting the importance"],
+        Some("State the point directly."),
+        &mut hits,
+    );
+    collect_dictionary_hits(
+        text,
+        HumanizerCategory::Profanity,
+        &["damn", "shit", "fuck"],
+        Some("Avoid profanity unless it is truly the sender's voice."),
+        &mut hits,
+    );
+    collect_dictionary_hits(
+        text,
+        HumanizerCategory::FalseRange,
+        &[
+            "from x to y",
+            "from ideation to execution",
+            "from concept to reality",
+        ],
+        Some("Use the specific range or delete it."),
+        &mut hits,
+    );
+    collect_dictionary_hits(
+        text,
+        HumanizerCategory::ChallengesProspects,
+        &["challenges and prospects", "opportunities and challenges"],
+        Some("Name the concrete trade-off."),
         &mut hits,
     );
     collect_dictionary_hits(
@@ -380,7 +436,12 @@ fn category_weight(category: HumanizerCategory) -> u32 {
         HumanizerCategory::NegativeParallelism => 8,
         HumanizerCategory::IngTailClause => 6,
         HumanizerCategory::EmDashOveruse | HumanizerCategory::CopulaAvoidance => 5,
-        HumanizerCategory::AiVocabulary | HumanizerCategory::PromotionalLanguage => 4,
+        HumanizerCategory::AiVocabulary
+        | HumanizerCategory::PromotionalLanguage
+        | HumanizerCategory::FigurativeLandscape
+        | HumanizerCategory::FigurativeKey
+        | HumanizerCategory::HighlightVerb
+        | HumanizerCategory::ChallengesProspects => 4,
         HumanizerCategory::KnowledgeCutoffDisclaimer => 10,
         HumanizerCategory::CollaborativeArtifact => 6,
         _ => 3,
@@ -391,7 +452,12 @@ fn summarize_hits(hits: &[HumanizerHit]) -> HumanizerSummary {
     let mut summary = HumanizerSummary::default();
     for hit in hits {
         match hit.category {
-            HumanizerCategory::AiVocabulary | HumanizerCategory::PromotionalLanguage => {
+            HumanizerCategory::AiVocabulary
+            | HumanizerCategory::PromotionalLanguage
+            | HumanizerCategory::FigurativeLandscape
+            | HumanizerCategory::FigurativeKey
+            | HumanizerCategory::HighlightVerb
+            | HumanizerCategory::ChallengesProspects => {
                 summary.ai_vocabulary += 1;
             }
             HumanizerCategory::EmojiHeading
@@ -441,5 +507,25 @@ mod tests {
         );
         assert!(report.score >= 90);
         assert!(report.hits.is_empty());
+    }
+
+    #[test]
+    fn detects_generic_landscape_and_challenges_language() {
+        let report = score(
+            "This key driver shapes the evolving landscape and creates opportunities and challenges.",
+            &HumanizerOpts::default(),
+        );
+        assert!(report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::FigurativeKey));
+        assert!(report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::FigurativeLandscape));
+        assert!(report
+            .hits
+            .iter()
+            .any(|hit| hit.category == HumanizerCategory::ChallengesProspects));
     }
 }

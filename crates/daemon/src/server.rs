@@ -1294,6 +1294,7 @@ mod tests {
                                 daemon_build_id: Some("test-build".to_string()),
                                 repair_required: false,
                                 semantic_runtime: None,
+                                feature_health: None,
                             },
                         }),
                     })

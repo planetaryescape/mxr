@@ -132,6 +132,66 @@ fn profile_lines<'a>(
         )));
     }
 
+    if let Some(relationship) = &profile.relationship {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Relationship",
+            Style::default()
+                .fg(theme.text_primary)
+                .add_modifier(Modifier::BOLD),
+        )));
+        if let Some(drift) = &relationship.drift {
+            lines.push(Line::from(Span::styled(
+                format!("Voice drift: {}", drift.reason),
+                Style::default().fg(theme.warning),
+            )));
+        }
+        if let Some(style) = &relationship.style {
+            lines.push(Line::from(vec![
+                Span::styled("Your voice: ", label_style),
+                Span::raw(format!(
+                    "{} · {:.1} words · {} samples",
+                    formality_label(style.formality_score),
+                    style.avg_sentence_len,
+                    style.msg_count_used
+                )),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("Their voice: ", label_style),
+                Span::raw(format!(
+                    "{} · {:.1} words · {} samples",
+                    formality_label(style.formality_score_theirs),
+                    style.avg_sentence_len_theirs,
+                    style.msg_count_used_theirs
+                )),
+            ]));
+        }
+        if let Some(summary) = &relationship.summary {
+            lines.push(Line::from(vec![
+                Span::styled("Summary: ", label_style),
+                Span::raw(truncate(summary.text.trim(), 120)),
+            ]));
+            if !summary.known_topics.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::styled("Known topics: ", label_style),
+                    Span::raw(truncate(&summary.known_topics.join(", "), 120)),
+                ]));
+            }
+        }
+        if !relationship.open_commitments.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("Open commitments: ", label_style),
+                Span::raw(relationship.open_commitments.len().to_string()),
+            ]));
+            for commitment in relationship.open_commitments.iter().take(3) {
+                lines.push(Line::from(vec![
+                    Span::styled("  - ", label_style),
+                    Span::raw(truncate(&commitment.what, 96)),
+                ]));
+            }
+        }
+    }
+
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "Other emails from sender",
@@ -215,7 +275,11 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
     use mxr_core::{AccountId, MessageId, ThreadId};
-    use mxr_protocol::{SenderEmailReferenceData, SenderProfileData};
+    use mxr_protocol::{
+        CommitmentData, CommitmentDirectionData, CommitmentStatusData,
+        ContactRelationshipSummaryData, ContactStyleData, RelationshipDriftData,
+        RelationshipProfileData, SenderEmailReferenceData, SenderProfileData,
+    };
     use mxr_test_support::render_to_string;
 
     fn sample_profile() -> SenderProfileData {
@@ -297,6 +361,66 @@ mod tests {
     }
 
     #[test]
+    fn renders_relationship_voice_topics_and_commitments() {
+        let mut profile = sample_profile();
+        let account_id = profile.account_id.clone();
+        profile.relationship = Some(RelationshipProfileData {
+            account_id: account_id.clone(),
+            email: "alice@example.com".into(),
+            style: Some(ContactStyleData {
+                formality_score: 0.72,
+                formality_score_theirs: 0.35,
+                avg_sentence_len: 12.4,
+                avg_sentence_len_theirs: 8.1,
+                msg_count_used: 8,
+                msg_count_used_theirs: 5,
+                computed_at: Utc.with_ymd_and_hms(2026, 5, 1, 0, 0, 0).unwrap(),
+                source_hash: "hash".into(),
+            }),
+            summary: Some(ContactRelationshipSummaryData {
+                text: "Contract-heavy collaborator with recurring launch planning.".into(),
+                model: "local".into(),
+                known_topics: vec!["contract".into(), "launch".into()],
+                computed_at: Utc.with_ymd_and_hms(2026, 5, 1, 0, 0, 0).unwrap(),
+                source_hash: "summary-hash".into(),
+            }),
+            open_commitments: vec![CommitmentData {
+                id: "commitment-1".into(),
+                account_id,
+                email: "alice@example.com".into(),
+                thread_id: ThreadId::new(),
+                direction: CommitmentDirectionData::Yours,
+                status: CommitmentStatusData::Open,
+                who_owes: "me".into(),
+                what: "Send signed contract copy".into(),
+                by_when: None,
+                evidence_msg_id: MessageId::new(),
+                extracted_at: Utc.with_ymd_and_hms(2026, 5, 1, 0, 0, 0).unwrap(),
+            }],
+            drift: Some(RelationshipDriftData {
+                detected_at: Utc.with_ymd_and_hms(2026, 5, 1, 0, 0, 0).unwrap(),
+                reason: "your formality changed".into(),
+            }),
+        });
+        let mut state = SenderProfileModalState::default();
+        state.open_loading("alice@example.com".into(), None);
+        state.set_profile(Some(profile));
+
+        let snapshot = render_to_string(100, 36, |frame| {
+            draw(frame, Rect::new(0, 0, 100, 36), &state, &Theme::default());
+        });
+
+        assert!(snapshot.contains("Relationship"), "got:\n{snapshot}");
+        assert!(snapshot.contains("Voice drift"), "got:\n{snapshot}");
+        assert!(snapshot.contains("Your voice"), "got:\n{snapshot}");
+        assert!(snapshot.contains("Known topics"), "got:\n{snapshot}");
+        assert!(
+            snapshot.contains("Send signed contract copy"),
+            "got:\n{snapshot}"
+        );
+    }
+
+    #[test]
     fn unknown_sender_shows_empty_message() {
         let mut state = SenderProfileModalState::default();
         state.open_loading("nobody@example.com".into(), None);
@@ -333,5 +457,15 @@ fn human_bytes(bytes: u64) -> String {
         format!("{} {}", bytes, UNITS[unit])
     } else {
         format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+fn formality_label(score: f64) -> &'static str {
+    if score < 0.4 {
+        "casual"
+    } else if score < 0.7 {
+        "neutral"
+    } else {
+        "formal"
     }
 }

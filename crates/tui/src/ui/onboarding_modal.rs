@@ -16,7 +16,7 @@ pub fn draw(
     frame.render_widget(Clear, popup);
 
     let block = Block::default()
-        .title(format!(" Start Here {}/5 ", state.step + 1))
+        .title(format!(" Start Here {}/6 ", state.step + 1))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.accent))
         .style(Style::default().bg(theme.modal_bg));
@@ -47,15 +47,15 @@ fn step_lines(step: usize) -> Vec<Line<'static>> {
             Line::from(""),
             Line::from("1. Mailbox is for triage and reading."),
             Line::from("2. Search is for the full local index."),
-            Line::from("3. Rules automate repeatable cleanup."),
-            Line::from("4. Accounts and Diagnostics manage setup."),
+            Line::from("3. Analytics turns mail history into decisions."),
+            Line::from("4. Rules automate repeatable cleanup."),
         ],
         1 => vec![
-            Line::from("First sync"),
+            Line::from("Demo inbox"),
             Line::from(""),
-            Line::from("Press 5 for Diagnostics if sync health looks wrong."),
-            Line::from("Press r to refresh diagnostics."),
-            Line::from("Press c to edit config without leaving the TUI."),
+            Line::from("mxr demo seeds two accounts with realistic threads, repeat senders,"),
+            Line::from("attachments, links, images, newsletters, promos, spam, receipts, and rules."),
+            Line::from("It also prewarms analytics and semantic vectors for a fast first tour."),
         ],
         2 => vec![
             Line::from("Full search"),
@@ -65,15 +65,23 @@ fn step_lines(step: usize) -> Vec<Line<'static>> {
             Line::from("Use Ctrl-f in Mailbox when you only want a quick local filter."),
         ],
         3 => vec![
+            Line::from("Reader context"),
+            Line::from(""),
+            Line::from("Open a thread, then use Summary or Sender View from Ctrl-p."),
+            Line::from("Summaries use the whole conversation, including who wrote to whom."),
+            Line::from("Sender View shows history, asymmetry, storage, and related mail."),
+        ],
+        4 => vec![
             Line::from("Command palette"),
             Line::from(""),
             Line::from("Press Ctrl-p to find actions by name or shortcut."),
-            Line::from("It is the fastest way to discover config edit, logs, and navigation."),
+            Line::from("It is the fastest way to discover rules, summaries, logs, and navigation."),
         ],
         _ => vec![
-            Line::from("Rules and config"),
+            Line::from("Rules, analytics, and config"),
             Line::from(""),
             Line::from("Press 3 for Rules. Start with a dry run before saving."),
+            Line::from("Press Analytics from Ctrl-p to find noisy senders and heavy attachments."),
             Line::from("Press gc or c on Accounts / Diagnostics to open config."),
             Line::from("Open Help with ? any time, then search Start Here or use Ctrl-p to reopen this walkthrough."),
         ],

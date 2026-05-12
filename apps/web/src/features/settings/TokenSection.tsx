@@ -18,10 +18,11 @@ export function TokenSection() {
       <div className="border-b border-border px-6 py-4">
         <h1 className="text-md font-semibold">Bridge token</h1>
         <p className="mt-1 max-w-prose text-2xs text-muted-foreground">
-          The web app authenticates to the local <code>mxr</code> daemon using a bearer token. The
-          token is normally provided by the <code>mxr web</code> command via URL fragment on first
-          launch and persisted to <code>localStorage</code>. If you see <em>no token</em>
-          or 401 errors, paste the token from <code>~/.config/mxr/bridge-token</code> here.
+          The web app authenticates to the local <code>mxr</code> daemon using a bearer token. Local
+          launches normally fetch it through the same-machine handshake and persist it to
+          <code>localStorage</code>. If you see <em>no token</em> or 401 errors, paste the token
+          from
+          <code>~/.config/mxr/bridge-token</code> here.
         </p>
       </div>
       <div className="space-y-4 p-6">

@@ -9,6 +9,7 @@ pub struct StatusBarState {
     pub starred_count: usize,
     pub body_status: Option<String>,
     pub sync_status: Option<String>,
+    pub feature_health_status: Option<String>,
     pub status_message: Option<String>,
     pub pending_mutation_count: usize,
     pub pending_mutation_status: Option<String>,
@@ -44,6 +45,10 @@ pub fn draw(frame: &mut Frame, area: Rect, state: &StatusBarState, theme: &crate
         if let Some(body_status) = state.body_status.as_deref() {
             status.push_str(" | ");
             status.push_str(body_status);
+        }
+        if let Some(feature_health_status) = state.feature_health_status.as_deref() {
+            status.push_str(" | ");
+            status.push_str(feature_health_status);
         }
         status
     };

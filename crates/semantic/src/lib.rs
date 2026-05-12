@@ -174,6 +174,11 @@ impl SemanticEngine {
             .await
     }
 
+    pub async fn backfill_active(&mut self) -> Result<SemanticProfileRecord> {
+        self.backfill_missing_for_profile(self.config.active_profile)
+            .await
+    }
+
     /// Sync-time semantic ingest path.
     ///
     /// This always prepares and persists chunks for the changed messages so later
@@ -331,6 +336,71 @@ impl SemanticEngine {
         record.last_error = None;
         self.store.upsert_semantic_profile(&record).await?;
         self.rebuild_index(profile).await?;
+        Ok(record)
+    }
+
+    async fn backfill_missing_for_profile(
+        &mut self,
+        profile: SemanticProfile,
+    ) -> Result<SemanticProfileRecord> {
+        let mut record = self.install_profile(profile).await?;
+        record.status = SemanticProfileStatus::Indexing;
+        record.progress_completed = 0;
+        record.last_error = None;
+
+        let now = chrono::Utc::now();
+        let missing_chunks = self
+            .store
+            .list_message_ids_missing_semantic_chunks(10_000)
+            .await?;
+        self.prepare_message_chunks(&missing_chunks, now).await?;
+
+        let mut missing_embeddings = self
+            .store
+            .list_message_ids_missing_semantic_embeddings(&record.id, 10_000)
+            .await?;
+        for message_id in missing_chunks {
+            if !missing_embeddings.contains(&message_id) {
+                missing_embeddings.push(message_id);
+            }
+        }
+
+        record.progress_total = missing_embeddings.len() as u32;
+        self.store.upsert_semantic_profile(&record).await?;
+
+        for message_id in &missing_embeddings {
+            let chunks = self.store.list_semantic_chunks(message_id).await?;
+            let embeddings = self.build_embedding_records(&record, &chunks, now).await?;
+            self.store
+                .replace_semantic_embeddings(message_id, &record.id, &embeddings)
+                .await?;
+            record.progress_completed += 1;
+            if record.progress_completed % 100 == 0 {
+                self.store.upsert_semantic_profile(&record).await?;
+            }
+        }
+
+        record.status = SemanticProfileStatus::Ready;
+        record.last_indexed_at = Some(chrono::Utc::now());
+        record.last_error = None;
+        if record.activated_at.is_none() && self.config.active_profile == profile {
+            record.activated_at = Some(chrono::Utc::now());
+        }
+        self.store.upsert_semantic_profile(&record).await?;
+        self.rebuild_index(profile).await?;
+        self.store
+            .insert_event(
+                "info",
+                "semantic",
+                "Semantic backfill completed",
+                None,
+                Some(&format!(
+                    "profile={} messages_backfilled={}",
+                    profile.as_str(),
+                    record.progress_completed
+                )),
+            )
+            .await?;
         Ok(record)
     }
 
@@ -621,6 +691,10 @@ impl SemanticEngine {
     }
 
     pub async fn reindex_active(&mut self) -> Result<SemanticProfileRecord> {
+        Err(semantic_unavailable_error())
+    }
+
+    pub async fn backfill_active(&mut self) -> Result<SemanticProfileRecord> {
         Err(semantic_unavailable_error())
     }
 

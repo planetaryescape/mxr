@@ -36,9 +36,9 @@ pub(super) async fn get_user_voice(state: &AppState, account_id: &AccountId) -> 
     Ok(ResponseData::UserVoice { profile })
 }
 
-pub(super) async fn rebuild_user_voice(
-    _state: &AppState,
-    _account_id: &AccountId,
-) -> HandlerResult {
-    Ok(ResponseData::Ack)
+pub(super) async fn rebuild_user_voice(state: &AppState, account_id: &AccountId) -> HandlerResult {
+    mxr_relationship::service::rebuild_user_voice_profile(&state.store, account_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    get_user_voice(state, account_id).await
 }

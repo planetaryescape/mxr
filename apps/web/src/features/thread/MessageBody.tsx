@@ -61,12 +61,14 @@ export function MessageBody({ html, allowRemoteImages = true, theme = "dark" }: 
   function handleLoad() {
     resizeToContent();
     try {
-      const body = iframeRef.current?.contentDocument?.body;
+      const doc = iframeRef.current?.contentDocument;
+      const body = doc?.body;
       if (body && "ResizeObserver" in window) {
         resizeObserverRef.current?.disconnect();
         resizeObserverRef.current = new ResizeObserver(resizeToContent);
         resizeObserverRef.current.observe(body);
       }
+      doc?.addEventListener("click", handleLinkClick);
     } catch {
       // The iframe still renders; fixed fallback height comes from resizeToContent.
     }
@@ -96,6 +98,27 @@ export function MessageBody({ html, allowRemoteImages = true, theme = "dark" }: 
       />
     </div>
   );
+}
+
+function handleLinkClick(event: MouseEvent) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const anchor = target.closest("a[href]");
+  if (!(anchor instanceof HTMLAnchorElement)) return;
+  const href = anchor.href || anchor.getAttribute("href") || "";
+  if (!safeExternalHref(href)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  window.open(href, "_blank", "noopener,noreferrer");
+}
+
+function safeExternalHref(href: string): boolean {
+  try {
+    const url = new URL(href);
+    return ["http:", "https:", "mailto:", "tel:"].includes(url.protocol);
+  } catch {
+    return false;
+  }
 }
 
 function renderHtmlDocument(

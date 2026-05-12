@@ -5,12 +5,13 @@
  */
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
 
 export type Theme = "midnight" | "light" | "eclipse" | "paper" | "system";
 export type Density = "compact" | "regular" | "comfortable";
 export type ComposeEditor = "codemirror-vim" | "tiptap";
 export type EmailHtmlTheme = "dark" | "original";
+export type ReaderLayout = "split" | "full";
 
 export interface UiPrefsState {
   theme: Theme;
@@ -18,6 +19,7 @@ export interface UiPrefsState {
   sidebarCollapsed: boolean;
   composeEditor: ComposeEditor;
   emailHtmlTheme: EmailHtmlTheme;
+  readerLayout: ReaderLayout;
   notificationsEnabled: boolean;
   notifyAllNewMail: boolean;
   vipAllowlist: string[];
@@ -26,6 +28,7 @@ export interface UiPrefsState {
   setSidebarCollapsed: (b: boolean) => void;
   setComposeEditor: (e: ComposeEditor) => void;
   setEmailHtmlTheme: (theme: EmailHtmlTheme) => void;
+  setReaderLayout: (layout: ReaderLayout) => void;
   setNotificationsEnabled: (b: boolean) => void;
   setNotifyAllNewMail: (b: boolean) => void;
   addVip: (pattern: string) => void;
@@ -40,6 +43,7 @@ export const useUiPrefs = create<UiPrefsState>()(
       sidebarCollapsed: false,
       composeEditor: "tiptap",
       emailHtmlTheme: "dark",
+      readerLayout: "split",
       notificationsEnabled: false,
       notifyAllNewMail: false,
       vipAllowlist: [],
@@ -48,6 +52,7 @@ export const useUiPrefs = create<UiPrefsState>()(
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       setComposeEditor: (composeEditor) => set({ composeEditor }),
       setEmailHtmlTheme: (emailHtmlTheme) => set({ emailHtmlTheme }),
+      setReaderLayout: (readerLayout) => set({ readerLayout }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setNotifyAllNewMail: (notifyAllNewMail) => set({ notifyAllNewMail }),
       addVip: (pattern) =>
@@ -61,10 +66,30 @@ export const useUiPrefs = create<UiPrefsState>()(
     }),
     {
       name: "mxr.uiPrefs",
+      storage: createJSONStorage(() => uiPrefsStorage()),
       version: 2,
     },
   ),
 );
+
+const memoryPrefsStorage = new Map<string, string>();
+
+function uiPrefsStorage(): StateStorage {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  } catch {
+    // Some test/webview environments expose `window` but disable localStorage.
+  }
+  return {
+    getItem: (name) => memoryPrefsStorage.get(name) ?? null,
+    setItem: (name, value) => {
+      memoryPrefsStorage.set(name, value);
+    },
+    removeItem: (name) => {
+      memoryPrefsStorage.delete(name);
+    },
+  };
+}
 
 export function applyThemeAttribute(theme: Theme): void {
   if (typeof document === "undefined") return;

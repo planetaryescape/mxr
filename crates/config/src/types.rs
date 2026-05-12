@@ -24,6 +24,31 @@ pub struct MxrConfig {
     pub appearance: AppearanceConfig,
     pub bridge: BridgeConfig,
     pub llm: LlmConfig,
+    pub humanizer: HumanizerConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HumanizerConfig {
+    pub enabled: bool,
+    pub score_threshold: u8,
+    pub auto_fix: bool,
+    pub max_rewrite_iterations: u8,
+    pub apply_to_drafts: bool,
+    pub apply_to_summaries: bool,
+}
+
+impl Default for HumanizerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            score_threshold: 70,
+            auto_fix: true,
+            max_rewrite_iterations: 2,
+            apply_to_drafts: true,
+            apply_to_summaries: false,
+        }
+    }
 }
 
 /// LLM configuration. Disabled by default — opt-in for users who want
@@ -49,6 +74,11 @@ pub struct LlmConfig {
     pub context_window: u32,
     /// Per-request timeout in seconds. Local LLMs can be slow.
     pub request_timeout_secs: u64,
+    /// Allow relationship/profile data to be sent to non-local LLM endpoints.
+    pub allow_cloud_relationship_data: bool,
+    /// Optional feature-specific provider overrides. Each override inherits
+    /// unspecified fields from this base `[llm]` section.
+    pub overrides: LlmOverrides,
 }
 
 impl Default for LlmConfig {
@@ -60,6 +90,68 @@ impl Default for LlmConfig {
             api_key_env: String::new(),
             context_window: 8192,
             request_timeout_secs: 120,
+            allow_cloud_relationship_data: false,
+            overrides: LlmOverrides::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LlmOverrides {
+    pub summarize: Option<LlmOverrideConfig>,
+    pub relationship_summary: Option<LlmOverrideConfig>,
+    pub commitments: Option<LlmOverrideConfig>,
+    pub draft_assist: Option<LlmOverrideConfig>,
+    pub draft_new: Option<LlmOverrideConfig>,
+    pub draft_refine: Option<LlmOverrideConfig>,
+    pub voice_match: Option<LlmOverrideConfig>,
+    pub humanize_rewrite: Option<LlmOverrideConfig>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LlmOverrideConfig {
+    pub enabled: Option<bool>,
+    pub base_url: Option<String>,
+    pub model: Option<String>,
+    pub api_key_env: Option<String>,
+    pub context_window: Option<u32>,
+    pub request_timeout_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectiveLlmConfig {
+    pub enabled: bool,
+    pub base_url: String,
+    pub model: String,
+    pub api_key_env: String,
+    pub context_window: u32,
+    pub request_timeout_secs: u64,
+}
+
+impl LlmConfig {
+    pub fn effective_override(&self, override_config: &LlmOverrideConfig) -> EffectiveLlmConfig {
+        EffectiveLlmConfig {
+            enabled: override_config.enabled.unwrap_or(self.enabled),
+            base_url: override_config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| self.base_url.clone()),
+            model: override_config
+                .model
+                .clone()
+                .unwrap_or_else(|| self.model.clone()),
+            api_key_env: override_config
+                .api_key_env
+                .clone()
+                .unwrap_or_else(|| self.api_key_env.clone()),
+            context_window: override_config
+                .context_window
+                .unwrap_or(self.context_window),
+            request_timeout_secs: override_config
+                .request_timeout_secs
+                .unwrap_or(self.request_timeout_secs),
         }
     }
 }
@@ -76,7 +168,7 @@ pub struct BridgeConfig {
     /// address requires explicit operator opt-in and additional safeguards
     /// (see `mxr-web`'s startup checks).
     pub bind: String,
-    /// TCP port. Default `7777` — mnemonic, easy to type, low collision.
+    /// TCP port. Default `42829`, used for the stable local web URL.
     pub port: u16,
     /// Origins additive to the loopback CORS defaults. Empty by default.
     pub cors_allowlist: Vec<String>,
@@ -106,9 +198,8 @@ impl Default for BridgeConfig {
         Self {
             enabled: true,
             bind: "127.0.0.1".into(),
-            // High unprivileged port that doesn't clash with the common
-            // dev-server set (3000/5173/8000/8080/7777/4200). On EADDRINUSE
-            // the bridge walks up from here before giving up.
+            // High unprivileged unassigned port that doesn't clash with the
+            // common dev-server set (3000/5173/8000/8080/7777/4200).
             port: 42829,
             cors_allowlist: Vec::new(),
             host_allowlist: Vec::new(),
